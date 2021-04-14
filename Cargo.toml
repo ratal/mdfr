@@ -1,0 +1,21 @@
+[package]
+name = "mdfr"
+version = "0.1.0"
+authors = ["«ratal» <«ratal@ratal.org»>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+clap = "2"
+xml-rs = "0.8"
+byteorder = "1.4"
+bincode = "1.3"
+nom = "6"
+rayon = "1.5"
+encoding = "0.2"
+chrono = "0.4.19"
+roxmltree = "0.14"
+structure = "0.1"
+packed_struct  = "0.5"
+byteordered = "0.5"
