@@ -42,10 +42,7 @@ pub fn mdfinfo<R: Seek + BufRead>(f: &mut R) -> MdfInfo {
         ver = id.id_ver;
 
         // Read HD Block
-        let mut hd = match hd3_parser(f, ver).map(|x| x.1){
-            Ok(i) => i,
-            Err(e) => panic!("Failed parsing the file HD Block : {:?}", e),
-        };
+        let hd = hd3_parser(f, ver);
 
         mdf_info = MdfInfo::V3(MdfInfo3{ver, prog,
             idblock: id, hdblock: hd, 
@@ -60,7 +57,7 @@ pub fn mdfinfo<R: Seek + BufRead>(f: &mut R) -> MdfInfo {
         ver = id.id_ver;
 
         // Read HD block
-        let mut hd = hd4_parser(f);
+        let hd = hd4_parser(f);
         
         mdf_info = MdfInfo::V4(MdfInfo4{ver, prog,
             idblock: id, hdblock: hd, 

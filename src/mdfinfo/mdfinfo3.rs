@@ -1,6 +1,5 @@
 
 use encoding::all::{ISO_8859_1, ASCII};
-use std::{io::Read, option::Option};
 use std::default::Default;
 use std::io::{BufRead, Seek};
 use encoding::{Encoding, DecoderTrap};
@@ -9,14 +8,14 @@ use nom::bytes::streaming::take;
 use nom::IResult;
 use chrono::NaiveDate;
 use std::convert::TryFrom;
-use byteorder::LittleEndian;
+use byteorder::{LittleEndian, ReadBytesExt};
 
 #[derive(Debug)]
 pub struct MdfInfo3 {
-    ver: u16,
-    prog: [u8; 8],
-    idblock: Id3,
-    hdblock: Hd3,
+    pub ver: u16,
+    pub prog: [u8; 8],
+    pub idblock: Id3,
+    pub hdblock: Hd3,
 }
 
 /// Id3 block structure
@@ -66,71 +65,73 @@ pub struct Hd3 {
     hd_time_identifier: Option<String> // timer identification or time source
 }
 
-pub fn hd3_parser<R: Seek + BufRead>(f: &mut R, ver:u16) -> IResult<&[u8], Hd3> {
-    let mut i: [u8; 104];
-    f.take(104).read(&mut i).unwrap();
-    let (i, id) = take(2usize)(i)?;  // HD and block size
-    let mut hd_id: [u8; 2] = [0; 2];
-    hd_id.clone_from_slice(id);
-    let (i, hd_len) = le_u16(i)?;    // Length of block in bytes
-    let (i, hd_dg_first) = le_u32(i)?; // Pointer to the first data group block (DGBLOCK) (can be NIL)
-    let (i, hd_md_comment) = le_u32(i)?;  // TXblock link
-    let (i, hd_pr) = le_u32(i)?;  // PRblock link
-    let (i, hd_n_datagroups) = le_u16(i)?;  // number of datagroups
-    let (i, date) = take(10usize)(i)?;  // date
+pub fn hd3_parser<R: Seek + BufRead>(f: &mut R, ver:u16) -> Hd3 {
+    let mut hd_id = [0u8; 2];
+    f.read_exact(&mut hd_id).unwrap();
+    let hd_len = f.read_u16::<LittleEndian>().unwrap();    // Length of block in bytes
+    let hd_dg_first = f.read_u32::<LittleEndian>().unwrap(); // Pointer to the first data group block (DGBLOCK) (can be NIL)
+    let hd_md_comment = f.read_u32::<LittleEndian>().unwrap();  // TXblock link
+    let hd_pr = f.read_u32::<LittleEndian>().unwrap();  // PRblock link
+    let hd_n_datagroups = f.read_u16::<LittleEndian>().unwrap();  // number of datagroups
+    let mut date = [0; 10];
+    f.read_exact(&mut date).unwrap();  // date
     let mut datestr = String::new();
-    ASCII.decode_to(date, DecoderTrap::Replace, &mut datestr).unwrap();
+    ASCII.decode_to(&date, DecoderTrap::Replace, &mut datestr).unwrap();
     let mut dateiter = datestr.split(":");
     let day:u32 = dateiter.next().unwrap().parse::<u32>().unwrap();
     let month:u32 = dateiter.next().unwrap().parse::<u32>().unwrap();
     let year:i32 = dateiter.next().unwrap().parse::<i32>().unwrap();
     let hd_date = (day, month, year);
-    let (i, time) = take(8usize)(i)?;  // time
+    let mut time = [0u8; 8];
+    f.read_exact(&mut time).unwrap();  // time
     let mut timestr = String::new();
-    ASCII.decode_to(time, DecoderTrap::Replace, &mut timestr).unwrap();
+    ASCII.decode_to(&time, DecoderTrap::Replace, &mut timestr).unwrap();
     let mut timeiter = timestr.split(":");
     let hour:u32 = timeiter.next().unwrap().parse::<u32>().unwrap();
     let minute:u32 = timeiter.next().unwrap().parse::<u32>().unwrap();
     let sec:u32 = timeiter.next().unwrap().parse::<u32>().unwrap();
     let hd_time = (hour, minute, sec);
-    let (i, author) = take(32usize)(i)?; // author
+    let mut author = [0u8; 32];
+    f.read_exact(&mut author).unwrap(); // author
     let mut hd_author = String::new();
-    ISO_8859_1.decode_to(author, DecoderTrap::Replace, &mut hd_author).unwrap();
-    let (i, organisation) = take(32usize)(i)?; // author
+    ISO_8859_1.decode_to(&author, DecoderTrap::Replace, &mut hd_author).unwrap();
+    let mut organisation = [0u8; 32];
+    f.read_exact(&mut organisation).unwrap(); // author
     let mut hd_organization = String::new();
-    ISO_8859_1.decode_to(organisation, DecoderTrap::Replace, &mut hd_organization).unwrap();
-    let (i, project) = take(32usize)(i)?; // author
+    ISO_8859_1.decode_to(&organisation, DecoderTrap::Replace, &mut hd_organization).unwrap();
+    let mut project = [0u8; 32];
+    f.read_exact(&mut  project).unwrap(); // author
     let mut hd_project = String::new();
-    ISO_8859_1.decode_to(project, DecoderTrap::Replace, &mut hd_project).unwrap();
-    let (i, subject) = take(32usize)(i)?; // author
+    ISO_8859_1.decode_to(&project, DecoderTrap::Replace, &mut hd_project).unwrap();
+    let mut subject = [0u8; 32];
+    f.read_exact(&mut subject).unwrap(); // author
     let mut hd_subject = String::new();
-    ISO_8859_1.decode_to(subject, DecoderTrap::Replace, &mut hd_subject).unwrap();
-    let hd_start_time_ns: Option<u64> = None;
-    let hd_time_offset: Option<i16> = None;
-    let hd_time_quality: Option<u16> = None;
-    let hd_time_identifier: Option<String> = None;
+    ISO_8859_1.decode_to(&subject, DecoderTrap::Replace, &mut hd_subject).unwrap();
+    let hd_start_time_ns: Option<u64>;
+    let hd_time_offset: Option<i16>;
+    let hd_time_quality: Option<u16>;
+    let hd_time_identifier: Option<String>;
     if ver >= 320 {
-        let mut _hdtimebuffer = [0; 44];
-        f.read(&mut _hdtimebuffer).unwrap();
-        let (_hdtimebuffer, start_time_ns) = le_u64(&_hdtimebuffer[..])?;  // time stamp
-        hd_start_time_ns = Some(start_time_ns);
-        let (_hdtimebuffer, time_offset) = le_i16(_hdtimebuffer)?;  // time offset
-        hd_time_offset = Some(time_offset);
-        let (_hdtimebuffer, time_quality) = le_u16(_hdtimebuffer)?;  // time quality
-        hd_time_quality = Some(time_quality);
-        let (_hdtimebuffer, time_identifier) = take(32usize)(_hdtimebuffer)?; // time identification
+        hd_start_time_ns = Some(f.read_u64::<LittleEndian>().unwrap());  // time stamp
+        hd_time_offset = Some(f.read_i16::<LittleEndian>().unwrap());  // time offset
+        hd_time_quality = Some(f.read_u16::<LittleEndian>().unwrap());  // time quality
+        let mut time_identifier = [0u8; 32];
+        f.read_exact(&mut time_identifier).unwrap(); // time identification
         let mut ti = String::new();
-        ISO_8859_1.decode_to(time_identifier, DecoderTrap::Replace, &mut ti).unwrap();
+        ISO_8859_1.decode_to(&time_identifier, DecoderTrap::Replace, &mut ti).unwrap();
         hd_time_identifier = Some(ti);
     } else {
         // calculate hd_start_time_ns
         hd_start_time_ns = Some(u64::try_from(NaiveDate::from_ymd(hd_date.2, hd_date.1, hd_date.0)
             .and_hms(hd_time.0, hd_time.1, hd_time.2)
             .timestamp_nanos()).unwrap());
+        hd_time_offset = None;
+        hd_time_quality = None;
+        hd_time_identifier = None;
     }
-    Ok((i, Hd3 {hd_id, hd_len, hd_dg_first, hd_md_comment, hd_pr,
+    Hd3 {hd_id, hd_len, hd_dg_first, hd_md_comment, hd_pr,
         hd_n_datagroups, hd_date, hd_time,  hd_author, hd_organization,
         hd_project, hd_subject, hd_start_time_ns, hd_time_offset, hd_time_quality, hd_time_identifier
-    }))
+    }
 }
 

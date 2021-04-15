@@ -13,10 +13,10 @@ use nom::IResult;
 
 #[derive(Debug)]
 pub struct MdfInfo4 {
-    ver: u16,
-    prog: [u8; 8],
-    idblock: Id4,
-    hdblock: Hd4,
+    pub ver: u16,
+    pub prog: [u8; 8],
+    pub idblock: Id4,
+    pub hdblock: Hd4,
 }
 
 /// MDF4 - common Header
@@ -93,7 +93,7 @@ pub struct Hd4 {
 
 pub fn hd4_parser<R: Seek + BufRead>(f: &mut R) -> Hd4 {
     let mut hd_id = [0; 4]; // ##HD and reserved, must be 0
-    f.read_exact(&mut hd_id);
+    f.read_exact(&mut hd_id).unwrap();
     let _ = f.read_u32::<LittleEndian>().unwrap();  // reserved
     let hd_len = f.read_u64::<LittleEndian>().unwrap();   // Length of block in bytes
     let hd_link_counts = f.read_u64::<LittleEndian>().unwrap(); // # of links 
@@ -204,7 +204,7 @@ pub fn hd4_parser<R: Seek + BufRead>(f: &mut R) -> Hd4 {
 } */
 
 pub fn parse_comment<R: Seek + BufRead>(f: &mut R, position: i64) -> (Blockheader4, String) {
-    f.seek(SeekFrom::Start(u64::try_from(position).unwrap())).unwrap();
+    f.by_ref().seek(SeekFrom::Start(u64::try_from(position).unwrap())).unwrap();
     let header = [0; 24];
     let block_header: Blockheader4 = match parse_block_header(&header).map(|x| x.1){
         Ok(i) => i,

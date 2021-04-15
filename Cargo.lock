@@ -279,6 +279,7 @@ dependencies = [
  "rayon",
  "roxmltree",
  "structure",
+ "structview",
  "xml-rs",
 ]
 
@@ -488,6 +489,27 @@ checksum = "e0c0529f2429c8bb5878688fffab7f700087f4bd47906e6acf03fd7361f77aca"
 dependencies = [
  "proc-macro-hack",
  "quote 0.3.15",
+]
+
+[[package]]
+name = "structview"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8c0d596711317178a78de98b3e30e151fb3d3bbff000f5da37e2b460b99c2182"
+dependencies = [
+ "byteorder",
+ "structview_derive",
+]
+
+[[package]]
+name = "structview_derive"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e738957e98ce93e9ecad0df60ffe77bd8511a9a1c503f6def8a4cd28ae53b59a"
+dependencies = [
+ "proc-macro2",
+ "quote 1.0.9",
+ "syn",
 ]
 
 [[package]]
