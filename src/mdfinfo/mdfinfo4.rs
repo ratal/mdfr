@@ -8,9 +8,7 @@ use std::str;
 use std::option::Option;
 use std::default::Default;
 use std::convert::TryFrom;
-use nom::number::streaming::*;
-use nom::bytes::streaming::take;
-use nom::IResult;
+use binread::{BinRead, BinReaderExt};
 
 #[derive(Debug)]
 pub struct MdfInfo4 {
@@ -21,7 +19,8 @@ pub struct MdfInfo4 {
 }
 
 /// MDF4 - common Header
-#[derive(Debug, PartialEq, Default)]
+#[derive(BinRead)]
+#[br(little)]
 pub struct Blockheader4 {
     hdr_id: [u8; 4],   // '##XX'
     hdr_gap: [u8; 4],   // reserved, must be 0
@@ -29,16 +28,9 @@ pub struct Blockheader4 {
     hdr_links: u64 // # of links 
 }
 
-pub fn parse_block_header(i: &[u8]) -> IResult<&[u8], Blockheader4> {
-    let (i, id) = take(4usize)(i)?;  // ##HD and reserved, must be 0 
-    let mut hdr_id: [u8; 4] = [0; 4];
-    hdr_id.clone_from_slice(id);
-    let (i, gap) = take(4usize)(i)?;   // reserved, must be 0
-    let mut hdr_gap: [u8; 4] = [0; 4];
-    hdr_gap.clone_from_slice(gap);
-    let (i, hdr_len) = le_u64(i)?;   // Length of block in bytes
-    let (i, hdr_links) = le_u64(i)?; // # of links
-    Ok((i, Blockheader4 {hdr_id, hdr_gap, hdr_len, hdr_links}))
+pub fn parse_block_header(rdr: &mut BufReader<&File>) -> Blockheader4 {
+    let header: Blockheader4 = rdr.read_le().unwrap();
+    return header
 }
 
 /// Id4 block structure
@@ -53,14 +45,15 @@ pub struct Id4 {
 }
 
 /// Reads the ID4 Block structure int he file
-pub fn parse_id4(i: &[u8], id_file_id: [u8; 8], id_vers: [u8; 4], id_prog: [u8; 8]) -> IResult<&[u8], Id4> {
-    let (i, _) = take(4usize)(i)?; // reserved
-    let (i, id_ver) = le_u16(i)?;
-    let (i, _) = take(30usize)(i)?; // reserved
-    let (i, id_unfin_flags) = le_u16(i)?;
-    let (i, id_custom_unfin_flags) = le_u16(i)?;
-    Ok((i, Id4 {id_file_id, id_vers, id_prog, id_ver, id_unfin_flags, id_custom_unfin_flags
-    }))
+pub fn parse_id4(rdr: &mut BufReader<&File>, id_file_id: [u8; 8], id_vers: [u8; 4], id_prog: [u8; 8]) -> Id4 {
+    let _ = rdr.read_u32::<LittleEndian>().unwrap();  // reserved
+    let id_ver = rdr.read_u16::<LittleEndian>().unwrap();
+    let mut gap = [0u8; 30];
+    rdr.read_exact(&mut  gap).unwrap();
+    let id_unfin_flags = rdr.read_u16::<LittleEndian>().unwrap();
+    let id_custom_unfin_flags = rdr.read_u16::<LittleEndian>().unwrap();
+    Id4 {id_file_id, id_vers, id_prog, id_ver, id_unfin_flags, id_custom_unfin_flags
+    }
 }
 
 #[derive(Debug)]
@@ -207,12 +200,7 @@ pub fn hd4_parser(rdr: &mut BufReader<&File>) -> (Hd4, i64) {
 
 pub fn parse_comment(rdr: &mut BufReader<&File>, target_position: i64, current_position:i64) -> (Blockheader4, String, i64) {
     rdr.seek_relative(target_position - current_position).unwrap();
-    let mut header = [0; 24];
-    rdr.read(&mut header).unwrap();
-    let block_header: Blockheader4 = match parse_block_header(&header).map(|x| x.1){
-        Ok(i) => i,
-        Err(e) => panic!("Failed parsing the file MD Block : {:?}", e),
-    };
+    let block_header: Blockheader4 = parse_block_header(rdr);
     // reads xml file
     let mut comment_raw = vec![0; (block_header.hdr_len - 24) as usize];
     rdr.read(&mut comment_raw).unwrap();
