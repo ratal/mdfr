@@ -2,8 +2,6 @@ extern crate clap;
 extern crate nom;
 
 use clap::{Arg, App, SubCommand};
-use std::fs::File;
-use std::io::BufReader;
 use std::io;
 mod mdfinfo;
 
@@ -40,10 +38,7 @@ fn main() -> io::Result<()>{
         }
     }
 
-    let f = File::open(file_name).expect("Cannot find the file");
-    let mut rdr = BufReader::new(f);
-    // let mut cur =Cursor::new(rdr);
-    let info = mdfinfo::mdfinfo(&mut rdr);
+    let info = mdfinfo::mdfinfo(file_name);
 
     Ok(())
 

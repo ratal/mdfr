@@ -1,7 +1,8 @@
 
 use byteorder::{LittleEndian, ReadBytesExt};
 use roxmltree;
-use std::io::{BufRead, Seek, SeekFrom};
+use std::io::BufReader;
+use std::fs::File;
 use std::io::prelude::*;
 use std::str;
 use std::option::Option;
@@ -91,38 +92,39 @@ pub struct Hd4 {
     hd_subject: Option<String>, // subject or measurement object
 }
 
-pub fn hd4_parser<R: Seek + BufRead>(f: &mut R) -> Hd4 {
+pub fn hd4_parser(rdr: &mut BufReader<&File>) -> (Hd4, i64) {
     let mut hd_id = [0; 4]; // ##HD and reserved, must be 0
-    f.read_exact(&mut hd_id).unwrap();
-    let _ = f.read_u32::<LittleEndian>().unwrap();  // reserved
-    let hd_len = f.read_u64::<LittleEndian>().unwrap();   // Length of block in bytes
-    let hd_link_counts = f.read_u64::<LittleEndian>().unwrap(); // # of links 
-    let hd_dg_first = f.read_i64::<LittleEndian>().unwrap(); // Pointer to the first data group block (DGBLOCK) (can be NIL)
-    let hd_fh_first = f.read_i64::<LittleEndian>().unwrap(); // Pointer to first file history block (FHBLOCK) 
+    rdr.read(&mut hd_id).unwrap();
+    let _ = rdr.read_u32::<LittleEndian>().unwrap();  // reserved
+    let hd_len = rdr.read_u64::<LittleEndian>().unwrap();   // Length of block in bytes
+    let hd_link_counts = rdr.read_u64::<LittleEndian>().unwrap(); // # of links 
+    let hd_dg_first = rdr.read_i64::<LittleEndian>().unwrap(); // Pointer to the first data group block (DGBLOCK) (can be NIL)
+    let hd_fh_first = rdr.read_i64::<LittleEndian>().unwrap(); // Pointer to first file history block (FHBLOCK) 
                 // There must be at least one FHBLOCK with information about the application which created the MDF file.
-    let hd_ch_first = f.read_i64::<LittleEndian>().unwrap(); // Pointer to first channel hierarchy block (CHBLOCK) (can be NIL).
-    let hd_at_first = f.read_i64::<LittleEndian>().unwrap(); // Pointer to first attachment block (ATBLOCK) (can be NIL)
-    let hd_ev_first = f.read_i64::<LittleEndian>().unwrap(); // Pointer to first event block (EVBLOCK) (can be NIL)
-    let hd_md_comment = f.read_i64::<LittleEndian>().unwrap(); // Pointer to the measurement file comment (TXBLOCK or MDBLOCK) (can be NIL) For MDBLOCK contents, see Table 14.
+    let hd_ch_first = rdr.read_i64::<LittleEndian>().unwrap(); // Pointer to first channel hierarchy block (CHBLOCK) (can be NIL).
+    let hd_at_first = rdr.read_i64::<LittleEndian>().unwrap(); // Pointer to first attachment block (ATBLOCK) (can be NIL)
+    let hd_ev_first = rdr.read_i64::<LittleEndian>().unwrap(); // Pointer to first event block (EVBLOCK) (can be NIL)
+    let hd_md_comment = rdr.read_i64::<LittleEndian>().unwrap(); // Pointer to the measurement file comment (TXBLOCK or MDBLOCK) (can be NIL) For MDBLOCK contents, see Table 14.
 
     // Data members
-    let hd_start_time_ns = f.read_u64::<LittleEndian>().unwrap();  // Time stamp in nanoseconds elapsed since 00:00:00 01.01.1970 (UTC time or local time, depending on "local time" flag, see [UTC]).
-    let hd_tz_offset_min = f.read_i16::<LittleEndian>().unwrap();  // Time zone offset in minutes. The value must be in range [-720,720], i.e. it can be negative! For example a value of 60 (min) means UTC+1 time zone = Central European Time (CET). Only valid if "time offsets valid" flag is set in time flags.
-    let hd_dst_offset_min = f.read_i16::<LittleEndian>().unwrap(); // Daylight saving time (DST) offset in minutes for start time stamp. During the summer months, most regions observe a DST offset of 60 min (1 hour). Only valid if "time offsets valid" flag is set in time flags.
-    let hd_time_flags = f.read_u8().unwrap();     // Time flags The value contains the following bit flags (see HD_TF_xxx)
-    let hd_time_class = f.read_u8().unwrap();    // Time quality class (see HD_TC_xxx)
-    let hd_flags = f.read_u8().unwrap();           // Flags The value contains the following bit flags (see HD_FL_xxx):
-    let _ = f.read_u8().unwrap();       // Reserved
-    let hd_start_angle_rad = f.read_f64::<LittleEndian>().unwrap(); // Start angle in radians at start of measurement (only for angle synchronous measurements) Only valid if "start angle valid" flag is set. All angle values for angle synchronized master channels or events are relative to this start angle.
-    let hd_start_distance_m = f.read_f64::<LittleEndian>().unwrap(); // Start distance in meters at start of measurement (only for distance synchronous measurements) Only valid if "start distance valid" flag is set. All distance values for distance synchronized master channels or events are relative to this start distance.
+    let hd_start_time_ns = rdr.read_u64::<LittleEndian>().unwrap();  // Time stamp in nanoseconds elapsed since 00:00:00 01.01.1970 (UTC time or local time, depending on "local time" flag, see [UTC]).
+    let hd_tz_offset_min = rdr.read_i16::<LittleEndian>().unwrap();  // Time zone offset in minutes. The value must be in range [-720,720], i.e. it can be negative! For example a value of 60 (min) means UTC+1 time zone = Central European Time (CET). Only valid if "time offsets valid" flag is set in time flags.
+    let hd_dst_offset_min = rdr.read_i16::<LittleEndian>().unwrap(); // Daylight saving time (DST) offset in minutes for start time stamp. During the summer months, most regions observe a DST offset of 60 min (1 hour). Only valid if "time offsets valid" flag is set in time flags.
+    let hd_time_flags = rdr.read_u8().unwrap();     // Time flags The value contains the following bit flags (see HD_TF_xxx)
+    let hd_time_class = rdr.read_u8().unwrap();    // Time quality class (see HD_TC_xxx)
+    let hd_flags = rdr.read_u8().unwrap();           // Flags The value contains the following bit flags (see HD_FL_xxx):
+    let _ = rdr.read_u8().unwrap();       // Reserved
+    let hd_start_angle_rad = rdr.read_f64::<LittleEndian>().unwrap(); // Start angle in radians at start of measurement (only for angle synchronous measurements) Only valid if "start angle valid" flag is set. All angle values for angle synchronized master channels or events are relative to this start angle.
+    let hd_start_distance_m = rdr.read_f64::<LittleEndian>().unwrap(); // Start distance in meters at start of measurement (only for distance synchronous measurements) Only valid if "start distance valid" flag is set. All distance values for distance synchronized master channels or events are relative to this start distance.
     let hd_comment : Option<String>;
     let hd_author: Option<String>;
     let hd_organization: Option<String>;    // name of the organization or department
     let hd_project: Option<String>;          // project name
     let hd_subject: Option<String>;
+    let position:i64 = 168;
     // parsing HD comment block
     if hd_md_comment != 0 {
-        let (block_header, comment) = parse_comment(f, hd_md_comment);
+        let (block_header, comment, position) = parse_comment(rdr, hd_md_comment, position);
         if block_header.hdr_id == "##HD".as_bytes() {
             // TX Block
             hd_comment = Some(comment);
@@ -155,12 +157,12 @@ pub fn hd4_parser<R: Seek + BufRead>(f: &mut R) -> Hd4 {
         hd_project = None;
         hd_subject = None;
     }
-    Hd4 {hd_id, hd_len, hd_link_counts, hd_dg_first, hd_fh_first, hd_ch_first,
+    (Hd4 {hd_id, hd_len, hd_link_counts, hd_dg_first, hd_fh_first, hd_ch_first,
         hd_at_first, hd_ev_first, hd_md_comment, hd_start_time_ns,
         hd_tz_offset_min, hd_dst_offset_min, hd_time_flags,  hd_time_class, hd_flags,
         hd_start_angle_rad, hd_start_distance_m, hd_comment,
         hd_author, hd_organization, hd_project, hd_subject
-    }
+    }, position)
 }
 
 /* pub fn hd4_reader<R: Seek + BufRead>(f: &mut R) -> Hd4 {
@@ -203,16 +205,18 @@ pub fn hd4_parser<R: Seek + BufRead>(f: &mut R) -> Hd4 {
     }
 } */
 
-pub fn parse_comment<R: Seek + BufRead>(f: &mut R, position: i64) -> (Blockheader4, String) {
-    f.by_ref().seek(SeekFrom::Start(u64::try_from(position).unwrap())).unwrap();
-    let header = [0; 24];
+pub fn parse_comment(rdr: &mut BufReader<&File>, target_position: i64, current_position:i64) -> (Blockheader4, String, i64) {
+    rdr.seek_relative(target_position - current_position).unwrap();
+    let mut header = [0; 24];
+    rdr.read(&mut header).unwrap();
     let block_header: Blockheader4 = match parse_block_header(&header).map(|x| x.1){
         Ok(i) => i,
         Err(e) => panic!("Failed parsing the file MD Block : {:?}", e),
     };
     // reads xml file
     let mut comment_raw = vec![0; (block_header.hdr_len - 24) as usize];
-    f.take(4).read(&mut comment_raw).unwrap();
+    rdr.read(&mut comment_raw).unwrap();
     let comment:String = str::from_utf8(&comment_raw).unwrap().parse().unwrap();
-    return (block_header, comment)
+    let position = target_position + i64::try_from(block_header.hdr_len).unwrap();
+    return (block_header, comment, position)
 }
