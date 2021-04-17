@@ -9,13 +9,14 @@ use std::option::Option;
 use std::default::Default;
 use std::convert::TryFrom;
 use binread::{BinRead, BinReaderExt};
+use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct MdfInfo4 {
     pub ver: u16,
     pub prog: [u8; 8],
-    pub idblock: Id4,
-    pub hdblock: Hd4,
+    pub id_block: Id4,
+    pub hd_block: Hd4,
 }
 
 /// MDF4 - common Header
@@ -57,8 +58,11 @@ pub fn parse_id4(rdr: &mut BufReader<&File>, id_file_id: [u8; 8], id_vers: [u8; 
 }
 
 #[derive(Debug)]
+#[derive(BinRead)]
+#[br(little)]
 pub struct Hd4 {
     hd_id: [u8; 4],  // ##HD
+    hd_reserved: [u8; 4],  // reserved
     hd_len:u64,   // Length of block in bytes
     hd_link_counts:u64, // # of links 
     hd_dg_first:i64, // Pointer to the first data group block (DGBLOCK) (can be NIL)
@@ -76,8 +80,18 @@ pub struct Hd4 {
     hd_time_flags:u8,     // Time flags The value contains the following bit flags (see HD_TF_xxx)
     hd_time_class:u8,    // Time quality class (see HD_TC_xxx)
     hd_flags:u8,          // Flags The value contains the following bit flags (see HD_FL_xxx):
+    hd_reserved2: u8,    // reserved
     hd_start_angle_rad:f64, // Start angle in radians at start of measurement (only for angle synchronous measurements) Only valid if "start angle valid" flag is set. All angle values for angle synchronized master channels or events are relative to this start angle.
     hd_start_distance_m:f64, // Start distance in meters at start of measurement (only for distance synchronous measurements) Only valid if "start distance valid" flag is set. All distance values for distance synchronized master channels or events are relative to this start distance.
+}
+
+pub fn hd4_parser(rdr: &mut BufReader<&File>) -> Hd4 {
+    let block: Hd4 = rdr.read_le().unwrap();
+    return block
+}
+
+#[derive(Debug)]
+pub struct Hd4Comment {
     hd_comment: Option<String>,  // for TX Block comment
     hd_author: Option<String>,     // Author's name
     hd_organization: Option<String>,    // name of the organization or department
@@ -85,126 +99,37 @@ pub struct Hd4 {
     hd_subject: Option<String>, // subject or measurement object
 }
 
-pub fn hd4_parser(rdr: &mut BufReader<&File>) -> (Hd4, i64) {
-    let mut hd_id = [0; 4]; // ##HD and reserved, must be 0
-    rdr.read(&mut hd_id).unwrap();
-    let _ = rdr.read_u32::<LittleEndian>().unwrap();  // reserved
-    let hd_len = rdr.read_u64::<LittleEndian>().unwrap();   // Length of block in bytes
-    let hd_link_counts = rdr.read_u64::<LittleEndian>().unwrap(); // # of links 
-    let hd_dg_first = rdr.read_i64::<LittleEndian>().unwrap(); // Pointer to the first data group block (DGBLOCK) (can be NIL)
-    let hd_fh_first = rdr.read_i64::<LittleEndian>().unwrap(); // Pointer to first file history block (FHBLOCK) 
-                // There must be at least one FHBLOCK with information about the application which created the MDF file.
-    let hd_ch_first = rdr.read_i64::<LittleEndian>().unwrap(); // Pointer to first channel hierarchy block (CHBLOCK) (can be NIL).
-    let hd_at_first = rdr.read_i64::<LittleEndian>().unwrap(); // Pointer to first attachment block (ATBLOCK) (can be NIL)
-    let hd_ev_first = rdr.read_i64::<LittleEndian>().unwrap(); // Pointer to first event block (EVBLOCK) (can be NIL)
-    let hd_md_comment = rdr.read_i64::<LittleEndian>().unwrap(); // Pointer to the measurement file comment (TXBLOCK or MDBLOCK) (can be NIL) For MDBLOCK contents, see Table 14.
-
-    // Data members
-    let hd_start_time_ns = rdr.read_u64::<LittleEndian>().unwrap();  // Time stamp in nanoseconds elapsed since 00:00:00 01.01.1970 (UTC time or local time, depending on "local time" flag, see [UTC]).
-    let hd_tz_offset_min = rdr.read_i16::<LittleEndian>().unwrap();  // Time zone offset in minutes. The value must be in range [-720,720], i.e. it can be negative! For example a value of 60 (min) means UTC+1 time zone = Central European Time (CET). Only valid if "time offsets valid" flag is set in time flags.
-    let hd_dst_offset_min = rdr.read_i16::<LittleEndian>().unwrap(); // Daylight saving time (DST) offset in minutes for start time stamp. During the summer months, most regions observe a DST offset of 60 min (1 hour). Only valid if "time offsets valid" flag is set in time flags.
-    let hd_time_flags = rdr.read_u8().unwrap();     // Time flags The value contains the following bit flags (see HD_TF_xxx)
-    let hd_time_class = rdr.read_u8().unwrap();    // Time quality class (see HD_TC_xxx)
-    let hd_flags = rdr.read_u8().unwrap();           // Flags The value contains the following bit flags (see HD_FL_xxx):
-    let _ = rdr.read_u8().unwrap();       // Reserved
-    let hd_start_angle_rad = rdr.read_f64::<LittleEndian>().unwrap(); // Start angle in radians at start of measurement (only for angle synchronous measurements) Only valid if "start angle valid" flag is set. All angle values for angle synchronized master channels or events are relative to this start angle.
-    let hd_start_distance_m = rdr.read_f64::<LittleEndian>().unwrap(); // Start distance in meters at start of measurement (only for distance synchronous measurements) Only valid if "start distance valid" flag is set. All distance values for distance synchronized master channels or events are relative to this start distance.
-    let hd_comment : Option<String>;
-    let hd_author: Option<String>;
-    let hd_organization: Option<String>;    // name of the organization or department
-    let hd_project: Option<String>;          // project name
-    let hd_subject: Option<String>;
-    let position:i64 = 168;
+pub fn hd4_comment_parser(rdr: &mut BufReader<&File>, hd4_block: &Hd4) -> (HashMap<String, String>, i64) {
+    let mut position:i64 = 168;
+    let mut comments: HashMap<String, String> = HashMap::new();
     // parsing HD comment block
-    if hd_md_comment != 0 {
-        let (block_header, comment, position) = parse_comment(rdr, hd_md_comment, position);
-        if block_header.hdr_id == "##HD".as_bytes() {
+    if hd4_block.hd_md_comment != 0 {
+        let (block_header, comment, offset) = parse_md(rdr, hd4_block.hd_md_comment - position);
+        position += offset;
+        if block_header.hdr_id == "##TX".as_bytes() {
             // TX Block
-            hd_comment = Some(comment);
-            hd_author = None;
-            hd_organization = None;
-            hd_project = None;
-            hd_subject = None;
+            comments.insert(String::from("comment"), comment);
         } else {
             // MD Block, reading xml
-            hd_comment = None;
-            let md = roxmltree::Document::parse(&comment). expect("Could not parse HD MD block");
-            let prop = md.descendants().find(|p| p.has_tag_name("common_properties")).expect("No common_properties found in HD comment block");
-            let prope = prop.document().descendants().find(|p| p.has_tag_name("e")).expect("No common_properties found in HD comment block");
-            if prope.has_attribute("author") {
-                hd_author = prope.attribute("author").map(str::to_string);
-                hd_organization = prope.attribute("organization").map(str::to_string);
-                hd_project = prope.attribute("project").map(str::to_string);
-                hd_subject = prope.attribute("subject").map(str::to_string);
-            } else {
-                hd_author = None;
-                hd_organization = None;
-                hd_project = None;
-                hd_subject = None;
+            let md = roxmltree::Document::parse(&comment).expect("Could not parse HD MD block");
+            for node in md.root().descendants().filter(|p| p.has_tag_name("e")){
+                if let (Some(value), Some(text)) = (node.attribute("name"), node.text()) {
+                comments.insert(value.to_string(), text.to_string());
+                }
             }
         }
-    } else {
-        hd_comment = None;
-        hd_author = None;
-        hd_organization = None;
-        hd_project = None;
-        hd_subject = None;
     }
-    (Hd4 {hd_id, hd_len, hd_link_counts, hd_dg_first, hd_fh_first, hd_ch_first,
-        hd_at_first, hd_ev_first, hd_md_comment, hd_start_time_ns,
-        hd_tz_offset_min, hd_dst_offset_min, hd_time_flags,  hd_time_class, hd_flags,
-        hd_start_angle_rad, hd_start_distance_m, hd_comment,
-        hd_author, hd_organization, hd_project, hd_subject
-    }, position)
+    (comments, position)
 }
 
-/* pub fn hd4_reader<R: Seek + BufRead>(f: &mut R) -> Hd4 {
-    let s = structure("<4sI2Q6qQ2h4B2d");
-    let mut buf = [0; 104];
-    f.take(104).read(&mut buf).unwrap();
-    let (hd_id, hd_len, hd_link_counts, hd_dg_first, hd_fh_first, hd_ch_first,
-        hd_at_first, hd_ev_first, hd_md_comment, hd_start_time_ns,
-        hd_tz_offset_min, hd_dst_offset_min, hd_time_flags,  hd_time_class, hd_flags,
-        hd_start_angle_rad, hd_start_distance_m) 
-        = s.unpack(buf);
-    let hd_comment = Comment::NoComment;
-    let hd_author = None;
-    let hd_organization = None;
-    let hd_project = None;
-    let hd_subject = None;
-    // parsing HD comment block
-    if hd_md_comment != 0 {
-        let (block_header, comment) = parse_comment(f, hd_md_comment);
-        if block_header.hdr_id == *b"##HD" {
-            // TX Block
-            hd_comment = Comment::TX(comment);
-        } else {
-            // MD Block, reading xml
-            let md = match roxmltree::Document::parse(&comment) {
-                Ok(c) => c,
-                Err(e) => {
-                    println!("Error, could not parse HD Block xml comment: {}.", e);
-                    std::process::exit(1);
-                }
-            };
-            hd_comment = Comment::MD(md);
-        }
-    }
-    Hd4 {hd_id, hd_len, hd_link_counts, hd_dg_first, hd_fh_first, hd_ch_first,
-        hd_at_first, hd_ev_first, hd_md_comment, hd_start_time_ns,
-        hd_tz_offset_min, hd_dst_offset_min, hd_time_flags,  hd_time_class, hd_flags,
-        hd_start_angle_rad, hd_start_distance_m, hd_comment,
-        hd_author, hd_organization, hd_project, hd_subject
-    }
-} */
-
-pub fn parse_comment(rdr: &mut BufReader<&File>, target_position: i64, current_position:i64) -> (Blockheader4, String, i64) {
-    rdr.seek_relative(target_position - current_position).unwrap();
+pub fn parse_md(rdr: &mut BufReader<&File>, offset: i64) -> (Blockheader4, String, i64) {
+    rdr.seek_relative(offset).unwrap();
     let block_header: Blockheader4 = parse_block_header(rdr);
     // reads xml file
     let mut comment_raw = vec![0; (block_header.hdr_len - 24) as usize];
     rdr.read(&mut comment_raw).unwrap();
     let comment:String = str::from_utf8(&comment_raw).unwrap().parse().unwrap();
-    let position = target_position + i64::try_from(block_header.hdr_len).unwrap();
-    return (block_header, comment, position)
+    let comment:String = comment.trim_end_matches(char::from(0)).into();
+    let offset = offset + i64::try_from(block_header.hdr_len).unwrap();
+    return (block_header, comment, offset)
 }

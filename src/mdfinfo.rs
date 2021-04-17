@@ -5,13 +5,12 @@
 use std::io::{BufReader, Read};
 use std::fs::{File, OpenOptions};
 use std::str;
-use rayon::prelude::*;
 
 pub mod mdfinfo3;
 pub mod mdfinfo4;
 
 use mdfinfo3::{MdfInfo3, parse_id3, hd3_parser};
-use mdfinfo4::{MdfInfo4, parse_id4, hd4_parser};
+use mdfinfo4::{MdfInfo4, parse_id4, hd4_parser, hd4_comment_parser};
 
 #[derive(Debug)]
 pub enum MdfInfo {
@@ -54,19 +53,18 @@ pub fn mdfinfo(file_name: &str) -> MdfInfo {
             idblock: id, hdblock: hd, 
             });
     } else {
-        let mut buffer = [0u8; 40];
-        rdr.read(&mut buffer).unwrap();
-        let id = match parse_id4(&buffer, id_file_id, id_vers, prog).map(|x| x.1) {
-            Ok(i) => i,
-            Err(e) => panic!("Failed parsing the file ID Block : {:?}", e),
-        };
+
+        let id = parse_id4(&mut rdr, id_file_id, id_vers, prog);
         ver = id.id_ver;
 
         // Read HD block
-        let (hd, position) = hd4_parser(&mut rdr);
+        let hd = hd4_parser(&mut rdr);
+        let (hd_comment, position) = hd4_comment_parser(&mut rdr, &hd);
+
+        // Read DG Block
         
         mdf_info = MdfInfo::V4(MdfInfo4{ver, prog,
-            idblock: id, hdblock: hd, 
+            id_block: id, hd_block: hd, 
             });
     };
     return mdf_info
