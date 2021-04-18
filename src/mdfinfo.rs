@@ -9,7 +9,7 @@ use std::str;
 pub mod mdfinfo3;
 pub mod mdfinfo4;
 
-use mdfinfo3::{MdfInfo3, parse_id3, hd3_parser};
+use mdfinfo3::{MdfInfo3, parse_id3, hd3_parser, hd3_comment_parser};
 use mdfinfo4::{MdfInfo4, parse_id4, hd4_parser, hd4_comment_parser};
 
 #[derive(Debug)]
@@ -43,9 +43,10 @@ pub fn mdfinfo(file_name: &str) -> MdfInfo {
 
         // Read HD Block
         let hd = hd3_parser(&mut rdr, ver);
+        let (hd_comment, position) =  hd3_comment_parser(&mut rdr, &hd);
 
         mdf_info = MdfInfo::V3(MdfInfo3{ver, prog,
-            idblock: id, hdblock: hd, 
+            idblock: id, hdblock: hd, hd_comment,
             });
     } else {
 

@@ -17,6 +17,7 @@ pub struct MdfInfo3 {
     pub prog: [u8; 8],
     pub idblock: Id3,
     pub hdblock: Hd3,
+    pub hd_comment: String,
 }
 
 /// MDF4 - common Header
@@ -148,6 +149,14 @@ pub fn hd3_parser(rdr: &mut BufReader<&File>, ver:u16) -> Hd3 {
         hd_n_datagroups, hd_date, hd_time,  hd_author, hd_organization,
         hd_project, hd_subject, hd_start_time_ns, hd_time_offset, hd_time_quality, hd_time_identifier
     }
+}
+
+pub fn hd3_comment_parser(rdr: &mut BufReader<&File>, hd3_block: &Hd3) -> (String, i64) {
+    let mut position:i64 = 168;
+    let mut comments: String = String::new();
+    let (block_header, comment, offset) = parse_tx(rdr, i64::try_from(hd3_block.hd_md_comment).unwrap() - position);
+    position += offset;
+    (comments, position)
 }
 
 pub fn parse_tx(rdr: &mut BufReader<&File>, offset: i64) -> (Blockheader3, String, i64) {
