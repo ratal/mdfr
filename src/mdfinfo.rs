@@ -40,10 +40,7 @@ pub fn mdfinfo(file_name: &str) -> MdfInfo {
     if ver_char < 4.0 {
         let mut idbuffer = [0u8; 40];
         rdr.read(&mut idbuffer).unwrap();
-        let id = match parse_id3(&idbuffer, id_file_id, id_vers, prog).map(|x| x.1) {
-            Ok(i) => i,
-            Err(e) => panic!("Failed parsing the file ID Block : {:?}", e),
-        };
+        let id = parse_id3(&mut rdr, id_file_id, id_vers, prog);
         ver = id.id_ver;
 
         // Read HD Block
@@ -64,7 +61,7 @@ pub fn mdfinfo(file_name: &str) -> MdfInfo {
         // Read DG Block
         
         mdf_info = MdfInfo::V4(MdfInfo4{ver, prog,
-            id_block: id, hd_block: hd, 
+            id_block: id, hd_block: hd, hd_comment,
             });
     };
     return mdf_info
