@@ -5,7 +5,6 @@ use std::io::BufReader;
 use std::fs::File;
 use std::io::prelude::*;
 use std::str;
-use std::option::Option;
 use std::default::Default;
 use std::convert::TryFrom;
 use binread::{BinRead, BinReaderExt};
@@ -17,9 +16,11 @@ pub struct MdfInfo4 {
     pub prog: [u8; 8],
     pub id_block: Id4,
     pub hd_block: Hd4,
+    pub hd_comment: HashMap<String, String>,
 }
 
 /// MDF4 - common Header
+#[derive(Debug)]
 #[derive(BinRead)]
 #[br(little)]
 pub struct Blockheader4 {
@@ -90,15 +91,6 @@ pub fn hd4_parser(rdr: &mut BufReader<&File>) -> Hd4 {
     return block
 }
 
-#[derive(Debug)]
-pub struct Hd4Comment {
-    hd_comment: Option<String>,  // for TX Block comment
-    hd_author: Option<String>,     // Author's name
-    hd_organization: Option<String>,    // name of the organization or department
-    hd_project: Option<String>,          // project name
-    hd_subject: Option<String>, // subject or measurement object
-}
-
 pub fn hd4_comment_parser(rdr: &mut BufReader<&File>, hd4_block: &Hd4) -> (HashMap<String, String>, i64) {
     let mut position:i64 = 168;
     let mut comments: HashMap<String, String> = HashMap::new();
@@ -123,9 +115,9 @@ pub fn hd4_comment_parser(rdr: &mut BufReader<&File>, hd4_block: &Hd4) -> (HashM
 }
 
 pub fn parse_md(rdr: &mut BufReader<&File>, offset: i64) -> (Blockheader4, String, i64) {
-    rdr.seek_relative(offset).unwrap();
-    let block_header: Blockheader4 = parse_block_header(rdr);
-    // reads xml file
+    rdr.seek_relative(offset).unwrap();  // change buffer position
+    let block_header: Blockheader4 = parse_block_header(rdr);  // reads header
+    // reads comment
     let mut comment_raw = vec![0; (block_header.hdr_len - 24) as usize];
     rdr.read(&mut comment_raw).unwrap();
     let comment:String = str::from_utf8(&comment_raw).unwrap().parse().unwrap();
