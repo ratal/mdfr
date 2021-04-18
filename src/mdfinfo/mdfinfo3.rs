@@ -5,12 +5,11 @@ use std::io::BufReader;
 use std::fs::File;
 use std::io::prelude::*;
 use encoding::{Encoding, DecoderTrap};
-use nom::number::streaming::*;
-use nom::bytes::streaming::take;
-use nom::IResult;
 use chrono::NaiveDate;
 use std::convert::TryFrom;
 use byteorder::{LittleEndian, ReadBytesExt};
+use binread::{BinRead, BinReaderExt};
+use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct MdfInfo3 {
@@ -18,6 +17,20 @@ pub struct MdfInfo3 {
     pub prog: [u8; 8],
     pub idblock: Id3,
     pub hdblock: Hd3,
+}
+
+/// MDF4 - common Header
+#[derive(Debug)]
+#[derive(BinRead)]
+#[br(little)]
+pub struct Blockheader3 {
+    hdr_id: [u8; 2],   // 'XX' Block type identifier
+    hdr_len: u16,   // block size
+}
+
+pub fn parse_block_header(rdr: &mut BufReader<&File>) -> Blockheader3 {
+    let header: Blockheader3 = rdr.read_le().unwrap();
+    return header
 }
 
 /// Id3 block structure
@@ -33,15 +46,15 @@ pub struct Id3 {
 }
 
 /// Reads the Id3 block structure in the file
-pub fn parse_id3(i: &[u8], id_file_id: [u8; 8], id_vers: [u8; 4], id_prog: [u8; 8]) -> IResult<&[u8], Id3> {
-    let (i, id_byteorder) = le_u16(i)?;
-    let (i, id_floatingpointformat) = le_u16(i)?;
-    let (i, id_ver) = le_u16(i)?;
-    let (i, id_codepagenumber) = le_u16(i)?;
-    let (i, _) = take(32usize)(i)?;  // reserved
-    Ok((i, Id3 {id_file_id, id_vers, id_prog, id_byteorder, id_floatingpointformat,
-        id_ver, id_codepagenumber
-    }))
+pub fn parse_id3(rdr: &mut BufReader<&File>, id_file_id: [u8; 8], id_vers: [u8; 4], id_prog: [u8; 8]) -> Id3 {
+    let id_byteorder = rdr.read_u16::<LittleEndian>().unwrap();
+    let id_floatingpointformat = rdr.read_u16::<LittleEndian>().unwrap();
+    let id_ver = rdr.read_u16::<LittleEndian>().unwrap();
+    let id_codepagenumber = rdr.read_u16::<LittleEndian>().unwrap();
+    let mut reserved = [0u8; 32];  // reserved
+    rdr.read(&mut reserved).unwrap();
+    Id3 {id_file_id, id_vers, id_prog, id_byteorder, id_floatingpointformat,
+        id_ver, id_codepagenumber}
 }
 
 /// HD3 block strucutre
@@ -137,3 +150,15 @@ pub fn hd3_parser(rdr: &mut BufReader<&File>, ver:u16) -> Hd3 {
     }
 }
 
+pub fn parse_tx(rdr: &mut BufReader<&File>, offset: i64) -> (Blockheader3, String, i64) {
+    rdr.seek_relative(offset).unwrap();
+    let block_header: Blockheader3 = parse_block_header(rdr);  // reads header
+    // reads comment
+    let mut comment_raw = vec![0; (block_header.hdr_len - 2) as usize];
+    rdr.read(&mut comment_raw).unwrap();
+    let mut comment:String = String::new();
+    ISO_8859_1.decode_to(&comment_raw, DecoderTrap::Replace, &mut comment).unwrap();
+    let comment:String = comment.trim_end_matches(char::from(0)).into();
+    let offset = offset + i64::try_from(block_header.hdr_len).unwrap();
+    return (block_header, comment, offset)
+}

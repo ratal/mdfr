@@ -38,8 +38,6 @@ pub fn mdfinfo(file_name: &str) -> MdfInfo {
     let mdf_info: MdfInfo;
     // Depending of version different blocks
     if ver_char < 4.0 {
-        let mut idbuffer = [0u8; 40];
-        rdr.read(&mut idbuffer).unwrap();
         let id = parse_id3(&mut rdr, id_file_id, id_vers, prog);
         ver = id.id_ver;
 
