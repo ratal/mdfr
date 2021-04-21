@@ -2,9 +2,11 @@
 #[cfg(test)]
 mod tests {
     use std::io;
+    use std::fs::{self, DirEntry};
+    use std::path::Path;
     use crate::mdfinfo;
     #[test]
-    fn info_Test() -> io::Result<()>{
+    fn info_test() -> io::Result<()>{
         let mut file_name ="/home/ratal/workspace/mdfr/test_files/Test.mf4";
         println!("reading {}", file_name);
         let info = mdfinfo::mdfinfo(file_name);
@@ -14,5 +16,36 @@ mod tests {
         let info = mdfinfo::mdfinfo(file_name);
         println!("{:#?}", info);
         Ok(())
+    }
+
+    
+    fn parse_folder(folder: &String) -> io::Result<()> {
+        let path = Path::new(folder);
+        if path.is_dir() {
+            for entry in fs::read_dir(path)? {
+                let entry = entry?;
+                if let Ok(metadata) = entry.metadata() {
+                    if metadata.is_file() {
+                        if entry.path().extension().unwrap() == "mf4" {
+                            if let Some(file_name) = entry.path().to_str() {
+                                println!(" Reading file : {}",file_name);
+                                let info = mdfinfo::mdfinfo(file_name);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn parse_all_folders()  {
+        let base_path = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/");
+        let list_of_paths = ["Simple".to_string(), "ChannelInfo".to_string(), "ChannelTypes".to_string(),
+             "DataTypes".to_string(), "MetaData".to_string(), "RecordLayout".to_string()];
+        for file in list_of_paths.iter() {
+            parse_folder(&format!("{}{}", &base_path, &file)).unwrap();
+        }
     }
 }
