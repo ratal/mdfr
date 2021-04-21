@@ -105,7 +105,7 @@ pub fn hd4_comment_parser(rdr: &mut BufReader<&File>, hd4_block: &Hd4) -> (HashM
     // parsing HD comment block
     if hd4_block.hd_md_comment != 0 {
         let (block_header, comment, offset) = parse_md(rdr, hd4_block.hd_md_comment - position);
-        position += offset + i64::try_from(block_header.hdr_len).unwrap();
+        position += offset;
         if block_header.hdr_id == "##TX".as_bytes() {
             // TX Block
             comments.insert(String::from("comment"), comment);
@@ -158,12 +158,11 @@ pub fn parse_fh(rdr: &mut BufReader<&File>, offset: i64) -> (FhBlock, i64) {
     return (fh, offset)
 }
 
-pub fn parse_fh_comment(rdr: &mut BufReader<&File>, fh_block: &FhBlock, offset: i64) -> (HashMap<String, String>, i64){
+pub fn parse_fh_comment(rdr: &mut BufReader<&File>, fh_block: &FhBlock, mut offset: i64) -> (HashMap<String, String>, i64){
     let mut comments: HashMap<String, String> = HashMap::new();
-    let ofst: i64 = offset;
     if fh_block.fh_md_comment != 0 {
-        let (block_header, comment, mut ofst) = parse_md(rdr, offset);
-        ofst =  ofst + i64::try_from(block_header.hdr_len).unwrap();
+        let (block_header, comment, of) = parse_md(rdr, offset);
+        offset += of;
         if block_header.hdr_id == "##TX".as_bytes() {
             // TX Block
             comments.insert(String::from("comment"), comment);
@@ -187,5 +186,5 @@ pub fn parse_fh_comment(rdr: &mut BufReader<&File>, fh_block: &FhBlock, offset: 
             };
         }
     }
-    return (comments, ofst)
+    return (comments, offset)
 }
