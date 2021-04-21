@@ -17,6 +17,14 @@ pub struct MdfInfo4 {
     pub id_block: Id4,
     pub hd_block: Hd4,
     pub hd_comment: HashMap<String, String>,
+    pub fh: Vec<(FhBlock, HashMap<String, String>)>,
+}
+
+#[derive(Debug)]
+pub enum Comment {
+    NoComment,
+    TX(String),
+    MD(HashMap<String, String>),
 }
 
 /// MDF4 - common Header
@@ -66,13 +74,13 @@ pub struct Hd4 {
     hd_reserved: [u8; 4],  // reserved
     hd_len:u64,   // Length of block in bytes
     hd_link_counts:u64, // # of links 
-    hd_dg_first:i64, // Pointer to the first data group block (DGBLOCK) (can be NIL)
-    hd_fh_first:i64, // Pointer to first file history block (FHBLOCK) 
+    pub hd_dg_first:i64, // Pointer to the first data group block (DGBLOCK) (can be NIL)
+    pub hd_fh_first:i64, // Pointer to first file history block (FHBLOCK) 
                 // There must be at least one FHBLOCK with information about the application which created the MDF file.
     hd_ch_first:i64, // Pointer to first channel hierarchy block (CHBLOCK) (can be NIL).
-    hd_at_first:i64, // Pointer to first attachment block (ATBLOCK) (can be NIL)
-    hd_ev_first:i64, // Pointer to first event block (EVBLOCK) (can be NIL)
-    hd_md_comment:i64, // Pointer to the measurement file comment (TXBLOCK or MDBLOCK) (can be NIL) For MDBLOCK contents, see Table 14.
+    pub hd_at_first:i64, // Pointer to first attachment block (ATBLOCK) (can be NIL)
+    pub hd_ev_first:i64, // Pointer to first event block (EVBLOCK) (can be NIL)
+    pub hd_md_comment:i64, // Pointer to the measurement file comment (TXBLOCK or MDBLOCK) (can be NIL) For MDBLOCK contents, see Table 14.
 
     // Data members
     hd_start_time_ns:u64,  // Time stamp in nanoseconds elapsed since 00:00:00 01.01.1970 (UTC time or local time, depending on "local time" flag, see [UTC]).
@@ -97,7 +105,7 @@ pub fn hd4_comment_parser(rdr: &mut BufReader<&File>, hd4_block: &Hd4) -> (HashM
     // parsing HD comment block
     if hd4_block.hd_md_comment != 0 {
         let (block_header, comment, offset) = parse_md(rdr, hd4_block.hd_md_comment - position);
-        position += offset;
+        position += offset + i64::try_from(block_header.hdr_len).unwrap();
         if block_header.hdr_id == "##TX".as_bytes() {
             // TX Block
             comments.insert(String::from("comment"), comment);
@@ -122,6 +130,62 @@ pub fn parse_md(rdr: &mut BufReader<&File>, offset: i64) -> (Blockheader4, Strin
     rdr.read(&mut comment_raw).unwrap();
     let comment:String = str::from_utf8(&comment_raw).unwrap().parse().unwrap();
     let comment:String = comment.trim_end_matches(char::from(0)).into();
-    let offset = offset + i64::try_from(block_header.hdr_len).unwrap();
-    return (block_header, comment, offset)
+    let ofst = offset + i64::try_from(block_header.hdr_len).unwrap();
+    return (block_header, comment, ofst)
+}
+
+#[derive(Debug)]
+#[derive(BinRead)]
+#[br(little)]
+pub struct FhBlock {
+    fh_id: [u8; 4],   // '##FH'
+    fh_gap: [u8; 4],   // reserved, must be 0
+    fh_len: u64,   // Length of block in bytes
+    fh_links: u64, // # of links
+    pub fh_fh_next: i64, // Link to next FHBLOCK (can be NIL if list finished)
+    pub fh_md_comment: i64, // Link to MDBLOCK containing comment about the creation or modification of the MDF file.
+    fh_time_ns: u64,  // time stamp in nanosecs
+    fh_tz_offset_min: i16, // time zone offset on minutes
+    fh_dst_offset_min: i16, // daylight saving time offset in minutes for start time stamp
+    fh_time_flags: u8,  // time flags, but 1 local, bit 2 time offsets
+    fh_reserved: [u8; 3], // reserved
+}
+
+pub fn parse_fh(rdr: &mut BufReader<&File>, offset: i64) -> (FhBlock, i64) {
+    rdr.seek_relative(offset).unwrap();  // change buffer position
+    let fh: FhBlock = rdr.read_le().unwrap();  // reads the fh block
+    let offset = offset + 56; 
+    return (fh, offset)
+}
+
+pub fn parse_fh_comment(rdr: &mut BufReader<&File>, fh_block: &FhBlock, offset: i64) -> (HashMap<String, String>, i64){
+    let mut comments: HashMap<String, String> = HashMap::new();
+    let ofst: i64 = offset;
+    if fh_block.fh_md_comment != 0 {
+        let (block_header, comment, mut ofst) = parse_md(rdr, offset);
+        ofst =  ofst + i64::try_from(block_header.hdr_len).unwrap();
+        if block_header.hdr_id == "##TX".as_bytes() {
+            // TX Block
+            comments.insert(String::from("comment"), comment);
+        } else {
+            // MD Block, reading xml
+            match roxmltree::Document::parse(&comment) {
+                Ok(md) => {
+                    for node in md.root().descendants() {
+                        let text = match node.text() {
+                            Some(text) => text.to_string(),
+                            None => String::new(),
+                        };
+                        comments.insert(node.tag_name().name().to_string(), text);
+                    }
+                    comments = HashMap::new();
+                },
+                Err(e) => {
+                    println!("Error parsing FH comment : {}", e);
+                    comments = HashMap::new();
+                },
+            };
+        }
+    }
+    return (comments, ofst)
 }
