@@ -171,6 +171,7 @@ pub fn parse_fh_comment(rdr: &mut BufReader<&File>, fh_block: &FhBlock, mut offs
             comments.insert(String::from("comment"), comment);
         } else {
             // MD Block, reading xml
+            let comment:String = comment.trim_end_matches(|c| c == '\n' || c == '\r' || c == ' ').into(); // removes ending spaces
             match roxmltree::Document::parse(&comment) {
                 Ok(md) => {
                     for node in md.root().descendants() {
