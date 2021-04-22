@@ -19,7 +19,7 @@ mod tests {
     }
 
     
-    fn parse_folder(folder: &String) -> io::Result<()> {
+    fn parse_info_folder(folder: &String) -> io::Result<()> {
         let path = Path::new(folder);
         if path.is_dir() {
             for entry in fs::read_dir(path)? {
@@ -35,7 +35,7 @@ mod tests {
                     } else if metadata.is_dir() {
                         if let Some(path) = entry.path().to_str() {
                             let path_str = path.to_owned();
-                            let _ = match parse_folder(&path_str) {
+                            let _ = match parse_info_folder(&path_str) {
                                 Ok(v) => v,
                                 Err(e) => println!("Error parsing the folder {} \n {}", path_str, e),
                             };
@@ -51,10 +51,14 @@ mod tests {
     fn parse_all_folders()  {
         let base_path = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/");
         let list_of_paths = ["Simple".to_string(), "ChannelInfo".to_string(), "ChannelTypes".to_string(),
-             "DataTypes".to_string(), "MetaData".to_string(), "RecordLayout".to_string()];
+             "DataTypes".to_string(), "MetaData".to_string(), "RecordLayout".to_string(), 
+             "Events".to_string(), "SampleReduction".to_string(), "Conversion".to_string(),
+             "BusLogging".to_string(), "Attachments".to_string(), "ClassificationResults".to_string(),
+             "CompressedData".to_string(), "DataList".to_string(), "UnsortedData".to_string(),
+             "Arrays".to_string()];
         for path in list_of_paths.iter() {
             println!("reading folder : {}", path);
-            parse_folder(&format!("{}{}", &base_path, &path)).unwrap();
+            parse_info_folder(&format!("{}{}", &base_path, &path)).unwrap();
         }
     }
 
