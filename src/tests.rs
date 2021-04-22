@@ -32,6 +32,14 @@ mod tests {
                                 let info = mdfinfo::mdfinfo(file_name);
                             }
                         }
+                    } else if metadata.is_dir() {
+                        if let Some(path) = entry.path().to_str() {
+                            let path_str = path.to_owned();
+                            let _ = match parse_folder(&path_str) {
+                                Ok(v) => v,
+                                Err(e) => println!("Error parsing the folder {} \n {}", path_str, e),
+                            };
+                        }
                     }
                 }
             }
@@ -44,8 +52,15 @@ mod tests {
         let base_path = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/");
         let list_of_paths = ["Simple".to_string(), "ChannelInfo".to_string(), "ChannelTypes".to_string(),
              "DataTypes".to_string(), "MetaData".to_string(), "RecordLayout".to_string()];
-        for file in list_of_paths.iter() {
-            parse_folder(&format!("{}{}", &base_path, &file)).unwrap();
+        for path in list_of_paths.iter() {
+            println!("reading folder : {}", path);
+            parse_folder(&format!("{}{}", &base_path, &path)).unwrap();
         }
+    }
+
+    #[test]
+    fn parse_file() {
+        let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/ChannelTypes/Synchronization/Vector_SyncStreamChannel.mf4");
+        let info = mdfinfo::mdfinfo(&file);
     }
 }
