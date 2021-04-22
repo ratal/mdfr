@@ -153,7 +153,10 @@ pub struct FhBlock {
 
 pub fn parse_fh(rdr: &mut BufReader<&File>, offset: i64) -> (FhBlock, i64) {
     rdr.seek_relative(offset).unwrap();  // change buffer position
-    let fh: FhBlock = rdr.read_le().unwrap();  // reads the fh block
+    let fh: FhBlock = match rdr.read_le() {
+        Ok(v) => v,
+        Err(e) => panic!("Error reading fh block \n{}", e),
+    };  // reads the fh block
     let offset = offset + 56; 
     return (fh, offset)
 }
@@ -162,7 +165,7 @@ pub fn parse_fh_comment(rdr: &mut BufReader<&File>, fh_block: &FhBlock, mut offs
     let mut comments: HashMap<String, String> = HashMap::new();
     if fh_block.fh_md_comment != 0 {
         let (block_header, comment, of) = parse_md(rdr, offset);
-        offset += of;
+        offset = of;
         if block_header.hdr_id == "##TX".as_bytes() {
             // TX Block
             comments.insert(String::from("comment"), comment);
@@ -180,7 +183,7 @@ pub fn parse_fh_comment(rdr: &mut BufReader<&File>, fh_block: &FhBlock, mut offs
                     comments = HashMap::new();
                 },
                 Err(e) => {
-                    println!("Error parsing FH comment : {}", e);
+                    println!("Error parsing FH comment : \n{}\n{}", comment, e);
                     comments = HashMap::new();
                 },
             };
