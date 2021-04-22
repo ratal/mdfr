@@ -153,10 +153,10 @@ pub fn hd3_parser(rdr: &mut BufReader<&File>, ver:u16) -> Hd3 {
 
 pub fn hd3_comment_parser(rdr: &mut BufReader<&File>, hd3_block: &Hd3) -> (String, i64) {
     let mut position:i64 = 168;
-    let mut comments: String = String::new();
+    let mut comment: String = String::new();
     let (block_header, comment, offset) = parse_tx(rdr, i64::try_from(hd3_block.hd_md_comment).unwrap() - position);
     position += offset;
-    (comments, position)
+    (comment, position)
 }
 
 pub fn parse_tx(rdr: &mut BufReader<&File>, offset: i64) -> (Blockheader3, String, i64) {
