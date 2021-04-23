@@ -20,13 +20,6 @@ pub struct MdfInfo4 {
     pub fh: Vec<(FhBlock, HashMap<String, String>)>,
 }
 
-#[derive(Debug)]
-pub enum Comment {
-    NoComment,
-    TX(String),
-    MD(HashMap<String, String>),
-}
-
 /// MDF4 - common Header
 #[derive(Debug)]
 #[derive(BinRead)]
