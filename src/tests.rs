@@ -9,12 +9,14 @@ mod tests {
     fn info_test() -> io::Result<()>{
         let mut file_name ="/home/ratal/workspace/mdfr/test_files/Test.mf4";
         println!("reading {}", file_name);
-        let info = mdfinfo::mdfinfo(file_name);
+        let mut info = mdfinfo::mdfinfo(file_name);
         println!("{:#?}", info);
+        assert_eq!(info.get_version(), 410);
         file_name ="/home/ratal/workspace/mdfr/test_files/Mdf3_hiddenBytes_NotAlignedBytes.dat";
         println!("reading {}", file_name);
-        let info = mdfinfo::mdfinfo(file_name);
-        println!("{:#?}", info);
+        let mut info = mdfinfo::mdfinfo(file_name);
+        println!("{:#?}", &info);
+        assert_eq!(info.get_version(), 320);
         Ok(())
     }
 
