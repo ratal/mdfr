@@ -20,6 +20,15 @@ pub enum MdfInfo {
     V4(MdfInfo4),
 }
 
+impl MdfInfo {
+    pub fn get_version(&mut self) -> u16{
+        match self {
+            MdfInfo::V3(mdfinfo3) => mdfinfo3.ver,
+            MdfInfo::V4(mdfinfo4, ..) => mdfinfo4.ver,
+        }
+    }
+}
+
 pub fn mdfinfo(file_name: &str) -> MdfInfo {
     let f: File = OpenOptions::new().read(true)
                     .write(false)
