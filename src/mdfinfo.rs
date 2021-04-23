@@ -24,7 +24,7 @@ impl MdfInfo {
     pub fn get_version(&mut self) -> u16{
         match self {
             MdfInfo::V3(mdfinfo3) => mdfinfo3.ver,
-            MdfInfo::V4(mdfinfo4, ..) => mdfinfo4.ver,
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.ver,
         }
     }
 }
@@ -54,8 +54,8 @@ pub fn mdfinfo(file_name: &str) -> MdfInfo {
         ver = id.id_ver;
 
         // Read HD Block
-        let hd = hd3_parser(&mut rdr, ver);
-        let (hd_comment, position) =  hd3_comment_parser(&mut rdr, &hd);
+        let (hd, position) = hd3_parser(&mut rdr, ver);
+        let (hd_comment, position) =  hd3_comment_parser(&mut rdr, &hd, position);
 
         mdf_info = MdfInfo::V3(MdfInfo3{ver, prog,
             idblock: id, hdblock: hd, hd_comment,
