@@ -9,7 +9,6 @@ use chrono::NaiveDate;
 use std::convert::TryFrom;
 use byteorder::{LittleEndian, ReadBytesExt};
 use binread::{BinRead, BinReaderExt};
-use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct MdfInfo3 {
@@ -81,7 +80,7 @@ pub struct Hd3 {
     hd_time_identifier: Option<String> // timer identification or time source
 }
 
-pub fn hd3_parser(rdr: &mut BufReader<&File>, ver:u16) -> Hd3 {
+pub fn hd3_parser(rdr: &mut BufReader<&File>, ver:u16) -> (Hd3, i64) {
     let mut hd_id = [0; 2];
     rdr.read(&mut hd_id).unwrap();
     let hd_len = rdr.read_u16::<LittleEndian>().unwrap();    // Length of block in bytes
@@ -127,6 +126,7 @@ pub fn hd3_parser(rdr: &mut BufReader<&File>, ver:u16) -> Hd3 {
     let hd_time_offset: Option<i16>;
     let hd_time_quality: Option<u16>;
     let hd_time_identifier: Option<String>;
+    let position: i64;
     if ver >= 320 {
         hd_start_time_ns = Some(rdr.read_u64::<LittleEndian>().unwrap());  // time stamp
         hd_time_offset = Some(rdr.read_i16::<LittleEndian>().unwrap());  // time offset
@@ -136,6 +136,7 @@ pub fn hd3_parser(rdr: &mut BufReader<&File>, ver:u16) -> Hd3 {
         let mut ti = String::new();
         ISO_8859_1.decode_to(&time_identifier, DecoderTrap::Replace, &mut ti).unwrap();
         hd_time_identifier = Some(ti);
+        position = 208 + 64; // position after reading ID and HD
     } else {
         // calculate hd_start_time_ns
         hd_start_time_ns = Some(u64::try_from(NaiveDate::from_ymd(hd_date.2, hd_date.1, hd_date.0)
@@ -144,17 +145,16 @@ pub fn hd3_parser(rdr: &mut BufReader<&File>, ver:u16) -> Hd3 {
         hd_time_offset = None;
         hd_time_quality = None;
         hd_time_identifier = None;
+        position = 164 + 64; // position after reading ID and HD
     }
-    Hd3 {hd_id, hd_len, hd_dg_first, hd_md_comment, hd_pr,
+    (Hd3 {hd_id, hd_len, hd_dg_first, hd_md_comment, hd_pr,
         hd_n_datagroups, hd_date, hd_time,  hd_author, hd_organization,
         hd_project, hd_subject, hd_start_time_ns, hd_time_offset, hd_time_quality, hd_time_identifier
-    }
+    }, position)
 }
 
-pub fn hd3_comment_parser(rdr: &mut BufReader<&File>, hd3_block: &Hd3) -> (String, i64) {
-    let mut position:i64 = 168;
-    let mut comment: String = String::new();
-    let (block_header, comment, offset) = parse_tx(rdr, i64::try_from(hd3_block.hd_md_comment).unwrap() - position);
+pub fn hd3_comment_parser(rdr: &mut BufReader<&File>, hd3_block: &Hd3, mut position: i64) -> (String, i64) {
+    let (_, comment, offset) = parse_tx(rdr, i64::try_from(hd3_block.hd_md_comment).unwrap() - position);
     position += offset;
     (comment, position)
 }
