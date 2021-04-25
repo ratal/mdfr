@@ -189,6 +189,36 @@ pub fn parse_fh_comment(rdr: &mut BufReader<&File>, fh_block: &FhBlock, mut offs
 #[derive(Debug)]
 #[derive(BinRead)]
 #[br(little)]
+pub struct At4 {
+    at_id: [u8; 4],  // DG
+    reserved: [u8; 4],  // reserved
+    at_len: u64,      // Length of block in bytes
+    at_links: u64,         // # of links 
+    at_at_next: u64, // Link to next ATBLOCK (linked list) (can be NIL)
+    at_tx_filename: u64, // Link to TXBLOCK with the path and file name of the embedded or referenced file (can only be NIL if data is embedded). The path of the file can be relative or absolute. If relative, it is relative to the directory of the MDF file. If no path is given, the file must be in the same directory as the MDF file.
+    at_tx_mimetype: u64, // Link to TXBLOCK with MIME content-type text that gives information about the attached data. Can be NIL if the content-type is unknown, but should be specified whenever possible. The MIME content-type string must be written in lowercase.
+    at_md_comment: u64,   // Link to MDBLOCK with comment and additional information about the attachment (can be NIL).
+    at_flags: u16,         // Flags The value contains the following bit flags (see AT_FL_xxx):
+    at_creator_index: u16, // Creator index, i.e. zero-based index of FHBLOCK in global list of FHBLOCKs that specifies which application has created this attachment, or changed it most recently.
+    at_reserved: [u8; 4],      // Reserved
+    at_md5_checksum: [u8; 16],  // 128-bit value for MD5 check sum (of the uncompressed data if data is embedded and compressed). Only valid if "MD5 check sum valid" flag (bit 2) is set.
+    at_original_size: u64, // Original data size in Bytes, i.e. either for external file or for uncompressed data.
+    at_embedded_size: u64, // Embedded data size N, i.e. number of Bytes for binary embedded data following this element. Must be 0 if external file is referenced.
+    // followed by embedded data depending of flag
+}
+
+pub fn at4_parser(rdr: &mut BufReader<&File>, mut offset: i64) -> (At4, i64) {
+    rdr.seek_relative(offset).unwrap();
+    let block: At4 = rdr.read_le().unwrap();
+    offset += 96;
+    // reads embedded if exists
+    
+    return (block, offset)
+}
+
+#[derive(Debug)]
+#[derive(BinRead)]
+#[br(little)]
 pub struct Dg4 {
     dg_id: [u8; 4],  // DG
     reserved: [u8; 4],  // reserved
@@ -205,5 +235,5 @@ pub struct Dg4 {
 pub fn dg4_parser(rdr: &mut BufReader<&File>, offset: i64) -> (Dg4, i64) {
     rdr.seek_relative(offset).unwrap();
     let block: Dg4 = rdr.read_le().unwrap();
-    return (block, offset + 28)
+    return (block, offset + 64)
 }
