@@ -29,6 +29,7 @@ impl MdfInfo {
     }
 }
 
+#[inline]
 pub fn mdfinfo(file_name: &str) -> MdfInfo {
     let f: File = OpenOptions::new().read(true)
                     .write(false)
