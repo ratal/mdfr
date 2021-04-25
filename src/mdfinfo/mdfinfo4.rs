@@ -185,3 +185,25 @@ pub fn parse_fh_comment(rdr: &mut BufReader<&File>, fh_block: &FhBlock, mut offs
     }
     return (comments, offset)
 }
+
+#[derive(Debug)]
+#[derive(BinRead)]
+#[br(little)]
+pub struct Dg4 {
+    dg_id: [u8; 4],  // DG
+    reserved: [u8; 4],  // reserved
+    dg_len: u64,      // Length of block in bytes
+    dg_links: u64,         // # of links 
+    dg_dg_next: u64, // Pointer to next data group block (DGBLOCK) (can be NIL)
+    dg_cg_first: u64, // Pointer to first channel group block (CGBLOCK) (can be NIL)
+    dg_data: u64,     // Pointer to data block (DTBLOCK or DZBLOCK for this block type) or data list block (DLBLOCK of data blocks or its HLBLOCK)  (can be NIL)
+    dg_comment: u64,    // comment
+    dg_rec_id_size: u8,      // number of bytes used for record IDs. 0 no recordID
+    reserved_2: [u8; 7],  // reserved
+}
+
+pub fn dg4_parser(rdr: &mut BufReader<&File>, offset: i64) -> (Dg4, i64) {
+    rdr.seek_relative(offset).unwrap();
+    let block: Dg4 = rdr.read_le().unwrap();
+    return (block, offset + 28)
+}

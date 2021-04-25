@@ -38,11 +38,11 @@ pub fn parse_block_header(rdr: &mut BufReader<&File>) -> Blockheader3 {
 pub struct Id3 {
     id_file_id: [u8; 8], // "MDF    
     id_vers: [u8; 4],  // version in char
-    id_prog: [u8; 8],
-    id_byteorder: u16,
-    id_floatingpointformat: u16,
-    pub id_ver: u16,
-    id_codepagenumber: u16,
+    id_prog: [u8; 8],  // logger id
+    id_byteorder: u16,  // 0 Little endian, >= 1 Big endian
+    id_floatingpointformat: u16,  // default floating point number. 0: IEEE754, 1: G_Float, 2: D_Float
+    pub id_ver: u16,  // version number
+    id_codepagenumber: u16,  // if 0, code page unknown. If position, corresponds to to extended ascii code page
 }
 
 /// Reads the Id3 block structure in the file
@@ -170,4 +170,25 @@ pub fn parse_tx(rdr: &mut BufReader<&File>, offset: i64) -> (Blockheader3, Strin
     let comment:String = comment.trim_end_matches(char::from(0)).into();
     let offset = offset + i64::try_from(block_header.hdr_len).unwrap();
     return (block_header, comment, offset)
+}
+
+#[derive(Debug)]
+#[derive(BinRead)]
+#[br(little)]
+pub struct Dg3 {
+    dg_id: [u8; 2],  // DG
+    dg_len: u16,      // Length of block in bytes
+    dg_dg_next: u32, // Pointer to next data group block (DGBLOCK) (can be NIL)
+    dg_cg_first: u32, // Pointer to first channel group block (CGBLOCK) (can be NIL)
+    dg_tr: u32,       // Pointer to trigger block
+    dg_data: u32,     // Pointer to data block (DTBLOCK or DZBLOCK for this block type) or data list block (DLBLOCK of data blocks or its HLBLOCK)  (can be NIL)
+    dg_n_dg: u16,    // number of channel groups
+    dg_n_record_ids: u16,      // number of record ids
+    reserved: u32   // reserved
+}
+
+pub fn dg3_parser(rdr: &mut BufReader<&File>, offset: i64) -> (Dg3, i64) {
+    rdr.seek_relative(offset).unwrap();
+    let block: Dg3 = rdr.read_le().unwrap();
+    return (block, offset + 28)
 }
