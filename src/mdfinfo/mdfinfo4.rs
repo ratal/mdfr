@@ -212,7 +212,45 @@ pub fn at4_parser(rdr: &mut BufReader<&File>, mut offset: i64) -> (At4, i64) {
     let block: At4 = rdr.read_le().unwrap();
     offset += 96;
     // reads embedded if exists
-    
+
+    return (block, offset)
+}
+
+#[derive(Debug)]
+#[derive(BinRead)]
+#[br(little)]
+pub struct Ev4 {
+    ev_id: [u8; 4],  // DG
+    reserved: [u8; 4],  // reserved
+    ev_len: u64,      // Length of block in bytes
+    ev_links: u64,         // # of links
+    ev_ev_next: u64,     // Link to next EVBLOCK (linked list) (can be NIL)
+    ev_ev_parent: u64,   // Referencing link to EVBLOCK with parent event (can be NIL).
+    ev_ev_range: u64,    // Referencing link to EVBLOCK with event that defines the beginning of a range (can be NIL, must be NIL if ev_range_type ≠ 2).
+    ev_tx_name: u64,     // Pointer to TXBLOCK with event name (can be NIL) Name must be according to naming rules stated in 4.4.2 Naming Rules. If available, the name of a named trigger condition should be used as event name. Other event types may have individual names or no names.
+    ev_md_comment: u64,  // Pointer to TX/MDBLOCK with event comment and additional information, e.g. trigger condition or formatted user comment text (can be NIL)
+    #[br(little, count = ev_scope_count)]
+    ev_scope: Vec<u64>,       // List of links to channels and channel groups to which the event applies (referencing links to CNBLOCKs or CGBLOCKs). This defines the "scope" of the event.
+    #[br(little, count = ev_attachment_count)]
+    ev_at_reference: Vec<u64>, // List of attachments for this event (references to ATBLOCKs in global linked list of ATBLOCKs). [ev_attachment_count]
+
+    ev_type: u8, // Event type (see EV_T_xxx)
+    ev_sync_type: u8, // Sync type (see EV_S_xxx)
+    ev_range_type: u8, // Range Type (see EV_R_xxx)
+    ev_cause: u8,     // Cause of event (see EV_C_xxx)
+    ev_flags: u8,     // flags (see EV_F_xxx)
+    ev_reserved: [u8; 3], // Reserved
+    ev_scope_count: u32, // Length M of ev_scope list. Can be zero.
+    ev_attachment_count: u16, // Length N of ev_at_reference list, i.e. number of attachments for this event. Can be zero.
+    ev_creator_index: u16, // Creator index, i.e. zero-based index of FHBLOCK in global list of FHBLOCKs that specifies which application has created or changed this event (e.g. when generating event offline).
+    ev_sync_base_value: i64, // Base value for synchronization value.
+    ev_sync_factor: f64,  // Factor for event synchronization value.
+}
+
+pub fn ev4_parser(rdr: &mut BufReader<&File>, mut offset: i64) -> (Ev4, i64) {
+    rdr.seek_relative(offset).unwrap();
+    let block: Ev4 = rdr.read_le().unwrap();
+    offset += i64::try_from(block.ev_len).unwrap();
     return (block, offset)
 }
 
