@@ -187,8 +187,8 @@ pub struct Dg3 {
     reserved: u32   // reserved
 }
 
-pub fn dg3_parser(rdr: &mut BufReader<&File>, offset: i64) -> (Dg3, i64) {
-    rdr.seek_relative(offset).unwrap();
+pub fn dg3_parser(rdr: &mut BufReader<&File>, target: i64, position: i64) -> (Dg3, i64) {
+    rdr.seek_relative(target - position).unwrap();
     let block: Dg3 = rdr.read_le().unwrap();
-    return (block, offset + 28)
+    return (block, position + 28)
 }

@@ -18,6 +18,7 @@ pub struct MdfInfo4 {
     pub hd_block: Hd4,
     pub hd_comment: HashMap<String, String>,
     pub fh: Vec<(FhBlock, HashMap<String, String>)>,
+    pub at: Vec<(At4Block, HashMap<String, String>, Option<Vec<u8>>, i64)>,
 }
 
 /// MDF4 - common Header
@@ -31,8 +32,11 @@ pub struct Blockheader4 {
     hdr_links: u64 // # of links 
 }
 
-pub fn parse_block_header(rdr: &mut BufReader<&File>) -> Blockheader4 {
-    let header: Blockheader4 = rdr.read_le().unwrap();
+fn parse_block_header(rdr: &mut BufReader<&File>) -> Blockheader4 {
+    let header: Blockheader4 = match rdr.read_le() {
+        Ok(v) => v,
+        Err(e) => panic!("Error reading comment block \n{}", e),
+    };
     return header
 }
 
@@ -97,8 +101,8 @@ pub fn hd4_comment_parser(rdr: &mut BufReader<&File>, hd4_block: &Hd4) -> (HashM
     let mut comments: HashMap<String, String> = HashMap::new();
     // parsing HD comment block
     if hd4_block.hd_md_comment != 0 {
-        let (block_header, comment, offset) = parse_comment(rdr, hd4_block.hd_md_comment - position);
-        position += offset;
+        let (block_header, comment, pos) = parse_comment(rdr, hd4_block.hd_md_comment, position);
+        position = pos;
         if block_header.hdr_id == "##TX".as_bytes() {
             // TX Block
             comments.insert(String::from("comment"), comment);
@@ -115,16 +119,44 @@ pub fn hd4_comment_parser(rdr: &mut BufReader<&File>, hd4_block: &Hd4) -> (HashM
     (comments, position)
 }
 
-pub fn parse_comment(rdr: &mut BufReader<&File>, offset: i64) -> (Blockheader4, String, i64) {
-    rdr.seek_relative(offset).unwrap();  // change buffer position
+fn parse_comment(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (Blockheader4, String, i64) {
+    rdr.seek_relative(target - position).unwrap();  // change buffer position
     let block_header: Blockheader4 = parse_block_header(rdr);  // reads header
     // reads comment
-    let mut comment_raw = vec![0; (block_header.hdr_len - 24) as usize];
+    let mut comment_raw = vec![0u8; (block_header.hdr_len - 24) as usize];
     rdr.read(&mut comment_raw).unwrap();
     let comment:String = str::from_utf8(&comment_raw).unwrap().parse().unwrap();
     let comment:String = comment.trim_end_matches(char::from(0)).into();
-    let ofst = offset + i64::try_from(block_header.hdr_len).unwrap();
-    return (block_header, comment, ofst)
+    position = target + i64::try_from(block_header.hdr_len).unwrap();
+    return (block_header, comment, position)
+}
+
+fn comment(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (HashMap<String, String>, i64) {
+    let mut comments: HashMap<String, String> = HashMap::new();
+    // Reads MD
+    if target > 0{
+        let (_, comment, pos) =
+            parse_comment(rdr, target, position);
+        position = pos;
+        let comment:String = comment.trim_end_matches(|c| c == '\n' || c == '\r' || c == ' ').into(); // removes ending spaces
+            match roxmltree::Document::parse(&comment) {
+                Ok(md) => {
+                    for node in md.root().descendants() {
+                        let text = match node.text() {
+                            Some(text) => text.to_string(),
+                            None => String::new(),
+                        };
+                        comments.insert(node.tag_name().name().to_string(), text);
+                    }
+                    comments = HashMap::new();
+                },
+                Err(e) => {
+                    println!("Error parsing AT comment : \n{}\n{}", comment, e);
+                    comments = HashMap::new();
+                },
+            };
+    }
+    return (comments, position);
 }
 
 #[derive(Debug)]
@@ -144,21 +176,20 @@ pub struct FhBlock {
     fh_reserved: [u8; 3], // reserved
 }
 
-pub fn parse_fh_block(rdr: &mut BufReader<&File>, offset: i64) -> (FhBlock, i64) {
-    rdr.seek_relative(offset).unwrap();  // change buffer position
+fn parse_fh_block(rdr: &mut BufReader<&File>, target:i64, position:i64) -> (FhBlock, i64) {
+    rdr.seek_relative(target - position).unwrap();  // change buffer position
     let fh: FhBlock = match rdr.read_le() {
         Ok(v) => v,
         Err(e) => panic!("Error reading fh block \n{}", e),
     };  // reads the fh block
-    let offset = offset + 56; 
-    return (fh, offset)
+    return (fh, target + 56)
 }
 
-pub fn parse_fh_comment(rdr: &mut BufReader<&File>, fh_block: &FhBlock, mut offset: i64) -> (HashMap<String, String>, i64){
+fn parse_fh_comment(rdr: &mut BufReader<&File>, fh_block: &FhBlock, target:i64, mut position: i64) -> (HashMap<String, String>, i64){
     let mut comments: HashMap<String, String> = HashMap::new();
     if fh_block.fh_md_comment != 0 {
-        let (block_header, comment, of) = parse_comment(rdr, offset);
-        offset = of;
+        let (block_header, comment, pos) = parse_comment(rdr, target, position);
+        position = pos;
         if block_header.hdr_id == "##TX".as_bytes() {
             // TX Block
             comments.insert(String::from("comment"), comment);
@@ -183,24 +214,26 @@ pub fn parse_fh_comment(rdr: &mut BufReader<&File>, fh_block: &FhBlock, mut offs
             };
         }
     }
-    return (comments, offset)
+    return (comments, position)
 }
 
-pub fn parse_fh(rdr: &mut BufReader<&File>, of: i64) -> (Vec<(FhBlock, HashMap<String, String>)>, i64) {
+pub fn parse_fh(rdr: &mut BufReader<&File>, target: i64, position: i64) -> (Vec<(FhBlock, HashMap<String, String>)>, i64) {
     let mut fh: Vec<(FhBlock, HashMap<String, String>)> = Vec::new();
-    let (block, offset) = parse_fh_block(rdr, of);
-    let (comment_temp, offset) = 
-        parse_fh_comment(rdr, &block, block.fh_md_comment - offset);
+    let (block, position) = parse_fh_block(rdr, target, position);
+    let (comment_temp, mut position) = 
+        parse_fh_comment(rdr, &block, block.fh_md_comment, position);
     let mut next_pointer = block.fh_fh_next;
     fh.push((block, comment_temp));
     while next_pointer != 0 {
-        let (block, offset) = parse_fh_block(rdr, next_pointer - &offset);
+        let (block, pos) = parse_fh_block(rdr, next_pointer, position);
+        position = pos;
         next_pointer = block.fh_fh_next;
-        let (comment_temp, offset) = 
-            parse_fh_comment(rdr, &block, block.fh_md_comment - offset);
+        let (comment_temp, pos) = 
+            parse_fh_comment(rdr, &block, block.fh_md_comment, position);
+        position = pos;
         fh.push((block, comment_temp));
     } 
-    return (fh, offset)
+    return (fh, position)
 }
 #[derive(Debug)]
 #[derive(BinRead)]
@@ -223,96 +256,75 @@ pub struct At4Block {
     // followed by embedded data depending of flag
 }
 
-pub fn parser_at4_block(rdr: &mut BufReader<&File>, mut offset: i64) -> (At4Block, HashMap<String, String>, Option<Vec<u8>>, i64) {
-    rdr.seek_relative(offset).unwrap();
+fn parser_at4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (At4Block, HashMap<String, String>, Option<Vec<u8>>, i64) {
+    rdr.seek_relative(target - position).unwrap();
     let block: At4Block = rdr.read_le().unwrap();
-    offset += 96;
+    position = target + 96;
     
     let data:Option<Vec<u8>>;
     // reads embedded if exists
     if (block.at_flags & 0b1) > 0 {
         let mut embedded_data = vec![0u8; block.at_embedded_size as usize];
         rdr.read(&mut embedded_data).unwrap();
-        offset += i64::try_from(block.at_embedded_size).unwrap();
+        position += i64::try_from(block.at_embedded_size).unwrap();
         data = Some(embedded_data);
     } else {
         data = None;
     }
 
-    let mut comments: HashMap<String, String> = HashMap::new();
     // Reads MD
-    if block.at_md_comment > 0{
-        let (_, comment, of) =
-            parse_comment(rdr, block.at_md_comment - offset);
-        offset += of;
-        let comment:String = comment.trim_end_matches(|c| c == '\n' || c == '\r' || c == ' ').into(); // removes ending spaces
-            match roxmltree::Document::parse(&comment) {
-                Ok(md) => {
-                    for node in md.root().descendants() {
-                        let text = match node.text() {
-                            Some(text) => text.to_string(),
-                            None => String::new(),
-                        };
-                        comments.insert(node.tag_name().name().to_string(), text);
-                    }
-                    comments = HashMap::new();
-                },
-                Err(e) => {
-                    println!("Error parsing AT comment : \n{}\n{}", comment, e);
-                    comments = HashMap::new();
-                },
-            };
-    }
+    let (mut comments, mut position) = comment(rdr, block.at_md_comment, position);
 
     // reads TX
     if block.at_tx_filename > 0 {
-        let (_, comment, of) = 
-            parse_comment(rdr, block.at_tx_filename - offset);
+        let (_, comment, pos) = 
+            parse_comment(rdr, block.at_tx_filename, position);
+        position = pos;
         comments.insert(String::from("comment"), comment);
-        offset += of;
     }
     
     // Reads tx mime type
     if block.at_tx_mimetype > 0 {
-        let (_, comment, of) = 
-            parse_comment(rdr, block.at_tx_mimetype - offset);
+        let (_, comment, pos) = 
+            parse_comment(rdr, block.at_tx_mimetype, position);
+        position = pos;
         comments.insert(String::from("comment_mimetype"), comment);
-        offset += of;
     }
 
-    return (block, comments, data, offset)
+    return (block, comments, data, position)
 }
 
-pub fn parse_at4(rdr: &mut BufReader<&File>, mut offset: i64) -> Vec<(At4Block, HashMap<String, String>, Option<Vec<u8>>, i64)> {
+pub fn parse_at4(rdr: &mut BufReader<&File>, target: i64, position: i64) 
+        -> (Vec<(At4Block, HashMap<String, String>, Option<Vec<u8>>, i64)>, i64) {
     let mut at: Vec<(At4Block, HashMap<String, String>, Option<Vec<u8>>, i64)> = Vec::new();
-    let (block, comments, data, of) = parser_at4_block(rdr, offset);
-    offset += of;
-    let mut next_pointer = block.at_at_next;
-    at.push((block, comments, data, offset));
-    while next_pointer >0 {
-        let (block, comments, data, of) = parser_at4_block(rdr, next_pointer - offset);
-        offset += of;
-        next_pointer = block.at_at_next;
-        at.push((block, comments, data, offset));
+    if target > 0{
+        let (block, comments, data, position) = parser_at4_block(rdr, target, position);
+        let mut next_pointer = block.at_at_next;
+        at.push((block, comments, data, position));
+        while next_pointer >0 {
+            let (block, comments, data, position) = parser_at4_block(rdr, next_pointer, position);
+            next_pointer = block.at_at_next;
+            at.push((block, comments, data, position));
+        }
     }
-    return at
+    return (at, position)
 }
 
 #[derive(Debug)]
 #[derive(BinRead)]
 #[br(little)]
-pub struct Ev4 {
+pub struct Ev4Block {
     ev_id: [u8; 4],  // DG
     reserved: [u8; 4],  // reserved
     ev_len: u64,      // Length of block in bytes
     ev_links: u64,         // # of links
-    ev_ev_next: u64,     // Link to next EVBLOCK (linked list) (can be NIL)
-    ev_ev_parent: u64,   // Referencing link to EVBLOCK with parent event (can be NIL).
-    ev_ev_range: u64,    // Referencing link to EVBLOCK with event that defines the beginning of a range (can be NIL, must be NIL if ev_range_type ≠ 2).
-    ev_tx_name: u64,     // Pointer to TXBLOCK with event name (can be NIL) Name must be according to naming rules stated in 4.4.2 Naming Rules. If available, the name of a named trigger condition should be used as event name. Other event types may have individual names or no names.
-    ev_md_comment: u64,  // Pointer to TX/MDBLOCK with event comment and additional information, e.g. trigger condition or formatted user comment text (can be NIL)
+    ev_ev_next: i64,     // Link to next EVBLOCK (linked list) (can be NIL)
+    ev_ev_parent: i64,   // Referencing link to EVBLOCK with parent event (can be NIL).
+    ev_ev_range: i64,    // Referencing link to EVBLOCK with event that defines the beginning of a range (can be NIL, must be NIL if ev_range_type ≠ 2).
+    ev_tx_name: i64,     // Pointer to TXBLOCK with event name (can be NIL) Name must be according to naming rules stated in 4.4.2 Naming Rules. If available, the name of a named trigger condition should be used as event name. Other event types may have individual names or no names.
+    ev_md_comment: i64,  // Pointer to TX/MDBLOCK with event comment and additional information, e.g. trigger condition or formatted user comment text (can be NIL)
     #[br(if(ev_links - 5 > 0), little, count = ev_links - 5)]
-    links: Vec<u64>,       // links
+    links: Vec<i64>,       // links
 
     ev_type: u8, // Event type (see EV_T_xxx)
     ev_sync_type: u8, // Sync type (see EV_S_xxx)
@@ -327,31 +339,79 @@ pub struct Ev4 {
     ev_sync_factor: f64,  // Factor for event synchronization value.
 }
 
-pub fn ev4_parser(rdr: &mut BufReader<&File>, mut offset: i64) -> (Ev4, i64) {
-    rdr.seek_relative(offset).unwrap();
-    let block: Ev4 = rdr.read_le().unwrap();
-    offset += i64::try_from(block.ev_len).unwrap();
-    return (block, offset)
+fn parse_ev4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (Ev4Block, HashMap<String, String>, i64) {
+    rdr.seek_relative(target - position).unwrap();
+    let block: Ev4Block = rdr.read_le().unwrap();
+    position += i64::try_from(block.ev_len).unwrap();
+
+    // Reads MD
+    let (mut comments, mut position) = comment(rdr, block.ev_md_comment, position);
+
+    // reads TX name
+    if block.ev_tx_name > 0 {
+        let (_, comment, pos) = 
+            parse_comment(rdr, block.ev_tx_name, position);
+        position = pos;
+        comments.insert(String::from("comment"), comment);
+    }
+
+    return (block, comments, position)
+}
+
+pub fn parse_ev4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) 
+        -> (Vec<(Ev4Block, HashMap<String, String>, i64)>, i64) {
+    let mut ev: Vec<(Ev4Block, HashMap<String, String>, i64)> = Vec::new();
+    if target > 0 {
+        let (block, comments, position) = parse_ev4_block(rdr, target, position);
+        let mut next_pointer = block.ev_ev_next;
+        ev.push((block, comments, position));
+        while next_pointer >0 {
+            let (block, comments, position) = parse_ev4_block(rdr, next_pointer, position);
+            next_pointer = block.ev_ev_next;
+            ev.push((block, comments, position));
+        }
+    }
+    return (ev, position)
 }
 
 #[derive(Debug)]
 #[derive(BinRead)]
 #[br(little)]
-pub struct Dg4 {
+pub struct Dg4Block {
     dg_id: [u8; 4],  // DG
     reserved: [u8; 4],  // reserved
     dg_len: u64,      // Length of block in bytes
     dg_links: u64,         // # of links 
-    dg_dg_next: u64, // Pointer to next data group block (DGBLOCK) (can be NIL)
-    dg_cg_first: u64, // Pointer to first channel group block (CGBLOCK) (can be NIL)
-    dg_data: u64,     // Pointer to data block (DTBLOCK or DZBLOCK for this block type) or data list block (DLBLOCK of data blocks or its HLBLOCK)  (can be NIL)
-    dg_comment: u64,    // comment
-    dg_rec_id_size: u8,      // number of bytes used for record IDs. 0 no recordID
+    pub dg_dg_next: i64, // Pointer to next data group block (DGBLOCK) (can be NIL)
+    pub dg_cg_first: i64, // Pointer to first channel group block (CGBLOCK) (can be NIL)
+    pub dg_data: i64,     // Pointer to data block (DTBLOCK or DZBLOCK for this block type) or data list block (DLBLOCK of data blocks or its HLBLOCK)  (can be NIL)
+    dg_md_comment: i64,    // comment
+    pub dg_rec_id_size: u8,      // number of bytes used for record IDs. 0 no recordID
     reserved_2: [u8; 7],  // reserved
 }
 
-pub fn dg4_parser(rdr: &mut BufReader<&File>, offset: i64) -> (Dg4, i64) {
-    rdr.seek_relative(offset).unwrap();
-    let block: Dg4 = rdr.read_le().unwrap();
-    return (block, offset + 64)
+fn parse_dg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (Dg4Block, HashMap<String, String>, i64) {
+    rdr.seek_relative(target - position).unwrap();
+    let block: Dg4Block = rdr.read_le().unwrap();
+    position += 64;
+
+    // Reads MD
+    let (comments, position) = comment(rdr, block.dg_md_comment, position);
+
+    return (block, comments, position)
+}
+
+pub fn parse_dg4(rdr: &mut BufReader<&File>, target: i64, position: i64) -> (Vec<(Dg4Block, HashMap<String, String>, i64)>, i64) {
+    let mut dg: Vec<(Dg4Block, HashMap<String, String>, i64)> = Vec::new();
+    if target > 0 {
+        let (block, comments, position) = parse_dg4_block(rdr, target, position);
+        let mut next_pointer = block.dg_dg_next;
+        dg.push((block, comments, position));
+        while next_pointer >0 {
+            let (block, comments, position) = parse_dg4_block(rdr, next_pointer, position);
+            next_pointer = block.dg_dg_next;
+            dg.push((block, comments, position));
+        }
+    }
+    return (dg, position)
 }

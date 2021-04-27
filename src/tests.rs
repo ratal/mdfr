@@ -79,7 +79,7 @@ mod tests {
 
     #[test]
     fn parse_file() {
-        let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/ChannelTypes/Synchronization/Vector_SyncStreamChannel.mf4");
+        let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/measure2.mf4");
         let info = mdfinfo::mdfinfo(&file);
     }
 }

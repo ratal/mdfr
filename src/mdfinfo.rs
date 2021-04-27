@@ -5,14 +5,13 @@
 use std::io::{BufReader, Read};
 use std::fs::{File, OpenOptions};
 use std::str;
-use std::collections::HashMap;
 
 pub mod mdfinfo3;
 pub mod mdfinfo4;
 
 use mdfinfo3::{MdfInfo3, parse_id3, hd3_parser, hd3_comment_parser};
 use mdfinfo4::{MdfInfo4, parse_id4, hd4_parser, hd4_comment_parser,
-    parse_fh, parse_at4};
+    parse_fh, parse_at4, parse_ev4, parse_dg4};
 
 #[derive(Debug)]
 pub enum MdfInfo {
@@ -54,9 +53,8 @@ pub fn mdfinfo(file_name: &str) -> MdfInfo {
         ver = id.id_ver;
 
         // Read HD Block
-        let (hd, mut offset) = hd3_parser(&mut rdr, ver);
-        let (hd_comment, of) =  hd3_comment_parser(&mut rdr, &hd, offset);
-        offset += of;
+        let (hd, mut position) = hd3_parser(&mut rdr, ver);
+        let (hd_comment, position) =  hd3_comment_parser(&mut rdr, &hd, position);
 
         mdf_info = MdfInfo::V3(MdfInfo3{ver, prog,
             idblock: id, hdblock: hd, hd_comment,
@@ -68,16 +66,21 @@ pub fn mdfinfo(file_name: &str) -> MdfInfo {
 
         // Read HD block
         let hd = hd4_parser(&mut rdr);
-        let (hd_comment, mut offset) = hd4_comment_parser(&mut rdr, &hd);
-
+        let (hd_comment, position) = hd4_comment_parser(&mut rdr, &hd);
         // FH block
-        let (fh, of) = parse_fh(&mut rdr, hd.hd_fh_first - offset);
-        offset += of;
+        let (fh, position) = parse_fh(&mut rdr, hd.hd_fh_first, position);
+
+        // AT Block read
+        let (at, position) = parse_at4(&mut rdr, hd.hd_at_first, position);
+
+        // EV Block read
+        let (ev, position) = parse_ev4(&mut rdr, hd.hd_at_first, position);
 
         // Read DG Block
+        let (dg, position) = parse_dg4(&mut rdr, hd.hd_at_first, position);
         
         mdf_info = MdfInfo::V4(MdfInfo4{ver, prog,
-            id_block: id, hd_block: hd, hd_comment, fh,
+            id_block: id, hd_block: hd, hd_comment, fh, at,
             });
     };
     return mdf_info

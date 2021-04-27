@@ -1,5 +1,4 @@
 extern crate clap;
-extern crate nom;
 
 use clap::{Arg, App, SubCommand};
 use std::io;
