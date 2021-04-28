@@ -294,17 +294,19 @@ fn parser_at4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) 
     return (block, comments, data, position)
 }
 
-pub fn parse_at4(rdr: &mut BufReader<&File>, target: i64, position: i64) 
+pub fn parse_at4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) 
         -> (HashMap<i64, (At4Block, HashMap<String, String>, Option<Vec<u8>>)>, i64) {
     let mut at: HashMap<i64, (At4Block, HashMap<String, String>, Option<Vec<u8>>)> = HashMap::new();
     if target > 0{
-        let (block, comments, data, position) = parser_at4_block(rdr, target, position);
+        let (block, comments, data, pos) = parser_at4_block(rdr, target, position);
         let mut next_pointer = block.at_at_next;
         at.insert(position, (block, comments, data));
+        position = pos;
         while next_pointer >0 {
-            let (block, comments, data, position) = parser_at4_block(rdr, next_pointer, position);
+            let (block, comments, data, pos) = parser_at4_block(rdr, next_pointer, position);
             next_pointer = block.at_at_next;
             at.insert(position, (block, comments, data));
+            position = pos;
         }
     }
     return (at, position)
@@ -345,30 +347,33 @@ fn parse_ev4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -
     position += i64::try_from(block.ev_len).unwrap();
 
     // Reads MD
-    let (mut comments, mut position) = comment(rdr, block.ev_md_comment, position);
+    let (mut comments, pos) = comment(rdr, block.ev_md_comment, position);
+    position = pos;
 
     // reads TX name
     if block.ev_tx_name > 0 {
         let (_, comment, pos) = 
             parse_comment(rdr, block.ev_tx_name, position);
-        position = pos;
         comments.insert(String::from("comment"), comment);
+        position = pos;
     }
 
     return (block, comments, position)
 }
 
-pub fn parse_ev4(rdr: &mut BufReader<&File>, target: i64, position: i64) 
+pub fn parse_ev4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) 
         -> (HashMap<i64, (Ev4Block, HashMap<String, String>)>, i64) {
     let mut ev: HashMap<i64, (Ev4Block, HashMap<String, String>)> = HashMap::new();
     if target > 0 {
-        let (block, comments, position) = parse_ev4_block(rdr, target, position);
+        let (block, comments, pos) = parse_ev4_block(rdr, target, position);
         let mut next_pointer = block.ev_ev_next;
         ev.insert(position, (block, comments));
+        position = pos;
         while next_pointer >0 {
-            let (block, comments, position) = parse_ev4_block(rdr, next_pointer, position);
+            let (block, comments, pos) = parse_ev4_block(rdr, next_pointer, position);
             next_pointer = block.ev_ev_next;
             ev.insert(position, (block, comments));
+            position = pos;
         }
     }
     return (ev, position)
@@ -401,17 +406,96 @@ fn parse_dg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -
     return (block, comments, position)
 }
 
-pub fn parse_dg4(rdr: &mut BufReader<&File>, target: i64, position: i64) -> (HashMap<i64, (Dg4Block, HashMap<String, String>)>, i64) {
-    let mut dg: HashMap<i64, (Dg4Block, HashMap<String, String>)> = HashMap::new();
+pub struct Dg4 {
+    block: Dg4Block,  // DG Block
+    comments: HashMap<String, String>,  // Comments
+    cg: HashMap<i64, Cg4>,    // CG Block
+}
+
+pub fn parse_dg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (HashMap<i64, Dg4>, i64) {
+    let mut dg: HashMap<i64, Dg4> = HashMap::new();
     if target > 0 {
-        let (block, comments, position) = parse_dg4_block(rdr, target, position);
+        let (block, comments, mut position) = parse_dg4_block(rdr, target, position);
         let mut next_pointer = block.dg_dg_next;
-        dg.insert(position, (block, comments));
+        let (cg, pos) = parse_cg4(rdr, target, position);
+        let dg_struct = Dg4 {block, comments, cg};
+        dg.insert(position, dg_struct);
+        position = pos;
         while next_pointer >0 {
-            let (block, comments, position) = parse_dg4_block(rdr, next_pointer, position);
+            let (block, comments, mut position) = parse_dg4_block(rdr, next_pointer, position);
             next_pointer = block.dg_dg_next;
-            dg.insert(position, (block, comments));
+            let (cg, pos) = parse_cg4(rdr, target, position);
+            let dg_struct = Dg4 {block, comments, cg};
+            dg.insert(position, dg_struct);
+            position = pos;
         }
     }
     return (dg, position)
 }
+
+#[derive(Debug)]
+#[derive(BinRead)]
+#[br(little)]
+pub struct Cg4Block {
+    cg_id: [u8; 4],  // DG
+    reserved: [u8; 4],  // reserved
+    cg_len: u64,      // Length of block in bytes
+    cg_links: u64,         // # of links
+    cg_cg_next: i64, // Pointer to next channel group block (CGBLOCK) (can be NIL)
+    cg_cn_first: i64, // Pointer to first channel block (CNBLOCK) (can be NIL, must be NIL for VLSD CGBLOCK, i.e. if "VLSD channel group" flag (bit 0) is set)
+    cg_tx_acq_name: i64, // Pointer to acquisition name (TXBLOCK) (can be NIL, must be NIL for VLSD CGBLOCK)
+    cg_si_acq_source: i64, // Pointer to acquisition source (SIBLOCK) (can be NIL, must be NIL for VLSD CGBLOCK) See also rules for uniqueness explained in 4.4.3 Identification of Channels.
+    cg_sr_first: i64, // Pointer to first sample reduction block (SRBLOCK) (can be NIL, must be NIL for VLSD CGBLOCK)
+    cg_md_comment: i64, //Pointer to comment and additional information (TXBLOCK or MDBLOCK) (can be NIL, must be NIL for VLSD CGBLOCK)  
+    #[br(if(cg_links - 6 > 0))]
+    cg_cg_master: i64,
+     // Data Members
+    cg_record_id: u64, // Record ID, value must be less than maximum unsigned integer value allowed by dg_rec_id_size in parent DGBLOCK. Record ID must be unique within linked list of CGBLOCKs.
+    cg_cycle_count: u64, // Number of cycles, i.e. number of samples for this channel group. This specifies the number of records of this type in the data block.
+    cg_flags: u16, // Flags The value contains the following bit flags (see CG_F_xx):
+    cg_path_separator: u16,
+    cg_reserved: [u8; 4], // Reserved.
+    cg_data_bytes: u32, // Normal CGBLOCK: Number of data Bytes (after record ID) used for signal values in record, i.e. size of plain data for each recorded sample of this channel group. VLSD CGBLOCK: Low part of a UINT64 value that specifies the total size in Bytes of all variable length signal values for the recorded samples of this channel group. See explanation for cg_inval_bytes.
+    cg_inval_bytes: u32, // Normal CGBLOCK: Number of additional Bytes for record used for invalidation bits. Can be zero if no invalidation bits are used at all. Invalidation bits may only occur in the specified number of Bytes after the data Bytes, not within the data Bytes that contain the signal values. VLSD CGBLOCK: High part of UINT64 value that specifies the total size in Bytes of all variable length signal values for the recorded samples of this channel group, i.e. the total size in Bytes can be calculated by cg_data_bytes + (cg_inval_bytes << 32) Note: this value does not include the Bytes used to specify the length of each VLSD value!
+}
+
+fn parse_cg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (Cg4Block, HashMap<String, String>, i64) {
+    rdr.seek_relative(target - position).unwrap();
+    let block: Cg4Block = rdr.read_le().unwrap();
+    position += i64::try_from(block.cg_len).unwrap();
+
+    // Reads MD
+    let (comments, position) = comment(rdr, block.cg_md_comment, position);
+
+    return (block, comments, position)
+}
+
+pub struct Cg4 {
+    block: Cg4Block,
+    comments: HashMap<String, String>,  // Comments
+    //cn,
+    //tx,
+    //si,
+}
+
+pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (HashMap<i64, Cg4>, i64) {
+    let mut cg: HashMap<i64, Cg4> = HashMap::new();
+    if target > 0 {
+        let (block, comments, pos) = parse_cg4_block(rdr, target, position);
+        let mut next_pointer = block.cg_cg_next;
+        //let (cn, pos) = parse_cn4(rdr, target, position);
+        let cg_struct = Cg4 {block, comments};
+        cg.insert(position, cg_struct);
+        position = pos;
+        while next_pointer >0 {
+            let (block, comments, mut position) = parse_cg4_block(rdr, next_pointer, position);
+            next_pointer = block.cg_cg_next;
+            // let (cn, pos) = parse_cn4(rdr, target, position);
+            let cg_struct = Cg4 {block, comments};
+            cg.insert(position, cg_struct);
+            position = pos;
+        }
+    }
+    return (cg, position)
+}
+
