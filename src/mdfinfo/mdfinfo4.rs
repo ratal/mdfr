@@ -18,7 +18,7 @@ pub struct MdfInfo4 {
     pub hd_block: Hd4,
     pub hd_comment: HashMap<String, String>,
     pub fh: Vec<(FhBlock, HashMap<String, String>)>,
-    pub at: Vec<(At4Block, HashMap<String, String>, Option<Vec<u8>>, i64)>,
+    pub at: HashMap<i64, (At4Block, HashMap<String, String>, Option<Vec<u8>>)> ,
 }
 
 /// MDF4 - common Header
@@ -295,16 +295,16 @@ fn parser_at4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) 
 }
 
 pub fn parse_at4(rdr: &mut BufReader<&File>, target: i64, position: i64) 
-        -> (Vec<(At4Block, HashMap<String, String>, Option<Vec<u8>>, i64)>, i64) {
-    let mut at: Vec<(At4Block, HashMap<String, String>, Option<Vec<u8>>, i64)> = Vec::new();
+        -> (HashMap<i64, (At4Block, HashMap<String, String>, Option<Vec<u8>>)>, i64) {
+    let mut at: HashMap<i64, (At4Block, HashMap<String, String>, Option<Vec<u8>>)> = HashMap::new();
     if target > 0{
         let (block, comments, data, position) = parser_at4_block(rdr, target, position);
         let mut next_pointer = block.at_at_next;
-        at.push((block, comments, data, position));
+        at.insert(position, (block, comments, data));
         while next_pointer >0 {
             let (block, comments, data, position) = parser_at4_block(rdr, next_pointer, position);
             next_pointer = block.at_at_next;
-            at.push((block, comments, data, position));
+            at.insert(position, (block, comments, data));
         }
     }
     return (at, position)
@@ -358,17 +358,17 @@ fn parse_ev4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -
     return (block, comments, position)
 }
 
-pub fn parse_ev4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) 
-        -> (Vec<(Ev4Block, HashMap<String, String>, i64)>, i64) {
-    let mut ev: Vec<(Ev4Block, HashMap<String, String>, i64)> = Vec::new();
+pub fn parse_ev4(rdr: &mut BufReader<&File>, target: i64, position: i64) 
+        -> (HashMap<i64, (Ev4Block, HashMap<String, String>)>, i64) {
+    let mut ev: HashMap<i64, (Ev4Block, HashMap<String, String>)> = HashMap::new();
     if target > 0 {
         let (block, comments, position) = parse_ev4_block(rdr, target, position);
         let mut next_pointer = block.ev_ev_next;
-        ev.push((block, comments, position));
+        ev.insert(position, (block, comments));
         while next_pointer >0 {
             let (block, comments, position) = parse_ev4_block(rdr, next_pointer, position);
             next_pointer = block.ev_ev_next;
-            ev.push((block, comments, position));
+            ev.insert(position, (block, comments));
         }
     }
     return (ev, position)
@@ -401,16 +401,16 @@ fn parse_dg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -
     return (block, comments, position)
 }
 
-pub fn parse_dg4(rdr: &mut BufReader<&File>, target: i64, position: i64) -> (Vec<(Dg4Block, HashMap<String, String>, i64)>, i64) {
-    let mut dg: Vec<(Dg4Block, HashMap<String, String>, i64)> = Vec::new();
+pub fn parse_dg4(rdr: &mut BufReader<&File>, target: i64, position: i64) -> (HashMap<i64, (Dg4Block, HashMap<String, String>)>, i64) {
+    let mut dg: HashMap<i64, (Dg4Block, HashMap<String, String>)> = HashMap::new();
     if target > 0 {
         let (block, comments, position) = parse_dg4_block(rdr, target, position);
         let mut next_pointer = block.dg_dg_next;
-        dg.push((block, comments, position));
+        dg.insert(position, (block, comments));
         while next_pointer >0 {
             let (block, comments, position) = parse_dg4_block(rdr, next_pointer, position);
             next_pointer = block.dg_dg_next;
-            dg.push((block, comments, position));
+            dg.insert(position, (block, comments));
         }
     }
     return (dg, position)
