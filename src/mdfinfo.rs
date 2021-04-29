@@ -74,10 +74,10 @@ pub fn mdfinfo(file_name: &str) -> MdfInfo {
         let (at, position) = parse_at4(&mut rdr, hd.hd_at_first, position);
 
         // EV Block read
-        let (ev, position) = parse_ev4(&mut rdr, hd.hd_at_first, position);
+        let (ev, position) = parse_ev4(&mut rdr, hd.hd_ev_first, position);
 
         // Read DG Block
-        let (dg, position) = parse_dg4(&mut rdr, hd.hd_at_first, position);
+        let (dg, position) = parse_dg4(&mut rdr, hd.hd_dg_first, position);
         
         mdf_info = MdfInfo::V4(MdfInfo4{ver, prog,
             id_block: id, hd_block: hd, hd_comment, fh, at,

@@ -300,12 +300,13 @@ pub fn parse_at4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
     if target > 0{
         let (block, comments, data, pos) = parser_at4_block(rdr, target, position);
         let mut next_pointer = block.at_at_next;
-        at.insert(position, (block, comments, data));
+        at.insert(target, (block, comments, data));
         position = pos;
         while next_pointer >0 {
+            let block_start = next_pointer;
             let (block, comments, data, pos) = parser_at4_block(rdr, next_pointer, position);
             next_pointer = block.at_at_next;
-            at.insert(position, (block, comments, data));
+            at.insert(block_start, (block, comments, data));
             position = pos;
         }
     }
@@ -343,7 +344,10 @@ pub struct Ev4Block {
 
 fn parse_ev4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (Ev4Block, HashMap<String, String>, i64) {
     rdr.seek_relative(target - position).unwrap();
-    let block: Ev4Block = rdr.read_le().unwrap();
+    let block: Ev4Block = match rdr.read_le() {
+        Ok(v) => v,
+        Err(e) => panic!("Error reading ev block \n{}", e),
+    };  // reads the fh block
     position += i64::try_from(block.ev_len).unwrap();
 
     // Reads MD
@@ -367,12 +371,13 @@ pub fn parse_ev4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
     if target > 0 {
         let (block, comments, pos) = parse_ev4_block(rdr, target, position);
         let mut next_pointer = block.ev_ev_next;
-        ev.insert(position, (block, comments));
+        ev.insert(target, (block, comments));
         position = pos;
         while next_pointer >0 {
+            let block_start = next_pointer;
             let (block, comments, pos) = parse_ev4_block(rdr, next_pointer, position);
             next_pointer = block.ev_ev_next;
-            ev.insert(position, (block, comments));
+            ev.insert(block_start, (block, comments));
             position = pos;
         }
     }
@@ -398,7 +403,7 @@ pub struct Dg4Block {
 fn parse_dg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (Dg4Block, HashMap<String, String>, i64) {
     rdr.seek_relative(target - position).unwrap();
     let block: Dg4Block = rdr.read_le().unwrap();
-    position += 64;
+    position = target + 64;
 
     // Reads MD
     let (comments, position) = comment(rdr, block.dg_md_comment, position);
@@ -419,14 +424,15 @@ pub fn parse_dg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> 
         let mut next_pointer = block.dg_dg_next;
         let (cg, pos) = parse_cg4(rdr, target, position);
         let dg_struct = Dg4 {block, comments, cg};
-        dg.insert(position, dg_struct);
+        dg.insert(target, dg_struct);
         position = pos;
         while next_pointer >0 {
+            let block_start = next_pointer;
             let (block, comments, mut position) = parse_dg4_block(rdr, next_pointer, position);
             next_pointer = block.dg_dg_next;
             let (cg, pos) = parse_cg4(rdr, target, position);
             let dg_struct = Dg4 {block, comments, cg};
-            dg.insert(position, dg_struct);
+            dg.insert(block_start, dg_struct);
             position = pos;
         }
     }
@@ -485,14 +491,15 @@ pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> 
         let mut next_pointer = block.cg_cg_next;
         //let (cn, pos) = parse_cn4(rdr, target, position);
         let cg_struct = Cg4 {block, comments};
-        cg.insert(position, cg_struct);
+        cg.insert(target, cg_struct);
         position = pos;
         while next_pointer >0 {
-            let (block, comments, mut position) = parse_cg4_block(rdr, next_pointer, position);
+            let block_start = next_pointer;
+            let (block, comments, pos) = parse_cg4_block(rdr, next_pointer, position);
             next_pointer = block.cg_cg_next;
             // let (cn, pos) = parse_cn4(rdr, target, position);
             let cg_struct = Cg4 {block, comments};
-            cg.insert(position, cg_struct);
+            cg.insert(block_start, cg_struct);
             position = pos;
         }
     }
