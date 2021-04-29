@@ -127,7 +127,10 @@ fn parse_comment(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> 
     // reads comment
     let mut comment_raw = vec![0u8; (block_header.hdr_len - 24) as usize];
     rdr.read(&mut comment_raw).unwrap();
-    let comment:String = str::from_utf8(&comment_raw).unwrap().parse().unwrap();
+    let comment:String = match str::from_utf8(&comment_raw).unwrap().parse(){
+        Ok(v) => v,
+        Err(e) => panic!("Error reading comment block \n{}", e),
+    };
     let comment:String = comment.trim_end_matches(char::from(0)).into();
     position = target + i64::try_from(block_header.hdr_len).unwrap();
     return (block_header, comment, position)
@@ -137,26 +140,30 @@ fn comment(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (HashM
     let mut comments: HashMap<String, String> = HashMap::new();
     // Reads MD
     if target > 0{
-        let (_, comment, pos) =
-            parse_comment(rdr, target, position);
+        let (block_header, comment, pos) = parse_comment(rdr, target, position);
         position = pos;
-        let comment:String = comment.trim_end_matches(|c| c == '\n' || c == '\r' || c == ' ').into(); // removes ending spaces
-            match roxmltree::Document::parse(&comment) {
-                Ok(md) => {
-                    for node in md.root().descendants() {
-                        let text = match node.text() {
-                            Some(text) => text.to_string(),
-                            None => String::new(),
-                        };
-                        comments.insert(node.tag_name().name().to_string(), text);
-                    }
-                    comments = HashMap::new();
-                },
-                Err(e) => {
-                    println!("Error parsing AT comment : \n{}\n{}", comment, e);
-                    comments = HashMap::new();
-                },
-            };
+        if block_header.hdr_id == "##TX".as_bytes() {
+            // TX Block
+            comments.insert(String::from("comment"), comment);
+        } else {
+            let comment:String = comment.trim_end_matches(|c| c == '\n' || c == '\r' || c == ' ').into(); // removes ending spaces
+                match roxmltree::Document::parse(&comment) {
+                    Ok(md) => {
+                        for node in md.root().descendants() {
+                            let text = match node.text() {
+                                Some(text) => text.to_string(),
+                                None => String::new(),
+                            };
+                            comments.insert(node.tag_name().name().to_string(), text);
+                        }
+                        comments = HashMap::new();
+                    },
+                    Err(e) => {
+                        println!("Error parsing AT comment : \n{}\n{}", comment, e);
+                        comments = HashMap::new();
+                    },
+                };
+        }
     }
     return (comments, position);
 }
@@ -328,7 +335,7 @@ pub struct Ev4Block {
     ev_ev_range: i64,    // Referencing link to EVBLOCK with event that defines the beginning of a range (can be NIL, must be NIL if ev_range_type ≠ 2).
     ev_tx_name: i64,     // Pointer to TXBLOCK with event name (can be NIL) Name must be according to naming rules stated in 4.4.2 Naming Rules. If available, the name of a named trigger condition should be used as event name. Other event types may have individual names or no names.
     ev_md_comment: i64,  // Pointer to TX/MDBLOCK with event comment and additional information, e.g. trigger condition or formatted user comment text (can be NIL)
-    #[br(if(ev_links - 5 > 0), little, count = ev_links - 5)]
+    #[br(if(ev_links > 5), little, count = ev_links - 5)]
     links: Vec<i64>,       // links
 
     ev_type: u8, // Event type (see EV_T_xxx)
@@ -458,7 +465,7 @@ pub struct Cg4Block {
     cg_si_acq_source: i64, // Pointer to acquisition source (SIBLOCK) (can be NIL, must be NIL for VLSD CGBLOCK) See also rules for uniqueness explained in 4.4.3 Identification of Channels.
     cg_sr_first: i64, // Pointer to first sample reduction block (SRBLOCK) (can be NIL, must be NIL for VLSD CGBLOCK)
     cg_md_comment: i64, //Pointer to comment and additional information (TXBLOCK or MDBLOCK) (can be NIL, must be NIL for VLSD CGBLOCK)  
-    #[br(if(cg_links - 6 > 0))]
+    #[br(if(cg_links > 6))]
     cg_cg_master: i64,
      // Data Members
     cg_record_id: u64, // Record ID, value must be less than maximum unsigned integer value allowed by dg_rec_id_size in parent DGBLOCK. Record ID must be unique within linked list of CGBLOCKs.
@@ -485,26 +492,26 @@ fn parse_cg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -
 pub struct Cg4 {
     block: Cg4Block,
     comments: HashMap<String, String>,  // Comments
-    //cn,
-    //tx,
-    //si,
+    cn: HashMap<i64, Cn4> ,
 }
 
 pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (HashMap<i64, Cg4>, i64) {
     let mut cg: HashMap<i64, Cg4> = HashMap::new();
     if target > 0 {
         let (block, comments, pos) = parse_cg4_block(rdr, target, position);
+        position = pos;
         let mut next_pointer = block.cg_cg_next;
-        //let (cn, pos) = parse_cn4(rdr, target, position);
-        let cg_struct = Cg4 {block, comments};
+        let (cn, pos) = parse_cn4(rdr, block.cg_cn_first, position);
+        let cg_struct = Cg4 {block, comments, cn};
         cg.insert(target, cg_struct);
         position = pos;
         while next_pointer >0 {
             let block_start = next_pointer;
             let (block, comments, pos) = parse_cg4_block(rdr, next_pointer, position);
             next_pointer = block.cg_cg_next;
-            // let (cn, pos) = parse_cn4(rdr, target, position);
-            let cg_struct = Cg4 {block, comments};
+            position = pos;
+            let (cn, pos) = parse_cn4(rdr, block.cg_cn_first, position);
+            let cg_struct = Cg4 {block, comments, cn};
             cg.insert(block_start, cg_struct);
             position = pos;
         }
@@ -512,3 +519,89 @@ pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> 
     return (cg, position)
 }
 
+#[derive(Debug)]
+#[derive(BinRead)]
+#[br(little)]
+pub struct Cn4Block {
+    cn_id: [u8; 4],  // DG
+    reserved: [u8; 4],  // reserved
+    cn_len: u64,      // Length of block in bytes
+    cn_links: u64,         // # of links
+    cn_cn_next: i64, // Pointer to next channel block (CNBLOCK) (can be NIL)
+    cn_composition: i64, // Composition of channels: Pointer to channel array block (CABLOCK) or channel block (CNBLOCK) (can be NIL). Details see 4.18 Composition of Channels
+    cn_tx_name: i64, // Pointer to TXBLOCK with name (identification) of channel. Name must be according to naming rules stated in 4.4.2 Naming Rules.
+    cn_si_source: i64, // Pointer to channel source (SIBLOCK) (can be NIL) Must be NIL for component channels (members of a structure or array elements) because they all must have the same source and thus simply use the SIBLOCK of their parent CNBLOCK (direct child of CGBLOCK).
+    cn_cc_conversion: i64, // Pointer to the conversion formula (CCBLOCK) (can be NIL, must be NIL for complex channel data types, i.e. for cn_data_type ≥ 10). If the pointer is NIL, this means that a 1:1 conversion is used (phys = int).  };
+    cn_data: i64, // Pointer to channel type specific signal data For variable length data channel (cn_type = 1): unique link to signal data block (SDBLOCK) or data list block (DLBLOCK) or, only for unsorted data groups, referencing link to a VLSD channel group block (CGBLOCK). Can only be NIL if SDBLOCK would be empty. For synchronization channel (cn_type = 4): referencing link to attachment block (ATBLOCK) in global linked list of ATBLOCKs starting at hd_at_first. Cannot be NIL.
+    cn_md_unit: i64, // Pointer to TXBLOCK/MDBLOCK with designation for physical unit of signal data (after conversion) or (only for channel data types "MIME sample" and "MIME stream") to MIME context-type text. (can be NIL). The unit can be used if no conversion rule is specified or to overwrite the unit specified for the conversion rule (e.g. if a conversion rule is shared between channels). If the link is NIL, then the unit from the conversion rule must be used. If the content is an empty string, no unit should be displayed. If an MDBLOCK is used, in addition the A-HDO unit definition can be stored, see Table 38. Note: for (virtual) master and synchronization channels the A-HDO definition should be omitted to avoid redundancy. Here the unit is already specified by cn_sync_type of the channel. In case of channel data types "MIME sample" and "MIME stream", the text of the unit must be the content-type text of a MIME type which specifies the content of the values of the channel (either fixed length in record or variable length in SDBLOCK). The MIME content-type string must be written in lowercase, and it must apply to the same rules as defined for at_tx_mimetype in 4.11 The Attachment Block ATBLOCK.
+    cn_md_comment: i64, // Pointer to TXBLOCK/MDBLOCK with comment and additional information about the channel, see Table 37. (can be NIL)
+    #[br(if(cn_links > 8))]
+    links: i64,
+
+  // Data Members
+    cn_type: u8, // Channel type (see CN_T_xxx)
+    cn_sync_type: u8, // Sync type: (see CN_S_xxx)
+    cn_data_type: u8, // Channel data type of raw signal value (see CN_DT_xxx)
+    cn_bit_offset: u8, // Bit offset (0-7): first bit (=LSB) of signal value after Byte offset has been applied (see 4.21.4.2 Reading the Signal Value). If zero, the signal value is 1-Byte aligned. A value different to zero is only allowed for Integer data types (cn_data_type ≤ 3) and if the Integer signal value fits into 8 contiguous Bytes (cn_bit_count + cn_bit_offset ≤ 64). For all other cases, cn_bit_offset must be zero.
+    cn_byte_offset: u32, // Offset to first Byte in the data record that contains bits of the signal value. The offset is applied to the plain record data, i.e. skipping the record ID.
+    cn_bit_count: u32, // Number of bits for signal value in record
+    cn_flags: u32,     // Flags (see CN_F_xxx)
+    cn_inval_bit_pos: u32, // Position of invalidation bit.
+    cn_precision: u8, // Precision for display of floating point values. 0xFF means unrestricted precision (infinite). Any other value specifies the number of decimal places to use for display of floating point values. Only valid if "precision valid" flag (bit 2) is set
+    cn_reserved: [u8;3], // Reserved
+    cn_val_range_min: f64, // Minimum signal value that occurred for this signal (raw value) Only valid if "value range valid" flag (bit 3) is set.
+    cn_val_range_max: f64, // Maximum signal value that occurred for this signal (raw value) Only valid if "value range valid" flag (bit 3) is set.
+    cn_limit_min: f64,    // Lower limit for this signal (physical value for numeric conversion rule, otherwise raw value) Only valid if "limit range valid" flag (bit 4) is set.
+    cn_limit_max: f64,    // Upper limit for this signal (physical value for numeric conversion rule, otherwise raw value) Only valid if "limit range valid" flag (bit 4) is set.
+    cn_limit_ext_min: f64, // Lower extended limit for this signal (physical value for numeric conversion rule, otherwise raw value) Only valid if "extended limit range valid" flag (bit 5) is set.
+    cn_limit_ext_max: f64, // Upper extended limit for this signal (physical value for numeric conversion rule, otherwise raw value) Only valid if "extended limit range valid" flag (bit 5) is set.
+}
+
+fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (Cn4Block, String, String, i64) {
+    rdr.seek_relative(target - position).unwrap();
+    let block: Cn4Block = rdr.read_le().unwrap();
+    position = target + i64::try_from(block.cn_len).unwrap();
+
+    // Reads TX name
+    let (_, name, position) = parse_comment(rdr, block.cn_md_comment, position);
+
+    // Reads unit
+    let (u, position) = comment(rdr, block.cn_md_comment, position);
+    let unit = match u.get("TX") {
+        Some(u) => u.to_string(),
+        None => "".to_string(),
+    };
+
+    return (block, name, unit, position)
+}
+
+#[derive(Debug)]
+pub struct Cn4 {
+    block: Cn4Block,
+    name: String,
+    unit: String,
+}
+
+pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (HashMap<i64, Cn4>, i64) {
+    let mut cn: HashMap<i64, Cn4> = HashMap::new();
+    if target > 0 {
+        let (block, name, unit, pos) 
+            = parse_cn4_block(rdr, target, position);
+        let mut next_pointer = block.cn_cn_next;
+        //let (cn, pos) = parse_cn4(rdr, target, position);
+        let cn_struct = Cn4 {block, name, unit};
+        cn.insert(target, cn_struct);
+        position = pos;
+        while next_pointer >0 {
+            let block_start = next_pointer;
+            let (block, name, unit, pos) 
+                = parse_cn4_block(rdr, next_pointer, position);
+            next_pointer = block.cn_cn_next;
+            // let (cn, pos) = parse_cn4(rdr, target, position);
+            let cn_struct = Cn4 {block, name, unit};
+            cn.insert(block_start, cn_struct);
+            position = pos;
+        }
+    }
+    return (cn, position)
+}
