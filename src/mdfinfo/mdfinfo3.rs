@@ -175,7 +175,7 @@ pub fn parse_tx(rdr: &mut BufReader<&File>, offset: i64) -> (Blockheader3, Strin
 #[derive(Debug)]
 #[derive(BinRead)]
 #[br(little)]
-pub struct Dg3 {
+pub struct Dg3Block {
     dg_id: [u8; 2],  // DG
     dg_len: u16,      // Length of block in bytes
     dg_dg_next: u32, // Pointer to next data group block (DGBLOCK) (can be NIL)
@@ -187,8 +187,8 @@ pub struct Dg3 {
     reserved: u32   // reserved
 }
 
-pub fn dg3_parser(rdr: &mut BufReader<&File>, target: i64, position: i64) -> (Dg3, i64) {
+pub fn parse_dg3(rdr: &mut BufReader<&File>, target: i64, position: i64) -> (Dg3Block, i64) {
     rdr.seek_relative(target - position).unwrap();
-    let block: Dg3 = rdr.read_le().unwrap();
+    let block: Dg3Block = rdr.read_le().unwrap();
     return (block, position + 28)
 }
