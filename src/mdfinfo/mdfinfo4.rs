@@ -19,6 +19,8 @@ pub struct MdfInfo4 {
     pub hd_comment: HashMap<String, String>,
     pub fh: Vec<(FhBlock, HashMap<String, String>)>,
     pub at: HashMap<i64, (At4Block, HashMap<String, String>, Option<Vec<u8>>)> ,
+    pub ev: HashMap<i64, (Ev4Block, HashMap<String, String>)>,
+    pub dg: HashMap<i64, Dg4>,
 }
 
 /// MDF4 - common Header
@@ -348,7 +350,7 @@ fn parse_ev4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -
         Ok(v) => v,
         Err(e) => panic!("Error reading ev block \n{}", e),
     };  // reads the fh block
-    position += i64::try_from(block.ev_len).unwrap();
+    position = target + i64::try_from(block.ev_len).unwrap();
 
     // Reads MD
     let (mut comments, pos) = comment(rdr, block.ev_md_comment, position);
@@ -411,6 +413,7 @@ fn parse_dg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -
     return (block, comments, position)
 }
 
+#[derive(Debug)]
 pub struct Dg4 {
     block: Dg4Block,  // DG Block
     comments: HashMap<String, String>,  // Comments
@@ -420,17 +423,19 @@ pub struct Dg4 {
 pub fn parse_dg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (HashMap<i64, Dg4>, i64) {
     let mut dg: HashMap<i64, Dg4> = HashMap::new();
     if target > 0 {
-        let (block, comments, mut position) = parse_dg4_block(rdr, target, position);
+        let (block, comments, pos) = parse_dg4_block(rdr, target, position);
+        position = pos;
         let mut next_pointer = block.dg_dg_next;
-        let (cg, pos) = parse_cg4(rdr, target, position);
+        let (cg, pos) = parse_cg4(rdr, block.dg_cg_first, position);
         let dg_struct = Dg4 {block, comments, cg};
         dg.insert(target, dg_struct);
         position = pos;
         while next_pointer >0 {
             let block_start = next_pointer;
-            let (block, comments, mut position) = parse_dg4_block(rdr, next_pointer, position);
+            let (block, comments, pos) = parse_dg4_block(rdr, next_pointer, position);
             next_pointer = block.dg_dg_next;
-            let (cg, pos) = parse_cg4(rdr, target, position);
+            position = pos;
+            let (cg, pos) = parse_cg4(rdr, block.dg_cg_first, position);
             let dg_struct = Dg4 {block, comments, cg};
             dg.insert(block_start, dg_struct);
             position = pos;
@@ -468,7 +473,7 @@ pub struct Cg4Block {
 fn parse_cg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (Cg4Block, HashMap<String, String>, i64) {
     rdr.seek_relative(target - position).unwrap();
     let block: Cg4Block = rdr.read_le().unwrap();
-    position += i64::try_from(block.cg_len).unwrap();
+    position = target + i64::try_from(block.cg_len).unwrap();
 
     // Reads MD
     let (comments, position) = comment(rdr, block.cg_md_comment, position);
@@ -476,6 +481,7 @@ fn parse_cg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -
     return (block, comments, position)
 }
 
+#[derive(Debug)]
 pub struct Cg4 {
     block: Cg4Block,
     comments: HashMap<String, String>,  // Comments

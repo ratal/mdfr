@@ -80,7 +80,7 @@ pub fn mdfinfo(file_name: &str) -> MdfInfo {
         let (dg, position) = parse_dg4(&mut rdr, hd.hd_dg_first, position);
         
         mdf_info = MdfInfo::V4(MdfInfo4{ver, prog,
-            id_block: id, hd_block: hd, hd_comment, fh, at,
+            id_block: id, hd_block: hd, hd_comment, fh, at, ev, dg
             });
     };
     return mdf_info
