@@ -127,9 +127,13 @@ fn parse_comment(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> 
     // reads comment
     let mut comment_raw = vec![0u8; (block_header.hdr_len - 24) as usize];
     rdr.read(&mut comment_raw).unwrap();
-    let comment:String = match str::from_utf8(&comment_raw).unwrap().parse(){
+    let c = match str::from_utf8(&comment_raw) {
         Ok(v) => v,
-        Err(e) => panic!("Error reading comment block \n{}", e),
+        Err(e) => panic!("Error converting comment into utf8 \n{}", e),
+    };
+    let comment: String = match c.parse(){
+        Ok(v) => v,
+        Err(e) => panic!("Error parsing comment\n{}", e),
     };
     let comment:String = comment.trim_end_matches(char::from(0)).into();
     position = target + i64::try_from(block_header.hdr_len).unwrap();
@@ -154,13 +158,13 @@ fn comment(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (HashM
                                 Some(text) => text.to_string(),
                                 None => String::new(),
                             };
-                            comments.insert(node.tag_name().name().to_string(), text);
+                            if node.is_element() && (text.len() > 0) && (node.tag_name().name().to_string().len()) > 0 {
+                                comments.insert(node.tag_name().name().to_string(), text);
+                            }
                         }
-                        comments = HashMap::new();
                     },
                     Err(e) => {
-                        println!("Error parsing AT comment : \n{}\n{}", comment, e);
-                        comments = HashMap::new();
+                        println!("Error parsing comment : \n{}\n{}", comment, e);
                     },
                 };
         }
@@ -214,11 +218,9 @@ fn parse_fh_comment(rdr: &mut BufReader<&File>, fh_block: &FhBlock, target:i64, 
                         };
                         comments.insert(node.tag_name().name().to_string(), text);
                     }
-                    comments = HashMap::new();
                 },
                 Err(e) => {
                     println!("Error parsing FH comment : \n{}\n{}", comment, e);
-                    comments = HashMap::new();
                 },
             };
         }
@@ -535,8 +537,8 @@ pub struct Cn4Block {
     cn_data: i64, // Pointer to channel type specific signal data For variable length data channel (cn_type = 1): unique link to signal data block (SDBLOCK) or data list block (DLBLOCK) or, only for unsorted data groups, referencing link to a VLSD channel group block (CGBLOCK). Can only be NIL if SDBLOCK would be empty. For synchronization channel (cn_type = 4): referencing link to attachment block (ATBLOCK) in global linked list of ATBLOCKs starting at hd_at_first. Cannot be NIL.
     cn_md_unit: i64, // Pointer to TXBLOCK/MDBLOCK with designation for physical unit of signal data (after conversion) or (only for channel data types "MIME sample" and "MIME stream") to MIME context-type text. (can be NIL). The unit can be used if no conversion rule is specified or to overwrite the unit specified for the conversion rule (e.g. if a conversion rule is shared between channels). If the link is NIL, then the unit from the conversion rule must be used. If the content is an empty string, no unit should be displayed. If an MDBLOCK is used, in addition the A-HDO unit definition can be stored, see Table 38. Note: for (virtual) master and synchronization channels the A-HDO definition should be omitted to avoid redundancy. Here the unit is already specified by cn_sync_type of the channel. In case of channel data types "MIME sample" and "MIME stream", the text of the unit must be the content-type text of a MIME type which specifies the content of the values of the channel (either fixed length in record or variable length in SDBLOCK). The MIME content-type string must be written in lowercase, and it must apply to the same rules as defined for at_tx_mimetype in 4.11 The Attachment Block ATBLOCK.
     cn_md_comment: i64, // Pointer to TXBLOCK/MDBLOCK with comment and additional information about the channel, see Table 37. (can be NIL)
-    #[br(if(cn_links > 8))]
-    links: i64,
+    #[br(if(cn_links > 8), little, count = cn_links - 8)]
+    links: Vec<i64>,
 
   // Data Members
     cn_type: u8, // Channel type (see CN_T_xxx)
@@ -561,16 +563,40 @@ fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -
     rdr.seek_relative(target - position).unwrap();
     let block: Cn4Block = rdr.read_le().unwrap();
     position = target + i64::try_from(block.cn_len).unwrap();
+    let mut unit = String::new();
 
     // Reads TX name
-    let (_, name, position) = parse_comment(rdr, block.cn_md_comment, position);
+    let (_, name, pos) = parse_comment(rdr, block.cn_tx_name, position);
+    position = pos;
 
     // Reads unit
-    let (u, position) = comment(rdr, block.cn_md_comment, position);
-    let unit = match u.get("TX") {
-        Some(u) => u.to_string(),
-        None => "".to_string(),
-    };
+    if block.cn_md_unit > 0{
+        let (block_header, comment, pos) = parse_comment(rdr, block.cn_md_unit, position);
+        position = pos;
+        if block_header.hdr_id == "##TX".as_bytes() {
+            // TX Block
+            unit = comment;
+        } else {
+            let comment:String = comment.trim_end_matches(|c| c == '\n' || c == '\r' || c == ' ').into(); // removes ending spaces
+                match roxmltree::Document::parse(&comment) {
+                    Ok(md) => {
+                        for node in md.root().descendants() {
+                            if node.has_tag_name("TX"){
+                                let text = match node.text() {
+                                    Some(text) => text.to_string(),
+                                    None => String::new(),
+                                };
+                                unit = text;
+                            };
+                        }
+                    },
+                    Err(e) => {
+                        println!("Error parsing channel {} comment : \n{}\n{}", name, comment, e);
+                        unit = String::new();
+                    },
+                };
+        }
+    }
 
     return (block, name, unit, position)
 }
