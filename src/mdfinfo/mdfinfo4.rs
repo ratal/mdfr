@@ -8,7 +8,7 @@ use std::str;
 use std::default::Default;
 use std::convert::TryFrom;
 use binread::{BinRead, BinReaderExt};
-use std::collections::HashMap;
+use std::collections::{HashMap, BTreeMap};
 
 #[derive(Debug)]
 pub struct MdfInfo4 {
@@ -208,7 +208,7 @@ fn parse_fh_comment(rdr: &mut BufReader<&File>, fh_block: &FhBlock, target:i64, 
             comments.insert(String::from("comment"), comment);
         } else {
             // MD Block, reading xml
-            let comment:String = comment.trim_end_matches(|c| c == '\n' || c == '\r' || c == ' ').into(); // removes ending spaces
+            //let comment:String = comment.trim_end_matches(|c| c == '\n' || c == '\r' || c == ' ').into(); // removes ending spaces
             match roxmltree::Document::parse(&comment) {
                 Ok(md) => {
                     for node in md.root().descendants() {
@@ -494,7 +494,7 @@ fn parse_cg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -
 pub struct Cg4 {
     block: Cg4Block,
     comments: HashMap<String, String>,  // Comments
-    cn: HashMap<i64, Cn4> ,
+    cn: BTreeMap<u32, Cn4> ,
 }
 
 pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (HashMap<i64, Cg4>, i64) {
@@ -608,24 +608,24 @@ pub struct Cn4 {
     unit: String,
 }
 
-pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (HashMap<i64, Cn4>, i64) {
-    let mut cn: HashMap<i64, Cn4> = HashMap::new();
+pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (BTreeMap<u32, Cn4>, i64) {
+    let mut cn: BTreeMap<u32, Cn4> = BTreeMap::new();
     if target > 0 {
         let (block, name, unit, pos) 
             = parse_cn4_block(rdr, target, position);
         let mut next_pointer = block.cn_cn_next;
-        //let (cn, pos) = parse_cn4(rdr, target, position);
+        let rec_pos = block.cn_byte_offset + u32::try_from(block.cn_bit_offset).unwrap() * 8;
         let cn_struct = Cn4 {block, name, unit};
-        cn.insert(target, cn_struct);
+        cn.insert(rec_pos, cn_struct);
         position = pos;
         while next_pointer >0 {
             let block_start = next_pointer;
             let (block, name, unit, pos) 
                 = parse_cn4_block(rdr, next_pointer, position);
             next_pointer = block.cn_cn_next;
-            // let (cn, pos) = parse_cn4(rdr, target, position);
+            let rec_pos = block.cn_byte_offset + u32::try_from(block.cn_bit_offset).unwrap() * 8;
             let cn_struct = Cn4 {block, name, unit};
-            cn.insert(block_start, cn_struct);
+            cn.insert(rec_pos, cn_struct);
             position = pos;
         }
     }
