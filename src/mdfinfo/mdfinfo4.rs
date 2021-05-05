@@ -173,6 +173,39 @@ fn comment(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (HashM
     return (comments, position);
 }
 
+fn md_tx_comment(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (String, i64) {
+    let mut comment = String::new();
+    // Reads MD
+    if target > 0{
+        let (block_header, c, pos) = parse_comment(rdr, target, position);
+        position = pos;
+        if block_header.hdr_id == "##TX".as_bytes() {
+            // TX Block
+            comment = c;
+        } else {
+            let c:String = c.trim_end_matches(|c| c == '\n' || c == '\r' || c == ' ').into(); // removes ending spaces
+                match roxmltree::Document::parse(&c) {
+                    Ok(md) => {
+                        for node in md.root().descendants() {
+                            let text = match node.text() {
+                                Some(text) => text.to_string(),
+                                None => String::new(),
+                            };
+                            if node.is_element() && (text.len() > 0) && (node.tag_name().name().to_string().len()) > 0 {
+                                comment = text;
+                                break
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        println!("Error parsing comment : \n{}\n{}", c, e);
+                    },
+                };
+        }
+    }
+    return (comment, position);
+}
+
 #[derive(Debug)]
 #[derive(BinRead)]
 #[br(little)]
@@ -582,49 +615,21 @@ pub struct Cn4Block {
     cn_limit_ext_max: f64, // Upper extended limit for this signal (physical value for numeric conversion rule, otherwise raw value) Only valid if "extended limit range valid" flag (bit 5) is set.
 }
 
-fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (Cn4Block, String, String, i64) {
+fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (Cn4Block, String, String, String, i64) {
     rdr.seek_relative(target - position).unwrap();
     let block: Cn4Block = rdr.read_le().unwrap();
     position = target + i64::try_from(block.cn_len).unwrap();
-    let mut unit = String::new();
 
     // Reads TX name
-    let (_, name, pos) = parse_comment(rdr, block.cn_tx_name, position);
-    position = pos;
+    let (_, name, position) = parse_comment(rdr, block.cn_tx_name, position);
 
     // Reads unit
-    if block.cn_md_unit > 0{
-        let (block_header, comment, pos) = parse_comment(rdr, block.cn_md_unit, position);
-        position = pos;
-        if block_header.hdr_id == "##TX".as_bytes() {
-            // TX Block
-            unit = comment;
-        } else {
-            let comment:String = comment.trim_end_matches(|c| c == '\n' || c == '\r' || c == ' ').into(); // removes ending spaces
-                match roxmltree::Document::parse(&comment) {
-                    Ok(md) => {
-                        for node in md.root().descendants() {
-                            if node.has_tag_name("TX"){
-                                let text = match node.text() {
-                                    Some(text) => text.to_string(),
-                                    None => String::new(),
-                                };
-                                unit = text;
-                            };
-                        }
-                    },
-                    Err(e) => {
-                        println!("Error parsing channel {} comment : \n{}\n{}", name, comment, e);
-                        unit = String::new();
-                    },
-                };
-        }
-    }
+    let (unit, position) = md_tx_comment(rdr, block.cn_md_unit, position);
 
     // Reads MD
-    let (comments, position) = comment(rdr, block.cn_md_comment, position);
+    let (desc, position) = md_tx_comment(rdr, block.cn_md_comment, position);
 
-    return (block, name, unit, position)
+    return (block, name, unit, desc, position)
 }
 
 #[derive(Debug)]
@@ -632,25 +637,25 @@ pub struct Cn4 {
     block: Cn4Block,
     name: String,
     unit: String,
+    desc: String,
 }
 
 pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (BTreeMap<u32, Cn4>, i64) {
     let mut cn: BTreeMap<u32, Cn4> = BTreeMap::new();
     if target > 0 {
-        let (block, name, unit, pos) 
+        let (block, name, unit, desc, pos) 
             = parse_cn4_block(rdr, target, position);
         let mut next_pointer = block.cn_cn_next;
         let rec_pos = block.cn_byte_offset + u32::try_from(block.cn_bit_offset).unwrap() * 8;
-        let cn_struct = Cn4 {block, name, unit};
+        let cn_struct = Cn4 {block, name, unit, desc};
         cn.insert(rec_pos, cn_struct);
         position = pos;
         while next_pointer >0 {
-            let block_start = next_pointer;
-            let (block, name, unit, pos) 
+            let (block, name, unit, desc, pos) 
                 = parse_cn4_block(rdr, next_pointer, position);
             next_pointer = block.cn_cn_next;
             let rec_pos = block.cn_byte_offset + u32::try_from(block.cn_bit_offset).unwrap() * 8;
-            let cn_struct = Cn4 {block, name, unit};
+            let cn_struct = Cn4 {block, name, unit, desc};
             cn.insert(rec_pos, cn_struct);
             position = pos;
         }
