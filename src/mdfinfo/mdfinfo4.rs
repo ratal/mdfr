@@ -17,9 +17,10 @@ pub struct MdfInfo4 {
     pub id_block: Id4,
     pub hd_block: Hd4,
     pub hd_comment: HashMap<String, String>,
+    pub comments: HashMap<i64, HashMap<String, String>>,
     pub fh: Vec<(FhBlock, HashMap<String, String>)>,
-    pub at: HashMap<i64, (At4Block, HashMap<String, String>, Option<Vec<u8>>)> ,
-    pub ev: HashMap<i64, (Ev4Block, HashMap<String, String>)>,
+    pub at: HashMap<i64, (At4Block, Option<Vec<u8>>)> ,
+    pub ev: HashMap<i64, Ev4Block>,
     pub dg: HashMap<i64, Dg4>,
 }
 
@@ -267,7 +268,8 @@ pub struct At4Block {
     // followed by embedded data depending of flag
 }
 
-fn parser_at4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (At4Block, HashMap<String, String>, Option<Vec<u8>>, i64) {
+fn parser_at4_block<'a>(rdr: &mut BufReader<&File>, target: i64, mut position: i64) 
+        -> (At4Block, Option<Vec<u8>>, i64) {
     rdr.seek_relative(target - position).unwrap();
     let block: At4Block = rdr.read_le().unwrap();
     position = target + 96;
@@ -282,42 +284,56 @@ fn parser_at4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) 
     } else {
         data = None;
     }
+    return (block, data, position)
+}
 
-    // Reads MD
-    let (mut comments, mut position) = comment(rdr, block.at_md_comment, position);
+pub fn parse_at4_comments(rdr: &mut BufReader<&File>, block: &HashMap<i64, (At4Block, Option<Vec<u8>>)>, mut position: i64) 
+        -> (HashMap<i64, HashMap<String, String>>, i64) {
+    let mut comments: HashMap<i64, HashMap<String, String>> = HashMap::new();
+    for (at, _) in block.values() {
+        // Reads MD
+        if at.at_md_comment >0 && !comments.contains_key(&at.at_md_comment) {
+            let (c, pos) = comment(rdr, at.at_md_comment, position);
+            position = pos;
+            comments.insert(at.at_md_comment, c);
+        }
 
-    // reads TX
-    if block.at_tx_filename > 0 {
-        let (_, comment, pos) = 
-            parse_comment(rdr, block.at_tx_filename, position);
-        position = pos;
-        comments.insert(String::from("comment"), comment);
+        // reads TX
+        if at.at_tx_filename > 0  && !comments.contains_key(&at.at_tx_filename){
+            let (_, c, pos) = 
+                parse_comment(rdr, at.at_tx_filename, position);
+            position = pos;
+            let mut comment = HashMap::new();
+            comment.insert(String::from("comment"), c);
+            comments.insert(at.at_md_comment, comment);
+        }
+        
+        // Reads tx mime type
+        if at.at_tx_mimetype > 0 && !comments.contains_key(&at.at_tx_mimetype){
+            let (_, c, pos) = 
+                parse_comment(rdr, at.at_tx_mimetype, position);
+            position = pos;
+            let mut comment = HashMap::new();
+            comment.insert(String::from("comment_mimetype"), c);
+            comments.insert(at.at_md_comment, comment);
+        }
     }
-    
-    // Reads tx mime type
-    if block.at_tx_mimetype > 0 {
-        let (_, comment, pos) = 
-            parse_comment(rdr, block.at_tx_mimetype, position);
-        position = pos;
-        comments.insert(String::from("comment_mimetype"), comment);
-    }
-
-    return (block, comments, data, position)
+    return (comments, position)
 }
 
 pub fn parse_at4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) 
-        -> (HashMap<i64, (At4Block, HashMap<String, String>, Option<Vec<u8>>)>, i64) {
-    let mut at: HashMap<i64, (At4Block, HashMap<String, String>, Option<Vec<u8>>)> = HashMap::new();
+        -> (HashMap<i64, (At4Block, Option<Vec<u8>>)>, i64) {
+    let mut at: HashMap<i64, (At4Block, Option<Vec<u8>>)> = HashMap::new();
     if target > 0{
-        let (block, comments, data, pos) = parser_at4_block(rdr, target, position);
+        let (block, data, pos) = parser_at4_block(rdr, target, position);
         let mut next_pointer = block.at_at_next;
-        at.insert(target, (block, comments, data));
+        at.insert(target, (block, data));
         position = pos;
         while next_pointer >0 {
             let block_start = next_pointer;
-            let (block, comments, data, pos) = parser_at4_block(rdr, next_pointer, position);
+            let (block, data, pos) = parser_at4_block(rdr, next_pointer, position);
             next_pointer = block.at_at_next;
-            at.insert(block_start, (block, comments, data));
+            at.insert(block_start, (block, data));
             position = pos;
         }
     }
@@ -353,7 +369,7 @@ pub struct Ev4Block {
     ev_sync_factor: f64,  // Factor for event synchronization value.
 }
 
-fn parse_ev4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (Ev4Block, HashMap<String, String>, i64) {
+fn parse_ev4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (Ev4Block, i64) {
     rdr.seek_relative(target - position).unwrap();
     let block: Ev4Block = match rdr.read_le() {
         Ok(v) => v,
@@ -361,34 +377,41 @@ fn parse_ev4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -
     };  // reads the fh block
     position = target + i64::try_from(block.ev_len).unwrap();
 
-    // Reads MD
-    let (mut comments, pos) = comment(rdr, block.ev_md_comment, position);
-    position = pos;
+    return (block, position)
+}
 
-    // reads TX name
-    if block.ev_tx_name > 0 {
-        let (_, comment, pos) = 
-            parse_comment(rdr, block.ev_tx_name, position);
-        comments.insert(String::from("comment"), comment);
+pub fn parse_ev4_comments(rdr: &mut BufReader<&File>, block: &HashMap<i64, Ev4Block>, mut position: i64) 
+        -> (HashMap<i64, HashMap<String, String>>, i64) {
+    let mut comments: HashMap<i64, HashMap<String, String>> = HashMap::new();
+    for ev in block.values() {
+        // Reads MD
+        let (mut comments, pos) = comment(rdr, ev.ev_md_comment, position);
         position = pos;
-    }
 
-    return (block, comments, position)
+        // reads TX name
+        if ev.ev_tx_name > 0 {
+            let (_, comment, pos) = 
+                parse_comment(rdr, ev.ev_tx_name, position);
+            comments.insert(String::from("comment"), comment);
+            position = pos;
+        }
+    }
+    return (comments, position)
 }
 
 pub fn parse_ev4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) 
-        -> (HashMap<i64, (Ev4Block, HashMap<String, String>)>, i64) {
-    let mut ev: HashMap<i64, (Ev4Block, HashMap<String, String>)> = HashMap::new();
+        -> (HashMap<i64, Ev4Block>, i64) {
+    let mut ev: HashMap<i64, Ev4Block> = HashMap::new();
     if target > 0 {
-        let (block, comments, pos) = parse_ev4_block(rdr, target, position);
+        let (block, pos) = parse_ev4_block(rdr, target, position);
         let mut next_pointer = block.ev_ev_next;
-        ev.insert(target, (block, comments));
+        ev.insert(target, block);
         position = pos;
         while next_pointer >0 {
             let block_start = next_pointer;
-            let (block, comments, pos) = parse_ev4_block(rdr, next_pointer, position);
+            let (block, pos) = parse_ev4_block(rdr, next_pointer, position);
             next_pointer = block.ev_ev_next;
-            ev.insert(block_start, (block, comments));
+            ev.insert(block_start, block);
             position = pos;
         }
     }
@@ -597,6 +620,9 @@ fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -
                 };
         }
     }
+
+    // Reads MD
+    let (comments, position) = comment(rdr, block.cn_md_comment, position);
 
     return (block, name, unit, position)
 }

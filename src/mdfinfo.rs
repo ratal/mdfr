@@ -2,7 +2,7 @@
 
 //! This module is reading the mdf file blocks
 
-use std::io::{BufReader, Read};
+use std::{collections::{HashMap, HashSet}, io::{BufReader, Read}};
 use std::fs::{File, OpenOptions};
 use std::str;
 
@@ -11,7 +11,7 @@ pub mod mdfinfo4;
 
 use mdfinfo3::{MdfInfo3, parse_id3, hd3_parser, hd3_comment_parser};
 use mdfinfo4::{MdfInfo4, parse_id4, hd4_parser, hd4_comment_parser,
-    parse_fh, parse_at4, parse_ev4, parse_dg4};
+    parse_fh, parse_at4, parse_at4_comments, parse_ev4, parse_ev4_comments, parse_dg4};
 
 #[derive(Debug)]
 pub enum MdfInfo {
@@ -47,19 +47,21 @@ pub fn mdfinfo(file_name: &str) -> MdfInfo {
     rdr.read(&mut prog).unwrap();
     let ver:u16;
     let mdf_info: MdfInfo;
+    let mut comments: HashMap<i64, HashMap<String, String>> = HashMap::new();
     // Depending of version different blocks
     if ver_char < 4.0 {
         let id = parse_id3(&mut rdr, id_file_id, id_vers, prog);
         ver = id.id_ver;
 
         // Read HD Block
-        let (hd, mut position) = hd3_parser(&mut rdr, ver);
+        let (hd, position) = hd3_parser(&mut rdr, ver);
         let (hd_comment, position) =  hd3_comment_parser(&mut rdr, &hd, position);
 
         mdf_info = MdfInfo::V3(MdfInfo3{ver, prog,
             idblock: id, hdblock: hd, hd_comment,
             });
     } else {
+        let mut channel_list: HashSet<String> = HashSet::new();
 
         let id = parse_id4(&mut rdr, id_file_id, id_vers, prog);
         ver = id.id_ver;
@@ -72,15 +74,19 @@ pub fn mdfinfo(file_name: &str) -> MdfInfo {
 
         // AT Block read
         let (at, position) = parse_at4(&mut rdr, hd.hd_at_first, position);
-
+        let (c, position) = parse_at4_comments(&mut rdr, &at, position);
+        comments.extend(c.into_iter());
+ 
         // EV Block read
         let (ev, position) = parse_ev4(&mut rdr, hd.hd_ev_first, position);
+        let (c, position) = parse_ev4_comments(&mut rdr, &ev, position);
+        comments.extend(c.into_iter());
 
         // Read DG Block
         let (dg, position) = parse_dg4(&mut rdr, hd.hd_dg_first, position);
         
         mdf_info = MdfInfo::V4(MdfInfo4{ver, prog,
-            id_block: id, hd_block: hd, hd_comment, fh, at, ev, dg
+            id_block: id, hd_block: hd, hd_comment, comments, fh, at, ev, dg
             });
     };
     return mdf_info
