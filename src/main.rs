@@ -39,7 +39,7 @@ fn main() -> io::Result<()>{
 
     let info = mdfinfo::mdfinfo(file_name);
 
-    println!(r#"{:?}"#, info);
+    //println!(r#"{:?}"#, info);
 
     Ok(())
 
