@@ -23,6 +23,7 @@ roxmltree = "0.14"
 #seek_bufread = "1.2"
 binread = "2.1"
 criterion = "0.3"
+tokio = "1.5"
 #numpy = "0.13"
 #ndarray = "0.15.1"
 
