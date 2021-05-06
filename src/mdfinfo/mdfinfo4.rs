@@ -173,17 +173,28 @@ fn comment(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (HashM
     return (comments, position);
 }
 
-fn md_tx_comment(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (String, i64) {
+fn md_tx_comment(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (String, i64, bool) {
     let mut comment = String::new();
+    let mut md_flag: bool = false;
     // Reads MD
     if target > 0{
         let (block_header, c, pos) = parse_comment(rdr, target, position);
+        comment = c;
         position = pos;
         if block_header.hdr_id == "##TX".as_bytes() {
             // TX Block
-            comment = c;
+            md_flag = false;
         } else {
-            let c:String = c.trim_end_matches(|c| c == '\n' || c == '\r' || c == ' ').into(); // removes ending spaces
+            md_flag = true;
+        }
+    }
+    return (comment, position, md_flag);
+}
+
+pub fn extract_xml(comment: &mut HashMap<i64, (String, bool)>) {
+    for val in comment.values_mut() {
+        let (c, md_flag) = val.clone();
+            if md_flag {
                 match roxmltree::Document::parse(&c) {
                     Ok(md) => {
                         for node in md.root().descendants() {
@@ -191,8 +202,9 @@ fn md_tx_comment(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> 
                                 Some(text) => text.to_string(),
                                 None => String::new(),
                             };
-                            if node.is_element() && (text.len() > 0) && (node.tag_name().name().to_string().len()) > 0 {
-                                comment = text;
+                            let tag_name = node.tag_name().name().to_string();
+                            if node.is_element() && (text.len() > 0) && (tag_name == String::from("TX"))  {
+                                *val = (text, false);
                                 break
                             }
                         }
@@ -203,7 +215,6 @@ fn md_tx_comment(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> 
                 };
         }
     }
-    return (comment, position);
 }
 
 #[derive(Debug)]
@@ -485,14 +496,19 @@ pub struct Dg4 {
     cg: HashMap<i64, Cg4>,    // CG Block
 }
 
-pub fn parse_dg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (HashMap<i64, Dg4>, i64) {
+pub fn parse_dg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
+        -> (HashMap<i64, Dg4>, HashMap<i64, (String, bool)>, HashMap<i64, (String, bool)>, i64) {
     let mut dg: HashMap<i64, Dg4> = HashMap::new();
+    let mut unit: HashMap<i64, (String, bool)> = HashMap::new();
+    let mut desc: HashMap<i64, (String, bool)> = HashMap::new();
     if target > 0 {
         let (block, comments, pos) = parse_dg4_block(rdr, target, position);
         position = pos;
         let mut next_pointer = block.dg_dg_next;
-        let (cg, pos) = parse_cg4(rdr, block.dg_cg_first, position);
+        let (cg, u, d, pos) = parse_cg4(rdr, block.dg_cg_first, position);
         let dg_struct = Dg4 {block, comments, cg};
+        unit.extend(u.into_iter());
+        desc.extend(d.into_iter());
         dg.insert(target, dg_struct);
         position = pos;
         while next_pointer >0 {
@@ -500,13 +516,15 @@ pub fn parse_dg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> 
             let (block, comments, pos) = parse_dg4_block(rdr, next_pointer, position);
             next_pointer = block.dg_dg_next;
             position = pos;
-            let (cg, pos) = parse_cg4(rdr, block.dg_cg_first, position);
+            let (cg, u, d, pos) = parse_cg4(rdr, block.dg_cg_first, position);
             let dg_struct = Dg4 {block, comments, cg};
+            unit.extend(u.into_iter());
+            desc.extend(d.into_iter());
             dg.insert(block_start, dg_struct);
             position = pos;
         }
     }
-    return (dg, position)
+    return (dg, unit, desc, position)
 }
 
 #[derive(Debug)]
@@ -553,28 +571,39 @@ pub struct Cg4 {
     cn: BTreeMap<u32, Cn4> ,
 }
 
-pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (HashMap<i64, Cg4>, i64) {
+pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
+        -> (HashMap<i64, Cg4>, HashMap<i64, (String, bool)>, HashMap<i64, (String, bool)>, i64) {
     let mut cg: HashMap<i64, Cg4> = HashMap::new();
+    let mut unit: HashMap<i64, (String, bool)> = HashMap::new();
+    let mut desc: HashMap<i64, (String, bool)> = HashMap::new();
     if target > 0 {
-        let (block, comments, pos) = parse_cg4_block(rdr, target, position);
+        let (block, comments, pos) 
+            = parse_cg4_block(rdr, target, position);
         position = pos;
         let mut next_pointer = block.cg_cg_next;
-        let (cn, pos) = parse_cn4(rdr, block.cg_cn_first, position);
+        let (cn, u, d, pos) 
+            = parse_cn4(rdr, block.cg_cn_first, position);
         let cg_struct = Cg4 {block, comments, cn};
         cg.insert(target, cg_struct);
+        unit.extend(u.into_iter());
+        desc.extend(d.into_iter());
         position = pos;
         while next_pointer >0 {
             let block_start = next_pointer;
-            let (block, comments, pos) = parse_cg4_block(rdr, next_pointer, position);
+            let (block, comments, pos) 
+                = parse_cg4_block(rdr, next_pointer, position);
             next_pointer = block.cg_cg_next;
             position = pos;
-            let (cn, pos) = parse_cn4(rdr, block.cg_cn_first, position);
+            let (cn, u, d, pos) 
+                = parse_cn4(rdr, block.cg_cn_first, position);
             let cg_struct = Cg4 {block, comments, cn};
             cg.insert(block_start, cg_struct);
+            unit.extend(u.into_iter());
+            desc.extend(d.into_iter());
             position = pos;
         }
     }
-    return (cg, position)
+    return (cg, unit, desc, position)
 }
 
 #[derive(Debug)]
@@ -615,50 +644,84 @@ pub struct Cn4Block {
     cn_limit_ext_max: f64, // Upper extended limit for this signal (physical value for numeric conversion rule, otherwise raw value) Only valid if "extended limit range valid" flag (bit 5) is set.
 }
 
-fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (Cn4Block, String, String, String, i64) {
+fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
+        -> (Cn4Block, i64) {
     rdr.seek_relative(target - position).unwrap();
     let block: Cn4Block = rdr.read_le().unwrap();
     position = target + i64::try_from(block.cn_len).unwrap();
-
-    // Reads TX name
-    let (_, name, position) = parse_comment(rdr, block.cn_tx_name, position);
-
-    // Reads unit
-    let (unit, position) = md_tx_comment(rdr, block.cn_md_unit, position);
-
-    // Reads MD
-    let (desc, position) = md_tx_comment(rdr, block.cn_md_comment, position);
-
-    return (block, name, unit, desc, position)
+    return (block, position)
 }
 
 #[derive(Debug)]
 pub struct Cn4 {
     block: Cn4Block,
     name: String,
-    unit: String,
-    desc: String,
+    unit_pointer: i64,
+    desc_pointer: i64,
 }
 
-pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (BTreeMap<u32, Cn4>, i64) {
+pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) 
+        -> (BTreeMap<u32, Cn4>, HashMap<i64, (String, bool)>, HashMap<i64, (String, bool)>,i64) {
     let mut cn: BTreeMap<u32, Cn4> = BTreeMap::new();
+    let mut unit: HashMap<i64, (String, bool)> = HashMap::new();
+    let mut desc: HashMap<i64, (String, bool)> = HashMap::new();
     if target > 0 {
-        let (block, name, unit, desc, pos) 
-            = parse_cn4_block(rdr, target, position);
+        let (block, pos) = parse_cn4_block(rdr, target, position);
+        position = pos;
         let mut next_pointer = block.cn_cn_next;
         let rec_pos = block.cn_byte_offset + u32::try_from(block.cn_bit_offset).unwrap() * 8;
-        let cn_struct = Cn4 {block, name, unit, desc};
-        cn.insert(rec_pos, cn_struct);
+        // Reads TX name
+        let (_, name, pos) = parse_comment(rdr, block.cn_tx_name, position);
         position = pos;
+
+        // Reads unit
+        let unit_pointer = block.cn_md_unit;
+        if !unit.contains_key(&unit_pointer) {
+            let (u, pos, unit_md_flag) = md_tx_comment(rdr, unit_pointer, position);
+            position = pos;
+            unit.insert(unit_pointer, (u, unit_md_flag));
+        }
+
+        // Reads MD
+        let desc_pointer = block.cn_md_comment;
+        if !unit.contains_key(&desc_pointer) {
+            let (d, pos, desc_md_flag) = md_tx_comment(rdr, desc_pointer, position);
+            position = pos;
+            desc.insert(desc_pointer, (d, desc_md_flag));
+        }
+
+        let cn_struct = Cn4 {block, name, unit_pointer, desc_pointer};
+        cn.insert(rec_pos, cn_struct);
+        
         while next_pointer >0 {
-            let (block, name, unit, desc, pos) 
-                = parse_cn4_block(rdr, next_pointer, position);
+            let (block, pos) = parse_cn4_block(rdr, next_pointer, position);
+            position = pos;
             next_pointer = block.cn_cn_next;
             let rec_pos = block.cn_byte_offset + u32::try_from(block.cn_bit_offset).unwrap() * 8;
-            let cn_struct = Cn4 {block, name, unit, desc};
-            cn.insert(rec_pos, cn_struct);
+
+            // Reads TX name
+            let (_, name, pos) = parse_comment(rdr, block.cn_tx_name, position);
             position = pos;
+
+            // Reads unit
+            let unit_pointer = block.cn_md_unit;
+            if !unit.contains_key(&unit_pointer) {
+                let (u, pos, unit_md_flag) = md_tx_comment(rdr, unit_pointer, position);
+                position = pos;
+                unit.insert(unit_pointer, (u, unit_md_flag));
+            }
+
+            // Reads MD
+            let desc_pointer = block.cn_md_comment;
+            if !unit.contains_key(&desc_pointer) {
+                let (d, pos, desc_md_flag) = md_tx_comment(rdr, desc_pointer, position);
+                position = pos;
+                desc.insert(desc_pointer, (d, desc_md_flag));
+            }
+
+            let cn_struct = Cn4 {block, name, unit_pointer, desc_pointer};
+            cn.insert(rec_pos, cn_struct);
         }
     }
-    return (cn, position)
+    return (cn, unit, desc, position)
 }

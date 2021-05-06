@@ -10,7 +10,7 @@ pub mod mdfinfo3;
 pub mod mdfinfo4;
 
 use mdfinfo3::{MdfInfo3, parse_id3, hd3_parser, hd3_comment_parser};
-use mdfinfo4::{MdfInfo4, parse_id4, hd4_parser, hd4_comment_parser,
+use mdfinfo4::{MdfInfo4, parse_id4, hd4_parser, hd4_comment_parser, extract_xml,
     parse_fh, parse_at4, parse_at4_comments, parse_ev4, parse_ev4_comments, parse_dg4};
 
 #[derive(Debug)]
@@ -83,7 +83,10 @@ pub fn mdfinfo(file_name: &str) -> MdfInfo {
         comments.extend(c.into_iter());
 
         // Read DG Block
-        let (dg, position) = parse_dg4(&mut rdr, hd.hd_dg_first, position);
+        let (dg, mut unit, mut desc, position) 
+            = parse_dg4(&mut rdr, hd.hd_dg_first, position);
+        extract_xml(&mut unit);
+        extract_xml(&mut desc);
         
         mdf_info = MdfInfo::V4(MdfInfo4{ver, prog,
             id_block: id, hd_block: hd, hd_comment, comments, fh, at, ev, dg
