@@ -38,7 +38,7 @@ pub struct Blockheader4 {
 fn parse_block_header(rdr: &mut BufReader<&File>) -> Blockheader4 {
     let header: Blockheader4 = match rdr.read_le() {
         Ok(v) => v,
-        Err(e) => panic!("Error reading comment block \n{}", e),
+        Err(e) => panic!("Error reading block header \n{}", e),
     };
     return header
 }
@@ -466,7 +466,7 @@ pub fn parse_ev4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
 #[derive(BinRead)]
 #[br(little)]
 pub struct Dg4Block {
-    dg_id: [u8; 4],  // DG
+    dg_id: [u8; 4],  // ##DG
     reserved: [u8; 4],  // reserved
     dg_len: u64,      // Length of block in bytes
     dg_links: u64,         // # of links 
@@ -531,7 +531,7 @@ pub fn parse_dg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
 #[derive(BinRead)]
 #[br(little)]
 pub struct Cg4Block {
-    cg_id: [u8; 4],  // DG
+    cg_id: [u8; 4],  // ##CG
     reserved: [u8; 4],  // reserved
     cg_len: u64,      // Length of block in bytes
     cg_links: u64,         // # of links
@@ -610,7 +610,7 @@ pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
 #[derive(BinRead)]
 #[br(little)]
 pub struct Cn4Block {
-    cn_id: [u8; 4],  // DG
+    cn_id: [u8; 4],  // ##CN
     reserved: [u8; 4],  // reserved
     cn_len: u64,      // Length of block in bytes
     cn_links: u64,         // # of links
@@ -724,4 +724,200 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
         }
     }
     return (cn, unit, desc, position)
+}
+
+#[derive(Debug)]
+#[derive(BinRead)]
+#[br(little)]
+pub struct Cc4Block {
+    cc_id: [u8; 4],  // ##CC
+    reserved: [u8; 4],  // reserved
+    cc_len: u64,      // Length of block in bytes
+    cc_links: u64,         // # of links
+    cc_tx_name: i64, // Link to TXBLOCK with name (identifier) of conversion (can be NIL). Name must be according to naming rules stated in 4.4.2 Naming Rules.
+    cc_md_unit: i64, // Link to TXBLOCK/MDBLOCK with physical unit of signal data (after conversion). (can be NIL) Unit only applies if no unit defined in CNBLOCK. Otherwise the unit of the channel overwrites the conversion unit.
+                // An MDBLOCK can be used to additionally reference the A-HDO unit definition (see Table 55). Note: for channels with cn_sync_type > 0, the unit is already defined, thus a reference to an A-HDO definition should be omitted to avoid redundancy.
+    cc_md_comment: i64, // Link to TXBLOCK/MDBLOCK with comment of conversion and additional information, see Table 54. (can be NIL)
+    cc_cc_inverse: i64, // Link to CCBLOCK for inverse formula (can be NIL, must be NIL for CCBLOCK of the inverse formula (no cyclic reference allowed).
+    #[br(if(cc_links > 4), little, count = cc_links - 4)]
+    cc_ref: Vec<i64>,  // List of additional links to TXBLOCKs with strings or to CCBLOCKs with partial conversion rules. Length of list is given by cc_ref_count. The list can be empty. Details are explained in formula-specific block supplement.
+
+  // Data Members
+    cc_type: u8, // Conversion type (formula identifier) (see CC_T_xxx)
+    cc_precision: u8, // Precision for display of floating point values. 0xFF means unrestricted precision (infinite) Any other value specifies the number of decimal places to use for display of floating point values. Note: only valid if "precision valid" flag (bit 0) is set and if cn_precision of the parent CNBLOCK is invalid, otherwise cn_precision must be used.
+    cc_flags: u16, // Flags  (see CC_F_xxx)
+    cc_ref_count: u16, // Length M of cc_ref list with additional links. See formula-specific block supplement for meaning of the links.
+    cc_val_count: u16, // Length N of cc_val list with additional parameters. See formula-specific block supplement for meaning of the parameters.
+    cc_phy_range_min: f64, // Minimum physical signal value that occurred for this signal. Only valid if "physical value range valid" flag (bit 1) is set.
+    cc_phy_range_max: f64, // Maximum physical signal value that occurred for this signal. Only valid if "physical value range valid" flag (bit 1) is set.
+    #[br(if(cc_val_count > 0), little, count = cc_val_count)]
+    cc_val: Vec<f64>,  //List of additional conversion parameters. Length of list is given by cc_val_count. The list can be empty. Details are explained in formula-specific block supplement.
+}
+
+fn parse_cc4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
+        -> (Cc4Block, i64) {
+    rdr.seek_relative(target - position).unwrap();
+    let block: Cc4Block = rdr.read_le().unwrap();
+    position = target + i64::try_from(block.cc_len).unwrap();
+    return (block, position)
+}
+
+#[derive(Debug)]
+#[derive(BinRead)]
+#[br(little)]
+pub struct Si4Block {
+    si_id: [u8; 4],  // ##SI
+    reserved: [u8; 4],  // reserved
+    si_len: u64,      // Length of block in bytes
+    si_links: u64,         // # of links
+    si_tx_name: i64, // Pointer to TXBLOCK with name (identification) of source (must not be NIL). The source name must be according to naming rules stated in 4.4.2 Naming Rules.
+    si_tx_path: i64, // Pointer to TXBLOCK with (tool-specific) path of source (can be NIL). The path string must be according to naming rules stated in 4.4.2 Naming Rules.
+                // Each tool may generate a different path string. The only purpose is to ensure uniqueness as explained in section 4.4.3 Identification of Channels. As a recommendation, the path should be a human readable string containing additional information about the source. However, the path string should not be used to store this information in order to retrieve it later by parsing the string. Instead, additional source information should be stored in generic or custom XML fields in the comment MDBLOCK si_md_comment.
+    si_md_comment: i64, // Pointer to source comment and additional information (TXBLOCK or MDBLOCK) (can be NIL)  
+
+  // Data Members
+    si_type: u8, // Source type additional classification of source (see SI_T_xxx)
+    si_bus_type: u8, // Bus type additional classification of used bus (should be 0 for si_type ≥ 3) (see SI_BUS_xxx)
+    si_flags: u8,    // Flags The value contains the following bit flags (see SI_F_xxx)):
+    si_reserved: [u8; 5], //reserved
+}
+
+fn parse_si4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
+        -> (Si4Block, i64) {
+    rdr.seek_relative(target - position).unwrap();
+    let block: Si4Block = rdr.read_le().unwrap();
+    position = target + i64::try_from(block.si_len).unwrap();
+    return (block, position)
+}
+
+pub struct Ca4Block {
+    //header
+    ca_id: [u8; 4],  // ##SI
+    reserved: [u8; 4],  // reserved
+    ca_len: u64,      // Length of block in bytes
+    ca_links: u64,         // # of links
+    // links
+    ca_composition: i64, // [] Array of composed elements: Pointer to a CNBLOCK for array of structures, or to a CABLOCK for array of arrays (can be NIL). If a CABLOCK is referenced, it must use the "CN template" storage type (ca_storage = 0).
+    ca_data: Option<Vec<i64>>,  // [Π N(d) or empty] Only present for storage type "DG template". List of links to data blocks (DTBLOCK/DLBLOCK) for each element in case of "DG template" storage (ca_storage = 2). A link in this list may only be NIL if the cycle count of the respective element is 0: ca_data[k] = NIL => ca_cycle_count[k] = 0 The links are stored line-oriented, i.e. element k uses ca_data[k] (see explanation below). The size of the list must be equal to Π N(d), i.e. to the product of the number of elements per dimension N(d) over all dimensions D. Note: link ca_data[0] must be equal to dg_data link of the parent DGBLOCK.
+    ca_dynamic_size: Option<Vec<i64>>, // [Dx3 or empty] Only present if "dynamic size" flag (bit 0) is set. References to channels for size signal of each dimension (can be NIL). Each reference is a link triple with pointer to parent DGBLOCK, parent CGBLOCK and CNBLOCK for the channel (either all three links are assigned or NIL). Thus the links have the following order: DGBLOCK for size signal of dimension 1 CGBLOCK for size signal of dimension 1 CNBLOCK for size signal of dimension 1 … DGBLOCK for size signal of dimension D CGBLOCK for size signal of dimension D CNBLOCK for size signal of dimension D The size signal can be used to model arrays whose number of elements per dimension can vary over time. If a size signal is specified for a dimension, the number of elements for this dimension at some point in time is equal to the value of the size signal at this time (i.e. for time-synchronized signals, the size signal value with highest time stamp less or equal to current time stamp). If the size signal has no recorded signal value for this time (yet), assume 0 as size.
+    ca_input_quantity: Option<Vec<i64>>,  // [Dx3 or empty] Only present if "input quantity" flag (bit 1) is set. Reference to channels for input quantity signal for each dimension (can be NIL). Each reference is a link triple with pointer to parent DGBLOCK, parent CGBLOCK and CNBLOCK for the channel (either all three links are assigned or NIL). Thus the links have the following order: DGBLOCK for input quantity of dimension 1 CGBLOCK for input quantity of dimension 1 CNBLOCK for input quantity of dimension 1 … DGBLOCK for input quantity of dimension D CGBLOCK for input quantity of dimension D CNBLOCK for input quantity of dimension D Since the input quantity signal and the array signal must be synchronized, their channel groups must contain at least one common master channel type.
+    ca_output_quantity: Option<Vec<i64>>, // [3 or empty] Only present if "output quantity" flag (bit 2) is set. Reference to channel for output quantity (can be NIL). The reference is a link triple with pointer to parent DGBLOCK, parent CGBLOCK and CNBLOCK for the channel (either all three links are assigned or NIL). Since the output quantity signal and the array signal must be synchronized, their channel groups must contain at least one common master channel type. For array type "look-up", the output quantity is the result of the complete look-up (see [MCD-2 MC] keyword RIP_ADDR_W). The output quantity should have the same physical unit as the array elements of the array that references it.
+    ca_comparison_quantity: Option<Vec<i64>>, // [3 or empty] Only present if "comparison quantity" flag (bit 3) is set. Reference to channel for comparison quantity (can be NIL). The reference is a link triple with pointer to parent DGBLOCK, parent CGBLOCK and CNBLOCK for the channel (either all three links are assigned or NIL). Since the comparison quantity signal and the array signal must be synchronized, their channel groups must contain at least one common master channel type. The comparison quantity should have the same physical unit as the array elements.
+    ca_cc_axis_conversion: Option<Vec<i64>>,  // [D or empty] Only present if "axis" flag (bit 4) is set. Pointer to a conversion rule (CCBLOCK) for the scaling axis of each dimension. If a link NIL a 1:1 conversion must be used for this axis. If the "fixed axis" flag (Bit 5) is set, the conversion must be applied to the fixed axis values of the respective axis/dimension (ca_axis_value list stores the raw values as REAL). If the link to the CCBLOCK is NIL already the physical values are stored in the ca_axis_value list. If the "fixed axes" flag (Bit 5) is not set, the conversion must be applied to the raw values of the respective axis channel, i.e. it overrules the conversion specified for the axis channel, even if the ca_axis_conversion link is NIL! Note: ca_axis_conversion may reference the same CCBLOCK as referenced by the respective axis channel ("sharing" of CCBLOCK).
+    ca_axis: Option<Vec<i64>>, // [Dx3 or empty] Only present if "axis" flag (bit 4) is set and "fixed axes flag" (bit 5) is not set. References to channels for scaling axis of respective dimension (can be NIL). Each reference is a link triple with pointer to parent DGBLOCK, parent CGBLOCK and CNBLOCK for the channel (either all three links are assigned or NIL). Thus the links have the following order: DGBLOCK for axis of dimension 1 CGBLOCK for axis of dimension 1 CNBLOCK for axis of dimension 1 … DGBLOCK for axis of dimension D CGBLOCK for axis of dimension D CNBLOCK for axis of dimension D Each referenced channel must be an array of type "axis". The maximum number of elements of each axis (ca_dim_size[0] in axis) must be equal to the maximum number of elements of respective dimension d in "look-up" array (ca_dim_size[d-1]). 
+    //members
+    ca_type: u8, // Array type (defines semantic of the array) see CA_T_xxx
+    ca_storage: u8, // Storage type (defines how the element values are stored) see CA_S_xxx
+    ca_ndim: u16, //Number of dimensions D > 0 For array type "axis", D must be 1.
+    ca_flags: u32, // Flags The value contains the following bit flags (Bit 0 = LSB): see CA_F_xxx
+    ca_byte_offset_base: i32, // Base factor for calculation of Byte offsets for "CN template" storage type. ca_byte_offset_base should be larger than or equal to the size of Bytes required to store a component channel value in the record (all must have the same size). If it is equal to this value, then the component values are stored next to each other without gaps. Exact formula for calculation of Byte offset for each component channel see below.
+    ca_inval_bit_pos_base: u32, //Base factor for calculation of invalidation bit positions for CN template storage type.
+    ca_dim_size: Vec<u64>,
+    ca_axis_value: Option<Vec<f64>>,
+    ca_cycle_count: Option<Vec<u64>>,
+}
+
+#[derive(Debug)]
+#[derive(BinRead)]
+#[br(little)]
+struct Ca4BlockMembers {
+    ca_type: u8, // Array type (defines semantic of the array) see CA_T_xxx
+    ca_storage: u8, // Storage type (defines how the element values are stored) see CA_S_xxx
+    ca_ndim: u16, //Number of dimensions D > 0 For array type "axis", D must be 1.
+    ca_flags: u32, // Flags The value contains the following bit flags (Bit 0 = LSB): see CA_F_xxx
+    ca_byte_offset_base: i32, // Base factor for calculation of Byte offsets for "CN template" storage type. ca_byte_offset_base should be larger than or equal to the size of Bytes required to store a component channel value in the record (all must have the same size). If it is equal to this value, then the component values are stored next to each other without gaps. Exact formula for calculation of Byte offset for each component channel see below.
+    ca_inval_bit_pos_base: u32, //Base factor for calculation of invalidation bit positions for CN template storage type.
+    #[br(if(ca_ndim > 0), little, count = ca_ndim)]
+    ca_dim_size: Vec<u64>,
+}
+
+fn parse_ca_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> Ca4Block{
+    // Reads block header
+    rdr.seek_relative(target - position).unwrap();  // change buffer position
+    let block_header: Blockheader4 = parse_block_header(rdr);  // reads header
+    position += 24;
+    //Reads members first
+    let links_size = i64::try_from(block_header.hdr_links).unwrap();
+    rdr.seek_relative(links_size - position).unwrap();  // change buffer position
+    let ca_members: Ca4BlockMembers = rdr.read_le().unwrap();
+    position += links_size;
+    let mut SNd: u64;
+    let mut PNd: u64;
+    if ca_members.ca_dim_size.len() == 1 {
+        SNd = ca_members.ca_dim_size[0];
+        PNd = ca_members.ca_dim_size[0];
+    } else {
+        SNd = 0;
+        PNd = 1;
+        let sizes = ca_members.ca_dim_size.clone();
+        for x in sizes.into_iter() {
+            SNd += x;
+            PNd *= x;
+        }
+    }
+    let ca_axis_value: Option<Vec<f64>>;
+    let mut val= vec![0.0f64; SNd as usize];
+    if (ca_members.ca_flags & 0b100000) > 0 {
+        rdr.read_f64_into::<LittleEndian>(&mut val).unwrap();
+        ca_axis_value = Some(val);} else {ca_axis_value = None}
+    let ca_cycle_count: Option<Vec<u64>>;
+    let mut val= vec![0u64; PNd as usize];
+    if ca_members.ca_storage >= 1 {
+        rdr.read_u64_into::<LittleEndian>(&mut val).unwrap();
+        ca_cycle_count = Some(val);
+    } else {ca_cycle_count = None;}
+    let target = i64::try_from(block_header.hdr_len - 24).unwrap();
+    rdr.seek_relative(position - target).unwrap();  // change buffer position
+    // Reads links
+    let ca_composition: i64;
+    ca_composition = rdr.read_i64::<LittleEndian>().unwrap();
+    let ca_data: Option<Vec<i64>>;
+    let mut val= vec![0i64; PNd as usize];
+    if ca_members.ca_storage == 2 {
+        rdr.read_i64_into::<LittleEndian>(&mut val).unwrap();
+        ca_data = Some(val);
+    } else {ca_data = None}
+    let ca_dynamic_size: Option<Vec<i64>>;
+    let mut val= vec![0i64; (ca_members.ca_ndim * 3) as usize];
+    if (ca_members.ca_flags & 0b1) > 0 {
+        rdr.read_i64_into::<LittleEndian>(&mut val).unwrap();
+        ca_dynamic_size = Some(val);
+    } else {ca_dynamic_size = None}
+    let ca_input_quantity: Option<Vec<i64>>;
+    let mut val= vec![0i64; (ca_members.ca_ndim * 3) as usize];
+    if (ca_members.ca_flags & 0b10) > 0 {
+        rdr.read_i64_into::<LittleEndian>(&mut val).unwrap();
+        ca_input_quantity = Some(val);
+    } else {ca_input_quantity = None}
+    let ca_output_quantity: Option<Vec<i64>>;
+    let mut val= vec![0i64; 3];
+    if (ca_members.ca_flags & 0b100) > 0 {
+        rdr.read_i64_into::<LittleEndian>(&mut val).unwrap();
+        ca_output_quantity = Some(val);
+    } else {ca_output_quantity = None}
+    let ca_comparison_quantity: Option<Vec<i64>>;
+    let mut val= vec![0i64; 3];
+    if (ca_members.ca_flags & 0b1000) > 0 {
+        rdr.read_i64_into::<LittleEndian>(&mut val).unwrap();
+        ca_comparison_quantity = Some(val);
+    } else {ca_comparison_quantity = None}
+    let ca_cc_axis_conversion: Option<Vec<i64>>;
+    let mut val= vec![0i64; ca_members.ca_ndim as usize];
+    if (ca_members.ca_flags & 0b10000) > 0 {
+        rdr.read_i64_into::<LittleEndian>(&mut val).unwrap();
+        ca_cc_axis_conversion = Some(val);
+    } else {ca_cc_axis_conversion = None}
+    let ca_axis: Option<Vec<i64>>;
+    let mut val= vec![0i64; (ca_members.ca_ndim * 3) as usize];
+    if ((ca_members.ca_flags & 0b10000) > 0) & ((ca_members.ca_flags & 0b100000) > 0) {
+        rdr.read_i64_into::<LittleEndian>(&mut val).unwrap();
+        ca_axis = Some(val);
+    } else {ca_axis = None}
+    return Ca4Block {ca_id: block_header.hdr_id, reserved: block_header.hdr_gap, ca_len: block_header.hdr_len,
+        ca_links: block_header.hdr_links, ca_composition, ca_data, ca_dynamic_size, ca_input_quantity,
+        ca_output_quantity, ca_comparison_quantity, ca_cc_axis_conversion, ca_axis,
+        ca_type: ca_members.ca_type, ca_storage: ca_members.ca_storage, ca_ndim: ca_members.ca_ndim,
+        ca_flags: ca_members.ca_flags, ca_byte_offset_base: ca_members.ca_byte_offset_base,
+        ca_inval_bit_pos_base: ca_members.ca_inval_bit_pos_base, ca_dim_size: ca_members.ca_dim_size,
+        ca_axis_value, ca_cycle_count}
 }
