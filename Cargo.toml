@@ -38,3 +38,10 @@ tokio = "1.5"
 [[bench]]
 name = "mdf_benchmark"
 harness = false
+
+[profile.release]
+debug = 1
+lot = true
+
+[rust]
+debuginfo-level = 1
