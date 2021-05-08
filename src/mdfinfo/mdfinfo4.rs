@@ -203,7 +203,7 @@ pub fn extract_xml(comment: &mut HashMap<i64, (String, bool)>) {
                                 None => String::new(),
                             };
                             let tag_name = node.tag_name().name().to_string();
-                            if node.is_element() && (text.len() > 0) && (tag_name == *"TX")  {
+                            if node.is_element() && !text.is_empty() && (tag_name == *"TX")  {
                                 *val = (text, false);
                                 break
                             }
@@ -842,27 +842,27 @@ fn parse_ca_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) ->
     rdr.seek_relative(links_size - position).unwrap();  // change buffer position
     let ca_members: Ca4BlockMembers = rdr.read_le().unwrap();
     position += links_size;
-    let mut SNd: u64;
-    let mut PNd: u64;
+    let mut snd: u64;
+    let mut pnd: u64;
     if ca_members.ca_dim_size.len() == 1 {
-        SNd = ca_members.ca_dim_size[0];
-        PNd = ca_members.ca_dim_size[0];
+        snd = ca_members.ca_dim_size[0];
+        pnd = ca_members.ca_dim_size[0];
     } else {
-        SNd = 0;
-        PNd = 1;
+        snd = 0;
+        pnd = 1;
         let sizes = ca_members.ca_dim_size.clone();
         for x in sizes.into_iter() {
-            SNd += x;
-            PNd *= x;
+            snd += x;
+            pnd *= x;
         }
     }
     let ca_axis_value: Option<Vec<f64>>;
-    let mut val= vec![0.0f64; SNd as usize];
+    let mut val= vec![0.0f64; snd as usize];
     if (ca_members.ca_flags & 0b100000) > 0 {
         rdr.read_f64_into::<LittleEndian>(&mut val).unwrap();
         ca_axis_value = Some(val);} else {ca_axis_value = None}
     let ca_cycle_count: Option<Vec<u64>>;
-    let mut val= vec![0u64; PNd as usize];
+    let mut val= vec![0u64; pnd as usize];
     if ca_members.ca_storage >= 1 {
         rdr.read_u64_into::<LittleEndian>(&mut val).unwrap();
         ca_cycle_count = Some(val);
@@ -873,7 +873,7 @@ fn parse_ca_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) ->
     let ca_composition: i64;
     ca_composition = rdr.read_i64::<LittleEndian>().unwrap();
     let ca_data: Option<Vec<i64>>;
-    let mut val= vec![0i64; PNd as usize];
+    let mut val= vec![0i64; pnd as usize];
     if ca_members.ca_storage == 2 {
         rdr.read_i64_into::<LittleEndian>(&mut val).unwrap();
         ca_data = Some(val);

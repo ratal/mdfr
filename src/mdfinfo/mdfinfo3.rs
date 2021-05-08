@@ -92,7 +92,7 @@ pub fn hd3_parser(rdr: &mut BufReader<&File>, ver:u16) -> (Hd3, i64) {
     rdr.read_exact(&mut date).unwrap();  // date
     let mut datestr = String::new();
     ASCII.decode_to(&date, DecoderTrap::Replace, &mut datestr).unwrap();
-    let mut dateiter = datestr.split(":");
+    let mut dateiter = datestr.split(':');
     let day:u32 = dateiter.next().unwrap().parse::<u32>().unwrap();
     let month:u32 = dateiter.next().unwrap().parse::<u32>().unwrap();
     let year:i32 = dateiter.next().unwrap().parse::<i32>().unwrap();
@@ -101,7 +101,7 @@ pub fn hd3_parser(rdr: &mut BufReader<&File>, ver:u16) -> (Hd3, i64) {
     rdr.read_exact(&mut time).unwrap();  // time
     let mut timestr = String::new();
     ASCII.decode_to(&time, DecoderTrap::Replace, &mut timestr).unwrap();
-    let mut timeiter = timestr.split(":");
+    let mut timeiter = timestr.split(':');
     let hour:u32 = timeiter.next().unwrap().parse::<u32>().unwrap();
     let minute:u32 = timeiter.next().unwrap().parse::<u32>().unwrap();
     let sec:u32 = timeiter.next().unwrap().parse::<u32>().unwrap();
