@@ -28,7 +28,6 @@ impl MdfInfo {
     }
 }
 
-#[inline]
 pub fn mdfinfo(file_name: &str) -> MdfInfo {
     let f: File = OpenOptions::new().read(true)
                     .write(false)
@@ -37,14 +36,14 @@ pub fn mdfinfo(file_name: &str) -> MdfInfo {
     let mut rdr = BufReader::new(&f);
     // Read beginning of ID Block
     let mut id_file_id = [0u8; 8];
-    rdr.read(&mut id_file_id).unwrap(); // "MDF     "
+    rdr.read_exact(&mut id_file_id).unwrap(); // "MDF     "
     let mut id_vers = [0u8; 4];
-    rdr.read(&mut id_vers).unwrap();
+    rdr.read_exact(&mut id_vers).unwrap();
     let ver_char:f32 = str::from_utf8(&id_vers).unwrap().parse().unwrap();
     let mut gap = [0u8; 4];
-    rdr.read(&mut gap).unwrap();
+    rdr.read_exact(&mut gap).unwrap();
     let mut prog = [0u8; 8];
-    rdr.read(&mut prog).unwrap();
+    rdr.read_exact(&mut prog).unwrap();
     let ver:u16;
     let mdf_info: MdfInfo;
     let mut comments: HashMap<i64, HashMap<String, String>> = HashMap::new();
@@ -92,5 +91,5 @@ pub fn mdfinfo(file_name: &str) -> MdfInfo {
             id_block: id, hd_block: hd, hd_comment, comments, fh, at, ev, dg
             });
     };
-    return mdf_info
+    mdf_info
 }

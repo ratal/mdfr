@@ -40,7 +40,7 @@ fn parse_block_header(rdr: &mut BufReader<&File>) -> Blockheader4 {
         Ok(v) => v,
         Err(e) => panic!("Error reading block header \n{}", e),
     };
-    return header
+    header
 }
 
 /// Id4 block structure
@@ -96,7 +96,7 @@ pub struct Hd4 {
 
 pub fn hd4_parser(rdr: &mut BufReader<&File>) -> Hd4 {
     let block: Hd4 = rdr.read_le().unwrap();
-    return block
+    block
 }
 
 pub fn hd4_comment_parser(rdr: &mut BufReader<&File>, hd4_block: &Hd4) -> (HashMap<String, String>, i64) {
@@ -127,7 +127,7 @@ fn parse_comment(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> 
     let block_header: Blockheader4 = parse_block_header(rdr);  // reads header
     // reads comment
     let mut comment_raw = vec![0u8; (block_header.hdr_len - 24) as usize];
-    rdr.read(&mut comment_raw).unwrap();
+    rdr.read_exact(&mut comment_raw).unwrap();
     let c = match str::from_utf8(&comment_raw) {
         Ok(v) => v,
         Err(e) => panic!("Error converting comment into utf8 \n{}", e),
@@ -138,7 +138,7 @@ fn parse_comment(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> 
     };
     let comment:String = comment.trim_end_matches(char::from(0)).into();
     position = target + i64::try_from(block_header.hdr_len).unwrap();
-    return (block_header, comment, position)
+    (block_header, comment, position)
 }
 
 fn comment(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (HashMap<String, String>, i64) {
@@ -159,7 +159,7 @@ fn comment(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (HashM
                                 Some(text) => text.to_string(),
                                 None => String::new(),
                             };
-                            if node.is_element() && (text.len() > 0) && (node.tag_name().name().to_string().len()) > 0 {
+                            if node.is_element() && !text.is_empty() && !node.tag_name().name().to_string().is_empty() {
                                 comments.insert(node.tag_name().name().to_string(), text);
                             }
                         }
@@ -170,7 +170,7 @@ fn comment(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (HashM
                 };
         }
     }
-    return (comments, position);
+    (comments, position)
 }
 
 fn md_tx_comment(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (String, i64, bool) {
@@ -188,7 +188,7 @@ fn md_tx_comment(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> 
             md_flag = true;
         }
     }
-    return (comment, position, md_flag);
+    (comment, position, md_flag)
 }
 
 pub fn extract_xml(comment: &mut HashMap<i64, (String, bool)>) {
@@ -203,7 +203,7 @@ pub fn extract_xml(comment: &mut HashMap<i64, (String, bool)>) {
                                 None => String::new(),
                             };
                             let tag_name = node.tag_name().name().to_string();
-                            if node.is_element() && (text.len() > 0) && (tag_name == String::from("TX"))  {
+                            if node.is_element() && (text.len() > 0) && (tag_name == *"TX")  {
                                 *val = (text, false);
                                 break
                             }
@@ -240,7 +240,7 @@ fn parse_fh_block(rdr: &mut BufReader<&File>, target:i64, position:i64) -> (FhBl
         Ok(v) => v,
         Err(e) => panic!("Error reading fh block \n{}", e),
     };  // reads the fh block
-    return (fh, target + 56)
+    (fh, target + 56)
 }
 
 fn parse_fh_comment(rdr: &mut BufReader<&File>, fh_block: &FhBlock, target:i64, mut position: i64) -> (HashMap<String, String>, i64){
@@ -270,7 +270,7 @@ fn parse_fh_comment(rdr: &mut BufReader<&File>, fh_block: &FhBlock, target:i64, 
             };
         }
     }
-    return (comments, position)
+    (comments, position)
 }
 
 pub fn parse_fh(rdr: &mut BufReader<&File>, target: i64, position: i64) -> (Vec<(FhBlock, HashMap<String, String>)>, i64) {
@@ -289,7 +289,7 @@ pub fn parse_fh(rdr: &mut BufReader<&File>, target: i64, position: i64) -> (Vec<
         position = pos;
         fh.push((block, comment_temp));
     } 
-    return (fh, position)
+    (fh, position)
 }
 #[derive(Debug)]
 #[derive(BinRead)]
@@ -312,7 +312,7 @@ pub struct At4Block {
     // followed by embedded data depending of flag
 }
 
-fn parser_at4_block<'a>(rdr: &mut BufReader<&File>, target: i64, mut position: i64) 
+fn parser_at4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) 
         -> (At4Block, Option<Vec<u8>>, i64) {
     rdr.seek_relative(target - position).unwrap();
     let block: At4Block = rdr.read_le().unwrap();
@@ -322,13 +322,13 @@ fn parser_at4_block<'a>(rdr: &mut BufReader<&File>, target: i64, mut position: i
     // reads embedded if exists
     if (block.at_flags & 0b1) > 0 {
         let mut embedded_data = vec![0u8; block.at_embedded_size as usize];
-        rdr.read(&mut embedded_data).unwrap();
+        rdr.read_exact(&mut embedded_data).unwrap();
         position += i64::try_from(block.at_embedded_size).unwrap();
         data = Some(embedded_data);
     } else {
         data = None;
     }
-    return (block, data, position)
+    (block, data, position)
 }
 
 pub fn parse_at4_comments(rdr: &mut BufReader<&File>, block: &HashMap<i64, (At4Block, Option<Vec<u8>>)>, mut position: i64) 
@@ -362,7 +362,7 @@ pub fn parse_at4_comments(rdr: &mut BufReader<&File>, block: &HashMap<i64, (At4B
             comments.insert(at.at_md_comment, comment);
         }
     }
-    return (comments, position)
+    (comments, position)
 }
 
 pub fn parse_at4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) 
@@ -381,7 +381,7 @@ pub fn parse_at4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
             position = pos;
         }
     }
-    return (at, position)
+    (at, position)
 }
 
 #[derive(Debug)]
@@ -421,7 +421,7 @@ fn parse_ev4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -
     };  // reads the fh block
     position = target + i64::try_from(block.ev_len).unwrap();
 
-    return (block, position)
+    (block, position)
 }
 
 pub fn parse_ev4_comments(rdr: &mut BufReader<&File>, block: &HashMap<i64, Ev4Block>, mut position: i64) 
@@ -440,7 +440,7 @@ pub fn parse_ev4_comments(rdr: &mut BufReader<&File>, block: &HashMap<i64, Ev4Bl
             position = pos;
         }
     }
-    return (comments, position)
+    (comments, position)
 }
 
 pub fn parse_ev4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) 
@@ -459,7 +459,7 @@ pub fn parse_ev4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
             position = pos;
         }
     }
-    return (ev, position)
+    (ev, position)
 }
 
 #[derive(Debug)]
@@ -486,7 +486,7 @@ fn parse_dg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -
     // Reads MD
     let (comments, position) = comment(rdr, block.dg_md_comment, position);
 
-    return (block, comments, position)
+    (block, comments, position)
 }
 
 #[derive(Debug)]
@@ -524,7 +524,7 @@ pub fn parse_dg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
             position = pos;
         }
     }
-    return (dg, unit, desc, position)
+    (dg, unit, desc, position)
 }
 
 #[derive(Debug)]
@@ -561,7 +561,7 @@ fn parse_cg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -
     // Reads MD
     let (comments, position) = comment(rdr, block.cg_md_comment, position);
 
-    return (block, comments, position)
+    (block, comments, position)
 }
 
 #[derive(Debug)]
@@ -603,7 +603,7 @@ pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
             position = pos;
         }
     }
-    return (cg, unit, desc, position)
+    (cg, unit, desc, position)
 }
 
 #[derive(Debug)]
@@ -649,7 +649,7 @@ fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
     rdr.seek_relative(target - position).unwrap();
     let block: Cn4Block = rdr.read_le().unwrap();
     position = target + i64::try_from(block.cn_len).unwrap();
-    return (block, position)
+    (block, position)
 }
 
 #[derive(Debug)]
@@ -660,6 +660,7 @@ pub struct Cn4 {
     desc_pointer: i64,
 }
 
+#[inline]
 pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) 
         -> (BTreeMap<u32, Cn4>, HashMap<i64, (String, bool)>, HashMap<i64, (String, bool)>,i64) {
     let mut cn: BTreeMap<u32, Cn4> = BTreeMap::new();
@@ -723,7 +724,7 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
             cn.insert(rec_pos, cn_struct);
         }
     }
-    return (cn, unit, desc, position)
+    (cn, unit, desc, position)
 }
 
 #[derive(Debug)]
@@ -759,7 +760,7 @@ fn parse_cc4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
     rdr.seek_relative(target - position).unwrap();
     let block: Cc4Block = rdr.read_le().unwrap();
     position = target + i64::try_from(block.cc_len).unwrap();
-    return (block, position)
+    (block, position)
 }
 
 #[derive(Debug)]
@@ -787,7 +788,7 @@ fn parse_si4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
     rdr.seek_relative(target - position).unwrap();
     let block: Si4Block = rdr.read_le().unwrap();
     position = target + i64::try_from(block.si_len).unwrap();
-    return (block, position)
+    (block, position)
 }
 
 pub struct Ca4Block {
@@ -831,7 +832,7 @@ struct Ca4BlockMembers {
     ca_dim_size: Vec<u64>,
 }
 
-fn parse_ca_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> Ca4Block{
+fn parse_ca_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (Ca4Block, i64) {
     // Reads block header
     rdr.seek_relative(target - position).unwrap();  // change buffer position
     let block_header: Blockheader4 = parse_block_header(rdr);  // reads header
@@ -913,11 +914,18 @@ fn parse_ca_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) ->
         rdr.read_i64_into::<LittleEndian>(&mut val).unwrap();
         ca_axis = Some(val);
     } else {ca_axis = None}
-    return Ca4Block {ca_id: block_header.hdr_id, reserved: block_header.hdr_gap, ca_len: block_header.hdr_len,
+    position += i64::try_from(block_header.hdr_links).unwrap() * 8;
+
+    (Ca4Block {ca_id: block_header.hdr_id, reserved: block_header.hdr_gap, ca_len: block_header.hdr_len,
         ca_links: block_header.hdr_links, ca_composition, ca_data, ca_dynamic_size, ca_input_quantity,
         ca_output_quantity, ca_comparison_quantity, ca_cc_axis_conversion, ca_axis,
         ca_type: ca_members.ca_type, ca_storage: ca_members.ca_storage, ca_ndim: ca_members.ca_ndim,
         ca_flags: ca_members.ca_flags, ca_byte_offset_base: ca_members.ca_byte_offset_base,
         ca_inval_bit_pos_base: ca_members.ca_inval_bit_pos_base, ca_dim_size: ca_members.ca_dim_size,
-        ca_axis_value, ca_cycle_count}
+        ca_axis_value, ca_cycle_count}, position)
+}
+
+pub struct Ca4 {
+    block: Ca4Block,
+    ca_compositon: Option<Box<Ca4>>,
 }

@@ -17,7 +17,9 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     group.sample_size(20);
     group.bench_function("mdfr_with_mdf4", |b| b.iter(|| mdfinfo(&file_name)));
     group.finish();
+    println!("mdfreader.mdfinfo\n");
     python_launch();
+    println!("\n");
 }
 
 criterion_group!(benches, criterion_benchmark);

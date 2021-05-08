@@ -30,7 +30,7 @@ pub struct Blockheader3 {
 
 pub fn parse_block_header(rdr: &mut BufReader<&File>) -> Blockheader3 {
     let header: Blockheader3 = rdr.read_le().unwrap();
-    return header
+    header
 }
 
 /// Id3 block structure
@@ -52,7 +52,7 @@ pub fn parse_id3(rdr: &mut BufReader<&File>, id_file_id: [u8; 8], id_vers: [u8; 
     let id_ver = rdr.read_u16::<LittleEndian>().unwrap();
     let id_codepagenumber = rdr.read_u16::<LittleEndian>().unwrap();
     let mut reserved = [0u8; 32];  // reserved
-    rdr.read(&mut reserved).unwrap();
+    rdr.read_exact(&mut reserved).unwrap();
     Id3 {id_file_id, id_vers, id_prog, id_byteorder, id_floatingpointformat,
         id_ver, id_codepagenumber}
 }
@@ -82,7 +82,7 @@ pub struct Hd3 {
 
 pub fn hd3_parser(rdr: &mut BufReader<&File>, ver:u16) -> (Hd3, i64) {
     let mut hd_id = [0; 2];
-    rdr.read(&mut hd_id).unwrap();
+    rdr.read_exact(&mut hd_id).unwrap();
     let hd_len = rdr.read_u16::<LittleEndian>().unwrap();    // Length of block in bytes
     let hd_dg_first = rdr.read_u32::<LittleEndian>().unwrap(); // Pointer to the first data group block (DGBLOCK) (can be NIL)
     let hd_md_comment = rdr.read_u32::<LittleEndian>().unwrap();  // TXblock link
@@ -164,12 +164,12 @@ pub fn parse_tx(rdr: &mut BufReader<&File>, offset: i64) -> (Blockheader3, Strin
     let block_header: Blockheader3 = parse_block_header(rdr);  // reads header
     // reads comment
     let mut comment_raw = vec![0; (block_header.hdr_len - 2) as usize];
-    rdr.read(&mut comment_raw).unwrap();
+    rdr.read_exact(&mut comment_raw).unwrap();
     let mut comment:String = String::new();
     ISO_8859_1.decode_to(&comment_raw, DecoderTrap::Replace, &mut comment).unwrap();
     let comment:String = comment.trim_end_matches(char::from(0)).into();
     let offset = offset + i64::try_from(block_header.hdr_len).unwrap();
-    return (block_header, comment, offset)
+    (block_header, comment, offset)
 }
 
 #[derive(Debug)]
@@ -190,5 +190,5 @@ pub struct Dg3Block {
 pub fn parse_dg3(rdr: &mut BufReader<&File>, target: i64, position: i64) -> (Dg3Block, i64) {
     rdr.seek_relative(target - position).unwrap();
     let block: Dg3Block = rdr.read_le().unwrap();
-    return (block, position + 28)
+    (block, position + 28)
 }
