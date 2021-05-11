@@ -112,8 +112,11 @@ pub struct Hd4 {
 }
 
 pub fn hd4_parser(rdr: &mut BufReader<&File>) -> Hd4 {
-    let block: Hd4 = rdr.read_le().unwrap();
-    block
+    let mut buf= [0u8; 104];
+    rdr.read_exact(&mut buf).unwrap();
+    let mut block = Cursor::new(buf);
+    let hd: Hd4 = block.read_le().unwrap();
+    hd
 }
 
 pub fn hd4_comment_parser(rdr: &mut BufReader<&File>, hd4_block: &Hd4) -> (HashMap<String, String>, i64) {
@@ -253,7 +256,10 @@ pub struct FhBlock {
 
 fn parse_fh_block(rdr: &mut BufReader<&File>, target:i64, position:i64) -> (FhBlock, i64) {
     rdr.seek_relative(target - position).unwrap();  // change buffer position
-    let fh: FhBlock = match rdr.read_le() {
+    let mut buf= [0u8; 56];
+    rdr.read_exact(&mut buf).unwrap();
+    let mut block = Cursor::new(buf);
+    let fh: FhBlock = match block.read_le() {
         Ok(v) => v,
         Err(e) => panic!("Error reading fh block \n{}", e),
     };  // reads the fh block
@@ -332,7 +338,10 @@ pub struct At4Block {
 fn parser_at4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) 
         -> (At4Block, Option<Vec<u8>>, i64) {
     rdr.seek_relative(target - position).unwrap();
-    let block: At4Block = rdr.read_le().unwrap();
+    let mut buf= [0u8; 96];
+    rdr.read_exact(&mut buf).unwrap();
+    let mut block = Cursor::new(buf);
+    let block: At4Block = block.read_le().unwrap();
     position = target + 96;
     
     let data:Option<Vec<u8>>;
@@ -405,9 +414,9 @@ pub fn parse_at4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
 #[derive(BinRead)]
 #[br(little)]
 pub struct Ev4Block {
-    ev_id: [u8; 4],  // DG
-    reserved: [u8; 4],  // reserved
-    ev_len: u64,      // Length of block in bytes
+    //ev_id: [u8; 4],  // DG
+    //reserved: [u8; 4],  // reserved
+    //ev_len: u64,      // Length of block in bytes
     ev_links: u64,         // # of links
     ev_ev_next: i64,     // Link to next EVBLOCK (linked list) (can be NIL)
     ev_ev_parent: i64,   // Referencing link to EVBLOCK with parent event (can be NIL).
@@ -432,11 +441,15 @@ pub struct Ev4Block {
 
 fn parse_ev4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (Ev4Block, i64) {
     rdr.seek_relative(target - position).unwrap();
-    let block: Ev4Block = match rdr.read_le() {
+    let header = parse_block_header_short(rdr);
+    let mut buf= vec![0u8; (header.hdr_len - 16) as usize];
+    rdr.read_exact(&mut buf).unwrap();
+    let mut block = Cursor::new(buf);
+    let block: Ev4Block = match block.read_le() {
         Ok(v) => v,
         Err(e) => panic!("Error reading ev block \n{}", e),
     };  // reads the fh block
-    position = target + i64::try_from(block.ev_len).unwrap();
+    position = target + i64::try_from(header.hdr_len).unwrap();
 
     (block, position)
 }
@@ -497,13 +510,16 @@ pub struct Dg4Block {
 
 fn parse_dg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (Dg4Block, HashMap<String, String>, i64) {
     rdr.seek_relative(target - position).unwrap();
-    let block: Dg4Block = rdr.read_le().unwrap();
+    let mut buf= [0u8; 64];
+    rdr.read_exact(&mut buf).unwrap();
+    let mut block = Cursor::new(buf);
+    let dg: Dg4Block = block.read_le().unwrap();
     position = target + 64;
 
     // Reads MD
-    let (comments, position) = comment(rdr, block.dg_md_comment, position);
+    let (comments, position) = comment(rdr, dg.dg_md_comment, position);
 
-    (block, comments, position)
+    (dg, comments, position)
 }
 
 #[derive(Debug)]
@@ -548,9 +564,9 @@ pub fn parse_dg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
 #[derive(BinRead)]
 #[br(little)]
 pub struct Cg4Block {
-    cg_id: [u8; 4],  // ##CG
-    reserved: [u8; 4],  // reserved
-    cg_len: u64,      // Length of block in bytes
+    // cg_id: [u8; 4],  // ##CG
+    // reserved: [u8; 4],  // reserved
+    // cg_len: u64,      // Length of block in bytes
     cg_links: u64,         // # of links
     cg_cg_next: i64, // Pointer to next channel group block (CGBLOCK) (can be NIL)
     cg_cn_first: i64, // Pointer to first channel block (CNBLOCK) (can be NIL, must be NIL for VLSD CGBLOCK, i.e. if "VLSD channel group" flag (bit 0) is set)
@@ -572,13 +588,17 @@ pub struct Cg4Block {
 
 fn parse_cg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (Cg4Block, HashMap<String, String>, i64) {
     rdr.seek_relative(target - position).unwrap();
-    let block: Cg4Block = rdr.read_le().unwrap();
-    position = target + i64::try_from(block.cg_len).unwrap();
+    let header = parse_block_header_short(rdr);
+    let mut buf= vec![0u8; (header.hdr_len - 16) as usize];
+    rdr.read_exact(&mut buf).unwrap();
+    let mut block = Cursor::new(buf);
+    let cg: Cg4Block = block.read_le().unwrap();
+    position = target + i64::try_from(header.hdr_len).unwrap();
 
     // Reads MD
-    let (comments, position) = comment(rdr, block.cg_md_comment, position);
+    let (comments, position) = comment(rdr, cg.cg_md_comment, position);
 
-    (block, comments, position)
+    (cg, comments, position)
 }
 
 #[derive(Debug)]
@@ -656,13 +676,6 @@ pub struct Cn4Block {
     cn_limit_max: f64,    // Upper limit for this signal (physical value for numeric conversion rule, otherwise raw value) Only valid if "limit range valid" flag (bit 4) is set.
     cn_limit_ext_min: f64, // Lower extended limit for this signal (physical value for numeric conversion rule, otherwise raw value) Only valid if "extended limit range valid" flag (bit 5) is set.
     cn_limit_ext_max: f64, // Upper extended limit for this signal (physical value for numeric conversion rule, otherwise raw value) Only valid if "extended limit range valid" flag (bit 5) is set.
-}
-
-fn parse_cn4_block(buf: &mut Vec<u8>)
-        -> Cn4Block {
-    let mut block = Cursor::new(buf);
-    let block: Cn4Block = block.read_le().unwrap();
-    block
 }
 
 #[derive(Debug)]
