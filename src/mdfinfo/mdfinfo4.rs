@@ -1,7 +1,7 @@
 
 use byteorder::{LittleEndian, ReadBytesExt};
 use roxmltree;
-use std::io::BufReader;
+use std::{convert::TryInto, io::{BufReader, Cursor}};
 use std::fs::File;
 use std::io::prelude::*;
 use std::str;
@@ -36,10 +36,27 @@ pub struct Blockheader4 {
 }
 
 fn parse_block_header(rdr: &mut BufReader<&File>) -> Blockheader4 {
-    let header: Blockheader4 = match rdr.read_le() {
-        Ok(v) => v,
-        Err(e) => panic!("Error reading block header \n{}", e),
-    };
+    let mut buf= [0u8; 24];
+    rdr.read_exact(&mut buf).unwrap();
+    let mut block = Cursor::new(buf);
+    let header: Blockheader4 = block.read_le().unwrap();
+    header
+}
+
+#[derive(Debug)]
+#[derive(BinRead)]
+#[br(little)]
+pub struct Blockheader4Short {
+    hdr_id: [u8; 4],   // '##XX'
+    hdr_gap: [u8; 4],   // reserved, must be 0
+    hdr_len: u64,   // Length of block in bytes
+}
+
+fn parse_block_header_short(rdr: &mut BufReader<&File>) -> Blockheader4Short {
+    let mut buf= [0u8; 16];
+    rdr.read_exact(&mut buf).unwrap();
+    let mut block = Cursor::new(buf);
+    let header: Blockheader4Short = block.read_le().unwrap();
     header
 }
 
@@ -610,9 +627,6 @@ pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
 #[derive(BinRead)]
 #[br(little)]
 pub struct Cn4Block {
-    cn_id: [u8; 4],  // ##CN
-    reserved: [u8; 4],  // reserved
-    cn_len: u64,      // Length of block in bytes
     cn_links: u64,         // # of links
     cn_cn_next: i64, // Pointer to next channel block (CNBLOCK) (can be NIL)
     cn_composition: i64, // Composition of channels: Pointer to channel array block (CABLOCK) or channel block (CNBLOCK) (can be NIL). Details see 4.18 Composition of Channels
@@ -644,12 +658,11 @@ pub struct Cn4Block {
     cn_limit_ext_max: f64, // Upper extended limit for this signal (physical value for numeric conversion rule, otherwise raw value) Only valid if "extended limit range valid" flag (bit 5) is set.
 }
 
-fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
-        -> (Cn4Block, i64) {
-    rdr.seek_relative(target - position).unwrap();
-    let block: Cn4Block = rdr.read_le().unwrap();
-    position = target + i64::try_from(block.cn_len).unwrap();
-    (block, position)
+fn parse_cn4_block(buf: &mut Vec<u8>)
+        -> Cn4Block {
+    let mut block = Cursor::new(buf);
+    let block: Cn4Block = block.read_le().unwrap();
+    block
 }
 
 #[derive(Debug)]
@@ -667,10 +680,16 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
     let mut unit: HashMap<i64, (String, bool)> = HashMap::new();
     let mut desc: HashMap<i64, (String, bool)> = HashMap::new();
     if target > 0 {
-        let (block, pos) = parse_cn4_block(rdr, target, position);
-        position = pos;
+        rdr.seek_relative(target - position).unwrap();
+        let header = parse_block_header_short(rdr);
+        let mut buf= vec![0u8; (header.hdr_len - 16) as usize];
+        rdr.read_exact(&mut buf).unwrap();
+        let mut block = Cursor::new(buf);
+        let block: Cn4Block = block.read_le().unwrap();
+        position = target + i64::try_from(header.hdr_len).unwrap();
         let mut next_pointer = block.cn_cn_next;
         let rec_pos = block.cn_byte_offset + u32::try_from(block.cn_bit_offset).unwrap() * 8;
+
         // Reads TX name
         let (_, name, pos) = parse_comment(rdr, block.cn_tx_name, position);
         position = pos;
@@ -695,8 +714,13 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
         cn.insert(rec_pos, cn_struct);
         
         while next_pointer >0 {
-            let (block, pos) = parse_cn4_block(rdr, next_pointer, position);
-            position = pos;
+            rdr.seek_relative(next_pointer - position).unwrap();
+            let header = parse_block_header_short(rdr);
+            let mut buf= vec![0u8; (header.hdr_len - 16) as usize];
+            rdr.read_exact(&mut buf).unwrap();
+            let mut block = Cursor::new(buf);
+            let block: Cn4Block = block.read_le().unwrap();
+            position = next_pointer + i64::try_from(header.hdr_len).unwrap();
             next_pointer = block.cn_cn_next;
             let rec_pos = block.cn_byte_offset + u32::try_from(block.cn_bit_offset).unwrap() * 8;
 
