@@ -692,6 +692,7 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
     let mut cn: BTreeMap<u32, Cn4> = BTreeMap::new();
     let mut unit: HashMap<i64, (String, bool)> = HashMap::new();
     let mut desc: HashMap<i64, (String, bool)> = HashMap::new();
+    let mut cc: HashMap<i64, Cc4Block> = HashMap::new();
     if target > 0 {
         rdr.seek_relative(target - position).unwrap();
         let header = parse_block_header_short(rdr);
@@ -709,7 +710,7 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
 
         // Reads unit
         let unit_pointer = block.cn_md_unit;
-        if !unit.contains_key(&unit_pointer) {
+        if !(unit_pointer == 0) && !unit.contains_key(&unit_pointer) {
             let (u, pos, unit_md_flag) = md_tx_comment(rdr, unit_pointer, position);
             position = pos;
             unit.insert(unit_pointer, (u, unit_md_flag));
@@ -717,10 +718,28 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
 
         // Reads MD
         let desc_pointer = block.cn_md_comment;
-        if !unit.contains_key(&desc_pointer) {
+        if !(desc_pointer == 0) && !desc.contains_key(&desc_pointer) {
             let (d, pos, desc_md_flag) = md_tx_comment(rdr, desc_pointer, position);
             position = pos;
             desc.insert(desc_pointer, (d, desc_md_flag));
+        }
+
+        // Reads CC
+        let cc_pointer = block.cn_cc_conversion;
+        if !(cc_pointer == 0) && !cc.contains_key(&cc_pointer) {
+            rdr.seek_relative(cc_pointer - position).unwrap();
+            let header = parse_block_header_short(rdr);
+            let mut buf= vec![0u8; (header.hdr_len - 16) as usize];
+            rdr.read_exact(&mut buf).unwrap();
+            let mut cc_block = Cursor::new(buf);
+            let cc_block: Cc4Block = cc_block.read_le().unwrap();
+            position = cc_pointer + i64::try_from(header.hdr_len).unwrap();
+            if (cc_block.cc_md_unit > 0) && (unit_pointer == 0) && !unit.contains_key(&cc_block.cc_md_unit) {
+                let (u, pos, unit_md_flag) = md_tx_comment(rdr, cc_block.cc_md_unit, position);
+                position = pos;
+                unit.insert(cc_block.cc_md_unit, (u, unit_md_flag));
+            }
+            cc.insert(cc_pointer, cc_block);
         }
 
         let cn_struct = Cn4 {block, name, unit_pointer, desc_pointer};
@@ -743,7 +762,7 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
 
             // Reads unit
             let unit_pointer = block.cn_md_unit;
-            if !unit.contains_key(&unit_pointer) {
+            if !(unit_pointer == 0) && !unit.contains_key(&unit_pointer) {
                 let (u, pos, unit_md_flag) = md_tx_comment(rdr, unit_pointer, position);
                 position = pos;
                 unit.insert(unit_pointer, (u, unit_md_flag));
@@ -751,10 +770,28 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
 
             // Reads MD
             let desc_pointer = block.cn_md_comment;
-            if !unit.contains_key(&desc_pointer) {
+            if !(desc_pointer == 0) && !desc.contains_key(&desc_pointer) {
                 let (d, pos, desc_md_flag) = md_tx_comment(rdr, desc_pointer, position);
                 position = pos;
                 desc.insert(desc_pointer, (d, desc_md_flag));
+            }
+
+            // Reads CC
+            let cc_pointer = block.cn_cc_conversion;
+            if !(cc_pointer == 0) && !cc.contains_key(&cc_pointer) {
+                rdr.seek_relative(cc_pointer - position).unwrap();
+                let header = parse_block_header_short(rdr);
+                let mut buf= vec![0u8; (header.hdr_len - 16) as usize];
+                rdr.read_exact(&mut buf).unwrap();
+                let mut cc_block = Cursor::new(buf);
+                let cc_block: Cc4Block = cc_block.read_le().unwrap();
+                position = cc_pointer + i64::try_from(header.hdr_len).unwrap();
+                if (cc_block.cc_md_unit > 0) && (unit_pointer == 0) && !unit.contains_key(&cc_block.cc_md_unit) {
+                    let (u, pos, unit_md_flag) = md_tx_comment(rdr, cc_block.cc_md_unit, position);
+                    position = pos;
+                    unit.insert(cc_block.cc_md_unit, (u, unit_md_flag));
+                }
+                cc.insert(cc_pointer, cc_block);
             }
 
             let cn_struct = Cn4 {block, name, unit_pointer, desc_pointer};
@@ -768,9 +805,9 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
 #[derive(BinRead)]
 #[br(little)]
 pub struct Cc4Block {
-    cc_id: [u8; 4],  // ##CC
-    reserved: [u8; 4],  // reserved
-    cc_len: u64,      // Length of block in bytes
+    // cc_id: [u8; 4],  // ##CC
+    // reserved: [u8; 4],  // reserved
+    // cc_len: u64,      // Length of block in bytes
     cc_links: u64,         // # of links
     cc_tx_name: i64, // Link to TXBLOCK with name (identifier) of conversion (can be NIL). Name must be according to naming rules stated in 4.4.2 Naming Rules.
     cc_md_unit: i64, // Link to TXBLOCK/MDBLOCK with physical unit of signal data (after conversion). (can be NIL) Unit only applies if no unit defined in CNBLOCK. Otherwise the unit of the channel overwrites the conversion unit.
@@ -790,14 +827,6 @@ pub struct Cc4Block {
     cc_phy_range_max: f64, // Maximum physical signal value that occurred for this signal. Only valid if "physical value range valid" flag (bit 1) is set.
     #[br(if(cc_val_count > 0), little, count = cc_val_count)]
     cc_val: Vec<f64>,  //List of additional conversion parameters. Length of list is given by cc_val_count. The list can be empty. Details are explained in formula-specific block supplement.
-}
-
-fn parse_cc4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
-        -> (Cc4Block, i64) {
-    rdr.seek_relative(target - position).unwrap();
-    let block: Cc4Block = rdr.read_le().unwrap();
-    position = target + i64::try_from(block.cc_len).unwrap();
-    (block, position)
 }
 
 #[derive(Debug)]
