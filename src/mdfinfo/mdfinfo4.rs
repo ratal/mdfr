@@ -530,37 +530,40 @@ pub struct Dg4 {
 }
 
 pub fn parse_dg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
-        -> (HashMap<i64, Dg4>, HashMap<i64, (String, bool)>, HashMap<i64, (String, bool)>, HashMap<i64, Cc4Block>, i64) {
+        -> (HashMap<i64, Dg4>, HashMap<i64, (String, bool)>, HashMap<i64, (String, bool)>, HashMap<i64, Cc4Block>, HashMap<i64, Si4Block>, i64) {
     let mut dg: HashMap<i64, Dg4> = HashMap::new();
     let mut unit: HashMap<i64, (String, bool)> = HashMap::new();
     let mut desc: HashMap<i64, (String, bool)> = HashMap::new();
     let mut cc: HashMap<i64, Cc4Block> = HashMap::new();
+    let mut si: HashMap<i64, Si4Block> = HashMap::new();
     if target > 0 {
         let (block, comments, pos) = parse_dg4_block(rdr, target, position);
         position = pos;
         let mut next_pointer = block.dg_dg_next;
-        let (cg, u, d, c, pos) = parse_cg4(rdr, block.dg_cg_first, position);
+        let (cg, u, d, c, s, pos) = parse_cg4(rdr, block.dg_cg_first, position);
         let dg_struct = Dg4 {block, comments, cg};
         unit.extend(u.into_iter());
         desc.extend(d.into_iter());
         dg.insert(target, dg_struct);
         cc.extend(c.into_iter());
+        si.extend(s.into_iter());
         position = pos;
         while next_pointer >0 {
             let block_start = next_pointer;
             let (block, comments, pos) = parse_dg4_block(rdr, next_pointer, position);
             next_pointer = block.dg_dg_next;
             position = pos;
-            let (cg, u, d, c, pos) = parse_cg4(rdr, block.dg_cg_first, position);
+            let (cg, u, d, c, s, pos) = parse_cg4(rdr, block.dg_cg_first, position);
             let dg_struct = Dg4 {block, comments, cg};
             unit.extend(u.into_iter());
             desc.extend(d.into_iter());
             dg.insert(block_start, dg_struct);
             cc.extend(c.into_iter());
+            si.extend(s.into_iter());
             position = pos;
         }
     }
-    (dg, unit, desc, cc, position)
+    (dg, unit, desc, cc, si, position)
 }
 
 #[derive(Debug)]
@@ -612,23 +615,25 @@ pub struct Cg4 {
 }
 
 pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
-        -> (HashMap<i64, Cg4>, HashMap<i64, (String, bool)>, HashMap<i64, (String, bool)>, HashMap<i64, Cc4Block>, i64) {
+        -> (HashMap<i64, Cg4>, HashMap<i64, (String, bool)>, HashMap<i64, (String, bool)>, HashMap<i64, Cc4Block>, HashMap<i64, Si4Block>, i64) {
     let mut cg: HashMap<i64, Cg4> = HashMap::new();
     let mut unit: HashMap<i64, (String, bool)> = HashMap::new();
     let mut desc: HashMap<i64, (String, bool)> = HashMap::new();
     let mut cc: HashMap<i64, Cc4Block> = HashMap::new();
+    let mut si: HashMap<i64, Si4Block> = HashMap::new();
     if target > 0 {
         let (block, comments, pos) 
             = parse_cg4_block(rdr, target, position);
         position = pos;
         let mut next_pointer = block.cg_cg_next;
-        let (cn, u, d, c, pos) 
+        let (cn, u, d, c, s, pos) 
             = parse_cn4(rdr, block.cg_cn_first, position);
         let cg_struct = Cg4 {block, comments, cn};
         cg.insert(target, cg_struct);
         unit.extend(u.into_iter());
         desc.extend(d.into_iter());
         cc.extend(c.into_iter());
+        si.extend(s.into_iter());
         position = pos;
         while next_pointer >0 {
             let block_start = next_pointer;
@@ -636,17 +641,18 @@ pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
                 = parse_cg4_block(rdr, next_pointer, position);
             next_pointer = block.cg_cg_next;
             position = pos;
-            let (cn, u, d, c, pos) 
+            let (cn, u, d, c, s, pos) 
                 = parse_cn4(rdr, block.cg_cn_first, position);
             let cg_struct = Cg4 {block, comments, cn};
             cg.insert(block_start, cg_struct);
             unit.extend(u.into_iter());
             desc.extend(d.into_iter());
             cc.extend(c.into_iter());
+            si.extend(s.into_iter());
             position = pos;
         }
     }
-    (cg, unit, desc, cc, position)
+    (cg, unit, desc, cc, si, position)
 }
 
 #[derive(Debug)]
@@ -694,11 +700,12 @@ pub struct Cn4 {
 
 #[inline]
 pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) 
-        -> (BTreeMap<u32, Cn4>, HashMap<i64, (String, bool)>, HashMap<i64, (String, bool)>, HashMap<i64, Cc4Block>,i64) {
+        -> (BTreeMap<u32, Cn4>, HashMap<i64, (String, bool)>, HashMap<i64, (String, bool)>, HashMap<i64, Cc4Block>, HashMap<i64, Si4Block>, i64) {
     let mut cn: BTreeMap<u32, Cn4> = BTreeMap::new();
     let mut unit: HashMap<i64, (String, bool)> = HashMap::new();
     let mut desc: HashMap<i64, (String, bool)> = HashMap::new();
     let mut cc: HashMap<i64, Cc4Block> = HashMap::new();
+    let mut si: HashMap<i64, Si4Block> = HashMap::new();
     if target > 0 {
         rdr.seek_relative(target - position).unwrap();
         let header = parse_block_header_short(rdr);
@@ -746,6 +753,24 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
             let (d, pos, desc_md_flag) = md_tx_comment(rdr, desc_pointer, position);
             position = pos;
             desc.insert(desc_pointer, (d, desc_md_flag));
+        }
+
+        //Reads SI
+        let si_pointer = block.cn_si_source;
+        if !(si_pointer == 0) && !si.contains_key(&si_pointer) {
+            rdr.seek_relative(si_pointer - position).unwrap();
+            let header = parse_block_header_short(rdr);
+            let mut buf= vec![0u8; (header.hdr_len - 16) as usize];
+            rdr.read_exact(&mut buf).unwrap();
+            let mut si_block = Cursor::new(buf);
+            let si_block: Si4Block = si_block.read_le().unwrap();
+            position = si_pointer + i64::try_from(header.hdr_len).unwrap();
+            if (si_block.si_tx_name > 0) && !desc.contains_key(&si_block.si_tx_name) {
+                let (s, pos, unit_md_flag) = md_tx_comment(rdr, si_block.si_tx_name, position);
+                position = pos;
+                unit.insert(si_block.si_tx_name, (s, unit_md_flag));
+            }
+            si.insert(si_pointer, si_block);
         }
 
         let cn_struct = Cn4 {block, name, unit_pointer, desc_pointer};
@@ -800,11 +825,30 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
                 desc.insert(desc_pointer, (d, desc_md_flag));
             }
 
+            //Reads SI
+            let si_pointer = block.cn_si_source;
+            if !(si_pointer == 0) && !si.contains_key(&si_pointer) {
+                rdr.seek_relative(si_pointer - position).unwrap();
+                let header = parse_block_header_short(rdr);
+                let mut buf= vec![0u8; (header.hdr_len - 16) as usize];
+                rdr.read_exact(&mut buf).unwrap();
+                let mut si_block = Cursor::new(buf);
+                let si_block: Si4Block = si_block.read_le().unwrap();
+                position = si_pointer + i64::try_from(header.hdr_len).unwrap();
+                if (si_block.si_tx_name > 0) && !desc.contains_key(&si_block.si_tx_name) {
+                    let (s, pos, unit_md_flag) = md_tx_comment(rdr, si_block.si_tx_name, position);
+                    position = pos;
+                    unit.insert(si_block.si_tx_name, (s, unit_md_flag));
+                }
+                si.insert(si_pointer, si_block);
+
+            }
+
             let cn_struct = Cn4 {block, name, unit_pointer, desc_pointer};
             cn.insert(rec_pos, cn_struct);
         }
     }
-    (cn, unit, desc, cc, position)
+    (cn, unit, desc, cc, si, position)
 }
 
 #[derive(Debug)]
@@ -839,9 +883,9 @@ pub struct Cc4Block {
 #[derive(BinRead)]
 #[br(little)]
 pub struct Si4Block {
-    si_id: [u8; 4],  // ##SI
-    reserved: [u8; 4],  // reserved
-    si_len: u64,      // Length of block in bytes
+    // si_id: [u8; 4],  // ##SI
+    // reserved: [u8; 4],  // reserved
+    // si_len: u64,      // Length of block in bytes
     si_links: u64,         // # of links
     si_tx_name: i64, // Pointer to TXBLOCK with name (identification) of source (must not be NIL). The source name must be according to naming rules stated in 4.4.2 Naming Rules.
     si_tx_path: i64, // Pointer to TXBLOCK with (tool-specific) path of source (can be NIL). The path string must be according to naming rules stated in 4.4.2 Naming Rules.
@@ -853,14 +897,6 @@ pub struct Si4Block {
     si_bus_type: u8, // Bus type additional classification of used bus (should be 0 for si_type ≥ 3) (see SI_BUS_xxx)
     si_flags: u8,    // Flags The value contains the following bit flags (see SI_F_xxx)):
     si_reserved: [u8; 5], //reserved
-}
-
-fn parse_si4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
-        -> (Si4Block, i64) {
-    rdr.seek_relative(target - position).unwrap();
-    let block: Si4Block = rdr.read_le().unwrap();
-    position = target + i64::try_from(block.si_len).unwrap();
-    (block, position)
 }
 
 pub struct Ca4Block {
