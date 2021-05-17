@@ -621,7 +621,7 @@ pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
     let mut desc: HashMap<i64, (String, bool)> = HashMap::new();
     let mut cc: HashMap<i64, Cc4Block> = HashMap::new();
     let mut si: HashMap<i64, Si4Block> = HashMap::new();
-    if target > 0 {
+    if target != 0 {
         let (block, comments, pos) 
             = parse_cg4_block(rdr, target, position);
         position = pos;
@@ -632,7 +632,7 @@ pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
         
         // Reads Acq Name
         let acq_pointer = block.cg_tx_acq_name;
-        if !(acq_pointer == 0) && !desc.contains_key(&acq_pointer) {
+        if (acq_pointer != 0) && !desc.contains_key(&acq_pointer) {
             let (d, pos, desc_md_flag) = md_tx_comment(rdr, acq_pointer, position);
             position = pos;
             desc.insert(acq_pointer, (d, desc_md_flag));
@@ -640,7 +640,7 @@ pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
 
         // Reads Si Acq name
         let si_pointer = block.cg_si_acq_source;
-        if !(si_pointer == 0) && !si.contains_key(&si_pointer) {
+        if (si_pointer != 0) && !si.contains_key(&si_pointer) {
             rdr.seek_relative(si_pointer - position).unwrap();
             let header = parse_block_header_short(rdr);
             let mut buf= vec![0u8; (header.hdr_len - 16) as usize];
@@ -648,12 +648,12 @@ pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
             let mut si_block = Cursor::new(buf);
             let si_block: Si4Block = si_block.read_le().unwrap();
             position = si_pointer + i64::try_from(header.hdr_len).unwrap();
-            if (si_block.si_tx_name > 0) && !desc.contains_key(&si_block.si_tx_name) {
+            if (si_block.si_tx_name != 0) && !desc.contains_key(&si_block.si_tx_name) {
                 let (s, pos, md_flag) = md_tx_comment(rdr, si_block.si_tx_name, position);
                 position = pos;
                 unit.insert(si_block.si_tx_name, (s, md_flag));
             }
-            if (si_block.si_tx_path > 0) && !desc.contains_key(&si_block.si_tx_path) {
+            if (si_block.si_tx_path != 0) && !desc.contains_key(&si_block.si_tx_path) {
                 let (s, pos, md_flag) = md_tx_comment(rdr, si_block.si_tx_path, position);
                 position = pos;
                 unit.insert(si_block.si_tx_path, (s, md_flag));
@@ -668,7 +668,7 @@ pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
         desc.extend(d.into_iter());
         cc.extend(c.into_iter());
         si.extend(s.into_iter());
-        while next_pointer >0 {
+        while next_pointer != 0 {
             let block_start = next_pointer;
             let (block, comments, pos) 
                 = parse_cg4_block(rdr, next_pointer, position);
@@ -679,7 +679,7 @@ pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
             position = pos;
             // Reads Acq Name
             let acq_pointer = block.cg_tx_acq_name;
-            if !(acq_pointer == 0) && !desc.contains_key(&acq_pointer) {
+            if (acq_pointer != 0) && !desc.contains_key(&acq_pointer) {
                 let (d, pos, desc_md_flag) = md_tx_comment(rdr, acq_pointer, position);
                 position = pos;
                 desc.insert(acq_pointer, (d, desc_md_flag));
@@ -687,7 +687,7 @@ pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
 
             // Reads Si Acq name
             let si_pointer = block.cg_si_acq_source;
-            if !(si_pointer == 0) && !si.contains_key(&si_pointer) {
+            if (si_pointer != 0) && !si.contains_key(&si_pointer) {
                 rdr.seek_relative(si_pointer - position).unwrap();
                 let header = parse_block_header_short(rdr);
                 let mut buf= vec![0u8; (header.hdr_len - 16) as usize];
@@ -695,12 +695,12 @@ pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
                 let mut si_block = Cursor::new(buf);
                 let si_block: Si4Block = si_block.read_le().unwrap();
                 position = si_pointer + i64::try_from(header.hdr_len).unwrap();
-                if (si_block.si_tx_name > 0) && !desc.contains_key(&si_block.si_tx_name) {
+                if (si_block.si_tx_name != 0) && !desc.contains_key(&si_block.si_tx_name) {
                     let (s, pos, unit_md_flag) = md_tx_comment(rdr, si_block.si_tx_name, position);
                     position = pos;
                     unit.insert(si_block.si_tx_name, (s, unit_md_flag));
                 }
-                if (si_block.si_tx_path > 0) && !desc.contains_key(&si_block.si_tx_path) {
+                if (si_block.si_tx_path != 0) && !desc.contains_key(&si_block.si_tx_path) {
                     let (s, pos, md_flag) = md_tx_comment(rdr, si_block.si_tx_path, position);
                     position = pos;
                     unit.insert(si_block.si_tx_path, (s, md_flag));
@@ -771,7 +771,7 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
     let mut desc: HashMap<i64, (String, bool)> = HashMap::new();
     let mut cc: HashMap<i64, Cc4Block> = HashMap::new();
     let mut si: HashMap<i64, Si4Block> = HashMap::new();
-    if target > 0 {
+    if target != 0 {
         rdr.seek_relative(target - position).unwrap();
         let header = parse_block_header_short(rdr);
         let mut buf= vec![0u8; (header.hdr_len - 16) as usize];
@@ -788,7 +788,7 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
 
         // Reads unit
         let unit_pointer = block.cn_md_unit;
-        if !(unit_pointer == 0) && !unit.contains_key(&unit_pointer) {
+        if (unit_pointer != 0) && !unit.contains_key(&unit_pointer) {
             let (u, pos, unit_md_flag) = md_tx_comment(rdr, unit_pointer, position);
             position = pos;
             unit.insert(unit_pointer, (u, unit_md_flag));
@@ -796,7 +796,7 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
 
         // Reads CC
         let cc_pointer = block.cn_cc_conversion;
-        if !(cc_pointer == 0) && !cc.contains_key(&cc_pointer) {
+        if (cc_pointer != 0) && !cc.contains_key(&cc_pointer) {
             rdr.seek_relative(cc_pointer - position).unwrap();
             let header = parse_block_header_short(rdr);
             let mut buf= vec![0u8; (header.hdr_len - 16) as usize];
@@ -804,7 +804,7 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
             let mut cc_block = Cursor::new(buf);
             let cc_block: Cc4Block = cc_block.read_le().unwrap();
             position = cc_pointer + i64::try_from(header.hdr_len).unwrap();
-            if (cc_block.cc_md_unit > 0) && (block.cn_md_unit == 0) && !unit.contains_key(&cc_block.cc_md_unit) {
+            if (cc_block.cc_md_unit != 0) && (block.cn_md_unit == 0) && !unit.contains_key(&cc_block.cc_md_unit) {
                 let (u, pos, unit_md_flag) = md_tx_comment(rdr, cc_block.cc_md_unit, position);
                 position = pos;
                 unit.insert(cc_block.cc_md_unit, (u, unit_md_flag));
@@ -814,7 +814,7 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
 
         // Reads MD
         let desc_pointer = block.cn_md_comment;
-        if !(desc_pointer == 0) && !desc.contains_key(&desc_pointer) {
+        if (desc_pointer != 0) && !desc.contains_key(&desc_pointer) {
             let (d, pos, desc_md_flag) = md_tx_comment(rdr, desc_pointer, position);
             position = pos;
             desc.insert(desc_pointer, (d, desc_md_flag));
@@ -822,7 +822,7 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
 
         //Reads SI
         let si_pointer = block.cn_si_source;
-        if !(si_pointer == 0) && !si.contains_key(&si_pointer) {
+        if (si_pointer != 0) && !si.contains_key(&si_pointer) {
             rdr.seek_relative(si_pointer - position).unwrap();
             let header = parse_block_header_short(rdr);
             let mut buf= vec![0u8; (header.hdr_len - 16) as usize];
@@ -830,12 +830,12 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
             let mut si_block = Cursor::new(buf);
             let si_block: Si4Block = si_block.read_le().unwrap();
             position = si_pointer + i64::try_from(header.hdr_len).unwrap();
-            if (si_block.si_tx_name > 0) && !desc.contains_key(&si_block.si_tx_name) {
+            if (si_block.si_tx_name != 0) && !desc.contains_key(&si_block.si_tx_name) {
                 let (s, pos, md_flag) = md_tx_comment(rdr, si_block.si_tx_name, position);
                 position = pos;
                 unit.insert(si_block.si_tx_name, (s, md_flag));
             }
-            if (si_block.si_tx_path > 0) && !desc.contains_key(&si_block.si_tx_path) {
+            if (si_block.si_tx_path != 0) && !desc.contains_key(&si_block.si_tx_path) {
                 let (s, pos, md_flag) = md_tx_comment(rdr, si_block.si_tx_path, position);
                 position = pos;
                 unit.insert(si_block.si_tx_path, (s, md_flag));
@@ -844,7 +844,7 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
         }
 
         //Reads CA
-        if !(block.cn_composition == 0) {
+        if (block.cn_composition != 0) {
             let (ca, pos) = parse_ca(rdr, block.cn_composition, position);
             position = pos;
         }
@@ -852,7 +852,7 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
         let cn_struct = Cn4 {block, name, unit_pointer, desc_pointer};
         cn.insert(rec_pos, cn_struct);
         
-        while next_pointer >0 {
+        while next_pointer != 0 {
             rdr.seek_relative(next_pointer - position).unwrap();
             let header = parse_block_header_short(rdr);
             let mut buf= vec![0u8; (header.hdr_len - 16) as usize];
@@ -869,7 +869,7 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
 
             // Reads unit
             let unit_pointer = block.cn_md_unit;
-            if !(unit_pointer == 0) && !unit.contains_key(&unit_pointer) {
+            if (unit_pointer != 0) && !unit.contains_key(&unit_pointer) {
                 let (u, pos, unit_md_flag) = md_tx_comment(rdr, unit_pointer, position);
                 position = pos;
                 unit.insert(unit_pointer, (u, unit_md_flag));
@@ -877,7 +877,7 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
 
             // Reads CC
             let cc_pointer = block.cn_cc_conversion;
-            if !(cc_pointer == 0) && !cc.contains_key(&cc_pointer) {
+            if (cc_pointer != 0) && !cc.contains_key(&cc_pointer) {
                 rdr.seek_relative(cc_pointer - position).unwrap();
                 let header = parse_block_header_short(rdr);
                 let mut buf= vec![0u8; (header.hdr_len - 16) as usize];
@@ -885,7 +885,7 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
                 let mut cc_block = Cursor::new(buf);
                 let cc_block: Cc4Block = cc_block.read_le().unwrap();
                 position = cc_pointer + i64::try_from(header.hdr_len).unwrap();
-                if (cc_block.cc_md_unit > 0) && (block.cn_md_unit == 0) && !unit.contains_key(&cc_block.cc_md_unit) {
+                if (cc_block.cc_md_unit != 0) && (block.cn_md_unit == 0) && !unit.contains_key(&cc_block.cc_md_unit) {
                     let (u, pos, md_flag) = md_tx_comment(rdr, cc_block.cc_md_unit, position);
                     position = pos;
                     unit.insert(cc_block.cc_md_unit, (u, md_flag));
@@ -895,7 +895,7 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
 
             // Reads MD
             let desc_pointer = block.cn_md_comment;
-            if !(desc_pointer == 0) && !desc.contains_key(&desc_pointer) {
+            if (desc_pointer != 0) && !desc.contains_key(&desc_pointer) {
                 let (d, pos, desc_md_flag) = md_tx_comment(rdr, desc_pointer, position);
                 position = pos;
                 desc.insert(desc_pointer, (d, desc_md_flag));
@@ -903,7 +903,7 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
 
             //Reads SI
             let si_pointer = block.cn_si_source;
-            if !(si_pointer == 0) && !si.contains_key(&si_pointer) {
+            if (si_pointer != 0) && !si.contains_key(&si_pointer) {
                 rdr.seek_relative(si_pointer - position).unwrap();
                 let header = parse_block_header_short(rdr);
                 let mut buf= vec![0u8; (header.hdr_len - 16) as usize];
@@ -911,12 +911,12 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
                 let mut si_block = Cursor::new(buf);
                 let si_block: Si4Block = si_block.read_le().unwrap();
                 position = si_pointer + i64::try_from(header.hdr_len).unwrap();
-                if (si_block.si_tx_name > 0) && !desc.contains_key(&si_block.si_tx_name) {
+                if (si_block.si_tx_name != 0) && !desc.contains_key(&si_block.si_tx_name) {
                     let (s, pos, unit_md_flag) = md_tx_comment(rdr, si_block.si_tx_name, position);
                     position = pos;
                     unit.insert(si_block.si_tx_name, (s, unit_md_flag));
                 }
-                if (si_block.si_tx_path > 0) && !desc.contains_key(&si_block.si_tx_path) {
+                if (si_block.si_tx_path != 0) && !desc.contains_key(&si_block.si_tx_path) {
                     let (s, pos, md_flag) = md_tx_comment(rdr, si_block.si_tx_path, position);
                     position = pos;
                     unit.insert(si_block.si_tx_path, (s, md_flag));
@@ -926,7 +926,7 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
             }
 
             //Reads CA
-            if !(block.cn_composition == 0) {
+            if (block.cn_composition != 0) {
                 let (ca, pos) = parse_ca(rdr, block.cn_composition, position);
                 position = pos;
             }
