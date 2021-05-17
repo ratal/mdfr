@@ -2,7 +2,8 @@
 
 //! This module is reading the mdf file blocks
 
-use std::{collections::{HashMap, HashSet}, io::{BufReader, Read}};
+use std::collections::{HashMap, HashSet};
+use std::io::{BufReader, Read};
 use std::fs::{File, OpenOptions};
 use std::str;
 
@@ -82,10 +83,13 @@ pub fn mdfinfo(file_name: &str) -> MdfInfo {
         comments.extend(c.into_iter());
 
         // Read DG Block
-        let (dg, mut unit, mut desc, position) 
+        let (dg, mut unit, mut desc, mut cc, si, position) 
             = parse_dg4(&mut rdr, hd.hd_dg_first, position);
-        extract_xml(&mut unit);
-        extract_xml(&mut desc);
+        extract_xml(&mut unit);  // extract xml from text
+        extract_xml(&mut desc);  // extract xml from text
+
+        // make channel names unique, list channels and create master dictionnary
+        
         
         mdf_info = MdfInfo::V4(MdfInfo4{ver, prog,
             id_block: id, hd_block: hd, hd_comment, comments, fh, at, ev, dg
