@@ -11,8 +11,8 @@ pub mod mdfinfo3;
 pub mod mdfinfo4;
 
 use mdfinfo3::{MdfInfo3, parse_id3, hd3_parser, hd3_comment_parser};
-use mdfinfo4::{MdfInfo4, parse_id4, hd4_parser, hd4_comment_parser, extract_xml,
-    parse_fh, parse_at4, parse_at4_comments, parse_ev4, parse_ev4_comments, parse_dg4};
+use mdfinfo4::{MdfInfo4, parse_id4, hd4_parser, hd4_comment_parser, extract_xml_sharable,
+    parse_fh, parse_at4, parse_at4_comments, parse_ev4, parse_ev4_comments, parse_dg4, SharableBlocks};
 
 #[derive(Debug)]
 pub enum MdfInfo {
@@ -62,6 +62,8 @@ pub fn mdfinfo(file_name: &str) -> MdfInfo {
             });
     } else {
         let mut channel_list: HashSet<String> = HashSet::new();
+        let mut sharable: SharableBlocks = SharableBlocks {unit: HashMap::new(), desc: HashMap::new(), 
+            cc: HashMap::new(), si: HashMap::new()};
 
         let id = parse_id4(&mut rdr, id_file_id, id_vers, prog);
         ver = id.id_ver;
@@ -83,13 +85,12 @@ pub fn mdfinfo(file_name: &str) -> MdfInfo {
         comments.extend(c.into_iter());
 
         // Read DG Block
-        let (dg, mut unit, mut desc, mut cc, si, position) 
-            = parse_dg4(&mut rdr, hd.hd_dg_first, position);
-        extract_xml(&mut unit);  // extract xml from text
-        extract_xml(&mut desc);  // extract xml from text
+        let (dg, position) 
+            = parse_dg4(&mut rdr, hd.hd_dg_first, position, &mut sharable);
+        extract_xml_sharable(&mut sharable);  // extract xml from text
 
         // make channel names unique, list channels and create master dictionnary
-        
+
         
         mdf_info = MdfInfo::V4(MdfInfo4{ver, prog,
             id_block: id, hd_block: hd, hd_comment, comments, fh, at, ev, dg
