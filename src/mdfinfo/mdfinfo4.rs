@@ -598,6 +598,26 @@ pub struct SharableBlocks {
     pub(crate) si: HashMap<i64, Si4Block>,
 }
 
+impl fmt::Display for SharableBlocks {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "MD comments : \n")?;
+        for (position, md) in self.md.iter() {
+            for (tag, text) in md.iter() {
+                write!(f, "Position: {}  Tag: {}  Text: {}\n", position, tag, text)?;
+            }
+        }
+        write!(f, "TX comments : \n")?;
+        for (position, text) in self.tx.iter() {
+            write!(f, "Position: {}  Text: {}\n", position, text.0)?;
+        }
+        write!(f, "CC : \n");
+        for (position, cc) in self.cc.iter() {
+            write!(f, "Position: {}  Text: {:?}\n", position, cc)?;
+        }
+        write!(f, "SI : \n")
+    }
+}
+
 #[derive(Debug)]
 #[derive(BinRead)]
 #[br(little)]
