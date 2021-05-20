@@ -1,14 +1,15 @@
 
 use byteorder::{LittleEndian, ReadBytesExt};
 use roxmltree;
-use std::{io::{BufReader, Cursor}};
+use std::io::{BufReader, Cursor};
 use std::fs::File;
 use std::io::prelude::*;
-use std::str;
+use std::{str, fmt};
 use std::default::Default;
 use std::convert::TryFrom;
 use binread::{BinRead, BinReaderExt};
 use std::collections::{HashMap, BTreeMap};
+use chrono::{DateTime, Utc, naive::NaiveDateTime};
 
 #[derive(Debug)]
 pub struct MdfInfo4 {
@@ -141,6 +142,15 @@ pub struct Hd4 {
     pub hd_start_distance_m:f64, // Start distance in meters at start of measurement (only for distance synchronous measurements) Only valid if "start distance valid" flag is set. All distance values for distance synchronized master channels or events are relative to this start distance.
 }
 
+impl fmt::Display for Hd4 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let sec = self.hd_start_time_ns / 1000000000;
+        let nsec = u32::try_from(self.hd_start_time_ns - sec * 1000000000).unwrap();
+        let naive = NaiveDateTime::from_timestamp(i64::try_from(sec).unwrap(), nsec);
+        write!(f, "Time : {}\n", DateTime::<Utc>::from_utc(naive, Utc).to_rfc3339())
+    }
+}
+
 pub fn hd4_parser(rdr: &mut BufReader<&File>) -> Hd4 {
     let mut buf= [0u8; 104];
     rdr.read_exact(&mut buf).unwrap();
@@ -265,11 +275,6 @@ pub fn extract_xml(comment: &mut HashMap<i64, (String, bool)>) {
                 };
         }
     }
-}
-
-pub fn extract_xml_sharable(sharable: &mut SharableBlocks) {
-    extract_xml(&mut sharable.desc);
-    extract_xml(&mut sharable.unit);
 }
 
 #[derive(Debug)]
@@ -587,8 +592,8 @@ pub fn parse_dg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sha
 
 #[derive(Debug, PartialEq, Default)]
 pub struct SharableBlocks {
-    pub(crate) unit: HashMap<i64, (String, bool)>,
-    pub(crate) desc: HashMap<i64, (String, bool)>,
+    pub(crate) md: HashMap<i64, HashMap<String, String>>,
+    pub(crate) tx: HashMap<i64, (String, bool)>,
     pub(crate) cc: HashMap<i64, Cc4Block>,
     pub(crate) si: HashMap<i64, Si4Block>,
 }
@@ -628,10 +633,10 @@ fn parse_cg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, s
 
     // Reads MD
     let comment_pointer = cg.cg_md_comment;
-    if (comment_pointer != 0) && !sharable.desc.contains_key(&comment_pointer) {
-        let (d, pos, desc_md_flag) = md_tx_comment(rdr, comment_pointer, position);
+    if (comment_pointer != 0) && !sharable.tx.contains_key(&comment_pointer) {
+        let (d, pos, tx_md_flag) = md_tx_comment(rdr, comment_pointer, position);
         position = pos;
-        sharable.desc.insert(comment_pointer, (d, desc_md_flag));
+        sharable.tx.insert(comment_pointer, (d, tx_md_flag));
     }
 
     let (cn, pos) 
@@ -640,10 +645,10 @@ fn parse_cg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, s
     
     // Reads Acq Name
     let acq_pointer = cg.cg_tx_acq_name;
-    if (acq_pointer != 0) && !sharable.desc.contains_key(&acq_pointer) {
-        let (d, pos, desc_md_flag) = md_tx_comment(rdr, acq_pointer, position);
+    if (acq_pointer != 0) && !sharable.tx.contains_key(&acq_pointer) {
+        let (d, pos, tx_md_flag) = md_tx_comment(rdr, acq_pointer, position);
         position = pos;
-        sharable.desc.insert(acq_pointer, (d, desc_md_flag));
+        sharable.tx.insert(acq_pointer, (d, tx_md_flag));
     }
 
     // Reads Si Acq name
@@ -652,15 +657,15 @@ fn parse_cg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, s
         let (mut si_block, _header, pos) = parse_block_short(rdr, si_pointer, position);
         position =pos;
         let si_block: Si4Block = si_block.read_le().unwrap();
-        if (si_block.si_tx_name != 0) && !sharable.desc.contains_key(&si_block.si_tx_name) {
+        if (si_block.si_tx_name != 0) && !sharable.tx.contains_key(&si_block.si_tx_name) {
             let (s, pos, md_flag) = md_tx_comment(rdr, si_block.si_tx_name, position);
             position = pos;
-            sharable.desc.insert(si_block.si_tx_name, (s, md_flag));
+            sharable.tx.insert(si_block.si_tx_name, (s, md_flag));
         }
-        if (si_block.si_tx_path != 0) && !sharable.desc.contains_key(&si_block.si_tx_path) {
+        if (si_block.si_tx_path != 0) && !sharable.tx.contains_key(&si_block.si_tx_path) {
             let (s, pos, md_flag) = md_tx_comment(rdr, si_block.si_tx_path, position);
             position = pos;
-            sharable.desc.insert(si_block.si_tx_path, (s, md_flag));
+            sharable.tx.insert(si_block.si_tx_path, (s, md_flag));
         }
         sharable.si.insert(si_pointer, si_block);
     }
@@ -774,10 +779,10 @@ fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, s
 
     // Reads unit
     let unit_pointer = block.cn_md_unit;
-    if (unit_pointer != 0) && !sharable.unit.contains_key(&unit_pointer) {
-        let (u, pos, unit_md_flag) = md_tx_comment(rdr, unit_pointer, position);
+    if (unit_pointer != 0) && !sharable.tx.contains_key(&unit_pointer) {
+        let (u, pos, tx_md_flag) = md_tx_comment(rdr, unit_pointer, position);
         position = pos;
-        sharable.unit.insert(unit_pointer, (u, unit_md_flag));
+        sharable.tx.insert(unit_pointer, (u, tx_md_flag));
     }
 
     // Reads CC
@@ -786,20 +791,20 @@ fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, s
         let (mut cc_block, _header, pos) = parse_block_short(rdr, cc_pointer, position);
         position =pos;
         let cc_block: Cc4Block = cc_block.read_le().unwrap();
-        if (cc_block.cc_md_unit != 0) && (block.cn_md_unit == 0) && !sharable.unit.contains_key(&cc_block.cc_md_unit) {
-            let (u, pos, unit_md_flag) = md_tx_comment(rdr, cc_block.cc_md_unit, position);
+        if (cc_block.cc_md_unit != 0) && (block.cn_md_unit == 0) && !sharable.tx.contains_key(&cc_block.cc_md_unit) {
+            let (u, pos, tx_md_flag) = md_tx_comment(rdr, cc_block.cc_md_unit, position);
             position = pos;
-            sharable.unit.insert(cc_block.cc_md_unit, (u, unit_md_flag));
+            sharable.tx.insert(cc_block.cc_md_unit, (u, tx_md_flag));
         }
         sharable.cc.insert(cc_pointer, cc_block);
     }
 
     // Reads MD
     let desc_pointer = block.cn_md_comment;
-    if (desc_pointer != 0) && !sharable.desc.contains_key(&desc_pointer) {
-        let (d, pos, desc_md_flag) = md_tx_comment(rdr, desc_pointer, position);
+    if (desc_pointer != 0) && !sharable.tx.contains_key(&desc_pointer) {
+        let (d, pos, tx_md_flag) = md_tx_comment(rdr, desc_pointer, position);
         position = pos;
-        sharable.desc.insert(desc_pointer, (d, desc_md_flag));
+        sharable.tx.insert(desc_pointer, (d, tx_md_flag));
     }
 
     //Reads SI
@@ -808,15 +813,15 @@ fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, s
         let (mut si_block, _header, pos) = parse_block_short(rdr, si_pointer, position);
         position =pos;
         let si_block: Si4Block = si_block.read_le().unwrap();
-        if (si_block.si_tx_name != 0) && !sharable.desc.contains_key(&si_block.si_tx_name) {
+        if (si_block.si_tx_name != 0) && !sharable.tx.contains_key(&si_block.si_tx_name) {
             let (s, pos, md_flag) = md_tx_comment(rdr, si_block.si_tx_name, position);
             position = pos;
-            sharable.desc.insert(si_block.si_tx_name, (s, md_flag));
+            sharable.tx.insert(si_block.si_tx_name, (s, md_flag));
         }
-        if (si_block.si_tx_path != 0) && !sharable.desc.contains_key(&si_block.si_tx_path) {
+        if (si_block.si_tx_path != 0) && !sharable.tx.contains_key(&si_block.si_tx_path) {
             let (s, pos, md_flag) = md_tx_comment(rdr, si_block.si_tx_path, position);
             position = pos;
-            sharable.desc.insert(si_block.si_tx_path, (s, md_flag));
+            sharable.tx.insert(si_block.si_tx_path, (s, md_flag));
         }
         sharable.si.insert(si_pointer, si_block);
     }
