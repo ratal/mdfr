@@ -18,11 +18,11 @@ pub struct MdfInfo4 {
     pub id_block: Id4,
     pub hd_block: Hd4,
     pub hd_comment: HashMap<String, String>,
-    pub comments: HashMap<i64, HashMap<String, String>>,
     pub fh: Vec<(FhBlock, HashMap<String, String>)>,
     pub at: HashMap<i64, (At4Block, Option<Vec<u8>>)> ,
     pub ev: HashMap<i64, Ev4Block>,
     pub dg: HashMap<i64, Dg4>,
+    pub sharable: SharableBlocks,
 }
 
 /// MDF4 - common Header
@@ -147,7 +147,7 @@ impl fmt::Display for Hd4 {
         let sec = self.hd_start_time_ns / 1000000000;
         let nsec = u32::try_from(self.hd_start_time_ns - sec * 1000000000).unwrap();
         let naive = NaiveDateTime::from_timestamp(i64::try_from(sec).unwrap(), nsec);
-        write!(f, "Time : {}\n", DateTime::<Utc>::from_utc(naive, Utc).to_rfc3339())
+        writeln!(f, "Time : {}", DateTime::<Utc>::from_utc(naive, Utc).to_rfc3339())
     }
 }
 
@@ -600,21 +600,21 @@ pub struct SharableBlocks {
 
 impl fmt::Display for SharableBlocks {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "MD comments : \n")?;
+        writeln!(f, "MD comments : ")?;
         for (position, md) in self.md.iter() {
             for (tag, text) in md.iter() {
-                write!(f, "Position: {}  Tag: {}  Text: {}\n", position, tag, text)?;
+                writeln!(f, "Position: {}  Tag: {}  Text: {}", position, tag, text)?;
             }
         }
-        write!(f, "TX comments : \n")?;
+        writeln!(f, "TX comments : \n")?;
         for (position, text) in self.tx.iter() {
-            write!(f, "Position: {}  Text: {}\n", position, text.0)?;
+            writeln!(f, "Position: {}  Text: {}", position, text.0)?;
         }
-        write!(f, "CC : \n");
+        writeln!(f, "CC : \n")?;
         for (position, cc) in self.cc.iter() {
-            write!(f, "Position: {}  Text: {:?}\n", position, cc)?;
+            writeln!(f, "Position: {}  Text: {:?}", position, cc)?;
         }
-        write!(f, "SI : \n")
+        writeln!(f, "SI : ")
     }
 }
 
