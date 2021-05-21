@@ -32,20 +32,20 @@ impl MdfInfo {
 
 impl fmt::Display for MdfInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        Ok(match self {
+        match self {
             MdfInfo::V3(mdfinfo3) => {
-                write!(f, "Version : {}\n", mdfinfo3.ver)?;
-                write!(f, "Version : {:?}\n", mdfinfo3.hdblock)?;
+                writeln!(f, "Version : {}", mdfinfo3.ver)?;
+                writeln!(f, "Version : {:?}", mdfinfo3.hdblock)
             },
             MdfInfo::V4(mdfinfo4) => {
-                write!(f, "Version : {}\n", mdfinfo4.ver)?;
-                write!(f, "{}\n", mdfinfo4.hd_block)?;
+                writeln!(f, "Version : {}", mdfinfo4.ver)?;
+                writeln!(f, "{}\n", mdfinfo4.hd_block)?;
                 let comments = &mdfinfo4.hd_comment;
-                for c in comments.into_iter() {
-                    write!(f, "{} {}\n", c.0, c.1)?;
-                }
+                Ok(for c in comments.iter() {
+                    writeln!(f, "{} {}", c.0, c.1)?;
+                })
             }
-            })
+            }
     }
 }
 
@@ -67,7 +67,6 @@ pub fn mdfinfo(file_name: &str) -> MdfInfo {
     rdr.read_exact(&mut prog).unwrap();
     let ver:u16;
     let mdf_info: MdfInfo;
-    let mut comments: HashMap<i64, HashMap<String, String>> = HashMap::new();
     // Depending of version different blocks
     if ver_char < 4.0 {
         let id = parse_id3(&mut rdr, id_file_id, id_vers, prog);
@@ -97,12 +96,12 @@ pub fn mdfinfo(file_name: &str) -> MdfInfo {
         // AT Block read
         let (at, position) = parse_at4(&mut rdr, hd.hd_at_first, position);
         let (c, position) = parse_at4_comments(&mut rdr, &at, position);
-        comments.extend(c.into_iter());
+        sharable.md.extend(c.into_iter());
  
         // EV Block read
         let (ev, position) = parse_ev4(&mut rdr, hd.hd_ev_first, position);
         let (c, position) = parse_ev4_comments(&mut rdr, &ev, position);
-        comments.extend(c.into_iter());
+        sharable.md.extend(c.into_iter());
 
         // Read DG Block
         let (dg, _) 
@@ -110,10 +109,10 @@ pub fn mdfinfo(file_name: &str) -> MdfInfo {
         extract_xml(&mut sharable.tx);  // extract xml from text
 
         // make channel names unique, list channels and create master dictionnary
-        // println!("{:?}", sharable);
+        // println!("{}", sharable);
         
         mdf_info = MdfInfo::V4(MdfInfo4{ver, prog,
-            id_block: id, hd_block: hd, hd_comment, comments, fh, at, ev, dg
+            id_block: id, hd_block: hd, hd_comment, fh, at, ev, dg, sharable,
             });
     };
     mdf_info
