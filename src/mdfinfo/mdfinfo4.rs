@@ -8,7 +8,7 @@ use std::{str, fmt};
 use std::default::Default;
 use std::convert::TryFrom;
 use binread::{BinRead, BinReaderExt};
-use std::collections::{HashMap, BTreeMap};
+use std::collections::{HashMap, BTreeMap, HashSet};
 use chrono::{DateTime, Utc, naive::NaiveDateTime};
 
 #[derive(Debug)]
@@ -614,7 +614,11 @@ impl fmt::Display for SharableBlocks {
         for (position, cc) in self.cc.iter() {
             writeln!(f, "Position: {}  Text: {:?}", position, cc)?;
         }
-        writeln!(f, "SI : ")
+        writeln!(f, "SI : ")?;
+        for (position, si) in self.si.iter() {
+            writeln!(f, "Position: {}  Text: {:?}", position, si)?;
+        }
+        writeln!(f, "finished")
     }
 }
 
@@ -701,6 +705,33 @@ pub struct Cg4 {
     cn: BTreeMap<u32, Cn4> ,
 }
 
+impl Cg4 {
+    fn get_cg_name(&self, sharable: &SharableBlocks) -> Option<String> {
+        let gn = match sharable.tx.get(&self.block.cg_tx_acq_name) {
+            Some(block) => {let gn = block.0.clone();
+                if !gn.is_empty() {Some(gn)} else {None}},
+            None => None,
+        };
+        gn
+    }
+    fn get_cg_source_name(&self, sharable: &SharableBlocks) -> Option<String> {
+        let si = sharable.si.get(&self.block.cg_si_acq_source);
+        let gs = match si {
+            Some(block) => block.get_si_source_name(sharable),
+            None => None,
+        };
+        gs
+    }
+    fn get_cg_source_path(&self, sharable: &SharableBlocks) -> Option<String> {
+        let si = sharable.si.get(&self.block.cg_si_acq_source);
+        let gp = match si {
+            Some(block) => block.get_si_path_name(sharable),
+            None => None,
+        };
+        gp
+    }
+}
+
 pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sharable: &mut SharableBlocks)
         -> (HashMap<i64, Cg4>, i64) {
     let mut cg: HashMap<i64, Cg4> = HashMap::new();
@@ -761,7 +792,8 @@ pub struct Cn4Block {
 #[derive(Debug, PartialEq, Default)]
 pub struct Cn4 {
     block: Cn4Block,
-    name: String,
+    unique_name: String,
+    block_position: i64,
     composition: Option<Composition>,
 }
 
@@ -786,6 +818,24 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sha
     (cn, position)
 }
 
+impl Cn4 {
+    fn get_cn_source_name(&self, sharable: &SharableBlocks) -> Option<String> {
+        let si = sharable.si.get(&self.block.cn_si_source);
+        let cs = match si {
+            Some(block) => block.get_si_source_name(sharable),
+            None => None,
+        };
+        cs
+    }
+    fn get_cn_source_path(&self, sharable: &SharableBlocks) -> Option<String> {
+        let si = sharable.si.get(&self.block.cn_si_source);
+        let cp = match si {
+            Some(block) => block.get_si_path_name(sharable),
+            None => None,
+        };
+        cp
+    }
+}
 
 fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sharable: &mut SharableBlocks) -> (Cn4, i64) {
 
@@ -856,7 +906,7 @@ fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, s
         compo = None;
     }
 
-    let cn_struct = Cn4 {block, name, composition: compo};
+    let cn_struct = Cn4 {block, unique_name: name, block_position: target, composition: compo};
 
     (cn_struct, position)
 }
@@ -907,6 +957,25 @@ pub struct Si4Block {
     si_bus_type: u8, // Bus type additional classification of used bus (should be 0 for si_type ≥ 3) (see SI_BUS_xxx)
     si_flags: u8,    // Flags The value contains the following bit flags (see SI_F_xxx)):
     si_reserved: [u8; 5], //reserved
+}
+
+impl Si4Block {
+    fn get_si_source_name(&self, sharable: &SharableBlocks) -> Option<String> {
+        let cs = match sharable.tx.get(&self.si_tx_name) {
+            Some(block) => {let cs = block.0.clone();
+            if !cs.is_empty() {Some(cs)} else {None}},
+            None => None,
+        };
+        cs
+    }
+    fn get_si_path_name(&self, sharable: &SharableBlocks) -> Option<String> {
+        let cp = match sharable.tx.get(&self.si_tx_path) {
+            Some(block) => {let cp = block.0.clone();
+            if !cp.is_empty() {Some(cp)} else {None}},
+            None => None,
+        };
+        cp
+    }
 }
 
 #[derive(Debug, PartialEq, Default)]
@@ -1082,3 +1151,68 @@ fn parse_composition(rdr: &mut BufReader<&File>, target: i64, mut position: i64,
     }
 }
 
+#[derive(Debug, PartialEq, Default)]
+pub struct Db {
+    channel_list: HashMap<String, (i64, i64, u32)>,
+    master_channel_list: HashMap<String, HashSet<String>>
+}
+
+impl fmt::Display for Db {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "Channels : ")?;
+        for (master, list) in self.master_channel_list.iter() {
+            writeln!(f, "\nMaster: {}", master)?;
+            for channel in list.iter() {
+                write!(f, " {} ", channel)?;
+            }
+        }
+        writeln!(f, "\n")
+    }
+}
+
+pub fn build_channel_db(dg: &mut HashMap<i64, Dg4>, sharable: &SharableBlocks) -> Db {
+    let mut db = Db {channel_list: HashMap::new(), master_channel_list: HashMap::new()};
+    for (dg_position, dg) in dg.iter_mut() {
+        for (cg_position, cg) in dg.cg.iter_mut() {
+            let mut master_channel_name = format!("master_{}", cg_position);  // default name in case no master is existing
+            let mut cg_channel_list = HashSet::new();
+            let gn = cg.get_cg_name(sharable);
+            let gs = cg.get_cg_source_name(sharable);
+            let gp = cg.get_cg_source_path(sharable);
+            for (cn_position, cn) in cg.cn.iter_mut() {
+                let mut channel_name = cn.unique_name.clone();
+                if db.channel_list.contains_key(&channel_name) {
+                    // create unique channel name
+                    if let Some(cs) = cn.get_cn_source_name(sharable) {
+                        channel_name = format!("{}_{}", channel_name, cs);
+                    }
+                    if let Some(cp) = cn.get_cn_source_path(sharable) {
+                        channel_name = format!("{}_{}", channel_name, cp);
+                    }
+                    if let Some(name) = &gn {
+                        channel_name = format!("{}_{}", channel_name, name);
+                    }
+                    if let Some(source) = &gs {
+                        channel_name = format!("{}_{}", channel_name, source);
+                    }
+                    if let Some(path) = &gp {
+                        channel_name = format!("{}_{}", channel_name, path);
+                    }
+                    // No souce or path name to make channel unique
+                    if channel_name == cn.unique_name {
+                        channel_name = format!("{}_{}", channel_name, cn.block_position);
+                    }
+                    cn.unique_name = channel_name.clone();
+                };
+                db.channel_list.insert(channel_name.clone(), (dg_position.clone(), cg_position.clone(), cn_position.clone()));
+                cg_channel_list.insert(channel_name.clone());
+                if cn.block.cn_type == 2 {
+                    // Master channel
+                    master_channel_name = channel_name.clone();
+                }
+            }
+            db.master_channel_list.insert(master_channel_name, cg_channel_list);
+        }
+    }
+    db
+}
