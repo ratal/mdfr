@@ -11,6 +11,15 @@ use binread::{BinRead, BinReaderExt};
 use std::collections::{HashMap, BTreeMap, HashSet};
 use chrono::{DateTime, Utc, naive::NaiveDateTime};
 
+/// MdfInfo4 is the struct hold whole metadata of mdf4.x files
+/// * blocks with unique links are at top level like attachment, events and file history
+/// * sharable blocks (most likely referenced multiple times and shared by several blocks)
+/// are in sharable fields and holds CC, SI, TX and MD blocks
+/// * the dg fields nests cg itself nesting cn blocks and eventually compositions
+/// (other ccn or ca blocks)
+/// * db is a representation of file content centered on channel names as key
+/// * in general the blocks are contained in HashMaps with key corresponding 
+/// to their position in the file
 #[derive(Debug)]
 pub struct MdfInfo4 {
     pub ver: u16,
@@ -23,9 +32,10 @@ pub struct MdfInfo4 {
     pub ev: HashMap<i64, Ev4Block>,
     pub dg: HashMap<i64, Dg4>,
     pub sharable: SharableBlocks,
+    pub db: Db,
 }
 
-/// MDF4 - common Header
+/// MDF4 - common block Header
 #[derive(Debug)]
 #[derive(BinRead)]
 #[br(little)]
@@ -36,6 +46,7 @@ pub struct Blockheader4 {
     hdr_links: u64 // # of links 
 }
 
+/// parse the block header and its fields id, (reserved), length and number of links
 #[inline]
 fn parse_block_header(rdr: &mut BufReader<&File>) -> Blockheader4 {
     let mut buf= [0u8; 24];
@@ -45,6 +56,7 @@ fn parse_block_header(rdr: &mut BufReader<&File>) -> Blockheader4 {
     header
 }
 
+/// MDF4 - common block Header without the number of links
 #[derive(Debug)]
 #[derive(BinRead)]
 #[br(little)]
@@ -54,6 +66,7 @@ pub struct Blockheader4Short {
     hdr_len: u64,   // Length of block in bytes
 }
 
+/// parse the block header and its fields id, (reserved), length except the number of links
 #[inline]
 fn parse_block_header_short(rdr: &mut BufReader<&File>) -> Blockheader4Short {
     let mut buf= [0u8; 16];
@@ -63,6 +76,7 @@ fn parse_block_header_short(rdr: &mut BufReader<&File>) -> Blockheader4Short {
     header
 }
 
+/// reads generically a block header and return links and members section part into a Seek buffer for further processing
 #[inline]
 fn parse_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (Cursor<Vec<u8>>, Blockheader4, i64){
     // Reads block header
@@ -77,6 +91,7 @@ fn parse_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (C
     (block, block_header, position)
 }
 
+/// reads generically a block header wihtout the number of links and returns links and members section part into a Seek buffer for further processing 
 #[inline]
 fn parse_block_short(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (Cursor<Vec<u8>>, Blockheader4Short, i64){
     // Reads block header
@@ -91,7 +106,7 @@ fn parse_block_short(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
     (block, block_header, position)
 }
 
-/// Id4 block structure
+/// Id4 (File Indentification) block structure
 #[derive(Debug, PartialEq, Default)]
 pub struct Id4 {
     id_file_id: [u8; 8], // "MDF     "
@@ -114,6 +129,7 @@ pub fn parse_id4(rdr: &mut BufReader<&File>, id_file_id: [u8; 8], id_vers: [u8; 
     }
 }
 
+/// Hd4 (Header) block structure
 #[derive(Debug)]
 #[derive(BinRead)]
 #[br(little)]
@@ -142,6 +158,7 @@ pub struct Hd4 {
     pub hd_start_distance_m:f64, // Start distance in meters at start of measurement (only for distance synchronous measurements) Only valid if "start distance valid" flag is set. All distance values for distance synchronized master channels or events are relative to this start distance.
 }
 
+/// Hd4 display implementation
 impl fmt::Display for Hd4 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let sec = self.hd_start_time_ns / 1000000000;
@@ -151,6 +168,7 @@ impl fmt::Display for Hd4 {
     }
 }
 
+/// Hd4 block struct parser
 pub fn hd4_parser(rdr: &mut BufReader<&File>) -> Hd4 {
     let mut buf= [0u8; 104];
     rdr.read_exact(&mut buf).unwrap();
@@ -159,6 +177,7 @@ pub fn hd4_parser(rdr: &mut BufReader<&File>) -> Hd4 {
     hd
 }
 
+/// Hd4 linked comment block metadata parser, returns a hashmap of xml tags as keys and corresponding text as values
 pub fn hd4_comment_parser(rdr: &mut BufReader<&File>, hd4_block: &Hd4) -> (HashMap<String, String>, i64) {
     let mut position:i64 = 168;
     let mut comments: HashMap<String, String> = HashMap::new();
@@ -233,6 +252,8 @@ fn comment(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (HashM
     (comments, position)
 }
 
+/// parses a TX or MD block and returns the contained string (xml not parsed yet) 
+/// along with current position and boolean true for a MD block and false for TX block
 fn md_tx_comment(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (String, i64, bool) {
     let mut comment = String::new();
     let mut md_flag: bool = false;
@@ -251,6 +272,7 @@ fn md_tx_comment(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> 
     (comment, position, md_flag)
 }
 
+/// parses the xml string to extract TX tag and replaces the xml with the corresponding TX's text
 pub fn extract_xml(comment: &mut HashMap<i64, (String, bool)>) {
     for val in comment.values_mut() {
         let (c, md_flag) = val.clone();
@@ -277,6 +299,7 @@ pub fn extract_xml(comment: &mut HashMap<i64, (String, bool)>) {
     }
 }
 
+/// Fh4 (File History) block struct, including the header
 #[derive(Debug)]
 #[derive(BinRead)]
 #[br(little)]
@@ -294,6 +317,7 @@ pub struct FhBlock {
     fh_reserved: [u8; 3], // reserved
 }
 
+/// Fh4 (File History) block struct parser
 fn parse_fh_block(rdr: &mut BufReader<&File>, target:i64, position:i64) -> (FhBlock, i64) {
     rdr.seek_relative(target - position).unwrap();  // change buffer position
     let mut buf= [0u8; 56];
@@ -306,6 +330,7 @@ fn parse_fh_block(rdr: &mut BufReader<&File>, target:i64, position:i64) -> (FhBl
     (fh, target + 56)
 }
 
+/// parses Fh4 linked comments and eventually parses its related xml returning a hashmap of (tag, text)
 fn parse_fh_comment(rdr: &mut BufReader<&File>, fh_block: &FhBlock, target:i64, mut position: i64) -> (HashMap<String, String>, i64){
     let mut comments: HashMap<String, String> = HashMap::new();
     if fh_block.fh_md_comment != 0 {
@@ -336,6 +361,7 @@ fn parse_fh_comment(rdr: &mut BufReader<&File>, fh_block: &FhBlock, target:i64, 
     (comments, position)
 }
 
+/// parses File History blocks along with its linked comments returns a vect of Fh4 block with comments
 pub fn parse_fh(rdr: &mut BufReader<&File>, target: i64, position: i64) -> (Vec<(FhBlock, HashMap<String, String>)>, i64) {
     let mut fh: Vec<(FhBlock, HashMap<String, String>)> = Vec::new();
     let (block, position) = parse_fh_block(rdr, target, position);
@@ -354,6 +380,7 @@ pub fn parse_fh(rdr: &mut BufReader<&File>, target: i64, position: i64) -> (Vec<
     } 
     (fh, position)
 }
+/// At4 Attachment block struct
 #[derive(Debug)]
 #[derive(BinRead)]
 #[br(little)]
@@ -375,6 +402,8 @@ pub struct At4Block {
     // followed by embedded data depending of flag
 }
 
+
+/// At4 (Attachment) block struct parser
 fn parser_at4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) 
         -> (At4Block, Option<Vec<u8>>, i64) {
     rdr.seek_relative(target - position).unwrap();
@@ -397,6 +426,7 @@ fn parser_at4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
     (block, data, position)
 }
 
+/// parses At4 linked comments and eventually parses its related xml returning a hashmap of (tag, text)
 pub fn parse_at4_comments(rdr: &mut BufReader<&File>, block: &HashMap<i64, (At4Block, Option<Vec<u8>>)>, mut position: i64) 
         -> (HashMap<i64, HashMap<String, String>>, i64) {
     let mut comments: HashMap<i64, HashMap<String, String>> = HashMap::new();
@@ -431,6 +461,7 @@ pub fn parse_at4_comments(rdr: &mut BufReader<&File>, block: &HashMap<i64, (At4B
     (comments, position)
 }
 
+/// parses Attachment blocks along with its linked comments, returns a vect of Fh4 block with comments
 pub fn parse_at4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) 
         -> (HashMap<i64, (At4Block, Option<Vec<u8>>)>, i64) {
     let mut at: HashMap<i64, (At4Block, Option<Vec<u8>>)> = HashMap::new();
@@ -450,6 +481,7 @@ pub fn parse_at4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
     (at, position)
 }
 
+/// Ev4 Event block struct
 #[derive(Debug)]
 #[derive(BinRead)]
 #[br(little)]
@@ -528,6 +560,7 @@ pub fn parse_ev4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
     (ev, position)
 }
 
+/// Dg4 Data Group block struct
 #[derive(Debug)]
 #[derive(BinRead)]
 #[br(little)]
@@ -622,6 +655,7 @@ impl fmt::Display for SharableBlocks {
     }
 }
 
+/// Cg4 Channel Group block struct
 #[derive(Debug)]
 #[derive(BinRead)]
 #[br(little)]
@@ -754,6 +788,7 @@ pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sha
     (cg, position)
 }
 
+/// Cn4 Channel block struct
 #[derive(Debug, PartialEq, Default)]
 #[derive(BinRead)]
 #[br(little)]
@@ -911,6 +946,7 @@ fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, s
     (cn_struct, position)
 }
 
+/// Cc4 Channel Conversion block struct
 #[derive(Debug, PartialEq, Default)]
 #[derive(BinRead)]
 #[br(little)]
@@ -939,6 +975,7 @@ pub struct Cc4Block {
     cc_val: Vec<f64>,  //List of additional conversion parameters. Length of list is given by cc_val_count. The list can be empty. Details are explained in formula-specific block supplement.
 }
 
+/// Si4 Source Information block struct
 #[derive(Debug, PartialEq, Default)]
 #[derive(BinRead)]
 #[br(little)]
@@ -978,6 +1015,7 @@ impl Si4Block {
     }
 }
 
+/// Ca4 Channel Array block struct
 #[derive(Debug, PartialEq, Default)]
 pub struct Ca4Block {
     //header
@@ -1174,6 +1212,10 @@ pub fn build_channel_db(dg: &mut HashMap<i64, Dg4>, sharable: &SharableBlocks) -
     let mut db = Db {channel_list: HashMap::new(), master_channel_list: HashMap::new()};
     for (dg_position, dg) in dg.iter_mut() {
         for (cg_position, cg) in dg.cg.iter_mut() {
+            if cg.block.cg_cg_master != 0 {
+                // master is in another cg block, possible, from 4.2
+                
+            }
             let mut master_channel_name = format!("master_{}", cg_position);  // default name in case no master is existing
             let mut cg_channel_list = HashSet::new();
             let gn = cg.get_cg_name(sharable);
@@ -1206,7 +1248,7 @@ pub fn build_channel_db(dg: &mut HashMap<i64, Dg4>, sharable: &SharableBlocks) -
                 };
                 db.channel_list.insert(channel_name.clone(), (dg_position.clone(), cg_position.clone(), cn_position.clone()));
                 cg_channel_list.insert(channel_name.clone());
-                if cn.block.cn_type == 2 {
+                if cn.block.cn_type == 2 || cn.block.cn_type == 3 {
                     // Master channel
                     master_channel_name = channel_name.clone();
                 }
