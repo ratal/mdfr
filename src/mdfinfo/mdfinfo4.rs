@@ -274,7 +274,7 @@ fn md_tx_comment(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> 
 
 /// parses the xml string to extract TX tag and replaces the xml with the corresponding TX's text
 pub fn extract_xml(comment: &mut HashMap<i64, (String, bool)>) {
-    for val in comment.values_mut() {
+    for (_, val) in comment.iter_mut() {
         let (c, md_flag) = val.clone();
             if md_flag {
                 match roxmltree::Document::parse(&c) {
@@ -741,28 +741,25 @@ pub struct Cg4 {
 
 impl Cg4 {
     fn get_cg_name(&self, sharable: &SharableBlocks) -> Option<String> {
-        let gn = match sharable.tx.get(&self.block.cg_tx_acq_name) {
+        match sharable.tx.get(&self.block.cg_tx_acq_name) {
             Some(block) => {let gn = block.0.clone();
                 if !gn.is_empty() {Some(gn)} else {None}},
             None => None,
-        };
-        gn
+        }
     }
     fn get_cg_source_name(&self, sharable: &SharableBlocks) -> Option<String> {
         let si = sharable.si.get(&self.block.cg_si_acq_source);
-        let gs = match si {
+        match si {
             Some(block) => block.get_si_source_name(sharable),
             None => None,
-        };
-        gs
+        }
     }
     fn get_cg_source_path(&self, sharable: &SharableBlocks) -> Option<String> {
         let si = sharable.si.get(&self.block.cg_si_acq_source);
-        let gp = match si {
+        match si {
             Some(block) => block.get_si_path_name(sharable),
             None => None,
-        };
-        gp
+        }
     }
 }
 
@@ -856,19 +853,17 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sha
 impl Cn4 {
     fn get_cn_source_name(&self, sharable: &SharableBlocks) -> Option<String> {
         let si = sharable.si.get(&self.block.cn_si_source);
-        let cs = match si {
+        match si {
             Some(block) => block.get_si_source_name(sharable),
             None => None,
-        };
-        cs
+        }
     }
     fn get_cn_source_path(&self, sharable: &SharableBlocks) -> Option<String> {
         let si = sharable.si.get(&self.block.cn_si_source);
-        let cp = match si {
+        match si {
             Some(block) => block.get_si_path_name(sharable),
             None => None,
-        };
-        cp
+        }
     }
 }
 
@@ -1246,7 +1241,7 @@ pub fn build_channel_db(dg: &mut HashMap<i64, Dg4>, sharable: &SharableBlocks) -
                     }
                     cn.unique_name = channel_name.clone();
                 };
-                db.channel_list.insert(channel_name.clone(), (dg_position.clone(), cg_position.clone(), cn_position.clone()));
+                db.channel_list.insert(channel_name.clone(), (*dg_position, *cg_position, *cn_position));
                 cg_channel_list.insert(channel_name.clone());
                 if cn.block.cn_type == 2 || cn.block.cn_type == 3 {
                     // Master channel
