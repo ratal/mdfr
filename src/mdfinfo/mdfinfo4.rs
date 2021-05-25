@@ -10,11 +10,12 @@ use std::convert::TryFrom;
 use binread::{BinRead, BinReaderExt};
 use std::collections::{HashMap, BTreeMap, HashSet};
 use chrono::{DateTime, Utc, naive::NaiveDateTime};
+use dashmap::DashMap;
 
 /// MdfInfo4 is the struct hold whole metadata of mdf4.x files
 /// * blocks with unique links are at top level like attachment, events and file history
 /// * sharable blocks (most likely referenced multiple times and shared by several blocks)
-/// are in sharable fields and holds CC, SI, TX and MD blocks
+/// that are in sharable fields and holds CC, SI, TX and MD blocks
 /// * the dg fields nests cg itself nesting cn blocks and eventually compositions
 /// (other ccn or ca blocks)
 /// * db is a representation of file content centered on channel names as key
@@ -273,7 +274,7 @@ fn md_tx_comment(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> 
 }
 
 /// parses the xml string to extract TX tag and replaces the xml with the corresponding TX's text
-pub fn extract_xml(comment: &mut HashMap<i64, (String, bool)>) {
+pub fn extract_xml(comment: &mut Tx) {
     for (_, val) in comment.iter_mut() {
         let (c, md_flag) = val.clone();
             if md_flag {
@@ -331,7 +332,8 @@ fn parse_fh_block(rdr: &mut BufReader<&File>, target:i64, position:i64) -> (FhBl
 }
 
 /// parses Fh4 linked comments and eventually parses its related xml returning a hashmap of (tag, text)
-fn parse_fh_comment(rdr: &mut BufReader<&File>, fh_block: &FhBlock, target:i64, mut position: i64) -> (HashMap<String, String>, i64){
+fn parse_fh_comment(rdr: &mut BufReader<&File>, fh_block: &FhBlock, target:i64, mut position: i64)
+        -> (HashMap<String, String>, i64){
     let mut comments: HashMap<String, String> = HashMap::new();
     if fh_block.fh_md_comment != 0 {
         let (block_header, comment, pos) = parse_comment(rdr, target, position);
@@ -623,10 +625,14 @@ pub fn parse_dg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sha
     (dg, position)
 }
 
+type Tx = HashMap<i64, (String, bool)>;
+
+/// sharable blocks (most likely referenced multiple times and shared by several blocks)
+/// that are in sharable fields and holds CC, SI, TX and MD blocks
 #[derive(Debug, PartialEq, Default)]
 pub struct SharableBlocks {
     pub(crate) md: HashMap<i64, HashMap<String, String>>,
-    pub(crate) tx: HashMap<i64, (String, bool)>,
+    pub(crate) tx: Tx,
     pub(crate) cc: HashMap<i64, Cc4Block>,
     pub(crate) si: HashMap<i64, Si4Block>,
 }
