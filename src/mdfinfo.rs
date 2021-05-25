@@ -114,7 +114,7 @@ pub fn mdfinfo(file_name: &str) -> MdfInfo {
         //println!("{}", db);
         
         mdf_info = MdfInfo::V4(MdfInfo4{ver, prog,
-            id_block: id, hd_block: hd, hd_comment, fh, at, ev, dg, sharable,
+            id_block: id, hd_block: hd, hd_comment, fh, at, ev, dg, sharable, db,
             });
     };
     mdf_info
