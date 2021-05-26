@@ -2,7 +2,7 @@
 
 //! This module is reading the mdf file blocks
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 use std::io::{BufReader, Read};
 use std::fs::{File, OpenOptions};
 use std::str;
@@ -11,6 +11,7 @@ use std::fmt;
 pub mod mdfinfo3;
 pub mod mdfinfo4;
 
+use dashmap::DashMap;
 use mdfinfo3::{MdfInfo3, parse_id3, hd3_parser, hd3_comment_parser};
 use mdfinfo4::{MdfInfo4, parse_id4, hd4_parser, hd4_comment_parser, extract_xml,
     parse_fh, parse_at4, parse_at4_comments, parse_ev4, parse_ev4_comments, parse_dg4,
@@ -42,9 +43,10 @@ impl fmt::Display for MdfInfo {
                 writeln!(f, "Version : {}", mdfinfo4.ver)?;
                 writeln!(f, "{}\n", mdfinfo4.hd_block)?;
                 let comments = &mdfinfo4.hd_comment;
-                Ok(for c in comments.iter() {
+                for c in comments.iter() {
                     writeln!(f, "{} {}", c.0, c.1)?;
-                })
+                }
+                writeln!(f, "\n")
             }
             }
     }
@@ -82,7 +84,7 @@ pub fn mdfinfo(file_name: &str) -> MdfInfo {
             });
     } else {
         
-        let mut sharable: SharableBlocks = SharableBlocks {md: HashMap::new(), tx: HashMap::new(), 
+        let mut sharable: SharableBlocks = SharableBlocks {md: HashMap::new(), tx: Arc::new(DashMap::new()), 
             cc: HashMap::new(), si: HashMap::new()};
 
         let id = parse_id4(&mut rdr, id_file_id, id_vers, prog);
