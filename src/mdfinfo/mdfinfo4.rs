@@ -1217,10 +1217,6 @@ pub fn build_channel_db(dg: &mut HashMap<i64, Dg4>, sharable: &SharableBlocks) -
     let mut db = Db {channel_list: HashMap::new(), master_channel_list: HashMap::new()};
     for (dg_position, dg) in dg.iter_mut() {
         for (cg_position, cg) in dg.cg.iter_mut() {
-            if cg.block.cg_cg_master != 0 {
-                // master is in another cg block, possible, from 4.2
-                
-            }
             let mut master_channel_name = format!("master_{}", cg_position);  // default name in case no master is existing
             let mut cg_channel_list = HashSet::new();
             let gn = cg.get_cg_name(sharable);
@@ -1258,7 +1254,21 @@ pub fn build_channel_db(dg: &mut HashMap<i64, Dg4>, sharable: &SharableBlocks) -
                     master_channel_name = channel_name.clone();
                 }
             }
-            db.master_channel_list.insert(master_channel_name, cg_channel_list);
+            if cg.block.cg_cg_master != 0 {
+                // master is in another cg block, possible from 4.2
+                let temp = db.channel_list.iter()
+                        .find(|(_, (_, v, _))| v == &cg.block.cg_cg_master);
+                match temp {
+                    Some(s) => master_channel_name = s.0.to_owned(),
+                    None => println!("master channel not found for channel"),
+                };
+            }
+            if !db.master_channel_list.contains_key(&master_channel_name) {
+                db.master_channel_list.insert(master_channel_name, cg_channel_list);
+            } else {
+                let list = db.master_channel_list.get_mut(&master_channel_name);
+                if let Some(l) = list { l.extend(cg_channel_list) }
+            }
         }
     }
     db
