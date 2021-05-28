@@ -616,7 +616,8 @@ pub fn parse_dg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sha
         let (block, comments, pos) = parse_dg4_block(rdr, target, position);
         position = pos;
         let mut next_pointer = block.dg_dg_next;
-        let (cg, pos) = parse_cg4(rdr, block.dg_cg_first, position, sharable);
+        let record_id_size = rec_id_size(block.dg_rec_id_size);
+        let (cg, pos) = parse_cg4(rdr, block.dg_cg_first, position, sharable, record_id_size);
         let dg_struct = Dg4 {block, comments, cg};
         dg.insert(target, dg_struct);
         position = pos;
@@ -625,13 +626,28 @@ pub fn parse_dg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sha
             let (block, comments, pos) = parse_dg4_block(rdr, next_pointer, position);
             next_pointer = block.dg_dg_next;
             position = pos;
-            let (cg, pos) = parse_cg4(rdr, block.dg_cg_first, position, sharable);
+            let record_id_size = rec_id_size(block.dg_rec_id_size);
+            let (cg, pos) = parse_cg4(rdr, block.dg_cg_first, position, sharable, record_id_size);
             let dg_struct = Dg4 {block, comments, cg};
             dg.insert(block_start, dg_struct);
             position = pos;
         }
     }
     (dg, position)
+}
+
+
+/// Retuns the size of record ID in the record
+fn rec_id_size(dg_rec_id_size: u8) -> u32 {
+    match dg_rec_id_size {
+        0 => 0, // No record id
+        1 => 1, // u8
+        2 => 2, // u16
+        3 => 4, // u32
+        4 => 8, // u64
+        _ => 0,
+    }
+
 }
 
 /// TX data type : hashmap will concurrent capability (dashmap crate) embedded into an Arc
@@ -788,21 +804,23 @@ impl Cg4 {
 }
 
 /// Cg4 blocks and linked blocks parsing
-pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sharable: &mut SharableBlocks)
+pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sharable: &mut SharableBlocks, record_id_size: u32)
         -> (HashMap<i64, Cg4>, i64) {
     let mut cg: HashMap<i64, Cg4> = HashMap::new();
     if target != 0 {
-        let (cg_struct, pos) 
+        let (mut cg_struct, pos) 
             = parse_cg4_block(rdr, target, position, sharable);
         position = pos;
         let mut next_pointer = cg_struct.block.cg_cg_next;
+        cg_struct.record_length += record_id_size;
         cg.insert(target, cg_struct);
 
         while next_pointer != 0 {
             let block_start = next_pointer;
-            let (cg_struct, pos) 
+            let (mut cg_struct, pos) 
                 = parse_cg4_block(rdr, next_pointer, position, sharable);
             position = pos;
+            cg_struct.record_length += record_id_size;
             next_pointer = cg_struct.block.cg_cg_next;
             cg.insert(block_start, cg_struct);
         }
