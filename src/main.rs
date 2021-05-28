@@ -3,6 +3,7 @@ extern crate clap;
 use clap::{Arg, App, SubCommand};
 use std::io;
 mod mdfinfo;
+mod mdfreader;
 
 fn main() -> io::Result<()>{
     let matches = App::new("mdfr")
@@ -38,6 +39,7 @@ fn main() -> io::Result<()>{
     }
 
     let info = mdfinfo::mdfinfo(file_name);
+    mdfreader::mdfreader(file_name);
 
     //println!(r#"{:?}"#, info);
 

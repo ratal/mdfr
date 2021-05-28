@@ -113,7 +113,7 @@ pub fn mdfinfo(file_name: &str) -> MdfInfo {
 
         // make channel names unique, list channels and create master dictionnary
         let db = build_channel_db(&mut dg, &sharable);
-        //println!("{}", db);
+        // println!("{}", db);
         
         mdf_info = MdfInfo::V4(MdfInfo4{ver, prog,
             id_block: id, hd_block: hd, hd_comment, fh, at, ev, dg, sharable, db,

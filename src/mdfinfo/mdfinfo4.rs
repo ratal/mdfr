@@ -466,7 +466,7 @@ pub fn parse_at4_comments(rdr: &mut BufReader<&File>, block: &HashMap<i64, (At4B
     (comments, position)
 }
 
-/// parses Attachment blocks along with its linked comments, returns a vect of Fh4 block with comments
+/// parses Attachment blocks along with its linked comments, returns a hashmap of At4 block and attached data in a vect
 pub fn parse_at4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) 
         -> (HashMap<i64, (At4Block, Option<Vec<u8>>)>, i64) {
     let mut at: HashMap<i64, (At4Block, Option<Vec<u8>>)> = HashMap::new();
@@ -516,6 +516,7 @@ pub struct Ev4Block {
     ev_sync_factor: f64,  // Factor for event synchronization value.
 }
 
+/// Ev4 (Event) block struct parser
 fn parse_ev4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (Ev4Block, i64) {
     let (mut block, _header, pos) = parse_block_short(rdr, target, position);
     position =pos;
@@ -527,6 +528,7 @@ fn parse_ev4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -
     (block, position)
 }
 
+/// parses Ev4 linked comments and eventually parses its related xml returning a hashmap of (tag, text)
 pub fn parse_ev4_comments(rdr: &mut BufReader<&File>, block: &HashMap<i64, Ev4Block>, mut position: i64) 
         -> (HashMap<i64, HashMap<String, String>>, i64) {
     let comments: HashMap<i64, HashMap<String, String>> = HashMap::new();
@@ -546,6 +548,7 @@ pub fn parse_ev4_comments(rdr: &mut BufReader<&File>, block: &HashMap<i64, Ev4Bl
     (comments, position)
 }
 
+/// parses Event blocks along with its linked comments, returns a hashmap of Ev4 block with position as key
 pub fn parse_ev4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) 
         -> (HashMap<i64, Ev4Block>, i64) {
     let mut ev: HashMap<i64, Ev4Block> = HashMap::new();
@@ -582,6 +585,7 @@ pub struct Dg4Block {
     reserved_2: [u8; 7],  // reserved
 }
 
+/// Dg4 (Data Group) block struct parser with comments
 fn parse_dg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (Dg4Block, HashMap<String, String>, i64) {
     rdr.seek_relative(target - position).unwrap();
     let mut buf= [0u8; 64];
@@ -596,13 +600,15 @@ fn parse_dg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -
     (dg, comments, position)
 }
 
+/// Dg4 struct wrapping block, comments and linked CG
 #[derive(Debug)]
 pub struct Dg4 {
-    block: Dg4Block,  // DG Block
+    pub block: Dg4Block,  // DG Block
     comments: HashMap<String, String>,  // Comments
-    cg: HashMap<i64, Cg4>,    // CG Block
+    pub cg: HashMap<i64, Cg4>,    // CG Block
 }
 
+/// Parser for Dg4 and all linked blocks (cg, cn, cc, ca, si)
 pub fn parse_dg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sharable: &mut SharableBlocks)
         -> (HashMap<i64, Dg4>, i64) {
     let mut dg: HashMap<i64, Dg4> = HashMap::new();
@@ -628,6 +634,8 @@ pub fn parse_dg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sha
     (dg, position)
 }
 
+/// TX data type : hashmap will concurrent capability (dashmap crate) embedded into an Arc
+/// to allow concurrent xml processing with rayon crate
 pub(crate) type Tx = Arc<DashMap<i64, (String, bool)>>;
 
 /// sharable blocks (most likely referenced multiple times and shared by several blocks)
@@ -640,6 +648,7 @@ pub struct SharableBlocks {
     pub(crate) si: HashMap<i64, Si4Block>,
 }
 
+/// SharableBlocks display implementation to facilitate debugging
 impl fmt::Display for SharableBlocks {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "MD comments : ")?;
@@ -692,6 +701,7 @@ pub struct Cg4Block {
     cg_inval_bytes: u32, // Normal CGBLOCK: Number of additional Bytes for record used for invalidation bits. Can be zero if no invalidation bits are used at all. Invalidation bits may only occur in the specified number of Bytes after the data Bytes, not within the data Bytes that contain the signal values. VLSD CGBLOCK: High part of UINT64 value that specifies the total size in Bytes of all variable length signal values for the recorded samples of this channel group, i.e. the total size in Bytes can be calculated by cg_data_bytes + (cg_inval_bytes << 32) Note: this value does not include the Bytes used to specify the length of each VLSD value!
 }
 
+/// Cg4 (Channel Group) block struct parser with linked comments Source Information in sharable blocks
 fn parse_cg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sharable: &mut SharableBlocks) 
         -> (Cg4, i64) {
     
@@ -738,17 +748,21 @@ fn parse_cg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, s
         sharable.si.insert(si_pointer, si_block);
     }
 
-    let cg_struct = Cg4 {block: cg, cn};
+    let record_length = cg.cg_data_bytes;
+
+    let cg_struct = Cg4 {block: cg, cn, record_length};
 
     (cg_struct, position)
 }
 
 #[derive(Debug)]
 pub struct Cg4 {
-    block: Cg4Block,
-    cn: BTreeMap<u32, Cn4> ,
+    pub block: Cg4Block,
+    pub cn: BTreeMap<u32, Cn4>,
+    pub record_length: u32,
 }
 
+/// Cg4 implementations for extracting acquisition and source name and path
 impl Cg4 {
     fn get_cg_name(&self, sharable: &SharableBlocks) -> Option<String> {
         match sharable.tx.get(&self.block.cg_tx_acq_name) {
@@ -773,6 +787,7 @@ impl Cg4 {
     }
 }
 
+/// Cg4 blocks and linked blocks parsing
 pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sharable: &mut SharableBlocks)
         -> (HashMap<i64, Cg4>, i64) {
     let mut cg: HashMap<i64, Cg4> = HashMap::new();
@@ -833,8 +848,8 @@ pub struct Cn4Block {
 
 #[derive(Debug, PartialEq, Default)]
 pub struct Cn4 {
-    block: Cn4Block,
-    unique_name: String,
+    pub block: Cn4Block,
+    pub unique_name: String,
     block_position: i64,
     composition: Option<Composition>,
 }
