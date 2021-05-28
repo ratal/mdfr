@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 pub mod mdfinfo;
+pub mod mdfreader;
 mod tests;
 
 //use pyo3::prelude::*;
