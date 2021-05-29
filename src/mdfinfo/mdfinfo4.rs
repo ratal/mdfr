@@ -42,7 +42,7 @@ pub struct MdfInfo4 {
 #[derive(BinRead)]
 #[br(little)]
 pub struct Blockheader4 {
-    hdr_id: [u8; 4],   // '##XX'
+    pub hdr_id: [u8; 4],   // '##XX'
     hdr_gap: [u8; 4],   // reserved, must be 0
     hdr_len: u64,   // Length of block in bytes
     hdr_links: u64 // # of links 
@@ -50,7 +50,7 @@ pub struct Blockheader4 {
 
 /// parse the block header and its fields id, (reserved), length and number of links
 #[inline]
-fn parse_block_header(rdr: &mut BufReader<&File>) -> Blockheader4 {
+pub fn parse_block_header(rdr: &mut BufReader<&File>) -> Blockheader4 {
     let mut buf= [0u8; 24];
     rdr.read_exact(&mut buf).unwrap();
     let mut block = Cursor::new(buf);
@@ -699,7 +699,7 @@ pub struct Cg4Block {
     // reserved: [u8; 4],  // reserved
     // cg_len: u64,      // Length of block in bytes
     cg_links: u64,         // # of links
-    cg_cg_next: i64, // Pointer to next channel group block (CGBLOCK) (can be NIL)
+    pub cg_cg_next: i64, // Pointer to next channel group block (CGBLOCK) (can be NIL)
     cg_cn_first: i64, // Pointer to first channel block (CNBLOCK) (can be NIL, must be NIL for VLSD CGBLOCK, i.e. if "VLSD channel group" flag (bit 0) is set)
     cg_tx_acq_name: i64, // Pointer to acquisition name (TXBLOCK) (can be NIL, must be NIL for VLSD CGBLOCK)
     cg_si_acq_source: i64, // Pointer to acquisition source (SIBLOCK) (can be NIL, must be NIL for VLSD CGBLOCK) See also rules for uniqueness explained in 4.4.3 Identification of Channels.
@@ -718,7 +718,7 @@ pub struct Cg4Block {
 }
 
 /// Cg4 (Channel Group) block struct parser with linked comments Source Information in sharable blocks
-fn parse_cg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sharable: &mut SharableBlocks) 
+fn parse_cg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sharable: &mut SharableBlocks, record_id_size: u32) 
         -> (Cg4, i64) {
     
     let (mut block, _block_header, pos) = parse_block_short(rdr, target, position);
@@ -734,7 +734,7 @@ fn parse_cg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, s
     }
 
     let (cn, pos) 
-            = parse_cn4(rdr, cg.cg_cn_first, position, sharable);
+            = parse_cn4(rdr, cg.cg_cn_first, position, sharable, record_id_size);
         position = pos;
     
     // Reads Acq Name
@@ -809,7 +809,7 @@ pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sha
     let mut cg: HashMap<i64, Cg4> = HashMap::new();
     if target != 0 {
         let (mut cg_struct, pos) 
-            = parse_cg4_block(rdr, target, position, sharable);
+            = parse_cg4_block(rdr, target, position, sharable, record_id_size);
         position = pos;
         let mut next_pointer = cg_struct.block.cg_cg_next;
         cg_struct.record_length += record_id_size;
@@ -818,7 +818,7 @@ pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sha
         while next_pointer != 0 {
             let block_start = next_pointer;
             let (mut cg_struct, pos) 
-                = parse_cg4_block(rdr, next_pointer, position, sharable);
+                = parse_cg4_block(rdr, next_pointer, position, sharable, record_id_size);
             position = pos;
             cg_struct.record_length += record_id_size;
             next_pointer = cg_struct.block.cg_cg_next;
@@ -869,21 +869,23 @@ pub struct Cn4 {
     pub block: Cn4Block,
     pub unique_name: String,
     block_position: i64,
+    pub pos_byte_beg: u32,
+    pub n_bytes: u32,
     composition: Option<Composition>,
 }
 
-pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sharable: &mut SharableBlocks) 
+pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sharable: &mut SharableBlocks, record_id_size: u32) 
         -> (BTreeMap<u32, Cn4>, i64) {
     let mut cn: BTreeMap<u32, Cn4> = BTreeMap::new();
     if target != 0 {
-        let (cn_struct, pos) = parse_cn4_block(rdr, target, position, sharable);
+        let (cn_struct, pos) = parse_cn4_block(rdr, target, position, sharable, record_id_size);
         position = pos;
         let rec_pos = cn_struct.block.cn_byte_offset + u32::try_from(cn_struct.block.cn_bit_offset).unwrap() * 8;
         let mut next_pointer = cn_struct.block.cn_cn_next;
         cn.insert(rec_pos, cn_struct);
         
         while next_pointer != 0 {
-            let (cn_struct, pos) = parse_cn4_block(rdr, next_pointer, position, sharable);
+            let (cn_struct, pos) = parse_cn4_block(rdr, next_pointer, position, sharable, record_id_size);
             position = pos;
             let rec_pos = cn_struct.block.cn_byte_offset + u32::try_from(cn_struct.block.cn_bit_offset).unwrap() * 8;
             next_pointer = cn_struct.block.cn_cn_next;
@@ -891,6 +893,36 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sha
         }
     }
     (cn, position)
+}
+
+fn calc_n_bytes(bitcount: u32, data_type: u8) -> u32{
+    let n_bytes: u32;
+    if data_type < 6 {
+        if bitcount==0  {
+            n_bytes = 0;
+        } else if bitcount <= 8 {
+            n_bytes = 1;
+        } else if bitcount <= 16 {
+            n_bytes = 2;
+        } else if bitcount <= 32 {
+            n_bytes = 4;
+        } else if bitcount <= 64 {
+            n_bytes = 8;
+        } else {
+            n_bytes = calc_n_bytes_not_aligned(bitcount);
+        }
+    } else {
+        n_bytes = calc_n_bytes_not_aligned(bitcount);
+    }
+    n_bytes
+}
+
+fn calc_n_bytes_not_aligned(bitcount: u32) -> u32 {
+    let mut n_bytes = bitcount / 8u32;
+    if (bitcount % 8) != 0 {
+        n_bytes += 1;
+    }
+    n_bytes
 }
 
 impl Cn4 {
@@ -910,11 +942,13 @@ impl Cn4 {
     }
 }
 
-fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sharable: &mut SharableBlocks) -> (Cn4, i64) {
+fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sharable: &mut SharableBlocks, record_id_size: u32) -> (Cn4, i64) {
 
     let (mut block, _header, pos) = parse_block_short(rdr, target, position);
     position = pos;
     let block: Cn4Block = block.read_le().unwrap();
+    let pos_byte_beg = block.cn_byte_offset + record_id_size;
+    let n_bytes = calc_n_bytes(block.cn_bit_count, block.cn_data_type);
 
     // Reads TX name
     let (_, name, pos) = parse_comment(rdr, block.cn_tx_name, position);
@@ -972,14 +1006,14 @@ fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, s
     //Reads CA or composition
     let compo: Option<Composition>;
     if block.cn_composition != 0 {
-        let (co, pos) = parse_composition(rdr, block.cn_composition, position, sharable);
+        let (co, pos) = parse_composition(rdr, block.cn_composition, position, sharable, record_id_size);
         compo = Some(co);
         position = pos;
     } else {
         compo = None;
     }
 
-    let cn_struct = Cn4 {block, unique_name: name, block_position: target, composition: compo};
+    let cn_struct = Cn4 {block, unique_name: name, block_position: target, pos_byte_beg, n_bytes, composition: compo};
 
     (cn_struct, position)
 }
@@ -1197,7 +1231,7 @@ pub enum Compo {
     CN(Box<Cn4>),
 }
 
-fn parse_composition(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sharable: &mut SharableBlocks) -> (Composition, i64) {
+fn parse_composition(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sharable: &mut SharableBlocks, record_id_size: u32) -> (Composition, i64) {
 
     let (mut block, block_header, pos) = parse_block(rdr, target, position);
     position =pos;
@@ -1208,18 +1242,18 @@ fn parse_composition(rdr: &mut BufReader<&File>, target: i64, mut position: i64,
         position = pos;
         let ca_compositon:Option<Box<Composition>>;
         if block.ca_composition != 0 {
-            let (ca, pos) = parse_composition(rdr, block.ca_composition, position, sharable);
+            let (ca, pos) = parse_composition(rdr, block.ca_composition, position, sharable, record_id_size);
             position = pos;
             ca_compositon = Some(Box::new(ca));
         } else {ca_compositon = None}
         (Composition {block: Compo::CA(block), compo: ca_compositon}, position)
     } else {
         // Channel composition
-        let (cn_struct, pos) = parse_cn4_block(rdr, target, position, sharable);
+        let (cn_struct, pos) = parse_cn4_block(rdr, target, position, sharable, record_id_size);
         position = pos;
         let cn_composition:Option<Box<Composition>>;
         if cn_struct.block.cn_cn_next != 0 {
-            let (cn, pos) = parse_composition(rdr, cn_struct.block.cn_cn_next, position, sharable);
+            let (cn, pos) = parse_composition(rdr, cn_struct.block.cn_cn_next, position, sharable, record_id_size);
             position = pos;
             cn_composition = Some(Box::new(cn));
         } else {cn_composition = None}
