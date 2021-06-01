@@ -12,6 +12,7 @@ use std::collections::{HashMap, BTreeMap, HashSet};
 use chrono::{DateTime, Utc, naive::NaiveDateTime};
 use dashmap::DashMap;
 use rayon::prelude::*;
+use ndarray::Array;
 
 /// MdfInfo4 is the struct hold whole metadata of mdf4.x files
 /// * blocks with unique links are at top level like attachment, events and file history
@@ -708,13 +709,13 @@ pub struct Cg4Block {
     #[br(if(cg_links > 6))]
     cg_cg_master: i64,
      // Data Members
-    cg_record_id: u64, // Record ID, value must be less than maximum unsigned integer value allowed by dg_rec_id_size in parent DGBLOCK. Record ID must be unique within linked list of CGBLOCKs.
-    cg_cycle_count: u64, // Number of cycles, i.e. number of samples for this channel group. This specifies the number of records of this type in the data block.
+    pub cg_record_id: u64, // Record ID, value must be less than maximum unsigned integer value allowed by dg_rec_id_size in parent DGBLOCK. Record ID must be unique within linked list of CGBLOCKs.
+    pub cg_cycle_count: u64, // Number of cycles, i.e. number of samples for this channel group. This specifies the number of records of this type in the data block.
     cg_flags: u16, // Flags The value contains the following bit flags (see CG_F_xx):
     cg_path_separator: u16,
     cg_reserved: [u8; 4], // Reserved.
-    cg_data_bytes: u32, // Normal CGBLOCK: Number of data Bytes (after record ID) used for signal values in record, i.e. size of plain data for each recorded sample of this channel group. VLSD CGBLOCK: Low part of a UINT64 value that specifies the total size in Bytes of all variable length signal values for the recorded samples of this channel group. See explanation for cg_inval_bytes.
-    cg_inval_bytes: u32, // Normal CGBLOCK: Number of additional Bytes for record used for invalidation bits. Can be zero if no invalidation bits are used at all. Invalidation bits may only occur in the specified number of Bytes after the data Bytes, not within the data Bytes that contain the signal values. VLSD CGBLOCK: High part of UINT64 value that specifies the total size in Bytes of all variable length signal values for the recorded samples of this channel group, i.e. the total size in Bytes can be calculated by cg_data_bytes + (cg_inval_bytes << 32) Note: this value does not include the Bytes used to specify the length of each VLSD value!
+    pub cg_data_bytes: u32, // Normal CGBLOCK: Number of data Bytes (after record ID) used for signal values in record, i.e. size of plain data for each recorded sample of this channel group. VLSD CGBLOCK: Low part of a UINT64 value that specifies the total size in Bytes of all variable length signal values for the recorded samples of this channel group. See explanation for cg_inval_bytes.
+    pub cg_inval_bytes: u32, // Normal CGBLOCK: Number of additional Bytes for record used for invalidation bits. Can be zero if no invalidation bits are used at all. Invalidation bits may only occur in the specified number of Bytes after the data Bytes, not within the data Bytes that contain the signal values. VLSD CGBLOCK: High part of UINT64 value that specifies the total size in Bytes of all variable length signal values for the recorded samples of this channel group, i.e. the total size in Bytes can be calculated by cg_data_bytes + (cg_inval_bytes << 32) Note: this value does not include the Bytes used to specify the length of each VLSD value!
 }
 
 /// Cg4 (Channel Group) block struct parser with linked comments Source Information in sharable blocks
@@ -848,7 +849,7 @@ pub struct Cn4Block {
   // Data Members
     cn_type: u8, // Channel type (see CN_T_xxx)
     cn_sync_type: u8, // Sync type: (see CN_S_xxx)
-    cn_data_type: u8, // Channel data type of raw signal value (see CN_DT_xxx)
+    pub cn_data_type: u8, // Channel data type of raw signal value (see CN_DT_xxx)
     cn_bit_offset: u8, // Bit offset (0-7): first bit (=LSB) of signal value after Byte offset has been applied (see 4.21.4.2 Reading the Signal Value). If zero, the signal value is 1-Byte aligned. A value different to zero is only allowed for Integer data types (cn_data_type ≤ 3) and if the Integer signal value fits into 8 contiguous Bytes (cn_bit_count + cn_bit_offset ≤ 64). For all other cases, cn_bit_offset must be zero.
     cn_byte_offset: u32, // Offset to first Byte in the data record that contains bits of the signal value. The offset is applied to the plain record data, i.e. skipping the record ID.
     cn_bit_count: u32, // Number of bits for signal value in record
@@ -880,14 +881,14 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sha
     if target != 0 {
         let (cn_struct, pos) = parse_cn4_block(rdr, target, position, sharable, record_id_size);
         position = pos;
-        let rec_pos = cn_struct.block.cn_byte_offset + u32::try_from(cn_struct.block.cn_bit_offset).unwrap() * 8;
+        let rec_pos = (cn_struct.block.cn_byte_offset + record_id_size) *8 + u32::try_from(cn_struct.block.cn_bit_offset).unwrap();
         let mut next_pointer = cn_struct.block.cn_cn_next;
         cn.insert(rec_pos, cn_struct);
         
         while next_pointer != 0 {
             let (cn_struct, pos) = parse_cn4_block(rdr, next_pointer, position, sharable, record_id_size);
             position = pos;
-            let rec_pos = cn_struct.block.cn_byte_offset + u32::try_from(cn_struct.block.cn_bit_offset).unwrap() * 8;
+            let rec_pos = (cn_struct.block.cn_byte_offset + record_id_size) * 8 + u32::try_from(cn_struct.block.cn_bit_offset).unwrap();
             next_pointer = cn_struct.block.cn_cn_next;
             cn.insert(rec_pos, cn_struct);
         }
