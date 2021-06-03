@@ -606,7 +606,7 @@ fn parse_dg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -
 pub struct Dg4 {
     pub block: Dg4Block,  // DG Block
     comments: HashMap<String, String>,  // Comments
-    pub cg: HashMap<i64, Cg4>,    // CG Block
+    pub cg: HashMap<u64, Cg4>,    // CG Block
 }
 
 /// Parser for Dg4 and all linked blocks (cg, cn, cc, ca, si)
@@ -767,7 +767,7 @@ fn parse_cg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, s
 
     let record_length = cg.cg_data_bytes;
 
-    let cg_struct = Cg4 {block: cg, cn, record_length};
+    let cg_struct = Cg4 {block: cg, cn, record_length, block_position: target};
 
     (cg_struct, position)
 }
@@ -776,6 +776,7 @@ fn parse_cg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, s
 pub struct Cg4 {
     pub block: Cg4Block,
     pub cn: BTreeMap<u32, Cn4>,
+    block_position: i64,
     pub record_length: u32,
 }
 
@@ -806,15 +807,15 @@ impl Cg4 {
 
 /// Cg4 blocks and linked blocks parsing
 pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sharable: &mut SharableBlocks, record_id_size: u32)
-        -> (HashMap<i64, Cg4>, i64) {
-    let mut cg: HashMap<i64, Cg4> = HashMap::new();
+        -> (HashMap<u64, Cg4>, i64) {
+    let mut cg: HashMap<u64, Cg4> = HashMap::new();
     if target != 0 {
         let (mut cg_struct, pos) 
             = parse_cg4_block(rdr, target, position, sharable, record_id_size);
         position = pos;
         let mut next_pointer = cg_struct.block.cg_cg_next;
         cg_struct.record_length += record_id_size;
-        cg.insert(target, cg_struct);
+        cg.insert(cg_struct.block.cg_record_id, cg_struct);
 
         while next_pointer != 0 {
             let block_start = next_pointer;
@@ -823,7 +824,7 @@ pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sha
             position = pos;
             cg_struct.record_length += record_id_size;
             next_pointer = cg_struct.block.cg_cg_next;
-            cg.insert(block_start, cg_struct);
+            cg.insert(cg_struct.block.cg_record_id, cg_struct);
         }
     }
     (cg, position)
@@ -905,8 +906,12 @@ fn calc_n_bytes(bitcount: u32, data_type: u8) -> u32{
             n_bytes = 1;
         } else if bitcount <= 16 {
             n_bytes = 2;
+        } else if bitcount <= 28 {
+            n_bytes = 3;
         } else if bitcount <= 32 {
             n_bytes = 4;
+        } else if bitcount <= 48 {
+            n_bytes = 6;
         } else if bitcount <= 64 {
             n_bytes = 8;
         } else {
@@ -1264,7 +1269,7 @@ fn parse_composition(rdr: &mut BufReader<&File>, target: i64, mut position: i64,
 
 #[derive(Debug, PartialEq, Default)]
 pub struct Db {
-    channel_list: HashMap<String, (i64, i64, u32)>,
+    channel_list: HashMap<String, (i64, (i64, u64), (i64, u32))>,
     master_channel_list: HashMap<String, HashSet<String>>
 }
 
@@ -1284,13 +1289,13 @@ impl fmt::Display for Db {
 pub fn build_channel_db(dg: &mut HashMap<i64, Dg4>, sharable: &SharableBlocks) -> Db {
     let mut db = Db {channel_list: HashMap::new(), master_channel_list: HashMap::new()};
     for (dg_position, dg) in dg.iter_mut() {
-        for (cg_position, cg) in dg.cg.iter_mut() {
-            let mut master_channel_name = format!("master_{}", cg_position);  // default name in case no master is existing
+        for (record_id, cg) in dg.cg.iter_mut() {
+            let mut master_channel_name = format!("master_{}", cg.block_position);  // default name in case no master is existing
             let mut cg_channel_list = HashSet::new();
             let gn = cg.get_cg_name(sharable);
             let gs = cg.get_cg_source_name(sharable);
             let gp = cg.get_cg_source_path(sharable);
-            for (cn_position, cn) in cg.cn.iter_mut() {
+            for (cn_record_position, cn) in cg.cn.iter_mut() {
                 let mut channel_name = cn.unique_name.clone();
                 if db.channel_list.contains_key(&channel_name) {
                     // create unique channel name
@@ -1315,7 +1320,7 @@ pub fn build_channel_db(dg: &mut HashMap<i64, Dg4>, sharable: &SharableBlocks) -
                     }
                     cn.unique_name = channel_name.clone();
                 };
-                db.channel_list.insert(channel_name.clone(), (*dg_position, *cg_position, *cn_position));
+                db.channel_list.insert(channel_name.clone(), (*dg_position, (cg.block_position, *record_id), (cn.block_position , *cn_record_position)));
                 cg_channel_list.insert(channel_name.clone());
                 if cn.block.cn_type == 2 || cn.block.cn_type == 3 {
                     // Master channel
@@ -1325,7 +1330,7 @@ pub fn build_channel_db(dg: &mut HashMap<i64, Dg4>, sharable: &SharableBlocks) -
             if cg.block.cg_cg_master != 0 {
                 // master is in another cg block, possible from 4.2
                 let temp = db.channel_list.iter()
-                        .find(|(_, (_, v, _))| v == &cg.block.cg_cg_master);
+                        .find(|(_, (_, (v, _), _))| v == &cg.block.cg_cg_master);
                 match temp {
                     Some(s) => master_channel_name = s.0.to_owned(),
                     None => println!("master channel not found for channel"),
