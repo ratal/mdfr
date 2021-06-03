@@ -9,7 +9,7 @@ use dashmap::DashMap;
 use num::Complex;
 use half::f16;
 use encoding_rs::{WINDOWS_1252, UTF_16LE, UTF_16BE};
-use ndarray::{Array1};
+use ndarray::{Array1, ArrayBase, Ix1};
 
 pub fn mdfreader4(rdr: &mut BufReader<&File>, info: &mut MdfInfo4) {
     let mut position: i64 = 0;
@@ -34,7 +34,7 @@ fn read_dt(rdr: &mut BufReader<&File>, block_header: Blockheader4, dg: &mut Dg4,
         if dg.cg.len() == 1 {
             // sorted data group
             // if let Some(channel_group) = dg.cg.get(&dg.block.dg_cg_first){
-            for (recordid, channel_group) in dg.cg {
+            for (_, channel_group) in &dg.cg {
                 // initialise ndarrays
                 let channels = DashMap::new();
                 for (cn_position, cn) in channel_group.cn.iter() {
@@ -63,11 +63,11 @@ fn read_dt(rdr: &mut BufReader<&File>, block_header: Blockheader4, dg: &mut Dg4,
                                 } else {array[nrecord as usize] = record.read_u16::<LittleEndian>().unwrap()},
                             ChannelData::Float16(array) => {
                                 let mut buf = [0u8; 2];
-                                record.read_exact(&mut buf);
+                                record.read_exact(&mut buf).unwrap();
                                 if c.1 {
-                                    array[nrecord as usize] = f16::from_be_bytes(buf);
+                                    array[nrecord as usize] = f16::from_be_bytes(buf).to_f32();
                                 } else {
-                                    array[nrecord as usize] = f16::from_le_bytes(buf);}
+                                    array[nrecord as usize] = f16::from_le_bytes(buf).to_f32();}
                                 },
                             ChannelData::Int32(array) => if c.1 {
                                 array[nrecord as usize] = record.read_i32::<BigEndian>().unwrap()
@@ -88,19 +88,19 @@ fn read_dt(rdr: &mut BufReader<&File>, block_header: Blockheader4, dg: &mut Dg4,
                                 array[nrecord as usize] = record.read_f64::<BigEndian>().unwrap()
                                 } else {array[nrecord as usize] = record.read_f64::<LittleEndian>().unwrap()},
                             ChannelData::Complex16(array) => {
-                                let re: f16;
-                                let im: f16;
+                                let re: f32;
+                                let im: f32;
                                 let mut buf = [0u8; 2];
                                 if c.1 {
-                                    record.read_exact(&mut buf);
-                                    re = f16::from_be_bytes(buf);
-                                    record.read_exact(&mut buf);
-                                    im = f16::from_be_bytes(buf);
+                                    record.read_exact(&mut buf).unwrap();
+                                    re = f16::from_be_bytes(buf).to_f32();
+                                    record.read_exact(&mut buf).unwrap();
+                                    im = f16::from_be_bytes(buf).to_f32();
                                 } else {
-                                    record.read_exact(&mut buf);
-                                    re = f16::from_le_bytes(buf);
-                                    record.read_exact(&mut buf);
-                                    im = f16::from_le_bytes(buf);}
+                                    record.read_exact(&mut buf).unwrap();
+                                    re = f16::from_le_bytes(buf).to_f32();
+                                    record.read_exact(&mut buf).unwrap();
+                                    im = f16::from_le_bytes(buf).to_f32();}
                                 let comp = Complex::new(re, im);
                                 array[nrecord as usize] = comp;},
                             ChannelData::Complex32(array) => {
@@ -127,26 +127,26 @@ fn read_dt(rdr: &mut BufReader<&File>, block_header: Blockheader4, dg: &mut Dg4,
                                 array[nrecord as usize] = comp;},
                             ChannelData::StringSBC(array) => {
                                 let mut buf = vec![0u8; cn.n_bytes as usize];
-                                record.read_exact(&mut buf);
+                                record.read_exact(&mut buf).unwrap();
                                 sbc_decoder.decode_to_string(&buf, &mut array[nrecord as usize], false);
                             },
                             ChannelData::StringUTF8(array) => {
                                 let mut buf = vec![0u8; cn.n_bytes as usize];
-                                record.read_exact(&mut buf);
+                                record.read_exact(&mut buf).unwrap();
                                 array[nrecord as usize] = str::from_utf8(&buf).expect("Found invalid UTF-8").to_string();
                             },
                             ChannelData::StringUTF16(array) => {
                                 let mut buf = vec![0u8; cn.n_bytes as usize];
-                                record.read_exact(&mut buf);
+                                record.read_exact(&mut buf).unwrap();
                                 if c.1{
-                                    utf16be_decoder.decode_to_string(&buf, &mut array[nrecord as usize], false)
+                                    utf16be_decoder.decode_to_string(&buf, &mut array[nrecord as usize], false);
                                 } else {
-                                    utf16le_decoder.decode_to_string(&buf, &mut array[nrecord as usize], false)
+                                    utf16le_decoder.decode_to_string(&buf, &mut array[nrecord as usize], false);
                                 };
                             },
                             ChannelData::ByteArray(array) => {
                                 let mut buf = vec![0u8; cn.n_bytes as usize];
-                                record.read_exact(&mut buf);
+                                record.read_exact(&mut buf).unwrap();
                                 array[nrecord as usize] = buf;
                             },
                             ChannelData::Int24(array) => if c.1 {
@@ -177,7 +177,7 @@ enum ChannelData {
     UInt8(Array1<u8>),
     Int16(Array1<i16>),
     UInt16(Array1<u16>),
-    Float16(Array1<f16>),
+    Float16(Array1<f32>),
     Int24(Array1<i32>),
     UInt24(Array1<u32>),
     Int32(Array1<i32>),
@@ -188,7 +188,7 @@ enum ChannelData {
     Int64(Array1<i64>),
     UInt64(Array1<u64>),
     Float64(Array1<f64>),
-    Complex16(Array1<Complex<f16>>),
+    Complex16(Array1<Complex<f32>>),
     Complex32(Array1<Complex<f32>>),
     Complex64(Array1<Complex<f64>>),
     StringSBC(Vec<String>),
@@ -236,7 +236,7 @@ fn data_init(cn_data_type: u8, n_bytes: u32, cycle_count: u64) -> (ChannelData, 
     } else if cn_data_type == 4 || cn_data_type == 5 {
         // float
         if n_bytes <= 2 {
-            data_type = ChannelData::Float16(Array1::<f16>::zeros((cycle_count as usize, )));
+            data_type = ChannelData::Float16(Array1::<f32>::zeros((cycle_count as usize, )));
         } else if n_bytes <= 4 {
             data_type = ChannelData::Float32(Array1::<f32>::zeros((cycle_count as usize, )));
         } else {
@@ -245,7 +245,7 @@ fn data_init(cn_data_type: u8, n_bytes: u32, cycle_count: u64) -> (ChannelData, 
     } else if cn_data_type == 15 || cn_data_type == 16 {
         // complex
         if n_bytes <= 2 {
-            data_type = ChannelData::UInt32(Array1::<u32>::zeros((cycle_count as usize, )));
+            data_type = ChannelData::Complex16(Array1::<Complex<f32>>::zeros((cycle_count as usize, )));
         } else if n_bytes <= 4 {
             data_type = ChannelData::Complex32(Array1::<Complex<f32>>::zeros((cycle_count as usize, )));
         } else {
