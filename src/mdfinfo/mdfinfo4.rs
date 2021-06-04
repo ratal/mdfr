@@ -12,7 +12,8 @@ use std::collections::{HashMap, BTreeMap, HashSet};
 use chrono::{DateTime, Utc, naive::NaiveDateTime};
 use dashmap::DashMap;
 use rayon::prelude::*;
-use ndarray::Array;
+
+use crate::mdfreader::mdfreader4::{ChannelData, data_init};
 
 /// MdfInfo4 is the struct hold whole metadata of mdf4.x files
 /// * blocks with unique links are at top level like attachment, events and file history
@@ -45,8 +46,8 @@ pub struct MdfInfo4 {
 pub struct Blockheader4 {
     pub hdr_id: [u8; 4],   // '##XX'
     hdr_gap: [u8; 4],   // reserved, must be 0
-    hdr_len: u64,   // Length of block in bytes
-    hdr_links: u64 // # of links 
+    pub hdr_len: u64,   // Length of block in bytes
+    pub hdr_links: u64 // # of links 
 }
 
 /// parse the block header and its fields id, (reserved), length and number of links
@@ -818,7 +819,6 @@ pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sha
         cg.insert(cg_struct.block.cg_record_id, cg_struct);
 
         while next_pointer != 0 {
-            let block_start = next_pointer;
             let (mut cg_struct, pos) 
                 = parse_cg4_block(rdr, next_pointer, position, sharable, record_id_size);
             position = pos;
@@ -866,7 +866,7 @@ pub struct Cn4Block {
     cn_limit_ext_max: f64, // Upper extended limit for this signal (physical value for numeric conversion rule, otherwise raw value) Only valid if "extended limit range valid" flag (bit 5) is set.
 }
 
-#[derive(Debug, PartialEq, Default)]
+#[derive(Debug, Default)]
 pub struct Cn4 {
     pub block: Cn4Block,
     pub unique_name: String,
@@ -874,6 +874,8 @@ pub struct Cn4 {
     pub pos_byte_beg: u32,
     pub n_bytes: u32,
     composition: Option<Composition>,
+    pub data: ChannelData,
+    pub endian: bool, // false = little endian
 }
 
 pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sharable: &mut SharableBlocks, record_id_size: u32) 
@@ -954,7 +956,7 @@ fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, s
     position = pos;
     let block: Cn4Block = block.read_le().unwrap();
     let pos_byte_beg = block.cn_byte_offset + record_id_size;
-    let n_bytes = calc_n_bytes(block.cn_bit_count, block.cn_data_type);
+    let n_bytes = calc_n_bytes(block.cn_bit_count + (block.cn_bit_offset as u32), block.cn_data_type);
 
     // Reads TX name
     let (_, name, pos) = parse_comment(rdr, block.cn_tx_name, position);
@@ -1019,7 +1021,15 @@ fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, s
         compo = None;
     }
 
-    let cn_struct = Cn4 {block, unique_name: name, block_position: target, pos_byte_beg, n_bytes, composition: compo};
+    let mut endian: bool = false; // Little endian by default
+    if block.cn_data_type == 0 || block.cn_data_type == 2 || block.cn_data_type == 4 || block.cn_data_type == 8 || block.cn_data_type == 15 {
+        endian = false; // little endian
+    } else if  block.cn_data_type == 1 || block.cn_data_type == 3 || block.cn_data_type == 5 || block.cn_data_type == 9 || block.cn_data_type == 16 {
+        endian = true;  // big endian
+    }
+    let data_type = block.cn_data_type.clone();
+
+    let cn_struct = Cn4 {block, unique_name: name, block_position: target, pos_byte_beg, n_bytes, composition: compo, data: data_init(data_type, n_bytes, 2), endian};
 
     (cn_struct, position)
 }
@@ -1225,13 +1235,13 @@ fn parse_ca_block(ca_block: &mut Cursor<Vec<u8>>, block_header: Blockheader4) ->
         ca_axis_value, ca_cycle_count, snd, pnd}
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub struct Composition {
     block: Compo,
     compo: Option<Box<Composition>>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum Compo {
     CA(Ca4Block),
     CN(Box<Cn4>),
