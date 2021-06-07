@@ -1,6 +1,6 @@
 
 use crate::mdfinfo::mdfinfo4::{Blockheader4, MdfInfo4, parse_block_header, Dg4};
-use std::{io::{BufReader, Cursor, Read, Seek, SeekFrom}, sync::Arc, usize};
+use std::{io::{BufReader, Cursor, Read, Seek, SeekFrom}, usize};
 use std::fs::File;
 use std::str;
 use std::string::String;
@@ -19,7 +19,7 @@ pub fn mdfreader4<'a>(rdr: &'a mut BufReader<&File>, info: &'a mut MdfInfo4) {
             rdr.seek_relative(dg.block.dg_data - position).unwrap();  // change buffer position
             let block_header = parse_block_header(rdr);
             position = dg.block.dg_data + 24;
-            position += read_dt(rdr, block_header, dg, position);
+            position = read_dt(rdr, block_header, dg, position);
         }
     }
 }
@@ -44,8 +44,9 @@ fn read_dt(rdr: &mut BufReader<&File>, block_header: Blockheader4, dg: &mut Dg4,
                     let mut buf= vec![0u8; channel_group.record_length as usize];
                     rdr.read_exact(&mut buf).unwrap();
                     let mut record = Cursor::new(buf);
-                    for (cn_record_position, cn) in channel_group.cn.iter_mut() {
-                        record.seek(SeekFrom::Start(*cn_record_position as u64)).unwrap();
+                    // copy record signals into arrays, carring about endians
+                    for (_cn_record_position, cn) in channel_group.cn.iter_mut() {
+                        record.seek(SeekFrom::Start(cn.pos_byte_beg as u64)).unwrap();
                         match &mut cn.data {
                             ChannelData::Int8(array) => 
                                 array[nrecord as usize] = record.read_i8().unwrap(),
@@ -87,13 +88,12 @@ fn read_dt(rdr: &mut BufReader<&File>, block_header: Blockheader4, dg: &mut Dg4,
                                 let re: f32;
                                 let im: f32;
                                 let mut buf = [0u8; 2];
+                                record.read_exact(&mut buf).unwrap();
                                 if cn.endian {
-                                    record.read_exact(&mut buf).unwrap();
                                     re = f16::from_be_bytes(buf).to_f32();
                                     record.read_exact(&mut buf).unwrap();
                                     im = f16::from_be_bytes(buf).to_f32();
                                 } else {
-                                    record.read_exact(&mut buf).unwrap();
                                     re = f16::from_le_bytes(buf).to_f32();
                                     record.read_exact(&mut buf).unwrap();
                                     im = f16::from_le_bytes(buf).to_f32();}
@@ -162,7 +162,79 @@ fn read_dt(rdr: &mut BufReader<&File>, block_header: Blockheader4, dg: &mut Dg4,
                 }
                 position += (channel_group.record_length as i64) * (channel_group.block.cg_cycle_count as i64);
             }
-        } else if dg.cg.len() >= 1 {
+            // apply bit shift and masking
+            for channel_group in dg.cg.values_mut() {
+                // initialise ndarrays for the data group/block
+                for (_cn_record_position, cn) in channel_group.cn.iter_mut() {
+                    if cn.block.cn_data_type <= 3 {
+                        let left_shift = cn.n_bytes * 8 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
+                        let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
+                        if left_shift > 0 || right_shift > 0 {
+                            match &mut cn.data {
+                                ChannelData::Int8(a) => {
+                                    if left_shift > 0 {a.map_inplace(|x| *x <<= left_shift)};
+                                    if right_shift > 0 {a.map_inplace(|x| *x >>= right_shift)};
+                                },
+                                ChannelData::UInt8(a) => {
+                                    if left_shift > 0 {a.map_inplace(|x| *x <<= left_shift)};
+                                    if right_shift > 0 {a.map_inplace(|x| *x >>= right_shift)};
+                                },
+                                ChannelData::Int16(a) => {
+                                    if left_shift > 0 {a.map_inplace(|x| *x <<= left_shift)};
+                                    if right_shift > 0 {a.map_inplace(|x| *x >>= right_shift)};
+                                },
+                                ChannelData::UInt16(a) => {
+                                    if left_shift > 0 {a.map_inplace(|x| *x <<= left_shift)};
+                                    if right_shift > 0 {a.map_inplace(|x| *x >>= right_shift)};
+                                },
+                                ChannelData::Float16(_) => (),
+                                ChannelData::Int24(a) => {
+                                    if left_shift > 0 {a.map_inplace(|x| *x <<= left_shift)};
+                                    if right_shift > 0 {a.map_inplace(|x| *x >>= right_shift)};
+                                },
+                                ChannelData::UInt24(a) => {
+                                    if left_shift > 0 {a.map_inplace(|x| *x <<= left_shift)};
+                                    if right_shift > 0 {a.map_inplace(|x| *x >>= right_shift)};
+                                },
+                                ChannelData::Int32(a) => {
+                                    if left_shift > 0 {a.map_inplace(|x| *x <<= left_shift)};
+                                    if right_shift > 0 {a.map_inplace(|x| *x >>= right_shift)};
+                                },
+                                ChannelData::UInt32(a) => {
+                                    if left_shift > 0 {a.map_inplace(|x| *x <<= left_shift)};
+                                    if right_shift > 0 {a.map_inplace(|x| *x >>= right_shift)};
+                                },
+                                ChannelData::Float32(_) => (),
+                                ChannelData::Int48(a) => {
+                                    if left_shift > 0 {a.map_inplace(|x| *x <<= left_shift)};
+                                    if right_shift > 0 {a.map_inplace(|x| *x >>= right_shift)};
+                                },
+                                ChannelData::UInt48(a) => {
+                                    if left_shift > 0 {a.map_inplace(|x| *x <<= left_shift)};
+                                    if right_shift > 0 {a.map_inplace(|x| *x >>= right_shift)};
+                                },
+                                ChannelData::Int64(a) => {
+                                    if left_shift > 0 {a.map_inplace(|x| *x <<= left_shift)};
+                                    if right_shift > 0 {a.map_inplace(|x| *x >>= right_shift)};
+                                },
+                                ChannelData::UInt64(a) => {
+                                    if left_shift > 0 {a.map_inplace(|x| *x <<= left_shift)};
+                                    if right_shift > 0 {a.map_inplace(|x| *x >>= right_shift)};
+                                },
+                                ChannelData::Float64(_) => (),
+                                ChannelData::Complex16(_) => (),
+                                ChannelData::Complex32(_) => (),
+                                ChannelData::Complex64(_) => (),
+                                ChannelData::StringSBC(_) => (),
+                                ChannelData::StringUTF8(_) => (),
+                                ChannelData::StringUTF16(_) => (),
+                                ChannelData::ByteArray(_) => (),
+                            }
+                        }
+                    }
+                }
+            }
+        } else if !dg.cg.is_empty() {
             // unsorted data
         }
     }
