@@ -7,18 +7,21 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap = "2"
+clap = "2" # for input arguments 
 byteorder = "1.4"
-rayon =  "1.5"
-dashmap = {version="4", features = ["rayon"]}
+rayon =  "1.5" # for general purpose parallel computations
+dashmap = {version = "4", features = ["rayon"]} # for parallel hashmap computations
 encoding = "0.2"
-chrono = "0.4.19"
-roxmltree = "0.14"
-binread = "2.1"
-criterion = "0.3"
+chrono = "0.4.19" # for time conversion
+roxmltree = "0.14" # for xml parsing
+binread = "2.1" # for easy reading of struct
+criterion = "0.3" # for benchmark
+num = "0.4" # for complex numbers
+half = "1" # for f16 handling
+encoding_rs = "0.8" # for endian management
 #tokio = "1.5"
 #numpy = "0.13"
-ndarray = "0.15"
+ndarray = {version = "0.15", features = ["rayon"]} # for nd arrays
 
 #[lib]
 #name = "mdfr"
