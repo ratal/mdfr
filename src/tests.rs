@@ -2,10 +2,11 @@
 #[cfg(test)]
 mod tests {
     use std::io;
-    use std::fs::{self, DirEntry};
+    use std::fs;
     use std::path::Path;
     use std::vec::Vec;
     use crate::mdfinfo;
+    use crate::mdfreader;
 
     #[test]
     fn info_test() -> io::Result<()>{
@@ -79,8 +80,14 @@ mod tests {
 
     #[test]
     fn parse_file() {
-        let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/test.mf4");
-        //let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/ZED_1hz_7197.mf4");
-        let info = mdfinfo::mdfinfo(&file);
+        let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/error.mf4"); // DT, big many channels
+        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/Measure.mf4"); // DataList, big many channels
+        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/ZED_1hz_7197.mf4");
+        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/20161129_IN-x1234_Erprobungsort_0000032.mf4");
+        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/isse_107.mf4"); // DZ
+        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/Vector_MinimumFile.MF4");  // DT
+        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4");  // DT
+        let mdf = mdfreader::mdfreader(&file);
+        //println!("{}", info);
     }
 }
