@@ -815,14 +815,14 @@ pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sha
             = parse_cg4_block(rdr, target, position, sharable, record_id_size);
         position = pos;
         let mut next_pointer = cg_struct.block.cg_cg_next;
-        cg_struct.record_length += record_id_size;
+        cg_struct.record_length += record_id_size + cg_struct.block.cg_inval_bytes;
         cg.insert(cg_struct.block.cg_record_id, cg_struct);
 
         while next_pointer != 0 {
             let (mut cg_struct, pos) 
                 = parse_cg4_block(rdr, next_pointer, position, sharable, record_id_size);
             position = pos;
-            cg_struct.record_length += record_id_size;
+            cg_struct.record_length += record_id_size + cg_struct.block.cg_inval_bytes;
             next_pointer = cg_struct.block.cg_cg_next;
             cg.insert(cg_struct.block.cg_record_id, cg_struct);
         }
@@ -851,9 +851,9 @@ pub struct Cn4Block {
     cn_type: u8, // Channel type (see CN_T_xxx)
     cn_sync_type: u8, // Sync type: (see CN_S_xxx)
     pub cn_data_type: u8, // Channel data type of raw signal value (see CN_DT_xxx)
-    cn_bit_offset: u8, // Bit offset (0-7): first bit (=LSB) of signal value after Byte offset has been applied (see 4.21.4.2 Reading the Signal Value). If zero, the signal value is 1-Byte aligned. A value different to zero is only allowed for Integer data types (cn_data_type ≤ 3) and if the Integer signal value fits into 8 contiguous Bytes (cn_bit_count + cn_bit_offset ≤ 64). For all other cases, cn_bit_offset must be zero.
+    pub cn_bit_offset: u8, // Bit offset (0-7): first bit (=LSB) of signal value after Byte offset has been applied (see 4.21.4.2 Reading the Signal Value). If zero, the signal value is 1-Byte aligned. A value different to zero is only allowed for Integer data types (cn_data_type ≤ 3) and if the Integer signal value fits into 8 contiguous Bytes (cn_bit_count + cn_bit_offset ≤ 64). For all other cases, cn_bit_offset must be zero.
     cn_byte_offset: u32, // Offset to first Byte in the data record that contains bits of the signal value. The offset is applied to the plain record data, i.e. skipping the record ID.
-    cn_bit_count: u32, // Number of bits for signal value in record
+    pub cn_bit_count: u32, // Number of bits for signal value in record
     cn_flags: u32,     // Flags (see CN_F_xxx)
     cn_inval_bit_pos: u32, // Position of invalidation bit.
     cn_precision: u8, // Precision for display of floating point values. 0xFF means unrestricted precision (infinite). Any other value specifies the number of decimal places to use for display of floating point values. Only valid if "precision valid" flag (bit 2) is set
@@ -1027,7 +1027,7 @@ fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, s
     } else if  block.cn_data_type == 1 || block.cn_data_type == 3 || block.cn_data_type == 5 || block.cn_data_type == 9 || block.cn_data_type == 16 {
         endian = true;  // big endian
     }
-    let data_type = block.cn_data_type.clone();
+    let data_type = block.cn_data_type;
 
     let cn_struct = Cn4 {block, unique_name: name, block_position: target, pos_byte_beg, n_bytes, composition: compo, data: data_init(data_type, n_bytes, 2), endian};
 
