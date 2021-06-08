@@ -1,7 +1,7 @@
 
 use byteorder::{LittleEndian, ReadBytesExt};
 use roxmltree;
-use std::{io::{BufReader, Cursor}, sync::Arc};
+use std::{io::{BufReader, Cursor}, sync::{Arc, Mutex}};
 use std::fs::File;
 use std::io::prelude::*;
 use std::{str, fmt};
@@ -776,7 +776,7 @@ fn parse_cg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, s
 #[derive(Debug)]
 pub struct Cg4 {
     pub block: Cg4Block,
-    pub cn: BTreeMap<u32, Cn4>,
+    pub cn: HashMap<u32, Cn4>,
     block_position: i64,
     pub record_length: u32,
 }
@@ -879,8 +879,8 @@ pub struct Cn4 {
 }
 
 pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sharable: &mut SharableBlocks, record_id_size: u32) 
-        -> (BTreeMap<u32, Cn4>, i64) {
-    let mut cn: BTreeMap<u32, Cn4> = BTreeMap::new();
+        -> (HashMap<u32, Cn4>, i64) {
+    let mut cn: HashMap<u32, Cn4> = HashMap::new();
     if target != 0 {
         let (cn_struct, pos) = parse_cn4_block(rdr, target, position, sharable, record_id_size);
         position = pos;
