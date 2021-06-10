@@ -1,14 +1,14 @@
 
 use byteorder::{LittleEndian, ReadBytesExt};
 use roxmltree;
-use std::{io::{BufReader, Cursor}, sync::{Arc, Mutex}};
+use std::{io::{BufReader, Cursor}, sync::Arc};
 use std::fs::File;
 use std::io::prelude::*;
 use std::{str, fmt};
 use std::default::Default;
 use std::convert::TryFrom;
 use binread::{BinRead, BinReaderExt};
-use std::collections::{HashMap, BTreeMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use chrono::{DateTime, Utc, naive::NaiveDateTime};
 use dashmap::DashMap;
 use rayon::prelude::*;
@@ -278,7 +278,7 @@ fn md_tx_comment(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> 
 
 /// parses the xml string to extract TX tag and replaces the xml with the corresponding TX's text
 pub fn extract_xml(comment: &mut Tx) {
-    comment.par_iter_mut().for_each(|mut val| xml_parse(&mut val));
+    comment.par_iter_mut().filter(|val| val.1).for_each(|mut val| xml_parse(&mut val));
 }
 
 fn xml_parse(val: &mut(String, bool)) {
@@ -776,7 +776,7 @@ fn parse_cg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, s
 #[derive(Debug)]
 pub struct Cg4 {
     pub block: Cg4Block,
-    pub cn: HashMap<u32, Cn4>,
+    pub cn: CnType,
     block_position: i64,
     pub record_length: u32,
 }
@@ -878,9 +878,11 @@ pub struct Cn4 {
     pub endian: bool, // false = little endian
 }
 
+type CnType = HashMap<u32, Cn4>;
+
 pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sharable: &mut SharableBlocks, record_id_size: u32) 
-        -> (HashMap<u32, Cn4>, i64) {
-    let mut cn: HashMap<u32, Cn4> = HashMap::new();
+        -> (CnType, i64) {
+    let mut cn: CnType = HashMap::new();
     if target != 0 {
         let (cn_struct, pos) = parse_cn4_block(rdr, target, position, sharable, record_id_size);
         position = pos;
@@ -1305,7 +1307,7 @@ pub fn build_channel_db(dg: &mut HashMap<i64, Dg4>, sharable: &SharableBlocks) -
             let gn = cg.get_cg_name(sharable);
             let gs = cg.get_cg_source_name(sharable);
             let gp = cg.get_cg_source_path(sharable);
-            for (cn_record_position, cn) in cg.cn.iter_mut() {
+            for (cn_record_position, cn)  in cg.cn.iter_mut() {
                 let mut channel_name = cn.unique_name.clone();
                 if db.channel_list.contains_key(&channel_name) {
                     // create unique channel name
