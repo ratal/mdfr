@@ -65,7 +65,7 @@ fn read_data(rdr: &mut BufReader<&File>, block_header: Blockheader4, dg: &mut Dg
 
 
 fn generate_chunks(channel_group: &Cg4) -> Vec<(u64, u64)>{
-    const CHUNK_SIZE_READING: u64 = 8192;
+    const CHUNK_SIZE_READING: u64 = 524288; // can be tuned according to architecture
     let record_length = channel_group.record_length as u64;
     let n_chunks = (record_length * channel_group.block.cg_cycle_count) / CHUNK_SIZE_READING + 1;
     let chunk_length = (record_length * channel_group.block.cg_cycle_count) / n_chunks;
