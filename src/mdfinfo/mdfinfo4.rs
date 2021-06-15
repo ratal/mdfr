@@ -24,7 +24,7 @@ use crate::mdfreader::mdfreader4::{ChannelData, data_init};
 /// * db is a representation of file content centered on channel names as key
 /// * in general the blocks are contained in HashMaps with key corresponding 
 /// to their position in the file
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct MdfInfo4 {
     pub ver: u16,
     pub prog: [u8; 8],
@@ -40,7 +40,7 @@ pub struct MdfInfo4 {
 }
 
 /// MDF4 - common block Header
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 #[derive(BinRead)]
 #[br(little)]
 pub struct Blockheader4 {
@@ -61,7 +61,7 @@ pub fn parse_block_header(rdr: &mut BufReader<&File>) -> Blockheader4 {
 }
 
 /// MDF4 - common block Header without the number of links
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 #[derive(BinRead)]
 #[br(little)]
 pub struct Blockheader4Short {
@@ -111,7 +111,7 @@ fn parse_block_short(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
 }
 
 /// Id4 (File Indentification) block structure
-#[derive(Debug, PartialEq, Default)]
+#[derive(Debug, PartialEq, Default, Copy, Clone)]
 pub struct Id4 {
     id_file_id: [u8; 8], // "MDF     "
     id_vers: [u8; 4],
@@ -134,7 +134,7 @@ pub fn parse_id4(rdr: &mut BufReader<&File>, id_file_id: [u8; 8], id_vers: [u8; 
 }
 
 /// Hd4 (Header) block structure
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 #[derive(BinRead)]
 #[br(little)]
 pub struct Hd4 {
@@ -306,7 +306,7 @@ fn xml_parse(val: &mut(String, bool)) {
 }
 
 /// Fh4 (File History) block struct, including the header
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 #[derive(BinRead)]
 #[br(little)]
 pub struct FhBlock {
@@ -388,7 +388,7 @@ pub fn parse_fh(rdr: &mut BufReader<&File>, target: i64, position: i64) -> (Vec<
     (fh, position)
 }
 /// At4 Attachment block struct
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 #[derive(BinRead)]
 #[br(little)]
 pub struct At4Block {
@@ -489,7 +489,7 @@ pub fn parse_at4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
 }
 
 /// Ev4 Event block struct
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[derive(BinRead)]
 #[br(little)]
 pub struct Ev4Block {
@@ -571,7 +571,7 @@ pub fn parse_ev4(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
 }
 
 /// Dg4 Data Group block struct
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 #[derive(BinRead)]
 #[br(little)]
 pub struct Dg4Block {
@@ -603,7 +603,7 @@ fn parse_dg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -
 }
 
 /// Dg4 struct wrapping block, comments and linked CG
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Dg4 {
     pub block: Dg4Block,  // DG Block
     comments: HashMap<String, String>,  // Comments
@@ -618,8 +618,7 @@ pub fn parse_dg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sha
         let (block, comments, pos) = parse_dg4_block(rdr, target, position);
         position = pos;
         let mut next_pointer = block.dg_dg_next;
-        let record_id_size = rec_id_size(block.dg_rec_id_size);
-        let (cg, pos) = parse_cg4(rdr, block.dg_cg_first, position, sharable, record_id_size);
+        let (cg, pos) = parse_cg4(rdr, block.dg_cg_first, position, sharable, block.dg_rec_id_size);
         let dg_struct = Dg4 {block, comments, cg};
         dg.insert(target, dg_struct);
         position = pos;
@@ -628,8 +627,7 @@ pub fn parse_dg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sha
             let (block, comments, pos) = parse_dg4_block(rdr, next_pointer, position);
             next_pointer = block.dg_dg_next;
             position = pos;
-            let record_id_size = rec_id_size(block.dg_rec_id_size);
-            let (cg, pos) = parse_cg4(rdr, block.dg_cg_first, position, sharable, record_id_size);
+            let (cg, pos) = parse_cg4(rdr, block.dg_cg_first, position, sharable, block.dg_rec_id_size);
             let dg_struct = Dg4 {block, comments, cg};
             dg.insert(block_start, dg_struct);
             position = pos;
@@ -638,27 +636,13 @@ pub fn parse_dg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sha
     (dg, position)
 }
 
-
-/// Retuns the size of record ID in the record
-fn rec_id_size(dg_rec_id_size: u8) -> u32 {
-    match dg_rec_id_size {
-        0 => 0, // No record id
-        1 => 1, // u8
-        2 => 2, // u16
-        3 => 4, // u32
-        4 => 8, // u64
-        _ => 0,
-    }
-
-}
-
 /// TX data type : hashmap will concurrent capability (dashmap crate) embedded into an Arc
 /// to allow concurrent xml processing with rayon crate
 pub(crate) type Tx = Arc<DashMap<i64, (String, bool)>>;
 
 /// sharable blocks (most likely referenced multiple times and shared by several blocks)
 /// that are in sharable fields and holds CC, SI, TX and MD blocks
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct SharableBlocks {
     pub(crate) md: HashMap<i64, HashMap<String, String>>,
     pub(crate) tx: Tx,
@@ -693,7 +677,7 @@ impl fmt::Display for SharableBlocks {
 }
 
 /// Cg4 Channel Group block struct
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, Default)]
 #[derive(BinRead)]
 #[br(little)]
 pub struct Cg4Block {
@@ -720,7 +704,7 @@ pub struct Cg4Block {
 }
 
 /// Cg4 (Channel Group) block struct parser with linked comments Source Information in sharable blocks
-fn parse_cg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sharable: &mut SharableBlocks, record_id_size: u32) 
+fn parse_cg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sharable: &mut SharableBlocks, record_id_size: u8) 
         -> (Cg4, i64) {
     
     let (mut block, _block_header, pos) = parse_block_short(rdr, target, position);
@@ -773,13 +757,14 @@ fn parse_cg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, s
     (cg_struct, position)
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Cg4 {
     pub block: Cg4Block,
     pub cn: CnType,
     block_position: i64,
     pub record_length: u32,
 }
+
 
 /// Cg4 implementations for extracting acquisition and source name and path
 impl Cg4 {
@@ -807,7 +792,7 @@ impl Cg4 {
 }
 
 /// Cg4 blocks and linked blocks parsing
-pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sharable: &mut SharableBlocks, record_id_size: u32)
+pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sharable: &mut SharableBlocks, record_id_size: u8)
         -> (HashMap<u64, Cg4>, i64) {
     let mut cg: HashMap<u64, Cg4> = HashMap::new();
     if target != 0 {
@@ -815,14 +800,14 @@ pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sha
             = parse_cg4_block(rdr, target, position, sharable, record_id_size);
         position = pos;
         let mut next_pointer = cg_struct.block.cg_cg_next;
-        cg_struct.record_length += record_id_size + cg_struct.block.cg_inval_bytes;
+        cg_struct.record_length += record_id_size as u32 + cg_struct.block.cg_inval_bytes;
         cg.insert(cg_struct.block.cg_record_id, cg_struct);
 
         while next_pointer != 0 {
             let (mut cg_struct, pos) 
                 = parse_cg4_block(rdr, next_pointer, position, sharable, record_id_size);
             position = pos;
-            cg_struct.record_length += record_id_size + cg_struct.block.cg_inval_bytes;
+            cg_struct.record_length += record_id_size as u32 + cg_struct.block.cg_inval_bytes;
             next_pointer = cg_struct.block.cg_cg_next;
             cg.insert(cg_struct.block.cg_record_id, cg_struct);
         }
@@ -831,7 +816,7 @@ pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sha
 }
 
 /// Cn4 Channel block struct
-#[derive(Debug, PartialEq, Default)]
+#[derive(Debug, PartialEq, Default, Clone)]
 #[derive(BinRead)]
 #[br(little)]
 pub struct Cn4Block {
@@ -866,7 +851,7 @@ pub struct Cn4Block {
     cn_limit_ext_max: f64, // Upper extended limit for this signal (physical value for numeric conversion rule, otherwise raw value) Only valid if "extended limit range valid" flag (bit 5) is set.
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Cn4 {
     pub block: Cn4Block,
     pub unique_name: String,
@@ -880,20 +865,20 @@ pub struct Cn4 {
 
 type CnType = HashMap<u32, Cn4>;
 
-pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sharable: &mut SharableBlocks, record_id_size: u32) 
+pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sharable: &mut SharableBlocks, record_id_size: u8) 
         -> (CnType, i64) {
     let mut cn: CnType = HashMap::new();
     if target != 0 {
         let (cn_struct, pos) = parse_cn4_block(rdr, target, position, sharable, record_id_size);
         position = pos;
-        let rec_pos = (cn_struct.block.cn_byte_offset + record_id_size) *8 + u32::try_from(cn_struct.block.cn_bit_offset).unwrap();
+        let rec_pos = (cn_struct.block.cn_byte_offset + record_id_size as u32) *8 + u32::try_from(cn_struct.block.cn_bit_offset).unwrap();
         let mut next_pointer = cn_struct.block.cn_cn_next;
         cn.insert(rec_pos, cn_struct);
         
         while next_pointer != 0 {
             let (cn_struct, pos) = parse_cn4_block(rdr, next_pointer, position, sharable, record_id_size);
             position = pos;
-            let rec_pos = (cn_struct.block.cn_byte_offset + record_id_size) * 8 + u32::try_from(cn_struct.block.cn_bit_offset).unwrap();
+            let rec_pos = (cn_struct.block.cn_byte_offset + record_id_size as u32) * 8 + u32::try_from(cn_struct.block.cn_bit_offset).unwrap();
             next_pointer = cn_struct.block.cn_cn_next;
             cn.insert(rec_pos, cn_struct);
         }
@@ -952,12 +937,12 @@ impl Cn4 {
     }
 }
 
-fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sharable: &mut SharableBlocks, record_id_size: u32) -> (Cn4, i64) {
+fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sharable: &mut SharableBlocks, record_id_size: u8) -> (Cn4, i64) {
 
     let (mut block, _header, pos) = parse_block_short(rdr, target, position);
     position = pos;
     let block: Cn4Block = block.read_le().unwrap();
-    let pos_byte_beg = block.cn_byte_offset + record_id_size;
+    let pos_byte_beg = block.cn_byte_offset + record_id_size as u32;
     let n_bytes = calc_n_bytes(block.cn_bit_count + (block.cn_bit_offset as u32), block.cn_data_type);
 
     // Reads TX name
@@ -1031,13 +1016,13 @@ fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, s
     }
     let data_type = block.cn_data_type;
 
-    let cn_struct = Cn4 {block, unique_name: name, block_position: target, pos_byte_beg, n_bytes, composition: compo, data: data_init(data_type, n_bytes, 2), endian};
+    let cn_struct = Cn4 {block, unique_name: name, block_position: target, pos_byte_beg, n_bytes, composition: compo, data: data_init(data_type, n_bytes, 0), endian};
 
     (cn_struct, position)
 }
 
 /// Cc4 Channel Conversion block struct
-#[derive(Debug, PartialEq, Default)]
+#[derive(Debug, PartialEq, Default, Clone)]
 #[derive(BinRead)]
 #[br(little)]
 pub struct Cc4Block {
@@ -1066,7 +1051,7 @@ pub struct Cc4Block {
 }
 
 /// Si4 Source Information block struct
-#[derive(Debug, PartialEq, Default)]
+#[derive(Debug, PartialEq, Default, Copy, Clone)]
 #[derive(BinRead)]
 #[br(little)]
 pub struct Si4Block {
@@ -1106,7 +1091,7 @@ impl Si4Block {
 }
 
 /// Ca4 Channel Array block struct
-#[derive(Debug, PartialEq, Default)]
+#[derive(Debug, PartialEq, Default, Clone)]
 pub struct Ca4Block {
     //header
     ca_id: [u8; 4],  // ##CA
@@ -1136,7 +1121,7 @@ pub struct Ca4Block {
     pnd: u64
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[derive(BinRead)]
 #[br(little)]
 struct Ca4BlockMembers {
@@ -1237,19 +1222,19 @@ fn parse_ca_block(ca_block: &mut Cursor<Vec<u8>>, block_header: Blockheader4) ->
         ca_axis_value, ca_cycle_count, snd, pnd}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Composition {
     block: Compo,
     compo: Option<Box<Composition>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Compo {
     CA(Ca4Block),
     CN(Box<Cn4>),
 }
 
-fn parse_composition(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sharable: &mut SharableBlocks, record_id_size: u32) -> (Composition, i64) {
+fn parse_composition(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sharable: &mut SharableBlocks, record_id_size: u8) -> (Composition, i64) {
 
     let (mut block, block_header, pos) = parse_block(rdr, target, position);
     position =pos;
@@ -1279,7 +1264,7 @@ fn parse_composition(rdr: &mut BufReader<&File>, target: i64, mut position: i64,
     }
 }
 
-#[derive(Debug, PartialEq, Default)]
+#[derive(Debug, PartialEq, Default, Clone)]
 pub struct Db {
     channel_list: HashMap<String, (i64, (i64, u64), (i64, u32))>,
     master_channel_list: HashMap<String, HashSet<String>>
