@@ -1,6 +1,6 @@
 
 use crate::mdfinfo::mdfinfo4::{Blockheader4, Cg4, Dg4, MdfInfo4, parse_block_header};
-use std::{collections::HashMap, convert::TryInto, io::{BufReader, Read}, usize};
+use std::{collections::HashMap, convert::TryInto, io::{BufReader, Read}, thread, usize};
 use std::fs::File;
 use std::str;
 use std::string::String;
@@ -11,7 +11,7 @@ use encoding_rs::{WINDOWS_1252, UTF_16LE, UTF_16BE};
 use ndarray::{Array1, OwnedRepr, ArrayBase, Dim};
 // use ndarray::parallel::prelude::*;
 // use rayon::prelude::*;
-use flume;
+use flume::{self, bounded, unbounded};
 
 pub fn mdfreader4<'a>(rdr: &'a mut BufReader<&File>, info: &'a mut MdfInfo4) {
     let mut position: i64 = 0;
@@ -86,24 +86,29 @@ fn generate_chunks(channel_group: &Cg4) -> Vec<(u64, u64)>{
 }
 
 fn read_all_channels_sorted(rdr: &mut BufReader<&File>, channel_group: &mut Cg4) {
-    let mut chunks =  generate_chunks(&channel_group);
+    let chunks =  generate_chunks(&channel_group);
+    let n_chunks = &chunks.len();
     // println!("chunks length {}, chunks size {}", chunks.len(), chunks[0].0);
     let mut cg_init = channel_group.clone(); // channel group should contain empty arrays
     initialise_arrays(&mut cg_init, chunks[0].0); // initialises first chunk, should be the longest
-    let mut nested_data: Vec<Cg4>= Vec::new();
+    // create channels
+    let (tx, rx) = bounded::<Cg4>(*n_chunks);
     // read by chunks and store in cg struct
-    for (n_record_chunk, chunk_size) in &chunks {
-        let mut data_chunk= vec![0u8; *chunk_size as usize];
+    for (n_record_chunk, chunk_size) in chunks {
+        let mut data_chunk= vec![0u8; chunk_size as usize];
         rdr.read_exact(&mut data_chunk).expect("Could not read data chunk");
         let mut cg = cg_init.clone();
-        for nrecord in 0..*n_record_chunk {
-            read_record_inplace(&mut cg, &data_chunk, nrecord,&0);
-        }
-        nested_data.push(cg);
+        let tx1= tx.clone();
+        thread::spawn(move || {
+            for nrecord in 0..n_record_chunk {
+                read_record_inplace(&mut cg, &data_chunk, nrecord,&0);
+            }
+            tx1.send(cg).unwrap();
+        });
     }
     // assemble the vectors into one
-    for (i, (_n_record_chunk, _chunk_size)) in chunks.drain(0..0).enumerate() {
-        channel_group.append(&mut nested_data[i]);
+    for i in 0..*n_chunks {
+        channel_group.append(&mut rx.recv().unwrap());
     }
 }
 
