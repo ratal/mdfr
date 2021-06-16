@@ -11,6 +11,7 @@ use encoding_rs::{WINDOWS_1252, UTF_16LE, UTF_16BE};
 use ndarray::{Array1, OwnedRepr, ArrayBase, Dim};
 // use ndarray::parallel::prelude::*;
 // use rayon::prelude::*;
+use flume;
 
 pub fn mdfreader4<'a>(rdr: &'a mut BufReader<&File>, info: &'a mut MdfInfo4) {
     let mut position: i64 = 0;
@@ -85,23 +86,24 @@ fn generate_chunks(channel_group: &Cg4) -> Vec<(u64, u64)>{
 }
 
 fn read_all_channels_sorted(rdr: &mut BufReader<&File>, channel_group: &mut Cg4) {
-    let chunks =  generate_chunks(&channel_group);
-    // initialises the container
-    let mut data: HashMap<String, ChannelData> = HashMap::new();
-    for (_cn_record_position, cn) in channel_group.cn.iter_mut() {
-        data.insert(cn.unique_name.clone(), cn.data.zeros(channel_group.block.cg_cycle_count));
-    }
-    // read by chunks and store in a vec
+    let mut chunks =  generate_chunks(&channel_group);
+    // println!("chunks length {}, chunks size {}", chunks.len(), chunks[0].0);
+    let mut cg_init = channel_group.clone(); // channel group should contain empty arrays
+    initialise_arrays(&mut cg_init, chunks[0].0); // initialises first chunk, should be the longest
+    let mut nested_data: Vec<Cg4>= Vec::new();
+    // read by chunks and store in cg struct
     for (n_record_chunk, chunk_size) in &chunks {
         let mut data_chunk= vec![0u8; *chunk_size as usize];
         rdr.read_exact(&mut data_chunk).expect("Could not read data chunk");
-        read_records_sorted(&data_chunk, *n_record_chunk, channel_group, &mut data);
+        let mut cg = cg_init.clone();
+        for nrecord in 0..*n_record_chunk {
+            read_record_inplace(&mut cg, &data_chunk, nrecord,&0);
+        }
+        nested_data.push(cg);
     }
     // assemble the vectors into one
-    for (i, (n_record_chunk, chunk_size)) in chunks.iter().enumerate() {
-        for (cn_record_position, cn) in channel_group.cn.iter_mut() {
-            
-        }
+    for (i, (_n_record_chunk, _chunk_size)) in chunks.drain(0..0).enumerate() {
+        channel_group.append(&mut nested_data[i]);
     }
 }
 
@@ -259,125 +261,6 @@ fn read_record_inplace(channel_group: &mut Cg4, record: &Vec<u8>, nrecord: u64, 
             ChannelData::UInt48(array) => if cn.endian {
                 array[(nrecord + previous_index )as usize] = value.read_u48::<BigEndian>().expect("Could not convert be u48")
                 } else {array[(nrecord + previous_index )as usize] = value.read_u48::<LittleEndian>().expect("Could not convert le u48")},
-        }
-    }
-}
-
-fn read_records_sorted(data_chunk: &Vec<u8>, n_record_chunks: u64, channel_group: &mut Cg4, data: &mut HashMap<String, ChannelData>) {
-    for nrecord in 0..n_record_chunks {
-        // read record for each channel
-        for (_cn_record_position, cn) in channel_group.cn.iter_mut() {
-            let mut value = &data_chunk[((nrecord * channel_group.record_length as u64) + cn.pos_byte_beg as u64) as usize .. 
-                    ((cn.pos_byte_beg + cn.n_bytes) as u64 + (nrecord * channel_group.record_length as u64)) as usize];
-            if let Some(mut cd) = data.get_mut(&cn.unique_name) {
-                match &mut cd {
-                ChannelData::Int8(array) => 
-                    array[(nrecord)as usize] = value.read_i8().expect("Could not convert i8"),
-                ChannelData::UInt8(array) => 
-                    array[(nrecord)as usize] = value.read_u8().expect("Could not convert u8"),
-                ChannelData::Int16(array) => if cn.endian {
-                    array[(nrecord)as usize] = value.read_i16::<BigEndian>().expect("Could not convert be i16")
-                    } else {array[(nrecord)as usize] = value.read_i16::<LittleEndian>().expect("Could not convert le i16")},
-                ChannelData::UInt16(array) => if cn.endian {
-                    array[(nrecord)as usize] = value.read_u16::<BigEndian>().expect("Could not convert be u16")
-                    } else {array[(nrecord)as usize] = value.read_u16::<LittleEndian>().expect("Could not convert le u16")},
-                ChannelData::Float16(array) => {
-                    if cn.endian {
-                        array[(nrecord)as usize] = f16::from_be_bytes(value.try_into().expect("Could not convert be f16")).to_f32();
-                    } else {
-                        array[(nrecord)as usize] = f16::from_le_bytes(value.try_into().expect("Could not convert le f16")).to_f32();}
-                    },
-                ChannelData::Int32(array) => if cn.endian {
-                    array[(nrecord)as usize] = value.read_i32::<BigEndian>().expect("Could not convert be i32")
-                    } else {array[(nrecord)as usize] = value.read_i32::<LittleEndian>().expect("Could not convert le i32")},
-                ChannelData::UInt32(array) => if cn.endian {
-                    array[(nrecord)as usize] = value.read_u32::<BigEndian>().expect("Could not convert be u32")
-                    } else {array[(nrecord)as usize] = value.read_u32::<LittleEndian>().expect("Could not convert le u32")},
-                ChannelData::Float32(array) => if cn.endian {
-                    array[(nrecord)as usize] = value.read_f32::<BigEndian>().expect("Could not convert be f32")
-                    } else {array[(nrecord)as usize] = value.read_f32::<LittleEndian>().expect("Could not convert le f32")},
-                ChannelData::Int64(array) => if cn.endian {
-                    array[(nrecord)as usize] = value.read_i64::<BigEndian>().expect("Could not convert be i64")
-                    } else {array[(nrecord)as usize] = value.read_i64::<LittleEndian>().expect("Could not convert le i64")},
-                ChannelData::UInt64(array) => if cn.endian {
-                    array[(nrecord)as usize] = value.read_u64::<BigEndian>().expect("Could not convert be u64")
-                    } else {array[(nrecord)as usize] = value.read_u64::<LittleEndian>().expect("Could not convert le u64")},
-                ChannelData::Float64(array) => if cn.endian {
-                    array[(nrecord)as usize] = value.read_f64::<BigEndian>().expect("Could not convert be f64")
-                    } else {array[(nrecord)as usize] = value.read_f64::<LittleEndian>().expect("Could not convert le f64")},
-                ChannelData::Complex16(array) => {
-                    let re_val = &value[0..1];
-                    let im_val = &value[2..3];
-                    let re: f32;
-                    let im: f32;
-                    if cn.endian {
-                        re = f16::from_be_bytes(re_val.try_into().expect("Could not array")).to_f32();
-    
-                        im = f16::from_be_bytes(im_val.try_into().expect("Could not array")).to_f32();
-                    } else {
-                        re = f16::from_le_bytes(re_val.try_into().expect("Could not array")).to_f32();
-                        im = f16::from_le_bytes(im_val.try_into().expect("Could not array")).to_f32();}
-                    let comp = Complex::new(re, im);
-                    array[(nrecord)as usize] = comp;},
-                ChannelData::Complex32(array) => {
-                    let mut re_val = &value[0..1];
-                    let mut im_val = &value[2..3];
-                    let re: f32;
-                    let im: f32;
-                    if cn.endian {
-                        re = re_val.read_f32::<BigEndian>().expect("Could not convert be f32 for real complex");
-                        im = im_val.read_f32::<BigEndian>().expect("Could not convert be f32 for img complex");
-                    } else {
-                        re = re_val.read_f32::<LittleEndian>().expect("Could not convert le f32 for real complex");
-                        im = im_val.read_f32::<LittleEndian>().expect("Could not convert le f32 for img complex");}
-                    let comp = Complex::new(re, im);
-                    array[(nrecord)as usize] = comp;},
-                ChannelData::Complex64(array) => {
-                    let mut re_val = &value[0..3];
-                    let mut im_val = &value[4..7];
-                    let re: f64;
-                    let im: f64;
-                    if cn.endian {
-                        re = re_val.read_f64::<BigEndian>().expect("Could not convert be f64 for real complex");
-                        im = im_val.read_f64::<BigEndian>().expect("Could not convert be f64 for img complex");
-                    } else {
-                        re = re_val.read_f64::<LittleEndian>().expect("Could not convert le f64 for real complex");
-                        im = im_val.read_f64::<LittleEndian>().expect("Could not convert le f64 for img complex");}
-                    let comp = Complex::new(re, im);
-                    array[(nrecord)as usize] = comp;},
-                ChannelData::StringSBC(array) => {
-                    let mut sbc_decoder = WINDOWS_1252.new_decoder();
-                    sbc_decoder.decode_to_string(&value, &mut array[(nrecord)as usize], false);
-                },
-                ChannelData::StringUTF8(array) => {
-                    array[(nrecord)as usize] = str::from_utf8(&value).expect("Found invalid UTF-8").to_string();
-                },
-                ChannelData::StringUTF16(array) => {
-                    if cn.endian{
-                        let mut utf16be_decoder = UTF_16BE.new_decoder();
-                        utf16be_decoder.decode_to_string(&value, &mut array[(nrecord)as usize], false);
-                    } else {
-                        let mut utf16le_decoder = UTF_16LE.new_decoder();
-                        utf16le_decoder.decode_to_string(&value, &mut array[(nrecord)as usize], false);
-                    };
-                },
-                ChannelData::ByteArray(array) => {
-                    array[(nrecord)as usize] = value.to_vec();
-                },
-                ChannelData::Int24(array) => if cn.endian {
-                    array[(nrecord)as usize] = value.read_i24::<BigEndian>().expect("Could not convert be i24")
-                    } else {array[(nrecord)as usize] = value.read_i24::<LittleEndian>().expect("Could not convert le i24")},
-                ChannelData::UInt24(array) => if cn.endian {
-                    array[(nrecord)as usize] = value.read_u24::<BigEndian>().expect("Could not convert be u24")
-                    } else {array[(nrecord)as usize] = value.read_u24::<LittleEndian>().expect("Could not convert le u24")},
-                ChannelData::Int48(array) => if cn.endian {
-                    array[(nrecord)as usize] = value.read_i48::<BigEndian>().expect("Could not convert be i48")
-                    } else {array[(nrecord)as usize] = value.read_i48::<LittleEndian>().expect("Could not convert le i48")},
-                ChannelData::UInt48(array) => if cn.endian {
-                    array[(nrecord)as usize] = value.read_u48::<BigEndian>().expect("Could not convert be u48")
-                    } else {array[(nrecord)as usize] = value.read_u48::<LittleEndian>().expect("Could not convert le u48")},
-                }
-            }
         }
     }
 }
