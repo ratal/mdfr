@@ -1,2 +1,8 @@
 /target
 Cargo.lock
+flamegraph.svg
+perf.data.old
+perf.data
+profile.coz
+callgrind.out.*
+cachegrind.out.*
