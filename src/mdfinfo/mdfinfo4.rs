@@ -1,8 +1,8 @@
 
 use byteorder::{LittleEndian, ReadBytesExt};
-use ndarray::{Axis, s};
+use ndarray::{Array1, Axis};
 use roxmltree;
-use std::{io::{BufReader, Cursor}, sync::Arc};
+use std::{io::{BufReader, Cursor}, sync::{Arc, Mutex}};
 use std::fs::File;
 use std::io::prelude::*;
 use std::{str, fmt};
@@ -761,11 +761,10 @@ fn parse_cg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, s
 #[derive(Debug, Clone)]
 pub struct Cg4 {
     pub block: Cg4Block,
-    pub cn: CnType,
-    block_position: i64,
-    pub record_length: u32,
+    pub cn: CnType, // hashmap of channels 
+    block_position: i64, // as not stored in .block but can still be referenced by other blocks
+    pub record_length: u32, // record lenght including recordId and invalid bytes
 }
-
 
 /// Cg4 implementations for extracting acquisition and source name and path
 impl Cg4 {
@@ -789,6 +788,9 @@ impl Cg4 {
             Some(block) => block.get_si_path_name(sharable),
             None => None,
         }
+    }
+    pub fn new_channel(&mut self, bit_position: u32, cn: Cn4) {
+        self.cn.insert(bit_position, cn);
     }
     /// append all input arrays into self
     pub fn append(&mut self, cg: &mut Cg4) {
@@ -899,6 +901,11 @@ pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sha
         position = pos;
         let mut next_pointer = cg_struct.block.cg_cg_next;
         cg_struct.record_length += record_id_size as u32 + cg_struct.block.cg_inval_bytes;
+        if cg_struct.block.cg_inval_bytes > 0 {
+            // invalid bytes exist, adding byte array channel
+            let cn_struct = invalid_channel(cg_struct.block.cg_data_bytes, record_id_size as u32, cg_struct.block.cg_inval_bytes, cg_struct.block.cg_cycle_count);
+            cg_struct.cn.insert((cg_struct.block.cg_data_bytes + record_id_size as u32) * 8, cn_struct);
+        }
         cg.insert(cg_struct.block.cg_record_id, cg_struct);
 
         while next_pointer != 0 {
@@ -907,10 +914,29 @@ pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sha
             position = pos;
             cg_struct.record_length += record_id_size as u32 + cg_struct.block.cg_inval_bytes;
             next_pointer = cg_struct.block.cg_cg_next;
+            if cg_struct.block.cg_inval_bytes > 0 {
+                // invalid bytes exist, adding byte array channel
+                let cn_struct = invalid_channel(cg_struct.block.cg_data_bytes, record_id_size as u32, cg_struct.block.cg_inval_bytes, cg_struct.block.cg_cycle_count);
+                cg_struct.cn.insert((cg_struct.block.cg_data_bytes + record_id_size as u32) * 8, cn_struct);
+            }
             cg.insert(cg_struct.block.cg_record_id, cg_struct);
         }
     }
     (cg, position)
+}
+
+fn invalid_channel(cg_data_bytes: u32, record_id_size: u32, cg_inval_bytes: u32, cycle_count: u64) -> Cn4 {
+    let composition: Option<Composition> = None;
+    let mut block: Cn4Block = Cn4Block::default();
+    block.cn_links = 8;
+    let n_bytes= cg_inval_bytes;
+    let unique_name: String = String::from("invalid_bytes");
+    block.cn_bit_offset = 0;
+    block.cn_byte_offset = cg_data_bytes;
+    block.cn_bit_count = calc_n_bytes(cg_data_bytes * 8, 0);
+    let pos_byte_beg = cg_data_bytes + record_id_size;
+    let cn_struct: Cn4 = Cn4 {block, unique_name, block_position: 0, pos_byte_beg, n_bytes, composition, data: ChannelData::ByteArray(vec![vec![0u8; n_bytes as usize]; cycle_count as usize]), endian: false };
+    cn_struct
 }
 
 /// Cn4 Channel block struct
@@ -971,17 +997,113 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sha
         position = pos;
         let rec_pos = (cn_struct.block.cn_byte_offset + record_id_size as u32) *8 + u32::try_from(cn_struct.block.cn_bit_offset).unwrap();
         let mut next_pointer = cn_struct.block.cn_cn_next;
-        cn.insert(rec_pos, cn_struct);
+        if cn_struct.block.cn_data_type == 13 {
+            // CANopen date
+            let (date_ms, min, hour, day, month, year) = can_open_date(cn_struct.block_position, cn_struct.pos_byte_beg, cn_struct.block.cn_byte_offset);
+            cn.insert(rec_pos, date_ms);
+            cn.insert(rec_pos + 16, min);
+            cn.insert(rec_pos + 24, hour);
+            cn.insert(rec_pos + 32, day);
+            cn.insert(rec_pos + 40, month);
+            cn.insert(rec_pos + 48,  year);
+        } else if cn_struct.block.cn_data_type == 14 {
+            // CANopen time
+            let (ms, days) = can_open_time(cn_struct.block_position, cn_struct.pos_byte_beg, cn_struct.block.cn_byte_offset);
+            cn.insert(rec_pos, ms);
+            cn.insert(rec_pos + 32, days);
+        } else {
+            cn.insert(rec_pos, cn_struct);
+        }
         
         while next_pointer != 0 {
             let (cn_struct, pos) = parse_cn4_block(rdr, next_pointer, position, sharable, record_id_size);
             position = pos;
             let rec_pos = (cn_struct.block.cn_byte_offset + record_id_size as u32) * 8 + u32::try_from(cn_struct.block.cn_bit_offset).unwrap();
             next_pointer = cn_struct.block.cn_cn_next;
-            cn.insert(rec_pos, cn_struct);
+            if cn_struct.block.cn_data_type == 13 {
+                // CANopen date
+                let (date_ms, min, hour, day, month, year) = can_open_date(cn_struct.block_position, cn_struct.pos_byte_beg, cn_struct.block.cn_byte_offset);
+                cn.insert(rec_pos, date_ms);
+                cn.insert(rec_pos + 16, min);
+                cn.insert(rec_pos + 24, hour);
+                cn.insert(rec_pos + 32, day);
+                cn.insert(rec_pos + 40, month);
+                cn.insert(rec_pos + 48,  year);
+            } else if cn_struct.block.cn_data_type == 14 {
+                // CANopen time
+                let (ms, days) = can_open_time(cn_struct.block_position, cn_struct.pos_byte_beg, cn_struct.block.cn_byte_offset);
+                cn.insert(rec_pos, ms);
+                cn.insert(rec_pos + 32, days);
+            } else {
+                cn.insert(rec_pos, cn_struct);
+            }
         }
     }
     (cn, position)
+}
+
+fn can_open_date(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) -> (Cn4, Cn4, Cn4, Cn4, Cn4, Cn4) {
+    let composition: Option<Composition> = None;
+    let mut block: Cn4Block = Cn4Block::default();
+    block.cn_links = 8;
+    let n_bytes= 2;
+    let unique_name: String = String::from("ms");
+    block.cn_byte_offset = cn_byte_offset;
+    block.cn_bit_count = 16;
+    let date_ms: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt16(Array1::<u16>::zeros((0, ))), endian: false };
+    let composition: Option<Composition> = None;
+    let mut block: Cn4Block = Cn4Block::default();
+    let n_bytes= 1;
+    let unique_name: String = String::from("min");
+    block.cn_byte_offset = cn_byte_offset + 2;
+    block.cn_bit_count = 6;
+    let min: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt8(Array1::<u8>::zeros((0, ))), endian: false };
+    let composition: Option<Composition> = None;
+    let mut block: Cn4Block = Cn4Block::default();
+    let unique_name: String = String::from("hour");
+    block.cn_byte_offset = cn_byte_offset + 3;
+    block.cn_bit_count = 5;
+    let hour: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt8(Array1::<u8>::zeros((0, ))), endian: false };
+    let composition: Option<Composition> = None;
+    let mut block: Cn4Block = Cn4Block::default();
+    let unique_name: String = String::from("day");
+    block.cn_byte_offset = cn_byte_offset + 4;
+    block.cn_bit_count = 5;
+    let day: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt8(Array1::<u8>::zeros((0, ))), endian: false };
+    let composition: Option<Composition> = None;
+    let mut block: Cn4Block = Cn4Block::default();
+    let unique_name: String = String::from("month");
+    block.cn_byte_offset = cn_byte_offset + 5;
+    block.cn_bit_count = 6;
+    let month: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt8(Array1::<u8>::zeros((0, ))), endian: false };
+    let composition: Option<Composition> = None;
+    let mut block: Cn4Block = Cn4Block::default();
+    let unique_name: String = String::from("year");
+    block.cn_byte_offset = cn_byte_offset + 6;
+    block.cn_bit_count = 7;
+    let year: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt8(Array1::<u8>::zeros((0, ))), endian: false };
+    (date_ms, min, hour, day, month, year)
+}
+
+fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) -> (Cn4, Cn4) {
+    let composition: Option<Composition> = None;
+    let mut block: Cn4Block = Cn4Block::default();
+    block.cn_links = 8;
+    let n_bytes= 4;
+    let unique_name: String = String::from("ms");
+    block.cn_bit_offset = 0;
+    block.cn_byte_offset = cn_byte_offset;
+    block.cn_bit_count = 28;
+    let ms: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt32(Array1::<u32>::zeros((0, ))), endian: false };
+    let composition: Option<Composition> = None;
+    let mut block: Cn4Block = Cn4Block::default();
+    let n_bytes= 2;
+    let unique_name: String = String::from("day");
+    block.cn_bit_offset = 0;
+    block.cn_byte_offset = cn_byte_offset + 4;
+    block.cn_bit_count = 16;
+    let days: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt16(Array1::<u16>::zeros((0, ))), endian: false };
+    (ms, days)
 }
 
 fn calc_n_bytes(bitcount: u32, data_type: u8) -> u32{
