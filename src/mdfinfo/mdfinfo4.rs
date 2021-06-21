@@ -13,6 +13,8 @@ use std::collections::{HashMap, HashSet};
 use chrono::{DateTime, Utc, naive::NaiveDateTime};
 use dashmap::DashMap;
 use rayon::prelude::*;
+use yazi::{decompress, Format};
+use ndarray::Array;
 
 use crate::mdfreader::mdfreader4::{ChannelData, data_init};
 
@@ -763,7 +765,7 @@ pub struct Cg4 {
     pub block: Cg4Block,
     pub cn: CnType, // hashmap of channels 
     block_position: i64, // as not stored in .block but can still be referenced by other blocks
-    pub record_length: u32, // record lenght including recordId and invalid bytes
+    pub record_length: u32, // record length including recordId and invalid bytes
 }
 
 /// Cg4 implementations for extracting acquisition and source name and path
@@ -889,6 +891,13 @@ impl Cg4 {
             } else {panic!("channel not found")}
         }
     }
+    pub fn process_invalid_bits(&mut self) {
+        // get invalid bytes
+        if let Some(invalid_bytes) = self.cn.get(&(self.record_length - self.block.cg_inval_bytes)) {
+            let invalid = &invalid_bytes.data;
+            todo!();
+        }
+    }
 }
 
 /// Cg4 blocks and linked blocks parsing
@@ -935,7 +944,7 @@ fn invalid_channel(cg_data_bytes: u32, record_id_size: u32, cg_inval_bytes: u32,
     block.cn_byte_offset = cg_data_bytes;
     block.cn_bit_count = calc_n_bytes(cg_data_bytes * 8, 0);
     let pos_byte_beg = cg_data_bytes + record_id_size;
-    let cn_struct: Cn4 = Cn4 {block, unique_name, block_position: 0, pos_byte_beg, n_bytes, composition, data: ChannelData::ByteArray(vec![vec![0u8; n_bytes as usize]; cycle_count as usize]), endian: false };
+    let cn_struct: Cn4 = Cn4 {block, unique_name, block_position: 0, pos_byte_beg, n_bytes, composition, data: ChannelData::ByteArray(vec![vec![0u8; n_bytes as usize]; cycle_count as usize]), endian: false, invalid_bit: None };
     cn_struct
 }
 
@@ -985,6 +994,7 @@ pub struct Cn4 {
     composition: Option<Composition>,
     pub data: ChannelData,
     pub endian: bool, // false = little endian
+    pub invalid_bit: Option<ChannelData>,
 }
 
 type CnType = HashMap<u32, Cn4>;
@@ -1050,38 +1060,38 @@ fn can_open_date(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
     let unique_name: String = String::from("ms");
     block.cn_byte_offset = cn_byte_offset;
     block.cn_bit_count = 16;
-    let date_ms: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt16(Array1::<u16>::zeros((0, ))), endian: false };
+    let date_ms: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt16(Array1::<u16>::zeros((0, ))), endian: false, invalid_bit: None };
     let composition: Option<Composition> = None;
     let mut block: Cn4Block = Cn4Block::default();
     let n_bytes= 1;
     let unique_name: String = String::from("min");
     block.cn_byte_offset = cn_byte_offset + 2;
     block.cn_bit_count = 6;
-    let min: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt8(Array1::<u8>::zeros((0, ))), endian: false };
+    let min: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt8(Array1::<u8>::zeros((0, ))), endian: false, invalid_bit: None };
     let composition: Option<Composition> = None;
     let mut block: Cn4Block = Cn4Block::default();
     let unique_name: String = String::from("hour");
     block.cn_byte_offset = cn_byte_offset + 3;
     block.cn_bit_count = 5;
-    let hour: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt8(Array1::<u8>::zeros((0, ))), endian: false };
+    let hour: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt8(Array1::<u8>::zeros((0, ))), endian: false, invalid_bit: None };
     let composition: Option<Composition> = None;
     let mut block: Cn4Block = Cn4Block::default();
     let unique_name: String = String::from("day");
     block.cn_byte_offset = cn_byte_offset + 4;
     block.cn_bit_count = 5;
-    let day: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt8(Array1::<u8>::zeros((0, ))), endian: false };
+    let day: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt8(Array1::<u8>::zeros((0, ))), endian: false, invalid_bit: None };
     let composition: Option<Composition> = None;
     let mut block: Cn4Block = Cn4Block::default();
     let unique_name: String = String::from("month");
     block.cn_byte_offset = cn_byte_offset + 5;
     block.cn_bit_count = 6;
-    let month: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt8(Array1::<u8>::zeros((0, ))), endian: false };
+    let month: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt8(Array1::<u8>::zeros((0, ))), endian: false, invalid_bit: None };
     let composition: Option<Composition> = None;
     let mut block: Cn4Block = Cn4Block::default();
     let unique_name: String = String::from("year");
     block.cn_byte_offset = cn_byte_offset + 6;
     block.cn_bit_count = 7;
-    let year: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt8(Array1::<u8>::zeros((0, ))), endian: false };
+    let year: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt8(Array1::<u8>::zeros((0, ))), endian: false, invalid_bit: None };
     (date_ms, min, hour, day, month, year)
 }
 
@@ -1094,7 +1104,7 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
     block.cn_bit_offset = 0;
     block.cn_byte_offset = cn_byte_offset;
     block.cn_bit_count = 28;
-    let ms: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt32(Array1::<u32>::zeros((0, ))), endian: false };
+    let ms: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt32(Array1::<u32>::zeros((0, ))), endian: false, invalid_bit: None };
     let composition: Option<Composition> = None;
     let mut block: Cn4Block = Cn4Block::default();
     let n_bytes= 2;
@@ -1102,7 +1112,7 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
     block.cn_bit_offset = 0;
     block.cn_byte_offset = cn_byte_offset + 4;
     block.cn_bit_count = 16;
-    let days: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt16(Array1::<u16>::zeros((0, ))), endian: false };
+    let days: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt16(Array1::<u16>::zeros((0, ))), endian: false, invalid_bit: None };
     (ms, days)
 }
 
@@ -1236,7 +1246,7 @@ fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, s
     }
     let data_type = block.cn_data_type;
 
-    let cn_struct = Cn4 {block, unique_name: name, block_position: target, pos_byte_beg, n_bytes, composition: compo, data: data_init(data_type, n_bytes, 0), endian};
+    let cn_struct = Cn4 {block, unique_name: name, block_position: target, pos_byte_beg, n_bytes, composition: compo, data: data_init(data_type, n_bytes, 0), endian, invalid_bit: None };
 
     (cn_struct, position)
 }
@@ -1562,4 +1572,142 @@ pub fn build_channel_db(dg: &mut HashMap<i64, Dg4>, sharable: &SharableBlocks) -
         }
     }
     db
+}
+
+/// DL4 Data List block struct
+#[derive(Debug, PartialEq, Default, Clone)]
+#[derive(BinRead)]
+#[br(little)]
+pub struct Dl4Block {
+    //header
+    dl_id: [u8; 4],  // ##DL
+    reserved: [u8; 4],  // reserved
+    dl_len: u64,      // Length of block in bytes
+    dl_links: u64,         // # of links
+    // links
+    dl_dl_next: i64, // next DL
+    #[br(if(dl_links > 1), little, count = dl_links - 1)]
+    dl_data: Vec<i64>,  
+    //members
+    dl_flags: u8, // 
+    dl_reserved: [u8; 3],
+    dl_count: u16, // Number of data blocks
+    #[br(if((dl_flags & 1)>0), little, count = dl_count)]
+    dl_equal_length: u64,
+    #[br(if((dl_flags & 1)>0), little, count = dl_count)]
+    dl_offset: Vec<u64>,
+    #[br(if((dl_flags & 0b10)>0), little, count = dl_count)]
+    dl_time_values: Vec<i64>,
+    #[br(if((dl_flags & 0b100)>0), little, count = dl_count)]
+    dl_angle_values: Vec<i64>,
+    #[br(if((dl_flags & 0b1000)>0), little, count = dl_count)]
+    dl_distance_values: Vec<i64>,
+}
+
+fn parser_dl4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (Dl4Block, i64) {
+    rdr.seek_relative(target - position).unwrap();
+    let block: Dl4Block = rdr.read_le().unwrap();
+    position = target + block.dl_len as i64;
+    (block, position)
+}
+
+pub fn parser_dl4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (Vec<u8>, i64) {
+    // Read all DL Blocks
+    let mut dl_blocks: Vec<Dl4Block> = Vec::new();
+    let (block, pos) = parser_dl4_block(rdr, target, position);
+    position = pos;
+    dl_blocks.push(block.clone());
+    while block.dl_dl_next > 0 {
+        let (block, pos) = parser_dl4_block(rdr, target, position);
+        position = pos;
+        dl_blocks.push(block.clone());
+    }
+    // Read all data blocks
+    let mut data: Vec<u8> = Vec::new();
+    for dl in dl_blocks {
+        for data_pointer in dl.dl_data {
+            rdr.seek_relative(data_pointer - position).unwrap();
+            let header = parse_block_header(rdr);
+            if header.hdr_id == "##DZ".as_bytes() {
+                let dt = parse_dz(rdr);
+                data.extend(dt);
+            } else {
+                let mut buf= vec![0u8; (header.hdr_len - 24) as usize];
+                rdr.read_exact(&mut buf).unwrap();
+                data.extend(buf);
+            }
+            position = data_pointer + header.hdr_len as i64;
+        }
+    }
+    (data, position)
+}
+
+pub fn parse_dz(rdr: &mut BufReader<&File>) -> Vec<u8> {
+    let block: Dz4Block = rdr.read_le().unwrap();
+    let mut buf= vec![0u8; block.dz_data_length as usize];
+    rdr.read_exact(&mut buf).unwrap();
+    let (data, _checksum) = decompress(&buf, Format::Zlib).expect("Could not decompress data");
+    if block.dz_zip_type == 1 {
+        let m = block.dz_org_data_length / block.dz_zip_parameter as u64;
+        let temp: Vec<u8> = data[0..(m * block.dz_zip_parameter as u64) as usize].to_vec();
+        let tail: Vec<u8> = data[(m * block.dz_zip_parameter as u64) as usize..].to_vec();
+        let array = Array::from_shape_vec((block.dz_zip_parameter as usize, m as usize), temp).expect("error converting vector to array");
+        let mut data = array.t().into_shape((1,)).expect("could not reshape into one dimension array").to_vec();
+        if tail.len() > 0 {
+            data.extend(tail);
+        }
+    }
+    data
+}
+
+/// DZ4 Data List block struct
+#[derive(Debug, PartialEq, Default, Clone)]
+#[derive(BinRead)]
+#[br(little)]
+pub struct Dz4Block {
+    //header
+    // dz_id: [u8; 4],  // ##DZ
+    // reserved: [u8; 4],  // reserved
+    // dz_len: u64,      // Length of block in bytes
+    // dz_links: u64,         // # of links
+    // links
+    //members
+    dz_org_block_type: [u8; 2], // "DT", "SD", "RD" or "DV", "DI", "RV", "RI"
+    dz_zip_type: u8, // Zip algorithm, 0 deflate, 1 transpose + deflate
+    dz_reserved: u8, // reserved
+    dz_zip_parameter: u32, //
+    dz_org_data_length: u64, // length of uncompressed data
+    dz_data_length: u64, // length of compressed data
+}
+
+/// DL4 Data List block struct
+#[derive(Debug, PartialEq, Default, Clone)]
+#[derive(BinRead)]
+#[br(little)]
+pub struct Ld4Block {
+    //header
+    ld_id: [u8; 4],  // ##LD
+    reserved: [u8; 4],  // reserved
+    ld_len: u64,      // Length of block in bytes
+    ld_links: u64,         // # of links
+    // links
+    ld_ld_next: i64, // next LD
+    #[br(if(ld_links > 1), little, count = (ld_links -1) / 2)]
+    ld_data: Vec<i64>,
+    #[br(if(ld_links > 1), little, count = (ld_links -1) / 2)]
+    ld_invalid_data: Vec<i64>,
+    //members
+    ld_flags: u8, // 
+    ld_reserved: [u8; 3],
+    ld_count: u16, // Number of data blocks
+    #[br(if((ld_flags & 1)>0), little, count = ld_count)]
+    ld_equal_sample_count: u64,
+    #[br(if((ld_flags & 1)>0), little, count = ld_count)]
+    ld_sample_offset: Vec<u64>,
+    #[br(if((ld_flags & 0b10)>0), little, count = ld_count)]
+    dl_time_values: Vec<i64>,
+    #[br(if((ld_flags & 0b100)>0), little, count = ld_count)]
+    dl_angle_values: Vec<i64>,
+    #[br(if((ld_flags & 0b1000)>0), little, count = ld_count)]
+    dl_distance_values: Vec<i64>,
 }
