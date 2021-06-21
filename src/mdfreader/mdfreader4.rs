@@ -1,6 +1,6 @@
 
 use crate::mdfinfo::mdfinfo4::{Blockheader4, Cg4, Dg4, MdfInfo4, parse_block_header};
-use std::{collections::HashMap, convert::TryInto, io::{BufReader, Read}, thread, usize};
+use std::{collections::HashMap, convert::TryInto, io::{BufReader, Read}, usize};
 use std::fs::File;
 use std::str;
 use std::string::String;
@@ -10,8 +10,6 @@ use half::f16;
 use encoding_rs::{WINDOWS_1252, UTF_16LE, UTF_16BE};
 use ndarray::{Array1, OwnedRepr, ArrayBase, Dim};
 // use ndarray::parallel::prelude::*;
-// use rayon::prelude::*;
-use flume::{self, bounded, unbounded};
 
 pub fn mdfreader4<'a>(rdr: &'a mut BufReader<&File>, info: &'a mut MdfInfo4) {
     let mut position: i64 = 0;
@@ -42,7 +40,7 @@ fn read_data(rdr: &mut BufReader<&File>, block_header: Blockheader4, dg: &mut Dg
             // unsorted data
             // initialises all arrays
             for channel_group in dg.cg.values_mut() {
-                initialise_arrays(channel_group, channel_group.block.cg_cycle_count);
+                initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone());
             }
             read_all_channels_unsorted(rdr, dg, block_header.hdr_len as i64);
             position += block_header.hdr_len as i64 - 24;
@@ -86,29 +84,18 @@ fn generate_chunks(channel_group: &Cg4) -> Vec<(u64, u64)>{
 }
 
 fn read_all_channels_sorted(rdr: &mut BufReader<&File>, channel_group: &mut Cg4) {
-    let chunks =  generate_chunks(&channel_group);
-    let n_chunks = &chunks.len();
-    // println!("chunks length {}, chunks size {}", chunks.len(), chunks[0].0);
-    let mut cg_init = channel_group.clone(); // channel group should contain empty arrays
-    initialise_arrays(&mut cg_init, chunks[0].0); // initialises first chunk, should be the longest
-    // create channels
-    let (tx, rx) = bounded::<Cg4>(*n_chunks);
+    let chunks =  generate_chunks(channel_group);
+    // initialises the arrays
+    initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone());
     // read by chunks and store in cg struct
+    let mut previous_index: u64 = 0;
     for (n_record_chunk, chunk_size) in chunks {
         let mut data_chunk= vec![0u8; chunk_size as usize];
         rdr.read_exact(&mut data_chunk).expect("Could not read data chunk");
-        let mut cg = cg_init.clone();
-        let tx1= tx.clone();
-        thread::spawn(move || {
-            for nrecord in 0..n_record_chunk {
-                read_record_inplace(&mut cg, &data_chunk, nrecord,&0);
-            }
-            tx1.send(cg).unwrap();
-        });
-    }
-    // assemble the vectors into one
-    for i in 0..*n_chunks {
-        channel_group.append(&mut rx.recv().unwrap());
+        for nrecord in 0..n_record_chunk {
+            read_record_inplace(channel_group, &data_chunk, nrecord, &previous_index);
+        }
+        previous_index += n_record_chunk;
     }
 }
 
@@ -271,10 +258,10 @@ fn read_record_inplace(channel_group: &mut Cg4, record: &Vec<u8>, nrecord: u64, 
 }
 
 //#[inline]
-fn initialise_arrays(channel_group: &mut Cg4, n_record_chunk: u64) {
+fn initialise_arrays(channel_group: &mut Cg4, n_record_chunk: &u64) {
     // initialise ndarrays for the data group/block
     for (_cn_record_position, cn) in channel_group.cn.iter_mut() {
-        cn.data = data_init(cn.block.cn_data_type, cn.n_bytes, n_record_chunk);
+        cn.data = data_init(cn.block.cn_data_type, cn.n_bytes, *n_record_chunk);
     }
 }
 
