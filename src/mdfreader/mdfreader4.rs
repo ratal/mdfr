@@ -1,9 +1,12 @@
 
-use crate::mdfinfo::mdfinfo4::{Blockheader4, Cg4, Dg4, MdfInfo4, parse_block_header};
+use crate::mdfinfo::mdfinfo4::{Dl4Block, parser_dl4_block, parse_dz, Hl4Block, Dt4Block};
+use crate::mdfinfo::mdfinfo4::{Cg4, Dg4, MdfInfo4, parse_block_header};
+use std::io::Cursor;
 use std::{collections::HashMap, convert::TryInto, io::{BufReader, Read}, usize};
 use std::fs::File;
 use std::str;
 use std::string::String;
+use binread::BinReaderExt;
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
 use num::Complex;
 use half::f16;
@@ -18,54 +21,166 @@ pub fn mdfreader4<'a>(rdr: &'a mut BufReader<&File>, info: &'a mut MdfInfo4) {
         if dg.block.dg_data != 0 {
             // header block
             rdr.seek_relative(dg.block.dg_data - position).expect("Could not position buffer");  // change buffer position
-            let block_header = parse_block_header(rdr);
-            position = dg.block.dg_data + 24;
-            position = read_data(rdr, block_header, dg, position);
+            let mut id = [0u8; 4];
+            rdr.read_exact(&mut id).expect("could not read block id");
+            position = read_data(rdr, id, dg, dg.block.dg_data);
         }
+        apply_bit_mask_offset(dg);
+        // process all invalid bits
+
+        // conversion of all channels
+
     }
 }
 
-fn read_data(rdr: &mut BufReader<&File>, block_header: Blockheader4, dg: &mut Dg4, mut position: i64) -> i64 {
-    if "##DT".as_bytes() == block_header.hdr_id {
+fn read_data(rdr: &mut BufReader<&File>, id: [u8; 4], dg: &mut Dg4, mut position: i64) -> i64 {
+    // block header is already read
+    if "##DT".as_bytes() == id {
+        let block_header: Dt4Block = rdr.read_le().unwrap();
         // simple data block
         if dg.cg.len() == 1 {
             // sorted data group
-            // initialises all arrays
             for channel_group in dg.cg.values_mut() {
                 read_all_channels_sorted(rdr, channel_group);
-                position += (channel_group.record_length as i64) * (channel_group.block.cg_cycle_count as i64);
             }
-            apply_bit_mask_offset(dg);
         } else if !dg.cg.is_empty() {
             // unsorted data
             // initialises all arrays
             for channel_group in dg.cg.values_mut() {
                 initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone());
             }
-            read_all_channels_unsorted(rdr, dg, block_header.hdr_len as i64);
-            position += block_header.hdr_len as i64 - 24;
-            apply_bit_mask_offset(dg);
+            read_all_channels_unsorted(rdr, dg, block_header.len as i64);
         }
-    } else if "##DZ".as_bytes() == block_header.hdr_id {
+        position += block_header.len as i64;
+    } else if "##DZ".as_bytes() == id {
+        let (data, block_header) = parse_dz(rdr);
         // compressed data
-        todo!();
-    } else if "##HL".as_bytes() == block_header.hdr_id {
+        if dg.cg.len() == 1 {
+            // sorted data group
+            for channel_group in dg.cg.values_mut() {
+                read_all_channels_sorted_from_bytes(&data, channel_group);
+            }
+        } else if !dg.cg.is_empty() {
+            // unsorted data
+            // initialises all arrays
+            for channel_group in dg.cg.values_mut() {
+                initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone());
+            }
+            read_all_channels_unsorted_from_bytes(data, dg);
+        }
+        position += block_header.len as i64;
+    } else if "##HL".as_bytes() == id {
         // compressed data in datal list
-        todo!();
-    } else if "##DZ".as_bytes() == block_header.hdr_id {
-        // compressed data
-        todo!();
-    } else if "##SD".as_bytes() == block_header.hdr_id {
+        let block: Hl4Block = rdr.read_le().expect("could not read HL block");
+        position += block.hl_len as i64;
+        rdr.seek_relative(block.hl_dl_first - position).expect("Could not reach HL block");
+        let mut id = [0u8; 4];
+        rdr.read_exact(&mut id).expect("could not read DL block id");
+        position = read_data(rdr, id, dg, position);
+    } else if "##SD".as_bytes() == id {
         // signal data for VLSD
         todo!();
-    } else if "##DL".as_bytes() == block_header.hdr_id {
+    } else if "##DL".as_bytes() == id {
+        // data list
+        if dg.cg.len() == 1 {
+            // sorted data group
+            for channel_group in dg.cg.values_mut() {
+                let (dl_blocks, pos) = parser_dl4(rdr, position);
+                let pos = parser_dl4_sorted(rdr, dl_blocks, pos, channel_group);
+                position = pos;
+            }
+        } else if !dg.cg.is_empty() {
+            // unsorted data
+            // initialises all arrays
+            for channel_group in dg.cg.values_mut() {
+                initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone());
+            }
+            let (dl_blocks, pos) = parser_dl4(rdr, position);
+            let (data, pos) = parser_dl4_unsorted(rdr, dl_blocks, pos);
+            position = pos;
+            read_all_channels_unsorted_from_bytes(data, dg);
+        }
+    } else if "##LD".as_bytes() == id {
         // data list
         todo!();
-    } else if "##DV".as_bytes() == block_header.hdr_id {
+    }else if "##DV".as_bytes() == id {
         // data values
         todo!();
     }
     position
+}
+
+fn parser_dl4(rdr: &mut BufReader<&File>, mut position: i64) -> (Vec<Dl4Block>, i64) {
+    // Read all DL Blocks
+    let mut dl_blocks: Vec<Dl4Block> = Vec::new();
+    let (block, pos) = parser_dl4_block(rdr, position, position);
+    position = pos;
+    dl_blocks.push(block.clone());
+    while block.dl_dl_next > 0 {
+        let mut id = [0u8; 4];
+        rdr.read_exact(&mut id).expect("could not read DL block id");
+        position += 4;
+        let (block, pos) = parser_dl4_block(rdr, block.dl_dl_next + 4, position);
+        position = pos;
+        dl_blocks.push(block.clone());
+    }
+    (dl_blocks, position)
+}
+
+fn parser_dl4_sorted(rdr: &mut BufReader<&File>, dl_blocks: Vec<Dl4Block>, mut position: i64, channel_group: &mut Cg4) -> i64 {
+    // initialises the arrays
+    initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone());
+    // Read all data blocks
+    let mut data: Vec<u8> = Vec::new();
+    let mut previous_index: u64 = 0;
+    for dl in dl_blocks {
+        for data_pointer in dl.dl_data {
+            rdr.seek_relative(data_pointer - position).unwrap();
+            let mut id = [0u8; 4];
+            rdr.read_exact(&mut id).expect("could not read data block id");
+            let block_length: u64;
+            if id == "##DZ".as_bytes() {
+                let (dt, block_header) = parse_dz(rdr);
+                data.extend(dt);
+                block_length = block_header.len;
+            } else {
+                let block_header: Dt4Block = rdr.read_le().unwrap();
+                let mut buf= vec![0u8; (block_header.len - 24) as usize];
+                rdr.read_exact(&mut buf).unwrap();
+                data.extend(buf);
+                block_length = block_header.len;
+            }
+            position = data_pointer + block_length as i64;
+            let record_length = channel_group.record_length as u64;
+            let n_record_chunk = block_length / record_length;
+            for nrecord in 0..n_record_chunk {
+                read_record_inplace(channel_group, &data.drain(0..(record_length *  n_record_chunk) as usize).collect(), nrecord, &previous_index);
+            }
+            previous_index += n_record_chunk;
+        }
+    }
+    position
+}
+
+fn parser_dl4_unsorted(rdr: &mut BufReader<&File>, dl_blocks: Vec<Dl4Block>, mut position: i64) -> (Vec<u8>, i64) {
+    // Read all data blocks
+    let mut data: Vec<u8> = Vec::new();
+    for dl in dl_blocks {
+        for data_pointer in dl.dl_data {
+            rdr.seek_relative(data_pointer - position).unwrap();
+            let header = parse_block_header(rdr);
+            if header.hdr_id == "##DZ".as_bytes() {
+                let (dt, _block) = parse_dz(rdr);
+                data.extend(dt);
+            } else {
+                let mut buf= vec![0u8; (header.hdr_len - 24) as usize];
+                rdr.read_exact(&mut buf).unwrap();
+                data.extend(buf);
+            }
+            position = data_pointer + header.hdr_len as i64;
+        }
+    }
+    (data, position)
 }
 
 fn generate_chunks(channel_group: &Cg4) -> Vec<(u64, u64)>{
@@ -96,6 +211,14 @@ fn read_all_channels_sorted(rdr: &mut BufReader<&File>, channel_group: &mut Cg4)
             read_record_inplace(channel_group, &data_chunk, nrecord, &previous_index);
         }
         previous_index += n_record_chunk;
+    }
+}
+
+fn read_all_channels_sorted_from_bytes(data: &Vec<u8>, channel_group: &mut Cg4) {
+    // initialises the arrays
+    initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone());
+    for nrecord in 0..channel_group.block.cg_cycle_count {
+        read_record_inplace(channel_group, &data, nrecord, &0);
     }
 }
 
@@ -134,6 +257,47 @@ fn read_all_channels_unsorted(rdr: &mut BufReader<&File>, dg: &mut Dg4, block_le
                 *nrecord += 1;
             }
             position += cg.record_length as i64;
+        }
+    }
+}
+
+fn read_all_channels_unsorted_from_bytes(data: Vec<u8>, dg: &mut Dg4) {
+    let mut position: usize = 0;
+    let mut record_counter: HashMap<u64, u64> = HashMap::new();
+    // initialise record counter
+    for cg in dg.cg.values_mut() {
+        record_counter.insert(cg.block.cg_record_id, 0);
+    }
+    let data_length = data.len();
+    let mut rdr = Cursor::new(data);
+    // record records
+    while position < data_length {
+        // reads record id
+        let mut record_id= vec![0u8; dg.block.dg_rec_id_size as usize];
+        rdr.read_exact(&mut record_id).expect("Could not read record id");
+        let rec_id: u64;
+        if dg.block.dg_rec_id_size == 1 {
+            let id = (&record_id[..]).read_u8().expect("Could not convert record id u8");
+            rec_id = id as u64;
+        } else if dg.block.dg_rec_id_size == 2 {
+            let id = (&record_id[..]).read_u16::<LittleEndian>().expect("Could not convert record id u16");
+            rec_id = id as u64;
+        } else if dg.block.dg_rec_id_size == 4 {
+            let id = (&record_id[..]).read_u32::<LittleEndian>().expect("Could not convert record id u32");
+            rec_id = id as u64;
+        } else if dg.block.dg_rec_id_size == 8 {
+            let id = (&record_id[..]).read_u64::<LittleEndian>().expect("Could not convert record id u64");
+            rec_id = id;
+        } else {rec_id = 0}
+        // reads record based on record id
+        if let Some(cg) = dg.cg.get_mut(&rec_id) {
+            let mut record= vec![0u8; cg.record_length as usize];
+            rdr.read_exact(&mut record).expect("Could not read record id");
+            if let Some(nrecord) = record_counter.get_mut(&rec_id){
+                read_record_inplace(cg, &record, *nrecord, &0);
+                *nrecord += 1;
+            }
+            position += cg.record_length as usize;
         }
     }
 }
