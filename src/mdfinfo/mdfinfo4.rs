@@ -34,8 +34,8 @@ pub struct MdfInfo4 {
     pub id_block: Id4,
     pub hd_block: Hd4,
     pub hd_comment: HashMap<String, String>,
-    pub fh: Vec<(FhBlock, HashMap<String, String>)>,
-    pub at: HashMap<i64, (At4Block, Option<Vec<u8>>)> ,
+    pub fh: Fh,
+    pub at: At ,
     pub ev: HashMap<i64, Ev4Block>,
     pub dg: HashMap<i64, Dg4>,
     pub sharable: SharableBlocks,
@@ -371,9 +371,11 @@ fn parse_fh_comment(rdr: &mut BufReader<&File>, fh_block: &FhBlock, target:i64, 
     (comments, position)
 }
 
+type Fh = Vec<(FhBlock, HashMap<String, String>)>;
+
 /// parses File History blocks along with its linked comments returns a vect of Fh4 block with comments
-pub fn parse_fh(rdr: &mut BufReader<&File>, target: i64, position: i64) -> (Vec<(FhBlock, HashMap<String, String>)>, i64) {
-    let mut fh: Vec<(FhBlock, HashMap<String, String>)> = Vec::new();
+pub fn parse_fh(rdr: &mut BufReader<&File>, target: i64, position: i64) -> (Fh, i64) {
+    let mut fh: Fh = Vec::new();
     let (block, position) = parse_fh_block(rdr, target, position);
     let (comment_temp, mut position) = 
         parse_fh_comment(rdr, &block, block.fh_md_comment, position);
@@ -437,7 +439,7 @@ fn parser_at4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64)
 }
 
 /// parses At4 linked comments and eventually parses its related xml returning a hashmap of (tag, text)
-pub fn parse_at4_comments(rdr: &mut BufReader<&File>, block: &HashMap<i64, (At4Block, Option<Vec<u8>>)>, mut position: i64) 
+pub fn parse_at4_comments(rdr: &mut BufReader<&File>, block: &At, mut position: i64) 
         -> (HashMap<i64, HashMap<String, String>>, i64) {
     let mut comments: HashMap<i64, HashMap<String, String>> = HashMap::new();
     for (at, _) in block.values() {
@@ -471,10 +473,12 @@ pub fn parse_at4_comments(rdr: &mut BufReader<&File>, block: &HashMap<i64, (At4B
     (comments, position)
 }
 
+type At = HashMap<i64, (At4Block, Option<Vec<u8>>)>;
+
 /// parses Attachment blocks along with its linked comments, returns a hashmap of At4 block and attached data in a vect
 pub fn parse_at4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) 
-        -> (HashMap<i64, (At4Block, Option<Vec<u8>>)>, i64) {
-    let mut at: HashMap<i64, (At4Block, Option<Vec<u8>>)> = HashMap::new();
+        -> (At, i64) {
+    let mut at: At = HashMap::new();
     if target > 0{
         let (block, data, pos) = parser_at4_block(rdr, target, position);
         let mut next_pointer = block.at_at_next;
@@ -936,15 +940,12 @@ pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sha
 
 fn invalid_channel(cg_data_bytes: u32, record_id_size: u32, cg_inval_bytes: u32, cycle_count: u64) -> Cn4 {
     let composition: Option<Composition> = None;
-    let mut block: Cn4Block = Cn4Block::default();
-    block.cn_links = 8;
-    let n_bytes= cg_inval_bytes;
-    let unique_name: String = String::from("invalid_bytes");
-    block.cn_bit_offset = 0;
-    block.cn_byte_offset = cg_data_bytes;
-    block.cn_bit_count = calc_n_bytes(cg_data_bytes * 8, 0);
-    let pos_byte_beg = cg_data_bytes + record_id_size;
-    let cn_struct: Cn4 = Cn4 {block, unique_name, block_position: 0, pos_byte_beg, n_bytes, composition, data: ChannelData::ByteArray(vec![vec![0u8; n_bytes as usize]; cycle_count as usize]), endian: false, invalid_bit: None };
+    let block: Cn4Block = Cn4Block {cn_links: 8, cn_bit_offset: 0, cn_byte_offset: cg_data_bytes,
+        cn_bit_count: calc_n_bytes(cg_data_bytes * 8, 0), ..Default::default()};
+    let cn_struct: Cn4 = Cn4 {block, unique_name: String::from("invalid_bytes"), block_position: 0,
+         pos_byte_beg: cg_data_bytes + record_id_size, n_bytes: cg_inval_bytes,
+         composition, data: ChannelData::ByteArray(vec![vec![0u8; cg_inval_bytes as usize]; cycle_count as usize]),
+         endian: false, invalid_bit: None };
     cn_struct
 }
 
@@ -1053,66 +1054,34 @@ pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sha
 }
 
 fn can_open_date(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) -> (Cn4, Cn4, Cn4, Cn4, Cn4, Cn4) {
-    let composition: Option<Composition> = None;
-    let mut block: Cn4Block = Cn4Block::default();
-    block.cn_links = 8;
-    let n_bytes= 2;
-    let unique_name: String = String::from("ms");
-    block.cn_byte_offset = cn_byte_offset;
-    block.cn_bit_count = 16;
-    let date_ms: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt16(Array1::<u16>::zeros((0, ))), endian: false, invalid_bit: None };
-    let composition: Option<Composition> = None;
-    let mut block: Cn4Block = Cn4Block::default();
-    let n_bytes= 1;
-    let unique_name: String = String::from("min");
-    block.cn_byte_offset = cn_byte_offset + 2;
-    block.cn_bit_count = 6;
-    let min: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt8(Array1::<u8>::zeros((0, ))), endian: false, invalid_bit: None };
-    let composition: Option<Composition> = None;
-    let mut block: Cn4Block = Cn4Block::default();
-    let unique_name: String = String::from("hour");
-    block.cn_byte_offset = cn_byte_offset + 3;
-    block.cn_bit_count = 5;
-    let hour: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt8(Array1::<u8>::zeros((0, ))), endian: false, invalid_bit: None };
-    let composition: Option<Composition> = None;
-    let mut block: Cn4Block = Cn4Block::default();
-    let unique_name: String = String::from("day");
-    block.cn_byte_offset = cn_byte_offset + 4;
-    block.cn_bit_count = 5;
-    let day: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt8(Array1::<u8>::zeros((0, ))), endian: false, invalid_bit: None };
-    let composition: Option<Composition> = None;
-    let mut block: Cn4Block = Cn4Block::default();
-    let unique_name: String = String::from("month");
-    block.cn_byte_offset = cn_byte_offset + 5;
-    block.cn_bit_count = 6;
-    let month: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt8(Array1::<u8>::zeros((0, ))), endian: false, invalid_bit: None };
-    let composition: Option<Composition> = None;
-    let mut block: Cn4Block = Cn4Block::default();
-    let unique_name: String = String::from("year");
-    block.cn_byte_offset = cn_byte_offset + 6;
-    block.cn_bit_count = 7;
-    let year: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt8(Array1::<u8>::zeros((0, ))), endian: false, invalid_bit: None };
+    let block = Cn4Block {cn_links: 8, cn_byte_offset, cn_bit_count: 16, ..Default::default()};
+    let date_ms = Cn4 {block, unique_name: String::from("ms"), block_position, pos_byte_beg, n_bytes: 2,
+         composition: None, data: ChannelData::UInt16(Array1::<u16>::zeros((0, ))), endian: false, invalid_bit: None };
+    let block = Cn4Block {cn_links: 8, cn_byte_offset: cn_byte_offset + 2, cn_bit_count: 6, ..Default::default()};
+    let min = Cn4 {block, unique_name: String::from("min"), block_position, pos_byte_beg, n_bytes: 1,
+        composition: None, data: ChannelData::UInt8(Array1::<u8>::zeros((0, ))), endian: false, invalid_bit: None };
+    let block = Cn4Block {cn_links: 8, cn_byte_offset: cn_byte_offset + 3, cn_bit_count: 5, ..Default::default()};
+    let hour = Cn4 {block, unique_name: String::from("hour"), block_position, pos_byte_beg, n_bytes: 1,
+        composition: None, data: ChannelData::UInt8(Array1::<u8>::zeros((0, ))), endian: false, invalid_bit: None };
+    let block = Cn4Block {cn_links: 8, cn_byte_offset: cn_byte_offset + 4, cn_bit_count: 5, ..Default::default()};
+    let day = Cn4 {block, unique_name: String::from("day"), block_position, pos_byte_beg, n_bytes: 1,
+        composition: None, data: ChannelData::UInt8(Array1::<u8>::zeros((0, ))), endian: false, invalid_bit: None };
+    let block = Cn4Block {cn_links: 8, cn_byte_offset: cn_byte_offset + 5, cn_bit_count: 6, ..Default::default()};
+    let month = Cn4 {block, unique_name: String::from("month"), block_position, pos_byte_beg, n_bytes: 1,
+        composition: None, data: ChannelData::UInt8(Array1::<u8>::zeros((0, ))), endian: false, invalid_bit: None };
+    let block = Cn4Block {cn_links: 8, cn_byte_offset: cn_byte_offset + 6, cn_bit_count: 7, ..Default::default()};
+    let year = Cn4 {block, unique_name: String::from("year"), block_position, pos_byte_beg, n_bytes: 1,
+        composition: None, data: ChannelData::UInt8(Array1::<u8>::zeros((0, ))), endian: false, invalid_bit: None };
     (date_ms, min, hour, day, month, year)
 }
 
 fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) -> (Cn4, Cn4) {
-    let composition: Option<Composition> = None;
-    let mut block: Cn4Block = Cn4Block::default();
-    block.cn_links = 8;
-    let n_bytes= 4;
-    let unique_name: String = String::from("ms");
-    block.cn_bit_offset = 0;
-    block.cn_byte_offset = cn_byte_offset;
-    block.cn_bit_count = 28;
-    let ms: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt32(Array1::<u32>::zeros((0, ))), endian: false, invalid_bit: None };
-    let composition: Option<Composition> = None;
-    let mut block: Cn4Block = Cn4Block::default();
-    let n_bytes= 2;
-    let unique_name: String = String::from("day");
-    block.cn_bit_offset = 0;
-    block.cn_byte_offset = cn_byte_offset + 4;
-    block.cn_bit_count = 16;
-    let days: Cn4 = Cn4 {block, unique_name, block_position, pos_byte_beg, n_bytes, composition, data: ChannelData::UInt16(Array1::<u16>::zeros((0, ))), endian: false, invalid_bit: None };
+    let block= Cn4Block {cn_links: 8, cn_byte_offset, cn_bit_count: 28, ..Default::default()};
+    let ms: Cn4 = Cn4 {block, unique_name: String::from("ms"), block_position, pos_byte_beg, n_bytes: 4,
+        composition: None, data: ChannelData::UInt32(Array1::<u32>::zeros((0, ))), endian: false, invalid_bit: None };
+    let block= Cn4Block {cn_links: 8, cn_byte_offset: cn_byte_offset + 4, cn_bit_count: 16, ..Default::default()};
+    let days: Cn4 = Cn4 {block, unique_name: String::from("day"), block_position, pos_byte_beg, n_bytes: 2,
+        composition: None, data: ChannelData::UInt16(Array1::<u16>::zeros((0, ))), endian: false, invalid_bit: None };
     (ms, days)
 }
 
@@ -1494,9 +1463,11 @@ fn parse_composition(rdr: &mut BufReader<&File>, target: i64, mut position: i64,
     }
 }
 
+type ChannelList = HashMap<String, (i64, (i64, u64), (i64, u32))>;
+
 #[derive(Debug, PartialEq, Default, Clone)]
 pub struct Db {
-    channel_list: HashMap<String, (i64, (i64, u64), (i64, u32))>,
+    channel_list: ChannelList,
     master_channel_list: HashMap<String, HashSet<String>>
 }
 
@@ -1563,11 +1534,11 @@ pub fn build_channel_db(dg: &mut HashMap<i64, Dg4>, sharable: &SharableBlocks) -
                     None => println!("master channel not found for channel"),
                 };
             }
-            if !db.master_channel_list.contains_key(&master_channel_name) {
-                db.master_channel_list.insert(master_channel_name, cg_channel_list);
-            } else {
-                let list = db.master_channel_list.get_mut(&master_channel_name);
-                if let Some(l) = list { l.extend(cg_channel_list) }
+            if let std::collections::hash_map::Entry::Vacant(e) = db.master_channel_list.entry(master_channel_name.clone()) {
+                    e.insert(cg_channel_list);
+                } else {
+                    let list = db.master_channel_list.get_mut(&master_channel_name);
+                    if let Some(l) = list { l.extend(cg_channel_list) }
             }
         }
     }
@@ -1634,7 +1605,7 @@ pub fn parse_dz(rdr: &mut BufReader<&File>) -> (Vec<u8>, Dz4Block) {
         let tail: Vec<u8> = data[(m * block.dz_zip_parameter as u64) as usize..].to_vec();
         let array = Array::from_shape_vec((block.dz_zip_parameter as usize, m as usize), temp).expect("error converting vector to array");
         let mut data = array.t().into_shape((1,)).expect("could not reshape into one dimension array").to_vec();
-        if tail.len() > 0 {
+        if !tail.is_empty() {
             data.extend(tail);
         }
     }
