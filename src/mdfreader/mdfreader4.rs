@@ -101,11 +101,16 @@ fn read_data(rdr: &mut BufReader<&File>, id: [u8; 4], dg: &mut Dg4, mut position
             read_all_channels_unsorted_from_bytes(data, dg);
         }
     } else if "##LD".as_bytes() == id {
-        // data list
+        // list data
         todo!();
     }else if "##DV".as_bytes() == id {
         // data values
-        todo!();
+        // sorted data group only, no record id
+        let block_header: Dt4Block = rdr.read_le().unwrap();
+        for channel_group in dg.cg.values_mut() {
+            read_all_channels_sorted(rdr, channel_group);
+        }
+        position += block_header.len as i64;
     }
     position
 }
@@ -116,13 +121,15 @@ fn parser_dl4(rdr: &mut BufReader<&File>, mut position: i64) -> (Vec<Dl4Block>, 
     let (block, pos) = parser_dl4_block(rdr, position, position);
     position = pos;
     dl_blocks.push(block.clone());
-    while block.dl_dl_next > 0 {
+    let mut next_dl = block.dl_dl_next;
+    while next_dl > 0 {
         let mut id = [0u8; 4];
         rdr.read_exact(&mut id).expect("could not read DL block id");
         position += 4;
         let (block, pos) = parser_dl4_block(rdr, block.dl_dl_next + 4, position);
         position = pos;
         dl_blocks.push(block.clone());
+        next_dl = block.dl_dl_next;
     }
     (dl_blocks, position)
 }
@@ -388,7 +395,7 @@ fn read_record_inplace(channel_group: &mut Cg4, record: &Vec<u8>, nrecord: u64, 
                 array[(nrecord + previous_index )as usize] = comp;},
             ChannelData::StringSBC(array) => {
                 let mut sbc_decoder = WINDOWS_1252.new_decoder();
-                sbc_decoder.decode_to_string(&value, &mut array[(nrecord + previous_index )as usize], false);
+                let(_result, _size, _replacement) = sbc_decoder.decode_to_string(&value, &mut array[(nrecord + previous_index )as usize], false);
             },
             ChannelData::StringUTF8(array) => {
                 array[(nrecord + previous_index )as usize] = str::from_utf8(&value).expect("Found invalid UTF-8").to_string();
@@ -396,10 +403,10 @@ fn read_record_inplace(channel_group: &mut Cg4, record: &Vec<u8>, nrecord: u64, 
             ChannelData::StringUTF16(array) => {
                 if cn.endian{
                     let mut utf16be_decoder = UTF_16BE.new_decoder();
-                    utf16be_decoder.decode_to_string(&value, &mut array[(nrecord + previous_index )as usize], false);
+                    let(_result, _size, _replacement) = utf16be_decoder.decode_to_string(&value, &mut array[(nrecord + previous_index )as usize], false);
                 } else {
                     let mut utf16le_decoder = UTF_16LE.new_decoder();
-                    utf16le_decoder.decode_to_string(&value, &mut array[(nrecord + previous_index )as usize], false);
+                    let(_result, _size, _replacement) = utf16le_decoder.decode_to_string(&value, &mut array[(nrecord + previous_index )as usize], false);
                 };
             },
             ChannelData::ByteArray(array) => {
