@@ -2,7 +2,7 @@
 use byteorder::{LittleEndian, ReadBytesExt};
 use ndarray::{Array1, Axis};
 use roxmltree;
-use std::{io::{BufReader, Cursor}, sync::{Arc, Mutex}};
+use std::{io::{BufReader, Cursor}, sync::Arc};
 use std::fs::File;
 use std::io::prelude::*;
 use std::{str, fmt};
@@ -1574,20 +1574,32 @@ pub fn build_channel_db(dg: &mut HashMap<i64, Dg4>, sharable: &SharableBlocks) -
     db
 }
 
+/// DT4 Data List block struct
+#[derive(Debug, PartialEq, Default, Clone)]
+#[derive(BinRead)]
+#[br(little)]
+pub struct Dt4Block {
+    //header
+    // dl_id: [u8; 4],  // ##DL
+    reserved: [u8; 4],  // reserved
+    pub len: u64,      // Length of block in bytes
+    links: u64,         // # of links
+}
+
 /// DL4 Data List block struct
 #[derive(Debug, PartialEq, Default, Clone)]
 #[derive(BinRead)]
 #[br(little)]
 pub struct Dl4Block {
     //header
-    dl_id: [u8; 4],  // ##DL
+    // dl_id: [u8; 4],  // ##DL
     reserved: [u8; 4],  // reserved
     dl_len: u64,      // Length of block in bytes
     dl_links: u64,         // # of links
     // links
-    dl_dl_next: i64, // next DL
+    pub dl_dl_next: i64, // next DL
     #[br(if(dl_links > 1), little, count = dl_links - 1)]
-    dl_data: Vec<i64>,  
+    pub dl_data: Vec<i64>,  
     //members
     dl_flags: u8, // 
     dl_reserved: [u8; 3],
@@ -1604,45 +1616,14 @@ pub struct Dl4Block {
     dl_distance_values: Vec<i64>,
 }
 
-fn parser_dl4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (Dl4Block, i64) {
+pub fn parser_dl4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (Dl4Block, i64) {
     rdr.seek_relative(target - position).unwrap();
     let block: Dl4Block = rdr.read_le().unwrap();
     position = target + block.dl_len as i64;
     (block, position)
 }
 
-pub fn parser_dl4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (Vec<u8>, i64) {
-    // Read all DL Blocks
-    let mut dl_blocks: Vec<Dl4Block> = Vec::new();
-    let (block, pos) = parser_dl4_block(rdr, target, position);
-    position = pos;
-    dl_blocks.push(block.clone());
-    while block.dl_dl_next > 0 {
-        let (block, pos) = parser_dl4_block(rdr, target, position);
-        position = pos;
-        dl_blocks.push(block.clone());
-    }
-    // Read all data blocks
-    let mut data: Vec<u8> = Vec::new();
-    for dl in dl_blocks {
-        for data_pointer in dl.dl_data {
-            rdr.seek_relative(data_pointer - position).unwrap();
-            let header = parse_block_header(rdr);
-            if header.hdr_id == "##DZ".as_bytes() {
-                let dt = parse_dz(rdr);
-                data.extend(dt);
-            } else {
-                let mut buf= vec![0u8; (header.hdr_len - 24) as usize];
-                rdr.read_exact(&mut buf).unwrap();
-                data.extend(buf);
-            }
-            position = data_pointer + header.hdr_len as i64;
-        }
-    }
-    (data, position)
-}
-
-pub fn parse_dz(rdr: &mut BufReader<&File>) -> Vec<u8> {
+pub fn parse_dz(rdr: &mut BufReader<&File>) -> (Vec<u8>, Dz4Block) {
     let block: Dz4Block = rdr.read_le().unwrap();
     let mut buf= vec![0u8; block.dz_data_length as usize];
     rdr.read_exact(&mut buf).unwrap();
@@ -1657,7 +1638,7 @@ pub fn parse_dz(rdr: &mut BufReader<&File>) -> Vec<u8> {
             data.extend(tail);
         }
     }
-    data
+    (data, block)
 }
 
 /// DZ4 Data List block struct
@@ -1667,9 +1648,9 @@ pub fn parse_dz(rdr: &mut BufReader<&File>) -> Vec<u8> {
 pub struct Dz4Block {
     //header
     // dz_id: [u8; 4],  // ##DZ
-    // reserved: [u8; 4],  // reserved
-    // dz_len: u64,      // Length of block in bytes
-    // dz_links: u64,         // # of links
+    reserved: [u8; 4],  // reserved
+    pub len: u64,      // Length of block in bytes
+    dz_links: u64,         // # of links
     // links
     //members
     dz_org_block_type: [u8; 2], // "DT", "SD", "RD" or "DV", "DI", "RV", "RI"
@@ -1685,8 +1666,8 @@ pub struct Dz4Block {
 #[derive(BinRead)]
 #[br(little)]
 pub struct Ld4Block {
-    //header
-    ld_id: [u8; 4],  // ##LD
+    // header
+    // ld_id: [u8; 4],  // ##LD
     reserved: [u8; 4],  // reserved
     ld_len: u64,      // Length of block in bytes
     ld_links: u64,         // # of links
@@ -1710,4 +1691,22 @@ pub struct Ld4Block {
     dl_angle_values: Vec<i64>,
     #[br(if((ld_flags & 0b1000)>0), little, count = ld_count)]
     dl_distance_values: Vec<i64>,
+}
+
+/// DL4 Data List block struct
+#[derive(Debug, PartialEq, Default, Clone)]
+#[derive(BinRead)]
+#[br(little)]
+pub struct Hl4Block {
+    //header
+    // hl_id: [u8; 4],  // ##HL
+    reserved: [u8; 4],  // reserved
+    pub hl_len: u64,      // Length of block in bytes
+    hl_links: u64,         // # of links
+    // links
+    pub hl_dl_first: i64, // first LD block
+    //members
+    hl_flags: u16, // flags
+    hl_zip_type: u8, // Zip algorithn
+    hl_reserved: [u8; 5], // reserved
 }
