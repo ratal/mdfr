@@ -160,9 +160,11 @@ fn parser_dl4_sorted(rdr: &mut BufReader<&File>, dl_blocks: Vec<Dl4Block>, mut p
             position = data_pointer + block_length as i64;
             let record_length = channel_group.record_length as u64;
             let n_record_chunk = block_length / record_length;
-            for nrecord in 0..n_record_chunk {
-                read_record_inplace(channel_group, &data.drain(0..(record_length *  n_record_chunk) as usize).collect(), nrecord, &previous_index);
+            for nrecord in 0..(n_record_chunk - 1) {
+                let rec = &data[(record_length * nrecord) as usize..(record_length * (nrecord + 1)) as usize];
+                read_record_inplace(channel_group, rec, nrecord as u64, &previous_index);
             }
+            data = data[(record_length * n_record_chunk) as usize..].to_owned();
             previous_index += n_record_chunk;
         }
     }
@@ -205,6 +207,7 @@ fn generate_chunks(channel_group: &Cg4) -> Vec<(u64, u64)>{
     chunks
 }
 
+//#[inline]
 fn read_all_channels_sorted(rdr: &mut BufReader<&File>, channel_group: &mut Cg4) {
     let chunks =  generate_chunks(channel_group);
     // initialises the arrays
@@ -310,7 +313,7 @@ fn read_all_channels_unsorted_from_bytes(data: Vec<u8>, dg: &mut Dg4) {
 }
 
 //#[inline]
-fn read_record_inplace(channel_group: &mut Cg4, record: &Vec<u8>, nrecord: u64, previous_index: &u64) {
+fn read_record_inplace(channel_group: &mut Cg4, record: &[u8], nrecord: u64, previous_index: &u64) {
     // read record for each channel
     // let mut sbc_decoder = WINDOWS_1252.new_decoder();
     // let mut utf16be_decoder = UTF_16BE.new_decoder();
