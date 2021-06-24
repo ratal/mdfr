@@ -149,20 +149,21 @@ fn parser_dl4_sorted(rdr: &mut BufReader<&File>, dl_blocks: Vec<Dl4Block>, mut p
             if id == "##DZ".as_bytes() {
                 let (dt, block_header) = parse_dz(rdr);
                 data.extend(dt);
-                block_length = block_header.len;
+                block_length = block_header.dz_data_length;
+                position = data_pointer + block_header.len as i64;
             } else {
                 let block_header: Dt4Block = rdr.read_le().unwrap();
                 let mut buf= vec![0u8; (block_header.len - 24) as usize];
                 rdr.read_exact(&mut buf).unwrap();
                 data.extend(buf);
-                block_length = block_header.len;
+                block_length = block_header.len - 24;
+                position = data_pointer + block_header.len as i64;
             }
-            position = data_pointer + block_length as i64;
             let record_length = channel_group.record_length as u64;
             let n_record_chunk = block_length / record_length;
             for nrecord in 0..(n_record_chunk - 1) {
-                let rec = &data[(record_length * nrecord) as usize..(record_length * (nrecord + 1)) as usize];
-                read_record_inplace(channel_group, rec, nrecord as u64, &previous_index);
+                // let rec = &data[(record_length * nrecord) as usize..(record_length * (nrecord + 1)) as usize];
+                read_record_inplace(channel_group, &data, nrecord as u64, &previous_index);
             }
             data = data[(record_length * n_record_chunk) as usize..].to_owned();
             previous_index += n_record_chunk;

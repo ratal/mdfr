@@ -1575,22 +1575,22 @@ pub struct Dl4Block {
     dl_flags: u8, // 
     dl_reserved: [u8; 3],
     dl_count: u16, // Number of data blocks
-    #[br(if((dl_flags & 0b1)>0), little, count = dl_count)]
-    dl_equal_length: u64,
-    #[br(little, count = dl_count)] // strange...
-    dl_offset: Vec<u64>,
-    #[br(if((dl_flags & 0b10)>0), little, count = dl_count)]
-    dl_time_values: Vec<i64>,
-    #[br(if((dl_flags & 0b100)>0), little, count = dl_count)]
-    dl_angle_values: Vec<i64>,
-    #[br(if((dl_flags & 0b1000)>0), little, count = dl_count)]
-    dl_distance_values: Vec<i64>,
+    // #[br(if((dl_flags & 0b1)>0), little, count = dl_count)]
+    // dl_equal_length: u64,
+    // #[br(little, count = dl_count)] // strange...
+    // dl_offset: Vec<u64>,
+    // #[br(if((dl_flags & 0b10)>0), little, count = dl_count)]
+    // dl_time_values: Vec<i64>,
+    // #[br(if((dl_flags & 0b100)>0), little, count = dl_count)]
+    // dl_angle_values: Vec<i64>,
+    // #[br(if((dl_flags & 0b1000)>0), little, count = dl_count)]
+    // dl_distance_values: Vec<i64>,
 }
 
 pub fn parser_dl4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (Dl4Block, i64) {
     rdr.seek_relative(target - position).unwrap();
     let block: Dl4Block = rdr.read_le().unwrap();
-    position = target + block.dl_len as i64;
+    position = target + 38 + ((block.dl_links -1) * 8) as i64;
     (block, position)
 }
 
@@ -1629,7 +1629,7 @@ pub struct Dz4Block {
     dz_reserved: u8, // reserved
     dz_zip_parameter: u32, //
     dz_org_data_length: u64, // length of uncompressed data
-    dz_data_length: u64, // length of compressed data
+    pub dz_data_length: u64, // length of compressed data
 }
 
 /// DL4 Data List block struct
