@@ -1575,9 +1575,9 @@ pub struct Dl4Block {
     dl_flags: u8, // 
     dl_reserved: [u8; 3],
     dl_count: u16, // Number of data blocks
-    #[br(if((dl_flags & 1)>0), little, count = dl_count)]
+    #[br(if((dl_flags & 0b1)>0), little, count = dl_count)]
     dl_equal_length: u64,
-    #[br(if((dl_flags & 1)>0), little, count = dl_count)]
+    #[br(little, count = dl_count)] // strange...
     dl_offset: Vec<u64>,
     #[br(if((dl_flags & 0b10)>0), little, count = dl_count)]
     dl_time_values: Vec<i64>,
