@@ -10,7 +10,7 @@ use binread::BinReaderExt;
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
 use num::Complex;
 use half::f16;
-use encoding_rs::{WINDOWS_1252, UTF_16LE, UTF_16BE};
+use encoding_rs::{Decoder, UTF_16BE, UTF_16LE, WINDOWS_1252};
 use ndarray::{Array1, OwnedRepr, ArrayBase, Dim};
 // use ndarray::parallel::prelude::*;
 
@@ -138,6 +138,7 @@ fn parser_dl4_sorted(rdr: &mut BufReader<&File>, dl_blocks: Vec<Dl4Block>, mut p
     // initialises the arrays
     initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone());
     // Read all data blocks
+    let mut decoder: Dec = Dec {windows_1252: WINDOWS_1252.new_decoder(), utf_16_be: UTF_16BE.new_decoder(), utf_16_le: UTF_16LE.new_decoder()};
     let mut data: Vec<u8> = Vec::new();
     let mut previous_index: u64 = 0;
     for dl in dl_blocks {
@@ -163,7 +164,8 @@ fn parser_dl4_sorted(rdr: &mut BufReader<&File>, dl_blocks: Vec<Dl4Block>, mut p
             let n_record_chunk = block_length / record_length;
             for nrecord in 0..(n_record_chunk - 1) {
                 // let rec = &data[(record_length * nrecord) as usize..(record_length * (nrecord + 1)) as usize];
-                read_record_inplace(channel_group, &data, nrecord as u64, &previous_index);
+                read_record_inplace(channel_group, &data[(nrecord * channel_group.record_length as u64) as usize..
+                    ((nrecord + 1) * channel_group.record_length as u64) as usize], nrecord as u64, &previous_index, &mut decoder);
             }
             data = data[(record_length * n_record_chunk) as usize..].to_owned();
             previous_index += n_record_chunk;
@@ -215,11 +217,13 @@ fn read_all_channels_sorted(rdr: &mut BufReader<&File>, channel_group: &mut Cg4)
     initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone());
     // read by chunks and store in cg struct
     let mut previous_index: u64 = 0;
+    let mut decoder: Dec = Dec {windows_1252: WINDOWS_1252.new_decoder(), utf_16_be: UTF_16BE.new_decoder(), utf_16_le: UTF_16LE.new_decoder()};
     for (n_record_chunk, chunk_size) in chunks {
         let mut data_chunk= vec![0u8; chunk_size as usize];
         rdr.read_exact(&mut data_chunk).expect("Could not read data chunk");
         for nrecord in 0..n_record_chunk {
-            read_record_inplace(channel_group, &data_chunk, nrecord, &previous_index);
+            read_record_inplace(channel_group, &data_chunk[(nrecord * channel_group.record_length as u64) as usize..
+                ((nrecord + 1) * channel_group.record_length as u64) as usize], nrecord, &previous_index, &mut decoder);
         }
         previous_index += n_record_chunk;
     }
@@ -228,14 +232,17 @@ fn read_all_channels_sorted(rdr: &mut BufReader<&File>, channel_group: &mut Cg4)
 fn read_all_channels_sorted_from_bytes(data: &Vec<u8>, channel_group: &mut Cg4) {
     // initialises the arrays
     initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone());
+    let mut decoder: Dec = Dec {windows_1252: WINDOWS_1252.new_decoder(), utf_16_be: UTF_16BE.new_decoder(), utf_16_le: UTF_16LE.new_decoder()};
     for nrecord in 0..channel_group.block.cg_cycle_count {
-        read_record_inplace(channel_group, &data, nrecord, &0);
+        read_record_inplace(channel_group, &data[(nrecord * channel_group.record_length as u64) as usize..
+            ((nrecord + 1) * channel_group.record_length as u64) as usize], nrecord, &0, &mut decoder);
     }
 }
 
 fn read_all_channels_unsorted(rdr: &mut BufReader<&File>, dg: &mut Dg4, block_length: i64) {
     let mut position: i64 = 24;
     let mut record_counter: HashMap<u64, u64> = HashMap::new();
+    let mut decoder: Dec = Dec {windows_1252: WINDOWS_1252.new_decoder(), utf_16_be: UTF_16BE.new_decoder(), utf_16_le: UTF_16LE.new_decoder()};
     // initialise record counter
     for cg in dg.cg.values_mut() {
         record_counter.insert(cg.block.cg_record_id, 0);
@@ -264,7 +271,8 @@ fn read_all_channels_unsorted(rdr: &mut BufReader<&File>, dg: &mut Dg4, block_le
             let mut record= vec![0u8; cg.record_length as usize];
             rdr.read_exact(&mut record).expect("Could not read record id");
             if let Some(nrecord) = record_counter.get_mut(&rec_id){
-                read_record_inplace(cg, &record, *nrecord, &0);
+                read_record_inplace(cg, &record[(*nrecord * cg.record_length as u64) as usize..
+                    ((*nrecord + 1) * cg.record_length as u64) as usize], *nrecord, &0, &mut decoder);
                 *nrecord += 1;
             }
             position += cg.record_length as i64;
@@ -275,6 +283,7 @@ fn read_all_channels_unsorted(rdr: &mut BufReader<&File>, dg: &mut Dg4, block_le
 fn read_all_channels_unsorted_from_bytes(data: Vec<u8>, dg: &mut Dg4) {
     let mut position: usize = 0;
     let mut record_counter: HashMap<u64, u64> = HashMap::new();
+    let mut decoder: Dec = Dec {windows_1252: WINDOWS_1252.new_decoder(), utf_16_be: UTF_16BE.new_decoder(), utf_16_le: UTF_16LE.new_decoder()};
     // initialise record counter
     for cg in dg.cg.values_mut() {
         record_counter.insert(cg.block.cg_record_id, 0);
@@ -305,7 +314,8 @@ fn read_all_channels_unsorted_from_bytes(data: Vec<u8>, dg: &mut Dg4) {
             let mut record= vec![0u8; cg.record_length as usize];
             rdr.read_exact(&mut record).expect("Could not read record id");
             if let Some(nrecord) = record_counter.get_mut(&rec_id){
-                read_record_inplace(cg, &record, *nrecord, &0);
+                read_record_inplace(cg, &record[(*nrecord * cg.record_length as u64) as usize..
+                    ((*nrecord + 1) * cg.record_length as u64) as usize], *nrecord, &0, &mut decoder);
                 *nrecord += 1;
             }
             position += cg.record_length as usize;
@@ -313,15 +323,18 @@ fn read_all_channels_unsorted_from_bytes(data: Vec<u8>, dg: &mut Dg4) {
     }
 }
 
+struct Dec {
+    windows_1252: Decoder,
+    utf_16_be: Decoder,
+    utf_16_le: Decoder,
+}
+
 //#[inline]
-fn read_record_inplace(channel_group: &mut Cg4, record: &[u8], nrecord: u64, previous_index: &u64) {
+fn read_record_inplace(channel_group: &mut Cg4, record: &[u8], nrecord: u64, previous_index: &u64, decoder: &mut Dec) {
     // read record for each channel
-    // let mut sbc_decoder = WINDOWS_1252.new_decoder();
-    // let mut utf16be_decoder = UTF_16BE.new_decoder();
-    // let mut utf16le_decoder = UTF_16LE.new_decoder();
     for (_cn_record_position, cn) in channel_group.cn.iter_mut() {
-        let mut value = &record[((nrecord * channel_group.record_length as u64) + cn.pos_byte_beg as u64) as usize .. 
-                ((cn.pos_byte_beg + cn.n_bytes) as u64 + (nrecord * channel_group.record_length as u64)) as usize];
+        let mut value = &record[cn.pos_byte_beg as usize .. 
+                (cn.pos_byte_beg + cn.n_bytes) as usize];
         match &mut cn.data {
             ChannelData::Int8(array) => 
                 array[(nrecord + previous_index )as usize] = value.read_i8().expect("Could not convert i8"),
@@ -364,7 +377,6 @@ fn read_record_inplace(channel_group: &mut Cg4, record: &[u8], nrecord: u64, pre
                 let im: f32;
                 if cn.endian {
                     re = f16::from_be_bytes(re_val.try_into().expect("Could not array")).to_f32();
-
                     im = f16::from_be_bytes(im_val.try_into().expect("Could not array")).to_f32();
                 } else {
                     re = f16::from_le_bytes(re_val.try_into().expect("Could not array")).to_f32();
@@ -398,19 +410,16 @@ fn read_record_inplace(channel_group: &mut Cg4, record: &[u8], nrecord: u64, pre
                 let comp = Complex::new(re, im);
                 array[(nrecord + previous_index )as usize] = comp;},
             ChannelData::StringSBC(array) => {
-                let mut sbc_decoder = WINDOWS_1252.new_decoder();
-                let(_result, _size, _replacement) = sbc_decoder.decode_to_string(&value, &mut array[(nrecord + previous_index )as usize], false);
+                let(_result, _size, _replacement) = decoder.windows_1252.decode_to_string(&value, &mut array[(nrecord + previous_index )as usize], false);
             },
             ChannelData::StringUTF8(array) => {
                 array[(nrecord + previous_index )as usize] = str::from_utf8(&value).expect("Found invalid UTF-8").to_string();
             },
             ChannelData::StringUTF16(array) => {
                 if cn.endian{
-                    let mut utf16be_decoder = UTF_16BE.new_decoder();
-                    let(_result, _size, _replacement) = utf16be_decoder.decode_to_string(&value, &mut array[(nrecord + previous_index )as usize], false);
+                    let(_result, _size, _replacement) = decoder.utf_16_be.decode_to_string(&value, &mut array[(nrecord + previous_index )as usize], false);
                 } else {
-                    let mut utf16le_decoder = UTF_16LE.new_decoder();
-                    let(_result, _size, _replacement) = utf16le_decoder.decode_to_string(&value, &mut array[(nrecord + previous_index )as usize], false);
+                    let(_result, _size, _replacement) = decoder.utf_16_le.decode_to_string(&value, &mut array[(nrecord + previous_index )as usize], false);
                 };
             },
             ChannelData::ByteArray(array) => {
