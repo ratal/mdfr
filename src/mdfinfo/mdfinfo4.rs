@@ -15,6 +15,7 @@ use dashmap::DashMap;
 use rayon::prelude::*;
 use yazi::{decompress, Format};
 use ndarray::Array;
+use transpose;
 
 use crate::mdfreader::mdfreader4::{ChannelData, data_init};
 
@@ -1172,10 +1173,11 @@ fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, s
             if !sharable.cc.contains_key(&pointer) && !sharable.tx.contains_key(&pointer){
                 let (mut ref_block, header, _pos) = parse_block_short(rdr, *pointer, position);
                 if "##TX".as_bytes() == header.hdr_id {
-                    let mut _link_count = [0u8; 8];
-                    rdr.read_exact(&mut _link_count).unwrap();
-                    let comment_raw = vec![0u8; (header.hdr_len - 24) as usize];
-                    let c = match str::from_utf8(&comment_raw) {
+                    let mut buf= vec![0u8; 8];
+                    ref_block.read_exact(&mut buf).expect("could link_count"); // link_count
+                    let mut buf= vec![0u8; (header.hdr_len - 24) as usize];
+                    ref_block.read_exact(&mut buf).expect("could not read the TX comments");
+                    let c = match str::from_utf8(&buf) {
                         Ok(v) => v,
                         Err(e) => panic!("Error converting comment into utf8 \n{}", e),
                     };
@@ -1626,13 +1628,14 @@ pub fn parse_dz(rdr: &mut BufReader<&File>) -> (Vec<u8>, Dz4Block) {
     let block: Dz4Block = rdr.read_le().unwrap();
     let mut buf= vec![0u8; block.dz_data_length as usize];
     rdr.read_exact(&mut buf).unwrap();
-    let (data, _checksum) = decompress(&buf, Format::Zlib).expect("Could not decompress data");
+    let (mut data, _checksum) = decompress(&buf, Format::Zlib).expect("Could not decompress data");
     if block.dz_zip_type == 1 {
         let m = block.dz_org_data_length / block.dz_zip_parameter as u64;
-        let temp: Vec<u8> = data[0..(m * block.dz_zip_parameter as u64) as usize].to_vec();
+        let mut temp: Vec<u8> = data[0..(m * block.dz_zip_parameter as u64) as usize].to_vec();
         let tail: Vec<u8> = data[(m * block.dz_zip_parameter as u64) as usize..].to_vec();
-        let array = Array::from_shape_vec((block.dz_zip_parameter as usize, m as usize), temp).expect("error converting vector to array");
-        let mut data = array.t().into_shape((1,)).expect("could not reshape into one dimension array").to_vec();
+        let mut scratch = vec![0u8; core::cmp::max(block.dz_zip_parameter as u64, m) as usize];
+        transpose::transpose_inplace(&mut temp, &mut scratch, block.dz_zip_parameter as usize, m as usize);
+        data = temp;
         if !tail.is_empty() {
             data.extend(tail);
         }
