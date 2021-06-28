@@ -1169,27 +1169,29 @@ fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, s
         }
         // checks for cc_ref
         for pointer in &cc_block.cc_ref {
-            let (mut ref_block, header, _pos) = parse_block_short(rdr, *pointer, position);
-            if "##TX".as_bytes() == header.hdr_id {
-                let mut _link_count = [0u8; 8];
-                rdr.read_exact(&mut _link_count).unwrap();
-                let comment_raw = vec![0u8; (header.hdr_len - 24) as usize];
-                let c = match str::from_utf8(&comment_raw) {
-                    Ok(v) => v,
-                    Err(e) => panic!("Error converting comment into utf8 \n{}", e),
-                };
-                let comment: String = match c.parse(){
-                    Ok(v) => v,
-                    Err(e) => panic!("Error parsing comment\n{}", e),
-                };
-                let comment:String = comment.trim_end_matches(char::from(0)).into();
-                sharable.tx.insert(pointer.clone(), (comment, false));
+            if !sharable.cc.contains_key(&pointer) && !sharable.tx.contains_key(&pointer){
+                let (mut ref_block, header, _pos) = parse_block_short(rdr, *pointer, position);
+                if "##TX".as_bytes() == header.hdr_id {
+                    let mut _link_count = [0u8; 8];
+                    rdr.read_exact(&mut _link_count).unwrap();
+                    let comment_raw = vec![0u8; (header.hdr_len - 24) as usize];
+                    let c = match str::from_utf8(&comment_raw) {
+                        Ok(v) => v,
+                        Err(e) => panic!("Error converting comment into utf8 \n{}", e),
+                    };
+                    let comment: String = match c.parse(){
+                        Ok(v) => v,
+                        Err(e) => panic!("Error parsing comment\n{}", e),
+                    };
+                    let comment:String = comment.trim_end_matches(char::from(0)).into();
+                    sharable.tx.insert(pointer.clone(), (comment, false));
+                }
+                else { // CC Block
+                    let ref_block: Cc4Block = ref_block.read_le().unwrap();
+                    sharable.cc.insert(pointer.clone(), ref_block);
+                }
+                position = pointer + header.hdr_len as i64;
             }
-            else { // CC Block
-                let ref_block: Cc4Block = ref_block.read_le().unwrap();
-                sharable.cc.insert(pointer.clone(), ref_block);
-            }
-            position = pointer + header.hdr_len as i64;
         }
         sharable.cc.insert(cc_pointer, cc_block);
     }
