@@ -1170,11 +1170,11 @@ fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, s
         }
         // checks for cc_ref
         for pointer in &cc_block.cc_ref {
-            if !sharable.cc.contains_key(&pointer) && !sharable.tx.contains_key(&pointer){
+            if !sharable.cc.contains_key(&pointer) && !sharable.tx.contains_key(&pointer) && *pointer != 0{
                 let (mut ref_block, header, _pos) = parse_block_short(rdr, *pointer, position);
                 if "##TX".as_bytes() == header.hdr_id {
                     let mut buf= vec![0u8; 8];
-                    ref_block.read_exact(&mut buf).expect("could link_count"); // link_count
+                    ref_block.read_exact(&mut buf).expect("could not read link_count"); // link_count
                     let mut buf= vec![0u8; (header.hdr_len - 24) as usize];
                     ref_block.read_exact(&mut buf).expect("could not read the TX comments");
                     let c = match str::from_utf8(&buf) {
