@@ -959,7 +959,7 @@ pub struct Cn4Block {
     cn_composition: i64, // Composition of channels: Pointer to channel array block (CABLOCK) or channel block (CNBLOCK) (can be NIL). Details see 4.18 Composition of Channels
     cn_tx_name: i64, // Pointer to TXBLOCK with name (identification) of channel. Name must be according to naming rules stated in 4.4.2 Naming Rules.
     cn_si_source: i64, // Pointer to channel source (SIBLOCK) (can be NIL) Must be NIL for component channels (members of a structure or array elements) because they all must have the same source and thus simply use the SIBLOCK of their parent CNBLOCK (direct child of CGBLOCK).
-    cn_cc_conversion: i64, // Pointer to the conversion formula (CCBLOCK) (can be NIL, must be NIL for complex channel data types, i.e. for cn_data_type ≥ 10). If the pointer is NIL, this means that a 1:1 conversion is used (phys = int).  };
+    pub cn_cc_conversion: i64, // Pointer to the conversion formula (CCBLOCK) (can be NIL, must be NIL for complex channel data types, i.e. for cn_data_type ≥ 10). If the pointer is NIL, this means that a 1:1 conversion is used (phys = int).  };
     cn_data: i64, // Pointer to channel type specific signal data For variable length data channel (cn_type = 1): unique link to signal data block (SDBLOCK) or data list block (DLBLOCK) or, only for unsorted data groups, referencing link to a VLSD channel group block (CGBLOCK). Can only be NIL if SDBLOCK would be empty. For synchronization channel (cn_type = 4): referencing link to attachment block (ATBLOCK) in global linked list of ATBLOCKs starting at hd_at_first. Cannot be NIL.
     cn_md_unit: i64, // Pointer to TXBLOCK/MDBLOCK with designation for physical unit of signal data (after conversion) or (only for channel data types "MIME sample" and "MIME stream") to MIME context-type text. (can be NIL). The unit can be used if no conversion rule is specified or to overwrite the unit specified for the conversion rule (e.g. if a conversion rule is shared between channels). If the link is NIL, then the unit from the conversion rule must be used. If the content is an empty string, no unit should be displayed. If an MDBLOCK is used, in addition the A-HDO unit definition can be stored, see Table 38. Note: for (virtual) master and synchronization channels the A-HDO definition should be omitted to avoid redundancy. Here the unit is already specified by cn_sync_type of the channel. In case of channel data types "MIME sample" and "MIME stream", the text of the unit must be the content-type text of a MIME type which specifies the content of the values of the channel (either fixed length in record or variable length in SDBLOCK). The MIME content-type string must be written in lowercase, and it must apply to the same rules as defined for at_tx_mimetype in 4.11 The Attachment Block ATBLOCK.
     cn_md_comment: i64, // Pointer to TXBLOCK/MDBLOCK with comment and additional information about the channel, see Table 37. (can be NIL)
@@ -1167,6 +1167,30 @@ fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, s
             position = pos;
             sharable.tx.insert(cc_block.cc_md_unit, (u, tx_md_flag));
         }
+        // checks for cc_ref
+        for pointer in &cc_block.cc_ref {
+            let (mut ref_block, header, _pos) = parse_block_short(rdr, *pointer, position);
+            if "##TX".as_bytes() == header.hdr_id {
+                let mut _link_count = [0u8; 8];
+                rdr.read_exact(&mut _link_count).unwrap();
+                let comment_raw = vec![0u8; (header.hdr_len - 24) as usize];
+                let c = match str::from_utf8(&comment_raw) {
+                    Ok(v) => v,
+                    Err(e) => panic!("Error converting comment into utf8 \n{}", e),
+                };
+                let comment: String = match c.parse(){
+                    Ok(v) => v,
+                    Err(e) => panic!("Error parsing comment\n{}", e),
+                };
+                let comment:String = comment.trim_end_matches(char::from(0)).into();
+                sharable.tx.insert(pointer.clone(), (comment, false));
+            }
+            else { // CC Block
+                let ref_block: Cc4Block = ref_block.read_le().unwrap();
+                sharable.cc.insert(pointer.clone(), ref_block);
+            }
+            position = pointer + header.hdr_len as i64;
+        }
         sharable.cc.insert(cc_pointer, cc_block);
     }
 
@@ -1235,18 +1259,20 @@ pub struct Cc4Block {
     cc_md_comment: i64, // Link to TXBLOCK/MDBLOCK with comment of conversion and additional information, see Table 54. (can be NIL)
     cc_cc_inverse: i64, // Link to CCBLOCK for inverse formula (can be NIL, must be NIL for CCBLOCK of the inverse formula (no cyclic reference allowed).
     #[br(if(cc_links > 4), little, count = cc_links - 4)]
-    cc_ref: Vec<i64>,  // List of additional links to TXBLOCKs with strings or to CCBLOCKs with partial conversion rules. Length of list is given by cc_ref_count. The list can be empty. Details are explained in formula-specific block supplement.
+    pub cc_ref: Vec<i64>,  // List of additional links to TXBLOCKs with strings or to CCBLOCKs with partial conversion rules. Length of list is given by cc_ref_count. The list can be empty. Details are explained in formula-specific block supplement.
 
   // Data Members
-    cc_type: u8, // Conversion type (formula identifier) (see CC_T_xxx)
+    pub cc_type: u8, // Conversion type (formula identifier) (see CC_T_xxx)
     cc_precision: u8, // Precision for display of floating point values. 0xFF means unrestricted precision (infinite) Any other value specifies the number of decimal places to use for display of floating point values. Note: only valid if "precision valid" flag (bit 0) is set and if cn_precision of the parent CNBLOCK is invalid, otherwise cn_precision must be used.
     cc_flags: u16, // Flags  (see CC_F_xxx)
     cc_ref_count: u16, // Length M of cc_ref list with additional links. See formula-specific block supplement for meaning of the links.
     cc_val_count: u16, // Length N of cc_val list with additional parameters. See formula-specific block supplement for meaning of the parameters.
     cc_phy_range_min: f64, // Minimum physical signal value that occurred for this signal. Only valid if "physical value range valid" flag (bit 1) is set.
     cc_phy_range_max: f64, // Maximum physical signal value that occurred for this signal. Only valid if "physical value range valid" flag (bit 1) is set.
-    #[br(if(cc_val_count > 0), little, count = cc_val_count)]
-    cc_val: Vec<f64>,  //List of additional conversion parameters. Length of list is given by cc_val_count. The list can be empty. Details are explained in formula-specific block supplement.
+    #[br(if(cc_val_count > 0 && cc_type < 11), little, count = cc_val_count)]
+    pub cc_val: Vec<f64>,  //List of additional conversion parameters. Length of list is given by cc_val_count. The list can be empty. Details are explained in formula-specific block supplement.
+    #[br(if(cc_val_count > 0 && cc_type == 11), little, count = cc_val_count)]  // Bitfield text table
+    pub cc_val_bitfield: Vec<u64>,  //List of additional conversion parameters. Length of list is given by cc_val_count. The list can be empty. Details are explained in formula-specific block supplement.
 }
 
 /// Si4 Source Information block struct
