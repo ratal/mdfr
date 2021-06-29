@@ -80,6 +80,7 @@ fn read_data(rdr: &mut BufReader<&File>, id: [u8; 4], dg: &mut Dg4, mut position
         position = read_data(rdr, id, dg, position);
     } else if "##SD".as_bytes() == id {
         // signal data for VLSD
+        let block_header: Dt4Block = rdr.read_le().unwrap();
         todo!();
     } else if "##DL".as_bytes() == id {
         // data list
@@ -671,75 +672,77 @@ fn convert_all_channels(dg: &mut Dg4, cc: &HashMap<i64, Cc4Block>) {
 fn linear_conversion(cn: &mut Cn4, cc_val: &Vec<f64>, cycle_count: &u64) {
     let p1 = cc_val[0];
     let p2 = cc_val[1];
-    let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
-    match &mut cn.data {
-        ChannelData::UInt8(a) => {
-            Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-            cn.data =  ChannelData::Float64(new_array);
+    if !(p1 == 0.0 && p2 ==1.0) {
+        let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+        match &mut cn.data {
+            ChannelData::UInt8(a) => {
+                Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
+                cn.data =  ChannelData::Float64(new_array);
+                },
+            ChannelData::Int8(a) => {
+                Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
+                cn.data =  ChannelData::Float64(new_array);
+                },
+            ChannelData::Int16(a) => {
+                Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
+                cn.data =  ChannelData::Float64(new_array);
+                },
+            ChannelData::UInt16(a) => {
+                Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
+                cn.data =  ChannelData::Float64(new_array);
+                },
+            ChannelData::Float16(a) => {
+                Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
+                cn.data =  ChannelData::Float64(new_array);
+                },
+            ChannelData::Int24(a) => {
+                Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
+                cn.data =  ChannelData::Float64(new_array);
+                },
+            ChannelData::UInt24(a) => {
+                Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
+                cn.data =  ChannelData::Float64(new_array);
+                },
+            ChannelData::Int32(a) => {
+                Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
+                cn.data =  ChannelData::Float64(new_array);
+                },
+            ChannelData::UInt32(a) => {
+                Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
+                cn.data =  ChannelData::Float64(new_array);
+                },
+            ChannelData::Float32(a) => {
+                Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
+                cn.data =  ChannelData::Float64(new_array);
+                },
+            ChannelData::Int48(a) => {
+                Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
+                cn.data =  ChannelData::Float64(new_array);
+                },
+            ChannelData::UInt48(a) => {
+                Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
+                cn.data =  ChannelData::Float64(new_array);
+                },
+            ChannelData::Int64(a) => {
+                Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
+                cn.data =  ChannelData::Float64(new_array);
+                },
+            ChannelData::UInt64(a) => {
+                Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
+                cn.data =  ChannelData::Float64(new_array);
+                },
+            ChannelData::Float64(a) => {
+                Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| *new_array = *a * p2 + p1);
+                cn.data =  ChannelData::Float64(new_array);
             },
-        ChannelData::Int8(a) => {
-            Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-            cn.data =  ChannelData::Float64(new_array);
-            },
-        ChannelData::Int16(a) => {
-            Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-            cn.data =  ChannelData::Float64(new_array);
-            },
-        ChannelData::UInt16(a) => {
-            Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-            cn.data =  ChannelData::Float64(new_array);
-            },
-        ChannelData::Float16(a) => {
-            Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-            cn.data =  ChannelData::Float64(new_array);
-            },
-        ChannelData::Int24(a) => {
-            Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-            cn.data =  ChannelData::Float64(new_array);
-            },
-        ChannelData::UInt24(a) => {
-            Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-            cn.data =  ChannelData::Float64(new_array);
-            },
-        ChannelData::Int32(a) => {
-            Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-            cn.data =  ChannelData::Float64(new_array);
-            },
-        ChannelData::UInt32(a) => {
-            Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-            cn.data =  ChannelData::Float64(new_array);
-            },
-        ChannelData::Float32(a) => {
-            Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-            cn.data =  ChannelData::Float64(new_array);
-            },
-        ChannelData::Int48(a) => {
-            Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-            cn.data =  ChannelData::Float64(new_array);
-            },
-        ChannelData::UInt48(a) => {
-            Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-            cn.data =  ChannelData::Float64(new_array);
-            },
-        ChannelData::Int64(a) => {
-            Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-            cn.data =  ChannelData::Float64(new_array);
-            },
-        ChannelData::UInt64(a) => {
-            Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-            cn.data =  ChannelData::Float64(new_array);
-            },
-        ChannelData::Float64(a) => {
-            Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| *new_array = *a * p2 + p1);
-            cn.data =  ChannelData::Float64(new_array);
-        },
-        ChannelData::Complex16(_) => todo!(),
-        ChannelData::Complex32(_) => todo!(),
-        ChannelData::Complex64(_) => todo!(),
-        ChannelData::StringSBC(_) => {},
-        ChannelData::StringUTF8(_) => {},
-        ChannelData::StringUTF16(_) => {},
-        ChannelData::ByteArray(_) => {},
+            ChannelData::Complex16(_) => todo!(),
+            ChannelData::Complex32(_) => todo!(),
+            ChannelData::Complex64(_) => todo!(),
+            ChannelData::StringSBC(_) => {},
+            ChannelData::StringUTF8(_) => {},
+            ChannelData::StringUTF16(_) => {},
+            ChannelData::ByteArray(_) => {},
+        }
     }
 }
 
