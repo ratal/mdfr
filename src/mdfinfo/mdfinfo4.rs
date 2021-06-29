@@ -1170,7 +1170,7 @@ fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, s
         }
         // checks for cc_ref
         for pointer in &cc_block.cc_ref {
-            if !sharable.cc.contains_key(&pointer) && !sharable.tx.contains_key(&pointer) && *pointer != 0{
+            if !sharable.cc.contains_key(&pointer) && !sharable.tx.contains_key(&pointer) && *pointer != 0 {
                 let (mut ref_block, header, _pos) = parse_block_short(rdr, *pointer, position);
                 if "##TX".as_bytes() == header.hdr_id {
                     let mut buf= vec![0u8; 8];
@@ -1631,11 +1631,10 @@ pub fn parse_dz(rdr: &mut BufReader<&File>) -> (Vec<u8>, Dz4Block) {
     let (mut data, _checksum) = decompress(&buf, Format::Zlib).expect("Could not decompress data");
     if block.dz_zip_type == 1 {
         let m = block.dz_org_data_length / block.dz_zip_parameter as u64;
-        let mut temp: Vec<u8> = data[0..(m * block.dz_zip_parameter as u64) as usize].to_vec();
-        let tail: Vec<u8> = data[(m * block.dz_zip_parameter as u64) as usize..].to_vec();
-        let mut scratch = vec![0u8; core::cmp::max(block.dz_zip_parameter as u64, m) as usize];
-        transpose::transpose_inplace(&mut temp, &mut scratch, block.dz_zip_parameter as usize, m as usize);
-        data = temp;
+        let tail: Vec<u8> = data.split_off((m * block.dz_zip_parameter as u64) as usize);
+        let mut output = vec![0u8; (m * block.dz_zip_parameter as u64) as usize];
+        transpose::transpose(&data, &mut output, block.dz_zip_parameter as usize, m as usize);
+        data = output;
         if !tail.is_empty() {
             data.extend(tail);
         }
