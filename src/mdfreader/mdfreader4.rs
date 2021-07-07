@@ -28,7 +28,9 @@ pub fn mdfreader4<'a>(rdr: &'a mut BufReader<&File>, info: &'a mut MdfInfo4) {
         }
         apply_bit_mask_offset(dg);
         // process all invalid bits
-
+        for channel_group in dg.cg.values_mut() {
+            channel_group.process_invalid_bits();
+        }
         // conversion of all channels
         convert_all_channels(dg, &info.sharable.cc);
     }
@@ -791,7 +793,7 @@ fn read_record_inplace(channel_group: &mut Cg4, record: &[u8], nrecord: u64, pre
 fn initialise_arrays(channel_group: &mut Cg4, n_record_chunk: &u64) {
     // initialise ndarrays for the data group/block
     for (_cn_record_position, cn) in channel_group.cn.iter_mut() {
-        cn.data = data_init(cn.block.cn_data_type, cn.n_bytes, *n_record_chunk);
+        cn.data = data_init(cn.block.cn_type, cn.block.cn_data_type, cn.n_bytes, *n_record_chunk);
     }
 }
 
@@ -933,68 +935,73 @@ impl Default for ChannelData {
     fn default() -> Self { ChannelData::UInt8(Array1::<u8>::zeros((0, ))) }
 }
 
-pub fn data_init(cn_data_type: u8, n_bytes: u32, cycle_count: u64) -> ChannelData {
+pub fn data_init(cn_type: u8, cn_data_type: u8, n_bytes: u32, cycle_count: u64) -> ChannelData {
     let data_type: ChannelData;
-    if cn_data_type == 0 || cn_data_type == 1 {
-        // unsigned int
-        if n_bytes <= 1 {
-            data_type = ChannelData::UInt8(Array1::<u8>::zeros((cycle_count as usize, )));
-        } else if n_bytes == 2 {
-            data_type = ChannelData::UInt16(Array1::<u16>::zeros((cycle_count as usize, )));
-        } else if n_bytes == 3 {
-            data_type = ChannelData::UInt24(Array1::<u32>::zeros((cycle_count as usize, )));
-        } else if n_bytes == 4 {
-            data_type = ChannelData::UInt32(Array1::<u32>::zeros((cycle_count as usize, )));
-        } else if n_bytes <= 6 {
-            data_type = ChannelData::UInt48(Array1::<u64>::zeros((cycle_count as usize, )));
+    if cn_type != 3 || cn_type != 6 {
+        if cn_data_type == 0 || cn_data_type == 1 {
+            // unsigned int
+            if n_bytes <= 1 {
+                data_type = ChannelData::UInt8(Array1::<u8>::zeros((cycle_count as usize, )));
+            } else if n_bytes == 2 {
+                data_type = ChannelData::UInt16(Array1::<u16>::zeros((cycle_count as usize, )));
+            } else if n_bytes == 3 {
+                data_type = ChannelData::UInt24(Array1::<u32>::zeros((cycle_count as usize, )));
+            } else if n_bytes == 4 {
+                data_type = ChannelData::UInt32(Array1::<u32>::zeros((cycle_count as usize, )));
+            } else if n_bytes <= 6 {
+                data_type = ChannelData::UInt48(Array1::<u64>::zeros((cycle_count as usize, )));
+            } else {
+                data_type = ChannelData::UInt64(Array1::<u64>::zeros((cycle_count as usize, )));
+            }
+        } else if cn_data_type == 2 || cn_data_type == 3 {
+            // signed int
+            if n_bytes <= 1 {
+                data_type = ChannelData::Int8(Array1::<i8>::zeros((cycle_count as usize, )));
+            } else if n_bytes == 2 {
+                data_type = ChannelData::Int16(Array1::<i16>::zeros((cycle_count as usize, )));
+            }  else if n_bytes == 3 {
+                data_type = ChannelData::Int24(Array1::<i32>::zeros((cycle_count as usize, )));
+            } else if n_bytes == 4 {
+                data_type = ChannelData::Int32(Array1::<i32>::zeros((cycle_count as usize, )));
+            } else if n_bytes <= 6 {
+                data_type = ChannelData::Int48(Array1::<i64>::zeros((cycle_count as usize, )));
+            }else {
+                data_type = ChannelData::Int64(Array1::<i64>::zeros((cycle_count as usize, )));
+            }
+        } else if cn_data_type == 4 || cn_data_type == 5 {
+            // float
+            if n_bytes <= 2 {
+                data_type = ChannelData::Float16(Array1::<f32>::zeros((cycle_count as usize, )));
+            } else if n_bytes <= 4 {
+                data_type = ChannelData::Float32(Array1::<f32>::zeros((cycle_count as usize, )));
+            } else {
+                data_type = ChannelData::Float64(Array1::<f64>::zeros((cycle_count as usize, )));
+            } 
+        } else if cn_data_type == 15 || cn_data_type == 16 {
+            // complex
+            if n_bytes <= 2 {
+                data_type = ChannelData::Complex16(Array1::<Complex<f32>>::zeros((cycle_count as usize, )));
+            } else if n_bytes <= 4 {
+                data_type = ChannelData::Complex32(Array1::<Complex<f32>>::zeros((cycle_count as usize, )));
+            } else {
+                data_type = ChannelData::Complex64(Array1::<Complex<f64>>::zeros((cycle_count as usize, )));
+            } 
+        } else if cn_data_type == 6 {
+            // SBC ISO-8859-1 to be converted into UTF8
+            data_type = ChannelData::StringSBC(vec![String::new(); cycle_count as usize]);
+        } else if cn_data_type == 7 {
+            // String UTF8
+            data_type = ChannelData::StringUTF8(vec![String::new(); cycle_count as usize]);
+        } else if cn_data_type == 8 || cn_data_type == 9 {
+            // String UTF16 to be converted into UTF8
+            data_type = ChannelData::StringUTF16(vec![String::new(); cycle_count as usize]);
         } else {
-            data_type = ChannelData::UInt64(Array1::<u64>::zeros((cycle_count as usize, )));
+            // bytearray
+            data_type = ChannelData::ByteArray(vec![vec![0u8; n_bytes as usize]; cycle_count as usize]);
         }
-    } else if cn_data_type == 2 || cn_data_type == 3 {
-        // signed int
-        if n_bytes <= 1 {
-            data_type = ChannelData::Int8(Array1::<i8>::zeros((cycle_count as usize, )));
-        } else if n_bytes == 2 {
-            data_type = ChannelData::Int16(Array1::<i16>::zeros((cycle_count as usize, )));
-        }  else if n_bytes == 3 {
-            data_type = ChannelData::Int24(Array1::<i32>::zeros((cycle_count as usize, )));
-        } else if n_bytes == 4 {
-            data_type = ChannelData::Int32(Array1::<i32>::zeros((cycle_count as usize, )));
-        } else if n_bytes <= 6 {
-            data_type = ChannelData::Int48(Array1::<i64>::zeros((cycle_count as usize, )));
-        }else {
-            data_type = ChannelData::Int64(Array1::<i64>::zeros((cycle_count as usize, )));
-        }
-    } else if cn_data_type == 4 || cn_data_type == 5 {
-        // float
-        if n_bytes <= 2 {
-            data_type = ChannelData::Float16(Array1::<f32>::zeros((cycle_count as usize, )));
-        } else if n_bytes <= 4 {
-            data_type = ChannelData::Float32(Array1::<f32>::zeros((cycle_count as usize, )));
-        } else {
-            data_type = ChannelData::Float64(Array1::<f64>::zeros((cycle_count as usize, )));
-        } 
-    } else if cn_data_type == 15 || cn_data_type == 16 {
-        // complex
-        if n_bytes <= 2 {
-            data_type = ChannelData::Complex16(Array1::<Complex<f32>>::zeros((cycle_count as usize, )));
-        } else if n_bytes <= 4 {
-            data_type = ChannelData::Complex32(Array1::<Complex<f32>>::zeros((cycle_count as usize, )));
-        } else {
-            data_type = ChannelData::Complex64(Array1::<Complex<f64>>::zeros((cycle_count as usize, )));
-        } 
-    } else if cn_data_type == 6 {
-        // SBC ISO-8859-1 to be converted into UTF8
-        data_type = ChannelData::StringSBC(vec![String::new(); cycle_count as usize]);
-    } else if cn_data_type == 7 {
-        // String UTF8
-        data_type = ChannelData::StringUTF8(vec![String::new(); cycle_count as usize]);
-    } else if cn_data_type == 8 || cn_data_type == 9 {
-        // String UTF16 to be converted into UTF8
-        data_type = ChannelData::StringUTF16(vec![String::new(); cycle_count as usize]);
     } else {
-        // bytearray
-        data_type = ChannelData::ByteArray(vec![vec![0u8; n_bytes as usize]; cycle_count as usize]);
+        // virtual channels, cn_bit_count = 0 -> n_bytes = 0, must be LE unsigned int
+        data_type = ChannelData::UInt64(Array1::<u64>::from_iter(0..cycle_count));
     }
     data_type
 }
