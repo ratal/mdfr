@@ -931,6 +931,8 @@ impl Cg4 {
         // get invalid bytes
         if let Some(invalid_bytes) = self.cn.get(&(self.record_length - self.block.cg_inval_bytes)) {
             let invalid = &invalid_bytes.data;
+            let byte_offest = invalid_bytes.block.cn_inval_bit_pos >> 3;
+            let bit_number = invalid_bytes.block.cn_inval_bit_pos & 0x07;
             todo!();
         }
     }
@@ -1273,8 +1275,9 @@ fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, s
         endian = true;  // big endian
     }
     let data_type = block.cn_data_type;
+    let cn_type = block.cn_type;
 
-    let cn_struct = Cn4 {block, unique_name: name, block_position: target, pos_byte_beg, n_bytes, composition: compo, data: data_init(data_type, n_bytes, 0), endian, invalid_bit: None };
+    let cn_struct = Cn4 {block, unique_name: name, block_position: target, pos_byte_beg, n_bytes, composition: compo, data: data_init(cn_type ,data_type, n_bytes, 0), endian, invalid_bit: None };
 
     (cn_struct, position)
 }
