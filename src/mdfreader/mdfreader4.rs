@@ -2,6 +2,7 @@
 use crate::mdfinfo::mdfinfo4::{Dl4Block, parser_dl4_block, parse_dz, Hl4Block, Dt4Block};
 use crate::mdfinfo::mdfinfo4::{Cg4, Dg4, MdfInfo4, parse_block_header, Cc4Block, Cn4};
 use std::io::Cursor;
+use std::sync::mpsc::channel;
 use std::{collections::HashMap, convert::TryInto, io::{BufReader, Read}, usize};
 use std::fs::File;
 use std::str;
@@ -218,16 +219,289 @@ fn read_all_channels_sorted(rdr: &mut BufReader<&File>, channel_group: &mut Cg4)
     // initialises the arrays
     initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone());
     // read by chunks and store in cg struct
-    let mut previous_index: u64 = 0;
+    let mut previous_index: usize = 0;
     let mut decoder: Dec = Dec {windows_1252: WINDOWS_1252.new_decoder(), utf_16_be: UTF_16BE.new_decoder(), utf_16_le: UTF_16LE.new_decoder()};
+    let mut value: &[u8];
     for (n_record_chunk, chunk_size) in chunks {
         let mut data_chunk= vec![0u8; chunk_size as usize];
         rdr.read_exact(&mut data_chunk).expect("Could not read data chunk");
-        for nrecord in 0..n_record_chunk {
-            read_record_inplace(channel_group, &data_chunk[(nrecord * channel_group.record_length as u64) as usize..
-                ((nrecord + 1) * channel_group.record_length as u64) as usize], nrecord, &previous_index, &mut decoder);
+        for (_rec_pos, cn) in channel_group.cn.iter_mut() {
+            match &mut cn.data {
+                ChannelData::Int8(data) => {
+                        for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                            value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<i8>()];
+                            data[i + previous_index] = i8::from_le_bytes(value.try_into().expect("Could not read i8"));
+                        }
+                    },
+                ChannelData::UInt8(data) => {
+                        for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                            value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<u8>()];
+                            data[i + previous_index] = u8::from_le_bytes(value.try_into().expect("Could not read u8"));
+                        }
+                    },
+                ChannelData::Int16(data) => {
+                        if cn.endian {
+                            for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<i16>()];
+                                data[i + previous_index] = i16::from_be_bytes(value.try_into().expect("Could not read be i16"));
+                            }
+                        } else {
+                            for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<i16>()];
+                                data[i + previous_index] = i16::from_le_bytes(value.try_into().expect("Could not read le i16"));
+                            }
+                        }
+                    },
+                ChannelData::UInt16(data) => {
+                        if cn.endian {
+                            for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<u16>()];
+                                data[i + previous_index] = u16::from_be_bytes(value.try_into().expect("Could not read be u16"));
+                            }
+                        } else {
+                            for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<u16>()];
+                                data[i + previous_index] = u16::from_le_bytes(value.try_into().expect("Could not read le u16"));
+                            }
+                        }
+                    },
+                ChannelData::Float16(data) => {
+                        if cn.endian {
+                            for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<f16>()];
+                                data[i + previous_index] = f16::from_be_bytes(value.try_into().expect("Could not read be f16")).to_f32();
+                            }
+                        } else {
+                            for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<f16>()];
+                                data[i + previous_index] = f16::from_le_bytes(value.try_into().expect("Could not read le f16")).to_f32();
+                            }
+                        }
+                    },
+                ChannelData::Int24(data) => {
+                        if cn.endian {
+                            for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + 3];
+                                data[i + previous_index] = value.read_i24::<BigEndian>().expect("Could not read be i24");
+                            }
+                        } else {
+                            for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + 3];
+                                data[i + previous_index] = value.read_i24::<LittleEndian>().expect("Could not read le i24");
+                            }
+                        }
+                    },
+                ChannelData::UInt24(data) => {
+                        if cn.endian {
+                            for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + 3];
+                                data[i + previous_index] = value.read_u24::<BigEndian>().expect("Could not read be u24");
+                            }
+                        } else {
+                            for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + 3];
+                                data[i + previous_index] = value.read_u24::<LittleEndian>().expect("Could not read le u24");
+                            }
+                        }
+                    },
+                ChannelData::Int32(data) => {
+                        if cn.endian {
+                            for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<i32>()];
+                                data[i + previous_index] = i32::from_be_bytes(value.try_into().expect("Could not read be i32"));
+                            }
+                        } else {
+                            for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<i32>()];
+                                data[i + previous_index] = i32::from_le_bytes(value.try_into().expect("Could not read le i32"));
+                            }
+                        }
+                    },
+                ChannelData::UInt32(data) => {
+                        if cn.endian {
+                            for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<u32>()];
+                                data[i + previous_index] = u32::from_be_bytes(value.try_into().expect("Could not read be u32"));
+                            }
+                        } else {
+                            for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<u32>()];
+                                data[i + previous_index] = u32::from_le_bytes(value.try_into().expect("Could not read le u32"));
+                            }
+                        }
+                    },
+                ChannelData::Float32(data) => {
+                        if cn.endian {
+                            for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<f32>()];
+                                data[i + previous_index] = f32::from_be_bytes(value.try_into().expect("Could not read be u32"));
+                            }
+                        } else {
+                            for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<f32>()];
+                                data[i + previous_index] = f32::from_le_bytes(value.try_into().expect("Could not read le u32"));
+                            }
+                        }
+                    },
+                ChannelData::Int48(data) => {
+                        if cn.endian {
+                            for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + 5];
+                                data[i + previous_index] = value.read_i48::<BigEndian>().expect("Could not read be i48");
+                            }
+                        } else {
+                            for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + 5];
+                                data[i + previous_index] = value.read_i48::<LittleEndian>().expect("Could not read le i48");
+                            }
+                        }
+                    },
+                ChannelData::UInt48(data) => {
+                        if cn.endian {
+                            for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + 5];
+                                data[i + previous_index] = value.read_u48::<BigEndian>().expect("Could not read be u48");
+                            }
+                        } else {
+                            for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + 5];
+                                data[i + previous_index] = value.read_u48::<LittleEndian>().expect("Could not read le u48");
+                            }
+                        }
+                    },
+                ChannelData::Int64(data) => {
+                        if cn.endian {
+                            for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<i64>()];
+                                data[i + previous_index] = i64::from_be_bytes(value.try_into().expect("Could not read be i64"));
+                            }
+                        } else {
+                            for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<i64>()];
+                                data[i + previous_index] = i64::from_le_bytes(value.try_into().expect("Could not read le i64"));
+                            }
+                        }
+                    },
+                ChannelData::UInt64(data) => {
+                        if cn.endian {
+                            for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<u64>()];
+                                data[i + previous_index] = u64::from_be_bytes(value.try_into().expect("Could not read be u64"));
+                            }
+                        } else {
+                            for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<u64>()];
+                                data[i + previous_index] = u64::from_le_bytes(value.try_into().expect("Could not read le u64"));
+                            }
+                        }
+                    },
+                ChannelData::Float64(data) => {
+                        if cn.endian {
+                            for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<f64>()];
+                                data[i + previous_index] = f64::from_be_bytes(value.try_into().expect("Could not read be f64"));
+                            }
+                        } else {
+                            for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<f64>()];
+                                data[i + previous_index] = f64::from_le_bytes(value.try_into().expect("Could not read le f64"));
+                            }
+                        }
+                    },
+                ChannelData::Complex16(data) => {
+                    let mut re: f32;
+                    let mut im: f32;
+                    let mut re_val: &[u8];
+                    let mut im_val: &[u8];
+                    if cn.endian {
+                        for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                            re_val = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<f16>()];
+                            im_val = &record[cn.pos_byte_beg as usize + std::mem::size_of::<f16>()..(cn.pos_byte_beg as usize) + 2 * std::mem::size_of::<f16>()];
+                            re = f16::from_be_bytes(re_val.try_into().expect("Could not read be real f16 complex")).to_f32();
+                            im = f16::from_be_bytes(im_val.try_into().expect("Could not read be img f16 complex")).to_f32();
+                            data[i + previous_index] = Complex::new(re, im);
+                        }
+                    } else {
+                        for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                            re_val = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<f16>()];
+                            im_val = &record[cn.pos_byte_beg as usize + std::mem::size_of::<f16>()..(cn.pos_byte_beg as usize) + 2 * std::mem::size_of::<f16>()];
+                            re = f16::from_le_bytes(re_val.try_into().expect("Could not read le real f16 complex")).to_f32();
+                            im = f16::from_le_bytes(im_val.try_into().expect("Could not read le img f16 complex")).to_f32();
+                            data[i + previous_index] = Complex::new(re, im);}
+                        }
+                    },
+                ChannelData::Complex32(data) => {
+                    let mut re: f32;
+                    let mut im: f32;
+                    let mut re_val: &[u8];
+                    let mut im_val: &[u8];
+                    if cn.endian {
+                        for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                            re_val = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<f32>()];
+                            im_val = &record[cn.pos_byte_beg as usize + std::mem::size_of::<f32>()..(cn.pos_byte_beg as usize) + 2 * std::mem::size_of::<f32>()];
+                            re = f32::from_be_bytes(re_val.try_into().expect("Could not read be real f32 complex"));
+                            im = f32::from_be_bytes(im_val.try_into().expect("Could not read be img f32 complex"));
+                            data[i + previous_index] = Complex::new(re, im);
+                        }
+                    } else {
+                        for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                            re_val = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<f32>()];
+                            im_val = &record[cn.pos_byte_beg as usize + std::mem::size_of::<f32>()..(cn.pos_byte_beg as usize) + 2 * std::mem::size_of::<f32>()];
+                            re = f32::from_le_bytes(re_val.try_into().expect("Could not read le real f32 complex"));
+                            im = f32::from_le_bytes(im_val.try_into().expect("Could not read le img f32 complex"));
+                            data[i + previous_index] = Complex::new(re, im);}
+                        }
+                    },
+                ChannelData::Complex64(data) => {
+                    let mut re: f64;
+                    let mut im: f64;
+                    let mut re_val: &[u8];
+                    let mut im_val: &[u8];
+                    if cn.endian {
+                        for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                            re_val = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<f64>()];
+                            im_val = &record[cn.pos_byte_beg as usize + std::mem::size_of::<f64>()..(cn.pos_byte_beg as usize) + 2 * std::mem::size_of::<f64>()];
+                            re = f64::from_be_bytes(re_val.try_into().expect("Could not array"));
+                            im = f64::from_be_bytes(im_val.try_into().expect("Could not array"));
+                            data[i + previous_index] = Complex::new(re, im);
+                        }
+                    } else {
+                        for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                            re_val = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<f64>()];
+                            im_val = &record[cn.pos_byte_beg as usize + std::mem::size_of::<f64>()..(cn.pos_byte_beg as usize) + 2 * std::mem::size_of::<f64>()];
+                            re = f64::from_le_bytes(re_val.try_into().expect("Could not read le real f64 complex"));
+                            im = f64::from_le_bytes(im_val.try_into().expect("Could not read le img f64 complex"));
+                            data[i + previous_index] = Complex::new(re, im);}
+                        }
+                    },
+                ChannelData::StringSBC(data) => {
+                    for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                        value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg + cn.n_bytes) as usize];
+                        let(_result, _size, _replacement) = decoder.windows_1252.decode_to_string(&value, &mut data[(i + previous_index )as usize], false);}
+                    },
+                ChannelData::StringUTF8(data) => {
+                    for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                        value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg + cn.n_bytes) as usize];
+                        data[(i + previous_index )as usize] = str::from_utf8(&value).expect("Found invalid UTF-8").to_string();}
+                    },
+                ChannelData::StringUTF16(data) => {
+                    if cn.endian{
+                        for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                            value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg + cn.n_bytes) as usize];
+                            let(_result, _size, _replacement) = decoder.utf_16_be.decode_to_string(&value, &mut data[(i + previous_index )as usize], false);}
+                    } else {
+                        for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                            value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg + cn.n_bytes) as usize];
+                            let(_result, _size, _replacement) = decoder.utf_16_le.decode_to_string(&value, &mut data[(i + previous_index )as usize], false);}
+                    }},
+                ChannelData::ByteArray(data) => {
+                    for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
+                        value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg + cn.n_bytes) as usize];
+                        data[(i + previous_index )as usize] = value.to_vec();}
+                    },
+            }
         }
-        previous_index += n_record_chunk;
+        previous_index += n_record_chunk as usize;
     }
 }
 
@@ -252,33 +526,84 @@ fn read_all_channels_unsorted(rdr: &mut BufReader<&File>, dg: &mut Dg4, block_le
     // record records
     while position < block_length {
         // reads record id
-        let mut record_id= vec![0u8; dg.block.dg_rec_id_size as usize];
-        rdr.read_exact(&mut record_id).expect("Could not read record id");
         let rec_id: u64;
         if dg.block.dg_rec_id_size == 1 {
-            let id = (&record_id[..]).read_u8().expect("Could not convert record id u8");
-            rec_id = id as u64;
+            rec_id = rdr.read_u8().expect("Could not convert record id u8") as u64;
+            position += 1;
         } else if dg.block.dg_rec_id_size == 2 {
-            let id = (&record_id[..]).read_u16::<LittleEndian>().expect("Could not convert record id u16");
-            rec_id = id as u64;
+            rec_id = rdr.read_u16::<LittleEndian>().expect("Could not convert record id u16") as u64;
+            position += 2;
         } else if dg.block.dg_rec_id_size == 4 {
-            let id = (&record_id[..]).read_u32::<LittleEndian>().expect("Could not convert record id u32");
-            rec_id = id as u64;
+            rec_id = rdr.read_u32::<LittleEndian>().expect("Could not convert record id u32") as u64;
+            position += 4;
         } else if dg.block.dg_rec_id_size == 8 {
-            let id = (&record_id[..]).read_u64::<LittleEndian>().expect("Could not convert record id u64");
-            rec_id = id;
+            rec_id = rdr.read_u64::<LittleEndian>().expect("Could not convert record id u64") as u64;
+            position += 8;
         } else {rec_id = 0}
         // reads record based on record id
         if let Some(cg) = dg.cg.get_mut(&rec_id) {
-            let mut record= vec![0u8; cg.record_length as usize];
-            rdr.read_exact(&mut record).expect("Could not read record id");
-            if let Some(nrecord) = record_counter.get_mut(&rec_id){
-                read_record_inplace(cg, &record[(*nrecord * cg.record_length as u64) as usize..
-                    ((*nrecord + 1) * cg.record_length as u64) as usize], *nrecord, &0, &mut decoder);
-                *nrecord += 1;
+            if (cg.block.cg_flags & 0b1) != 0 {
+                // VLSD channel
+                let length = rdr.read_u32::<LittleEndian>().expect("Could not read length") as u64;
+                let mut record= vec![0u8; length as usize];
+                rdr.read_exact(&mut record).expect("Could not VLSD data");
+                position += length as i64;
+                if let Some((target_rec_id, target_rec_pos)) = cg.vlsd {
+                    if let Some(target_cg) = dg.cg.get_mut(&target_rec_id) {
+                        if let Some(target_cn) = target_cg.cn.get_mut(&target_rec_pos) {
+                            if let Some(nrecord) = record_counter.get_mut(&rec_id) {
+                                save_vlsd(&mut target_cn.data, record, nrecord, &mut decoder, target_cn.endian);
+                                *nrecord += 1;
+                            }
+                        }
+                    }
+                }
+            } else {
+                let mut record= vec![0u8; cg.block.cg_data_bytes as usize];
+                rdr.read_exact(&mut record).expect("Could not read unsorted data");
+                if let Some(nrecord) = record_counter.get_mut(&rec_id){
+                    read_record_inplace(cg, &record, *nrecord, &0, &mut decoder);
+                    *nrecord += 1;
+                }
+                position += cg.block.cg_data_bytes as i64;
             }
-            position += cg.record_length as i64;
         }
+    }
+}
+
+fn save_vlsd(data: &mut ChannelData, record: Vec<u8>, nrecord: &u64, decoder: &mut Dec, endian: bool) {
+    match data {
+        ChannelData::Int8(_) => {},
+        ChannelData::UInt8(_) => {},
+        ChannelData::Int16(_) => {},
+        ChannelData::UInt16(_) => {},
+        ChannelData::Float16(_) => {},
+        ChannelData::Int24(_) => {},
+        ChannelData::UInt24(_) => {},
+        ChannelData::Int32(_) => {},
+        ChannelData::UInt32(_) => {},
+        ChannelData::Float32(_) => {},
+        ChannelData::Int48(_) => {},
+        ChannelData::UInt48(_) => {},
+        ChannelData::Int64(_) => {},
+        ChannelData::UInt64(_) => {},
+        ChannelData::Float64(_) => {},
+        ChannelData::Complex16(_) => {},
+        ChannelData::Complex32(_) => {},
+        ChannelData::Complex64(_) => {},
+        ChannelData::StringSBC(array) => {
+            let(_result, _size, _replacement) = decoder.windows_1252.decode_to_string(&record, &mut array[*nrecord as usize], false);},
+        ChannelData::StringUTF8(array) => {
+            array[*nrecord as usize] = str::from_utf8(&record).expect("Found invalid UTF-8").to_string();
+        },
+        ChannelData::StringUTF16(array) => {
+            if endian{
+                let(_result, _size, _replacement) = decoder.utf_16_be.decode_to_string(&record, &mut array[*nrecord as usize], false);
+            } else {
+                let(_result, _size, _replacement) = decoder.utf_16_le.decode_to_string(&record, &mut array[*nrecord as usize], false);
+            };
+        },
+        ChannelData::ByteArray(_) => todo!(),
     }
 }
 
@@ -295,32 +620,42 @@ fn read_all_channels_unsorted_from_bytes(data: Vec<u8>, dg: &mut Dg4) {
     // record records
     while position < data_length {
         // reads record id
-        let mut record_id= vec![0u8; dg.block.dg_rec_id_size as usize];
-        rdr.read_exact(&mut record_id).expect("Could not read record id");
         let rec_id: u64;
         if dg.block.dg_rec_id_size == 1 {
-            let id = (&record_id[..]).read_u8().expect("Could not convert record id u8");
-            rec_id = id as u64;
+            rec_id = rdr.read_u8().expect("Could not convert record id u8") as u64;
         } else if dg.block.dg_rec_id_size == 2 {
-            let id = (&record_id[..]).read_u16::<LittleEndian>().expect("Could not convert record id u16");
-            rec_id = id as u64;
+            rec_id = rdr.read_u16::<LittleEndian>().expect("Could not convert record id u16") as u64;
         } else if dg.block.dg_rec_id_size == 4 {
-            let id = (&record_id[..]).read_u32::<LittleEndian>().expect("Could not convert record id u32");
-            rec_id = id as u64;
+            rec_id = rdr.read_u32::<LittleEndian>().expect("Could not convert record id u32") as u64;
         } else if dg.block.dg_rec_id_size == 8 {
-            let id = (&record_id[..]).read_u64::<LittleEndian>().expect("Could not convert record id u64");
-            rec_id = id;
+            rec_id = rdr.read_u64::<LittleEndian>().expect("Could not convert record id u64") as u64;
         } else {rec_id = 0}
         // reads record based on record id
         if let Some(cg) = dg.cg.get_mut(&rec_id) {
-            let mut record= vec![0u8; cg.record_length as usize];
-            rdr.read_exact(&mut record).expect("Could not read record id");
-            if let Some(nrecord) = record_counter.get_mut(&rec_id){
-                read_record_inplace(cg, &record[(*nrecord * cg.record_length as u64) as usize..
-                    ((*nrecord + 1) * cg.record_length as u64) as usize], *nrecord, &0, &mut decoder);
-                *nrecord += 1;
+            if (cg.block.cg_flags & 0b1) != 0 {
+                // VLSD channel
+                let length = rdr.read_u32::<LittleEndian>().expect("Could not read length") as u64;
+                let mut record= vec![0u8; length as usize];
+                rdr.read_exact(&mut record).expect("Could not VLSD data");
+                if let Some((target_rec_id, target_rec_pos)) = cg.vlsd {
+                    if let Some(target_cg) = dg.cg.get_mut(&target_rec_id) {
+                        if let Some(target_cn) = target_cg.cn.get_mut(&target_rec_pos) {
+                            if let Some(nrecord) = record_counter.get_mut(&rec_id) {
+                                save_vlsd(&mut target_cn.data, record, nrecord, &mut decoder, target_cn.endian);
+                                *nrecord += 1;
+                            }
+                        }
+                    }
+                }
+            } else {
+                let mut record= vec![0u8; cg.block.cg_data_bytes as usize];
+                rdr.read_exact(&mut record).expect("Could not read unsorted data");
+                if let Some(nrecord) = record_counter.get_mut(&rec_id){
+                    read_record_inplace(cg, &record, *nrecord, &0, &mut decoder);
+                    *nrecord += 1;
+                }
+                position += cg.record_length as usize;
             }
-            position += cg.record_length as usize;
         }
     }
 }
@@ -335,110 +670,112 @@ struct Dec {
 fn read_record_inplace(channel_group: &mut Cg4, record: &[u8], nrecord: u64, previous_index: &u64, decoder: &mut Dec) {
     // read record for each channel
     for (_cn_record_position, cn) in channel_group.cn.iter_mut() {
-        let mut value = &record[cn.pos_byte_beg as usize .. 
-                (cn.pos_byte_beg + cn.n_bytes) as usize];
-        match &mut cn.data {
-            ChannelData::Int8(array) => 
-                array[(nrecord + previous_index )as usize] = value.read_i8().expect("Could not convert i8"),
-            ChannelData::UInt8(array) => 
-                array[(nrecord + previous_index )as usize] = value.read_u8().expect("Could not convert u8"),
-            ChannelData::Int16(array) => if cn.endian {
-                array[(nrecord + previous_index )as usize] = value.read_i16::<BigEndian>().expect("Could not convert be i16")
-                } else {array[(nrecord + previous_index )as usize] = value.read_i16::<LittleEndian>().expect("Could not convert le i16")},
-            ChannelData::UInt16(array) => if cn.endian {
-                array[(nrecord + previous_index )as usize] = value.read_u16::<BigEndian>().expect("Could not convert be u16")
-                } else {array[(nrecord + previous_index )as usize] = value.read_u16::<LittleEndian>().expect("Could not convert le u16")},
-            ChannelData::Float16(array) => {
-                if cn.endian {
-                    array[(nrecord + previous_index )as usize] = f16::from_be_bytes(value.try_into().expect("Could not convert be f16")).to_f32();
-                } else {
-                    array[(nrecord + previous_index )as usize] = f16::from_le_bytes(value.try_into().expect("Could not convert le f16")).to_f32();}
+        if cn.block.cn_type == 0 || cn.block.cn_type == 2 || cn.block.cn_type == 4 || cn.block.cn_type == 5 {
+            let mut value = &record[cn.pos_byte_beg as usize .. 
+                    (cn.pos_byte_beg + cn.n_bytes) as usize];
+            match &mut cn.data {
+                ChannelData::Int8(array) => 
+                    array[(nrecord + previous_index )as usize] = value.read_i8().expect("Could not convert i8"),
+                ChannelData::UInt8(array) => 
+                    array[(nrecord + previous_index )as usize] = value.read_u8().expect("Could not convert u8"),
+                ChannelData::Int16(array) => if cn.endian {
+                    array[(nrecord + previous_index )as usize] = value.read_i16::<BigEndian>().expect("Could not convert be i16")
+                    } else {array[(nrecord + previous_index )as usize] = value.read_i16::<LittleEndian>().expect("Could not convert le i16")},
+                ChannelData::UInt16(array) => if cn.endian {
+                    array[(nrecord + previous_index )as usize] = value.read_u16::<BigEndian>().expect("Could not convert be u16")
+                    } else {array[(nrecord + previous_index )as usize] = value.read_u16::<LittleEndian>().expect("Could not convert le u16")},
+                ChannelData::Float16(array) => {
+                    if cn.endian {
+                        array[(nrecord + previous_index )as usize] = f16::from_be_bytes(value.try_into().expect("Could not convert be f16")).to_f32();
+                    } else {
+                        array[(nrecord + previous_index )as usize] = f16::from_le_bytes(value.try_into().expect("Could not convert le f16")).to_f32();}
+                    },
+                ChannelData::Int32(array) => if cn.endian {
+                    array[(nrecord + previous_index )as usize] = value.read_i32::<BigEndian>().expect("Could not convert be i32")
+                    } else {array[(nrecord + previous_index )as usize] = value.read_i32::<LittleEndian>().expect("Could not convert le i32")},
+                ChannelData::UInt32(array) => if cn.endian {
+                    array[(nrecord + previous_index )as usize] = value.read_u32::<BigEndian>().expect("Could not convert be u32")
+                    } else {array[(nrecord + previous_index )as usize] = value.read_u32::<LittleEndian>().expect("Could not convert le u32")},
+                ChannelData::Float32(array) => if cn.endian {
+                    array[(nrecord + previous_index )as usize] = value.read_f32::<BigEndian>().expect("Could not convert be f32")
+                    } else {array[(nrecord + previous_index )as usize] = value.read_f32::<LittleEndian>().expect("Could not convert le f32")},
+                ChannelData::Int64(array) => if cn.endian {
+                    array[(nrecord + previous_index )as usize] = value.read_i64::<BigEndian>().expect("Could not convert be i64")
+                    } else {array[(nrecord + previous_index )as usize] = value.read_i64::<LittleEndian>().expect("Could not convert le i64")},
+                ChannelData::UInt64(array) => if cn.endian {
+                    array[(nrecord + previous_index )as usize] = value.read_u64::<BigEndian>().expect("Could not convert be u64")
+                    } else {array[(nrecord + previous_index )as usize] = value.read_u64::<LittleEndian>().expect("Could not convert le u64")},
+                ChannelData::Float64(array) => if cn.endian {
+                    array[(nrecord + previous_index )as usize] = value.read_f64::<BigEndian>().expect("Could not convert be f64")
+                    } else {array[(nrecord + previous_index )as usize] = value.read_f64::<LittleEndian>().expect("Could not convert le f64")},
+                ChannelData::Complex16(array) => {
+                    let re_val = &value[0..1];
+                    let im_val = &value[2..3];
+                    let re: f32;
+                    let im: f32;
+                    if cn.endian {
+                        re = f16::from_be_bytes(re_val.try_into().expect("Could not array")).to_f32();
+                        im = f16::from_be_bytes(im_val.try_into().expect("Could not array")).to_f32();
+                    } else {
+                        re = f16::from_le_bytes(re_val.try_into().expect("Could not array")).to_f32();
+                        im = f16::from_le_bytes(im_val.try_into().expect("Could not array")).to_f32();}
+                    let comp = Complex::new(re, im);
+                    array[(nrecord + previous_index )as usize] = comp;},
+                ChannelData::Complex32(array) => {
+                    let mut re_val = &value[0..1];
+                    let mut im_val = &value[2..3];
+                    let re: f32;
+                    let im: f32;
+                    if cn.endian {
+                        re = re_val.read_f32::<BigEndian>().expect("Could not convert be f32 for real complex");
+                        im = im_val.read_f32::<BigEndian>().expect("Could not convert be f32 for img complex");
+                    } else {
+                        re = re_val.read_f32::<LittleEndian>().expect("Could not convert le f32 for real complex");
+                        im = im_val.read_f32::<LittleEndian>().expect("Could not convert le f32 for img complex");}
+                    let comp = Complex::new(re, im);
+                    array[(nrecord + previous_index )as usize] = comp;},
+                ChannelData::Complex64(array) => {
+                    let mut re_val = &value[0..3];
+                    let mut im_val = &value[4..7];
+                    let re: f64;
+                    let im: f64;
+                    if cn.endian {
+                        re = re_val.read_f64::<BigEndian>().expect("Could not convert be f64 for real complex");
+                        im = im_val.read_f64::<BigEndian>().expect("Could not convert be f64 for img complex");
+                    } else {
+                        re = re_val.read_f64::<LittleEndian>().expect("Could not convert le f64 for real complex");
+                        im = im_val.read_f64::<LittleEndian>().expect("Could not convert le f64 for img complex");}
+                    let comp = Complex::new(re, im);
+                    array[(nrecord + previous_index )as usize] = comp;},
+                ChannelData::StringSBC(array) => {
+                    let(_result, _size, _replacement) = decoder.windows_1252.decode_to_string(&value, &mut array[(nrecord + previous_index )as usize], false);
                 },
-            ChannelData::Int32(array) => if cn.endian {
-                array[(nrecord + previous_index )as usize] = value.read_i32::<BigEndian>().expect("Could not convert be i32")
-                } else {array[(nrecord + previous_index )as usize] = value.read_i32::<LittleEndian>().expect("Could not convert le i32")},
-            ChannelData::UInt32(array) => if cn.endian {
-                array[(nrecord + previous_index )as usize] = value.read_u32::<BigEndian>().expect("Could not convert be u32")
-                } else {array[(nrecord + previous_index )as usize] = value.read_u32::<LittleEndian>().expect("Could not convert le u32")},
-            ChannelData::Float32(array) => if cn.endian {
-                array[(nrecord + previous_index )as usize] = value.read_f32::<BigEndian>().expect("Could not convert be f32")
-                } else {array[(nrecord + previous_index )as usize] = value.read_f32::<LittleEndian>().expect("Could not convert le f32")},
-            ChannelData::Int64(array) => if cn.endian {
-                array[(nrecord + previous_index )as usize] = value.read_i64::<BigEndian>().expect("Could not convert be i64")
-                } else {array[(nrecord + previous_index )as usize] = value.read_i64::<LittleEndian>().expect("Could not convert le i64")},
-            ChannelData::UInt64(array) => if cn.endian {
-                array[(nrecord + previous_index )as usize] = value.read_u64::<BigEndian>().expect("Could not convert be u64")
-                } else {array[(nrecord + previous_index )as usize] = value.read_u64::<LittleEndian>().expect("Could not convert le u64")},
-            ChannelData::Float64(array) => if cn.endian {
-                array[(nrecord + previous_index )as usize] = value.read_f64::<BigEndian>().expect("Could not convert be f64")
-                } else {array[(nrecord + previous_index )as usize] = value.read_f64::<LittleEndian>().expect("Could not convert le f64")},
-            ChannelData::Complex16(array) => {
-                let re_val = &value[0..1];
-                let im_val = &value[2..3];
-                let re: f32;
-                let im: f32;
-                if cn.endian {
-                    re = f16::from_be_bytes(re_val.try_into().expect("Could not array")).to_f32();
-                    im = f16::from_be_bytes(im_val.try_into().expect("Could not array")).to_f32();
-                } else {
-                    re = f16::from_le_bytes(re_val.try_into().expect("Could not array")).to_f32();
-                    im = f16::from_le_bytes(im_val.try_into().expect("Could not array")).to_f32();}
-                let comp = Complex::new(re, im);
-                array[(nrecord + previous_index )as usize] = comp;},
-            ChannelData::Complex32(array) => {
-                let mut re_val = &value[0..1];
-                let mut im_val = &value[2..3];
-                let re: f32;
-                let im: f32;
-                if cn.endian {
-                    re = re_val.read_f32::<BigEndian>().expect("Could not convert be f32 for real complex");
-                    im = im_val.read_f32::<BigEndian>().expect("Could not convert be f32 for img complex");
-                } else {
-                    re = re_val.read_f32::<LittleEndian>().expect("Could not convert le f32 for real complex");
-                    im = im_val.read_f32::<LittleEndian>().expect("Could not convert le f32 for img complex");}
-                let comp = Complex::new(re, im);
-                array[(nrecord + previous_index )as usize] = comp;},
-            ChannelData::Complex64(array) => {
-                let mut re_val = &value[0..3];
-                let mut im_val = &value[4..7];
-                let re: f64;
-                let im: f64;
-                if cn.endian {
-                    re = re_val.read_f64::<BigEndian>().expect("Could not convert be f64 for real complex");
-                    im = im_val.read_f64::<BigEndian>().expect("Could not convert be f64 for img complex");
-                } else {
-                    re = re_val.read_f64::<LittleEndian>().expect("Could not convert le f64 for real complex");
-                    im = im_val.read_f64::<LittleEndian>().expect("Could not convert le f64 for img complex");}
-                let comp = Complex::new(re, im);
-                array[(nrecord + previous_index )as usize] = comp;},
-            ChannelData::StringSBC(array) => {
-                let(_result, _size, _replacement) = decoder.windows_1252.decode_to_string(&value, &mut array[(nrecord + previous_index )as usize], false);
-            },
-            ChannelData::StringUTF8(array) => {
-                array[(nrecord + previous_index )as usize] = str::from_utf8(&value).expect("Found invalid UTF-8").to_string();
-            },
-            ChannelData::StringUTF16(array) => {
-                if cn.endian{
-                    let(_result, _size, _replacement) = decoder.utf_16_be.decode_to_string(&value, &mut array[(nrecord + previous_index )as usize], false);
-                } else {
-                    let(_result, _size, _replacement) = decoder.utf_16_le.decode_to_string(&value, &mut array[(nrecord + previous_index )as usize], false);
-                };
-            },
-            ChannelData::ByteArray(array) => {
-                array[(nrecord + previous_index )as usize] = value.to_vec();
-            },
-            ChannelData::Int24(array) => if cn.endian {
-                array[(nrecord + previous_index )as usize] = value.read_i24::<BigEndian>().expect("Could not convert be i24")
-                } else {array[(nrecord + previous_index )as usize] = value.read_i24::<LittleEndian>().expect("Could not convert le i24")},
-            ChannelData::UInt24(array) => if cn.endian {
-                array[(nrecord + previous_index )as usize] = value.read_u24::<BigEndian>().expect("Could not convert be u24")
-                } else {array[(nrecord + previous_index )as usize] = value.read_u24::<LittleEndian>().expect("Could not convert le u24")},
-            ChannelData::Int48(array) => if cn.endian {
-                array[(nrecord + previous_index )as usize] = value.read_i48::<BigEndian>().expect("Could not convert be i48")
-                } else {array[(nrecord + previous_index )as usize] = value.read_i48::<LittleEndian>().expect("Could not convert le i48")},
-            ChannelData::UInt48(array) => if cn.endian {
-                array[(nrecord + previous_index )as usize] = value.read_u48::<BigEndian>().expect("Could not convert be u48")
-                } else {array[(nrecord + previous_index )as usize] = value.read_u48::<LittleEndian>().expect("Could not convert le u48")},
+                ChannelData::StringUTF8(array) => {
+                    array[(nrecord + previous_index )as usize] = str::from_utf8(&value).expect("Found invalid UTF-8").to_string();
+                },
+                ChannelData::StringUTF16(array) => {
+                    if cn.endian{
+                        let(_result, _size, _replacement) = decoder.utf_16_be.decode_to_string(&value, &mut array[(nrecord + previous_index )as usize], false);
+                    } else {
+                        let(_result, _size, _replacement) = decoder.utf_16_le.decode_to_string(&value, &mut array[(nrecord + previous_index )as usize], false);
+                    };
+                },
+                ChannelData::ByteArray(array) => {
+                    array[(nrecord + previous_index )as usize] = value.to_vec();
+                },
+                ChannelData::Int24(array) => if cn.endian {
+                    array[(nrecord + previous_index )as usize] = value.read_i24::<BigEndian>().expect("Could not convert be i24")
+                    } else {array[(nrecord + previous_index )as usize] = value.read_i24::<LittleEndian>().expect("Could not convert le i24")},
+                ChannelData::UInt24(array) => if cn.endian {
+                    array[(nrecord + previous_index )as usize] = value.read_u24::<BigEndian>().expect("Could not convert be u24")
+                    } else {array[(nrecord + previous_index )as usize] = value.read_u24::<LittleEndian>().expect("Could not convert le u24")},
+                ChannelData::Int48(array) => if cn.endian {
+                    array[(nrecord + previous_index )as usize] = value.read_i48::<BigEndian>().expect("Could not convert be i48")
+                    } else {array[(nrecord + previous_index )as usize] = value.read_i48::<LittleEndian>().expect("Could not convert le i48")},
+                ChannelData::UInt48(array) => if cn.endian {
+                    array[(nrecord + previous_index )as usize] = value.read_u48::<BigEndian>().expect("Could not convert be u48")
+                    } else {array[(nrecord + previous_index )as usize] = value.read_u48::<LittleEndian>().expect("Could not convert le u48")},
+            }
         }
     }
 }
@@ -759,98 +1096,98 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &Vec<f64>, cycle_count: &u64) {
             Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| {
                 let m = *a as f64;
                 let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p1) / (m_2 * p4 + m * p5 + p6)});
+                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)});
             cn.data =  ChannelData::Float64(new_array);
             },
         ChannelData::Int8(a) => {
             Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| {
                 let m = *a as f64;
                 let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p1) / (m_2 * p4 + m * p5 + p6)});
+                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)});
             cn.data =  ChannelData::Float64(new_array);
             },
         ChannelData::Int16(a) => {
             Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| {
                 let m = *a as f64;
                 let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p1) / (m_2 * p4 + m * p5 + p6)});
+                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)});
             cn.data =  ChannelData::Float64(new_array);
             },
         ChannelData::UInt16(a) => {
             Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| {
                 let m = *a as f64;
                 let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p1) / (m_2 * p4 + m * p5 + p6)});
+                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)});
             cn.data =  ChannelData::Float64(new_array);
             },
         ChannelData::Float16(a) => {
             Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| {
                 let m = *a as f64;
                 let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p1) / (m_2 * p4 + m * p5 + p6)});
+                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)});
             cn.data =  ChannelData::Float64(new_array);
             },
         ChannelData::Int24(a) => {
             Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| {
                 let m = *a as f64;
                 let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p1) / (m_2 * p4 + m * p5 + p6)});
+                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)});
             cn.data =  ChannelData::Float64(new_array);
             },
         ChannelData::UInt24(a) => {
             Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| {
                 let m = *a as f64;
                 let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p1) / (m_2 * p4 + m * p5 + p6)});
+                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)});
             cn.data =  ChannelData::Float64(new_array);
             },
         ChannelData::Int32(a) => {
             Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| {
                 let m = *a as f64;
                 let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p1) / (m_2 * p4 + m * p5 + p6)});
+                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)});
             cn.data =  ChannelData::Float64(new_array);
             },
         ChannelData::UInt32(a) => {
             Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| {
                 let m = *a as f64;
                 let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p1) / (m_2 * p4 + m * p5 + p6)});
+                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)});
             cn.data =  ChannelData::Float64(new_array);
             },
         ChannelData::Float32(a) => {
             Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| {
                 let m = *a as f64;
                 let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p1) / (m_2 * p4 + m * p5 + p6)});
+                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)});
             cn.data =  ChannelData::Float64(new_array);
             },
         ChannelData::Int48(a) => {
             Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| {
                 let m = *a as f64;
                 let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p1) / (m_2 * p4 + m * p5 + p6)});
+                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)});
             cn.data =  ChannelData::Float64(new_array);
             },
         ChannelData::UInt48(a) => {
             Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| {
                 let m = *a as f64;
                 let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p1) / (m_2 * p4 + m * p5 + p6)});
+                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)});
             cn.data =  ChannelData::Float64(new_array);
             },
         ChannelData::Int64(a) => {
             Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| {
                 let m = *a as f64;
                 let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p1) / (m_2 * p4 + m * p5 + p6)});
+                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)});
             cn.data =  ChannelData::Float64(new_array);
             },
         ChannelData::UInt64(a) => {
             Zip::from(&mut new_array).and(a).par_for_each(|new_array, a| {
                 let m = *a as f64;
                 let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p1) / (m_2 * p4 + m * p5 + p6)});
+                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)});
             cn.data =  ChannelData::Float64(new_array);
             },
         ChannelData::Float64(a) => {
