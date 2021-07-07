@@ -652,7 +652,7 @@ fn identify_v_l_s_d(cg: &mut HashMap<u64, Cg4>) {
     for (rec_id, channel_group) in cg.iter() {
         if (channel_group.block.cg_flags & 0b1) != 0 {
             // VLSD channel group found
-            vlsd.insert(channel_group.block_position.clone(),*rec_id);
+            vlsd.insert(channel_group.block_position,*rec_id);
         }
     }
     if !vlsd.is_empty() {
@@ -1217,11 +1217,11 @@ fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, s
                         Err(e) => panic!("Error parsing comment\n{}", e),
                     };
                     let comment:String = comment.trim_end_matches(char::from(0)).into();
-                    sharable.tx.insert(pointer.clone(), (comment, false));
+                    sharable.tx.insert(*pointer, (comment, false));
                 }
                 else { // CC Block
                     let ref_block: Cc4Block = ref_block.read_le().unwrap();
-                    sharable.cc.insert(pointer.clone(), ref_block);
+                    sharable.cc.insert(*pointer, ref_block);
                 }
                 position = pointer + header.hdr_len as i64;
             }
