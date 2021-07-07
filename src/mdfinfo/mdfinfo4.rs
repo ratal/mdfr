@@ -626,7 +626,8 @@ pub fn parse_dg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sha
         let (block, comments, pos) = parse_dg4_block(rdr, target, position);
         position = pos;
         let mut next_pointer = block.dg_dg_next;
-        let (cg, pos) = parse_cg4(rdr, block.dg_cg_first, position, sharable, block.dg_rec_id_size);
+        let (mut cg, pos) = parse_cg4(rdr, block.dg_cg_first, position, sharable, block.dg_rec_id_size);
+        identify_v_l_s_d(&mut cg);
         let dg_struct = Dg4 {block, comments, cg};
         dg.insert(target, dg_struct);
         position = pos;
@@ -635,13 +636,42 @@ pub fn parse_dg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sha
             let (block, comments, pos) = parse_dg4_block(rdr, next_pointer, position);
             next_pointer = block.dg_dg_next;
             position = pos;
-            let (cg, pos) = parse_cg4(rdr, block.dg_cg_first, position, sharable, block.dg_rec_id_size);
+            let (mut cg, pos) = parse_cg4(rdr, block.dg_cg_first, position, sharable, block.dg_rec_id_size);
+            identify_v_l_s_d(&mut cg);
             let dg_struct = Dg4 {block, comments, cg};
             dg.insert(block_start, dg_struct);
             position = pos;
         }
     }
     (dg, position)
+}
+
+fn identify_v_l_s_d(cg: &mut HashMap<u64, Cg4>) {
+    // First find all VLSD Channel Groups
+    let mut vlsd: HashMap<i64, u64> = HashMap::new();
+    for (rec_id, channel_group) in cg.iter() {
+        if (channel_group.block.cg_flags & 0b1) != 0 {
+            // VLSD channel group found
+            vlsd.insert(channel_group.block_position.clone(),*rec_id);
+        }
+    }
+    if !vlsd.is_empty() {
+        // try to find corresponding channel in other channel group
+        let mut vlsd_matching: HashMap<u64, (u64, u32)> = HashMap::new();
+        for (target_rec_id, channel_group) in cg.iter() {
+            for (target_rec_pos, cn) in channel_group.cn.iter() {
+                if let Some(vlsd_rec_id) = vlsd.get(&cn.block.cn_data) {
+                    // Found matching channel with VLSD_CG
+                    vlsd_matching.insert(*vlsd_rec_id, (*target_rec_id, *target_rec_pos));
+                }
+            }
+        }
+        for (vlsd_rec_id, (target_rec_id, target_rec_pos)) in vlsd_matching {
+            if let Some(vlsd_cg) = cg.get_mut(&vlsd_rec_id) {
+                vlsd_cg.vlsd = Some((target_rec_id, target_rec_pos));
+            }
+        }
+    }
 }
 
 /// TX data type : hashmap will concurrent capability (dashmap crate) embedded into an Arc
@@ -704,7 +734,7 @@ pub struct Cg4Block {
      // Data Members
     pub cg_record_id: u64, // Record ID, value must be less than maximum unsigned integer value allowed by dg_rec_id_size in parent DGBLOCK. Record ID must be unique within linked list of CGBLOCKs.
     pub cg_cycle_count: u64, // Number of cycles, i.e. number of samples for this channel group. This specifies the number of records of this type in the data block.
-    cg_flags: u16, // Flags The value contains the following bit flags (see CG_F_xx):
+    pub cg_flags: u16, // Flags The value contains the following bit flags (see CG_F_xx):
     cg_path_separator: u16,
     cg_reserved: [u8; 4], // Reserved.
     pub cg_data_bytes: u32, // Normal CGBLOCK: Number of data Bytes (after record ID) used for signal values in record, i.e. size of plain data for each recorded sample of this channel group. VLSD CGBLOCK: Low part of a UINT64 value that specifies the total size in Bytes of all variable length signal values for the recorded samples of this channel group. See explanation for cg_inval_bytes.
@@ -760,7 +790,7 @@ fn parse_cg4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, s
 
     let record_length = cg.cg_data_bytes;
 
-    let cg_struct = Cg4 {block: cg, cn, record_length, block_position: target};
+    let cg_struct = Cg4 {block: cg, cn, record_length, block_position: target, vlsd: None};
 
     (cg_struct, position)
 }
@@ -771,6 +801,7 @@ pub struct Cg4 {
     pub cn: CnType, // hashmap of channels 
     block_position: i64, // as not stored in .block but can still be referenced by other blocks
     pub record_length: u32, // record length including recordId and invalid bytes
+    pub vlsd: Option<(u64, u32)>, // pointing to another cg,cn
 }
 
 /// Cg4 implementations for extracting acquisition and source name and path
@@ -968,7 +999,7 @@ pub struct Cn4Block {
     links: Vec<i64>,
 
   // Data Members
-    cn_type: u8, // Channel type (see CN_T_xxx)
+    pub cn_type: u8, // Channel type (see CN_T_xxx)
     cn_sync_type: u8, // Sync type: (see CN_S_xxx)
     pub cn_data_type: u8, // Channel data type of raw signal value (see CN_DT_xxx)
     pub cn_bit_offset: u8, // Bit offset (0-7): first bit (=LSB) of signal value after Byte offset has been applied (see 4.21.4.2 Reading the Signal Value). If zero, the signal value is 1-Byte aligned. A value different to zero is only allowed for Integer data types (cn_data_type ≤ 3) and if the Integer signal value fits into 8 contiguous Bytes (cn_bit_count + cn_bit_offset ≤ 64). For all other cases, cn_bit_offset must be zero.
