@@ -1,7 +1,6 @@
 
 use crate::mdfinfo::mdfinfo4::{Dl4Block, parser_dl4_block, parse_dz, Hl4Block, Dt4Block};
 use crate::mdfinfo::mdfinfo4::{Cg4, Dg4, MdfInfo4, parse_block_header, Cc4Block, Cn4};
-use std::io::Cursor;
 use std::{collections::HashMap, convert::TryInto, io::{BufReader, Read}, usize};
 use std::fs::File;
 use std::str;
@@ -14,6 +13,7 @@ use encoding_rs::{Decoder, UTF_16BE, UTF_16LE, WINDOWS_1252};
 use ndarray::{Array1, OwnedRepr, ArrayBase, Dim, Zip};
 
 // use ndarray::parallel::prelude::*;
+const CHUNK_SIZE_READING: usize = 524288; // can be tuned according to architecture
 
 pub fn mdfreader4<'a>(rdr: &'a mut BufReader<&File>, info: &'a mut MdfInfo4) {
     let mut position: i64 = 0;
@@ -38,6 +38,7 @@ pub fn mdfreader4<'a>(rdr: &'a mut BufReader<&File>, info: &'a mut MdfInfo4) {
 
 fn read_data(rdr: &mut BufReader<&File>, id: [u8; 4], dg: &mut Dg4, mut position: i64) -> i64 {
     // block header is already read
+    let mut decoder: Dec = Dec {windows_1252: WINDOWS_1252.new_decoder(), utf_16_be: UTF_16BE.new_decoder(), utf_16_le: UTF_16LE.new_decoder()};
     if "##DT".as_bytes() == id {
         let block_header: Dt4Block = rdr.read_le().unwrap();
         // simple data block
@@ -56,7 +57,7 @@ fn read_data(rdr: &mut BufReader<&File>, id: [u8; 4], dg: &mut Dg4, mut position
         }
         position += block_header.len as i64;
     } else if "##DZ".as_bytes() == id {
-        let (data, block_header) = parse_dz(rdr);
+        let (mut data, block_header) = parse_dz(rdr);
         // compressed data
         if dg.cg.len() == 1 {
             // sorted data group
@@ -69,7 +70,12 @@ fn read_data(rdr: &mut BufReader<&File>, id: [u8; 4], dg: &mut Dg4, mut position
             for channel_group in dg.cg.values_mut() {
                 initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone());
             }
-            read_all_channels_unsorted_from_bytes(data, dg);
+            // initialise record counter
+            let mut record_counter: HashMap<u64, (usize, Vec<u8>)> = HashMap::new();
+            for cg in dg.cg.values_mut() {
+                record_counter.insert(cg.block.cg_record_id, (0, Vec::with_capacity((cg.record_length as u64 * cg.block.cg_cycle_count) as usize)));
+            }
+            read_all_channels_unsorted_from_bytes(&mut data, dg, &mut record_counter, &mut decoder);
         }
         position += block_header.len as i64;
     } else if "##HL".as_bytes() == id {
@@ -100,9 +106,8 @@ fn read_data(rdr: &mut BufReader<&File>, id: [u8; 4], dg: &mut Dg4, mut position
                 initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone());
             }
             let (dl_blocks, pos) = parser_dl4(rdr, position);
-            let (data, pos) = parser_dl4_unsorted(rdr, dl_blocks, pos);
+            let pos = parser_dl4_unsorted(rdr, dg, dl_blocks, pos);
             position = pos;
-            read_all_channels_unsorted_from_bytes(data, dg);
         }
     } else if "##LD".as_bytes() == id {
         // list data
@@ -177,9 +182,15 @@ fn parser_dl4_sorted(rdr: &mut BufReader<&File>, dl_blocks: Vec<Dl4Block>, mut p
     position
 }
 
-fn parser_dl4_unsorted(rdr: &mut BufReader<&File>, dl_blocks: Vec<Dl4Block>, mut position: i64) -> (Vec<u8>, i64) {
+fn parser_dl4_unsorted(rdr: &mut BufReader<&File>, dg: &mut Dg4, dl_blocks: Vec<Dl4Block>, mut position: i64) -> i64 {
     // Read all data blocks
     let mut data: Vec<u8> = Vec::new();
+    let mut decoder: Dec = Dec {windows_1252: WINDOWS_1252.new_decoder(), utf_16_be: UTF_16BE.new_decoder(), utf_16_le: UTF_16LE.new_decoder()};
+    // initialise record counter
+    let mut record_counter: HashMap<u64, (usize, Vec<u8>)> = HashMap::new();
+    for cg in dg.cg.values_mut() {
+        record_counter.insert(cg.block.cg_record_id, (0, Vec::new()));
+    }
     for dl in dl_blocks {
         for data_pointer in dl.dl_data {
             rdr.seek_relative(data_pointer - position).unwrap();
@@ -192,21 +203,23 @@ fn parser_dl4_unsorted(rdr: &mut BufReader<&File>, dl_blocks: Vec<Dl4Block>, mut
                 rdr.read_exact(&mut buf).unwrap();
                 data.extend(buf);
             }
+            // saves records as much as possible
+            read_all_channels_unsorted_from_bytes(&mut data, dg, &mut record_counter, &mut decoder);
             position = data_pointer + header.hdr_len as i64;
         }
     }
-    (data, position)
+    position
 }
 
-fn generate_chunks(channel_group: &Cg4) -> Vec<(u64, u64)>{
-    const CHUNK_SIZE_READING: u64 = 524288; // can be tuned according to architecture
-    let record_length = channel_group.record_length as u64;
-    let n_chunks = (record_length * channel_group.block.cg_cycle_count) / CHUNK_SIZE_READING + 1;
-    let chunk_length = (record_length * channel_group.block.cg_cycle_count) / n_chunks;
+fn generate_chunks(channel_group: &Cg4) -> Vec<(usize, usize)>{
+    let record_length = channel_group.record_length as usize;
+    let cg_cycle_count = channel_group.block.cg_cycle_count as usize;
+    let n_chunks = (record_length * cg_cycle_count) / CHUNK_SIZE_READING + 1;
+    let chunk_length = (record_length * cg_cycle_count) / n_chunks;
     let n_record_chunk = chunk_length / record_length;
     let chunck = (n_record_chunk, record_length * n_record_chunk);
-    let mut chunks = vec![chunck; n_chunks as usize];
-    let n_record_chunk = channel_group.block.cg_cycle_count - n_record_chunk * n_chunks;
+    let mut chunks = vec![chunck; n_chunks];
+    let n_record_chunk = cg_cycle_count - n_record_chunk * n_chunks;
     if n_record_chunk > 0 {
         chunks.push((n_record_chunk, record_length * n_record_chunk))
     }
@@ -223,10 +236,10 @@ fn read_all_channels_sorted(rdr: &mut BufReader<&File>, channel_group: &mut Cg4)
     let mut decoder: Dec = Dec {windows_1252: WINDOWS_1252.new_decoder(), utf_16_be: UTF_16BE.new_decoder(), utf_16_le: UTF_16LE.new_decoder()};
     
     for (n_record_chunk, chunk_size) in chunks {
-        let mut data_chunk= vec![0u8; chunk_size as usize];
+        let mut data_chunk= vec![0u8; chunk_size];
         rdr.read_exact(&mut data_chunk).expect("Could not read data chunk");
         read_channels_from_bytes(&data_chunk, channel_group, previous_index, &mut decoder);
-        previous_index += n_record_chunk as usize;
+        previous_index += n_record_chunk;
     }
 }
 
@@ -235,28 +248,29 @@ fn read_channels_from_bytes(data_chunk: &[u8], channel_group: &mut Cg4, previous
     for (_rec_pos, cn) in channel_group.cn.iter_mut() {
         if cn.block.cn_type == 0 || cn.block.cn_type == 2 || cn.block.cn_type == 4 {
             // fixed length data channel, master channel of synchronisation channel
+            let pos_byte_beg = cn.pos_byte_beg as usize;
             match &mut cn.data {
                 ChannelData::Int8(data) => {
                         for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                            value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<i8>()];
+                            value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i8>()];
                             data[i + previous_index] = i8::from_le_bytes(value.try_into().expect("Could not read i8"));
                         }
                     },
                 ChannelData::UInt8(data) => {
                         for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                            value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<u8>()];
+                            value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u8>()];
                             data[i + previous_index] = u8::from_le_bytes(value.try_into().expect("Could not read u8"));
                         }
                     },
                 ChannelData::Int16(data) => {
                         if cn.endian {
                             for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<i16>()];
+                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i16>()];
                                 data[i + previous_index] = i16::from_be_bytes(value.try_into().expect("Could not read be i16"));
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<i16>()];
+                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i16>()];
                                 data[i + previous_index] = i16::from_le_bytes(value.try_into().expect("Could not read le i16"));
                             }
                         }
@@ -264,12 +278,12 @@ fn read_channels_from_bytes(data_chunk: &[u8], channel_group: &mut Cg4, previous
                 ChannelData::UInt16(data) => {
                         if cn.endian {
                             for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<u16>()];
+                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u16>()];
                                 data[i + previous_index] = u16::from_be_bytes(value.try_into().expect("Could not read be u16"));
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<u16>()];
+                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u16>()];
                                 data[i + previous_index] = u16::from_le_bytes(value.try_into().expect("Could not read le u16"));
                             }
                         }
@@ -277,12 +291,12 @@ fn read_channels_from_bytes(data_chunk: &[u8], channel_group: &mut Cg4, previous
                 ChannelData::Float16(data) => {
                         if cn.endian {
                             for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<f16>()];
+                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f16>()];
                                 data[i + previous_index] = f16::from_be_bytes(value.try_into().expect("Could not read be f16")).to_f32();
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<f16>()];
+                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f16>()];
                                 data[i + previous_index] = f16::from_le_bytes(value.try_into().expect("Could not read le f16")).to_f32();
                             }
                         }
@@ -290,12 +304,12 @@ fn read_channels_from_bytes(data_chunk: &[u8], channel_group: &mut Cg4, previous
                 ChannelData::Int24(data) => {
                         if cn.endian {
                             for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + 3];
+                                value = &record[pos_byte_beg..pos_byte_beg + 3];
                                 data[i + previous_index] = value.read_i24::<BigEndian>().expect("Could not read be i24");
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + 3];
+                                value = &record[pos_byte_beg..pos_byte_beg + 3];
                                 data[i + previous_index] = value.read_i24::<LittleEndian>().expect("Could not read le i24");
                             }
                         }
@@ -303,12 +317,12 @@ fn read_channels_from_bytes(data_chunk: &[u8], channel_group: &mut Cg4, previous
                 ChannelData::UInt24(data) => {
                         if cn.endian {
                             for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + 3];
+                                value = &record[pos_byte_beg..pos_byte_beg + 3];
                                 data[i + previous_index] = value.read_u24::<BigEndian>().expect("Could not read be u24");
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + 3];
+                                value = &record[pos_byte_beg..pos_byte_beg + 3];
                                 data[i + previous_index] = value.read_u24::<LittleEndian>().expect("Could not read le u24");
                             }
                         }
@@ -316,12 +330,12 @@ fn read_channels_from_bytes(data_chunk: &[u8], channel_group: &mut Cg4, previous
                 ChannelData::Int32(data) => {
                         if cn.endian {
                             for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<i32>()];
+                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i32>()];
                                 data[i + previous_index] = i32::from_be_bytes(value.try_into().expect("Could not read be i32"));
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<i32>()];
+                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i32>()];
                                 data[i + previous_index] = i32::from_le_bytes(value.try_into().expect("Could not read le i32"));
                             }
                         }
@@ -329,12 +343,12 @@ fn read_channels_from_bytes(data_chunk: &[u8], channel_group: &mut Cg4, previous
                 ChannelData::UInt32(data) => {
                         if cn.endian {
                             for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<u32>()];
+                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u32>()];
                                 data[i + previous_index] = u32::from_be_bytes(value.try_into().expect("Could not read be u32"));
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<u32>()];
+                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u32>()];
                                 data[i + previous_index] = u32::from_le_bytes(value.try_into().expect("Could not read le u32"));
                             }
                         }
@@ -342,12 +356,12 @@ fn read_channels_from_bytes(data_chunk: &[u8], channel_group: &mut Cg4, previous
                 ChannelData::Float32(data) => {
                         if cn.endian {
                             for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<f32>()];
+                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f32>()];
                                 data[i + previous_index] = f32::from_be_bytes(value.try_into().expect("Could not read be u32"));
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<f32>()];
+                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f32>()];
                                 data[i + previous_index] = f32::from_le_bytes(value.try_into().expect("Could not read le u32"));
                             }
                         }
@@ -355,12 +369,12 @@ fn read_channels_from_bytes(data_chunk: &[u8], channel_group: &mut Cg4, previous
                 ChannelData::Int48(data) => {
                         if cn.endian {
                             for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + 5];
+                                value = &record[pos_byte_beg..pos_byte_beg + 5];
                                 data[i + previous_index] = value.read_i48::<BigEndian>().expect("Could not read be i48");
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + 5];
+                                value = &record[pos_byte_beg..pos_byte_beg + 5];
                                 data[i + previous_index] = value.read_i48::<LittleEndian>().expect("Could not read le i48");
                             }
                         }
@@ -368,12 +382,12 @@ fn read_channels_from_bytes(data_chunk: &[u8], channel_group: &mut Cg4, previous
                 ChannelData::UInt48(data) => {
                         if cn.endian {
                             for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + 5];
+                                value = &record[pos_byte_beg..pos_byte_beg + 5];
                                 data[i + previous_index] = value.read_u48::<BigEndian>().expect("Could not read be u48");
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + 5];
+                                value = &record[pos_byte_beg..pos_byte_beg + 5];
                                 data[i + previous_index] = value.read_u48::<LittleEndian>().expect("Could not read le u48");
                             }
                         }
@@ -381,12 +395,12 @@ fn read_channels_from_bytes(data_chunk: &[u8], channel_group: &mut Cg4, previous
                 ChannelData::Int64(data) => {
                         if cn.endian {
                             for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<i64>()];
+                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i64>()];
                                 data[i + previous_index] = i64::from_be_bytes(value.try_into().expect("Could not read be i64"));
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<i64>()];
+                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i64>()];
                                 data[i + previous_index] = i64::from_le_bytes(value.try_into().expect("Could not read le i64"));
                             }
                         }
@@ -394,12 +408,12 @@ fn read_channels_from_bytes(data_chunk: &[u8], channel_group: &mut Cg4, previous
                 ChannelData::UInt64(data) => {
                         if cn.endian {
                             for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<u64>()];
+                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u64>()];
                                 data[i + previous_index] = u64::from_be_bytes(value.try_into().expect("Could not read be u64"));
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<u64>()];
+                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u64>()];
                                 data[i + previous_index] = u64::from_le_bytes(value.try_into().expect("Could not read le u64"));
                             }
                         }
@@ -407,12 +421,12 @@ fn read_channels_from_bytes(data_chunk: &[u8], channel_group: &mut Cg4, previous
                 ChannelData::Float64(data) => {
                         if cn.endian {
                             for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<f64>()];
+                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
                                 data[i + previous_index] = f64::from_be_bytes(value.try_into().expect("Could not read be f64"));
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                                value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<f64>()];
+                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
                                 data[i + previous_index] = f64::from_le_bytes(value.try_into().expect("Could not read le f64"));
                             }
                         }
@@ -424,16 +438,16 @@ fn read_channels_from_bytes(data_chunk: &[u8], channel_group: &mut Cg4, previous
                     let mut im_val: &[u8];
                     if cn.endian {
                         for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                            re_val = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<f16>()];
-                            im_val = &record[cn.pos_byte_beg as usize + std::mem::size_of::<f16>()..(cn.pos_byte_beg as usize) + 2 * std::mem::size_of::<f16>()];
+                            re_val = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f16>()];
+                            im_val = &record[pos_byte_beg + std::mem::size_of::<f16>()..pos_byte_beg + 2 * std::mem::size_of::<f16>()];
                             re = f16::from_be_bytes(re_val.try_into().expect("Could not read be real f16 complex")).to_f32();
                             im = f16::from_be_bytes(im_val.try_into().expect("Could not read be img f16 complex")).to_f32();
                             data[i + previous_index] = Complex::new(re, im);
                         }
                     } else {
                         for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                            re_val = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<f16>()];
-                            im_val = &record[cn.pos_byte_beg as usize + std::mem::size_of::<f16>()..(cn.pos_byte_beg as usize) + 2 * std::mem::size_of::<f16>()];
+                            re_val = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f16>()];
+                            im_val = &record[pos_byte_beg + std::mem::size_of::<f16>()..pos_byte_beg + 2 * std::mem::size_of::<f16>()];
                             re = f16::from_le_bytes(re_val.try_into().expect("Could not read le real f16 complex")).to_f32();
                             im = f16::from_le_bytes(im_val.try_into().expect("Could not read le img f16 complex")).to_f32();
                             data[i + previous_index] = Complex::new(re, im);}
@@ -446,16 +460,16 @@ fn read_channels_from_bytes(data_chunk: &[u8], channel_group: &mut Cg4, previous
                     let mut im_val: &[u8];
                     if cn.endian {
                         for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                            re_val = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<f32>()];
-                            im_val = &record[cn.pos_byte_beg as usize + std::mem::size_of::<f32>()..(cn.pos_byte_beg as usize) + 2 * std::mem::size_of::<f32>()];
+                            re_val = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f32>()];
+                            im_val = &record[pos_byte_beg + std::mem::size_of::<f32>()..pos_byte_beg + 2 * std::mem::size_of::<f32>()];
                             re = f32::from_be_bytes(re_val.try_into().expect("Could not read be real f32 complex"));
                             im = f32::from_be_bytes(im_val.try_into().expect("Could not read be img f32 complex"));
                             data[i + previous_index] = Complex::new(re, im);
                         }
                     } else {
                         for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                            re_val = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<f32>()];
-                            im_val = &record[cn.pos_byte_beg as usize + std::mem::size_of::<f32>()..(cn.pos_byte_beg as usize) + 2 * std::mem::size_of::<f32>()];
+                            re_val = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f32>()];
+                            im_val = &record[pos_byte_beg + std::mem::size_of::<f32>()..pos_byte_beg + 2 * std::mem::size_of::<f32>()];
                             re = f32::from_le_bytes(re_val.try_into().expect("Could not read le real f32 complex"));
                             im = f32::from_le_bytes(im_val.try_into().expect("Could not read le img f32 complex"));
                             data[i + previous_index] = Complex::new(re, im);}
@@ -468,16 +482,16 @@ fn read_channels_from_bytes(data_chunk: &[u8], channel_group: &mut Cg4, previous
                     let mut im_val: &[u8];
                     if cn.endian {
                         for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                            re_val = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<f64>()];
-                            im_val = &record[cn.pos_byte_beg as usize + std::mem::size_of::<f64>()..(cn.pos_byte_beg as usize) + 2 * std::mem::size_of::<f64>()];
+                            re_val = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
+                            im_val = &record[pos_byte_beg + std::mem::size_of::<f64>()..pos_byte_beg + 2 * std::mem::size_of::<f64>()];
                             re = f64::from_be_bytes(re_val.try_into().expect("Could not array"));
                             im = f64::from_be_bytes(im_val.try_into().expect("Could not array"));
                             data[i + previous_index] = Complex::new(re, im);
                         }
                     } else {
                         for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                            re_val = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg as usize) + std::mem::size_of::<f64>()];
-                            im_val = &record[cn.pos_byte_beg as usize + std::mem::size_of::<f64>()..(cn.pos_byte_beg as usize) + 2 * std::mem::size_of::<f64>()];
+                            re_val = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
+                            im_val = &record[pos_byte_beg + std::mem::size_of::<f64>()..pos_byte_beg + 2 * std::mem::size_of::<f64>()];
                             re = f64::from_le_bytes(re_val.try_into().expect("Could not read le real f64 complex"));
                             im = f64::from_le_bytes(im_val.try_into().expect("Could not read le img f64 complex"));
                             data[i + previous_index] = Complex::new(re, im);}
@@ -485,27 +499,27 @@ fn read_channels_from_bytes(data_chunk: &[u8], channel_group: &mut Cg4, previous
                     },
                 ChannelData::StringSBC(data) => {
                     for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                        value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg + cn.n_bytes) as usize];
+                        value = &record[pos_byte_beg..pos_byte_beg + cn.n_bytes as usize];
                         let(_result, _size, _replacement) = decoder.windows_1252.decode_to_string(&value, &mut data[(i + previous_index )as usize], false);}
                     },
                 ChannelData::StringUTF8(data) => {
                     for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                        value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg + cn.n_bytes) as usize];
+                        value = &record[pos_byte_beg..pos_byte_beg + cn.n_bytes as usize];
                         data[(i + previous_index )as usize] = str::from_utf8(&value).expect("Found invalid UTF-8").to_string();}
                     },
                 ChannelData::StringUTF16(data) => {
                     if cn.endian{
                         for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                            value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg + cn.n_bytes) as usize];
+                            value = &record[pos_byte_beg..pos_byte_beg + cn.n_bytes as usize];
                             let(_result, _size, _replacement) = decoder.utf_16_be.decode_to_string(&value, &mut data[(i + previous_index )as usize], false);}
                     } else {
                         for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                            value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg + cn.n_bytes) as usize];
+                            value = &record[pos_byte_beg..pos_byte_beg + cn.n_bytes as usize];
                             let(_result, _size, _replacement) = decoder.utf_16_le.decode_to_string(&value, &mut data[(i + previous_index )as usize], false);}
                     }},
                 ChannelData::ByteArray(data) => {
                     for (i, record) in data_chunk.chunks(channel_group.record_length as usize).enumerate() {
-                        value = &record[cn.pos_byte_beg as usize..(cn.pos_byte_beg + cn.n_bytes) as usize];
+                        value = &record[pos_byte_beg..pos_byte_beg + cn.n_bytes as usize];
                         data[(i + previous_index )as usize] = value.to_vec();}
                     },
             }
@@ -529,62 +543,29 @@ fn read_all_channels_sorted_from_bytes(data: &[u8], channel_group: &mut Cg4) {
 }
 
 fn read_all_channels_unsorted(rdr: &mut BufReader<&File>, dg: &mut Dg4, block_length: i64) {
-    let mut position: i64 = 24;
-    let mut record_counter: HashMap<u64, u64> = HashMap::new();
+    let data_block_length = block_length as usize;
+    let mut position: usize = 24;
+    let mut record_counter: HashMap<u64, (usize, Vec<u8>)> = HashMap::new();
     let mut decoder: Dec = Dec {windows_1252: WINDOWS_1252.new_decoder(), utf_16_be: UTF_16BE.new_decoder(), utf_16_le: UTF_16LE.new_decoder()};
     // initialise record counter
     for cg in dg.cg.values_mut() {
-        record_counter.insert(cg.block.cg_record_id, 0);
+        record_counter.insert(cg.block.cg_record_id, (0, Vec::new()));
     }
-    // record records
-    while position < block_length {
-        // reads record id
-        let rec_id: u64;
-        if dg.block.dg_rec_id_size == 1 {
-            rec_id = rdr.read_u8().expect("Could not convert record id u8") as u64;
-            position += 1;
-        } else if dg.block.dg_rec_id_size == 2 {
-            rec_id = rdr.read_u16::<LittleEndian>().expect("Could not convert record id u16") as u64;
-            position += 2;
-        } else if dg.block.dg_rec_id_size == 4 {
-            rec_id = rdr.read_u32::<LittleEndian>().expect("Could not convert record id u32") as u64;
-            position += 4;
-        } else if dg.block.dg_rec_id_size == 8 {
-            rec_id = rdr.read_u64::<LittleEndian>().expect("Could not convert record id u64") as u64;
-            position += 8;
-        } else {rec_id = 0}
-        // reads record based on record id
-        if let Some(cg) = dg.cg.get_mut(&rec_id) {
-            if (cg.block.cg_flags & 0b1) != 0 {
-                // VLSD channel
-                let length = rdr.read_u32::<LittleEndian>().expect("Could not read length") as u64;
-                let mut record= vec![0u8; length as usize];
-                rdr.read_exact(&mut record).expect("Could not VLSD data");
-                position += length as i64;
-                if let Some((target_rec_id, target_rec_pos)) = cg.vlsd {
-                    if let Some(target_cg) = dg.cg.get_mut(&target_rec_id) {
-                        if let Some(target_cn) = target_cg.cn.get_mut(&target_rec_pos) {
-                            if let Some(nrecord) = record_counter.get_mut(&rec_id) {
-                                save_vlsd(&mut target_cn.data, record, nrecord, &mut decoder, target_cn.endian);
-                                *nrecord += 1;
-                            }
-                        }
-                    }
-                }
-            } else {
-                let mut record= vec![0u8; cg.block.cg_data_bytes as usize];
-                rdr.read_exact(&mut record).expect("Could not read unsorted data");
-                if let Some(nrecord) = record_counter.get_mut(&rec_id){
-                    read_record_inplace(cg, &record, *nrecord, &0, &mut decoder);
-                    *nrecord += 1;
-                }
-                position += cg.block.cg_data_bytes as i64;
-            }
+    let mut data_chunk: Vec<u8>;
+    while position < data_block_length {
+        if (data_block_length - position) > CHUNK_SIZE_READING {
+            data_chunk= vec![0u8; CHUNK_SIZE_READING];
+            position += CHUNK_SIZE_READING;
+        } else {
+            data_chunk= vec![0u8; data_block_length - position];
+            position += data_block_length - position;
         }
+        rdr.read_exact(&mut data_chunk).expect("Could not read data chunk");
+        read_all_channels_unsorted_from_bytes(&mut data_chunk, dg, &mut record_counter, &mut decoder);
     }
 }
 
-fn save_vlsd(data: &mut ChannelData, record: Vec<u8>, nrecord: &u64, decoder: &mut Dec, endian: bool) {
+fn save_vlsd(data: &mut ChannelData, record: &[u8], nrecord: &usize, decoder: &mut Dec, endian: bool) {
     match data {
         ChannelData::Int8(_) => {},
         ChannelData::UInt8(_) => {},
@@ -605,70 +586,92 @@ fn save_vlsd(data: &mut ChannelData, record: Vec<u8>, nrecord: &u64, decoder: &m
         ChannelData::Complex32(_) => {},
         ChannelData::Complex64(_) => {},
         ChannelData::StringSBC(array) => {
-            let(_result, _size, _replacement) = decoder.windows_1252.decode_to_string(&record, &mut array[*nrecord as usize], false);},
+            let(_result, _size, _replacement) = decoder.windows_1252.decode_to_string(&record, &mut array[*nrecord], false);},
         ChannelData::StringUTF8(array) => {
             array[*nrecord as usize] = str::from_utf8(&record).expect("Found invalid UTF-8").to_string();
         },
         ChannelData::StringUTF16(array) => {
             if endian{
-                let(_result, _size, _replacement) = decoder.utf_16_be.decode_to_string(&record, &mut array[*nrecord as usize], false);
+                let(_result, _size, _replacement) = decoder.utf_16_be.decode_to_string(&record, &mut array[*nrecord], false);
             } else {
-                let(_result, _size, _replacement) = decoder.utf_16_le.decode_to_string(&record, &mut array[*nrecord as usize], false);
+                let(_result, _size, _replacement) = decoder.utf_16_le.decode_to_string(&record, &mut array[*nrecord], false);
             };
         },
         ChannelData::ByteArray(_) => todo!(),
     }
 }
 
-fn read_all_channels_unsorted_from_bytes(data: Vec<u8>, dg: &mut Dg4) {
+fn read_all_channels_unsorted_from_bytes(data: &mut Vec<u8>, dg: &mut Dg4, record_counter: &mut HashMap<u64, (usize, Vec<u8>)>, decoder: &mut Dec) {
     let mut position: usize = 0;
-    let mut record_counter: HashMap<u64, u64> = HashMap::new();
-    let mut decoder: Dec = Dec {windows_1252: WINDOWS_1252.new_decoder(), utf_16_be: UTF_16BE.new_decoder(), utf_16_le: UTF_16LE.new_decoder()};
-    // initialise record counter
-    for cg in dg.cg.values_mut() {
-        record_counter.insert(cg.block.cg_record_id, 0);
-    }
     let data_length = data.len();
-    let mut rdr = Cursor::new(data);
     // record records
-    while position < data_length {
+    let mut remaining: usize = data_length - position;
+    while remaining > 0 {
         // reads record id
         let rec_id: u64;
-        if dg.block.dg_rec_id_size == 1 {
-            rec_id = rdr.read_u8().expect("Could not convert record id u8") as u64;
-        } else if dg.block.dg_rec_id_size == 2 {
-            rec_id = rdr.read_u16::<LittleEndian>().expect("Could not convert record id u16") as u64;
-        } else if dg.block.dg_rec_id_size == 4 {
-            rec_id = rdr.read_u32::<LittleEndian>().expect("Could not convert record id u32") as u64;
-        } else if dg.block.dg_rec_id_size == 8 {
-            rec_id = rdr.read_u64::<LittleEndian>().expect("Could not convert record id u64") as u64;
-        } else {rec_id = 0}
+        let dg_rec_id_size = dg.block.dg_rec_id_size as usize;
+        if dg_rec_id_size == 1 && remaining >= 1 {
+            rec_id = data[position].try_into().expect("Could not convert record id u8");
+        } else if dg_rec_id_size == 2 && remaining >= 2 {
+            let rec = &data[position..position + std::mem::size_of::<u16>()];
+            rec_id = u16::from_le_bytes(rec.try_into().expect("Could not convert record id u16")) as u64;
+        } else if dg_rec_id_size == 4 && remaining >= 4 {
+            let rec = &data[position..position + std::mem::size_of::<u32>()];
+            rec_id = u32::from_le_bytes(rec.try_into().expect("Could not convert record id u32")) as u64;
+        } else if dg_rec_id_size == 8 && remaining >= 8 {
+            let rec = &data[position..position + std::mem::size_of::<u64>()];
+            rec_id = u64::from_le_bytes(rec.try_into().expect("Could not convert record id u64")) as u64;
+        } else {
+            break; // not enough data remaining
+        }
         // reads record based on record id
         if let Some(cg) = dg.cg.get_mut(&rec_id) {
-            if (cg.block.cg_flags & 0b1) != 0 {
-                // VLSD channel
-                let length = rdr.read_u32::<LittleEndian>().expect("Could not read length") as u64;
-                let mut record= vec![0u8; length as usize];
-                rdr.read_exact(&mut record).expect("Could not VLSD data");
-                if let Some((target_rec_id, target_rec_pos)) = cg.vlsd {
-                    if let Some(target_cg) = dg.cg.get_mut(&target_rec_id) {
-                        if let Some(target_cn) = target_cg.cn.get_mut(&target_rec_pos) {
-                            if let Some(nrecord) = record_counter.get_mut(&rec_id) {
-                                save_vlsd(&mut target_cn.data, record, nrecord, &mut decoder, target_cn.endian);
-                                *nrecord += 1;
+            let record_length = cg.record_length as usize;
+            if remaining >= record_length {
+                if (cg.block.cg_flags & 0b1) != 0 {
+                    // VLSD channel
+                    position += dg_rec_id_size;
+                    let len = &data[position..position + std::mem::size_of::<u32>()];
+                    let length: usize = u32::from_le_bytes(len.try_into().expect("Could not read length")) as usize;
+                    position += std::mem::size_of::<u32>();
+                    let record = &data[position..position+ length];
+                    if let Some((target_rec_id, target_rec_pos)) = cg.vlsd {
+                        if let Some(target_cg) = dg.cg.get_mut(&target_rec_id) {
+                            if let Some(target_cn) = target_cg.cn.get_mut(&target_rec_pos) {
+                                if let Some((nrecord, _)) = record_counter.get_mut(&rec_id) {
+                                    save_vlsd(&mut target_cn.data, record, nrecord, decoder, target_cn.endian);
+                                    *nrecord += 1;
+                                }
                             }
                         }
                     }
+                    position += length;
+                } else {
+                    let record = &data[position..position + cg.block.cg_data_bytes as usize];
+                    if let Some((nrecord, data)) = record_counter.get_mut(&rec_id){
+                        data.extend(record);
+                    }
+                    position += record_length;
                 }
             } else {
-                let mut record= vec![0u8; cg.block.cg_data_bytes as usize];
-                rdr.read_exact(&mut record).expect("Could not read unsorted data");
-                if let Some(nrecord) = record_counter.get_mut(&rec_id){
-                    read_record_inplace(cg, &record, *nrecord, &0, &mut decoder);
-                    *nrecord += 1;
-                }
-                position += cg.record_length as usize;
+                break; // not enough data remaining
             }
+        }
+        remaining = data_length - position;
+    }
+
+    // removes consumed records from data and leave remaining that could not be processed.
+    let remaining = data[position..].to_owned();
+    data.clear(); // empty data but keeps capacity
+    {
+        let (left, _) = data.split_at_mut(remaining.len());
+        left.copy_from_slice(&remaining);
+    }
+
+    for (rec_id, (index, data)) in record_counter.iter_mut() {
+        if let Some(channel_group) = dg.cg.get_mut(rec_id) {
+            read_channels_from_bytes(&data, channel_group, *index, decoder);
+            data.clear(); // clears data for new block, keeping capacity
         }
     }
 }
