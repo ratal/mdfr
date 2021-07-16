@@ -647,7 +647,7 @@ fn read_all_channels_unsorted_from_bytes(data: &mut Vec<u8>, dg: &mut Dg4, recor
                     }
                     position += length;
                 } else {
-                    let record = &data[position..position + cg.block.cg_data_bytes as usize];
+                    let record = &data[position..position + cg.record_length as usize];
                     if let Some((nrecord, data)) = record_counter.get_mut(&rec_id){
                         data.extend(record);
                     }
@@ -661,17 +661,14 @@ fn read_all_channels_unsorted_from_bytes(data: &mut Vec<u8>, dg: &mut Dg4, recor
     }
 
     // removes consumed records from data and leave remaining that could not be processed.
-    let remaining = data[position..].to_owned();
-    data.clear(); // empty data but keeps capacity
-    {
-        let (left, _) = data.split_at_mut(remaining.len());
-        left.copy_from_slice(&remaining);
-    }
+    let remaining_vect = data[position..].to_owned();
+    data.clear();  // removes data but keeps capacity
+    data.extend(remaining_vect);
 
-    for (rec_id, (index, data)) in record_counter.iter_mut() {
+    for (rec_id, (index, record_data)) in record_counter.iter_mut() {
         if let Some(channel_group) = dg.cg.get_mut(rec_id) {
-            read_channels_from_bytes(&data, channel_group, *index, decoder);
-            data.clear(); // clears data for new block, keeping capacity
+            read_channels_from_bytes(&record_data, channel_group, *index, decoder);
+            record_data.clear(); // clears data for new block, keeping capacity
         }
     }
 }
