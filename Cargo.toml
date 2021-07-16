@@ -22,6 +22,9 @@ encoding_rs = "0.8" # for endian management
 #tokio = "1.5"
 #numpy = "0.13"
 ndarray = {version = "0.15", features = ["rayon"]} # for nd arrays
+rustfilt = "0.2"
+yazi = "0.1"
+transpose = "0.2"
 
 #[lib]
 #name = "mdfr"
@@ -36,11 +39,13 @@ name = "mdf_benchmark"
 harness = false
 
 [profile.release]
-debug = true
+opt-level = 3
+debug = 2
 lot = true
 
 [profile.bench]
-debug = true
+debug = false
+opt-level = 3
 
 [rust]
-debuginfo-level = 1
+debuginfo-level = 2
