@@ -830,103 +830,6 @@ impl Cg4 {
     pub fn new_channel(&mut self, bit_position: u32, cn: Cn4) {
         self.cn.insert(bit_position, cn);
     }
-    /// append all input arrays into self
-    pub fn append(&mut self, cg: &mut Cg4) {
-        for (cn_record_position, cn) in cg.cn.iter_mut() {
-            if let Some(target_cn) = self.cn.get_mut(cn_record_position){
-                match &mut target_cn.data {
-                    ChannelData::Int8(array) => 
-                        if let ChannelData::Int8(data) = &cn.data {
-                            array.append(Axis(0), data.view()).expect("could not append arrays");
-                        } else {panic!("channel array type not matching ")},
-                    ChannelData::UInt8(array) => 
-                        if let ChannelData::UInt8(data) = &cn.data {
-                            array.append(Axis(0), data.view()).expect("could not append arrays");
-                        } else {panic!("channel array type not matching ")},
-                    ChannelData::Int16(array) => 
-                        if let ChannelData::Int16(data) = &cn.data {
-                            array.append(Axis(0), data.view()).expect("could not append arrays");
-                        } else {panic!("channel array type not matching ")},
-                    ChannelData::UInt16(array) => 
-                        if let ChannelData::UInt16(data) = &cn.data {
-                            array.append(Axis(0), data.view()).expect("could not append arrays");
-                        } else {panic!("channel array type not matching ")},
-                    ChannelData::Float16(array) => 
-                        if let ChannelData::Float16(data) = &cn.data {
-                            array.append(Axis(0), data.view()).expect("could not append arrays");
-                        } else {panic!("channel array type not matching ")},
-                    ChannelData::Int24(array) => 
-                        if let ChannelData::Int24(data) = &cn.data {
-                            array.append(Axis(0), data.view()).expect("could not append arrays");
-                        } else {panic!("channel array type not matching ")},
-                    ChannelData::UInt24(array) => 
-                        if let ChannelData::UInt24(data) = &cn.data {
-                            array.append(Axis(0), data.view()).expect("could not append arrays");
-                        } else {panic!("channel array type not matching ")},
-                    ChannelData::Int32(array) => 
-                        if let ChannelData::Int32(data) = &cn.data {
-                            array.append(Axis(0), data.view()).expect("could not append arrays");
-                        } else {panic!("channel array type not matching ")},
-                    ChannelData::UInt32(array) => 
-                        if let ChannelData::UInt32(data) = &cn.data {
-                            array.append(Axis(0), data.view()).expect("could not append arrays");
-                        } else {panic!("channel array type not matching ")},
-                    ChannelData::Float32(array) => 
-                        if let ChannelData::Float32(data) = &cn.data {
-                            array.append(Axis(0), data.view()).expect("could not append arrays");
-                        } else {panic!("channel array type not matching ")},
-                    ChannelData::Int48(array) => 
-                        if let ChannelData::Int48(data) = &cn.data {
-                            array.append(Axis(0), data.view()).expect("could not append arrays");
-                        } else {panic!("channel array type not matching ")},
-                    ChannelData::UInt48(array) => 
-                        if let ChannelData::UInt48(data) = &cn.data {
-                            array.append(Axis(0), data.view()).expect("could not append arrays");
-                        } else {panic!("channel array type not matching ")},
-                    ChannelData::Int64(array) => 
-                        if let ChannelData::Int64(data) = &cn.data {
-                            array.append(Axis(0), data.view()).expect("could not append arrays");
-                        } else {panic!("channel array type not matching ")},
-                    ChannelData::UInt64(array) => 
-                        if let ChannelData::UInt64(data) = &cn.data {
-                            array.append(Axis(0), data.view()).expect("could not append arrays");
-                        } else {panic!("channel array type not matching ")},
-                    ChannelData::Float64(array) => 
-                        if let ChannelData::Float64(data) = &cn.data {
-                            array.append(Axis(0), data.view()).expect("could not append arrays");
-                        } else {panic!("channel array type not matching ")},
-                    ChannelData::Complex16(array) => 
-                        if let ChannelData::Complex16(data) = &cn.data {
-                            array.append(Axis(0), data.view()).expect("could not append arrays");
-                        } else {panic!("channel array type not matching ")},
-                    ChannelData::Complex32(array) => 
-                        if let ChannelData::Complex32(data) = &cn.data {
-                            array.append(Axis(0), data.view()).expect("could not append arrays");
-                        } else {panic!("channel array type not matching ")},
-                    ChannelData::Complex64(array) => 
-                        if let ChannelData::Complex64(data) = &cn.data {
-                            array.append(Axis(0), data.view()).expect("could not append arrays");
-                        } else {panic!("channel array type not matching ")},
-                    ChannelData::StringSBC(array) => 
-                        if let ChannelData::StringSBC(data) = &mut cn.data {
-                            array.append(data);
-                        } else {panic!("channel enum not matching ")},
-                    ChannelData::StringUTF8(array) => 
-                    if let ChannelData::StringUTF8(data) = &mut cn.data {
-                        array.append(data);
-                    } else {panic!("channel enum not matching ")},
-                    ChannelData::StringUTF16(array) => 
-                        if let ChannelData::StringUTF16(data) = &mut cn.data {
-                            array.append(data);
-                        } else {panic!("channel enum not matching ")},
-                    ChannelData::ByteArray(array) => 
-                        if let ChannelData::ByteArray(data) = &mut cn.data {
-                            array.append(data);
-                        } else {panic!("channel enum not matching ")},
-                }
-            } else {panic!("channel not found")}
-        }
-    }
     pub fn process_invalid_bits(&mut self) {
         // get invalid bytes
         if let Some(invalid_bytes) = self.cn.get(&(self.record_length - self.block.cg_inval_bytes)) {
@@ -1032,7 +935,7 @@ pub struct Cn4 {
     pub invalid_bit: Option<ChannelData>,
 }
 
-type CnType = HashMap<u32, Cn4>;
+pub(crate) type CnType = HashMap<u32, Cn4>;
 
 pub fn parse_cn4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sharable: &mut SharableBlocks, record_id_size: u8) 
         -> (CnType, i64) {
