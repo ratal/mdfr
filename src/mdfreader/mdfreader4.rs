@@ -13,9 +13,12 @@ use encoding_rs::{Decoder, UTF_16BE, UTF_16LE, WINDOWS_1252};
 use ndarray::{Array1, OwnedRepr, ArrayBase, Dim, Zip};
 use rayon::prelude::*;
 
-// use ndarray::parallel::prelude::*;
+// The following constant represents the of data chunk to be read and processed.
+// a big chunk will improve performance but consume more memory
+// a small wil not consume too much memory but will cause many read calls, penalising performance
 const CHUNK_SIZE_READING: usize = 524288; // can be tuned according to architecture
 
+/// Reads the file data based on headers information contained in info parameter
 pub fn mdfreader4<'a>(rdr: &'a mut BufReader<&File>, info: &'a mut MdfInfo4) {
     let mut position: i64 = 0;
     // read file data
@@ -28,15 +31,17 @@ pub fn mdfreader4<'a>(rdr: &'a mut BufReader<&File>, info: &'a mut MdfInfo4) {
             position = read_data(rdr, id, dg, dg.block.dg_data);
         }
         apply_bit_mask_offset(dg);
-        // process all invalid bits
+        // channel_group invalid bits calculation
         for channel_group in dg.cg.values_mut() {
             // channel_group.process_invalid_bits();
         }
-        // conversion of all channels
+        // conversion of all channels to physical values
         convert_all_channels(dg, &info.sharable.cc);
     }
 }
 
+/// Reads all kind of data layout : simple DT or DV, sorted or unsorted, Data List,
+/// compressed data blocks DZ or Sample DATA
 fn read_data(rdr: &mut BufReader<&File>, id: [u8; 4], dg: &mut Dg4, mut position: i64) -> i64 {
     // block header is already read
     let mut decoder: Dec = Dec {windows_1252: WINDOWS_1252.new_decoder(), utf_16_be: UTF_16BE.new_decoder(), utf_16_le: UTF_16LE.new_decoder()};
@@ -125,8 +130,8 @@ fn read_data(rdr: &mut BufReader<&File>, id: [u8; 4], dg: &mut Dg4, mut position
     position
 }
 
-fn parser_dl4(rdr: &mut BufReader<&File>, mut position: i64) -> (Vec<Dl4Block>, i64) {
-    // Read all DL Blocks
+/// Reads all DL Blocks and returns a vect of them
+fn parser_dl4(rdr: &mut BufReader<&File>, mut position: i64) -> (Vec<Dl4Block>, i64) {  
     let mut dl_blocks: Vec<Dl4Block> = Vec::new();
     let (block, pos) = parser_dl4_block(rdr, position, position);
     position = pos;
@@ -144,6 +149,7 @@ fn parser_dl4(rdr: &mut BufReader<&File>, mut position: i64) -> (Vec<Dl4Block>, 
     (dl_blocks, position)
 }
 
+/// Reads all sorted data blocks pointed by DL4 Blocks
 fn parser_dl4_sorted(rdr: &mut BufReader<&File>, dl_blocks: Vec<Dl4Block>, mut position: i64, channel_group: &mut Cg4) -> i64 {
     // initialises the arrays
     initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone());
@@ -182,6 +188,7 @@ fn parser_dl4_sorted(rdr: &mut BufReader<&File>, dl_blocks: Vec<Dl4Block>, mut p
     position
 }
 
+/// Reads all unsorted data blocks pointed by DL4 Blocks
 fn parser_dl4_unsorted(rdr: &mut BufReader<&File>, dg: &mut Dg4, dl_blocks: Vec<Dl4Block>, mut position: i64) -> i64 {
     // Read all data blocks
     let mut data: Vec<u8> = Vec::new();
@@ -211,12 +218,13 @@ fn parser_dl4_unsorted(rdr: &mut BufReader<&File>, dg: &mut Dg4, dl_blocks: Vec<
     position
 }
 
+/// Returns chunk size and corresponding number of records from a channel group
 fn generate_chunks(channel_group: &Cg4) -> Vec<(usize, usize)>{
     let record_length = channel_group.record_length as usize;
     let cg_cycle_count = channel_group.block.cg_cycle_count as usize;
-    let n_chunks = (record_length * cg_cycle_count) / CHUNK_SIZE_READING + 1;
-    let chunk_length = (record_length * cg_cycle_count) / n_chunks;
-    let n_record_chunk = chunk_length / record_length;
+    let n_chunks = (record_length * cg_cycle_count) / CHUNK_SIZE_READING + 1; // number of chunks
+    let chunk_length = (record_length * cg_cycle_count) / n_chunks; // chunks length
+    let n_record_chunk = chunk_length / record_length; // number of records in chunk
     let chunck = (n_record_chunk, record_length * n_record_chunk);
     let mut chunks = vec![chunck; n_chunks];
     let n_record_chunk = cg_cycle_count - n_record_chunk * n_chunks;
@@ -226,12 +234,12 @@ fn generate_chunks(channel_group: &Cg4) -> Vec<(usize, usize)>{
     chunks
 }
 
-//#[inline]
+/// Reads all channels from given channel group having sorted data blocks
 fn read_all_channels_sorted(rdr: &mut BufReader<&File>, channel_group: &mut Cg4) {
     let chunks =  generate_chunks(channel_group);
     // initialises the arrays
     initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone());
-    // read by chunks and store in cg struct
+    // read by chunks and store in channel array
     let mut previous_index: usize = 0;
     
     for (n_record_chunk, chunk_size) in chunks {
@@ -242,11 +250,13 @@ fn read_all_channels_sorted(rdr: &mut BufReader<&File>, channel_group: &mut Cg4)
     }
 }
 
+// copies data from data_chunk into each channel array
 fn read_channels_from_bytes(data_chunk: &[u8], channels: &mut CnType, record_length: usize, previous_index: usize) {
+    // iterates for each channel in parallel with rayon crate
     channels.par_iter_mut().for_each( |(_rec_pos, cn)| {
         if cn.block.cn_type == 0 || cn.block.cn_type == 2 || cn.block.cn_type == 4 {
-            let mut value: &[u8];
             // fixed length data channel, master channel of synchronisation channel
+            let mut value: &[u8];  // value of channel at record
             let pos_byte_beg = cn.pos_byte_beg as usize;
             match &mut cn.data {
                 ChannelData::Int8(data) => {
@@ -534,6 +544,7 @@ fn read_channels_from_bytes(data_chunk: &[u8], channels: &mut CnType, record_len
     })
 }
 
+// copies complete sorted data block (not chunk) into each channel array
 fn read_all_channels_sorted_from_bytes(data: &[u8], channel_group: &mut Cg4) {
     // initialises the arrays
     initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone());
@@ -543,21 +554,26 @@ fn read_all_channels_sorted_from_bytes(data: &[u8], channel_group: &mut Cg4) {
     }
 }
 
+/// Reads unsorted data block chunk by chunk 
 fn read_all_channels_unsorted(rdr: &mut BufReader<&File>, dg: &mut Dg4, block_length: i64) {
     let data_block_length = block_length as usize;
     let mut position: usize = 24;
     let mut record_counter: HashMap<u64, (usize, Vec<u8>)> = HashMap::new();
     let mut decoder: Dec = Dec {windows_1252: WINDOWS_1252.new_decoder(), utf_16_be: UTF_16BE.new_decoder(), utf_16_le: UTF_16LE.new_decoder()};
-    // initialise record counter
+    // initialise record counter that will contain sorted data blocks for each channel group
     for cg in dg.cg.values_mut() {
         record_counter.insert(cg.block.cg_record_id, (0, Vec::new()));
     }
+
+    // reads the sorted data block into chunks
     let mut data_chunk: Vec<u8>;
     while position < data_block_length {
         if (data_block_length - position) > CHUNK_SIZE_READING {
+            // not last chunk of data
             data_chunk= vec![0u8; CHUNK_SIZE_READING];
             position += CHUNK_SIZE_READING;
         } else {
+            // last chunk of data
             data_chunk= vec![0u8; data_block_length - position];
             position += data_block_length - position;
         }
@@ -566,6 +582,7 @@ fn read_all_channels_unsorted(rdr: &mut BufReader<&File>, dg: &mut Dg4, block_le
     }
 }
 
+/// stores a vlsd record into channel vect (ChannelData)
 fn save_vlsd(data: &mut ChannelData, record: &[u8], nrecord: &usize, decoder: &mut Dec, endian: bool) {
     match data {
         ChannelData::Int8(_) => {},
@@ -589,7 +606,7 @@ fn save_vlsd(data: &mut ChannelData, record: &[u8], nrecord: &usize, decoder: &m
         ChannelData::StringSBC(array) => {
             let(_result, _size, _replacement) = decoder.windows_1252.decode_to_string(&record, &mut array[*nrecord], false);},
         ChannelData::StringUTF8(array) => {
-            array[*nrecord as usize] = str::from_utf8(&record).expect("Found invalid UTF-8").to_string();
+            array[*nrecord] = str::from_utf8(&record).expect("Found invalid UTF-8").to_string();
         },
         ChannelData::StringUTF16(array) => {
             if endian{
@@ -602,10 +619,11 @@ fn save_vlsd(data: &mut ChannelData, record: &[u8], nrecord: &usize, decoder: &m
     }
 }
 
+/// read record by record from unsorted data block into sorted data block, then copy data into channel arrays 
 fn read_all_channels_unsorted_from_bytes(data: &mut Vec<u8>, dg: &mut Dg4, record_counter: &mut HashMap<u64, (usize, Vec<u8>)>, decoder: &mut Dec) {
     let mut position: usize = 0;
     let data_length = data.len();
-    // record records
+    // unsort data into sorted data blocks, except for VLSD CG.
     let mut remaining: usize = data_length - position;
     while remaining > 0 {
         // reads record id
@@ -648,6 +666,7 @@ fn read_all_channels_unsorted_from_bytes(data: &mut Vec<u8>, dg: &mut Dg4, recor
                     }
                     position += length;
                 } else {
+                    // Not VLSD channel
                     let record = &data[position..position + cg.record_length as usize];
                     if let Some((_nrecord, data)) = record_counter.get_mut(&rec_id){
                         data.extend(record);
@@ -661,11 +680,12 @@ fn read_all_channels_unsorted_from_bytes(data: &mut Vec<u8>, dg: &mut Dg4, recor
         remaining = data_length - position;
     }
 
-    // removes consumed records from data and leave remaining that could not be processed.
+    // removes consumed records from data and leaves remaining that could not be processed.
     let remaining_vect = data[position..].to_owned();
     data.clear();  // removes data but keeps capacity
     data.extend(remaining_vect);
 
+    // From sorted data block, copies data in channels arrays
     for (rec_id, (index, record_data)) in record_counter.iter_mut() {
         if let Some(channel_group) = dg.cg.get_mut(rec_id) {
             read_channels_from_bytes(&record_data, &mut channel_group.cn, channel_group.record_length as usize, *index);
@@ -674,21 +694,22 @@ fn read_all_channels_unsorted_from_bytes(data: &mut Vec<u8>, dg: &mut Dg4, recor
     }
 }
 
+/// decoder for String SBC and UTF16 Le & Be
 struct Dec {
     windows_1252: Decoder,
     utf_16_be: Decoder,
     utf_16_le: Decoder,
 }
 
-//#[inline]
+/// initialise ndarrays for the data group/block
 fn initialise_arrays(channel_group: &mut Cg4, n_record_chunk: &u64) {
-    // initialise ndarrays for the data group/block
+    // creates zeroed array in parallel for each channel contained in channel group
     channel_group.cn.par_iter_mut().for_each(|(_cn_record_position, cn)| {
         cn.data = data_init(cn.block.cn_type, cn.block.cn_data_type, cn.n_bytes, *n_record_chunk);
     })
 }
 
-//#[inline]
+/// applies bit mask if required in channel block
 fn apply_bit_mask_offset(dg: &mut Dg4) {
     // apply bit shift and masking
     for channel_group in dg.cg.values_mut() {
@@ -764,6 +785,7 @@ fn apply_bit_mask_offset(dg: &mut Dg4) {
     }
 }
 
+/// channel data type enum
 #[derive(Debug, Clone)]
 pub enum ChannelData {
     Int8(Array1<i8>),
@@ -788,8 +810,6 @@ pub enum ChannelData {
     StringUTF8(Vec<String>),
     StringUTF16(Vec<String>),
     ByteArray(Vec<Vec<u8>>),
-    // CANopenDate([u8; 7]),
-    // CANopenTime([u8; 6]),
 }
 
 impl ChannelData {
@@ -826,6 +846,7 @@ impl Default for ChannelData {
     fn default() -> Self { ChannelData::UInt8(Array1::<u8>::zeros((0, ))) }
 }
 
+/// Initialises a channel array with cycle_count zeroes and correct depending of cn_type, cn_data_type and number of bytes
 pub fn data_init(cn_type: u8, cn_data_type: u8, n_bytes: u32, cycle_count: u64) -> ChannelData {
     let data_type: ChannelData;
     if cn_type != 3 || cn_type != 6 {
@@ -897,6 +918,7 @@ pub fn data_init(cn_type: u8, cn_data_type: u8, n_bytes: u32, cycle_count: u64) 
     data_type
 }
 
+/// convert all channel arrays into physical values as required by CCBlock content
 fn convert_all_channels(dg: &mut Dg4, cc: &HashMap<i64, Cc4Block>) {
     for channel_group in dg.cg.values_mut() {
         for (_cn_record_position, cn) in channel_group.cn.iter_mut() {
@@ -911,6 +933,7 @@ fn convert_all_channels(dg: &mut Dg4, cc: &HashMap<i64, Cc4Block>) {
     }
 }
 
+/// Apply linear conversion to get physical data
 fn linear_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
     let p1 = cc_val[0];
     let p2 = cc_val[1];
@@ -988,6 +1011,7 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
     }
 }
 
+// Apply rational conversion to get physical data
 fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
     let p1 = cc_val[0];
     let p2 = cc_val[1];
