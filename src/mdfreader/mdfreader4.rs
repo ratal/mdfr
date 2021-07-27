@@ -378,12 +378,12 @@ fn read_channels_from_bytes(data_chunk: &[u8], channels: &mut CnType, record_len
                 ChannelData::Int48(data) => {
                         if cn.endian {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record[pos_byte_beg..pos_byte_beg + 5];
+                                value = &record[pos_byte_beg..pos_byte_beg + 6];
                                 data[i + previous_index] = value.read_i48::<BigEndian>().expect("Could not read be i48");
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record[pos_byte_beg..pos_byte_beg + 5];
+                                value = &record[pos_byte_beg..pos_byte_beg + 6];
                                 data[i + previous_index] = value.read_i48::<LittleEndian>().expect("Could not read le i48");
                             }
                         }
@@ -391,12 +391,12 @@ fn read_channels_from_bytes(data_chunk: &[u8], channels: &mut CnType, record_len
                 ChannelData::UInt48(data) => {
                         if cn.endian {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record[pos_byte_beg..pos_byte_beg + 5];
+                                value = &record[pos_byte_beg..pos_byte_beg + 6];
                                 data[i + previous_index] = value.read_u48::<BigEndian>().expect("Could not read be u48");
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record[pos_byte_beg..pos_byte_beg + 5];
+                                value = &record[pos_byte_beg..pos_byte_beg + 6];
                                 data[i + previous_index] = value.read_u48::<LittleEndian>().expect("Could not read le u48");
                             }
                         }
@@ -507,32 +507,37 @@ fn read_channels_from_bytes(data_chunk: &[u8], channels: &mut CnType, record_len
                         }
                     },
                 ChannelData::StringSBC(data) => {
+                    let n_bytes = cn.n_bytes as usize;
                     let mut decoder = WINDOWS_1252.new_decoder();
                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                        value = &record[pos_byte_beg..pos_byte_beg + cn.n_bytes as usize];
-                        let(_result, _size, _replacement) = decoder.decode_to_string(&value, &mut data[(i + previous_index )as usize], false);}
+                        value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                        let(_result, _size, _replacement) = decoder.decode_to_string(&value, &mut data[i + previous_index], false);}
                     },
                 ChannelData::StringUTF8(data) => {
+                    let n_bytes = cn.n_bytes as usize;
                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                        value = &record[pos_byte_beg..pos_byte_beg + cn.n_bytes as usize];
-                        data[(i + previous_index )as usize] = str::from_utf8(&value).expect("Found invalid UTF-8").to_string();}
+                        value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                        data[i + previous_index] = str::from_utf8(&value).expect("Found invalid UTF-8").to_string();}
                     },
                 ChannelData::StringUTF16(data) => {
+                    let n_bytes = cn.n_bytes as usize;
                     if cn.endian{
                         let mut decoder = UTF_16BE.new_decoder();
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                            value = &record[pos_byte_beg..pos_byte_beg + cn.n_bytes as usize];
-                            let(_result, _size, _replacement) = decoder.decode_to_string(&value, &mut data[(i + previous_index )as usize], false);}
+                            value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                            let(_result, _size, _replacement) = decoder.decode_to_string(&value, &mut data[i + previous_index], false);}
                     } else {
                         let mut decoder = UTF_16LE.new_decoder();
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                            value = &record[pos_byte_beg..pos_byte_beg + cn.n_bytes as usize];
-                            let(_result, _size, _replacement) = decoder.decode_to_string(&value, &mut data[(i + previous_index )as usize], false);}
+                            value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                            let(_result, _size, _replacement) = decoder.decode_to_string(&value, &mut data[i + previous_index], false);}
                     }},
                 ChannelData::ByteArray(data) => {
+                    let n_bytes = cn.n_bytes as usize;
                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                        value = &record[pos_byte_beg..pos_byte_beg + cn.n_bytes as usize];
-                        data[(i + previous_index )as usize] = value.to_vec();}
+                        value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                        let index = (i + previous_index) * n_bytes;
+                        data[index .. index + n_bytes].copy_from_slice(value);}
                     },
             }
         } else if cn.block.cn_type == 5 {
@@ -809,11 +814,11 @@ pub enum ChannelData {
     StringSBC(Vec<String>),
     StringUTF8(Vec<String>),
     StringUTF16(Vec<String>),
-    ByteArray(Vec<Vec<u8>>),
+    ByteArray(Vec<u8>),
 }
 
 impl ChannelData {
-    pub fn zeros(&self, cycle_count: u64) -> ChannelData {
+    pub fn zeros(&self, cycle_count: u64, n_bytes: u32) -> ChannelData {
         match self {
             ChannelData::Int8(_) => ChannelData::Int8(ArrayBase::<OwnedRepr<i8>, Dim<[usize; 1]>>::zeros((cycle_count as usize,))),
             ChannelData::UInt8(_) => ChannelData::UInt8(ArrayBase::<OwnedRepr<u8>, Dim<[usize; 1]>>::zeros((cycle_count as usize,))),
@@ -836,8 +841,7 @@ impl ChannelData {
             ChannelData::StringSBC(_) => ChannelData::StringSBC(vec![String::new(); cycle_count as usize]),
             ChannelData::StringUTF8(_) => ChannelData::StringUTF8(vec![String::new(); cycle_count as usize]),
             ChannelData::StringUTF16(_) => ChannelData::StringUTF16(vec![String::new(); cycle_count as usize]),
-            ChannelData::ByteArray(data) => {let n_bytes = data[0].len();
-            ChannelData::ByteArray(vec![vec![0u8; n_bytes as usize]; cycle_count as usize])},
+            ChannelData::ByteArray(_) => ChannelData::ByteArray(vec![0u8; (n_bytes as u64 * cycle_count) as usize]),
         }
     }
 }
@@ -909,7 +913,7 @@ pub fn data_init(cn_type: u8, cn_data_type: u8, n_bytes: u32, cycle_count: u64) 
             data_type = ChannelData::StringUTF16(vec![String::new(); cycle_count as usize]);
         } else {
             // bytearray
-            data_type = ChannelData::ByteArray(vec![vec![0u8; n_bytes as usize]; cycle_count as usize]);
+            data_type = ChannelData::ByteArray(vec![0u8; (n_bytes as u64 * cycle_count) as usize]);
         }
     } else {
         // virtual channels, cn_bit_count = 0 -> n_bytes = 0, must be LE unsigned int

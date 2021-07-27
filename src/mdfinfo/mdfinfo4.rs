@@ -881,7 +881,7 @@ fn invalid_channel(cg_data_bytes: u32, record_id_size: u32, cg_inval_bytes: u32,
         cn_bit_count: cg_inval_bytes * 8, ..Default::default()};
     let cn_struct: Cn4 = Cn4 {block, unique_name: String::from("invalid_bytes"), block_position: 0,
          pos_byte_beg: cg_data_bytes + record_id_size, n_bytes: cg_inval_bytes,
-         composition, data: ChannelData::ByteArray(vec![vec![0u8; cg_inval_bytes as usize]; cycle_count as usize]),
+         composition, data: ChannelData::ByteArray(vec![0u8; (cg_inval_bytes as u64 * cycle_count) as usize]),
          endian: false, invalid_bit: None };
     cn_struct
 }
