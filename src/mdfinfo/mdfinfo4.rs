@@ -878,7 +878,7 @@ pub fn parse_cg4(rdr: &mut BufReader<&File>, target: i64, mut position: i64, sha
 fn invalid_channel(cg_data_bytes: u32, record_id_size: u32, cg_inval_bytes: u32, cycle_count: u64) -> Cn4 {
     let composition: Option<Composition> = None;
     let block: Cn4Block = Cn4Block {cn_links: 8, cn_bit_offset: 0, cn_byte_offset: cg_data_bytes,
-        cn_bit_count: calc_n_bytes(cg_data_bytes * 8, 0), ..Default::default()};
+        cn_bit_count: cg_inval_bytes * 8, ..Default::default()};
     let cn_struct: Cn4 = Cn4 {block, unique_name: String::from("invalid_bytes"), block_position: 0,
          pos_byte_beg: cg_data_bytes + record_id_size, n_bytes: cg_inval_bytes,
          composition, data: ChannelData::ByteArray(vec![vec![0u8; cg_inval_bytes as usize]; cycle_count as usize]),
