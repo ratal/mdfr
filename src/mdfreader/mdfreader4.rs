@@ -718,8 +718,7 @@ fn initialise_arrays(channel_group: &mut Cg4, n_record_chunk: &u64) {
 fn apply_bit_mask_offset(dg: &mut Dg4) {
     // apply bit shift and masking
     for channel_group in dg.cg.values_mut() {
-        // initialise ndarrays for the data group/block
-        for (_cn_record_position, cn) in channel_group.cn.iter_mut() {
+        channel_group.cn.par_iter_mut().for_each( |(_rec_pos, cn)| {
             if cn.block.cn_data_type <= 3 {
                 let left_shift = cn.n_bytes * 8 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
                 let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
@@ -786,7 +785,7 @@ fn apply_bit_mask_offset(dg: &mut Dg4) {
                     }
                 }
             }
-        }
+        })
     }
 }
 
