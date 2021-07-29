@@ -870,7 +870,8 @@ impl Cg4 {
                     mask[index] = byte & bit;
                 }
                 cn.invalid_mask = Some(mask);
-            })
+            });
+            self.invalid_bytes = None; // Clears out invalid bytes channel
         }
     }
 }
