@@ -1035,32 +1035,6 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
     (ms, days)
 }
 
-fn calc_n_bytes(bitcount: u32, data_type: u8) -> u32{
-    let n_bytes: u32;
-    if data_type < 6 {
-        if bitcount==0  {
-            n_bytes = 0;
-        } else if bitcount <= 8 {
-            n_bytes = 1;
-        } else if bitcount <= 16 {
-            n_bytes = 2;
-        } else if bitcount <= 28 {
-            n_bytes = 3;
-        } else if bitcount <= 32 {
-            n_bytes = 4;
-        } else if bitcount <= 48 {
-            n_bytes = 6;
-        } else if bitcount <= 64 {
-            n_bytes = 8;
-        } else {
-            n_bytes = calc_n_bytes_not_aligned(bitcount);
-        }
-    } else {
-        n_bytes = calc_n_bytes_not_aligned(bitcount);
-    }
-    n_bytes
-}
-
 fn calc_n_bytes_not_aligned(bitcount: u32) -> u32 {
     let mut n_bytes = bitcount / 8u32;
     if (bitcount % 8) != 0 {
@@ -1092,7 +1066,7 @@ fn parse_cn4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64, s
     position = pos;
     let block: Cn4Block = block.read_le().unwrap();
     let pos_byte_beg = block.cn_byte_offset + record_id_size as u32;
-    let n_bytes = calc_n_bytes(block.cn_bit_count + (block.cn_bit_offset as u32), block.cn_data_type);
+    let n_bytes = calc_n_bytes_not_aligned(block.cn_bit_count + (block.cn_bit_offset as u32));
 
     // Reads TX name
     let (_, name, pos) = parse_comment(rdr, block.cn_tx_name, position);
@@ -1554,23 +1528,23 @@ pub struct Dl4Block {
     //members
     dl_flags: u8, // 
     dl_reserved: [u8; 3],
-    dl_count: u16, // Number of data blocks
-    // #[br(if((dl_flags & 0b1)>0), little, count = dl_count)]
-    // dl_equal_length: u64,
-    // #[br(little, count = dl_count)] // strange...
-    // dl_offset: Vec<u64>,
-    // #[br(if((dl_flags & 0b10)>0), little, count = dl_count)]
-    // dl_time_values: Vec<i64>,
-    // #[br(if((dl_flags & 0b100)>0), little, count = dl_count)]
-    // dl_angle_values: Vec<i64>,
-    // #[br(if((dl_flags & 0b1000)>0), little, count = dl_count)]
-    // dl_distance_values: Vec<i64>,
+    dl_count: u32, // Number of data blocks
+    #[br(if((dl_flags & 0b1)>0), little)]
+    dl_equal_length: u64,
+    #[br(if((dl_flags & 0b1)==0),little, count = dl_count)]
+    dl_offset: Vec<u64>,
+    #[br(if((dl_flags & 0b10)>0), little, count = dl_count)]
+    dl_time_values: Vec<i64>,
+    #[br(if((dl_flags & 0b100)>0), little, count = dl_count)]
+    dl_angle_values: Vec<i64>,
+    #[br(if((dl_flags & 0b1000)>0), little, count = dl_count)]
+    dl_distance_values: Vec<i64>,
 }
 
 pub fn parser_dl4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (Dl4Block, i64) {
     rdr.seek_relative(target - position).unwrap();
     let block: Dl4Block = rdr.read_le().unwrap();
-    position = target + 38 + ((block.dl_links -1) * 8) as i64;
+    position = target + block.dl_len as i64;
     (block, position)
 }
 
