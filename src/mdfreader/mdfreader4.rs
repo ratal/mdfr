@@ -159,6 +159,7 @@ fn parser_dl4_sorted(rdr: &mut BufReader<&File>, dl_blocks: Vec<Dl4Block>, mut p
     // Read all data blocks
     let mut data: Vec<u8> = Vec::new();
     let mut previous_index: usize = 0;
+    let cg_cycle_count = channel_group.block.cg_cycle_count as usize;
     for dl in dl_blocks {
         for data_pointer in dl.dl_data {
             // Reads DT or DZ block id
@@ -182,7 +183,12 @@ fn parser_dl4_sorted(rdr: &mut BufReader<&File>, dl_blocks: Vec<Dl4Block>, mut p
             // Copies full sized records in block into channels arrays
             let record_length = channel_group.record_length as usize;
             let n_record_chunk = block_length / record_length;
-            read_channels_from_bytes(&data[..record_length * n_record_chunk], &mut channel_group.cn, record_length, previous_index);
+            if previous_index + n_record_chunk < cg_cycle_count {
+                read_channels_from_bytes(&data[..record_length * n_record_chunk], &mut channel_group.cn, record_length, previous_index);
+            } else {
+                // Some implementation are pre allocating equal length blocks
+                read_channels_from_bytes(&data[..record_length * (cg_cycle_count - previous_index)], &mut channel_group.cn, record_length, previous_index);
+            }
             // drop what has ben copied and keep remaining to be extended
             let remaining = block_length % record_length;
             if remaining > 0 {
