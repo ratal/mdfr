@@ -142,7 +142,7 @@ fn parser_dl4(rdr: &mut BufReader<&File>, mut position: i64) -> (Vec<Dl4Block>, 
     let mut next_dl = block.dl_dl_next;
     while next_dl > 0 {
         rdr.seek_relative(next_dl - position).unwrap();
-        position = block.dl_dl_next;
+        position = next_dl;
         let mut id = [0u8; 4];
         rdr.read_exact(&mut id).expect("could not read DL block id");
         let (block, pos) = parser_dl4_block(rdr, position, position);
