@@ -1608,7 +1608,7 @@ pub struct Dz4Block {
     dz_zip_type: u8, // Zip algorithm, 0 deflate, 1 transpose + deflate
     dz_reserved: u8, // reserved
     dz_zip_parameter: u32, //
-    dz_org_data_length: u64, // length of uncompressed data
+    pub dz_org_data_length: u64, // length of uncompressed data
     pub dz_data_length: u64, // length of compressed data
 }
 
