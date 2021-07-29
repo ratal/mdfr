@@ -33,7 +33,7 @@ pub fn mdfreader4<'a>(rdr: &'a mut BufReader<&File>, info: &'a mut MdfInfo4) {
         apply_bit_mask_offset(dg);
         // channel_group invalid bits calculation
         for channel_group in dg.cg.values_mut() {
-            // channel_group.process_invalid_bits();
+            // channel_group.process_all_channel_invalid_bits();
         }
         // conversion of all channels to physical values
         convert_all_channels(dg, &info.sharable.cc);
@@ -88,9 +88,12 @@ fn read_data(rdr: &mut BufReader<&File>, id: [u8; 4], dg: &mut Dg4, mut position
         // compressed data in datal list
         let block: Hl4Block = rdr.read_le().expect("could not read HL block");
         position += block.hl_len as i64;
-        rdr.seek_relative(block.hl_dl_first - position).expect("Could not reach HL block");
+        // Read Id of pointed DL Block
+        rdr.seek_relative(block.hl_dl_first - position).expect("Could not reach DL block from HL block");
+        position = block.hl_dl_first;
         let mut id = [0u8; 4];
         rdr.read_exact(&mut id).expect("could not read DL block id");
+        // Read DL Blocks
         position = read_data(rdr, id, dg, position);
     } else if "##SD".as_bytes() == id {
         // signal data for VLSD
@@ -158,31 +161,37 @@ fn parser_dl4_sorted(rdr: &mut BufReader<&File>, dl_blocks: Vec<Dl4Block>, mut p
     let mut previous_index: usize = 0;
     for dl in dl_blocks {
         for data_pointer in dl.dl_data {
+            // Reads DT or DZ block id
             rdr.seek_relative(data_pointer - position).unwrap();
             let mut id = [0u8; 4];
             rdr.read_exact(&mut id).expect("could not read data block id");
-            let block_length: u64;
+            let block_length: usize;
             if id == "##DZ".as_bytes() {
                 let (dt, block_header) = parse_dz(rdr);
                 data.extend(dt);
-                block_length = block_header.dz_data_length;
+                block_length = block_header.dz_org_data_length as usize;
                 position = data_pointer + block_header.len as i64;
             } else {
                 let block_header: Dt4Block = rdr.read_le().unwrap();
                 let mut buf= vec![0u8; (block_header.len - 24) as usize];
                 rdr.read_exact(&mut buf).unwrap();
                 data.extend(buf);
-                block_length = block_header.len - 24;
+                block_length = (block_header.len - 24) as usize;
                 position = data_pointer + block_header.len as i64;
             }
-            let record_length = channel_group.record_length as u64;
+            // Copies full sized records in block into channels arrays
+            let record_length = channel_group.record_length as usize;
             let n_record_chunk = block_length / record_length;
-            for nrecord in 0..(n_record_chunk - 1) {
-                read_channels_from_bytes(&data[(nrecord * channel_group.record_length as u64) as usize..
-                    ((nrecord + 1) * channel_group.record_length as u64) as usize], &mut channel_group.cn, channel_group.record_length as usize, previous_index);
-            }
-            data = data[(record_length * n_record_chunk) as usize..].to_owned();
-            previous_index += n_record_chunk as usize;
+            read_channels_from_bytes(&data[..record_length * n_record_chunk], &mut channel_group.cn, record_length, previous_index);
+            // drop what has ben copied and keep remaining to be extended
+            let remaining = block_length % record_length;
+            if remaining > 0 {
+                // copies tail part at beginnning of vect
+                data.copy_within(remaining.., 0);
+                // clears the last part
+                data.truncate(remaining);
+            } else {data.clear()}
+            previous_index += n_record_chunk;
         }
     }
     position
