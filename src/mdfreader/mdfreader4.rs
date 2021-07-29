@@ -33,7 +33,7 @@ pub fn mdfreader4<'a>(rdr: &'a mut BufReader<&File>, info: &'a mut MdfInfo4) {
         apply_bit_mask_offset(dg);
         // channel_group invalid bits calculation
         for channel_group in dg.cg.values_mut() {
-            // channel_group.process_all_channel_invalid_bits();
+            channel_group.process_all_channel_invalid_bits();
         }
         // conversion of all channels to physical values
         convert_all_channels(dg, &info.sharable.cc);
