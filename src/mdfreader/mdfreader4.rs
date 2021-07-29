@@ -187,7 +187,7 @@ fn parser_dl4_sorted(rdr: &mut BufReader<&File>, dl_blocks: Vec<Dl4Block>, mut p
             let remaining = block_length % record_length;
             if remaining > 0 {
                 // copies tail part at beginnning of vect
-                data.copy_within(remaining.., 0);
+                data.copy_within(record_length * n_record_chunk.., 0);
                 // clears the last part
                 data.truncate(remaining);
             } else {data.clear()}
