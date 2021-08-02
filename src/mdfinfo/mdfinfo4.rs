@@ -1598,18 +1598,18 @@ pub struct Ld4Block {
     ld_len: u64,      // Length of block in bytes
     ld_links: u64,         // # of links
     // links
-    ld_ld_next: i64, // next LD
+    pub ld_ld_next: i64, // next LD
     #[br(if(ld_links > 1), little, count = (ld_links -1) / 2)]
-    ld_data: Vec<i64>,
+    pub ld_data: Vec<i64>,
     #[br(if(ld_links > 1), little, count = (ld_links -1) / 2)]
-    ld_invalid_data: Vec<i64>,
+    pub ld_invalid_data: Vec<i64>,
     //members
     ld_flags: u8, // 
     ld_reserved: [u8; 3],
-    ld_count: u16, // Number of data blocks
-    #[br(if((ld_flags & 1)>0), little, count = ld_count)]
+    ld_count: u32, // Number of data blocks
+    #[br(if((ld_flags & 0b1)>0), little)]
     ld_equal_sample_count: u64,
-    #[br(if((ld_flags & 1)>0), little, count = ld_count)]
+    #[br(if((ld_flags & 0b1)==0), little, count = ld_count)]
     ld_sample_offset: Vec<u64>,
     #[br(if((ld_flags & 0b10)>0), little, count = ld_count)]
     dl_time_values: Vec<i64>,
@@ -1617,6 +1617,13 @@ pub struct Ld4Block {
     dl_angle_values: Vec<i64>,
     #[br(if((ld_flags & 0b1000)>0), little, count = ld_count)]
     dl_distance_values: Vec<i64>,
+}
+
+pub fn parser_ld4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (Ld4Block, i64) {
+    rdr.seek_relative(target - position).unwrap();
+    let block: Ld4Block = rdr.read_le().unwrap();
+    position = target + block.ld_len as i64;
+    (block, position)
 }
 
 /// DL4 Data List block struct
