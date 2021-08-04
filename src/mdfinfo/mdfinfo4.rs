@@ -1441,10 +1441,9 @@ impl fmt::Display for Db {
 
 pub fn build_channel_db(dg: &mut HashMap<i64, Dg4>, sharable: &SharableBlocks) -> Db {
     let mut db = Db {channel_list: HashMap::new(), master_channel_list: HashMap::new()};
+    // creating channel list for whole file and making channel names unique
     for (dg_position, dg) in dg.iter_mut() {
         for (record_id, cg) in dg.cg.iter_mut() {
-            let mut master_channel_name = format!("master_{}", cg.block_position);  // default name in case no master is existing
-            let mut cg_channel_list = HashSet::new();
             let gn = cg.get_cg_name(sharable);
             let gs = cg.get_cg_source_name(sharable);
             let gp = cg.get_cg_source_path(sharable);
@@ -1469,21 +1468,32 @@ pub fn build_channel_db(dg: &mut HashMap<i64, Dg4>, sharable: &SharableBlocks) -
                     }
                     // No souce or path name to make channel unique
                     if channel_name == cn.unique_name {
+                        // extend name with channel block position, unique
                         channel_name = format!("{}_{}", channel_name, cn.block_position);
                     }
                     cn.unique_name = channel_name.clone();
                 };
                 db.channel_list.insert(channel_name.clone(), (*dg_position, (cg.block_position, *record_id), (cn.block_position , *cn_record_position)));
-                cg_channel_list.insert(channel_name.clone());
+            }
+        }
+    }
+    // identifying master channels
+    for (_dg_position, dg) in dg.iter_mut() {
+        for (_record_id, cg) in dg.cg.iter_mut() {
+            let mut cg_channel_list = HashSet::new();
+            let master_channel_name_default = format!("master_{}", cg.block_position);  // default name in case no master is existing
+            let mut master_channel_name = master_channel_name_default.clone();
+            for (_cn_record_position, cn)  in cg.cn.iter_mut() {
                 if cn.block.cn_type == 2 || cn.block.cn_type == 3 {
                     // Master channel
-                    master_channel_name = channel_name.clone();
+                    master_channel_name = cn.unique_name.clone();
                 }
+                cg_channel_list.insert(cn.unique_name.clone());
             }
             if cg.block.cg_cg_master != 0 {
                 // master is in another cg block, possible from 4.2
                 let temp = db.channel_list.iter()
-                        .find(|(_, (_, (v, _), _))| v == &cg.block.cg_cg_master);
+                        .find(|(_channel_name, (_dg, (g, _), (_channel, _)))| g == &cg.block.cg_cg_master);
                 match temp {
                     Some(s) => master_channel_name = s.0.to_owned(),
                     None => println!("master channel not found for channel"),
