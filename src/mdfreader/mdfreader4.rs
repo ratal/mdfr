@@ -1,4 +1,3 @@
-
 use crate::mdfinfo::mdfinfo4::{Dl4Block, Ld4Block, parser_dl4_block, parser_ld4_block, parse_dz, Hl4Block, Dt4Block};
 use crate::mdfinfo::mdfinfo4::{Cg4, Dg4, MdfInfo4, parse_block_header, Cc4Block, Cn4, CnType};
 use std::{collections::HashMap, convert::TryInto, io::{BufReader, Read}, usize};
@@ -10,7 +9,7 @@ use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
 use num::Complex;
 use half::f16;
 use encoding_rs::{Decoder, UTF_16BE, UTF_16LE, WINDOWS_1252};
-use ndarray::{Array1, ArrayBase, ArrayView, Dim, OwnedRepr, Zip};
+use ndarray::{Array1, Array, ArrayBase, Dim, OwnedRepr, Zip};
 use rayon::prelude::*;
 
 // The following constant represents the of data chunk to be read and processed.
@@ -129,17 +128,16 @@ fn read_data(rdr: &mut BufReader<&File>, id: [u8; 4], dg: &mut Dg4, mut position
         // sorted data group only, no record id, no invalid bytes
         let block_header: Dt4Block = rdr.read_le().unwrap();
         for channel_group in dg.cg.values_mut() {
-            if channel_group.cn.len() > 1 {
-                read_all_channels_sorted(rdr, channel_group);
-            } else if channel_group.cn.len() == 1 {
-                let cycle_count = channel_group.block.cg_cycle_count;
-                initialise_arrays(channel_group, &cycle_count);
-                // only one channel, can be optimised
-                let mut buf= vec![0u8; channel_group.block.cg_cycle_count as usize * channel_group.block.cg_data_bytes as usize];
-                rdr.read_exact(&mut buf).expect("Could not read single channel in DV");
-                for (_rec_pos, cn) in channel_group.cn.iter_mut() {
-                    write_buffer_in_channel_array(&buf, cn, cycle_count as usize);
-                }
+            match channel_group.cn.len() {
+                l if l > 1 => {read_all_channels_sorted(rdr, channel_group)},
+                l if l == 1 => {
+                    let cycle_count = channel_group.block.cg_cycle_count;
+                    // only one channel, can be optimised
+                    for (_rec_pos, cn) in channel_group.cn.iter_mut() {
+                        read_one_channel_array(rdr, cn, cycle_count as usize);
+                    }
+                },
+                _ => (),
             }
         }
         position += block_header.len as i64;
@@ -169,7 +167,7 @@ fn parser_ld4(rdr: &mut BufReader<&File>, mut position: i64, channel_group: &mut
     // initialises the arrays
     initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone());
     for ld in &ld_blocks {
-        if ld.ld_invalid_data.len() != 0 {
+        if !ld.ld_invalid_data.is_empty() {
             // initialises the invalid bytes vector
             channel_group.invalid_bytes = Some(vec![0u8; cg_inval_bytes * cg_cycle_count]);
         }
@@ -382,8 +380,9 @@ fn read_all_channels_sorted(rdr: &mut BufReader<&File>, channel_group: &mut Cg4)
     }
 }
 
-fn write_buffer_in_channel_array(buf: &[u8], cn: &mut Cn4, cycle_count: usize) {
-    if cn.block.cn_type == 0 || cn.block.cn_type == 2 || cn.block.cn_type == 4 || cn.block.cn_type == 5{
+// reads file if data block contains only one channel in a single DV
+fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count: usize) {
+    if cn.block.cn_type == 0 || cn.block.cn_type == 2 || cn.block.cn_type == 4 || cn.block.cn_type == 5 {
         // cn_type == 5 : Maximum length data channel, removing no valid bytes done by another size channel pointed by cn_data
         // cn_type == 0 : fixed length data channel
         // cn_type == 2 : master channel
@@ -391,192 +390,198 @@ fn write_buffer_in_channel_array(buf: &[u8], cn: &mut Cn4, cycle_count: usize) {
         let n_bytes = cn.n_bytes as usize;
         match &mut cn.data {
             ChannelData::Int8(data) => {
-                let ptr = buf.as_ptr() as *const _;
-                *data = unsafe {ArrayView::from_shape_ptr((cycle_count,), ptr).to_owned()};
+                let mut buf = vec![0; cycle_count];
+                rdr.read_i8_into(&mut buf).expect("Could not read i8 array");
+                *data = Array::from_vec(buf);
             },
             ChannelData::UInt8(data) => {
-                *data = ArrayView::from_shape((cycle_count,), buf).expect("Could not read u8").to_owned();
+                let mut buf = vec![0; cycle_count];
+                rdr.read_exact(&mut buf).expect("Could not read u8 array");
+                *data = Array::from_vec(buf);
             },
             ChannelData::Int16(data) => {
-                    if cn.endian {
-                        for (i, value) in buf.chunks(std::mem::size_of::<i16>()).enumerate() {
-                            data[i ] = i16::from_be_bytes(value.try_into().expect("Could not read be i16"));
-                        }
-                    } else {
-                        for (i, value) in buf.chunks(std::mem::size_of::<i16>()).enumerate() {
-                            data[i ] = i16::from_le_bytes(value.try_into().expect("Could not read le i16"));
-                        }
-                    }
-                },
+                let mut buf = vec![0; cycle_count];
+                if cn.endian {
+                    rdr.read_i16_into::<BigEndian>(&mut buf).expect("Could not read be i16 array");
+                } else {
+                    rdr.read_i16_into::<LittleEndian>(&mut buf).expect("Could not read le i16 array");
+                }
+                *data = Array::from_vec(buf);
+            },
             ChannelData::UInt16(data) => {
-                    if cn.endian {
-                        for (i, value) in buf.chunks(std::mem::size_of::<u16>()).enumerate() {
-                            data[i ] = u16::from_be_bytes(value.try_into().expect("Could not read be u16"));
-                        }
-                    } else {
-                        for (i, value) in buf.chunks(std::mem::size_of::<u16>()).enumerate() {
-                            data[i ] = u16::from_le_bytes(value.try_into().expect("Could not read le u16"));
-                        }
-                    }
-                },
+                let mut buf = vec![0; cycle_count];
+                if cn.endian {
+                    rdr.read_u16_into::<BigEndian>(&mut buf).expect("Could not read be u16 array");
+                } else {
+                    rdr.read_u16_into::<LittleEndian>(&mut buf).expect("Could not read le 16 array");
+                }
+                *data = Array::from_vec(buf);
+            },
             ChannelData::Float16(data) => {
-                    if cn.endian {
-                        for (i, value) in buf.chunks(std::mem::size_of::<f16>()).enumerate() {
-                            data[i ] = f16::from_be_bytes(value.try_into().expect("Could not read be f16")).to_f32();
-                        }
-                    } else {
-                        for (i, value) in buf.chunks(std::mem::size_of::<f16>()).enumerate() {
-                            data[i ] = f16::from_le_bytes(value.try_into().expect("Could not read le f16")).to_f32();
-                        }
+                let mut buf = vec![0u8; cycle_count * std::mem::size_of::<f16>()];
+                rdr.read_exact(&mut buf).expect("Could not read f16 array");
+                *data = Array1::<f32>::zeros((cycle_count, ));  // initialisation
+                if cn.endian {
+                    for (i, value) in buf.chunks(std::mem::size_of::<f16>()).enumerate() {
+                        data[i] = f16::from_be_bytes(value.try_into().expect("Could not read be f16")).to_f32();
                     }
-                },
+                } else {
+                    for (i, value) in buf.chunks(std::mem::size_of::<f16>()).enumerate() {
+                        data[i] = f16::from_le_bytes(value.try_into().expect("Could not read le f16")).to_f32();
+                    }
+                }
+            },
             ChannelData::Int24(data) => {
-                    if cn.endian {
-                        for (i, mut value) in buf.chunks(n_bytes).enumerate() {
-                            data[i ] = value.read_i24::<BigEndian>().expect("Could not read be i24");
-                        }
-                    } else {
-                        for (i, mut value) in buf.chunks(n_bytes).enumerate() {
-                            data[i ] = value.read_i24::<LittleEndian>().expect("Could not read le i24");
-                        }
+                let mut buf = vec![0u8; cycle_count * n_bytes];
+                rdr.read_exact(&mut buf).expect("Could not read i24 array");
+                *data = Array1::<i32>::zeros((cycle_count, ));  // initialisation
+                if cn.endian {
+                    for (i, mut value) in buf.chunks(n_bytes).enumerate() {
+                        data[i] = value.read_i24::<BigEndian>().expect("Could not read be i24");
                     }
-                },
+                } else {
+                    for (i, mut value) in buf.chunks(n_bytes).enumerate() {
+                        data[i] = value.read_i24::<LittleEndian>().expect("Could not read le i24");
+                    }
+                }
+            },
             ChannelData::UInt24(data) => {
-                    if cn.endian {
-                        for (i, mut value) in buf.chunks(n_bytes).enumerate() {
-                            data[i ] = value.read_u24::<BigEndian>().expect("Could not read be u24");
-                        }
-                    } else {
-                        for (i, mut value) in buf.chunks(n_bytes).enumerate() {
-                            data[i ] = value.read_u24::<LittleEndian>().expect("Could not read le u24");
-                        }
+                let mut buf = vec![0u8; cycle_count * n_bytes];
+                rdr.read_exact(&mut buf).expect("Could not read u24 array");
+                *data = Array1::<u32>::zeros((cycle_count, ));  // initialisation
+                if cn.endian {
+                    for (i, mut value) in buf.chunks(n_bytes).enumerate() {
+                        data[i] = value.read_u24::<BigEndian>().expect("Could not read be u24");
                     }
-                },
+                } else {
+                    for (i, mut value) in buf.chunks(n_bytes).enumerate() {
+                        data[i] = value.read_u24::<LittleEndian>().expect("Could not read le u24");
+                    }
+                }
+            },
             ChannelData::Int32(data) => {
-                    if cn.endian {
-                        for (i, value) in buf.chunks(std::mem::size_of::<i32>()).enumerate() {
-                            data[i ] = i32::from_be_bytes(value.try_into().expect("Could not read be i32"));
-                        }
-                    } else {
-                        for (i, value) in buf.chunks(std::mem::size_of::<i32>()).enumerate() {
-                            data[i ] = i32::from_le_bytes(value.try_into().expect("Could not read le i32"));
-                        }
-                    }
-                },
+                let mut buf = vec![0; cycle_count];
+                if cn.endian {
+                    rdr.read_i32_into::<BigEndian>(&mut buf).expect("Could not read be i32 array");
+                } else {
+                    rdr.read_i32_into::<LittleEndian>(&mut buf).expect("Could not read le i32 array");
+                }
+                *data = Array::from_vec(buf);
+            },
             ChannelData::UInt32(data) => {
-                    if cn.endian {
-                        for (i, value) in buf.chunks(std::mem::size_of::<u32>()).enumerate() {
-                            data[i ] = u32::from_be_bytes(value.try_into().expect("Could not read be u32"));
-                        }
-                    } else {
-                        for (i, value) in buf.chunks(std::mem::size_of::<u32>()).enumerate() {
-                            data[i ] = u32::from_le_bytes(value.try_into().expect("Could not read le u32"));
-                        }
-                    }
-                },
+                let mut buf = vec![0; cycle_count];
+                if cn.endian {
+                    rdr.read_u32_into::<BigEndian>(&mut buf).expect("Could not read be u32 array");
+                } else {
+                    rdr.read_u32_into::<LittleEndian>(&mut buf).expect("Could not read le u32 array");
+                }
+                *data = Array::from_vec(buf);
+            },
             ChannelData::Float32(data) => {
-                    if cn.endian {
-                        for (i, value) in buf.chunks(std::mem::size_of::<f32>()).enumerate() {
-                            data[i ] = f32::from_be_bytes(value.try_into().expect("Could not read be u32"));
-                        }
-                    } else {
-                        for (i, value) in buf.chunks(std::mem::size_of::<f32>()).enumerate() {
-                            data[i ] = f32::from_le_bytes(value.try_into().expect("Could not read le u32"));
-                        }
-                    }
-                },
+                let mut buf = vec![0f32; cycle_count];
+                if cn.endian {
+                    rdr.read_f32_into::<BigEndian>(&mut buf).expect("Could not read be f32 array");
+                } else {
+                    rdr.read_f32_into::<LittleEndian>(&mut buf).expect("Could not read le f32 array");
+                }
+                *data = Array::from_vec(buf);
+            },
             ChannelData::Int48(data) => {
-                    if cn.endian {
-                        for (i, mut value) in buf.chunks(n_bytes).enumerate() {
-                            data[i ] = value.read_i48::<BigEndian>().expect("Could not read be i48");
-                        }
-                    } else {
-                        for (i, mut value) in buf.chunks(n_bytes).enumerate() {
-                            data[i ] = value.read_i48::<LittleEndian>().expect("Could not read le i48");
-                        }
+                let mut buf = vec![0u8; cycle_count * n_bytes];
+                rdr.read_exact(&mut buf).expect("Could not read i48 array");
+                *data = Array1::<i64>::zeros((cycle_count, ));  // initialisation
+                if cn.endian {
+                    for (i, mut value) in buf.chunks(n_bytes).enumerate() {
+                        data[i] = value.read_i48::<BigEndian>().expect("Could not read be i48");
                     }
-                },
+                } else {
+                    for (i, mut value) in buf.chunks(n_bytes).enumerate() {
+                        data[i] = value.read_i48::<LittleEndian>().expect("Could not read le i48");
+                    }
+                }
+            },
             ChannelData::UInt48(data) => {
-                    if cn.endian {
-                        if n_bytes == 6 {
-                            for (i, mut value) in buf.chunks(n_bytes).enumerate() {
-                                data[i ] = value.read_u48::<BigEndian>().expect("Could not read be u48");
-                            }
-                        } else { // n_bytes = 5
-                            let mut temp = [0u8; 6];
-                            for (i, value) in buf.chunks(n_bytes).enumerate() {
-                                temp[0..5].copy_from_slice(&value[0..n_bytes]);
-                                data[i ] = Box::new(&temp[..]).read_u48::<BigEndian>().expect("Could not read be u48 from 5 bytes");
-                            }
+                let mut buf = vec![0u8; cycle_count * n_bytes];
+                rdr.read_exact(&mut buf).expect("Could not read u48 array");
+                *data = Array1::<u64>::zeros((cycle_count, ));  // initialisation
+                if cn.endian { // big endian
+                    if n_bytes == 6 {
+                        for (i, mut value) in buf.chunks(n_bytes).enumerate() {
+                            data[i] = value.read_u48::<BigEndian>().expect("Could not read be u48");
                         }
-                    } else {
-                        if n_bytes == 6 {
-                            for (i, mut value) in buf.chunks(n_bytes).enumerate() {
-                                data[i ] = value.read_u48::<LittleEndian>().expect("Could not read le u48");
-                            }
-                        } else { // n_bytes = 5
-                            let mut temp = [0u8; 6];
-                            for (i, value) in buf.chunks(n_bytes).enumerate() {
-                                temp[0..5].copy_from_slice(&value[0..n_bytes]);
-                                data[i ] = Box::new(&temp[..]).read_u48::<LittleEndian>().expect("Could not read le u48 from 5 bytes");
-                            }
+                    } else { // n_bytes = 5
+                        let mut temp = [0u8; 6];
+                        for (i, value) in buf.chunks(n_bytes).enumerate() {
+                            temp[0..5].copy_from_slice(&value[0..n_bytes]);
+                            data[i] = Box::new(&temp[..]).read_u48::<BigEndian>().expect("Could not read be u48 from 5 bytes");
                         }
                     }
-                },
+                } else if n_bytes == 6 {  // little endian
+                        for (i, mut value) in buf.chunks(n_bytes).enumerate() {
+                            data[i] = value.read_u48::<LittleEndian>().expect("Could not read le u48");
+                        }
+                } else { // n_bytes = 5
+                    let mut temp = [0u8; 6];
+                    for (i, value) in buf.chunks(n_bytes).enumerate() {
+                        temp[0..5].copy_from_slice(&value[0..n_bytes]);
+                        data[i] = Box::new(&temp[..]).read_u48::<LittleEndian>().expect("Could not read le u48 from 5 bytes");
+                    }
+                }
+            },
             ChannelData::Int64(data) => {
-                    if cn.endian {
-                        for (i, value) in buf.chunks(n_bytes).enumerate() {
-                            data[i ] = i64::from_be_bytes(value.try_into().expect("Could not read be i64"));
-                        }
-                    } else {
-                        for (i, value) in buf.chunks(n_bytes).enumerate() {
-                            data[i ] = i64::from_le_bytes(value.try_into().expect("Could not read le i64"));
-                        }
-                    }
-                },
+                let mut buf = vec![0; cycle_count];
+                if cn.endian {
+                    rdr.read_i64_into::<BigEndian>(&mut buf).expect("Could not read be i64 array");
+                } else {
+                    rdr.read_i64_into::<LittleEndian>(&mut buf).expect("Could not read le i64 array");
+                }
+                *data = Array::from_vec(buf);
+            },
             ChannelData::UInt64(data) => {
+                if n_bytes == 8 {
+                    let mut buf = vec![0; cycle_count];
                     if cn.endian {
-                        if n_bytes == 8 {
-                            for (i, value) in buf.chunks(n_bytes).enumerate() {
-                                data[i ] = u64::from_le_bytes(value.try_into().expect("Could not read be u64"));
-                            }
-                        } else { // n_bytes = 7
-                            let mut temp = [0u8; std::mem::size_of::<u64>()];
-                            for (i, value) in buf.chunks(n_bytes).enumerate() {
-                                temp[0..7].copy_from_slice(&value[0..7]);
-                                data[i ] = u64::from_le_bytes(temp.try_into().expect("Could not read be u64 from 7 bytes"));
-                            }
+                        rdr.read_u64_into::<BigEndian>(&mut buf).expect("Could not read be u64 array");
+                    } else {
+                        rdr.read_u64_into::<LittleEndian>(&mut buf).expect("Could not read le u64 array");
+                    }
+                    *data = Array::from_vec(buf);
+                } else {
+                    // n_bytes = 7
+                    let mut buf = vec![0u8; cycle_count * n_bytes];
+                    rdr.read_exact(&mut buf).expect("Could not read u64 array");
+                    *data = Array1::<u64>::zeros((cycle_count, ));
+                    let mut temp = [0u8; std::mem::size_of::<u64>()];
+                    if cn.endian {
+                        for (i, value) in buf.chunks(n_bytes).enumerate() {
+                            temp[0..7].copy_from_slice(&value[0..7]);
+                            data[i ] = u64::from_be_bytes(temp);
                         }
                     } else {
-                        if n_bytes == 8 {
-                            for (i, value) in buf.chunks(n_bytes).enumerate() {
-                                data[i ] = u64::from_le_bytes(value.try_into().expect("Could not read le u64"));
-                            }
-                        } else { // n_bytes = 7
-                            let mut temp = [0u8; std::mem::size_of::<u64>()];
-                            for (i, value) in buf.chunks(n_bytes).enumerate() {
-                                temp[0..7].copy_from_slice(&value[0..7]);
-                                data[i ] = u64::from_le_bytes(temp.try_into().expect("Could not read le u64 from 7 bytes"));
-                            }
+                        for (i, value) in buf.chunks(n_bytes).enumerate() {
+                            temp[0..7].copy_from_slice(&value[0..7]);
+                            data[i ] = u64::from_le_bytes(temp);
                         }
                     }
-                },
+                }
+            },
             ChannelData::Float64(data) => {
-                    if cn.endian {
-                        for (i, value) in buf.chunks(std::mem::size_of::<f64>()).enumerate() {
-                            data[i ] = f64::from_be_bytes(value.try_into().expect("Could not read be f64"));
-                        }
-                    } else {
-                        for (i, value) in buf.chunks(std::mem::size_of::<f64>()).enumerate() {
-                            data[i ] = f64::from_le_bytes(value.try_into().expect("Could not read le f64"));
-                        }
-                    }
-                },
+                let mut buf = vec![0f64; cycle_count];
+                if cn.endian {
+                    rdr.read_f64_into::<BigEndian>(&mut buf).expect("Could not read be f64 array");
+                } else {
+                    rdr.read_f64_into::<LittleEndian>(&mut buf).expect("Could not read le f64 array");
+                }
+                *data = Array::from_vec(buf);
+            },
             ChannelData::Complex16(data) => {
+                let mut buf = vec![0u8; cycle_count * n_bytes];
+                rdr.read_exact(&mut buf).expect("Could not read complex16 array");
                 let mut re: f32;
                 let mut im: f32;
                 let mut re_val: &[u8];
                 let mut im_val: &[u8];
+                *data = Array1::<Complex<f32>>::zeros((cycle_count, )); // initialisation
                 if cn.endian {
                     for (i, value) in buf.chunks(std::mem::size_of::<f16>() * 2).enumerate() {
                         re_val = &value[0..std::mem::size_of::<f16>()];
@@ -591,14 +596,18 @@ fn write_buffer_in_channel_array(buf: &[u8], cn: &mut Cn4, cycle_count: usize) {
                         im_val = &value[std::mem::size_of::<f16>()..2 * std::mem::size_of::<f16>()];
                         re = f16::from_le_bytes(re_val.try_into().expect("Could not read le real f16 complex")).to_f32();
                         im = f16::from_le_bytes(im_val.try_into().expect("Could not read le img f16 complex")).to_f32();
-                        data[i ] = Complex::new(re, im);}
+                        data[i ] = Complex::new(re, im);
                     }
-                },
+                }
+            },
             ChannelData::Complex32(data) => {
+                let mut buf = vec![0u8; cycle_count * n_bytes];
+                rdr.read_exact(&mut buf).expect("Could not read complex32 array");
                 let mut re: f32;
                 let mut im: f32;
                 let mut re_val: &[u8];
                 let mut im_val: &[u8];
+                *data = Array1::<Complex<f32>>::zeros((cycle_count, )); // initialisation
                 if cn.endian {
                     for (i, value) in buf.chunks(std::mem::size_of::<f32>() * 2).enumerate() {
                         re_val = &value[0..std::mem::size_of::<f32>()];
@@ -613,14 +622,18 @@ fn write_buffer_in_channel_array(buf: &[u8], cn: &mut Cn4, cycle_count: usize) {
                         im_val = &value[std::mem::size_of::<f32>()..2 * std::mem::size_of::<f32>()];
                         re = f32::from_le_bytes(re_val.try_into().expect("Could not read le real f32 complex"));
                         im = f32::from_le_bytes(im_val.try_into().expect("Could not read le img f32 complex"));
-                        data[i ] = Complex::new(re, im);}
+                        data[i ] = Complex::new(re, im);
                     }
-                },
+                }
+            },
             ChannelData::Complex64(data) => {
+                let mut buf = vec![0u8; cycle_count * n_bytes];
+                rdr.read_exact(&mut buf).expect("Could not read complex64 array");
                 let mut re: f64;
                 let mut im: f64;
                 let mut re_val: &[u8];
                 let mut im_val: &[u8];
+                *data = Array1::<Complex<f64>>::zeros((cycle_count, )); // initialisation
                 if cn.endian {
                     for (i, value) in buf.chunks(std::mem::size_of::<f64>() * 2).enumerate() {
                         re_val = &value[0..std::mem::size_of::<f64>()];
@@ -635,24 +648,32 @@ fn write_buffer_in_channel_array(buf: &[u8], cn: &mut Cn4, cycle_count: usize) {
                         im_val = &value[std::mem::size_of::<f64>()..2 * std::mem::size_of::<f64>()];
                         re = f64::from_le_bytes(re_val.try_into().expect("Could not read le real f64 complex"));
                         im = f64::from_le_bytes(im_val.try_into().expect("Could not read le img f64 complex"));
-                        data[i ] = Complex::new(re, im);}
+                        data[i ] = Complex::new(re, im);
                     }
-                },
+                }
+            },
             ChannelData::StringSBC(data) => {
-                let n_bytes = cn.n_bytes as usize;
+                let mut buf = vec![0u8; cycle_count * n_bytes];
+                rdr.read_exact(&mut buf).expect("Could not read SBC String");
                 let mut decoder = WINDOWS_1252.new_decoder();
+                *data = vec![String::new(); cycle_count]; // initialisation
                 for (i, value) in buf.chunks(n_bytes).enumerate() {
                     let(_result, _size, _replacement) = decoder.decode_to_string(&value, &mut data[i ], false);
                     data[i ] = data[i ].trim_end_matches('\0').to_string();
                 }
             },
             ChannelData::StringUTF8(data) => {
-                let n_bytes = cn.n_bytes as usize;
+                let mut buf = vec![0u8; cycle_count * n_bytes];
+                rdr.read_exact(&mut buf).expect("Could not read String UTF8");
+                *data = vec![String::new(); cycle_count]; // initialisation
                 for (i, value) in buf.chunks(n_bytes).enumerate() {
-                    data[i ] = str::from_utf8(&value).expect("Found invalid UTF-8").trim_end_matches('\0').to_string();}
-                },
+                    data[i ] = str::from_utf8(&value).expect("Found invalid UTF-8").trim_end_matches('\0').to_string();
+                }
+            },
             ChannelData::StringUTF16(data) => {
-                let n_bytes = cn.n_bytes as usize;
+                let mut buf = vec![0u8; cycle_count * n_bytes];
+                rdr.read_exact(&mut buf).expect("Could not read String UTF16");
+                *data = vec![String::new(); cycle_count]; // initialisation
                 if cn.endian{
                     let mut decoder = UTF_16BE.new_decoder();
                     for (i, value) in buf.chunks(n_bytes).enumerate() {
@@ -665,13 +686,12 @@ fn write_buffer_in_channel_array(buf: &[u8], cn: &mut Cn4, cycle_count: usize) {
                         let(_result, _size, _replacement) = decoder.decode_to_string(&value, &mut data[i ], false);
                         data[i ] = data[i].trim_end_matches('\0').to_string();
                     }
-                }},
+                }
+            },
             ChannelData::ByteArray(data) => {
-                let n_bytes = cn.n_bytes as usize;
-                for (i, value) in buf.chunks(n_bytes).enumerate() {
-                    let index = i * n_bytes;
-                    data[index .. index + n_bytes].copy_from_slice(value);}
-                },
+                *data = vec![0u8; cycle_count * n_bytes];
+                rdr.read_exact(data).expect("Could not read byte array");
+            }
         }
     }
     // Other channel types : virtual channels cn_type 3 & 6 are handled at initialisation
@@ -692,218 +712,214 @@ fn read_channels_from_bytes(data_chunk: &[u8], channels: &mut CnType, record_len
             let n_bytes = cn.n_bytes as usize;
             match &mut cn.data {
                 ChannelData::Int8(data) => {
-                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                            value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i8>()];
-                            data[i + previous_index] = i8::from_le_bytes(value.try_into().expect("Could not read i8"));
-                        }
-                    },
+                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                        value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i8>()];
+                        data[i + previous_index] = i8::from_le_bytes(value.try_into().expect("Could not read i8"));
+                    }
+                },
                 ChannelData::UInt8(data) => {
-                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                            value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u8>()];
-                            data[i + previous_index] = u8::from_le_bytes(value.try_into().expect("Could not read u8"));
-                        }
-                    },
+                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                        value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u8>()];
+                        data[i + previous_index] = u8::from_le_bytes(value.try_into().expect("Could not read u8"));
+                    }
+                },
                 ChannelData::Int16(data) => {
-                        if cn.endian {
-                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i16>()];
-                                data[i + previous_index] = i16::from_be_bytes(value.try_into().expect("Could not read be i16"));
-                            }
-                        } else {
-                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i16>()];
-                                data[i + previous_index] = i16::from_le_bytes(value.try_into().expect("Could not read le i16"));
-                            }
+                    if cn.endian {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i16>()];
+                            data[i + previous_index] = i16::from_be_bytes(value.try_into().expect("Could not read be i16"));
                         }
-                    },
+                    } else {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i16>()];
+                            data[i + previous_index] = i16::from_le_bytes(value.try_into().expect("Could not read le i16"));
+                        }
+                    }
+                },
                 ChannelData::UInt16(data) => {
-                        if cn.endian {
-                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u16>()];
-                                data[i + previous_index] = u16::from_be_bytes(value.try_into().expect("Could not read be u16"));
-                            }
-                        } else {
-                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u16>()];
-                                data[i + previous_index] = u16::from_le_bytes(value.try_into().expect("Could not read le u16"));
-                            }
+                    if cn.endian {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u16>()];
+                            data[i + previous_index] = u16::from_be_bytes(value.try_into().expect("Could not read be u16"));
                         }
-                    },
+                    } else {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u16>()];
+                            data[i + previous_index] = u16::from_le_bytes(value.try_into().expect("Could not read le u16"));
+                        }
+                    }
+                },
                 ChannelData::Float16(data) => {
-                        if cn.endian {
-                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f16>()];
-                                data[i + previous_index] = f16::from_be_bytes(value.try_into().expect("Could not read be f16")).to_f32();
-                            }
-                        } else {
-                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f16>()];
-                                data[i + previous_index] = f16::from_le_bytes(value.try_into().expect("Could not read le f16")).to_f32();
-                            }
+                    if cn.endian {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f16>()];
+                            data[i + previous_index] = f16::from_be_bytes(value.try_into().expect("Could not read be f16")).to_f32();
                         }
-                    },
+                    } else {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f16>()];
+                            data[i + previous_index] = f16::from_le_bytes(value.try_into().expect("Could not read le f16")).to_f32();
+                        }
+                    }
+                },
                 ChannelData::Int24(data) => {
-                        if cn.endian {
-                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                data[i + previous_index] = value.read_i24::<BigEndian>().expect("Could not read be i24");
-                            }
-                        } else {
-                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                data[i + previous_index] = value.read_i24::<LittleEndian>().expect("Could not read le i24");
-                            }
+                    if cn.endian {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                            data[i + previous_index] = value.read_i24::<BigEndian>().expect("Could not read be i24");
                         }
-                    },
+                    } else {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                            data[i + previous_index] = value.read_i24::<LittleEndian>().expect("Could not read le i24");
+                        }
+                    }
+                },
                 ChannelData::UInt24(data) => {
-                        if cn.endian {
-                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                data[i + previous_index] = value.read_u24::<BigEndian>().expect("Could not read be u24");
-                            }
-                        } else {
-                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                data[i + previous_index] = value.read_u24::<LittleEndian>().expect("Could not read le u24");
-                            }
+                    if cn.endian {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                            data[i + previous_index] = value.read_u24::<BigEndian>().expect("Could not read be u24");
                         }
-                    },
+                    } else {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                            data[i + previous_index] = value.read_u24::<LittleEndian>().expect("Could not read le u24");
+                        }
+                    }
+                },
                 ChannelData::Int32(data) => {
-                        if cn.endian {
-                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i32>()];
-                                data[i + previous_index] = i32::from_be_bytes(value.try_into().expect("Could not read be i32"));
-                            }
-                        } else {
-                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i32>()];
-                                data[i + previous_index] = i32::from_le_bytes(value.try_into().expect("Could not read le i32"));
-                            }
+                    if cn.endian {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i32>()];
+                            data[i + previous_index] = i32::from_be_bytes(value.try_into().expect("Could not read be i32"));
                         }
-                    },
+                    } else {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i32>()];
+                            data[i + previous_index] = i32::from_le_bytes(value.try_into().expect("Could not read le i32"));
+                        }
+                    }
+                },
                 ChannelData::UInt32(data) => {
-                        if cn.endian {
-                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u32>()];
-                                data[i + previous_index] = u32::from_be_bytes(value.try_into().expect("Could not read be u32"));
-                            }
-                        } else {
-                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u32>()];
-                                data[i + previous_index] = u32::from_le_bytes(value.try_into().expect("Could not read le u32"));
-                            }
+                    if cn.endian {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u32>()];
+                            data[i + previous_index] = u32::from_be_bytes(value.try_into().expect("Could not read be u32"));
                         }
-                    },
+                    } else {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u32>()];
+                            data[i + previous_index] = u32::from_le_bytes(value.try_into().expect("Could not read le u32"));
+                        }
+                    }
+                },
                 ChannelData::Float32(data) => {
-                        if cn.endian {
-                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f32>()];
-                                data[i + previous_index] = f32::from_be_bytes(value.try_into().expect("Could not read be u32"));
-                            }
-                        } else {
-                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f32>()];
-                                data[i + previous_index] = f32::from_le_bytes(value.try_into().expect("Could not read le u32"));
-                            }
+                    if cn.endian {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f32>()];
+                            data[i + previous_index] = f32::from_be_bytes(value.try_into().expect("Could not read be u32"));
                         }
-                    },
+                    } else {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f32>()];
+                            data[i + previous_index] = f32::from_le_bytes(value.try_into().expect("Could not read le u32"));
+                        }
+                    }
+                },
                 ChannelData::Int48(data) => {
-                        if cn.endian {
-                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                data[i + previous_index] = value.read_i48::<BigEndian>().expect("Could not read be i48");
-                            }
-                        } else {
-                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                data[i + previous_index] = value.read_i48::<LittleEndian>().expect("Could not read le i48");
-                            }
+                    if cn.endian {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                            data[i + previous_index] = value.read_i48::<BigEndian>().expect("Could not read be i48");
                         }
-                    },
+                    } else {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                            data[i + previous_index] = value.read_i48::<LittleEndian>().expect("Could not read le i48");
+                        }
+                    }
+                },
                 ChannelData::UInt48(data) => {
-                        if cn.endian {
-                            if n_bytes == 6 {
-                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                    value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                    data[i + previous_index] = value.read_u48::<BigEndian>().expect("Could not read be u48");
-                                }
-                            } else { // n_bytes = 5
-                                let mut buf = [0u8; 6];
-                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                    buf[0..5].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + n_bytes]);
-                                    data[i + previous_index] = Box::new(&buf[..]).read_u48::<BigEndian>().expect("Could not read be u48 from 5 bytes");
-                                }
+                    if cn.endian {
+                        if n_bytes == 6 {
+                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                                data[i + previous_index] = value.read_u48::<BigEndian>().expect("Could not read be u48");
                             }
-                        } else {
-                            if n_bytes == 6 {
-                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                    value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                    data[i + previous_index] = value.read_u48::<LittleEndian>().expect("Could not read le u48");
-                                }
-                            } else { // n_bytes = 5
-                                let mut buf = [0u8; 6];
-                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                    buf[0..5].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + 5]);
-                                    data[i + previous_index] = Box::new(&buf[..]).read_u48::<LittleEndian>().expect("Could not read le u48 from 5 bytes");
-                                }
+                        } else { // n_bytes = 5
+                            let mut buf = [0u8; 6];
+                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                buf[0..5].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + n_bytes]);
+                                data[i + previous_index] = Box::new(&buf[..]).read_u48::<BigEndian>().expect("Could not read be u48 from 5 bytes");
                             }
                         }
-                    },
+                    } else if n_bytes == 6 {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                            data[i + previous_index] = value.read_u48::<LittleEndian>().expect("Could not read le u48");
+                        }
+                    } else { // n_bytes = 5
+                        let mut buf = [0u8; 6];
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            buf[0..5].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + 5]);
+                            data[i + previous_index] = Box::new(&buf[..]).read_u48::<LittleEndian>().expect("Could not read le u48 from 5 bytes");
+                        }
+                    }
+                },
                 ChannelData::Int64(data) => {
-                        if cn.endian {
-                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                data[i + previous_index] = i64::from_be_bytes(value.try_into().expect("Could not read be i64"));
-                            }
-                        } else {
-                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                data[i + previous_index] = i64::from_le_bytes(value.try_into().expect("Could not read le i64"));
-                            }
+                    if cn.endian {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                            data[i + previous_index] = i64::from_be_bytes(value.try_into().expect("Could not read be i64"));
                         }
-                    },
+                    } else {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                            data[i + previous_index] = i64::from_le_bytes(value.try_into().expect("Could not read le i64"));
+                        }
+                    }
+                },
                 ChannelData::UInt64(data) => {
-                        if cn.endian {
-                            if n_bytes == 8 {
-                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                    value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                    data[i + previous_index] = u64::from_le_bytes(value.try_into().expect("Could not read be u64"));
-                                }
-                            } else { // n_bytes = 7
-                                let mut buf = [0u8; std::mem::size_of::<u64>()];
-                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                    buf[0..7].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + 7]);
-                                    data[i + previous_index] = u64::from_le_bytes(buf.try_into().expect("Could not read be u64 from 7 bytes"));
-                                }
+                    if cn.endian {
+                        if n_bytes == 8 {
+                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                                data[i + previous_index] = u64::from_le_bytes(value.try_into().expect("Could not read be u64"));
                             }
-                        } else {
-                            if n_bytes == 8 {
-                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                    value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                    data[i + previous_index] = u64::from_le_bytes(value.try_into().expect("Could not read le u64"));
-                                }
-                            } else { // n_bytes = 7
-                                let mut buf = [0u8; std::mem::size_of::<u64>()];
-                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                    buf[0..7].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + 7]);
-                                    data[i + previous_index] = u64::from_le_bytes(buf.try_into().expect("Could not read le u64 from 7 bytes"));
-                                }
+                        } else { // n_bytes = 7
+                            let mut buf = [0u8; std::mem::size_of::<u64>()];
+                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                buf[0..7].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + 7]);
+                                data[i + previous_index] = u64::from_le_bytes(buf);
                             }
                         }
-                    },
+                    } else if n_bytes == 8 {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                            data[i + previous_index] = u64::from_le_bytes(value.try_into().expect("Could not read le u64"));
+                        }
+                    } else { // n_bytes = 7
+                        let mut buf = [0u8; std::mem::size_of::<u64>()];
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            buf[0..7].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + 7]);
+                            data[i + previous_index] = u64::from_le_bytes(buf);
+                        }
+                    }
+                },
                 ChannelData::Float64(data) => {
-                        if cn.endian {
-                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
-                                data[i + previous_index] = f64::from_be_bytes(value.try_into().expect("Could not read be f64"));
-                            }
-                        } else {
-                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
-                                data[i + previous_index] = f64::from_le_bytes(value.try_into().expect("Could not read le f64"));
-                            }
+                    if cn.endian {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
+                            data[i + previous_index] = f64::from_be_bytes(value.try_into().expect("Could not read be f64"));
                         }
-                    },
+                    } else {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
+                            data[i + previous_index] = f64::from_le_bytes(value.try_into().expect("Could not read le f64"));
+                        }
+                    }
+                },
                 ChannelData::Complex16(data) => {
                     let mut re: f32;
                     let mut im: f32;
@@ -923,9 +939,10 @@ fn read_channels_from_bytes(data_chunk: &[u8], channels: &mut CnType, record_len
                             im_val = &record[pos_byte_beg + std::mem::size_of::<f16>()..pos_byte_beg + 2 * std::mem::size_of::<f16>()];
                             re = f16::from_le_bytes(re_val.try_into().expect("Could not read le real f16 complex")).to_f32();
                             im = f16::from_le_bytes(im_val.try_into().expect("Could not read le img f16 complex")).to_f32();
-                            data[i + previous_index] = Complex::new(re, im);}
+                            data[i + previous_index] = Complex::new(re, im);
                         }
-                    },
+                    }
+                },
                 ChannelData::Complex32(data) => {
                     let mut re: f32;
                     let mut im: f32;
@@ -945,9 +962,10 @@ fn read_channels_from_bytes(data_chunk: &[u8], channels: &mut CnType, record_len
                             im_val = &record[pos_byte_beg + std::mem::size_of::<f32>()..pos_byte_beg + 2 * std::mem::size_of::<f32>()];
                             re = f32::from_le_bytes(re_val.try_into().expect("Could not read le real f32 complex"));
                             im = f32::from_le_bytes(im_val.try_into().expect("Could not read le img f32 complex"));
-                            data[i + previous_index] = Complex::new(re, im);}
+                            data[i + previous_index] = Complex::new(re, im);
                         }
-                    },
+                    }
+                },
                 ChannelData::Complex64(data) => {
                     let mut re: f64;
                     let mut im: f64;
@@ -967,9 +985,10 @@ fn read_channels_from_bytes(data_chunk: &[u8], channels: &mut CnType, record_len
                             im_val = &record[pos_byte_beg + std::mem::size_of::<f64>()..pos_byte_beg + 2 * std::mem::size_of::<f64>()];
                             re = f64::from_le_bytes(re_val.try_into().expect("Could not read le real f64 complex"));
                             im = f64::from_le_bytes(im_val.try_into().expect("Could not read le img f64 complex"));
-                            data[i + previous_index] = Complex::new(re, im);}
+                            data[i + previous_index] = Complex::new(re, im);
                         }
-                    },
+                    }
+                },
                 ChannelData::StringSBC(data) => {
                     let n_bytes = cn.n_bytes as usize;
                     let mut decoder = WINDOWS_1252.new_decoder();
@@ -983,8 +1002,9 @@ fn read_channels_from_bytes(data_chunk: &[u8], channels: &mut CnType, record_len
                     let n_bytes = cn.n_bytes as usize;
                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
                         value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                        data[i + previous_index] = str::from_utf8(&value).expect("Found invalid UTF-8").trim_end_matches('\0').to_string();}
-                    },
+                        data[i + previous_index] = str::from_utf8(&value).expect("Found invalid UTF-8").trim_end_matches('\0').to_string();
+                    }
+                },
                 ChannelData::StringUTF16(data) => {
                     let n_bytes = cn.n_bytes as usize;
                     if cn.endian{
@@ -1001,14 +1021,16 @@ fn read_channels_from_bytes(data_chunk: &[u8], channels: &mut CnType, record_len
                             let(_result, _size, _replacement) = decoder.decode_to_string(&value, &mut data[i + previous_index], false);
                             data[i + previous_index] = data[i + previous_index].trim_end_matches('\0').to_string();
                         }
-                    }},
+                    }
+                },
                 ChannelData::ByteArray(data) => {
                     let n_bytes = cn.n_bytes as usize;
                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
                         value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
                         let index = (i + previous_index) * n_bytes;
-                        data[index .. index + n_bytes].copy_from_slice(value);}
-                    },
+                        data[index .. index + n_bytes].copy_from_slice(value);
+                    }
+                },
             }
         }
         // Other channel types : virtual channels cn_type 3 & 6 are handled at initialisation
