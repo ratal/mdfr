@@ -162,6 +162,50 @@ fn parser_ld4(rdr: &mut BufReader<&File>, mut position: i64, channel_group: &mut
         ld_blocks.push(block.clone());
         next_ld = block.ld_ld_next;
     }
+    if ld_blocks.len() == 1 && ld_blocks[0].ld_data.len() == 1 && channel_group.cn.len() == 1 {
+        // only one DV block, reading can be optimised
+        // Reads DV or DZ block id
+        rdr.seek_relative(ld_blocks[0].ld_data[0] - position).unwrap();
+        let mut id = [0u8; 4];
+        rdr.read_exact(&mut id).expect("could not read data block id from ld4 invalid");
+        if id == "##DZ".as_bytes() {
+            initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone());
+            let (dt, block_header) = parse_dz(rdr);
+            read_channels_from_bytes(&dt, &mut channel_group.cn, channel_group.record_length as usize, 0);
+            position = ld_blocks[0].ld_data[0] + block_header.len as i64;
+        } else {
+            let block_header: Dt4Block = rdr.read_le().unwrap();
+            for (_rec_pos, cn) in channel_group.cn.iter_mut() {
+                read_one_channel_array(rdr, cn, channel_group.block.cg_cycle_count as usize);
+            }
+            position = ld_blocks[0].ld_data[0] + block_header.len as i64;
+        }
+        if channel_group.block.cg_inval_bytes > 0 {
+            // Reads invalid DI or DZ block
+            rdr.seek_relative(ld_blocks[0].ld_invalid_data[0] - position).unwrap();
+            let mut id = [0u8; 4];
+            rdr.read_exact(&mut id).expect("could not read data block id from ld4 invalid");
+            if id == "##DZ".as_bytes() {
+                let (dt, block_header) = parse_dz(rdr);
+                channel_group.invalid_bytes = Some(dt);
+                position = ld_blocks[0].ld_invalid_data[0] + block_header.len as i64;
+            } else {
+                let block_header: Dt4Block = rdr.read_le().unwrap();
+                let mut buf = vec![0u8; (block_header.len - 24) as usize];
+                rdr.read_exact(&mut buf).unwrap();
+                channel_group.invalid_bytes = Some(buf);
+                position = ld_blocks[0].ld_invalid_data[0] + block_header.len as i64;
+            }
+        }
+    } else {
+        // several DV, LD or channels per DG
+        position = read_dv_di(rdr, position, channel_group, ld_blocks);
+    }
+    position
+}
+
+/// reads DV and DI block containing several channels
+fn read_dv_di(rdr: &mut BufReader<&File>, mut position: i64, channel_group: &mut Cg4, ld_blocks: Vec<Ld4Block>) -> i64 {
     let cg_cycle_count = channel_group.block.cg_cycle_count as usize;
     let cg_inval_bytes = channel_group.block.cg_inval_bytes as usize;
     // initialises the arrays
