@@ -1,20 +1,20 @@
-pub mod mdfreader4;
 pub mod mdfreader3;
+pub mod mdfreader4;
 use crate::mdfinfo::{mdfinfo, MdfInfo};
-use mdfreader4::mdfreader4;
 use mdfreader3::mdfreader3;
-use std::{fs::OpenOptions, io::BufReader};
+use mdfreader4::mdfreader4;
 use std::fs::File;
+use std::{fs::OpenOptions, io::BufReader};
 
-
-pub fn mdfreader(file_name: &str){
+pub fn mdfreader(file_name: &str) {
     // read file blocks
     let mdf = mdfinfo(file_name);
     println!("{}", mdf);
-    let f: File = OpenOptions::new().read(true)
-                    .write(false)
-                    .open(file_name)
-                    .expect("Cannot find the file");
+    let f: File = OpenOptions::new()
+        .read(true)
+        .write(false)
+        .open(file_name)
+        .expect("Cannot find the file");
     let mut rdr = BufReader::new(&f);
 
     match mdf {
