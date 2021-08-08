@@ -1,8 +1,8 @@
 use crate::mdfinfo::mdfinfo4::{Cc4Block, Cn4, Dg4};
 use crate::mdfreader::mdfreader4::ChannelData;
-use std::collections::HashMap;
 use ndarray::{Array1, Zip};
 use num::Complex;
+use std::collections::HashMap;
 
 /// convert all channel arrays into physical values as required by CCBlock content
 pub fn convert_all_channels(dg: &mut Dg4, cc: &HashMap<i64, Cc4Block>) {
@@ -120,23 +120,31 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
                 let mut new_array = Array1::<Complex<f64>>::zeros((*cycle_count as usize,));
                 Zip::from(&mut new_array)
                     .and(a)
-                    .par_for_each(|new_array, a| {*new_array = Complex::<f64>::new(a.re as f64 * p2 + p1, a.im as f64 * p2 + p1) });
+                    .par_for_each(|new_array, a| {
+                        *new_array =
+                            Complex::<f64>::new(a.re as f64 * p2 + p1, a.im as f64 * p2 + p1)
+                    });
                 cn.data = ChannelData::Complex64(new_array);
-            },
+            }
             ChannelData::Complex32(a) => {
                 let mut new_array = Array1::<Complex<f64>>::zeros((*cycle_count as usize,));
                 Zip::from(&mut new_array)
                     .and(a)
-                    .par_for_each(|new_array, a| {*new_array = Complex::<f64>::new(a.re as f64 * p2 + p1, a.im as f64 * p2 + p1) });
+                    .par_for_each(|new_array, a| {
+                        *new_array =
+                            Complex::<f64>::new(a.re as f64 * p2 + p1, a.im as f64 * p2 + p1)
+                    });
                 cn.data = ChannelData::Complex64(new_array);
-            },
+            }
             ChannelData::Complex64(a) => {
                 let mut new_array = Array1::<Complex<f64>>::zeros((*cycle_count as usize,));
                 Zip::from(&mut new_array)
                     .and(a)
-                    .par_for_each(|new_array, a| {*new_array = Complex::<f64>::new(a.re * p2 + p1, a.im * p2 + p1) });
+                    .par_for_each(|new_array, a| {
+                        *new_array = Complex::<f64>::new(a.re * p2 + p1, a.im * p2 + p1)
+                    });
                 cn.data = ChannelData::Complex64(new_array);
-            },
+            }
             ChannelData::StringSBC(_) => {}
             ChannelData::StringUTF8(_) => {}
             ChannelData::StringUTF16(_) => {}

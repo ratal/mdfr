@@ -1977,11 +1977,11 @@ pub struct Dz4Block {
     // links
     //members
     pub dz_org_block_type: [u8; 2], // "DT", "SD", "RD" or "DV", "DI", "RV", "RI"
-    dz_zip_type: u8,            // Zip algorithm, 0 deflate, 1 transpose + deflate
-    dz_reserved: u8,            // reserved
-    dz_zip_parameter: u32,      //
-    pub dz_org_data_length: u64, // length of uncompressed data
-    pub dz_data_length: u64,    // length of compressed data
+    dz_zip_type: u8,                // Zip algorithm, 0 deflate, 1 transpose + deflate
+    dz_reserved: u8,                // reserved
+    dz_zip_parameter: u32,          //
+    pub dz_org_data_length: u64,    // length of uncompressed data
+    pub dz_data_length: u64,        // length of compressed data
 }
 
 /// DL4 Data List block struct
