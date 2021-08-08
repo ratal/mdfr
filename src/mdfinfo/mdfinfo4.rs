@@ -690,7 +690,7 @@ pub fn parse_dg4(
             sharable,
             block.dg_rec_id_size,
         );
-        identify_v_l_s_d(&mut cg);
+        identify_vlsd_cg(&mut cg);
         let dg_struct = Dg4 {
             block,
             comments,
@@ -710,7 +710,7 @@ pub fn parse_dg4(
                 sharable,
                 block.dg_rec_id_size,
             );
-            identify_v_l_s_d(&mut cg);
+            identify_vlsd_cg(&mut cg);
             let dg_struct = Dg4 {
                 block,
                 comments,
@@ -723,7 +723,7 @@ pub fn parse_dg4(
     (dg, position)
 }
 
-fn identify_v_l_s_d(cg: &mut HashMap<u64, Cg4>) {
+fn identify_vlsd_cg(cg: &mut HashMap<u64, Cg4>) {
     // First find all VLSD Channel Groups
     let mut vlsd: HashMap<i64, u64> = HashMap::new();
     for (rec_id, channel_group) in cg.iter() {
@@ -745,7 +745,7 @@ fn identify_v_l_s_d(cg: &mut HashMap<u64, Cg4>) {
         }
         for (vlsd_rec_id, (target_rec_id, target_rec_pos)) in vlsd_matching {
             if let Some(vlsd_cg) = cg.get_mut(&vlsd_rec_id) {
-                vlsd_cg.vlsd = Some((target_rec_id, target_rec_pos));
+                vlsd_cg.vlsd_cg = Some((target_rec_id, target_rec_pos));
             }
         }
     }
@@ -886,7 +886,7 @@ fn parse_cg4_block(
         cn,
         record_length,
         block_position: target,
-        vlsd: None,
+        vlsd_cg: None,
         invalid_bytes,
     };
 
@@ -899,7 +899,7 @@ pub struct Cg4 {
     pub cn: CnType,                     // hashmap of channels
     block_position: i64, // as not stored in .block but can still be referenced by other blocks
     pub record_length: u32, // record length including recordId and invalid bytes
-    pub vlsd: Option<(u64, u32)>, // pointing to another cg,cn
+    pub vlsd_cg: Option<(u64, u32)>, // pointing to another cg,cn
     pub invalid_bytes: Option<Vec<u8>>, // invalid byte array, optional
 }
 
@@ -1017,7 +1017,7 @@ pub struct Cn4Block {
     cn_tx_name: i64, // Pointer to TXBLOCK with name (identification) of channel. Name must be according to naming rules stated in 4.4.2 Naming Rules.
     cn_si_source: i64, // Pointer to channel source (SIBLOCK) (can be NIL) Must be NIL for component channels (members of a structure or array elements) because they all must have the same source and thus simply use the SIBLOCK of their parent CNBLOCK (direct child of CGBLOCK).
     pub cn_cc_conversion: i64, // Pointer to the conversion formula (CCBLOCK) (can be NIL, must be NIL for complex channel data types, i.e. for cn_data_type ≥ 10). If the pointer is NIL, this means that a 1:1 conversion is used (phys = int).  };
-    cn_data: i64, // Pointer to channel type specific signal data For variable length data channel (cn_type = 1): unique link to signal data block (SDBLOCK) or data list block (DLBLOCK) or, only for unsorted data groups, referencing link to a VLSD channel group block (CGBLOCK). Can only be NIL if SDBLOCK would be empty. For synchronization channel (cn_type = 4): referencing link to attachment block (ATBLOCK) in global linked list of ATBLOCKs starting at hd_at_first. Cannot be NIL.
+    pub cn_data: i64, // Pointer to channel type specific signal data For variable length data channel (cn_type = 1): unique link to signal data block (SDBLOCK) or data list block (DLBLOCK) or, only for unsorted data groups, referencing link to a VLSD channel group block (CGBLOCK). Can only be NIL if SDBLOCK would be empty. For synchronization channel (cn_type = 4): referencing link to attachment block (ATBLOCK) in global linked list of ATBLOCKs starting at hd_at_first. Cannot be NIL.
     cn_md_unit: i64, // Pointer to TXBLOCK/MDBLOCK with designation for physical unit of signal data (after conversion) or (only for channel data types "MIME sample" and "MIME stream") to MIME context-type text. (can be NIL). The unit can be used if no conversion rule is specified or to overwrite the unit specified for the conversion rule (e.g. if a conversion rule is shared between channels). If the link is NIL, then the unit from the conversion rule must be used. If the content is an empty string, no unit should be displayed. If an MDBLOCK is used, in addition the A-HDO unit definition can be stored, see Table 38. Note: for (virtual) master and synchronization channels the A-HDO definition should be omitted to avoid redundancy. Here the unit is already specified by cn_sync_type of the channel. In case of channel data types "MIME sample" and "MIME stream", the text of the unit must be the content-type text of a MIME type which specifies the content of the values of the channel (either fixed length in record or variable length in SDBLOCK). The MIME content-type string must be written in lowercase, and it must apply to the same rules as defined for at_tx_mimetype in 4.11 The Attachment Block ATBLOCK.
     cn_md_comment: i64, // Pointer to TXBLOCK/MDBLOCK with comment and additional information about the channel, see Table 37. (can be NIL)
     #[br(if(cn_links > 8), little, count = cn_links - 8)]
@@ -1976,7 +1976,7 @@ pub struct Dz4Block {
     dz_links: u64,     // # of links
     // links
     //members
-    dz_org_block_type: [u8; 2], // "DT", "SD", "RD" or "DV", "DI", "RV", "RI"
+    pub dz_org_block_type: [u8; 2], // "DT", "SD", "RD" or "DV", "DI", "RV", "RI"
     dz_zip_type: u8,            // Zip algorithm, 0 deflate, 1 transpose + deflate
     dz_reserved: u8,            // reserved
     dz_zip_parameter: u32,      //

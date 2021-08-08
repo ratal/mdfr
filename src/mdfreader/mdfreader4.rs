@@ -1,17 +1,19 @@
-use crate::mdfinfo::mdfinfo4::{parse_block_header, Cc4Block, Cg4, Cn4, CnType, Dg4, MdfInfo4};
+use crate::mdfinfo::mdfinfo4::{parse_block_header, Cg4, Cn4, CnType, Dg4, MdfInfo4};
 use crate::mdfinfo::mdfinfo4::{
     parse_dz, parser_dl4_block, parser_ld4_block, Dl4Block, Dt4Block, Hl4Block, Ld4Block,
 };
+use crate::mdfreader::converions4::convert_all_channels;
 use binread::BinReaderExt;
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
 use encoding_rs::{Decoder, UTF_16BE, UTF_16LE, WINDOWS_1252};
 use half::f16;
-use ndarray::{Array, Array1, ArrayBase, Dim, OwnedRepr, Zip};
+use ndarray::{Array, Array1, ArrayBase, Dim, OwnedRepr};
 use num::Complex;
 use rayon::prelude::*;
 use std::fs::File;
 use std::str;
 use std::string::String;
+use std::sync::{Mutex, Arc};
 use std::{
     collections::HashMap,
     convert::TryInto,
@@ -19,14 +21,15 @@ use std::{
     usize,
 };
 
-// The following constant represents the of data chunk to be read and processed.
+// The following constant represents the size of data chunk to be read and processed.
 // a big chunk will improve performance but consume more memory
-// a small wil not consume too much memory but will cause many read calls, penalising performance
+// a small chunk will not consume too much memory but will cause many read calls, penalising performance
 const CHUNK_SIZE_READING: usize = 524288; // can be tuned according to architecture
 
 /// Reads the file data based on headers information contained in info parameter
 pub fn mdfreader4<'a>(rdr: &'a mut BufReader<&File>, info: &'a mut MdfInfo4) {
     let mut position: i64 = 0;
+    let mut sorted : bool;
     // read file data
     for (_dg_position, dg) in info.dg.iter_mut() {
         if dg.block.dg_data != 0 {
@@ -35,7 +38,10 @@ pub fn mdfreader4<'a>(rdr: &'a mut BufReader<&File>, info: &'a mut MdfInfo4) {
                 .expect("Could not position buffer"); // change buffer position
             let mut id = [0u8; 4];
             rdr.read_exact(&mut id).expect("could not read block id");
-            position = read_data(rdr, id, dg, dg.block.dg_data);
+            if dg.cg.len() == 1 {
+                sorted = true;
+            } else {sorted = false}
+            position = read_data(rdr, id, dg, dg.block.dg_data, sorted);
         }
         apply_bit_mask_offset(dg);
         // channel_group invalid bits calculation
@@ -49,21 +55,24 @@ pub fn mdfreader4<'a>(rdr: &'a mut BufReader<&File>, info: &'a mut MdfInfo4) {
 
 /// Reads all kind of data layout : simple DT or DV, sorted or unsorted, Data List,
 /// compressed data blocks DZ or Sample DATA
-fn read_data(rdr: &mut BufReader<&File>, id: [u8; 4], dg: &mut Dg4, mut position: i64) -> i64 {
+fn read_data(rdr: &mut BufReader<&File>, id: [u8; 4], dg: &mut Dg4, mut position: i64, sorted: bool) -> i64 {
     // block header is already read
     let mut decoder: Dec = Dec {
         windows_1252: WINDOWS_1252.new_decoder(),
         utf_16_be: UTF_16BE.new_decoder(),
         utf_16_le: UTF_16LE.new_decoder(),
     };
+    let mut vlsd_channels: Vec<u32> = Vec::new();
     if "##DT".as_bytes() == id {
         let block_header: Dt4Block = rdr.read_le().unwrap();
         // simple data block
-        if dg.cg.len() == 1 {
+        if sorted {
             // sorted data group
             for channel_group in dg.cg.values_mut() {
-                read_all_channels_sorted(rdr, channel_group);
+                vlsd_channels = read_all_channels_sorted(rdr, channel_group);
+                position += block_header.len as i64;
             }
+            position = read_sd(rdr, dg, &vlsd_channels, position);
         } else if !dg.cg.is_empty() {
             // unsorted data
             // initialises all arrays
@@ -71,16 +80,18 @@ fn read_data(rdr: &mut BufReader<&File>, id: [u8; 4], dg: &mut Dg4, mut position
                 initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone());
             }
             read_all_channels_unsorted(rdr, dg, block_header.len as i64);
-        }
-        position += block_header.len as i64;
+            position += block_header.len as i64;
+        }   
     } else if "##DZ".as_bytes() == id {
         let (mut data, block_header) = parse_dz(rdr);
         // compressed data
-        if dg.cg.len() == 1 {
+        if sorted {
             // sorted data group
             for channel_group in dg.cg.values_mut() {
-                read_all_channels_sorted_from_bytes(&data, channel_group);
+                vlsd_channels = read_all_channels_sorted_from_bytes(&data, channel_group);
             }
+            position += block_header.len as i64;
+            position = read_sd(rdr, dg, &vlsd_channels, position);
         } else if !dg.cg.is_empty() {
             // unsorted data
             // initialises all arrays
@@ -101,33 +112,24 @@ fn read_data(rdr: &mut BufReader<&File>, id: [u8; 4], dg: &mut Dg4, mut position
                 );
             }
             read_all_channels_unsorted_from_bytes(&mut data, dg, &mut record_counter, &mut decoder);
+            position += block_header.len as i64;
         }
-        position += block_header.len as i64;
     } else if "##HL".as_bytes() == id {
-        // compressed data in datal list
-        let block: Hl4Block = rdr.read_le().expect("could not read HL block");
-        position += block.hl_len as i64;
-        // Read Id of pointed DL Block
-        rdr.seek_relative(block.hl_dl_first - position)
-            .expect("Could not reach DL block from HL block");
-        position = block.hl_dl_first;
-        let mut id = [0u8; 4];
-        rdr.read_exact(&mut id).expect("could not read DL block id");
+        let (pos, id) = read_hl(rdr, position);
+        position = pos;
         // Read DL Blocks
-        position = read_data(rdr, id, dg, position);
-    } else if "##SD".as_bytes() == id {
-        // signal data for VLSD
-        let block_header: Dt4Block = rdr.read_le().unwrap();
-        todo!();
+        position = read_data(rdr, id, dg, position, sorted);
     } else if "##DL".as_bytes() == id {
         // data list
-        if dg.cg.len() == 1 {
+        if sorted {
             // sorted data group
             for channel_group in dg.cg.values_mut() {
                 let (dl_blocks, pos) = parser_dl4(rdr, position);
-                let pos = parser_dl4_sorted(rdr, dl_blocks, pos, channel_group);
+                let (pos, vlsd) = parser_dl4_sorted(rdr, dl_blocks, pos, channel_group);
                 position = pos;
+                vlsd_channels = vlsd;
             }
+            position = read_sd(rdr, dg, &vlsd_channels, position);
         } else if !dg.cg.is_empty() {
             // unsorted data
             // initialises all arrays
@@ -150,7 +152,8 @@ fn read_data(rdr: &mut BufReader<&File>, id: [u8; 4], dg: &mut Dg4, mut position
         let block_header: Dt4Block = rdr.read_le().unwrap();
         for channel_group in dg.cg.values_mut() {
             match channel_group.cn.len() {
-                l if l > 1 => read_all_channels_sorted(rdr, channel_group),
+                l if l > 1 => {
+                    read_all_channels_sorted(rdr, channel_group);},
                 l if l == 1 => {
                     let cycle_count = channel_group.block.cg_cycle_count;
                     // only one channel, can be optimised
@@ -164,6 +167,145 @@ fn read_data(rdr: &mut BufReader<&File>, id: [u8; 4], dg: &mut Dg4, mut position
         position += block_header.len as i64;
     }
     position
+}
+
+fn read_hl(rdr: &mut BufReader<&File>, mut position: i64) -> (i64, [u8; 4]) {
+    // compressed data in datal list
+    let block: Hl4Block = rdr.read_le().expect("could not read HL block");
+    position += block.hl_len as i64;
+    // Read Id of pointed DL Block
+    rdr.seek_relative(block.hl_dl_first - position)
+        .expect("Could not reach DL block from HL block");
+    position = block.hl_dl_first;
+    let mut id = [0u8; 4];
+    rdr.read_exact(&mut id).expect("could not read DL block id");
+    (position, id)
+}
+
+// reads Signal Data Block containing VLSD channel, pointed by cn_data
+fn read_sd(rdr: &mut BufReader<&File>, dg: &mut Dg4, vlsd_channels: &Vec<u32>, mut position: i64) -> i64 {
+    for channel_group in dg.cg.values_mut() {
+        for rec_pos in vlsd_channels {
+            if let Some(cn) = channel_group.cn.get_mut(&rec_pos) {
+                // header block
+                rdr.seek_relative(cn.block.cn_data - position)
+                    .expect("Could not position buffer"); // change buffer position
+                let mut id = [0u8; 4];
+                rdr.read_exact(&mut id).expect("could not read block id");
+                if "##SD".as_bytes() == id {
+                    let block_header: Dt4Block = rdr.read_le().unwrap();
+
+                } else if "##DZ".as_bytes() == id {
+                    let (mut data, block_header) = parse_dz(rdr);
+
+                } else if "##HL".as_bytes() == id {
+                    let (pos, id) = read_hl(rdr, position);
+                    position = pos;
+
+                }else if "##DL".as_bytes() == id {
+                    let (dl_blocks, pos) = parser_dl4(rdr, position);
+
+                }
+
+            }
+        }
+    }
+    position
+}
+
+fn read_vlsd_from_bytes(data: &mut Vec<u8>, cn: &mut Cn4) {
+    let mut decoder: Dec = Dec {
+        windows_1252: WINDOWS_1252.new_decoder(),
+        utf_16_be: UTF_16BE.new_decoder(),
+        utf_16_le: UTF_16LE.new_decoder(),
+    };
+    let mut position: usize = 0;
+    let data_length = data.len();
+    let mut remaining: usize = data_length - position;
+    let mut nrecord: usize = 0;
+    match &mut cn.data {
+        ChannelData::Int8(_) => {}
+        ChannelData::UInt8(_) => {}
+        ChannelData::Int16(_) => {}
+        ChannelData::UInt16(_) => {}
+        ChannelData::Float16(_) => {}
+        ChannelData::Int24(_) => {}
+        ChannelData::UInt24(_) => {}
+        ChannelData::Int32(_) => {}
+        ChannelData::UInt32(_) => {}
+        ChannelData::Float32(_) => {}
+        ChannelData::Int48(_) => {}
+        ChannelData::UInt48(_) => {}
+        ChannelData::Int64(_) => {}
+        ChannelData::UInt64(_) => {}
+        ChannelData::Float64(_) => {}
+        ChannelData::Complex16(_) => {}
+        ChannelData::Complex32(_) => {}
+        ChannelData::Complex64(_) => {}
+        ChannelData::StringSBC(array) => {
+            while remaining > 0 {
+                let len = &data[position..position + std::mem::size_of::<u32>()];
+                let length: usize =
+                    u32::from_le_bytes(len.try_into().expect("Could not read length")) as usize;
+                position += std::mem::size_of::<u32>();
+                let record = &data[position..position + length];
+                let (_result, _size, _replacement) =
+                    decoder
+                        .windows_1252
+                        .decode_to_string(&record, &mut array[nrecord], false);
+                remaining = data_length - position;
+                nrecord +=1 ;
+            }
+        }
+        ChannelData::StringUTF8(array) => {
+            while remaining > 0 {
+                let len = &data[position..position + std::mem::size_of::<u32>()];
+                let length: usize =
+                    u32::from_le_bytes(len.try_into().expect("Could not read length")) as usize;
+                position += std::mem::size_of::<u32>();
+                let record = &data[position..position + length];
+                array[nrecord] = str::from_utf8(&record)
+                    .expect("Found invalid UTF-8")
+                    .to_string();
+                remaining = data_length - position;
+                nrecord +=1 ;
+            }
+        }
+        ChannelData::StringUTF16(array) => {
+            if cn.endian {
+                while remaining > 0 {
+                    let len = &data[position..position + std::mem::size_of::<u32>()];
+                    let length: usize =
+                        u32::from_le_bytes(len.try_into().expect("Could not read length")) as usize;
+                    position += std::mem::size_of::<u32>();
+                    let record = &data[position..position + length];
+                    let (_result, _size, _replacement) =
+                        decoder
+                            .utf_16_be
+                            .decode_to_string(&record, &mut array[nrecord], false);
+                    remaining = data_length - position;
+                    nrecord +=1 ;
+                }    
+            } else {
+                while remaining > 0 {
+                    let len = &data[position..position + std::mem::size_of::<u32>()];
+                    let length: usize =
+                        u32::from_le_bytes(len.try_into().expect("Could not read length")) as usize;
+                    position += std::mem::size_of::<u32>();
+                    let record = &data[position..position + length];
+                    let (_result, _size, _replacement) =
+                        decoder
+                            .utf_16_le
+                            .decode_to_string(&record, &mut array[nrecord], false);
+                    remaining = data_length - position;
+                    nrecord +=1 ;
+                }
+            };
+        }
+        ChannelData::ByteArray(_) => {},
+    }
+    
+
 }
 
 /// Reads all DL Blocks and returns a vect of them
@@ -367,13 +509,14 @@ fn parser_dl4_sorted(
     dl_blocks: Vec<Dl4Block>,
     mut position: i64,
     channel_group: &mut Cg4,
-) -> i64 {
+) -> (i64, Vec<u32>) {
     // initialises the arrays
     initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone());
     // Read all data blocks
     let mut data: Vec<u8> = Vec::new();
     let mut previous_index: usize = 0;
     let cg_cycle_count = channel_group.block.cg_cycle_count as usize;
+    let mut vlsd_channels: Vec<u32> = Vec::new();
     for dl in dl_blocks {
         for data_pointer in dl.dl_data {
             // Reads DT or DZ block id
@@ -399,7 +542,7 @@ fn parser_dl4_sorted(
             let record_length = channel_group.record_length as usize;
             let n_record_chunk = block_length / record_length;
             if previous_index + n_record_chunk < cg_cycle_count {
-                read_channels_from_bytes(
+                vlsd_channels = read_channels_from_bytes(
                     &data[..record_length * n_record_chunk],
                     &mut channel_group.cn,
                     record_length,
@@ -407,7 +550,7 @@ fn parser_dl4_sorted(
                 );
             } else {
                 // Some implementation are pre allocating equal length blocks
-                read_channels_from_bytes(
+                vlsd_channels = read_channels_from_bytes(
                     &data[..record_length * (cg_cycle_count - previous_index)],
                     &mut channel_group.cn,
                     record_length,
@@ -427,7 +570,7 @@ fn parser_dl4_sorted(
             previous_index += n_record_chunk;
         }
     }
-    position
+    (position, vlsd_channels)
 }
 
 /// Reads all unsorted data blocks pointed by DL4 Blocks
@@ -486,25 +629,26 @@ fn generate_chunks(channel_group: &Cg4) -> Vec<(usize, usize)> {
 }
 
 /// Reads all channels from given channel group having sorted data blocks
-fn read_all_channels_sorted(rdr: &mut BufReader<&File>, channel_group: &mut Cg4) {
+fn read_all_channels_sorted(rdr: &mut BufReader<&File>, channel_group: &mut Cg4) -> Vec<u32> {
     let chunks = generate_chunks(channel_group);
     // initialises the arrays
     initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone());
     // read by chunks and store in channel array
     let mut previous_index: usize = 0;
-
+    let mut vlsd_channels: Vec<u32> = Vec::new();
     for (n_record_chunk, chunk_size) in chunks {
         let mut data_chunk = vec![0u8; chunk_size];
         rdr.read_exact(&mut data_chunk)
             .expect("Could not read data chunk");
-        read_channels_from_bytes(
-            &data_chunk,
-            &mut channel_group.cn,
-            channel_group.record_length as usize,
-            previous_index,
-        );
+        vlsd_channels = read_channels_from_bytes(
+                        &data_chunk,
+                        &mut channel_group.cn,
+                        channel_group.record_length as usize,
+                        previous_index,
+                    );
         previous_index += n_record_chunk;
     }
+    vlsd_channels
 }
 
 // reads file if data block contains only one channel in a single DV
@@ -934,9 +1078,10 @@ fn read_channels_from_bytes(
     channels: &mut CnType,
     record_length: usize,
     previous_index: usize,
-) {
+) -> Vec<u32> {
+    let vlsd_channels: Arc<Mutex<Vec<u32>>> = Arc::new(Mutex::new(Vec::new()));
     // iterates for each channel in parallel with rayon crate
-    channels.par_iter_mut().for_each(|(_rec_pos, cn)| {
+    channels.par_iter_mut().for_each(|(rec_pos, cn)| {
         if cn.block.cn_type == 0
             || cn.block.cn_type == 2
             || cn.block.cn_type == 4
@@ -1421,18 +1566,27 @@ fn read_channels_from_bytes(
                     }
                 }
             }
+        } else if cn.block.cn_type == 1 {
+            // SD Block attached as data block is sorted
+            if cn.block.cn_data != 0 {
+                let c_vlsd_channel = Arc::clone(&vlsd_channels);
+                let mut vlsd_channel = c_vlsd_channel.lock().expect("Could not get lock from vlsd channel arc vec");
+                vlsd_channel.push(*rec_pos);
+            }
         }
         // Other channel types : virtual channels cn_type 3 & 6 are handled at initialisation
-        // cn_type == 1 VLSD not possible for sorted data
-    })
+    });
+    let lock = vlsd_channels.lock().expect("Could not get lock from vlsd channel arc vec");
+    lock.clone()
 }
 
 // copies complete sorted data block (not chunk) into each channel array
-fn read_all_channels_sorted_from_bytes(data: &[u8], channel_group: &mut Cg4) {
+fn read_all_channels_sorted_from_bytes(data: &[u8], channel_group: &mut Cg4) -> Vec<u32>{
     // initialises the arrays
     initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone());
+    let mut vlsd_channels: Vec<u32>= Vec::new();
     for nrecord in 0..channel_group.block.cg_cycle_count {
-        read_channels_from_bytes(
+        vlsd_channels = read_channels_from_bytes(
             &data[(nrecord * channel_group.record_length as u64) as usize
                 ..((nrecord + 1) * channel_group.record_length as u64) as usize],
             &mut channel_group.cn,
@@ -1440,6 +1594,7 @@ fn read_all_channels_sorted_from_bytes(data: &[u8], channel_group: &mut Cg4) {
             0,
         );
     }
+    vlsd_channels
 }
 
 /// Reads unsorted data block chunk by chunk
@@ -1481,6 +1636,7 @@ fn read_all_channels_unsorted(rdr: &mut BufReader<&File>, dg: &mut Dg4, block_le
 }
 
 /// stores a vlsd record into channel vect (ChannelData)
+#[inline]
 fn save_vlsd(
     data: &mut ChannelData,
     record: &[u8],
@@ -1531,7 +1687,7 @@ fn save_vlsd(
                         .decode_to_string(&record, &mut array[*nrecord], false);
             };
         }
-        ChannelData::ByteArray(_) => todo!(),
+        ChannelData::ByteArray(_) => {},
     }
 }
 
@@ -1544,12 +1700,12 @@ fn read_all_channels_unsorted_from_bytes(
 ) {
     let mut position: usize = 0;
     let data_length = data.len();
+    let dg_rec_id_size = dg.block.dg_rec_id_size as usize;
     // unsort data into sorted data blocks, except for VLSD CG.
     let mut remaining: usize = data_length - position;
     while remaining > 0 {
         // reads record id
         let rec_id: u64;
-        let dg_rec_id_size = dg.block.dg_rec_id_size as usize;
         if dg_rec_id_size == 1 && remaining >= 1 {
             rec_id = data[position]
                 .try_into()
@@ -1581,7 +1737,7 @@ fn read_all_channels_unsorted_from_bytes(
                         u32::from_le_bytes(len.try_into().expect("Could not read length")) as usize;
                     position += std::mem::size_of::<u32>();
                     let record = &data[position..position + length];
-                    if let Some((target_rec_id, target_rec_pos)) = cg.vlsd {
+                    if let Some((target_rec_id, target_rec_pos)) = cg.vlsd_cg {
                         if let Some(target_cg) = dg.cg.get_mut(&target_rec_id) {
                             if let Some(target_cn) = target_cg.cn.get_mut(&target_rec_pos) {
                                 if let Some((nrecord, _)) = record_counter.get_mut(&rec_id) {
@@ -1985,294 +2141,3 @@ pub fn data_init(cn_type: u8, cn_data_type: u8, n_bytes: u32, cycle_count: u64) 
     data_type
 }
 
-/// convert all channel arrays into physical values as required by CCBlock content
-fn convert_all_channels(dg: &mut Dg4, cc: &HashMap<i64, Cc4Block>) {
-    for channel_group in dg.cg.values_mut() {
-        for (_cn_record_position, cn) in channel_group.cn.iter_mut() {
-            if let Some(conv) = cc.get(&cn.block.cn_cc_conversion) {
-                match conv.cc_type {
-                    1 => linear_conversion(cn, &conv.cc_val, &channel_group.block.cg_cycle_count),
-                    2 => rational_conversion(cn, &conv.cc_val, &channel_group.block.cg_cycle_count),
-                    _ => {}
-                }
-            }
-        }
-    }
-}
-
-/// Apply linear conversion to get physical data
-fn linear_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
-    let p1 = cc_val[0];
-    let p2 = cc_val[1];
-    if !(p1 == 0.0 && (p2 - 1.0) < 1e-12) {
-        let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
-        match &mut cn.data {
-            ChannelData::UInt8(a) => {
-                Zip::from(&mut new_array)
-                    .and(a)
-                    .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
-            }
-            ChannelData::Int8(a) => {
-                Zip::from(&mut new_array)
-                    .and(a)
-                    .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
-            }
-            ChannelData::Int16(a) => {
-                Zip::from(&mut new_array)
-                    .and(a)
-                    .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
-            }
-            ChannelData::UInt16(a) => {
-                Zip::from(&mut new_array)
-                    .and(a)
-                    .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
-            }
-            ChannelData::Float16(a) => {
-                Zip::from(&mut new_array)
-                    .and(a)
-                    .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
-            }
-            ChannelData::Int24(a) => {
-                Zip::from(&mut new_array)
-                    .and(a)
-                    .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
-            }
-            ChannelData::UInt24(a) => {
-                Zip::from(&mut new_array)
-                    .and(a)
-                    .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
-            }
-            ChannelData::Int32(a) => {
-                Zip::from(&mut new_array)
-                    .and(a)
-                    .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
-            }
-            ChannelData::UInt32(a) => {
-                Zip::from(&mut new_array)
-                    .and(a)
-                    .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
-            }
-            ChannelData::Float32(a) => {
-                Zip::from(&mut new_array)
-                    .and(a)
-                    .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
-            }
-            ChannelData::Int48(a) => {
-                Zip::from(&mut new_array)
-                    .and(a)
-                    .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
-            }
-            ChannelData::UInt48(a) => {
-                Zip::from(&mut new_array)
-                    .and(a)
-                    .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
-            }
-            ChannelData::Int64(a) => {
-                Zip::from(&mut new_array)
-                    .and(a)
-                    .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
-            }
-            ChannelData::UInt64(a) => {
-                Zip::from(&mut new_array)
-                    .and(a)
-                    .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
-            }
-            ChannelData::Float64(a) => {
-                Zip::from(&mut new_array)
-                    .and(a)
-                    .par_for_each(|new_array, a| *new_array = *a * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
-            }
-            ChannelData::Complex16(_) => todo!(),
-            ChannelData::Complex32(_) => todo!(),
-            ChannelData::Complex64(_) => todo!(),
-            ChannelData::StringSBC(_) => {}
-            ChannelData::StringUTF8(_) => {}
-            ChannelData::StringUTF16(_) => {}
-            ChannelData::ByteArray(_) => {}
-        }
-    }
-}
-
-// Apply rational conversion to get physical data
-fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
-    let p1 = cc_val[0];
-    let p2 = cc_val[1];
-    let p3 = cc_val[2];
-    let p4 = cc_val[3];
-    let p5 = cc_val[4];
-    let p6 = cc_val[5];
-    let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
-    match &mut cn.data {
-        ChannelData::UInt8(a) => {
-            Zip::from(&mut new_array)
-                .and(a)
-                .par_for_each(|new_array, a| {
-                    let m = *a as f64;
-                    let m_2 = f64::powi(m, 2);
-                    *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-                });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::Int8(a) => {
-            Zip::from(&mut new_array)
-                .and(a)
-                .par_for_each(|new_array, a| {
-                    let m = *a as f64;
-                    let m_2 = f64::powi(m, 2);
-                    *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-                });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::Int16(a) => {
-            Zip::from(&mut new_array)
-                .and(a)
-                .par_for_each(|new_array, a| {
-                    let m = *a as f64;
-                    let m_2 = f64::powi(m, 2);
-                    *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-                });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::UInt16(a) => {
-            Zip::from(&mut new_array)
-                .and(a)
-                .par_for_each(|new_array, a| {
-                    let m = *a as f64;
-                    let m_2 = f64::powi(m, 2);
-                    *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-                });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::Float16(a) => {
-            Zip::from(&mut new_array)
-                .and(a)
-                .par_for_each(|new_array, a| {
-                    let m = *a as f64;
-                    let m_2 = f64::powi(m, 2);
-                    *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-                });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::Int24(a) => {
-            Zip::from(&mut new_array)
-                .and(a)
-                .par_for_each(|new_array, a| {
-                    let m = *a as f64;
-                    let m_2 = f64::powi(m, 2);
-                    *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-                });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::UInt24(a) => {
-            Zip::from(&mut new_array)
-                .and(a)
-                .par_for_each(|new_array, a| {
-                    let m = *a as f64;
-                    let m_2 = f64::powi(m, 2);
-                    *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-                });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::Int32(a) => {
-            Zip::from(&mut new_array)
-                .and(a)
-                .par_for_each(|new_array, a| {
-                    let m = *a as f64;
-                    let m_2 = f64::powi(m, 2);
-                    *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-                });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::UInt32(a) => {
-            Zip::from(&mut new_array)
-                .and(a)
-                .par_for_each(|new_array, a| {
-                    let m = *a as f64;
-                    let m_2 = f64::powi(m, 2);
-                    *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-                });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::Float32(a) => {
-            Zip::from(&mut new_array)
-                .and(a)
-                .par_for_each(|new_array, a| {
-                    let m = *a as f64;
-                    let m_2 = f64::powi(m, 2);
-                    *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-                });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::Int48(a) => {
-            Zip::from(&mut new_array)
-                .and(a)
-                .par_for_each(|new_array, a| {
-                    let m = *a as f64;
-                    let m_2 = f64::powi(m, 2);
-                    *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-                });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::UInt48(a) => {
-            Zip::from(&mut new_array)
-                .and(a)
-                .par_for_each(|new_array, a| {
-                    let m = *a as f64;
-                    let m_2 = f64::powi(m, 2);
-                    *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-                });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::Int64(a) => {
-            Zip::from(&mut new_array)
-                .and(a)
-                .par_for_each(|new_array, a| {
-                    let m = *a as f64;
-                    let m_2 = f64::powi(m, 2);
-                    *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-                });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::UInt64(a) => {
-            Zip::from(&mut new_array)
-                .and(a)
-                .par_for_each(|new_array, a| {
-                    let m = *a as f64;
-                    let m_2 = f64::powi(m, 2);
-                    *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-                });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::Float64(a) => {
-            Zip::from(&mut new_array)
-                .and(a)
-                .par_for_each(|new_array, a| {
-                    let m_2 = f64::powi(*a, 2);
-                    *new_array = (m_2 * p1 + *a * p2 + p1) / (m_2 * p4 + *a * p5 + p6)
-                });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::Complex16(_) => todo!(),
-        ChannelData::Complex32(_) => todo!(),
-        ChannelData::Complex64(_) => todo!(),
-        ChannelData::StringSBC(_) => {}
-        ChannelData::StringUTF8(_) => {}
-        ChannelData::StringUTF16(_) => {}
-        ChannelData::ByteArray(_) => {}
-    }
-}
