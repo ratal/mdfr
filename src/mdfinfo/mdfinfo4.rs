@@ -18,7 +18,7 @@ use std::{
 use transpose;
 use yazi::{decompress, Format};
 
-use crate::mdfreader::mdfreader4::{data_init, ChannelData};
+use crate::mdfreader::channel_data::{data_init, ChannelData};
 
 /// MdfInfo4 is the struct hold whole metadata of mdf4.x files
 /// * blocks with unique links are at top level like attachment, events and file history
