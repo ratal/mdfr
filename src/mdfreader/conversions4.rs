@@ -312,9 +312,9 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
                 });
             cn.data = ChannelData::Float64(new_array);
         }
-        ChannelData::Complex16(_) => {},
-        ChannelData::Complex32(_) => {},
-        ChannelData::Complex64(_) => {},
+        ChannelData::Complex16(_) => {}
+        ChannelData::Complex32(_) => {}
+        ChannelData::Complex64(_) => {}
         ChannelData::StringSBC(_) => {}
         ChannelData::StringUTF8(_) => {}
         ChannelData::StringUTF16(_) => {}

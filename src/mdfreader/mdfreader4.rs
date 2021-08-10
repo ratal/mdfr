@@ -2,12 +2,12 @@ use crate::mdfinfo::mdfinfo4::{parse_block_header, Cg4, Cn4, CnType, Dg4, MdfInf
 use crate::mdfinfo::mdfinfo4::{
     parse_dz, parser_dl4_block, parser_ld4_block, Dl4Block, Dt4Block, Hl4Block, Ld4Block,
 };
+use crate::mdfreader::channel_data::{data_init, ChannelData};
 use crate::mdfreader::conversions4::convert_all_channels;
 use binread::BinReaderExt;
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
 use encoding_rs::{Decoder, UTF_16BE, UTF_16LE, WINDOWS_1252};
 use half::f16;
-use crate::mdfreader::channel_data::{data_init, ChannelData};
 use ndarray::{Array, Array1};
 use num::Complex;
 use rayon::prelude::*;
@@ -138,7 +138,8 @@ fn read_data(
             // sorted data group
             for channel_group in dg.cg.values_mut() {
                 let (dl_blocks, pos) = parser_dl4(rdr, position);
-                let (pos, vlsd) = parser_dl4_sorted(rdr, dl_blocks, pos, channel_group, &mut decoder, &0u32);
+                let (pos, vlsd) =
+                    parser_dl4_sorted(rdr, dl_blocks, pos, channel_group, &mut decoder, &0u32);
                 position = pos;
                 vlsd_channels = vlsd;
             }
@@ -218,7 +219,8 @@ fn read_sd(
                 if "##SD".as_bytes() == id {
                     let block_header: Dt4Block = rdr.read_le().unwrap();
                     let mut data = vec![0u8; block_header.len as usize - 24];
-                    rdr.read_exact(&mut data).expect("could not read SD data buffer");
+                    rdr.read_exact(&mut data)
+                        .expect("could not read SD data buffer");
                     position += block_header.len as i64;
                     read_vlsd_from_bytes(&mut data, cn, 0, decoder);
                 } else if "##DZ".as_bytes() == id {
@@ -229,11 +231,13 @@ fn read_sd(
                     let (pos, _id) = read_hl(rdr, position);
                     position = pos;
                     let (dl_blocks, pos) = parser_dl4(rdr, position);
-                    let (pos, _vlsd) = parser_dl4_sorted(rdr, dl_blocks, pos, channel_group, decoder, rec_pos);
+                    let (pos, _vlsd) =
+                        parser_dl4_sorted(rdr, dl_blocks, pos, channel_group, decoder, rec_pos);
                     position = pos;
                 } else if "##DL".as_bytes() == id {
                     let (dl_blocks, pos) = parser_dl4(rdr, position);
-                    let (pos, _vlsd) = parser_dl4_sorted(rdr, dl_blocks, pos, channel_group, decoder, rec_pos);
+                    let (pos, _vlsd) =
+                        parser_dl4_sorted(rdr, dl_blocks, pos, channel_group, decoder, rec_pos);
                     position = pos;
                 }
             }
@@ -242,7 +246,12 @@ fn read_sd(
     position
 }
 
-fn read_vlsd_from_bytes(data: &mut Vec<u8>, cn: &mut Cn4, previous_index: usize, decoder: &mut Dec) -> usize {
+fn read_vlsd_from_bytes(
+    data: &mut Vec<u8>,
+    cn: &mut Cn4,
+    previous_index: usize,
+    decoder: &mut Dec,
+) -> usize {
     let mut position: usize = 0;
     let data_length = data.len();
     let mut remaining: usize = data_length - position;
@@ -274,10 +283,11 @@ fn read_vlsd_from_bytes(data: &mut Vec<u8>, cn: &mut Cn4, previous_index: usize,
                 if (position + length + 4) <= data_length {
                     position += std::mem::size_of::<u32>();
                     let record = &data[position..position + length];
-                    let (_result, _size, _replacement) =
-                        decoder
-                            .windows_1252
-                            .decode_to_string(&record, &mut array[nrecord + previous_index], false);
+                    let (_result, _size, _replacement) = decoder.windows_1252.decode_to_string(
+                        &record,
+                        &mut array[nrecord + previous_index],
+                        false,
+                    );
                     position += length;
                     remaining = data_length - position;
                     nrecord += 1;
@@ -287,10 +297,12 @@ fn read_vlsd_from_bytes(data: &mut Vec<u8>, cn: &mut Cn4, previous_index: usize,
                     data.copy_within(position.., 0);
                     // clears the last part
                     data.truncate(remaining);
-                    break
+                    break;
                 }
             }
-            if remaining == 0 {data.clear()}
+            if remaining == 0 {
+                data.clear()
+            }
         }
         ChannelData::StringUTF8(array) => {
             while remaining > 0 {
@@ -306,16 +318,18 @@ fn read_vlsd_from_bytes(data: &mut Vec<u8>, cn: &mut Cn4, previous_index: usize,
                     position += length;
                     remaining = data_length - position;
                     nrecord += 1;
-                }  else {
+                } else {
                     remaining = data_length - position;
                     // copies tail part at beginnning of vect
                     data.copy_within(position.., 0);
                     // clears the last part
                     data.truncate(remaining);
-                    break
+                    break;
                 }
             }
-            if remaining == 0 {data.clear()}
+            if remaining == 0 {
+                data.clear()
+            }
         }
         ChannelData::StringUTF16(array) => {
             if cn.endian {
@@ -326,23 +340,26 @@ fn read_vlsd_from_bytes(data: &mut Vec<u8>, cn: &mut Cn4, previous_index: usize,
                     if (position + length + 4) <= data_length {
                         position += std::mem::size_of::<u32>();
                         let record = &data[position..position + length];
-                        let (_result, _size, _replacement) =
-                            decoder
-                                .utf_16_be
-                                .decode_to_string(&record, &mut array[nrecord + previous_index], false);
+                        let (_result, _size, _replacement) = decoder.utf_16_be.decode_to_string(
+                            &record,
+                            &mut array[nrecord + previous_index],
+                            false,
+                        );
                         position += length;
                         remaining = data_length - position;
                         nrecord += 1;
-                    }  else {
+                    } else {
                         remaining = data_length - position;
                         // copies tail part at beginnning of vect
                         data.copy_within(position.., 0);
                         // clears the last part
                         data.truncate(remaining);
-                        break
+                        break;
                     }
                 }
-                if remaining == 0 {data.clear()}
+                if remaining == 0 {
+                    data.clear()
+                }
             } else {
                 while remaining > 0 {
                     let len = &data[position..position + std::mem::size_of::<u32>()];
@@ -351,23 +368,26 @@ fn read_vlsd_from_bytes(data: &mut Vec<u8>, cn: &mut Cn4, previous_index: usize,
                     if (position + length + 4) <= data_length {
                         position += std::mem::size_of::<u32>();
                         let record = &data[position..position + length];
-                        let (_result, _size, _replacement) =
-                            decoder
-                                .utf_16_le
-                                .decode_to_string(&record, &mut array[nrecord + previous_index], false);
+                        let (_result, _size, _replacement) = decoder.utf_16_le.decode_to_string(
+                            &record,
+                            &mut array[nrecord + previous_index],
+                            false,
+                        );
                         position += length;
                         remaining = data_length - position;
                         nrecord += 1;
-                    }  else {
+                    } else {
                         remaining = data_length - position;
                         // copies tail part at beginnning of vect
                         data.copy_within(position.., 0);
                         // clears the last part
                         data.truncate(remaining);
-                        break
+                        break;
                     }
                 }
-                if remaining == 0 {data.clear()}
+                if remaining == 0 {
+                    data.clear()
+                }
             };
         }
         ChannelData::ByteArray(_) => {}
@@ -609,9 +629,9 @@ fn parser_dl4_sorted(
                 position = data_pointer + block_header.len as i64;
             }
             // Copies full sized records in block into channels arrays
-            
+
             if id == "##SD".as_bytes() {
-                if let Some (cn) = channel_group.cn.get_mut(rec_pos) {
+                if let Some(cn) = channel_group.cn.get_mut(rec_pos) {
                     previous_index = read_vlsd_from_bytes(&mut data, cn, previous_index, decoder);
                 }
             } else {
@@ -643,7 +663,7 @@ fn parser_dl4_sorted(
                     data.clear()
                 }
                 previous_index += n_record_chunk;
-            } 
+            }
         }
     }
     (position, vlsd_channels)

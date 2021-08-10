@@ -1,7 +1,7 @@
+pub mod channel_data;
 pub mod conversions4;
 pub mod mdfreader3;
 pub mod mdfreader4;
-pub mod channel_data;
 use crate::mdfinfo::{mdfinfo, MdfInfo};
 use mdfreader3::mdfreader3;
 use mdfreader4::mdfreader4;
