@@ -1,7 +1,6 @@
 use ndarray::{Array1, ArrayBase, Dim, OwnedRepr};
 use num::Complex;
 
-
 /// channel data type enum
 #[derive(Debug, Clone)]
 pub enum ChannelData {

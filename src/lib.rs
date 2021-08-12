@@ -1,11 +1,13 @@
 #![forbid(unsafe_code)]
+pub mod mdfr;
+mod tests;
 pub mod mdfinfo;
 pub mod mdfreader;
-mod tests;
 
-//use pyo3::prelude::*;
+use pyo3::prelude::*;
 
-//#[pymodule]
-//fn mdfr(_py: Python, _module: &PyModule) -> PyResult<()> {
-//    Ok(())
-//}
+#[pymodule]
+fn mdfr(py: Python, m: &PyModule) -> PyResult<()> {
+    mdfr::register(py, m)?;
+    Ok(())
+}

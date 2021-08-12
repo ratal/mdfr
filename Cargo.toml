@@ -8,31 +8,28 @@ edition = "2018"
 
 [dependencies]
 clap = "2" # for input arguments 
-byteorder = "1.4"
-rayon =  "1.5" # for general purpose parallel computations
-dashmap = {version = "4", features = ["rayon"]} # for parallel hashmap computations
-encoding = "0.2"
-chrono = "0.4.19" # for time conversion
-roxmltree = "0.14" # for xml parsing
-binread = "2.1" # for easy reading of struct
-criterion = "0.3" # for benchmark
+byteorder = "1.4" # for bytes conversions
+encoding = "0.2" # for bytes to texte conversion (utf8, SBC, UTF16)
+binread = "2.1" # for easy reading of blocks into struct
 num = "0.4" # for complex numbers
 half = "1" # for f16 handling
 encoding_rs = "0.8" # for endian management
-#tokio = "1.5"
-#numpy = "0.13"
+chrono = "0.4.19" # for time conversion
 ndarray = {version = "0.15", features = ["rayon"]} # for nd arrays
-rustfilt = "0.2"
-yazi = "0.1"
-transpose = "0.2"
+rayon =  "1.5" # for general purpose parallel computations
+dashmap = {version = "4", features = ["rayon"]} # for parallel hashmap computations
+roxmltree = "0.14" # for xml parsing
+criterion = "0.3" # for benchmark
+yazi = "0.1" # for DZ block data deflate
+transpose = "0.2" # for DZBlock transpose
 
-#[lib]
-#name = "mdfr"
-#crate-type = ["rlib", "cdylib"]
+[lib]
+name = "mdfr"
+crate-type = ["rlib", "cdylib"]
 
-#[dependencies.pyo3]
-#version = "0.13.2"
-#features = ["extension-module"]
+[dependencies.pyo3]
+version = "0.14.2"
+features = ["extension-module"]
 
 [[bench]]
 name = "mdf_benchmark"
