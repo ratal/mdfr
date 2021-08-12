@@ -357,9 +357,6 @@ fn read_vlsd_from_bytes(
                         break;
                     }
                 }
-                if remaining == 0 {
-                    data.clear()
-                }
             } else {
                 while remaining > 0 {
                     let len = &data[position..position + std::mem::size_of::<u32>()];
@@ -385,10 +382,10 @@ fn read_vlsd_from_bytes(
                         break;
                     }
                 }
-                if remaining == 0 {
-                    data.clear()
-                }
             };
+            if remaining == 0 {
+                data.clear()
+            }
         }
         ChannelData::ByteArray(_) => {}
     }
