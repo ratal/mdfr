@@ -44,6 +44,29 @@ pub struct MdfInfo4 {
     pub db: Db,
 }
 
+impl MdfInfo4 {
+    pub fn get_channel_id(&self, channel_name: &String) -> Option<ChannelId> {
+        let mut channel_id: Option<ChannelId> = None;
+        if let Some(id) = self.db.channel_list.get(channel_name) {
+            channel_id = Some(*id);
+        }
+        channel_id
+    }
+    pub fn get_channel_data(&self, channel_name: &String) -> Option<&ChannelData> {
+        let mut data: Option<&ChannelData> = None;
+        if let Some((dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) = self.get_channel_id(channel_name) {
+            if let Some(dg) = self.dg.get(&dg_pos) {
+                if let Some(cg) = dg.cg.get(&rec_id) {
+                    if let Some(cn) = cg.cn.get(&rec_pos) {
+                        data = Some(&cn.data);
+                    }
+                }
+            }
+        }
+        data
+    }
+}
+
 /// MDF4 - common block Header
 #[derive(Debug, Copy, Clone, BinRead)]
 #[br(little)]
@@ -1784,12 +1807,13 @@ fn parse_composition(
     }
 }
 
-type ChannelList = HashMap<String, (i64, (i64, u64), (i64, u32))>;
+pub(crate) type ChannelId = (i64, (i64, u64), (i64, u32));
+pub(crate) type ChannelList = HashMap<String, ChannelId>;
 
 #[derive(Debug, PartialEq, Default, Clone)]
 pub struct Db {
-    channel_list: ChannelList,
-    master_channel_list: HashMap<String, Vec<String>>,
+    pub channel_list: ChannelList,
+    pub master_channel_list: HashMap<String, Vec<String>>,
 }
 
 impl fmt::Display for Db {
