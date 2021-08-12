@@ -22,6 +22,7 @@ roxmltree = "0.14" # for xml parsing
 criterion = "0.3" # for benchmark
 yazi = "0.1" # for DZ block data deflate
 transpose = "0.2" # for DZBlock transpose
+numpy = "0.14" # export rust ndarrays into numpy
 
 [lib]
 name = "mdfr"
