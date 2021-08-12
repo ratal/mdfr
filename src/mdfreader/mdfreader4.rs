@@ -186,6 +186,9 @@ fn read_data(
     position
 }
 
+/// Header List block reader
+/// This HL Block references Data List Blocks that are listing DZ Blocks
+/// It is existing to add complementary information about compression in DZ
 fn read_hl(rdr: &mut BufReader<&File>, mut position: i64) -> (i64, [u8; 4]) {
     // compressed data in datal list
     let block: Hl4Block = rdr.read_le().expect("could not read HL block");
@@ -199,7 +202,7 @@ fn read_hl(rdr: &mut BufReader<&File>, mut position: i64) -> (i64, [u8; 4]) {
     (position, id)
 }
 
-// reads Signal Data Block containing VLSD channel, pointed by cn_data
+/// Reads Signal Data Block containing VLSD channel, pointed by cn_data
 fn read_sd(
     rdr: &mut BufReader<&File>,
     dg: &mut Dg4,
@@ -246,6 +249,9 @@ fn read_sd(
     position
 }
 
+/// Reads Variable Length Signal Data from bytes of a SD Block
+/// It shall contain data of only one VLSD channel
+/// Each reacord is starting from its length headed by a u32
 fn read_vlsd_from_bytes(
     data: &mut Vec<u8>,
     cn: &mut Cn4,
