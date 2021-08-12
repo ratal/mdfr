@@ -1,8 +1,8 @@
 #![forbid(unsafe_code)]
-pub mod mdfr;
-mod tests;
 pub mod mdfinfo;
+pub mod mdfr;
 pub mod mdfreader;
+mod tests;
 
 use pyo3::prelude::*;
 

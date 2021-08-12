@@ -750,7 +750,7 @@ fn read_all_channels_sorted(rdr: &mut BufReader<&File>, channel_group: &mut Cg4)
     vlsd_channels
 }
 
-// reads file if data block contains only one channel in a single DV
+/// reads file if data block contains only one channel in a single DV
 fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count: usize) {
     if cn.block.cn_type == 0
         || cn.block.cn_type == 2
@@ -1171,7 +1171,7 @@ fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count:
     // cn_type == 1 VLSD not possible for sorted data
 }
 
-// copies data from data_chunk into each channel array
+/// copies data from data_chunk into each channel array
 fn read_channels_from_bytes(
     data_chunk: &[u8],
     channels: &mut CnType,
@@ -1683,7 +1683,7 @@ fn read_channels_from_bytes(
     lock.clone()
 }
 
-// copies complete sorted data block (not chunk) into each channel array
+/// copies complete sorted data block (not chunk) into each channel array
 fn read_all_channels_sorted_from_bytes(data: &[u8], channel_group: &mut Cg4) -> Vec<u32> {
     // initialises the arrays
     initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone());
