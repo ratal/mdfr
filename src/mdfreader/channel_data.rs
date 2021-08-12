@@ -1,5 +1,6 @@
 use ndarray::{Array1, ArrayBase, Dim, OwnedRepr};
 use num::Complex;
+use std::fmt;
 
 /// channel data type enum
 #[derive(Debug, Clone)]
@@ -124,6 +125,166 @@ impl ChannelData {
             }
         }
     }
+    pub fn min_max(&self) -> String {
+        let output:String;
+        match self {
+            ChannelData::Int8(array) => {
+                if array.len() > 1 {
+                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::UInt8(array) => {
+                if array.len() > 1 {
+                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::Int16(array) => {
+                if array.len() > 1 {
+                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::UInt16(array) => {
+                if array.len() > 1 {
+                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::Float16(array) => {
+                if array.len() > 1 {
+                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::Int24(array) => {
+                if array.len() > 1 {
+                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::UInt24(array) => {
+                if array.len() > 1 {
+                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::Int32(array) => {
+                if array.len() > 1 {
+                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::UInt32(array) => {
+                if array.len() > 1 {
+                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::Float32(array) => {
+                if array.len() > 1 {
+                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::Int48(array) => {
+                if array.len() > 1 {
+                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::UInt48(array) => {
+                if array.len() > 1 {
+                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::Int64(array) => {
+                if array.len() > 1 {
+                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::UInt64(array) => {
+                if array.len() > 1 {
+                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::Float64(array) => {
+                if array.len() > 1 {
+                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::Complex16(array) => {
+                if array.len() > 1 {
+                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::Complex32(array) => {
+                if array.len() > 1 {
+                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::Complex64(array) => {
+                if array.len() > 1 {
+                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::StringSBC(array) => {
+                if array.len() > 1 {
+                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::StringUTF8(array) => {
+                if array.len() > 1 {
+                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::StringUTF16(array) => {
+                if array.len() > 1 {
+                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::ByteArray(array) => {
+                if array.len() > 1 {
+                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+        }
+        output
+    }
 }
 
 impl Default for ChannelData {
@@ -205,4 +366,89 @@ pub fn data_init(cn_type: u8, cn_data_type: u8, n_bytes: u32, cycle_count: u64) 
         data_type = ChannelData::UInt64(Array1::<u64>::from_iter(0..cycle_count));
     }
     data_type
+}
+
+impl fmt::Display for ChannelData {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ChannelData::Int8(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::UInt8(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::Int16(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::UInt16(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::Float16(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::Int24(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::UInt24(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::Int32(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::UInt32(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::Float32(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::Int48(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::UInt48(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::Int64(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::UInt64(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::Float64(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::Complex16(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::Complex32(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::Complex64(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::StringSBC(array) => {
+                for text in array.iter() {
+                    writeln!(f, " {} ", text)?;
+                }
+                writeln!(f, " ")
+            }
+            ChannelData::StringUTF8(array) => {
+                for text in array.iter() {
+                    writeln!(f, " {} ", text)?;
+                }
+                writeln!(f, " ")
+            }
+            ChannelData::StringUTF16(array) => {
+                for text in array.iter() {
+                    writeln!(f, " {} ", text)?;
+                }
+                writeln!(f, " ")
+            }
+            ChannelData::ByteArray(array) => {
+                for text in array.iter() {
+                    writeln!(f, " {} ", text)?;
+                }
+                writeln!(f, " ")
+            }
+        }
+    }
 }
