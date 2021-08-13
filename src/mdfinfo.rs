@@ -11,13 +11,14 @@ use std::{collections::HashMap, sync::Arc};
 pub mod mdfinfo3;
 pub mod mdfinfo4;
 
+use crate::mdfreader::channel_data::ChannelData;
 use dashmap::DashMap;
 use mdfinfo3::{hd3_comment_parser, hd3_parser, parse_id3, MdfInfo3};
 use mdfinfo4::{
     build_channel_db, extract_xml, hd4_comment_parser, hd4_parser, parse_at4, parse_at4_comments,
-    parse_dg4, parse_ev4, parse_ev4_comments, parse_fh, parse_id4, MdfInfo4, SharableBlocks, ChannelId
+    parse_dg4, parse_ev4, parse_ev4_comments, parse_fh, parse_id4, ChannelId, MdfInfo4,
+    SharableBlocks,
 };
-use crate::mdfreader::channel_data::ChannelData;
 
 #[derive(Debug)]
 pub enum MdfInfo {
@@ -35,20 +36,20 @@ impl MdfInfo {
     pub fn get_channel_id(&self, channel_name: &String) -> Option<ChannelId> {
         let mut channel_id: Option<ChannelId> = None;
         match self {
-            MdfInfo::V3(_mdfinfo3) => {},
+            MdfInfo::V3(_mdfinfo3) => {}
             MdfInfo::V4(mdfinfo4) => {
                 channel_id = mdfinfo4.get_channel_id(channel_name);
-            },
+            }
         }
         channel_id
     }
     pub fn get_channel_data(&self, channel_name: &String) -> Option<&ChannelData> {
         let mut data: Option<&ChannelData> = None;
         match self {
-            MdfInfo::V3(_mdfinfo3) => {},
+            MdfInfo::V3(_mdfinfo3) => {}
             MdfInfo::V4(mdfinfo4) => {
                 data = mdfinfo4.get_channel_data(channel_name);
-            },
+            }
         }
         data
     }
