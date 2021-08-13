@@ -6,3 +6,4 @@ perf.data
 profile.coz
 callgrind.out.*
 cachegrind.out.*
+/.env
