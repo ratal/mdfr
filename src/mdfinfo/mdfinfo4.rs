@@ -54,7 +54,9 @@ impl MdfInfo4 {
     }
     pub fn get_channel_data(&self, channel_name: &String) -> Option<&ChannelData> {
         let mut data: Option<&ChannelData> = None;
-        if let Some((dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) = self.get_channel_id(channel_name) {
+        if let Some((dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.get_channel_id(channel_name)
+        {
             if let Some(dg) = self.dg.get(&dg_pos) {
                 if let Some(cg) = dg.cg.get(&rec_id) {
                     if let Some(cn) = cg.cn.get(&rec_pos) {
