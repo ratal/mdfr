@@ -1,7 +1,6 @@
 use crate::{mdfreader, mdfinfo::MdfInfo};
 use pyo3::prelude::*;
 use pyo3::PyObjectProtocol;
-use numpy::IntoPyArray;
 
 #[pyclass]
 struct Mdf(MdfInfo);
@@ -17,20 +16,26 @@ impl Mdf {
     fn new(file_name: &str) -> Self {
         Mdf(mdfreader::mdfreader(file_name))
     }
-    fn get_channel_data(&self, channel_name: String) {
+    fn get_channel_data(&self, channel_name: String) -> Py<PyAny> {
         let Mdf(mdf) = self;
+        let py_array: Py<PyAny> = None;
         match mdf {
             MdfInfo::V3(_mdfinfo3) => {},
             MdfInfo::V4(mdfinfo4) => {
-                mdfinfo4.get_channel_data(&channel_name);
+                if let Some(data) = mdfinfo4.get_channel_data(&channel_name) {
+                    pyo3::Python::with_gil(|py| {
+                        py_array = data.into_py(py);
+                    })
+                }
             }
-        }
+        };
+        py_array
     }
 }
 
 #[pyproto]
 impl PyObjectProtocol for Mdf {
-    fn __repr__(&self) -> PyResult<String>   {
+    fn __repr__(&self) -> PyResult<String> {
         let mut output: String;
         match &self.0 {
             MdfInfo::V3(mdfinfo3) => {
@@ -47,7 +52,7 @@ impl PyObjectProtocol for Mdf {
                 for (master, list) in mdfinfo4.db.master_channel_list.iter() {
                     output.push_str(&format!("\nMaster: {}\n", master));
                     for channel in list.iter() {
-                        if let Some(data ) = mdfinfo4.get_channel_data(channel) {
+                        if let Some(data) = mdfinfo4.get_channel_data(channel) {
                             let data_min_max = data.min_max();
                             output.push_str(&format!(" {} {}\n", channel, data_min_max));
                         } else {
