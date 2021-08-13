@@ -30,7 +30,7 @@ crate-type = ["rlib", "cdylib"]
 
 [dependencies.pyo3]
 version = "0.14.2"
-features = ["extension-module"]
+features = ["extension-module", "num-complex"]
 
 [[bench]]
 name = "mdf_benchmark"
