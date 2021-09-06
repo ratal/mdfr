@@ -1,7 +1,7 @@
 use ndarray::{Array1, ArrayBase, Dim, OwnedRepr};
 use num::Complex;
 use std::fmt;
-use numpy::IntoPyArray;
+use numpy::{IntoPyArray, ToPyArray};
 use pyo3::prelude::*;
 
 /// channel data type enum
@@ -357,6 +357,79 @@ impl IntoPy<PyObject> for ChannelData {
             }
             ChannelData::ByteArray(array) => {
                 array.into_py(py)
+            }
+        }
+    }
+}
+
+impl ToPyObject for ChannelData {
+    fn to_object(&self, py: Python) -> PyObject {
+        match self {
+            ChannelData::Int8(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::UInt8(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::Int16(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::UInt16(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::Float16(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::Int24(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::UInt24(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::Int32(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::UInt32(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::Float32(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::Int48(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::UInt48(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::Int64(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::UInt64(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::Float64(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::Complex16(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::Complex32(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::Complex64(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::StringSBC(array) => {
+                array.to_object(py)
+            }
+            ChannelData::StringUTF8(array) => {
+                array.to_object(py)
+            }
+            ChannelData::StringUTF16(array) => {
+                array.to_object(py)
+            }
+            ChannelData::ByteArray(array) => {
+                array.to_object(py)
             }
         }
     }

@@ -18,18 +18,23 @@ impl Mdf {
     }
     fn get_channel_data(&self, channel_name: String) -> Py<PyAny> {
         let Mdf(mdf) = self;
-        let py_array: Py<PyAny> = None;
-        match mdf {
-            MdfInfo::V3(_mdfinfo3) => {},
-            MdfInfo::V4(mdfinfo4) => {
-                if let Some(data) = mdfinfo4.get_channel_data(&channel_name) {
-                    pyo3::Python::with_gil(|py| {
-                        py_array = data.into_py(py);
-                    })
+        // default py_array value is python None
+        pyo3::Python::with_gil(|py| {
+            let py_array: Py<PyAny>;
+            match mdf {
+                MdfInfo::V3(_mdfinfo3) => {
+                    py_array = py.None();
+                },
+                MdfInfo::V4(mdfinfo4) => {
+                    if let Some(data) = mdfinfo4.get_channel_data(&channel_name) {
+                        py_array = data.to_object(py);
+                    } else {
+                        py_array = py.None();
+                    }
                 }
-            }
-        };
-        py_array
+            };
+            py_array
+        })
     }
 }
 
