@@ -58,8 +58,8 @@ impl PyObjectProtocol for Mdf {
                     output.push_str(&format!("\nMaster: {}\n", master));
                     for channel in list.iter() {
                         if let Some(data) = mdfinfo4.get_channel_data(channel) {
-                            let data_min_max = data.min_max();
-                            output.push_str(&format!(" {} {}\n", channel, data_min_max));
+                            let data_first_last = data.first_last();
+                            output.push_str(&format!(" {} {} \n", channel, data_first_last));
                         } else {
                             output.push_str(&format!(" {} \n", channel));
                         }

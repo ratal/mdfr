@@ -127,159 +127,159 @@ impl ChannelData {
             }
         }
     }
-    pub fn min_max(&self) -> String {
+    pub fn first_last(&self) -> String {
         let output: String;
         match self {
             ChannelData::Int8(array) => {
                 if array.len() > 1 {
-                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::UInt8(array) => {
                 if array.len() > 1 {
-                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::Int16(array) => {
                 if array.len() > 1 {
-                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::UInt16(array) => {
                 if array.len() > 1 {
-                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::Float16(array) => {
                 if array.len() > 1 {
-                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::Int24(array) => {
                 if array.len() > 1 {
-                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::UInt24(array) => {
                 if array.len() > 1 {
-                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::Int32(array) => {
                 if array.len() > 1 {
-                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::UInt32(array) => {
                 if array.len() > 1 {
-                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::Float32(array) => {
                 if array.len() > 1 {
-                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::Int48(array) => {
                 if array.len() > 1 {
-                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::UInt48(array) => {
                 if array.len() > 1 {
-                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::Int64(array) => {
                 if array.len() > 1 {
-                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::UInt64(array) => {
                 if array.len() > 1 {
-                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::Float64(array) => {
                 if array.len() > 1 {
-                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::Complex16(array) => {
                 if array.len() > 1 {
-                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::Complex32(array) => {
                 if array.len() > 1 {
-                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::Complex64(array) => {
                 if array.len() > 1 {
-                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::StringSBC(array) => {
                 if array.len() > 1 {
-                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::StringUTF8(array) => {
                 if array.len() > 1 {
-                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::StringUTF16(array) => {
                 if array.len() > 1 {
-                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::ByteArray(array) => {
                 if array.len() > 1 {
-                    output = format!(" {} {} ", array[0], array[array.len() - 1]);
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
                 } else {
                     output = String::new();
                 }
