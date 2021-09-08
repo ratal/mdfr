@@ -45,16 +45,12 @@ pub struct MdfInfo4 {
 }
 
 impl MdfInfo4 {
-    pub fn get_channel_id(&self, channel_name: &String) -> Option<ChannelId> {
-        let mut channel_id: Option<ChannelId> = None;
-        if let Some(id) = self.db.channel_list.get(channel_name) {
-            channel_id = Some(*id);
-        }
-        channel_id
+    pub fn get_channel_id(&self, channel_name: &String) -> Option<&ChannelId> {
+        self.db.channel_list.get(channel_name)
     }
     pub fn get_channel_data(&self, channel_name: &String) -> Option<&ChannelData> {
         let mut data: Option<&ChannelData> = None;
-        if let Some((dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
             self.get_channel_id(channel_name)
         {
             if let Some(dg) = self.dg.get(&dg_pos) {
@@ -66,6 +62,64 @@ impl MdfInfo4 {
             }
         }
         data
+    }
+    pub fn get_channel_unit(&self, channel_name: &String) -> String {
+        let mut unit: String = String::new();
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.get_channel_id(channel_name)
+        {
+            if let Some(dg) = self.dg.get(&dg_pos) {
+                if let Some(cg) = dg.cg.get(&rec_id) {
+                    if let Some(cn) = cg.cn.get(&rec_pos) {
+                        unit = self.sharable.get_tx(cn.block.cn_md_unit);
+                    }
+                }
+            }
+        }
+        unit
+    }
+    pub fn get_channel_desc(&self, channel_name: &String) -> String {
+        let mut desc = String::new();
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.get_channel_id(channel_name)
+        {
+            if let Some(dg) = self.dg.get(&dg_pos) {
+                if let Some(cg) = dg.cg.get(&rec_id) {
+                    if let Some(cn) = cg.cn.get(&rec_pos) {
+                        desc = self.sharable.get_tx(cn.block.cn_md_comment);
+                    }
+                }
+            }
+        }
+        desc
+    }
+    pub fn get_channel_master(&self, channel_name: &String) -> String {
+        let mut master = String::new();
+        if let Some((m, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.get_channel_id(channel_name)
+        {
+            master = m.clone();
+        }
+        master
+    }
+
+    /// returns type of master:
+    /// 0 = None (normal data channels), 1 = Time (seconds), 2 = Angle (radians),
+    /// 3 = Distance (meters), 4 = Index (zero-based index values)
+    pub fn get_channel_master_type(&self, channel_name: &String) -> u8 {
+        let mut master_type: u8 = 0;  // default to normal data channel
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.get_channel_id(channel_name)
+        {
+            if let Some(dg) = self.dg.get(&dg_pos) {
+                if let Some(cg) = dg.cg.get(&rec_id) {
+                    if let Some(cn) = cg.cn.get(&rec_pos) {
+                        master_type = cn.block.cn_sync_type;
+                    }
+                }
+            }
+        }
+        master_type
     }
 }
 
@@ -816,6 +870,15 @@ impl fmt::Display for SharableBlocks {
     }
 }
 
+impl SharableBlocks {
+    pub fn get_tx(&self, position: i64) -> String {
+        let mut txt: String = String::new();
+        if let Some(str) = self.tx.get(&position) {
+            txt = str.0.clone();
+        };
+        txt
+    }
+}
 /// Cg4 Channel Group block struct
 #[derive(Debug, Copy, Clone, Default, BinRead)]
 #[br(little)]
@@ -1809,7 +1872,7 @@ fn parse_composition(
     }
 }
 
-pub(crate) type ChannelId = (i64, (i64, u64), (i64, u32));
+pub(crate) type ChannelId = (String, i64, (i64, u64), (i64, u32));
 pub(crate) type ChannelList = HashMap<String, ChannelId>;
 
 #[derive(Debug, PartialEq, Default, Clone)]
@@ -1869,9 +1932,11 @@ pub fn build_channel_db(dg: &mut HashMap<i64, Dg4>, sharable: &SharableBlocks) -
                     }
                     cn.unique_name = channel_name.clone();
                 };
+                let master = String::new();
                 db.channel_list.insert(
                     channel_name,
                     (
+                        master, // computes at second step master channel because of cg_cg_master
                         *dg_position,
                         (cg.block_position, *record_id),
                         (cn.block_position, *cn_record_position),
@@ -1901,6 +1966,10 @@ pub fn build_channel_db(dg: &mut HashMap<i64, Dg4>, sharable: &SharableBlocks) -
             }
             for (_cn_record_position, cn) in cg.cn.iter_mut() {
                 cg_channel_list.push(cn.unique_name.clone());
+                // assigns master in channel_list
+                if let Some(id) = db.channel_list.get_mut(&cn.unique_name) {
+                    id.0 = master_channel_name.clone();
+                }
             }
             if let std::collections::hash_map::Entry::Vacant(e) =
                 db.master_channel_list.entry(master_channel_name.clone())

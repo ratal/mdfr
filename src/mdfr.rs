@@ -36,6 +36,72 @@ impl Mdf {
             py_array
         })
     }
+    fn get_channel_unit(&self, channel_name: String) -> Py<PyAny> {
+        let Mdf(mdf) = self;
+        pyo3::Python::with_gil(|py| {
+            let unit: Py<PyAny>;
+            match mdf {
+                MdfInfo::V3(_mdfinfo3) => {
+                    unit = py.None();
+                },
+                MdfInfo::V4(mdfinfo4) => {
+                    let txt = mdfinfo4.get_channel_unit(&channel_name);
+                    unit = txt.to_object(py);
+                }
+            };
+            unit
+        })
+    }
+    fn get_channel_desc(&self, channel_name: String) -> Py<PyAny> {
+        let Mdf(mdf) = self;
+        pyo3::Python::with_gil(|py| {
+            let desc: Py<PyAny>;
+            match mdf {
+                MdfInfo::V3(_mdfinfo3) => {
+                    desc = py.None();
+                },
+                MdfInfo::V4(mdfinfo4) => {
+                    let txt = mdfinfo4.get_channel_desc(&channel_name);
+                    desc = txt.to_object(py);
+                }
+            };
+            desc
+        })
+    }
+    pub fn get_channel_master(&self, channel_name: String) -> Py<PyAny> {
+        let Mdf(mdf) = self;
+        pyo3::Python::with_gil(|py| {
+            let master: Py<PyAny>;
+            match mdf {
+                MdfInfo::V3(_mdfinfo3) => {
+                    master = py.None();
+                },
+                MdfInfo::V4(mdfinfo4) => {
+                    let txt = mdfinfo4.get_channel_master(&channel_name);
+                    master = txt.to_object(py);
+                }
+            };
+            master
+        })
+    }
+    pub fn get_channel_master_type(&self, channel_name: String) -> Py<PyAny> {
+        let Mdf(mdf) = self;
+        pyo3::Python::with_gil(|py| {
+            let master_type: Py<PyAny>;
+            match mdf {
+                MdfInfo::V3(_mdfinfo3) => {
+                    master_type = py.None();
+                },
+                MdfInfo::V4(mdfinfo4) => {
+                    let txt = mdfinfo4.get_channel_master_type(&channel_name);
+                    master_type = txt.to_object(py);
+                }
+            };
+            master_type
+        })
+    }
+    // pub fn get_master_channel_list(&self) {}
+    // pub fn get_channel_list(&self) {}
 }
 
 #[pyproto]
@@ -59,7 +125,9 @@ impl PyObjectProtocol for Mdf {
                     for channel in list.iter() {
                         if let Some(data) = mdfinfo4.get_channel_data(channel) {
                             let data_first_last = data.first_last();
-                            output.push_str(&format!(" {} {} \n", channel, data_first_last));
+                            let unit = self.get_channel_unit(channel.to_string());
+                            let desc = self.get_channel_desc(channel.to_string());
+                            output.push_str(&format!(" {} {} {} {} \n", channel, data_first_last, unit, desc));
                         } else {
                             output.push_str(&format!(" {} \n", channel));
                         }

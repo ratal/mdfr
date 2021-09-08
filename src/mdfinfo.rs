@@ -33,8 +33,8 @@ impl MdfInfo {
             MdfInfo::V4(mdfinfo4) => mdfinfo4.ver,
         }
     }
-    pub fn get_channel_id(&self, channel_name: &String) -> Option<ChannelId> {
-        let mut channel_id: Option<ChannelId> = None;
+    pub fn get_channel_id(&self, channel_name: &String) -> Option<&ChannelId> {
+        let mut channel_id: Option<&ChannelId> = None;
         match self {
             MdfInfo::V3(_mdfinfo3) => {}
             MdfInfo::V4(mdfinfo4) => {
