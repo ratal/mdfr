@@ -2,6 +2,7 @@
 
 //! This module is reading the mdf file blocks
 
+use std::collections::HashSet;
 use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, Read};
@@ -52,6 +53,57 @@ impl MdfInfo {
             }
         }
         data
+    }
+    pub fn get_channel_unit(&self, channel_name: &String) -> String {
+        let mut unit: String = String::new();
+        match self {
+            MdfInfo::V3(_mdfinfo3) => {}
+            MdfInfo::V4(mdfinfo4) => {
+                unit = mdfinfo4.get_channel_unit(channel_name);
+            }
+        }
+        unit
+    }
+    pub fn get_channel_desc(&self, channel_name: &String) -> String {
+        let mut desc: String = String::new();
+        match self {
+            MdfInfo::V3(_mdfinfo3) => {}
+            MdfInfo::V4(mdfinfo4) => {
+                desc = mdfinfo4.get_channel_desc(channel_name);
+            }
+        }
+        desc
+    }
+    pub fn get_channel_master(&self, channel_name: &String) -> String {
+        let mut master: String = String::new();
+        match self {
+            MdfInfo::V3(_mdfinfo3) => {}
+            MdfInfo::V4(mdfinfo4) => {
+                master = mdfinfo4.get_channel_master(channel_name);
+            }
+        }
+        master
+    }pub fn get_channel_master_type(&self, channel_name: &String) -> u8 {
+        let mut master: u8 = 0;
+        match self {
+            MdfInfo::V3(_mdfinfo3) => {}
+            MdfInfo::V4(mdfinfo4) => {
+                master = mdfinfo4.get_channel_master_type(channel_name);
+            }
+        }
+        master
+    }
+    pub fn get_channel_list(&self, channel_name: &String) -> HashSet<String> {
+        let mut channel_list: HashSet<String>;
+        match self {
+            MdfInfo::V3(_mdfinfo3) => {
+                channel_list = HashSet::new();
+            }
+            MdfInfo::V4(mdfinfo4) => {
+                channel_list = mdfinfo4.get_channel_list(channel_name);
+            }
+        }
+        channel_list
     }
 }
 

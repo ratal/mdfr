@@ -5,7 +5,7 @@ use dashmap::DashMap;
 use ndarray::Array1;
 use rayon::prelude::*;
 use roxmltree;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::default::Default;
 use std::fs::File;
@@ -103,7 +103,7 @@ impl MdfInfo4 {
         master
     }
 
-    /// returns type of master:
+    /// returns type of master channel link to channel input in parameter:
     /// 0 = None (normal data channels), 1 = Time (seconds), 2 = Angle (radians),
     /// 3 = Distance (meters), 4 = Index (zero-based index values)
     pub fn get_channel_master_type(&self, channel_name: &String) -> u8 {
@@ -120,6 +120,10 @@ impl MdfInfo4 {
             }
         }
         master_type
+    }
+    pub fn get_channel_list(&self, channel_name: &String) -> HashSet<String> {
+        let channel_list = self.db.channel_list.keys().cloned().collect();
+        channel_list
     }
 }
 

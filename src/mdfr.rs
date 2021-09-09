@@ -20,88 +20,46 @@ impl Mdf {
         let Mdf(mdf) = self;
         // default py_array value is python None
         pyo3::Python::with_gil(|py| {
-            let py_array: Py<PyAny>;
-            match mdf {
-                MdfInfo::V3(_mdfinfo3) => {
-                    py_array = py.None();
-                },
-                MdfInfo::V4(mdfinfo4) => {
-                    if let Some(data) = mdfinfo4.get_channel_data(&channel_name) {
-                        py_array = data.to_object(py);
-                    } else {
-                        py_array = py.None();
-                    }
-                }
-            };
+            let py_array: Py<PyAny> = mdf.get_channel_data(&channel_name).to_object(py);
             py_array
         })
     }
     fn get_channel_unit(&self, channel_name: String) -> Py<PyAny> {
         let Mdf(mdf) = self;
         pyo3::Python::with_gil(|py| {
-            let unit: Py<PyAny>;
-            match mdf {
-                MdfInfo::V3(_mdfinfo3) => {
-                    unit = py.None();
-                },
-                MdfInfo::V4(mdfinfo4) => {
-                    let txt = mdfinfo4.get_channel_unit(&channel_name);
-                    unit = txt.to_object(py);
-                }
-            };
+            let unit: Py<PyAny> = mdf.get_channel_unit(&channel_name).to_object(py);
             unit
         })
     }
     fn get_channel_desc(&self, channel_name: String) -> Py<PyAny> {
         let Mdf(mdf) = self;
         pyo3::Python::with_gil(|py| {
-            let desc: Py<PyAny>;
-            match mdf {
-                MdfInfo::V3(_mdfinfo3) => {
-                    desc = py.None();
-                },
-                MdfInfo::V4(mdfinfo4) => {
-                    let txt = mdfinfo4.get_channel_desc(&channel_name);
-                    desc = txt.to_object(py);
-                }
-            };
+            let desc: Py<PyAny> = mdf.get_channel_desc(&channel_name).to_object(py);
             desc
         })
     }
     pub fn get_channel_master(&self, channel_name: String) -> Py<PyAny> {
         let Mdf(mdf) = self;
         pyo3::Python::with_gil(|py| {
-            let master: Py<PyAny>;
-            match mdf {
-                MdfInfo::V3(_mdfinfo3) => {
-                    master = py.None();
-                },
-                MdfInfo::V4(mdfinfo4) => {
-                    let txt = mdfinfo4.get_channel_master(&channel_name);
-                    master = txt.to_object(py);
-                }
-            };
+            let master: Py<PyAny> = mdf.get_channel_master(&channel_name).to_object(py);
             master
         })
     }
     pub fn get_channel_master_type(&self, channel_name: String) -> Py<PyAny> {
         let Mdf(mdf) = self;
         pyo3::Python::with_gil(|py| {
-            let master_type: Py<PyAny>;
-            match mdf {
-                MdfInfo::V3(_mdfinfo3) => {
-                    master_type = py.None();
-                },
-                MdfInfo::V4(mdfinfo4) => {
-                    let txt = mdfinfo4.get_channel_master_type(&channel_name);
-                    master_type = txt.to_object(py);
-                }
-            };
+            let master_type: Py<PyAny> = mdf.get_channel_master_type(&channel_name).to_object(py);
             master_type
         })
     }
+    pub fn get_channel_list(&self, channel_name: String) -> Py<PyAny> {
+        let Mdf(mdf) = self;
+        pyo3::Python::with_gil(|py| {
+            let channel_list: Py<PyAny> = mdf.get_channel_list(&channel_name).into_py(py);
+            channel_list
+        })
+    }
     // pub fn get_master_channel_list(&self) {}
-    // pub fn get_channel_list(&self) {}
 }
 
 #[pyproto]
