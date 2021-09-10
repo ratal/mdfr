@@ -102,7 +102,6 @@ impl MdfInfo4 {
         }
         master
     }
-
     /// returns type of master channel link to channel input in parameter:
     /// 0 = None (normal data channels), 1 = Time (seconds), 2 = Angle (radians),
     /// 3 = Distance (meters), 4 = Index (zero-based index values)
@@ -123,6 +122,10 @@ impl MdfInfo4 {
     }
     pub fn get_channel_list(&self, channel_name: &String) -> HashSet<String> {
         let channel_list = self.db.channel_list.keys().cloned().collect();
+        channel_list
+    }
+    pub fn get_channel_master_list(&self, channel_name: &String) -> &HashMap<String, HashSet<String>> {
+        let channel_list = &self.db.master_channel_list;
         channel_list
     }
 }
@@ -1882,7 +1885,7 @@ pub(crate) type ChannelList = HashMap<String, ChannelId>;
 #[derive(Debug, PartialEq, Default, Clone)]
 pub struct Db {
     pub channel_list: ChannelList,
-    pub master_channel_list: HashMap<String, Vec<String>>,
+    pub master_channel_list: HashMap<String, HashSet<String>>,
 }
 
 impl fmt::Display for Db {
@@ -1956,7 +1959,7 @@ pub fn build_channel_db(dg: &mut HashMap<i64, Dg4>, sharable: &SharableBlocks) -
     // identifying master channels
     for (_dg_position, dg) in dg.iter_mut() {
         for (_record_id, cg) in dg.cg.iter_mut() {
-            let mut cg_channel_list: Vec<String> = Vec::new();
+            let mut cg_channel_list: HashSet<String> = HashSet::new();
             let mut master_channel_name: String = String::new();
             if let Some(name) = master_channel_list.get(&cg.block_position) {
                 master_channel_name = name.to_string();
@@ -1969,7 +1972,7 @@ pub fn build_channel_db(dg: &mut HashMap<i64, Dg4>, sharable: &SharableBlocks) -
                 master_channel_name = format!("master_{}", cg.block_position); // default name in case no master is existing
             }
             for (_cn_record_position, cn) in cg.cn.iter_mut() {
-                cg_channel_list.push(cn.unique_name.clone());
+                cg_channel_list.insert(cn.unique_name.clone());
                 // assigns master in channel_list
                 if let Some(id) = db.channel_list.get_mut(&cn.unique_name) {
                     id.0 = master_channel_name.clone();

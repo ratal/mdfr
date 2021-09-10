@@ -105,6 +105,18 @@ impl MdfInfo {
         }
         channel_list
     }
+    pub fn get_channel_master_list(&self, channel_name: &String) -> HashMap<String, HashSet<String>> {
+        let mut channel_list: HashMap<String, HashSet<String>>;
+        match self {
+            MdfInfo::V3(_mdfinfo3) => {
+                channel_list = HashMap::new();
+            }
+            MdfInfo::V4(mdfinfo4) => {
+                channel_list = mdfinfo4.get_channel_master_list(channel_name).clone();
+            }
+        }
+        channel_list
+    }
 }
 
 impl fmt::Display for MdfInfo {
