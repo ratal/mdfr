@@ -59,7 +59,13 @@ impl Mdf {
             channel_list
         })
     }
-    // pub fn get_master_channel_list(&self) {}
+    pub fn get_channel_master_list(&self) -> Py<PyAny> {
+        let Mdf(mdf) = self;
+        pyo3::Python::with_gil(|py| {
+            let master_channel_list: Py<PyAny> = mdf.get_channel_master_list().into_py(py);
+            master_channel_list
+        })
+    }
 }
 
 #[pyproto]

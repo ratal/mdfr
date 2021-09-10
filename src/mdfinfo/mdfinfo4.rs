@@ -124,7 +124,7 @@ impl MdfInfo4 {
         let channel_list = self.db.channel_list.keys().cloned().collect();
         channel_list
     }
-    pub fn get_channel_master_list(&self, channel_name: &String) -> &HashMap<String, HashSet<String>> {
+    pub fn get_channel_master_list(&self) -> &HashMap<String, HashSet<String>> {
         let channel_list = &self.db.master_channel_list;
         channel_list
     }
