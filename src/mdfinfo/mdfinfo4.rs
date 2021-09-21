@@ -1946,34 +1946,38 @@ pub fn build_channel_db(dg: &mut HashMap<i64, Dg4>, sharable: &SharableBlocks) -
             let gs = cg.get_cg_source_name(sharable);
             let gp = cg.get_cg_source_path(sharable);
             for (cn_record_position, cn) in cg.cn.iter_mut() {
-                let mut channel_name: String = cn.unique_name.clone();
                 if channel_list.contains_key(&cn.unique_name) {
+                    let mut changed: bool = false;
                     // create unique channel name
                     if let Some(cs) = cn.get_cn_source_name(sharable) {
-                        channel_name = format!("{}_{}", channel_name, cs);
+                        cn.unique_name.push_str(&cs);
+                        changed = true;
                     }
                     if let Some(cp) = cn.get_cn_source_path(sharable) {
-                        channel_name = format!("{}_{}", channel_name, cp);
+                        cn.unique_name.push_str(&cp);
+                        changed = true;
                     }
                     if let Some(name) = &gn {
-                        channel_name = format!("{}_{}", channel_name, name);
+                        cn.unique_name.push_str(name);
+                        changed = true;
                     }
                     if let Some(source) = &gs {
-                        channel_name = format!("{}_{}", channel_name, source);
+                        cn.unique_name.push_str(source);
+                        changed = true;
                     }
                     if let Some(path) = &gp {
-                        channel_name = format!("{}_{}", channel_name, path);
+                        cn.unique_name.push_str(path);
+                        changed = true;
                     }
                     // No souce or path name to make channel unique
-                    if channel_name == cn.unique_name {
+                    if !changed {
                         // extend name with channel block position, unique
-                        channel_name = format!("{}_{}", channel_name, cn.block_position);
+                        cn.unique_name.push_str(&cn.block_position.to_string());
                     }
-                    cn.unique_name = channel_name.clone();
                 };
                 let master = String::new();
                 channel_list.insert(
-                    channel_name,
+                    cn.unique_name.clone(),
                     (
                         master, // computes at second step master channel because of cg_cg_master
                         *dg_position,
