@@ -1,4 +1,6 @@
-use crate::{mdfreader, mdfinfo::MdfInfo};
+use std::collections::HashSet;
+
+use crate::mdfinfo::MdfInfo;
 use pyo3::prelude::*;
 use pyo3::PyObjectProtocol;
 
@@ -12,11 +14,13 @@ pub(crate) fn register(_py: Python, m: &PyModule) -> PyResult<()> {
 
 #[pymethods]
 impl Mdf {
+    /// creates new object from file name
     #[new]
     fn new(file_name: &str) -> Self {
-        Mdf(mdfreader::mdfreader(file_name))
+        Mdf(MdfInfo::new(file_name))
     }
-    fn get_channel_data(&self, channel_name: String) -> Py<PyAny> {
+    /// returns channel's data, numpy array or list, depending if data type is numeric or string|bytes
+    fn get_channel_data(&mut self, channel_name: String) -> Py<PyAny> {
         let Mdf(mdf) = self;
         // default py_array value is python None
         pyo3::Python::with_gil(|py| {
@@ -24,6 +28,7 @@ impl Mdf {
             py_array
         })
     }
+    /// returns channel's unit string
     fn get_channel_unit(&self, channel_name: String) -> Py<PyAny> {
         let Mdf(mdf) = self;
         pyo3::Python::with_gil(|py| {
@@ -31,6 +36,7 @@ impl Mdf {
             unit
         })
     }
+    /// returns channel's description string
     fn get_channel_desc(&self, channel_name: String) -> Py<PyAny> {
         let Mdf(mdf) = self;
         pyo3::Python::with_gil(|py| {
@@ -38,6 +44,7 @@ impl Mdf {
             desc
         })
     }
+    /// returns channel's associated master channel name string
     pub fn get_channel_master(&self, channel_name: String) -> Py<PyAny> {
         let Mdf(mdf) = self;
         pyo3::Python::with_gil(|py| {
@@ -45,6 +52,9 @@ impl Mdf {
             master
         })
     }
+    /// returns channel's associated master channel type string
+    /// 0 = None (normal data channels), 1 = Time (seconds), 2 = Angle (radians),
+    /// 3 = Distance (meters), 4 = Index (zero-based index values)
     pub fn get_channel_master_type(&self, channel_name: String) -> Py<PyAny> {
         let Mdf(mdf) = self;
         pyo3::Python::with_gil(|py| {
@@ -52,18 +62,41 @@ impl Mdf {
             master_type
         })
     }
-    pub fn get_channel_list(&self, channel_name: String) -> Py<PyAny> {
+    /// returns a set of all channel names contained in file
+    pub fn get_channel_names_set(&self) -> Py<PyAny> {
         let Mdf(mdf) = self;
         pyo3::Python::with_gil(|py| {
-            let channel_list: Py<PyAny> = mdf.get_channel_list(&channel_name).into_py(py);
+            let channel_list: Py<PyAny> = mdf.get_channel_names_set().into_py(py);
             channel_list
         })
     }
-    pub fn get_channel_master_list(&self) -> Py<PyAny> {
+    /// returns a dict of master names keys for which values are a set of associated channel names
+    pub fn get_master_channel_names_set(&self) -> Py<PyAny> {
         let Mdf(mdf) = self;
         pyo3::Python::with_gil(|py| {
-            let master_channel_list: Py<PyAny> = mdf.get_channel_master_list().into_py(py);
+            let master_channel_list: Py<PyAny> = mdf.get_master_channel_names_set().into_py(py);
             master_channel_list
+        })
+    }
+    /// load a set of channels in memory
+    pub fn load_channels_data_in_memory(&mut self, channel_names: HashSet<String>) {
+        let Mdf(mdf) = self;
+        pyo3::Python::with_gil(|_py| {
+            mdf.load_channels_data_in_memory(channel_names);
+        })
+    }
+    /// clear channels from memory
+    pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) {
+        let Mdf(mdf) = self;
+        pyo3::Python::with_gil(|_py| {
+            mdf.clear_channel_data_from_memory(channel_names);
+        })
+    }
+    /// load all channels in memory
+    pub fn load_all_channels_data_in_memory(&mut self) {
+        let Mdf(mdf) = self;
+        pyo3::Python::with_gil(|_py| {
+            mdf.load_all_channels_data_in_memory();
         })
     }
 }
@@ -84,10 +117,10 @@ impl PyObjectProtocol for Mdf {
                 for c in comments.iter() {
                     output.push_str(&format!("{} {}", c.0, c.1));
                 }
-                for (master, list) in mdfinfo4.db.master_channel_list.iter() {
+                for (master, list) in mdfinfo4.get_master_channel_names_set().iter() {
                     output.push_str(&format!("\nMaster: {}\n", master));
                     for channel in list.iter() {
-                        if let Some(data) = mdfinfo4.get_channel_data(channel) {
+                        if let Some(data) = mdfinfo4.get_channel_data_from_memory(channel) {
                             let data_first_last = data.first_last();
                             let unit = self.get_channel_unit(channel.to_string());
                             let desc = self.get_channel_desc(channel.to_string());

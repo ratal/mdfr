@@ -8,8 +8,8 @@ use roxmltree;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::default::Default;
-use std::fs::File;
 use std::io::prelude::*;
+use std::fs::{File, OpenOptions};
 use std::{fmt, str};
 use std::{
     io::{BufReader, Cursor},
@@ -19,6 +19,7 @@ use transpose;
 use yazi::{decompress, Format};
 
 use crate::mdfreader::channel_data::{data_init, ChannelData};
+use crate::mdfreader::mdfreader4::mdfreader4;
 
 /// MdfInfo4 is the struct hold whole metadata of mdf4.x files
 /// * blocks with unique links are at top level like attachment, events and file history
@@ -31,6 +32,7 @@ use crate::mdfreader::channel_data::{data_init, ChannelData};
 /// to their position in the file
 #[derive(Debug, Clone)]
 pub struct MdfInfo4 {
+    pub file_name: String,
     pub ver: u16,
     pub prog: [u8; 8],
     pub id_block: Id4,
@@ -41,22 +43,32 @@ pub struct MdfInfo4 {
     pub ev: HashMap<i64, Ev4Block>,
     pub dg: HashMap<i64, Dg4>,
     pub sharable: SharableBlocks,
-    pub db: Db,
+    pub channel_names_set: ChannelNamesSet,
 }
 
 impl MdfInfo4 {
     pub fn get_channel_id(&self, channel_name: &String) -> Option<&ChannelId> {
-        self.db.channel_list.get(channel_name)
+        self.channel_names_set.get(channel_name)
     }
-    pub fn get_channel_data(&self, channel_name: &String) -> Option<&ChannelData> {
+    pub fn get_channel_data<'a>(&'a mut self, channel_name: &'a String) -> Option<&'a ChannelData> {
+        let mut data: Option<&ChannelData> = None;
+        let mut channel_names: HashSet<String> = HashSet::new();
+        channel_names.insert(channel_name.to_string());
+        self.load_channels_data_in_memory(channel_names); // will read data only if array is empty
+        data = self.get_channel_data_from_memory(channel_name).clone();
+        data
+    }
+    pub fn get_channel_data_from_memory(&self, channel_name: &String) -> Option<&ChannelData> {
         let mut data: Option<&ChannelData> = None;
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
             self.get_channel_id(channel_name)
         {
-            if let Some(dg) = self.dg.get(&dg_pos) {
-                if let Some(cg) = dg.cg.get(&rec_id) {
-                    if let Some(cn) = cg.cn.get(&rec_pos) {
-                        data = Some(&cn.data);
+            if let Some(dg) = self.dg.get(dg_pos) {
+                if let Some(cg) = dg.cg.get(rec_id) {
+                    if let Some(cn) = cg.cn.get(rec_pos) {
+                        if !cn.data.is_empty() {
+                            data = Some(&cn.data);
+                        }
                     }
                 }
             }
@@ -120,13 +132,45 @@ impl MdfInfo4 {
         }
         master_type
     }
-    pub fn get_channel_list(&self, channel_name: &String) -> HashSet<String> {
-        let channel_list = self.db.channel_list.keys().cloned().collect();
+    pub fn get_channel_names_set(&self) -> HashSet<String> {
+        let channel_list = self.channel_names_set.keys().cloned().collect();
         channel_list
     }
-    pub fn get_channel_master_list(&self) -> &HashMap<String, HashSet<String>> {
-        let channel_list = &self.db.master_channel_list;
-        channel_list
+    pub fn get_master_channel_names_set(&self) -> HashMap<String, HashSet<String>> {
+        let mut channel_master_list: HashMap<String, HashSet<String>> = HashMap::new();
+        for (dg_position, dg) in self.dg.iter() {
+            for (record_id, cg) in dg.cg.iter() {
+                channel_master_list.insert(cg.master_channel_name.clone(), cg.channel_names.clone());
+            }
+        }
+        channel_master_list
+    }
+    /// load a set of channels in memory
+    pub fn load_channels_data_in_memory(&mut self, channel_names: HashSet<String>) {
+        let f: File = OpenOptions::new()
+            .read(true)
+            .write(false)
+            .open(self.file_name.clone())
+            .expect("Cannot find the file");
+        let mut rdr = BufReader::new(&f);
+        mdfreader4(&mut rdr, self, channel_names);
+    }
+    pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) {
+        for channel_name in channel_names {
+            if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+                self.channel_names_set.get_mut(&channel_name)
+            {
+                if let Some(dg) = self.dg.get_mut(dg_pos) {
+                    if let Some(cg) = dg.cg.get_mut(rec_id) {
+                        if let Some(cn) = cg.cn.get_mut(rec_pos) {
+                            if !cn.data.is_empty() {
+                                cn.data = cn.data.zeros(0, 0);
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -979,6 +1023,8 @@ fn parse_cg4_block(
     let cg_struct = Cg4 {
         block: cg,
         cn,
+        master_channel_name: String::new(),
+        channel_names: HashSet::new(),
         record_length,
         block_position: target,
         vlsd_cg: None,
@@ -992,6 +1038,8 @@ fn parse_cg4_block(
 pub struct Cg4 {
     pub block: Cg4Block,
     pub cn: CnType,                     // hashmap of channels
+    pub master_channel_name: String,
+    pub channel_names: HashSet<String>,
     block_position: i64, // as not stored in .block but can still be referenced by other blocks
     pub record_length: u32, // record length including recordId and invalid bytes
     pub vlsd_cg: Option<(u64, u32)>, // pointing to another cg,cn
@@ -1058,7 +1106,11 @@ impl Cg4 {
         let cycle_count = self.block.cg_cycle_count as usize;
         let cg_inval_bytes = self.block.cg_inval_bytes as usize;
         if let Some(invalid_bytes) = &self.invalid_bytes {
-            self.cn.par_iter_mut().for_each(|(_rec_pos, cn)| {
+            self
+            .cn
+            .par_iter_mut()
+            .filter(|(_rec_pos, cn)| {!cn.data.is_empty()})
+            .for_each(|(_rec_pos, cn)| {
                 let mut mask = Array1::<u8>::zeros((cycle_count,));
                 let byte_offest = (cn.block.cn_inval_bit_pos >> 3) as usize;
                 let mut bit = 1;
@@ -1880,32 +1932,12 @@ fn parse_composition(
 }
 
 pub(crate) type ChannelId = (String, i64, (i64, u64), (i64, u32));
-pub(crate) type ChannelList = HashMap<String, ChannelId>;
+pub(crate) type ChannelNamesSet = HashMap<String, ChannelId>;
 
-#[derive(Debug, PartialEq, Default, Clone)]
-pub struct Db {
-    pub channel_list: ChannelList,
-    pub master_channel_list: HashMap<String, HashSet<String>>,
-}
-
-impl fmt::Display for Db {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "Channels : ")?;
-        for (master, list) in self.master_channel_list.iter() {
-            writeln!(f, "\nMaster: {}", master)?;
-            for channel in list.iter() {
-                write!(f, " {} ", channel)?;
-            }
-        }
-        writeln!(f, "\n")
-    }
-}
-
-pub fn build_channel_db(dg: &mut HashMap<i64, Dg4>, sharable: &SharableBlocks) -> Db {
-    let mut db = Db {
-        channel_list: HashMap::new(),
-        master_channel_list: HashMap::new(),
-    };
+/// parses mdfinfo structure to make channel names unique
+/// create channel set
+pub fn build_channel_db(dg: &mut HashMap<i64, Dg4>, sharable: &SharableBlocks) -> ChannelNamesSet {
+    let mut channel_list:ChannelNamesSet = HashMap::new();
     let mut master_channel_list: HashMap<i64, String> = HashMap::new();
     // creating channel list for whole file and making channel names unique
     for (dg_position, dg) in dg.iter_mut() {
@@ -1915,7 +1947,7 @@ pub fn build_channel_db(dg: &mut HashMap<i64, Dg4>, sharable: &SharableBlocks) -
             let gp = cg.get_cg_source_path(sharable);
             for (cn_record_position, cn) in cg.cn.iter_mut() {
                 let mut channel_name: String = cn.unique_name.clone();
-                if db.channel_list.contains_key(&cn.unique_name) {
+                if channel_list.contains_key(&cn.unique_name) {
                     // create unique channel name
                     if let Some(cs) = cn.get_cn_source_name(sharable) {
                         channel_name = format!("{}_{}", channel_name, cs);
@@ -1940,7 +1972,7 @@ pub fn build_channel_db(dg: &mut HashMap<i64, Dg4>, sharable: &SharableBlocks) -
                     cn.unique_name = channel_name.clone();
                 };
                 let master = String::new();
-                db.channel_list.insert(
+                channel_list.insert(
                     channel_name,
                     (
                         master, // computes at second step master channel because of cg_cg_master
@@ -1974,23 +2006,15 @@ pub fn build_channel_db(dg: &mut HashMap<i64, Dg4>, sharable: &SharableBlocks) -
             for (_cn_record_position, cn) in cg.cn.iter_mut() {
                 cg_channel_list.insert(cn.unique_name.clone());
                 // assigns master in channel_list
-                if let Some(id) = db.channel_list.get_mut(&cn.unique_name) {
+                if let Some(id) = channel_list.get_mut(&cn.unique_name) {
                     id.0 = master_channel_name.clone();
                 }
             }
-            if let std::collections::hash_map::Entry::Vacant(e) =
-                db.master_channel_list.entry(master_channel_name.clone())
-            {
-                e.insert(cg_channel_list);
-            } else {
-                let list = db.master_channel_list.get_mut(&master_channel_name);
-                if let Some(l) = list {
-                    l.extend(cg_channel_list)
-                }
-            }
+            cg.channel_names = cg_channel_list;
+            cg.master_channel_name = master_channel_name;
         }
     }
-    db
+    channel_list
 }
 
 /// DT4 Data List block struct

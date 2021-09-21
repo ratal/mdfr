@@ -16,7 +16,7 @@ use std::str;
 use std::string::String;
 use std::sync::{Arc, Mutex};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     convert::TryInto,
     io::{BufReader, Read},
     usize,
@@ -28,12 +28,20 @@ use std::{
 const CHUNK_SIZE_READING: usize = 524288; // can be tuned according to architecture
 
 /// Reads the file data based on headers information contained in info parameter
-pub fn mdfreader4<'a>(rdr: &'a mut BufReader<&File>, info: &'a mut MdfInfo4) {
+pub fn mdfreader4<'a>(rdr: &'a mut BufReader<&File>, info: &'a mut MdfInfo4, channel_names: HashSet<String>) {
     let mut position: i64 = 0;
     let mut sorted: bool;
+    let mut channel_names_present_in_dg: HashSet<String>;
     // read file data
     for (_dg_position, dg) in info.dg.iter_mut() {
-        if dg.block.dg_data != 0 {
+        // Let's find channel names
+        channel_names_present_in_dg = HashSet::new();
+        for channel_group in dg.cg.values() {
+            let cn = channel_group.channel_names.clone();
+            channel_names_present_in_dg.par_extend(cn);
+        }
+        let channel_names_to_read_in_dg: HashSet<_> = channel_names_present_in_dg.intersection(&channel_names).collect();
+        if dg.block.dg_data != 0 && !channel_names_to_read_in_dg.is_empty() {
             // header block
             rdr.seek_relative(dg.block.dg_data - position)
                 .expect("Could not position buffer"); // change buffer position
@@ -44,15 +52,21 @@ pub fn mdfreader4<'a>(rdr: &'a mut BufReader<&File>, info: &'a mut MdfInfo4) {
             } else {
                 sorted = false
             }
-            position = read_data(rdr, id, dg, dg.block.dg_data, sorted);
+            position = read_data(rdr, id, dg, dg.block.dg_data, sorted, &channel_names_to_read_in_dg);
+            apply_bit_mask_offset(dg, &channel_names_to_read_in_dg);
+            // channel_group invalid bits calculation
+            for channel_group in dg.cg.values_mut() {
+                channel_group.process_all_channel_invalid_bits();
+            }
+            // conversion of all channels to physical values
+            convert_all_channels(dg, &info.sharable.cc);
         }
-        apply_bit_mask_offset(dg);
-        // channel_group invalid bits calculation
-        for channel_group in dg.cg.values_mut() {
-            channel_group.process_all_channel_invalid_bits();
-        }
-        // conversion of all channels to physical values
-        convert_all_channels(dg, &info.sharable.cc);
+    }
+}
+
+impl Dg4 {
+    pub fn read_data<'a>(&mut self, rdr: &'a mut BufReader<&File>, channel_names: HashSet<String>) {
+
     }
 }
 
@@ -64,6 +78,7 @@ fn read_data(
     dg: &mut Dg4,
     mut position: i64,
     sorted: bool,
+    channel_names_to_read_in_dg: &HashSet<&String>,
 ) -> i64 {
     // block header is already read
     let mut decoder: Dec = Dec {
@@ -78,19 +93,19 @@ fn read_data(
         if sorted {
             // sorted data group
             for channel_group in dg.cg.values_mut() {
-                vlsd_channels = read_all_channels_sorted(rdr, channel_group);
+                vlsd_channels = read_all_channels_sorted(rdr, channel_group, channel_names_to_read_in_dg);
                 position += block_header.len as i64;
             }
             if !vlsd_channels.is_empty() {
-                position = read_sd(rdr, dg, &vlsd_channels, position, &mut decoder);
+                position = read_sd(rdr, dg, &vlsd_channels, position, &mut decoder, channel_names_to_read_in_dg);
             }
         } else if !dg.cg.is_empty() {
             // unsorted data
             // initialises all arrays
             for channel_group in dg.cg.values_mut() {
-                initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone());
+                initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone(), channel_names_to_read_in_dg);
             }
-            read_all_channels_unsorted(rdr, dg, block_header.len as i64);
+            read_all_channels_unsorted(rdr, dg, block_header.len as i64, channel_names_to_read_in_dg);
             position += block_header.len as i64;
         }
     } else if "##DZ".as_bytes() == id {
@@ -99,17 +114,17 @@ fn read_data(
         if sorted {
             // sorted data group
             for channel_group in dg.cg.values_mut() {
-                vlsd_channels = read_all_channels_sorted_from_bytes(&data, channel_group);
+                vlsd_channels = read_all_channels_sorted_from_bytes(&data, channel_group, channel_names_to_read_in_dg);
             }
             position += block_header.len as i64;
             if !vlsd_channels.is_empty() {
-                position = read_sd(rdr, dg, &vlsd_channels, position, &mut decoder);
+                position = read_sd(rdr, dg, &vlsd_channels, position, &mut decoder, channel_names_to_read_in_dg);
             }
         } else if !dg.cg.is_empty() {
             // unsorted data
             // initialises all arrays
             for channel_group in dg.cg.values_mut() {
-                initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone());
+                initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone(), channel_names_to_read_in_dg);
             }
             // initialise record counter
             let mut record_counter: HashMap<u64, (usize, Vec<u8>)> = HashMap::new();
@@ -124,14 +139,14 @@ fn read_data(
                     ),
                 );
             }
-            read_all_channels_unsorted_from_bytes(&mut data, dg, &mut record_counter, &mut decoder);
+            read_all_channels_unsorted_from_bytes(&mut data, dg, &mut record_counter, &mut decoder, channel_names_to_read_in_dg);
             position += block_header.len as i64;
         }
     } else if "##HL".as_bytes() == id {
         let (pos, id) = read_hl(rdr, position);
         position = pos;
         // Read DL Blocks
-        position = read_data(rdr, id, dg, position, sorted);
+        position = read_data(rdr, id, dg, position, sorted, channel_names_to_read_in_dg);
     } else if "##DL".as_bytes() == id {
         // data list
         if sorted {
@@ -139,27 +154,27 @@ fn read_data(
             for channel_group in dg.cg.values_mut() {
                 let (dl_blocks, pos) = parser_dl4(rdr, position);
                 let (pos, vlsd) =
-                    parser_dl4_sorted(rdr, dl_blocks, pos, channel_group, &mut decoder, &0u32);
+                    parser_dl4_sorted(rdr, dl_blocks, pos, channel_group, &mut decoder, &0u32, channel_names_to_read_in_dg);
                 position = pos;
                 vlsd_channels = vlsd;
             }
             if !vlsd_channels.is_empty() {
-                position = read_sd(rdr, dg, &vlsd_channels, position, &mut decoder);
+                position = read_sd(rdr, dg, &vlsd_channels, position, &mut decoder, channel_names_to_read_in_dg);
             }
         } else if !dg.cg.is_empty() {
             // unsorted data
             // initialises all arrays
             for channel_group in dg.cg.values_mut() {
-                initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone());
+                initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone(), channel_names_to_read_in_dg);
             }
             let (dl_blocks, pos) = parser_dl4(rdr, position);
-            let pos = parser_dl4_unsorted(rdr, dg, dl_blocks, pos);
+            let pos = parser_dl4_unsorted(rdr, dg, dl_blocks, pos, channel_names_to_read_in_dg);
             position = pos;
         }
     } else if "##LD".as_bytes() == id {
         // list data, cannot be used for unsorted data
         for channel_group in dg.cg.values_mut() {
-            let pos = parser_ld4(rdr, position, channel_group);
+            let pos = parser_ld4(rdr, position, channel_group, channel_names_to_read_in_dg);
             position = pos;
         }
     } else if "##DV".as_bytes() == id {
@@ -169,7 +184,7 @@ fn read_data(
         for channel_group in dg.cg.values_mut() {
             match channel_group.cn.len() {
                 l if l > 1 => {
-                    read_all_channels_sorted(rdr, channel_group);
+                    read_all_channels_sorted(rdr, channel_group, channel_names_to_read_in_dg);
                 }
                 l if l == 1 => {
                     let cycle_count = channel_group.block.cg_cycle_count;
@@ -209,6 +224,7 @@ fn read_sd(
     vlsd_channels: &[u32],
     mut position: i64,
     decoder: &mut Dec,
+    channel_names_to_read_in_dg: &HashSet<&String>
 ) -> i64 {
     for channel_group in dg.cg.values_mut() {
         for rec_pos in vlsd_channels {
@@ -235,12 +251,12 @@ fn read_sd(
                     position = pos;
                     let (dl_blocks, pos) = parser_dl4(rdr, position);
                     let (pos, _vlsd) =
-                        parser_dl4_sorted(rdr, dl_blocks, pos, channel_group, decoder, rec_pos);
+                        parser_dl4_sorted(rdr, dl_blocks, pos, channel_group, decoder, rec_pos, channel_names_to_read_in_dg);
                     position = pos;
                 } else if "##DL".as_bytes() == id {
                     let (dl_blocks, pos) = parser_dl4(rdr, position);
                     let (pos, _vlsd) =
-                        parser_dl4_sorted(rdr, dl_blocks, pos, channel_group, decoder, rec_pos);
+                        parser_dl4_sorted(rdr, dl_blocks, pos, channel_group, decoder, rec_pos, channel_names_to_read_in_dg);
                     position = pos;
                 }
             }
@@ -399,7 +415,7 @@ fn read_vlsd_from_bytes(
 }
 
 /// Reads all DL Blocks and returns a vect of them
-fn parser_ld4(rdr: &mut BufReader<&File>, mut position: i64, channel_group: &mut Cg4) -> i64 {
+fn parser_ld4(rdr: &mut BufReader<&File>, mut position: i64, channel_group: &mut Cg4, channel_names_to_read_in_dg: &HashSet<&String>) -> i64 {
     let mut ld_blocks: Vec<Ld4Block> = Vec::new();
     let (block, pos) = parser_ld4_block(rdr, position, position);
     position = pos;
@@ -424,13 +440,14 @@ fn parser_ld4(rdr: &mut BufReader<&File>, mut position: i64, channel_group: &mut
         rdr.read_exact(&mut id)
             .expect("could not read data block id from ld4 invalid");
         if id == "##DZ".as_bytes() {
-            initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone());
+            initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone(), channel_names_to_read_in_dg);
             let (dt, block_header) = parse_dz(rdr);
             read_channels_from_bytes(
                 &dt,
                 &mut channel_group.cn,
                 channel_group.record_length as usize,
                 0,
+                channel_names_to_read_in_dg,
             );
             position = ld_blocks[0].ld_data[0] + block_header.len as i64;
         } else {
@@ -461,7 +478,7 @@ fn parser_ld4(rdr: &mut BufReader<&File>, mut position: i64, channel_group: &mut
         }
     } else {
         // several DV, LD or channels per DG
-        position = read_dv_di(rdr, position, channel_group, ld_blocks);
+        position = read_dv_di(rdr, position, channel_group, ld_blocks, channel_names_to_read_in_dg);
     }
     position
 }
@@ -472,11 +489,12 @@ fn read_dv_di(
     mut position: i64,
     channel_group: &mut Cg4,
     ld_blocks: Vec<Ld4Block>,
+    channel_names_to_read_in_dg: &HashSet<&String>,
 ) -> i64 {
     let cg_cycle_count = channel_group.block.cg_cycle_count as usize;
     let cg_inval_bytes = channel_group.block.cg_inval_bytes as usize;
     // initialises the arrays
-    initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone());
+    initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone(), channel_names_to_read_in_dg);
     for ld in &ld_blocks {
         if !ld.ld_invalid_data.is_empty() {
             // initialises the invalid bytes vector
@@ -518,6 +536,7 @@ fn read_dv_di(
                     &mut channel_group.cn,
                     record_length,
                     previous_index,
+                    channel_names_to_read_in_dg,
                 );
             } else {
                 // Some implementation are pre allocating equal length blocks
@@ -526,6 +545,7 @@ fn read_dv_di(
                     &mut channel_group.cn,
                     record_length,
                     previous_index,
+                    channel_names_to_read_in_dg,
                 );
             }
             // drop what has ben copied and keep remaining to be extended
@@ -601,9 +621,10 @@ fn parser_dl4_sorted(
     channel_group: &mut Cg4,
     decoder: &mut Dec,
     rec_pos: &u32,
+    channel_names_to_read_in_dg: &HashSet<&String>,
 ) -> (i64, Vec<u32>) {
     // initialises the arrays
-    initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone());
+    initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone(), channel_names_to_read_in_dg);
     // Read all data blocks
     let mut data: Vec<u8> = Vec::new();
     let mut previous_index: usize = 0;
@@ -645,6 +666,7 @@ fn parser_dl4_sorted(
                         &mut channel_group.cn,
                         record_length,
                         previous_index,
+                        channel_names_to_read_in_dg,
                     );
                 } else {
                     // Some implementation are pre allocating equal length blocks
@@ -653,6 +675,7 @@ fn parser_dl4_sorted(
                         &mut channel_group.cn,
                         record_length,
                         previous_index,
+                        channel_names_to_read_in_dg,
                     );
                 }
                 // drop what has ben copied and keep remaining to be extended
@@ -678,6 +701,7 @@ fn parser_dl4_unsorted(
     dg: &mut Dg4,
     dl_blocks: Vec<Dl4Block>,
     mut position: i64,
+    channel_names_to_read_in_dg: &HashSet<&String>,
 ) -> i64 {
     // Read all data blocks
     let mut data: Vec<u8> = Vec::new();
@@ -704,7 +728,7 @@ fn parser_dl4_unsorted(
                 data.extend(buf);
             }
             // saves records as much as possible
-            read_all_channels_unsorted_from_bytes(&mut data, dg, &mut record_counter, &mut decoder);
+            read_all_channels_unsorted_from_bytes(&mut data, dg, &mut record_counter, &mut decoder, channel_names_to_read_in_dg);
             position = data_pointer + header.hdr_len as i64;
         }
     }
@@ -728,10 +752,10 @@ fn generate_chunks(channel_group: &Cg4) -> Vec<(usize, usize)> {
 }
 
 /// Reads all channels from given channel group having sorted data blocks
-fn read_all_channels_sorted(rdr: &mut BufReader<&File>, channel_group: &mut Cg4) -> Vec<u32> {
+fn read_all_channels_sorted(rdr: &mut BufReader<&File>, channel_group: &mut Cg4, channel_names_to_read_in_dg: &HashSet<&String>) -> Vec<u32> {
     let chunks = generate_chunks(channel_group);
     // initialises the arrays
-    initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone());
+    initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone(), channel_names_to_read_in_dg);
     // read by chunks and store in channel array
     let mut previous_index: usize = 0;
     let mut vlsd_channels: Vec<u32> = Vec::new();
@@ -744,6 +768,7 @@ fn read_all_channels_sorted(rdr: &mut BufReader<&File>, channel_group: &mut Cg4)
             &mut channel_group.cn,
             channel_group.record_length as usize,
             previous_index,
+            channel_names_to_read_in_dg
         );
         previous_index += n_record_chunk;
     }
@@ -1177,10 +1202,13 @@ fn read_channels_from_bytes(
     channels: &mut CnType,
     record_length: usize,
     previous_index: usize,
+    channel_names_to_read_in_dg: &HashSet<&String>,
 ) -> Vec<u32> {
     let vlsd_channels: Arc<Mutex<Vec<u32>>> = Arc::new(Mutex::new(Vec::new()));
     // iterates for each channel in parallel with rayon crate
-    channels.par_iter_mut().for_each(|(rec_pos, cn)| {
+    channels.par_iter_mut()
+        .filter(|(_cn_record_position, cn)| {channel_names_to_read_in_dg.contains(&cn.unique_name) && cn.data.is_empty()})
+        .for_each(|(rec_pos, cn)| {
         if cn.block.cn_type == 0
             || cn.block.cn_type == 2
             || cn.block.cn_type == 4
@@ -1684,9 +1712,9 @@ fn read_channels_from_bytes(
 }
 
 /// copies complete sorted data block (not chunk) into each channel array
-fn read_all_channels_sorted_from_bytes(data: &[u8], channel_group: &mut Cg4) -> Vec<u32> {
+fn read_all_channels_sorted_from_bytes(data: &[u8], channel_group: &mut Cg4, channel_names_to_read_in_dg: &HashSet<&String>) -> Vec<u32> {
     // initialises the arrays
-    initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone());
+    initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone(), channel_names_to_read_in_dg);
     let mut vlsd_channels: Vec<u32> = Vec::new();
     for nrecord in 0..channel_group.block.cg_cycle_count {
         vlsd_channels = read_channels_from_bytes(
@@ -1695,13 +1723,14 @@ fn read_all_channels_sorted_from_bytes(data: &[u8], channel_group: &mut Cg4) -> 
             &mut channel_group.cn,
             channel_group.record_length as usize,
             0,
+            channel_names_to_read_in_dg,
         );
     }
     vlsd_channels
 }
 
 /// Reads unsorted data block chunk by chunk
-fn read_all_channels_unsorted(rdr: &mut BufReader<&File>, dg: &mut Dg4, block_length: i64) {
+fn read_all_channels_unsorted(rdr: &mut BufReader<&File>, dg: &mut Dg4, block_length: i64, channel_names_to_read_in_dg: &HashSet<&String>) {
     let data_block_length = block_length as usize;
     let mut position: usize = 24;
     let mut record_counter: HashMap<u64, (usize, Vec<u8>)> = HashMap::new();
@@ -1734,6 +1763,7 @@ fn read_all_channels_unsorted(rdr: &mut BufReader<&File>, dg: &mut Dg4, block_le
             dg,
             &mut record_counter,
             &mut decoder,
+            channel_names_to_read_in_dg,
         );
     }
 }
@@ -1800,6 +1830,7 @@ fn read_all_channels_unsorted_from_bytes(
     dg: &mut Dg4,
     record_counter: &mut HashMap<u64, (usize, Vec<u8>)>,
     decoder: &mut Dec,
+    channel_names_to_read_in_dg: &HashSet<&String>,
 ) {
     let mut position: usize = 0;
     let data_length = data.len();
@@ -1885,6 +1916,7 @@ fn read_all_channels_unsorted_from_bytes(
                 &mut channel_group.cn,
                 channel_group.record_length as usize,
                 *index,
+                channel_names_to_read_in_dg,
             );
             record_data.clear(); // clears data for new block, keeping capacity
         }
@@ -1899,11 +1931,12 @@ struct Dec {
 }
 
 /// initialise ndarrays for the data group/block
-fn initialise_arrays(channel_group: &mut Cg4, n_record_chunk: &u64) {
+fn initialise_arrays(channel_group: &mut Cg4, n_record_chunk: &u64, channel_names_to_read_in_dg: &HashSet<&String>) {
     // creates zeroed array in parallel for each channel contained in channel group
     channel_group
         .cn
         .par_iter_mut()
+        .filter(|(_cn_record_position, cn)| {channel_names_to_read_in_dg.contains(&cn.unique_name)})
         .for_each(|(_cn_record_position, cn)| {
             cn.data = data_init(
                 cn.block.cn_type,
@@ -1915,10 +1948,14 @@ fn initialise_arrays(channel_group: &mut Cg4, n_record_chunk: &u64) {
 }
 
 /// applies bit mask if required in channel block
-fn apply_bit_mask_offset(dg: &mut Dg4) {
+fn apply_bit_mask_offset(dg: &mut Dg4, channel_names_to_read_in_dg: &HashSet<&String>) {
     // apply bit shift and masking
     for channel_group in dg.cg.values_mut() {
-        channel_group.cn.par_iter_mut().for_each(|(_rec_pos, cn)| {
+        channel_group
+        .cn
+        .par_iter_mut()
+        .filter(|(_cn_record_position, cn)| {channel_names_to_read_in_dg.contains(&cn.unique_name)})
+        .for_each(|(_rec_pos, cn)| {
             if cn.block.cn_data_type <= 3 {
                 let left_shift =
                     cn.n_bytes * 8 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;

@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
-use mdfr::{mdfinfo::mdfinfo, mdfreader::mdfreader};
+use mdfr::mdfreader::mdfreader;
 use std::process::Command;
 
 fn python_launch() {

@@ -287,6 +287,32 @@ impl ChannelData {
         }
         output
     }
+    pub fn is_empty(&self) -> bool {
+        match self {
+            ChannelData::Int8(data) => data.is_empty(),
+            ChannelData::UInt8(data) => data.is_empty(),
+            ChannelData::Int16(data) => data.is_empty(),
+            ChannelData::UInt16(data) => data.is_empty(),
+            ChannelData::Float16(data) => data.is_empty(),
+            ChannelData::Int24(data) => data.is_empty(),
+            ChannelData::UInt24(data) => data.is_empty(),
+            ChannelData::Int32(data) => data.is_empty(),
+            ChannelData::UInt32(data) => data.is_empty(),
+            ChannelData::Float32(data) => data.is_empty(),
+            ChannelData::Int48(data) => data.is_empty(),
+            ChannelData::UInt48(data) => data.is_empty(),
+            ChannelData::Int64(data) => data.is_empty(),
+            ChannelData::UInt64(data) => data.is_empty(),
+            ChannelData::Float64(data) => data.is_empty(),
+            ChannelData::Complex16(data) => data.is_empty(),
+            ChannelData::Complex32(data) => data.is_empty(),
+            ChannelData::Complex64(data) => data.is_empty(),
+            ChannelData::StringSBC(data) => data.is_empty(),
+            ChannelData::StringUTF8(data) => data.is_empty(),
+            ChannelData::StringUTF16(data) => data.is_empty(),
+            ChannelData::ByteArray(data) => data.is_empty(),
+        }
+    }
 }
 
 impl IntoPy<PyObject> for ChannelData {

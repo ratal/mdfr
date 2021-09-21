@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::mdfinfo;
+    use crate::mdfinfo::MdfInfo;
     use crate::mdfreader;
     use std::fs;
     use std::io;
@@ -11,12 +11,12 @@ mod tests {
     fn info_test() -> io::Result<()> {
         let mut file_name = "/home/ratal/workspace/mdfr/test_files/Test.mf4";
         println!("reading {}", file_name);
-        let mut info = mdfinfo::mdfinfo(file_name);
+        let mut info = MdfInfo::new(file_name);
         println!("{:#?}", info);
         assert_eq!(info.get_version(), 410);
         file_name = "/home/ratal/workspace/mdfr/test_files/Mdf3_hiddenBytes_NotAlignedBytes.dat";
         println!("reading {}", file_name);
-        let mut info = mdfinfo::mdfinfo(file_name);
+        let mut info = MdfInfo::new(file_name);
         println!("{:#?}", &info);
         assert_eq!(info.get_version(), 320);
         Ok(())
@@ -47,7 +47,8 @@ mod tests {
                             if valid_ext.contains(&ext) {
                                 if let Some(file_name) = entry.path().to_str() {
                                     println!(" Reading file : {}", file_name);
-                                    let info = mdfreader::mdfreader(file_name);
+                                    let mut info = MdfInfo::new(file_name);
+                                    info.load_all_channels_data_in_memory();
                                 }
                             }
                         }
@@ -131,7 +132,7 @@ mod tests {
         // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/Vector_MinimumFile.MF4");  // DT
         // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4");  // DT
         // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/UnsortedData/Vector_Unsorted_VLSD.MF4"); // unsorted with VLSD
-        // let file = String::from("/home/ratal/workspace/mdfr/test_files/Test.mf4");
+        let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/test.mf4");
         // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/ASAP2_Demo_V171.mf4");
         // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/V447_20190514_164254_Gearshift_0m_20Grad.mf4"); // HL DL DZ
         // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/ChannelTypes/MLSD/Vector_MLSDStringUTF8.mf4");
@@ -140,13 +141,7 @@ mod tests {
         // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/ChannelTypes/VLSD/Vector_VLSDStringUTF16_LE.mf4");
         // let file = String::from("/home/ratal/workspace/mdfreader/T3_121121_000_6NEDC_col.mf4");
         // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/ZED_1hz_7197_col.mf4"); // invalid bytes
-        let mdf = mdfreader::mdfreader(&file);
-        //println!("{}", info);
-        if let Some(data) = mdf.get_channel_data(&String::from("RTWorstCase")) {
-            println!("{}",data);
-        } else {
-            print!("Not found channel");
-        }
-        
+        let mut mdf = MdfInfo::new(&file);
+        mdf.load_all_channels_data_in_memory();        
     }
 }

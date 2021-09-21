@@ -8,11 +8,13 @@ use std::collections::HashMap;
 pub fn convert_all_channels(dg: &mut Dg4, cc: &HashMap<i64, Cc4Block>) {
     for channel_group in dg.cg.values_mut() {
         for (_cn_record_position, cn) in channel_group.cn.iter_mut() {
-            if let Some(conv) = cc.get(&cn.block.cn_cc_conversion) {
-                match conv.cc_type {
-                    1 => linear_conversion(cn, &conv.cc_val, &channel_group.block.cg_cycle_count),
-                    2 => rational_conversion(cn, &conv.cc_val, &channel_group.block.cg_cycle_count),
-                    _ => {}
+            if !cn.data.is_empty() {  // Coudl be empty if only initialised
+                if let Some(conv) = cc.get(&cn.block.cn_cc_conversion) {
+                    match conv.cc_type {
+                        1 => linear_conversion(cn, &conv.cc_val, &channel_group.block.cg_cycle_count),
+                        2 => rational_conversion(cn, &conv.cc_val, &channel_group.block.cg_cycle_count),
+                        _ => {}
+                    }
                 }
             }
         }
