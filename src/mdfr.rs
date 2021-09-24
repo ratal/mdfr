@@ -11,7 +11,7 @@ pub(crate) fn register(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<Mdf>()?;
     Ok(())
 }
-
+//TODO export to hdf5 and parquet using arrow, xlswriter
 #[pymethods]
 impl Mdf {
     /// creates new object from file name

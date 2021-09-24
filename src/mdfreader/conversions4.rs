@@ -13,7 +13,7 @@ pub fn convert_all_channels(dg: &mut Dg4, cc: &HashMap<i64, Cc4Block>) {
                     match conv.cc_type {
                         1 => linear_conversion(cn, &conv.cc_val, &channel_group.block.cg_cycle_count),
                         2 => rational_conversion(cn, &conv.cc_val, &channel_group.block.cg_cycle_count),
-                        _ => {}
+                        _ => {} //TODO conversions further implement
                     }
                 }
             }

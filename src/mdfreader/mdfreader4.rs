@@ -31,7 +31,7 @@ const CHUNK_SIZE_READING: usize = 524288; // can be tuned according to architect
 pub fn mdfreader4<'a>(rdr: &'a mut BufReader<&File>, info: &'a mut MdfInfo4, channel_names: HashSet<String>) {
     let mut position: i64 = 0;
     let mut sorted: bool;
-    let mut channel_names_present_in_dg: HashSet<String>;
+    let mut channel_names_present_in_dg: HashSet<String>;  //TODO CABlock reading reading
     // read file data
     for (_dg_position, dg) in info.dg.iter_mut() {
         // Let's find channel names
@@ -61,12 +61,6 @@ pub fn mdfreader4<'a>(rdr: &'a mut BufReader<&File>, info: &'a mut MdfInfo4, cha
             // conversion of all channels to physical values
             convert_all_channels(dg, &info.sharable.cc);
         }
-    }
-}
-
-impl Dg4 {
-    pub fn read_data<'a>(&mut self, rdr: &'a mut BufReader<&File>, channel_names: HashSet<String>) {
-
     }
 }
 
@@ -786,6 +780,7 @@ fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count:
         // cn_type == 0 : fixed length data channel
         // cn_type == 2 : master channel
         // cn_type == 4 : synchronisation channel
+        // TODO add CA Block reading
         let n_bytes = cn.n_bytes as usize;
         match &mut cn.data {
             ChannelData::Int8(data) => {

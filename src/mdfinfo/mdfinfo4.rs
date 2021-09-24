@@ -456,7 +456,7 @@ pub fn extract_xml(comment: &mut Tx) {
     comment
         .par_iter_mut()
         .filter(|val| val.1)
-        .for_each(|mut val| xml_parse(&mut val));
+        .for_each(|mut val| xml_parse(&mut val)); //TODO confirm metadata extraction
 }
 
 fn xml_parse(val: &mut (String, bool)) {
