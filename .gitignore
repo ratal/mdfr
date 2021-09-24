@@ -1,10 +1,9 @@
 /target
 Cargo.lock
 flamegraph.svg
-perf.data.old
-perf.data
+perf.*
 profile.coz
 callgrind.out.*
 cachegrind.out.*
+massif.*
 /.env
-Cargo.lock
