@@ -39,11 +39,14 @@ harness = false
 [profile.release]
 opt-level = 3
 debug = 2
-lot = true
+lto = true
 
 [profile.bench]
 debug = false
 opt-level = 3
+lto = true
 
-[rust]
-debuginfo-level = 2
+[profile.dev]
+debug = 2
+lto = false
+opt-level = 0
