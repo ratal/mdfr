@@ -7,3 +7,4 @@ profile.coz
 callgrind.out.*
 cachegrind.out.*
 /.env
+Cargo.lock
