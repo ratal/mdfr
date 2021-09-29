@@ -1,6 +1,6 @@
 use crate::mdfinfo::mdfinfo4::{Cc4Block, Cn4, Dg4};
 use crate::mdfreader::channel_data::ChannelData;
-use ndarray::{Array1, Zip};
+use ndarray::{Array1, ArrayD, IxDyn, Zip};
 use num::Complex;
 use std::collections::HashMap;
 
@@ -13,7 +13,7 @@ pub fn convert_all_channels(dg: &mut Dg4, cc: &HashMap<i64, Cc4Block>) {
                     match conv.cc_type {
                         1 => linear_conversion(cn, &conv.cc_val, &channel_group.block.cg_cycle_count),
                         2 => rational_conversion(cn, &conv.cc_val, &channel_group.block.cg_cycle_count),
-                        _ => {} //TODO conversions further implement
+                        _ => {} //TODO further implement conversions
                     }
                 }
             }
@@ -26,93 +26,107 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
     let p1 = cc_val[0];
     let p2 = cc_val[1];
     if !(p1 == 0.0 && (p2 - 1.0) < 1e-12) {
-        let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
         match &mut cn.data {
             ChannelData::UInt8(a) => {
+                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
                 Zip::from(&mut new_array)
                     .and(a)
                     .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
                 cn.data = ChannelData::Float64(new_array);
             }
             ChannelData::Int8(a) => {
+                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
                 Zip::from(&mut new_array)
                     .and(a)
                     .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
                 cn.data = ChannelData::Float64(new_array);
             }
             ChannelData::Int16(a) => {
+                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
                 Zip::from(&mut new_array)
                     .and(a)
                     .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
                 cn.data = ChannelData::Float64(new_array);
             }
             ChannelData::UInt16(a) => {
+                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
                 Zip::from(&mut new_array)
                     .and(a)
                     .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
                 cn.data = ChannelData::Float64(new_array);
             }
             ChannelData::Float16(a) => {
+                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
                 Zip::from(&mut new_array)
                     .and(a)
                     .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
                 cn.data = ChannelData::Float64(new_array);
             }
             ChannelData::Int24(a) => {
+                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
                 Zip::from(&mut new_array)
                     .and(a)
                     .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
                 cn.data = ChannelData::Float64(new_array);
             }
             ChannelData::UInt24(a) => {
+                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
                 Zip::from(&mut new_array)
                     .and(a)
                     .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
                 cn.data = ChannelData::Float64(new_array);
             }
             ChannelData::Int32(a) => {
+                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
                 Zip::from(&mut new_array)
                     .and(a)
                     .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
                 cn.data = ChannelData::Float64(new_array);
             }
             ChannelData::UInt32(a) => {
+                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
                 Zip::from(&mut new_array)
                     .and(a)
                     .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
                 cn.data = ChannelData::Float64(new_array);
             }
             ChannelData::Float32(a) => {
+                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
                 Zip::from(&mut new_array)
                     .and(a)
                     .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
                 cn.data = ChannelData::Float64(new_array);
             }
             ChannelData::Int48(a) => {
+                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
                 Zip::from(&mut new_array)
                     .and(a)
                     .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
                 cn.data = ChannelData::Float64(new_array);
             }
             ChannelData::UInt48(a) => {
+                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
                 Zip::from(&mut new_array)
                     .and(a)
                     .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
                 cn.data = ChannelData::Float64(new_array);
             }
             ChannelData::Int64(a) => {
+                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
                 Zip::from(&mut new_array)
                     .and(a)
                     .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
                 cn.data = ChannelData::Float64(new_array);
             }
             ChannelData::UInt64(a) => {
+                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
                 Zip::from(&mut new_array)
                     .and(a)
                     .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
                 cn.data = ChannelData::Float64(new_array);
             }
             ChannelData::Float64(a) => {
+                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
                 Zip::from(&mut new_array)
                     .and(a)
                     .par_for_each(|new_array, a| *new_array = *a * p2 + p1);
@@ -151,6 +165,141 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             ChannelData::StringUTF8(_) => {}
             ChannelData::StringUTF16(_) => {}
             ChannelData::ByteArray(_) => {}
+            ChannelData::ArrayDUInt8(a) => {
+                let mut new_array = ArrayD::<f64>::zeros(a.shape());
+                Zip::from(&mut new_array)
+                    .and(a)
+                    .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
+                cn.data = ChannelData::ArrayDFloat64(new_array);
+            }
+            ChannelData::ArrayDInt8(a) => {
+                let mut new_array = ArrayD::<f64>::zeros(a.shape());
+                Zip::from(&mut new_array)
+                    .and(a)
+                    .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
+                cn.data = ChannelData::ArrayDFloat64(new_array);
+            }
+            ChannelData::ArrayDInt16(a) => {
+                let mut new_array = ArrayD::<f64>::zeros(a.shape());
+                Zip::from(&mut new_array)
+                    .and(a)
+                    .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
+                cn.data = ChannelData::ArrayDFloat64(new_array);
+            }
+            ChannelData::ArrayDUInt16(a) => {
+                let mut new_array = ArrayD::<f64>::zeros(a.shape());
+                let mut new_array = ArrayD::<f64>::zeros(a.shape());
+                Zip::from(&mut new_array)
+                    .and(a)
+                    .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
+                cn.data = ChannelData::ArrayDFloat64(new_array);
+            }
+            ChannelData::ArrayDFloat16(a) => {
+                let mut new_array = ArrayD::<f64>::zeros(a.shape());
+                Zip::from(&mut new_array)
+                    .and(a)
+                    .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
+                cn.data = ChannelData::ArrayDFloat64(new_array);
+            }
+            ChannelData::ArrayDInt24(a) => {
+                let mut new_array = ArrayD::<f64>::zeros(a.shape());
+                Zip::from(&mut new_array)
+                    .and(a)
+                    .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
+                cn.data = ChannelData::ArrayDFloat64(new_array);
+            }
+            ChannelData::ArrayDUInt24(a) => {
+                let mut new_array = ArrayD::<f64>::zeros(a.shape());
+                Zip::from(&mut new_array)
+                    .and(a)
+                    .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
+                cn.data = ChannelData::ArrayDFloat64(new_array);
+            }
+            ChannelData::ArrayDInt32(a) => {
+                let mut new_array = ArrayD::<f64>::zeros(a.shape());
+                Zip::from(&mut new_array)
+                    .and(a)
+                    .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
+                cn.data = ChannelData::ArrayDFloat64(new_array);
+            }
+            ChannelData::ArrayDUInt32(a) => {
+                let mut new_array = ArrayD::<f64>::zeros(a.shape());
+                Zip::from(&mut new_array)
+                    .and(a)
+                    .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
+                cn.data = ChannelData::ArrayDFloat64(new_array);
+            }
+            ChannelData::ArrayDFloat32(a) => {
+                let mut new_array = ArrayD::<f64>::zeros(a.shape());
+                Zip::from(&mut new_array)
+                    .and(a)
+                    .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
+                cn.data = ChannelData::ArrayDFloat64(new_array);
+            }
+            ChannelData::ArrayDInt48(a) => {
+                let mut new_array = ArrayD::<f64>::zeros(a.shape());
+                Zip::from(&mut new_array)
+                    .and(a)
+                    .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
+                cn.data = ChannelData::ArrayDFloat64(new_array);
+            }
+            ChannelData::ArrayDUInt48(a) => {
+                let mut new_array = ArrayD::<f64>::zeros(a.shape());
+                Zip::from(&mut new_array)
+                    .and(a)
+                    .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
+                cn.data = ChannelData::ArrayDFloat64(new_array);
+            }
+            ChannelData::ArrayDInt64(a) => {
+                let mut new_array = ArrayD::<f64>::zeros(a.shape());
+                Zip::from(&mut new_array)
+                    .and(a)
+                    .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
+                cn.data = ChannelData::ArrayDFloat64(new_array);
+            }
+            ChannelData::ArrayDUInt64(a) => {
+                let mut new_array = ArrayD::<f64>::zeros(a.shape());
+                Zip::from(&mut new_array)
+                    .and(a)
+                    .par_for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
+                cn.data = ChannelData::ArrayDFloat64(new_array);
+            }
+            ChannelData::ArrayDFloat64(a) => {
+                let mut new_array = ArrayD::<f64>::zeros(a.shape());
+                Zip::from(&mut new_array)
+                    .and(a)
+                    .par_for_each(|new_array, a| *new_array = *a * p2 + p1);
+                cn.data = ChannelData::ArrayDFloat64(new_array);
+            }
+            ChannelData::ArrayDComplex16(a) => {
+                let mut new_array = ArrayD::<Complex<f64>>::zeros(a.shape());
+                Zip::from(&mut new_array)
+                    .and(a)
+                    .par_for_each(|new_array, a| {
+                        *new_array =
+                            Complex::<f64>::new(a.re as f64 * p2 + p1, a.im as f64 * p2 + p1)
+                    });
+                cn.data = ChannelData::ArrayDComplex64(new_array);
+            }
+            ChannelData::ArrayDComplex32(a) => {
+                let mut new_array = ArrayD::<Complex<f64>>::zeros(a.shape());
+                Zip::from(&mut new_array)
+                    .and(a)
+                    .par_for_each(|new_array, a| {
+                        *new_array =
+                            Complex::<f64>::new(a.re as f64 * p2 + p1, a.im as f64 * p2 + p1)
+                    });
+                cn.data = ChannelData::ArrayDComplex64(new_array);
+            }
+            ChannelData::ArrayDComplex64(a) => {
+                let mut new_array = ArrayD::<Complex<f64>>::zeros(a.shape());
+                Zip::from(&mut new_array)
+                    .and(a)
+                    .par_for_each(|new_array, a| {
+                        *new_array = Complex::<f64>::new(a.re * p2 + p1, a.im * p2 + p1)
+                    });
+                cn.data = ChannelData::ArrayDComplex64(new_array);
+            }
         }
     }
 }
@@ -163,9 +312,10 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
     let p4 = cc_val[3];
     let p5 = cc_val[4];
     let p6 = cc_val[5];
-    let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+    
     match &mut cn.data {
         ChannelData::UInt8(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array)
                 .and(a)
                 .par_for_each(|new_array, a| {
@@ -176,6 +326,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int8(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array)
                 .and(a)
                 .par_for_each(|new_array, a| {
@@ -186,6 +337,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int16(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array)
                 .and(a)
                 .par_for_each(|new_array, a| {
@@ -196,6 +348,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt16(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array)
                 .and(a)
                 .par_for_each(|new_array, a| {
@@ -206,6 +359,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Float16(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array)
                 .and(a)
                 .par_for_each(|new_array, a| {
@@ -216,6 +370,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int24(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array)
                 .and(a)
                 .par_for_each(|new_array, a| {
@@ -226,6 +381,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt24(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array)
                 .and(a)
                 .par_for_each(|new_array, a| {
@@ -236,6 +392,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int32(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array)
                 .and(a)
                 .par_for_each(|new_array, a| {
@@ -246,6 +403,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt32(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array)
                 .and(a)
                 .par_for_each(|new_array, a| {
@@ -256,6 +414,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Float32(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array)
                 .and(a)
                 .par_for_each(|new_array, a| {
@@ -266,6 +425,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int48(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array)
                 .and(a)
                 .par_for_each(|new_array, a| {
@@ -276,6 +436,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt48(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array)
                 .and(a)
                 .par_for_each(|new_array, a| {
@@ -286,6 +447,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int64(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array)
                 .and(a)
                 .par_for_each(|new_array, a| {
@@ -296,6 +458,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt64(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array)
                 .and(a)
                 .par_for_each(|new_array, a| {
@@ -306,6 +469,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Float64(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array)
                 .and(a)
                 .par_for_each(|new_array, a| {
@@ -321,5 +485,172 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
         ChannelData::StringUTF8(_) => {}
         ChannelData::StringUTF16(_) => {}
         ChannelData::ByteArray(_) => {}
+        ChannelData::ArrayDUInt8(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array)
+                .and(a)
+                .par_for_each(|new_array, a| {
+                    let m = *a as f64;
+                    let m_2 = f64::powi(m, 2);
+                    *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
+                });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        }
+        ChannelData::ArrayDInt8(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array)
+                .and(a)
+                .par_for_each(|new_array, a| {
+                    let m = *a as f64;
+                    let m_2 = f64::powi(m, 2);
+                    *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
+                });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        }
+        ChannelData::ArrayDInt16(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array)
+                .and(a)
+                .par_for_each(|new_array, a| {
+                    let m = *a as f64;
+                    let m_2 = f64::powi(m, 2);
+                    *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
+                });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        }
+        ChannelData::ArrayDUInt16(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array)
+                .and(a)
+                .par_for_each(|new_array, a| {
+                    let m = *a as f64;
+                    let m_2 = f64::powi(m, 2);
+                    *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
+                });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        }
+        ChannelData::ArrayDFloat16(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array)
+                .and(a)
+                .par_for_each(|new_array, a| {
+                    let m = *a as f64;
+                    let m_2 = f64::powi(m, 2);
+                    *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
+                });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        }
+        ChannelData::ArrayDInt24(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array)
+                .and(a)
+                .par_for_each(|new_array, a| {
+                    let m = *a as f64;
+                    let m_2 = f64::powi(m, 2);
+                    *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
+                });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        }
+        ChannelData::ArrayDUInt24(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array)
+                .and(a)
+                .par_for_each(|new_array, a| {
+                    let m = *a as f64;
+                    let m_2 = f64::powi(m, 2);
+                    *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
+                });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        }
+        ChannelData::ArrayDInt32(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array)
+                .and(a)
+                .par_for_each(|new_array, a| {
+                    let m = *a as f64;
+                    let m_2 = f64::powi(m, 2);
+                    *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
+                });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        }
+        ChannelData::ArrayDUInt32(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array)
+                .and(a)
+                .par_for_each(|new_array, a| {
+                    let m = *a as f64;
+                    let m_2 = f64::powi(m, 2);
+                    *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
+                });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        }
+        ChannelData::ArrayDFloat32(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array)
+                .and(a)
+                .par_for_each(|new_array, a| {
+                    let m = *a as f64;
+                    let m_2 = f64::powi(m, 2);
+                    *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
+                });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        }
+        ChannelData::ArrayDInt48(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array)
+                .and(a)
+                .par_for_each(|new_array, a| {
+                    let m = *a as f64;
+                    let m_2 = f64::powi(m, 2);
+                    *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
+                });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        }
+        ChannelData::ArrayDUInt48(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array)
+                .and(a)
+                .par_for_each(|new_array, a| {
+                    let m = *a as f64;
+                    let m_2 = f64::powi(m, 2);
+                    *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
+                });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        }
+        ChannelData::ArrayDInt64(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array)
+                .and(a)
+                .par_for_each(|new_array, a| {
+                    let m = *a as f64;
+                    let m_2 = f64::powi(m, 2);
+                    *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
+                });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        }
+        ChannelData::ArrayDUInt64(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array)
+                .and(a)
+                .par_for_each(|new_array, a| {
+                    let m = *a as f64;
+                    let m_2 = f64::powi(m, 2);
+                    *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
+                });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        }
+        ChannelData::ArrayDFloat64(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array)
+                .and(a)
+                .par_for_each(|new_array, a| {
+                    let m_2 = f64::powi(*a, 2);
+                    *new_array = (m_2 * p1 + *a * p2 + p1) / (m_2 * p4 + *a * p5 + p6)
+                });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        }
+        ChannelData::ArrayDComplex16(_) => todo!(),
+        ChannelData::ArrayDComplex32(_) => todo!(),
+        ChannelData::ArrayDComplex64(_) => todo!(),
     }
 }

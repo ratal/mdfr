@@ -1196,7 +1196,7 @@ pub struct Cn4 {
     block_position: i64,
     pub pos_byte_beg: u32,
     pub n_bytes: u32,
-    composition: Option<Composition>,
+    pub composition: Option<Composition>,
     pub data: ChannelData,
     pub endian: bool, // false = little endian
     pub invalid_mask: Option<Array1<u8>>,
@@ -1693,13 +1693,13 @@ impl Si4Block {
 #[derive(Debug, PartialEq, Default, Clone)]
 pub struct Ca4Block {
     //header
-    ca_id: [u8; 4],    // ##CA
+    pub ca_id: [u8; 4],    // ##CA
     reserved: [u8; 4], // reserved
     ca_len: u64,       // Length of block in bytes
     ca_links: u64,     // # of links
     // links
-    ca_composition: i64, // [] Array of composed elements: Pointer to a CNBLOCK for array of structures, or to a CABLOCK for array of arrays (can be NIL). If a CABLOCK is referenced, it must use the "CN template" storage type (ca_storage = 0).
-    ca_data: Option<Vec<i64>>, // [Π N(d) or empty] Only present for storage type "DG template". List of links to data blocks (DTBLOCK/DLBLOCK) for each element in case of "DG template" storage (ca_storage = 2). A link in this list may only be NIL if the cycle count of the respective element is 0: ca_data[k] = NIL => ca_cycle_count[k] = 0 The links are stored line-oriented, i.e. element k uses ca_data[k] (see explanation below). The size of the list must be equal to Π N(d), i.e. to the product of the number of elements per dimension N(d) over all dimensions D. Note: link ca_data[0] must be equal to dg_data link of the parent DGBLOCK.
+    pub ca_composition: i64, // [] Array of composed elements: Pointer to a CNBLOCK for array of structures, or to a CABLOCK for array of arrays (can be NIL). If a CABLOCK is referenced, it must use the "CN template" storage type (ca_storage = 0).
+    pub ca_data: Option<Vec<i64>>, // [Π N(d) or empty] Only present for storage type "DG template". List of links to data blocks (DTBLOCK/DLBLOCK) for each element in case of "DG template" storage (ca_storage = 2). A link in this list may only be NIL if the cycle count of the respective element is 0: ca_data[k] = NIL => ca_cycle_count[k] = 0 The links are stored line-oriented, i.e. element k uses ca_data[k] (see explanation below). The size of the list must be equal to Π N(d), i.e. to the product of the number of elements per dimension N(d) over all dimensions D. Note: link ca_data[0] must be equal to dg_data link of the parent DGBLOCK.
     ca_dynamic_size: Option<Vec<i64>>, // [Dx3 or empty] Only present if "dynamic size" flag (bit 0) is set. References to channels for size signal of each dimension (can be NIL). Each reference is a link triple with pointer to parent DGBLOCK, parent CGBLOCK and CNBLOCK for the channel (either all three links are assigned or NIL). Thus the links have the following order: DGBLOCK for size signal of dimension 1 CGBLOCK for size signal of dimension 1 CNBLOCK for size signal of dimension 1 … DGBLOCK for size signal of dimension D CGBLOCK for size signal of dimension D CNBLOCK for size signal of dimension D The size signal can be used to model arrays whose number of elements per dimension can vary over time. If a size signal is specified for a dimension, the number of elements for this dimension at some point in time is equal to the value of the size signal at this time (i.e. for time-synchronized signals, the size signal value with highest time stamp less or equal to current time stamp). If the size signal has no recorded signal value for this time (yet), assume 0 as size.
     ca_input_quantity: Option<Vec<i64>>, // [Dx3 or empty] Only present if "input quantity" flag (bit 1) is set. Reference to channels for input quantity signal for each dimension (can be NIL). Each reference is a link triple with pointer to parent DGBLOCK, parent CGBLOCK and CNBLOCK for the channel (either all three links are assigned or NIL). Thus the links have the following order: DGBLOCK for input quantity of dimension 1 CGBLOCK for input quantity of dimension 1 CNBLOCK for input quantity of dimension 1 … DGBLOCK for input quantity of dimension D CGBLOCK for input quantity of dimension D CNBLOCK for input quantity of dimension D Since the input quantity signal and the array signal must be synchronized, their channel groups must contain at least one common master channel type.
     ca_output_quantity: Option<Vec<i64>>, // [3 or empty] Only present if "output quantity" flag (bit 2) is set. Reference to channel for output quantity (can be NIL). The reference is a link triple with pointer to parent DGBLOCK, parent CGBLOCK and CNBLOCK for the channel (either all three links are assigned or NIL). Since the output quantity signal and the array signal must be synchronized, their channel groups must contain at least one common master channel type. For array type "look-up", the output quantity is the result of the complete look-up (see [MCD-2 MC] keyword RIP_ADDR_W). The output quantity should have the same physical unit as the array elements of the array that references it.
@@ -1707,17 +1707,17 @@ pub struct Ca4Block {
     ca_cc_axis_conversion: Option<Vec<i64>>, // [D or empty] Only present if "axis" flag (bit 4) is set. Pointer to a conversion rule (CCBLOCK) for the scaling axis of each dimension. If a link NIL a 1:1 conversion must be used for this axis. If the "fixed axis" flag (Bit 5) is set, the conversion must be applied to the fixed axis values of the respective axis/dimension (ca_axis_value list stores the raw values as REAL). If the link to the CCBLOCK is NIL already the physical values are stored in the ca_axis_value list. If the "fixed axes" flag (Bit 5) is not set, the conversion must be applied to the raw values of the respective axis channel, i.e. it overrules the conversion specified for the axis channel, even if the ca_axis_conversion link is NIL! Note: ca_axis_conversion may reference the same CCBLOCK as referenced by the respective axis channel ("sharing" of CCBLOCK).
     ca_axis: Option<Vec<i64>>, // [Dx3 or empty] Only present if "axis" flag (bit 4) is set and "fixed axes flag" (bit 5) is not set. References to channels for scaling axis of respective dimension (can be NIL). Each reference is a link triple with pointer to parent DGBLOCK, parent CGBLOCK and CNBLOCK for the channel (either all three links are assigned or NIL). Thus the links have the following order: DGBLOCK for axis of dimension 1 CGBLOCK for axis of dimension 1 CNBLOCK for axis of dimension 1 … DGBLOCK for axis of dimension D CGBLOCK for axis of dimension D CNBLOCK for axis of dimension D Each referenced channel must be an array of type "axis". The maximum number of elements of each axis (ca_dim_size[0] in axis) must be equal to the maximum number of elements of respective dimension d in "look-up" array (ca_dim_size[d-1]).
     //members
-    ca_type: u8,                // Array type (defines semantic of the array) see CA_T_xxx
-    ca_storage: u8, // Storage type (defines how the element values are stored) see CA_S_xxx
-    ca_ndim: u16,   //Number of dimensions D > 0 For array type "axis", D must be 1.
-    ca_flags: u32,  // Flags The value contains the following bit flags (Bit 0 = LSB): see CA_F_xxx
-    ca_byte_offset_base: i32, // Base factor for calculation of Byte offsets for "CN template" storage type. ca_byte_offset_base should be larger than or equal to the size of Bytes required to store a component channel value in the record (all must have the same size). If it is equal to this value, then the component values are stored next to each other without gaps. Exact formula for calculation of Byte offset for each component channel see below.
-    ca_inval_bit_pos_base: u32, //Base factor for calculation of invalidation bit positions for CN template storage type.
-    ca_dim_size: Vec<u64>,
-    ca_axis_value: Option<Vec<f64>>,
-    ca_cycle_count: Option<Vec<u64>>,
-    snd: u64,
-    pnd: u64,
+    pub ca_type: u8,                // Array type (defines semantic of the array) see CA_T_xxx
+    pub ca_storage: u8, // Storage type (defines how the element values are stored) see CA_S_xxx
+    pub ca_ndim: u16,   //Number of dimensions D > 0 For array type "axis", D must be 1.
+    pub ca_flags: u32,  // Flags The value contains the following bit flags (Bit 0 = LSB): see CA_F_xxx
+    pub ca_byte_offset_base: i32, // Base factor for calculation of Byte offsets for "CN template" storage type. ca_byte_offset_base should be larger than or equal to the size of Bytes required to store a component channel value in the record (all must have the same size). If it is equal to this value, then the component values are stored next to each other without gaps. Exact formula for calculation of Byte offset for each component channel see below.
+    pub ca_inval_bit_pos_base: u32, //Base factor for calculation of invalidation bit positions for CN template storage type.
+    pub ca_dim_size: Vec<u64>,
+    pub ca_axis_value: Option<Vec<f64>>,
+    pub ca_cycle_count: Option<Vec<u64>>,
+    pub snd: u64,
+    pub pnd: u64,
 }
 
 #[derive(Debug, Clone, BinRead)]
@@ -1858,8 +1858,8 @@ fn parse_ca_block(ca_block: &mut Cursor<Vec<u8>>, block_header: Blockheader4) ->
 
 #[derive(Debug, Clone)]
 pub struct Composition {
-    block: Compo,
-    compo: Option<Box<Composition>>,
+    pub block: Compo,
+    pub compo: Option<Box<Composition>>,
 }
 
 #[derive(Debug, Clone)]

@@ -1,4 +1,4 @@
-use ndarray::{Array1, ArrayBase, Dim, OwnedRepr};
+use ndarray::{Array1, ArrayD, IxDyn};
 use num::Complex;
 use std::fmt;
 use numpy::{IntoPyArray, ToPyArray};
@@ -29,90 +29,83 @@ pub enum ChannelData {
     StringUTF8(Vec<String>),
     StringUTF16(Vec<String>),
     ByteArray(Vec<u8>),
+    ArrayDInt8(ArrayD<i8>),
+    ArrayDUInt8(ArrayD<u8>),
+    ArrayDInt16(ArrayD<i16>),
+    ArrayDUInt16(ArrayD<u16>),
+    ArrayDFloat16(ArrayD<f32>),
+    ArrayDInt24(ArrayD<i32>),
+    ArrayDUInt24(ArrayD<u32>),
+    ArrayDInt32(ArrayD<i32>),
+    ArrayDUInt32(ArrayD<u32>),
+    ArrayDFloat32(ArrayD<f32>),
+    ArrayDInt48(ArrayD<i64>),
+    ArrayDUInt48(ArrayD<u64>),
+    ArrayDInt64(ArrayD<i64>),
+    ArrayDUInt64(ArrayD<u64>),
+    ArrayDFloat64(ArrayD<f64>),
+    ArrayDComplex16(ArrayD<Complex<f32>>),
+    ArrayDComplex32(ArrayD<Complex<f32>>),
+    ArrayDComplex64(ArrayD<Complex<f64>>),
 }
 
 impl ChannelData {
     pub fn zeros(&self, cycle_count: u64, n_bytes: u32) -> ChannelData {
         match self {
             ChannelData::Int8(_) => ChannelData::Int8(
-                ArrayBase::<OwnedRepr<i8>, Dim<[usize; 1]>>::zeros((cycle_count as usize,)),
+                Array1::<i8>::zeros(cycle_count as usize)
             ),
             ChannelData::UInt8(_) => ChannelData::UInt8(
-                ArrayBase::<OwnedRepr<u8>, Dim<[usize; 1]>>::zeros((cycle_count as usize,)),
+                Array1::<u8>::zeros(cycle_count as usize)
             ),
             ChannelData::Int16(_) => ChannelData::Int16(
-                ArrayBase::<OwnedRepr<i16>, Dim<[usize; 1]>>::zeros((cycle_count as usize,)),
+                Array1::<i16>::zeros(cycle_count as usize)
             ),
-            ChannelData::UInt16(_) => {
-                ChannelData::UInt16(ArrayBase::<OwnedRepr<u16>, Dim<[usize; 1]>>::zeros((
-                    cycle_count as usize,
-                )))
-            }
-            ChannelData::Float16(_) => {
-                ChannelData::Float16(ArrayBase::<OwnedRepr<f32>, Dim<[usize; 1]>>::zeros((
-                    cycle_count as usize,
-                )))
-            }
+            ChannelData::UInt16(_) => ChannelData::UInt16(
+                Array1::<u16>::zeros(cycle_count as usize)
+            ),
+            ChannelData::Float16(_) => ChannelData::Float16(
+                Array1::<f32>::zeros(cycle_count as usize)
+            ),
             ChannelData::Int24(_) => ChannelData::Int24(
-                ArrayBase::<OwnedRepr<i32>, Dim<[usize; 1]>>::zeros((cycle_count as usize,)),
+                Array1::<i32>::zeros(cycle_count as usize)
             ),
-            ChannelData::UInt24(_) => {
-                ChannelData::UInt24(ArrayBase::<OwnedRepr<u32>, Dim<[usize; 1]>>::zeros((
-                    cycle_count as usize,
-                )))
-            }
+            ChannelData::UInt24(_) => ChannelData::UInt24(
+                Array1::<u32>::zeros(cycle_count as usize)
+            ),
             ChannelData::Int32(_) => ChannelData::Int32(
-                ArrayBase::<OwnedRepr<i32>, Dim<[usize; 1]>>::zeros((cycle_count as usize,)),
+                Array1::<i32>::zeros(cycle_count as usize)
             ),
-            ChannelData::UInt32(_) => {
-                ChannelData::UInt32(ArrayBase::<OwnedRepr<u32>, Dim<[usize; 1]>>::zeros((
-                    cycle_count as usize,
-                )))
-            }
-            ChannelData::Float32(_) => {
-                ChannelData::Float32(ArrayBase::<OwnedRepr<f32>, Dim<[usize; 1]>>::zeros((
-                    cycle_count as usize,
-                )))
-            }
+            ChannelData::UInt32(_) => ChannelData::UInt32(
+                Array1::<u32>::zeros(cycle_count as usize)
+            ),
+            ChannelData::Float32(_) => ChannelData::Float32(
+                Array1::<f32>::zeros(cycle_count as usize)
+            ),
             ChannelData::Int48(_) => ChannelData::Int48(
-                ArrayBase::<OwnedRepr<i64>, Dim<[usize; 1]>>::zeros((cycle_count as usize,)),
+                Array1::<i64>::zeros(cycle_count as usize)
             ),
-            ChannelData::UInt48(_) => {
-                ChannelData::UInt48(ArrayBase::<OwnedRepr<u64>, Dim<[usize; 1]>>::zeros((
-                    cycle_count as usize,
-                )))
-            }
+            ChannelData::UInt48(_) => ChannelData::UInt48(
+                Array1::<u64>::zeros(cycle_count as usize)
+            ),
             ChannelData::Int64(_) => ChannelData::Int64(
-                ArrayBase::<OwnedRepr<i64>, Dim<[usize; 1]>>::zeros((cycle_count as usize,)),
+                Array1::<i64>::zeros(cycle_count as usize)
             ),
-            ChannelData::UInt64(_) => {
-                ChannelData::UInt64(ArrayBase::<OwnedRepr<u64>, Dim<[usize; 1]>>::zeros((
-                    cycle_count as usize,
-                )))
-            }
-            ChannelData::Float64(_) => {
-                ChannelData::Float64(ArrayBase::<OwnedRepr<f64>, Dim<[usize; 1]>>::zeros((
-                    cycle_count as usize,
-                )))
-            }
-            ChannelData::Complex16(_) => ChannelData::Complex16(ArrayBase::<
-                OwnedRepr<Complex<f32>>,
-                Dim<[usize; 1]>,
-            >::zeros((
-                cycle_count as usize,
-            ))),
-            ChannelData::Complex32(_) => ChannelData::Complex32(ArrayBase::<
-                OwnedRepr<Complex<f32>>,
-                Dim<[usize; 1]>,
-            >::zeros((
-                cycle_count as usize,
-            ))),
-            ChannelData::Complex64(_) => ChannelData::Complex64(ArrayBase::<
-                OwnedRepr<Complex<f64>>,
-                Dim<[usize; 1]>,
-            >::zeros((
-                cycle_count as usize,
-            ))),
+            ChannelData::UInt64(_) => ChannelData::UInt64(
+                Array1::<u64>::zeros(cycle_count as usize)
+            ),
+            ChannelData::Float64(_) => ChannelData::Float64(
+                Array1::<f64>::zeros(cycle_count as usize)
+            ),
+            ChannelData::Complex16(_) => ChannelData::Complex16(
+                Array1::<Complex<f32>>::zeros(cycle_count as usize)
+            ),
+            ChannelData::Complex32(_) => ChannelData::Complex32(
+                Array1::<Complex<f32>>::zeros(cycle_count as usize)
+            ),
+            ChannelData::Complex64(_) => ChannelData::Complex64(
+                Array1::<Complex<f64>>::zeros(cycle_count as usize)
+            ),
             ChannelData::StringSBC(_) => {
                 ChannelData::StringSBC(vec![String::new(); cycle_count as usize])
             }
@@ -125,6 +118,60 @@ impl ChannelData {
             ChannelData::ByteArray(_) => {
                 ChannelData::ByteArray(vec![0u8; (n_bytes as u64 * cycle_count) as usize])
             }
+            ChannelData::ArrayDInt8(_) => ChannelData::ArrayDInt8(
+                ArrayD::<i8>::zeros(IxDyn(&[cycle_count as usize]))
+            ),
+            ChannelData::ArrayDUInt8(_) => ChannelData::ArrayDUInt8(
+                ArrayD::<u8>::zeros(IxDyn(&[cycle_count as usize]))
+            ),
+            ChannelData::ArrayDInt16(_) => ChannelData::ArrayDInt16(
+                ArrayD::<i16>::zeros(IxDyn(&[cycle_count as usize]))
+            ),
+            ChannelData::ArrayDUInt16(_) => ChannelData::ArrayDUInt16(
+                ArrayD::<u16>::zeros(IxDyn(&[cycle_count as usize]))
+            ),
+            ChannelData::ArrayDFloat16(_) => ChannelData::ArrayDFloat16(
+                ArrayD::<f32>::zeros(IxDyn(&[cycle_count as usize]))
+            ),
+            ChannelData::ArrayDInt24(_) => ChannelData::ArrayDInt24(
+                ArrayD::<i32>::zeros(IxDyn(&[cycle_count as usize]))
+            ),
+            ChannelData::ArrayDUInt24(_) => ChannelData::ArrayDUInt24(
+                ArrayD::<u32>::zeros(IxDyn(&[cycle_count as usize]))
+            ),
+            ChannelData::ArrayDInt32(_) => ChannelData::ArrayDInt32(
+                ArrayD::<i32>::zeros(IxDyn(&[cycle_count as usize]))
+            ),
+            ChannelData::ArrayDUInt32(_) => ChannelData::ArrayDUInt32(
+                ArrayD::<u32>::zeros(IxDyn(&[cycle_count as usize]))
+            ),
+            ChannelData::ArrayDFloat32(_) => ChannelData::ArrayDFloat32(
+                ArrayD::<f32>::zeros(IxDyn(&[cycle_count as usize]))
+            ),
+            ChannelData::ArrayDInt48(_) => ChannelData::ArrayDInt48(
+                ArrayD::<i64>::zeros(IxDyn(&[cycle_count as usize]))
+            ),
+            ChannelData::ArrayDUInt48(_) => ChannelData::ArrayDUInt48(
+                ArrayD::<u64>::zeros(IxDyn(&[cycle_count as usize]))
+            ),
+            ChannelData::ArrayDInt64(_) => ChannelData::ArrayDInt64(
+                ArrayD::<i64>::zeros(IxDyn(&[cycle_count as usize]))
+            ),
+            ChannelData::ArrayDUInt64(_) => ChannelData::ArrayDUInt64(
+                ArrayD::<u64>::zeros(IxDyn(&[cycle_count as usize]))
+            ),
+            ChannelData::ArrayDFloat64(_) => ChannelData::ArrayDFloat64(
+                ArrayD::<f64>::zeros(IxDyn(&[cycle_count as usize]))
+            ),
+            ChannelData::ArrayDComplex16(_) => ChannelData::ArrayDComplex16(
+                ArrayD::<Complex<f32>>::zeros(IxDyn(&[cycle_count as usize]))
+            ),
+            ChannelData::ArrayDComplex32(_) => ChannelData::ArrayDComplex32(
+                ArrayD::<Complex<f32>>::zeros(IxDyn(&[cycle_count as usize]))
+            ),
+            ChannelData::ArrayDComplex64(_) => ChannelData::ArrayDComplex64(
+                ArrayD::<Complex<f64>>::zeros(IxDyn(&[cycle_count as usize]))
+            ),
         }
     }
     pub fn first_last(&self) -> String {
@@ -284,6 +331,132 @@ impl ChannelData {
                     output = String::new();
                 }
             }
+            ChannelData::ArrayDInt8(array) => {
+                if array.len() > 1 {
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::ArrayDUInt8(array) => {
+                if array.len() > 1 {
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::ArrayDInt16(array) => {
+                if array.len() > 1 {
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::ArrayDUInt16(array) => {
+                if array.len() > 1 {
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::ArrayDFloat16(array) => {
+                if array.len() > 1 {
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::ArrayDInt24(array) => {
+                if array.len() > 1 {
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::ArrayDUInt24(array) => {
+                if array.len() > 1 {
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::ArrayDInt32(array) => {
+                if array.len() > 1 {
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::ArrayDUInt32(array) => {
+                if array.len() > 1 {
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::ArrayDFloat32(array) => {
+                if array.len() > 1 {
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::ArrayDInt48(array) => {
+                if array.len() > 1 {
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::ArrayDUInt48(array) => {
+                if array.len() > 1 {
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::ArrayDInt64(array) => {
+                if array.len() > 1 {
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::ArrayDUInt64(array) => {
+                if array.len() > 1 {
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::ArrayDFloat64(array) => {
+                if array.len() > 1 {
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::ArrayDComplex16(array) => {
+                if array.len() > 1 {
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::ArrayDComplex32(array) => {
+                if array.len() > 1 {
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
+            ChannelData::ArrayDComplex64(array) => {
+                if array.len() > 1 {
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
+            }
         }
         output
     }
@@ -311,6 +484,24 @@ impl ChannelData {
             ChannelData::StringUTF8(data) => data.is_empty(),
             ChannelData::StringUTF16(data) => data.is_empty(),
             ChannelData::ByteArray(data) => data.is_empty(),
+            ChannelData::ArrayDInt8(data) => data.is_empty(),
+            ChannelData::ArrayDUInt8(data) => data.is_empty(),
+            ChannelData::ArrayDInt16(data) => data.is_empty(),
+            ChannelData::ArrayDUInt16(data) => data.is_empty(),
+            ChannelData::ArrayDFloat16(data) => data.is_empty(),
+            ChannelData::ArrayDInt24(data) => data.is_empty(),
+            ChannelData::ArrayDUInt24(data) => data.is_empty(),
+            ChannelData::ArrayDInt32(data) => data.is_empty(),
+            ChannelData::ArrayDUInt32(data) => data.is_empty(),
+            ChannelData::ArrayDFloat32(data) => data.is_empty(),
+            ChannelData::ArrayDInt48(data) => data.is_empty(),
+            ChannelData::ArrayDUInt48(data) => data.is_empty(),
+            ChannelData::ArrayDInt64(data) => data.is_empty(),
+            ChannelData::ArrayDUInt64(data) => data.is_empty(),
+            ChannelData::ArrayDFloat64(data) => data.is_empty(),
+            ChannelData::ArrayDComplex16(data) => data.is_empty(),
+            ChannelData::ArrayDComplex32(data) => data.is_empty(),
+            ChannelData::ArrayDComplex64(data) => data.is_empty(),
         }
     }
 }
@@ -383,6 +574,60 @@ impl IntoPy<PyObject> for ChannelData {
             }
             ChannelData::ByteArray(array) => {
                 array.into_py(py)
+            }
+            ChannelData::ArrayDInt8(array) => {
+                array.into_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDUInt8(array) => {
+                array.into_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDInt16(array) => {
+                array.into_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDUInt16(array) => {
+                array.into_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDFloat16(array) => {
+                array.into_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDInt24(array) => {
+                array.into_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDUInt24(array) => {
+                array.into_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDInt32(array) => {
+                array.into_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDUInt32(array) => {
+                array.into_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDFloat32(array) => {
+                array.into_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDInt48(array) => {
+                array.into_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDUInt48(array) => {
+                array.into_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDInt64(array) => {
+                array.into_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDUInt64(array) => {
+                array.into_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDFloat64(array) => {
+                array.into_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDComplex16(array) => {
+                array.into_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDComplex32(array) => {
+                array.into_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDComplex64(array) => {
+                array.into_pyarray(py).into_py(py)
             }
         }
     }
@@ -457,13 +702,67 @@ impl ToPyObject for ChannelData {
             ChannelData::ByteArray(array) => {
                 array.to_object(py)
             }
+            ChannelData::ArrayDInt8(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDUInt8(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDInt16(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDUInt16(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDFloat16(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDInt24(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDUInt24(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDInt32(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDUInt32(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDFloat32(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDInt48(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDUInt48(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDInt64(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDUInt64(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDFloat64(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDComplex16(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDComplex32(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
+            ChannelData::ArrayDComplex64(array) => {
+                array.to_pyarray(py).into_py(py)
+            }
         }
     }
 }
 
 impl Default for ChannelData {
     fn default() -> Self {
-        ChannelData::UInt8(Array1::<u8>::zeros((0,)))
+        ChannelData::UInt8(Array1::<u8>::zeros(0))
     }
 }
 
@@ -474,53 +773,53 @@ pub fn data_init(cn_type: u8, cn_data_type: u8, n_bytes: u32, cycle_count: u64) 
         if cn_data_type == 0 || cn_data_type == 1 {
             // unsigned int
             if n_bytes <= 1 {
-                data_type = ChannelData::UInt8(Array1::<u8>::zeros((cycle_count as usize,)));
+                data_type = ChannelData::UInt8(Array1::<u8>::zeros(cycle_count as usize));
             } else if n_bytes == 2 {
-                data_type = ChannelData::UInt16(Array1::<u16>::zeros((cycle_count as usize,)));
+                data_type = ChannelData::UInt16(Array1::<u16>::zeros(cycle_count as usize));
             } else if n_bytes == 3 {
-                data_type = ChannelData::UInt24(Array1::<u32>::zeros((cycle_count as usize,)));
+                data_type = ChannelData::UInt24(Array1::<u32>::zeros(cycle_count as usize));
             } else if n_bytes == 4 {
-                data_type = ChannelData::UInt32(Array1::<u32>::zeros((cycle_count as usize,)));
+                data_type = ChannelData::UInt32(Array1::<u32>::zeros(cycle_count as usize));
             } else if n_bytes <= 6 {
-                data_type = ChannelData::UInt48(Array1::<u64>::zeros((cycle_count as usize,)));
+                data_type = ChannelData::UInt48(Array1::<u64>::zeros(cycle_count as usize));
             } else {
-                data_type = ChannelData::UInt64(Array1::<u64>::zeros((cycle_count as usize,)));
+                data_type = ChannelData::UInt64(Array1::<u64>::zeros(cycle_count as usize));
             }
         } else if cn_data_type == 2 || cn_data_type == 3 {
             // signed int
             if n_bytes <= 1 {
-                data_type = ChannelData::Int8(Array1::<i8>::zeros((cycle_count as usize,)));
+                data_type = ChannelData::Int8(Array1::<i8>::zeros(cycle_count as usize));
             } else if n_bytes == 2 {
-                data_type = ChannelData::Int16(Array1::<i16>::zeros((cycle_count as usize,)));
+                data_type = ChannelData::Int16(Array1::<i16>::zeros(cycle_count as usize));
             } else if n_bytes == 3 {
-                data_type = ChannelData::Int24(Array1::<i32>::zeros((cycle_count as usize,)));
+                data_type = ChannelData::Int24(Array1::<i32>::zeros(cycle_count as usize));
             } else if n_bytes == 4 {
-                data_type = ChannelData::Int32(Array1::<i32>::zeros((cycle_count as usize,)));
+                data_type = ChannelData::Int32(Array1::<i32>::zeros(cycle_count as usize));
             } else if n_bytes <= 6 {
-                data_type = ChannelData::Int48(Array1::<i64>::zeros((cycle_count as usize,)));
+                data_type = ChannelData::Int48(Array1::<i64>::zeros(cycle_count as usize));
             } else {
-                data_type = ChannelData::Int64(Array1::<i64>::zeros((cycle_count as usize,)));
+                data_type = ChannelData::Int64(Array1::<i64>::zeros(cycle_count as usize));
             }
         } else if cn_data_type == 4 || cn_data_type == 5 {
             // float
             if n_bytes <= 2 {
-                data_type = ChannelData::Float16(Array1::<f32>::zeros((cycle_count as usize,)));
+                data_type = ChannelData::Float16(Array1::<f32>::zeros(cycle_count as usize));
             } else if n_bytes <= 4 {
-                data_type = ChannelData::Float32(Array1::<f32>::zeros((cycle_count as usize,)));
+                data_type = ChannelData::Float32(Array1::<f32>::zeros(cycle_count as usize));
             } else {
-                data_type = ChannelData::Float64(Array1::<f64>::zeros((cycle_count as usize,)));
+                data_type = ChannelData::Float64(Array1::<f64>::zeros(cycle_count as usize));
             }
         } else if cn_data_type == 15 || cn_data_type == 16 {
             // complex
             if n_bytes <= 2 {
                 data_type =
-                    ChannelData::Complex16(Array1::<Complex<f32>>::zeros((cycle_count as usize,)));
+                    ChannelData::Complex16(Array1::<Complex<f32>>::zeros(cycle_count as usize));
             } else if n_bytes <= 4 {
                 data_type =
-                    ChannelData::Complex32(Array1::<Complex<f32>>::zeros((cycle_count as usize,)));
+                    ChannelData::Complex32(Array1::<Complex<f32>>::zeros(cycle_count as usize));
             } else {
                 data_type =
-                    ChannelData::Complex64(Array1::<Complex<f64>>::zeros((cycle_count as usize,)));
+                    ChannelData::Complex64(Array1::<Complex<f64>>::zeros(cycle_count as usize));
             }
         } else if cn_data_type == 6 {
             // SBC ISO-8859-1 to be converted into UTF8
@@ -622,6 +921,60 @@ impl fmt::Display for ChannelData {
                     writeln!(f, " {} ", text)?;
                 }
                 writeln!(f, " ")
+            }
+            ChannelData::ArrayDInt8(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::ArrayDUInt8(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::ArrayDInt16(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::ArrayDUInt16(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::ArrayDFloat16(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::ArrayDInt24(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::ArrayDUInt24(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::ArrayDInt32(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::ArrayDUInt32(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::ArrayDFloat32(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::ArrayDInt48(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::ArrayDUInt48(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::ArrayDInt64(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::ArrayDUInt64(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::ArrayDFloat64(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::ArrayDComplex16(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::ArrayDComplex32(array) => {
+                writeln!(f, "{}", array)
+            }
+            ChannelData::ArrayDComplex64(array) => {
+                writeln!(f, "{}", array)
             }
         }
     }
