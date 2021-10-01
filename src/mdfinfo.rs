@@ -237,7 +237,12 @@ impl MdfInfo {
         data
     }
     pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) {
-        self.clear_channel_data_from_memory(channel_names);
+        match self {
+            MdfInfo::V3(_mdfinfo3) => {}
+            MdfInfo::V4(mdfinfo4) => {
+                mdfinfo4.clear_channel_data_from_memory(channel_names);
+            }
+        }
     }
 }
 
