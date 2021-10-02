@@ -1,6 +1,6 @@
 use crate::mdfinfo::mdfinfo4::{Cc4Block, Cn4, Dg4};
 use crate::mdfreader::channel_data::ChannelData;
-use ndarray::{Array1, ArrayD, IxDyn, Zip};
+use ndarray::{Array1, ArrayD, Zip};
 use num::Complex;
 use std::collections::HashMap;
 
@@ -187,7 +187,6 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
                 cn.data = ChannelData::ArrayDFloat64(new_array);
             }
             ChannelData::ArrayDUInt16(a) => {
-                let mut new_array = ArrayD::<f64>::zeros(a.shape());
                 let mut new_array = ArrayD::<f64>::zeros(a.shape());
                 Zip::from(&mut new_array)
                     .and(a)
