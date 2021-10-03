@@ -40,7 +40,7 @@ pub fn mdfreader4<'a>(rdr: &'a mut BufReader<&File>, info: &'a mut MdfInfo4, cha
             let cn = channel_group.channel_names.clone();
             channel_names_present_in_dg.par_extend(cn);
         }
-        let channel_names_to_read_in_dg: HashSet<_> = channel_names_present_in_dg.intersection(&channel_names).collect();
+        let channel_names_to_read_in_dg: HashSet<_> = channel_names_present_in_dg.into_par_iter().filter(|v| channel_names.contains(v)).collect();
         if dg.block.dg_data != 0 && !channel_names_to_read_in_dg.is_empty() {
             // header block
             rdr.seek_relative(dg.block.dg_data - position)
@@ -72,7 +72,7 @@ fn read_data(
     dg: &mut Dg4,
     mut position: i64,
     sorted: bool,
-    channel_names_to_read_in_dg: &HashSet<&String>,
+    channel_names_to_read_in_dg: &HashSet<String>,
 ) -> i64 {
     // block header is already read
     let mut decoder: Dec = Dec {
@@ -218,7 +218,7 @@ fn read_sd(
     vlsd_channels: &[u32],
     mut position: i64,
     decoder: &mut Dec,
-    channel_names_to_read_in_dg: &HashSet<&String>
+    channel_names_to_read_in_dg: &HashSet<String>
 ) -> i64 {
     for channel_group in dg.cg.values_mut() {
         for rec_pos in vlsd_channels {
@@ -427,7 +427,7 @@ fn read_vlsd_from_bytes(
 }
 
 /// Reads all DL Blocks and returns a vect of them
-fn parser_ld4(rdr: &mut BufReader<&File>, mut position: i64, channel_group: &mut Cg4, channel_names_to_read_in_dg: &HashSet<&String>) -> i64 {
+fn parser_ld4(rdr: &mut BufReader<&File>, mut position: i64, channel_group: &mut Cg4, channel_names_to_read_in_dg: &HashSet<String>) -> i64 {
     let mut ld_blocks: Vec<Ld4Block> = Vec::new();
     let (block, pos) = parser_ld4_block(rdr, position, position);
     position = pos;
@@ -501,7 +501,7 @@ fn read_dv_di(
     mut position: i64,
     channel_group: &mut Cg4,
     ld_blocks: Vec<Ld4Block>,
-    channel_names_to_read_in_dg: &HashSet<&String>,
+    channel_names_to_read_in_dg: &HashSet<String>,
 ) -> i64 {
     let cg_cycle_count = channel_group.block.cg_cycle_count as usize;
     let cg_inval_bytes = channel_group.block.cg_inval_bytes as usize;
@@ -633,7 +633,7 @@ fn parser_dl4_sorted(
     channel_group: &mut Cg4,
     decoder: &mut Dec,
     rec_pos: &u32,
-    channel_names_to_read_in_dg: &HashSet<&String>,
+    channel_names_to_read_in_dg: &HashSet<String>,
 ) -> (i64, Vec<u32>) {
     // initialises the arrays
     initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone(), channel_names_to_read_in_dg);
@@ -713,7 +713,7 @@ fn parser_dl4_unsorted(
     dg: &mut Dg4,
     dl_blocks: Vec<Dl4Block>,
     mut position: i64,
-    channel_names_to_read_in_dg: &HashSet<&String>,
+    channel_names_to_read_in_dg: &HashSet<String>,
 ) -> i64 {
     // Read all data blocks
     let mut data: Vec<u8> = Vec::new();
@@ -764,7 +764,7 @@ fn generate_chunks(channel_group: &Cg4) -> Vec<(usize, usize)> {
 }
 
 /// Reads all channels from given channel group having sorted data blocks
-fn read_all_channels_sorted(rdr: &mut BufReader<&File>, channel_group: &mut Cg4, channel_names_to_read_in_dg: &HashSet<&String>) -> Vec<u32> {
+fn read_all_channels_sorted(rdr: &mut BufReader<&File>, channel_group: &mut Cg4, channel_names_to_read_in_dg: &HashSet<String>) -> Vec<u32> {
     let chunks = generate_chunks(channel_group);
     // initialises the arrays
     initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone(), channel_names_to_read_in_dg);
@@ -1704,7 +1704,7 @@ fn read_channels_from_bytes(
     channels: &mut CnType,
     record_length: usize,
     previous_index: usize,
-    channel_names_to_read_in_dg: &HashSet<&String>,
+    channel_names_to_read_in_dg: &HashSet<String>,
 ) -> Vec<u32> {
     let vlsd_channels: Arc<Mutex<Vec<u32>>> = Arc::new(Mutex::new(Vec::new()));
     // iterates for each channel in parallel with rayon crate
@@ -2848,7 +2848,7 @@ fn read_channels_from_bytes(
 }
 
 /// copies complete sorted data block (not chunk) into each channel array
-fn read_all_channels_sorted_from_bytes(data: &[u8], channel_group: &mut Cg4, channel_names_to_read_in_dg: &HashSet<&String>) -> Vec<u32> {
+fn read_all_channels_sorted_from_bytes(data: &[u8], channel_group: &mut Cg4, channel_names_to_read_in_dg: &HashSet<String>) -> Vec<u32> {
     // initialises the arrays
     initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone(), channel_names_to_read_in_dg);
     let mut vlsd_channels: Vec<u32> = Vec::new();
@@ -2866,7 +2866,7 @@ fn read_all_channels_sorted_from_bytes(data: &[u8], channel_group: &mut Cg4, cha
 }
 
 /// Reads unsorted data block chunk by chunk
-fn read_all_channels_unsorted(rdr: &mut BufReader<&File>, dg: &mut Dg4, block_length: i64, channel_names_to_read_in_dg: &HashSet<&String>) {
+fn read_all_channels_unsorted(rdr: &mut BufReader<&File>, dg: &mut Dg4, block_length: i64, channel_names_to_read_in_dg: &HashSet<String>) {
     let data_block_length = block_length as usize;
     let mut position: usize = 24;
     let mut record_counter: HashMap<u64, (usize, Vec<u8>)> = HashMap::new();
@@ -2984,7 +2984,7 @@ fn read_all_channels_unsorted_from_bytes(
     dg: &mut Dg4,
     record_counter: &mut HashMap<u64, (usize, Vec<u8>)>,
     decoder: &mut Dec,
-    channel_names_to_read_in_dg: &HashSet<&String>,
+    channel_names_to_read_in_dg: &HashSet<String>,
 ) {
     let mut position: usize = 0;
     let data_length = data.len();
@@ -3085,7 +3085,7 @@ struct Dec {
 }
 
 /// initialise ndarrays for the data group/block
-fn initialise_arrays(channel_group: &mut Cg4, cg_cycle_count: &u64, channel_names_to_read_in_dg: &HashSet<&String>) {
+fn initialise_arrays(channel_group: &mut Cg4, cg_cycle_count: &u64, channel_names_to_read_in_dg: &HashSet<String>) {
     // creates zeroed array in parallel for each channel contained in channel group
     channel_group
         .cn
@@ -3109,7 +3109,7 @@ fn initialise_arrays(channel_group: &mut Cg4, cg_cycle_count: &u64, channel_name
 }
 
 /// applies bit mask if required in channel block
-fn apply_bit_mask_offset(dg: &mut Dg4, channel_names_to_read_in_dg: &HashSet<&String>) {
+fn apply_bit_mask_offset(dg: &mut Dg4, channel_names_to_read_in_dg: &HashSet<String>) {
     // apply bit shift and masking
     for channel_group in dg.cg.values_mut() {
         channel_group
