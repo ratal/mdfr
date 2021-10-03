@@ -5,7 +5,7 @@ use dashmap::DashMap;
 use ndarray::{Array1, Order};
 use rayon::prelude::*;
 use roxmltree;
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::convert::TryFrom;
 use std::default::Default;
 use std::io::prelude::*;
@@ -1763,25 +1763,26 @@ fn parse_ca_block(ca_block: &mut Cursor<Vec<u8>>, block_header: Blockheader4, cg
     let mut snd: usize;
     let mut pnd: usize;
     // converts  ca_dim_size from u64 to usize
-    let mut shape_dim: Vec<usize> = ca_members.ca_dim_size.iter().map(|&d| d as usize).collect();
-    if shape_dim.len() == 1 {
-        snd = shape_dim[0];
-        pnd = shape_dim[0];
+    let shape_dim_usize: Vec<usize> = ca_members.ca_dim_size.iter().map(|&d| d as usize).collect();
+    if shape_dim_usize.len() == 1 {
+        snd = shape_dim_usize[0];
+        pnd = shape_dim_usize[0];
     } else {
         snd = 0;
         pnd = 1;
-        let sizes = shape_dim.clone();
+        let sizes = shape_dim_usize.clone();
         for x in sizes.into_iter() {
             snd += x;
             pnd *= x;
         }
     }
-    shape_dim.push(cg_cycle_count as usize);
+    let mut shape_dim: VecDeque<usize> = VecDeque::from(shape_dim_usize);
+    shape_dim.push_front(cg_cycle_count as usize);
     let shape: (Vec<usize>, Order);
     if (ca_members.ca_flags >> 6 & 1) != 0 {
-        shape = (shape_dim, Order::ColumnMajor);
+        shape = (shape_dim.into(), Order::ColumnMajor);
     } else {
-        shape = (shape_dim, Order::RowMajor);
+        shape = (shape_dim.into(), Order::RowMajor);
     }
     let ca_axis_value: Option<Vec<f64>>;
     let mut val = vec![0.0f64; snd as usize];
