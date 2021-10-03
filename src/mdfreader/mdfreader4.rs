@@ -1709,7 +1709,7 @@ fn read_channels_from_bytes(
     let vlsd_channels: Arc<Mutex<Vec<u32>>> = Arc::new(Mutex::new(Vec::new()));
     // iterates for each channel in parallel with rayon crate
     channels.par_iter_mut()
-        .filter(|(_cn_record_position, cn)| {channel_names_to_read_in_dg.contains(&cn.unique_name) && cn.data.is_empty()})
+        .filter(|(_cn_record_position, cn)| {channel_names_to_read_in_dg.contains(&cn.unique_name) && !cn.data.is_empty()})
         .for_each(|(rec_pos, cn)| {
         if cn.block.cn_type == 0
             || cn.block.cn_type == 2
