@@ -1,4 +1,4 @@
-use crate::mdfinfo::mdfinfo4::{Cg4, Cn4, CnType, Compo, Dg4, MdfInfo4, parse_block_header};
+use crate::mdfinfo::mdfinfo4::{parse_block_header, Cg4, Cn4, CnType, Compo, Dg4, MdfInfo4};
 use crate::mdfinfo::mdfinfo4::{
     parse_dz, parser_dl4_block, parser_ld4_block, Dl4Block, Dt4Block, Hl4Block, Ld4Block,
 };
@@ -28,11 +28,15 @@ use std::{
 const CHUNK_SIZE_READING: usize = 524288; // can be tuned according to architecture
 
 /// Reads the file data based on headers information contained in info parameter
-pub fn mdfreader4<'a>(rdr: &'a mut BufReader<&File>, info: &'a mut MdfInfo4, channel_names: HashSet<String>) {
+pub fn mdfreader4<'a>(
+    rdr: &'a mut BufReader<&File>,
+    info: &'a mut MdfInfo4,
+    channel_names: HashSet<String>,
+) {
     let mut position: i64 = 0;
     let mut sorted: bool;
-    let mut channel_names_present_in_dg: HashSet<String>;  //TODO CABlock reading reading
-    // read file data
+    let mut channel_names_present_in_dg: HashSet<String>; //TODO CABlock reading reading
+                                                          // read file data
     for (_dg_position, dg) in info.dg.iter_mut() {
         // Let's find channel names
         channel_names_present_in_dg = HashSet::new();
@@ -40,7 +44,10 @@ pub fn mdfreader4<'a>(rdr: &'a mut BufReader<&File>, info: &'a mut MdfInfo4, cha
             let cn = channel_group.channel_names.clone();
             channel_names_present_in_dg.par_extend(cn);
         }
-        let channel_names_to_read_in_dg: HashSet<_> = channel_names_present_in_dg.into_par_iter().filter(|v| channel_names.contains(v)).collect();
+        let channel_names_to_read_in_dg: HashSet<_> = channel_names_present_in_dg
+            .into_par_iter()
+            .filter(|v| channel_names.contains(v))
+            .collect();
         if dg.block.dg_data != 0 && !channel_names_to_read_in_dg.is_empty() {
             // header block
             rdr.seek_relative(dg.block.dg_data - position)
@@ -52,7 +59,14 @@ pub fn mdfreader4<'a>(rdr: &'a mut BufReader<&File>, info: &'a mut MdfInfo4, cha
             } else {
                 sorted = false
             }
-            position = read_data(rdr, id, dg, dg.block.dg_data, sorted, &channel_names_to_read_in_dg);
+            position = read_data(
+                rdr,
+                id,
+                dg,
+                dg.block.dg_data,
+                sorted,
+                &channel_names_to_read_in_dg,
+            );
             apply_bit_mask_offset(dg, &channel_names_to_read_in_dg);
             // channel_group invalid bits calculation
             for channel_group in dg.cg.values_mut() {
@@ -87,19 +101,36 @@ fn read_data(
         if sorted {
             // sorted data group
             for channel_group in dg.cg.values_mut() {
-                vlsd_channels = read_all_channels_sorted(rdr, channel_group, channel_names_to_read_in_dg);
+                vlsd_channels =
+                    read_all_channels_sorted(rdr, channel_group, channel_names_to_read_in_dg);
                 position += block_header.len as i64;
             }
             if !vlsd_channels.is_empty() {
-                position = read_sd(rdr, dg, &vlsd_channels, position, &mut decoder, channel_names_to_read_in_dg);
+                position = read_sd(
+                    rdr,
+                    dg,
+                    &vlsd_channels,
+                    position,
+                    &mut decoder,
+                    channel_names_to_read_in_dg,
+                );
             }
         } else if !dg.cg.is_empty() {
             // unsorted data
             // initialises all arrays
             for channel_group in dg.cg.values_mut() {
-                initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone(), channel_names_to_read_in_dg);
+                initialise_arrays(
+                    channel_group,
+                    &channel_group.block.cg_cycle_count.clone(),
+                    channel_names_to_read_in_dg,
+                );
             }
-            read_all_channels_unsorted(rdr, dg, block_header.len as i64, channel_names_to_read_in_dg);
+            read_all_channels_unsorted(
+                rdr,
+                dg,
+                block_header.len as i64,
+                channel_names_to_read_in_dg,
+            );
             position += block_header.len as i64;
         }
     } else if "##DZ".as_bytes() == id {
@@ -108,17 +139,32 @@ fn read_data(
         if sorted {
             // sorted data group
             for channel_group in dg.cg.values_mut() {
-                vlsd_channels = read_all_channels_sorted_from_bytes(&data, channel_group, channel_names_to_read_in_dg);
+                vlsd_channels = read_all_channels_sorted_from_bytes(
+                    &data,
+                    channel_group,
+                    channel_names_to_read_in_dg,
+                );
             }
             position += block_header.len as i64;
             if !vlsd_channels.is_empty() {
-                position = read_sd(rdr, dg, &vlsd_channels, position, &mut decoder, channel_names_to_read_in_dg);
+                position = read_sd(
+                    rdr,
+                    dg,
+                    &vlsd_channels,
+                    position,
+                    &mut decoder,
+                    channel_names_to_read_in_dg,
+                );
             }
         } else if !dg.cg.is_empty() {
             // unsorted data
             // initialises all arrays
             for channel_group in dg.cg.values_mut() {
-                initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone(), channel_names_to_read_in_dg);
+                initialise_arrays(
+                    channel_group,
+                    &channel_group.block.cg_cycle_count.clone(),
+                    channel_names_to_read_in_dg,
+                );
             }
             // initialise record counter
             let mut record_counter: HashMap<u64, (usize, Vec<u8>)> = HashMap::new();
@@ -133,7 +179,13 @@ fn read_data(
                     ),
                 );
             }
-            read_all_channels_unsorted_from_bytes(&mut data, dg, &mut record_counter, &mut decoder, channel_names_to_read_in_dg);
+            read_all_channels_unsorted_from_bytes(
+                &mut data,
+                dg,
+                &mut record_counter,
+                &mut decoder,
+                channel_names_to_read_in_dg,
+            );
             position += block_header.len as i64;
         }
     } else if "##HL".as_bytes() == id {
@@ -147,19 +199,37 @@ fn read_data(
             // sorted data group
             for channel_group in dg.cg.values_mut() {
                 let (dl_blocks, pos) = parser_dl4(rdr, position);
-                let (pos, vlsd) =
-                    parser_dl4_sorted(rdr, dl_blocks, pos, channel_group, &mut decoder, &0u32, channel_names_to_read_in_dg);
+                let (pos, vlsd) = parser_dl4_sorted(
+                    rdr,
+                    dl_blocks,
+                    pos,
+                    channel_group,
+                    &mut decoder,
+                    &0u32,
+                    channel_names_to_read_in_dg,
+                );
                 position = pos;
                 vlsd_channels = vlsd;
             }
             if !vlsd_channels.is_empty() {
-                position = read_sd(rdr, dg, &vlsd_channels, position, &mut decoder, channel_names_to_read_in_dg);
+                position = read_sd(
+                    rdr,
+                    dg,
+                    &vlsd_channels,
+                    position,
+                    &mut decoder,
+                    channel_names_to_read_in_dg,
+                );
             }
         } else if !dg.cg.is_empty() {
             // unsorted data
             // initialises all arrays
             for channel_group in dg.cg.values_mut() {
-                initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone(), channel_names_to_read_in_dg);
+                initialise_arrays(
+                    channel_group,
+                    &channel_group.block.cg_cycle_count.clone(),
+                    channel_names_to_read_in_dg,
+                );
             }
             let (dl_blocks, pos) = parser_dl4(rdr, position);
             let pos = parser_dl4_unsorted(rdr, dg, dl_blocks, pos, channel_names_to_read_in_dg);
@@ -218,7 +288,7 @@ fn read_sd(
     vlsd_channels: &[u32],
     mut position: i64,
     decoder: &mut Dec,
-    channel_names_to_read_in_dg: &HashSet<String>
+    channel_names_to_read_in_dg: &HashSet<String>,
 ) -> i64 {
     for channel_group in dg.cg.values_mut() {
         for rec_pos in vlsd_channels {
@@ -244,13 +314,27 @@ fn read_sd(
                     let (pos, _id) = read_hl(rdr, position);
                     position = pos;
                     let (dl_blocks, pos) = parser_dl4(rdr, position);
-                    let (pos, _vlsd) =
-                        parser_dl4_sorted(rdr, dl_blocks, pos, channel_group, decoder, rec_pos, channel_names_to_read_in_dg);
+                    let (pos, _vlsd) = parser_dl4_sorted(
+                        rdr,
+                        dl_blocks,
+                        pos,
+                        channel_group,
+                        decoder,
+                        rec_pos,
+                        channel_names_to_read_in_dg,
+                    );
                     position = pos;
                 } else if "##DL".as_bytes() == id {
                     let (dl_blocks, pos) = parser_dl4(rdr, position);
-                    let (pos, _vlsd) =
-                        parser_dl4_sorted(rdr, dl_blocks, pos, channel_group, decoder, rec_pos, channel_names_to_read_in_dg);
+                    let (pos, _vlsd) = parser_dl4_sorted(
+                        rdr,
+                        dl_blocks,
+                        pos,
+                        channel_group,
+                        decoder,
+                        rec_pos,
+                        channel_names_to_read_in_dg,
+                    );
                     position = pos;
                 }
             }
@@ -404,30 +488,35 @@ fn read_vlsd_from_bytes(
             }
         }
         ChannelData::ByteArray(_) => {}
-        ChannelData::ArrayDInt8(_) => {},
-        ChannelData::ArrayDUInt8(_) => {},
-        ChannelData::ArrayDInt16(_) => {},
-        ChannelData::ArrayDUInt16(_) => {},
-        ChannelData::ArrayDFloat16(_) => {},
-        ChannelData::ArrayDInt24(_) => {},
-        ChannelData::ArrayDUInt24(_) => {},
-        ChannelData::ArrayDInt32(_) => {},
-        ChannelData::ArrayDUInt32(_) => {},
-        ChannelData::ArrayDFloat32(_) => {},
-        ChannelData::ArrayDInt48(_) => {},
-        ChannelData::ArrayDUInt48(_) => {},
-        ChannelData::ArrayDInt64(_) => {},
-        ChannelData::ArrayDUInt64(_) => {},
-        ChannelData::ArrayDFloat64(_) => {},
-        ChannelData::ArrayDComplex16(_) => {},
-        ChannelData::ArrayDComplex32(_) => {},
-        ChannelData::ArrayDComplex64(_) => {},
+        ChannelData::ArrayDInt8(_) => {}
+        ChannelData::ArrayDUInt8(_) => {}
+        ChannelData::ArrayDInt16(_) => {}
+        ChannelData::ArrayDUInt16(_) => {}
+        ChannelData::ArrayDFloat16(_) => {}
+        ChannelData::ArrayDInt24(_) => {}
+        ChannelData::ArrayDUInt24(_) => {}
+        ChannelData::ArrayDInt32(_) => {}
+        ChannelData::ArrayDUInt32(_) => {}
+        ChannelData::ArrayDFloat32(_) => {}
+        ChannelData::ArrayDInt48(_) => {}
+        ChannelData::ArrayDUInt48(_) => {}
+        ChannelData::ArrayDInt64(_) => {}
+        ChannelData::ArrayDUInt64(_) => {}
+        ChannelData::ArrayDFloat64(_) => {}
+        ChannelData::ArrayDComplex16(_) => {}
+        ChannelData::ArrayDComplex32(_) => {}
+        ChannelData::ArrayDComplex64(_) => {}
     }
     nrecord + previous_index
 }
 
 /// Reads all DL Blocks and returns a vect of them
-fn parser_ld4(rdr: &mut BufReader<&File>, mut position: i64, channel_group: &mut Cg4, channel_names_to_read_in_dg: &HashSet<String>) -> i64 {
+fn parser_ld4(
+    rdr: &mut BufReader<&File>,
+    mut position: i64,
+    channel_group: &mut Cg4,
+    channel_names_to_read_in_dg: &HashSet<String>,
+) -> i64 {
     let mut ld_blocks: Vec<Ld4Block> = Vec::new();
     let (block, pos) = parser_ld4_block(rdr, position, position);
     position = pos;
@@ -452,7 +541,11 @@ fn parser_ld4(rdr: &mut BufReader<&File>, mut position: i64, channel_group: &mut
         rdr.read_exact(&mut id)
             .expect("could not read data block id from ld4 invalid");
         if id == "##DZ".as_bytes() {
-            initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone(), channel_names_to_read_in_dg);
+            initialise_arrays(
+                channel_group,
+                &channel_group.block.cg_cycle_count.clone(),
+                channel_names_to_read_in_dg,
+            );
             let (dt, block_header) = parse_dz(rdr);
             read_channels_from_bytes(
                 &dt,
@@ -490,7 +583,13 @@ fn parser_ld4(rdr: &mut BufReader<&File>, mut position: i64, channel_group: &mut
         }
     } else {
         // several DV, LD or channels per DG
-        position = read_dv_di(rdr, position, channel_group, ld_blocks, channel_names_to_read_in_dg);
+        position = read_dv_di(
+            rdr,
+            position,
+            channel_group,
+            ld_blocks,
+            channel_names_to_read_in_dg,
+        );
     }
     position
 }
@@ -506,7 +605,11 @@ fn read_dv_di(
     let cg_cycle_count = channel_group.block.cg_cycle_count as usize;
     let cg_inval_bytes = channel_group.block.cg_inval_bytes as usize;
     // initialises the arrays
-    initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone(), channel_names_to_read_in_dg);
+    initialise_arrays(
+        channel_group,
+        &channel_group.block.cg_cycle_count.clone(),
+        channel_names_to_read_in_dg,
+    );
     for ld in &ld_blocks {
         if !ld.ld_invalid_data.is_empty() {
             // initialises the invalid bytes vector
@@ -636,7 +739,11 @@ fn parser_dl4_sorted(
     channel_names_to_read_in_dg: &HashSet<String>,
 ) -> (i64, Vec<u32>) {
     // initialises the arrays
-    initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone(), channel_names_to_read_in_dg);
+    initialise_arrays(
+        channel_group,
+        &channel_group.block.cg_cycle_count.clone(),
+        channel_names_to_read_in_dg,
+    );
     // Read all data blocks
     let mut data: Vec<u8> = Vec::new();
     let mut previous_index: usize = 0;
@@ -740,7 +847,13 @@ fn parser_dl4_unsorted(
                 data.extend(buf);
             }
             // saves records as much as possible
-            read_all_channels_unsorted_from_bytes(&mut data, dg, &mut record_counter, &mut decoder, channel_names_to_read_in_dg);
+            read_all_channels_unsorted_from_bytes(
+                &mut data,
+                dg,
+                &mut record_counter,
+                &mut decoder,
+                channel_names_to_read_in_dg,
+            );
             position = data_pointer + header.hdr_len as i64;
         }
     }
@@ -764,10 +877,18 @@ fn generate_chunks(channel_group: &Cg4) -> Vec<(usize, usize)> {
 }
 
 /// Reads all channels from given channel group having sorted data blocks
-fn read_all_channels_sorted(rdr: &mut BufReader<&File>, channel_group: &mut Cg4, channel_names_to_read_in_dg: &HashSet<String>) -> Vec<u32> {
+fn read_all_channels_sorted(
+    rdr: &mut BufReader<&File>,
+    channel_group: &mut Cg4,
+    channel_names_to_read_in_dg: &HashSet<String>,
+) -> Vec<u32> {
     let chunks = generate_chunks(channel_group);
     // initialises the arrays
-    initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone(), channel_names_to_read_in_dg);
+    initialise_arrays(
+        channel_group,
+        &channel_group.block.cg_cycle_count.clone(),
+        channel_names_to_read_in_dg,
+    );
     // read by chunks and store in channel array
     let mut previous_index: usize = 0;
     let mut vlsd_channels: Vec<u32> = Vec::new();
@@ -780,7 +901,7 @@ fn read_all_channels_sorted(rdr: &mut BufReader<&File>, channel_group: &mut Cg4,
             &mut channel_group.cn,
             channel_group.record_length as usize,
             previous_index,
-            channel_names_to_read_in_dg
+            channel_names_to_read_in_dg,
         );
         previous_index += n_record_chunk;
     }
@@ -1209,9 +1330,12 @@ fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count:
                         Compo::CA(ca) => {
                             let mut buf = vec![0; cycle_count * (ca.pnd as usize)];
                             rdr.read_i8_into(&mut buf).expect("Could not read i8 array");
-                            *data = Array::from_vec(buf).to_shape(ca.shape.clone()).expect("conversion from vec<i8> to array dyn").into_owned();
+                            *data = Array::from_vec(buf)
+                                .to_shape(ca.shape.clone())
+                                .expect("conversion from vec<i8> to array dyn")
+                                .into_owned();
                         }
-                        Compo::CN(_) => {},
+                        Compo::CN(_) => {}
                     }
                 }
             }
@@ -1221,9 +1345,12 @@ fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count:
                         Compo::CA(ca) => {
                             let mut buf = vec![0; cycle_count * (ca.pnd as usize)];
                             rdr.read_exact(&mut buf).expect("Could not read u8 array");
-                            *data = Array::from_vec(buf).to_shape(ca.shape.clone()).expect("conversion from vec<u8> to array dyn").into_owned();
+                            *data = Array::from_vec(buf)
+                                .to_shape(ca.shape.clone())
+                                .expect("conversion from vec<u8> to array dyn")
+                                .into_owned();
                         }
-                        Compo::CN(_) => {},
+                        Compo::CN(_) => {}
                     }
                 }
             }
@@ -1239,9 +1366,12 @@ fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count:
                                 rdr.read_i16_into::<LittleEndian>(&mut buf)
                                     .expect("Could not read le i16 array");
                             }
-                            *data = Array::from_vec(buf).to_shape(ca.shape.clone()).expect("conversion from vec<i16> to array dyn").into_owned();
+                            *data = Array::from_vec(buf)
+                                .to_shape(ca.shape.clone())
+                                .expect("conversion from vec<i16> to array dyn")
+                                .into_owned();
                         }
-                        Compo::CN(_) => {},
+                        Compo::CN(_) => {}
                     }
                 }
             }
@@ -1257,9 +1387,12 @@ fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count:
                                 rdr.read_u16_into::<LittleEndian>(&mut buf)
                                     .expect("Could not read le 16 array");
                             }
-                            *data = Array::from_vec(buf).to_shape(ca.shape.clone()).expect("conversion from vec<u16> to array dyn").into_owned();
+                            *data = Array::from_vec(buf)
+                                .to_shape(ca.shape.clone())
+                                .expect("conversion from vec<u16> to array dyn")
+                                .into_owned();
                         }
-                        Compo::CN(_) => {},
+                        Compo::CN(_) => {}
                     }
                 }
             }
@@ -1267,25 +1400,37 @@ fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count:
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
-                            let mut buf = vec![0u8; cycle_count * (ca.pnd as usize) * std::mem::size_of::<f16>()];
+                            let mut buf =
+                                vec![
+                                    0u8;
+                                    cycle_count * (ca.pnd as usize) * std::mem::size_of::<f16>()
+                                ];
                             rdr.read_exact(&mut buf).expect("Could not read f16 array");
-                            let mut temp = ArrayD::<f32>::zeros(IxDyn(&[cycle_count * (ca.pnd as usize)])); // initialisation
+                            let mut temp =
+                                ArrayD::<f32>::zeros(IxDyn(&[cycle_count * (ca.pnd as usize)])); // initialisation
                             if cn.endian {
-                                for (i, value) in buf.chunks(std::mem::size_of::<f16>()).enumerate() {
-                                    temp[i] =
-                                        f16::from_be_bytes(value.try_into().expect("Could not read be f16"))
-                                            .to_f32();
+                                for (i, value) in buf.chunks(std::mem::size_of::<f16>()).enumerate()
+                                {
+                                    temp[i] = f16::from_be_bytes(
+                                        value.try_into().expect("Could not read be f16"),
+                                    )
+                                    .to_f32();
                                 }
                             } else {
-                                for (i, value) in buf.chunks(std::mem::size_of::<f16>()).enumerate() {
-                                    temp[i] =
-                                        f16::from_le_bytes(value.try_into().expect("Could not read le f16"))
-                                            .to_f32();
+                                for (i, value) in buf.chunks(std::mem::size_of::<f16>()).enumerate()
+                                {
+                                    temp[i] = f16::from_le_bytes(
+                                        value.try_into().expect("Could not read le f16"),
+                                    )
+                                    .to_f32();
                                 }
                             }
-                            *data = temp.to_shape(ca.shape.clone()).expect("shape conversion failed for f16 array").into_owned();
+                            *data = temp
+                                .to_shape(ca.shape.clone())
+                                .expect("shape conversion failed for f16 array")
+                                .into_owned();
                         }
-                        Compo::CN(_) => {},
+                        Compo::CN(_) => {}
                     }
                 }
             }
@@ -1295,7 +1440,8 @@ fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count:
                         Compo::CA(ca) => {
                             let mut buf = vec![0u8; cycle_count * (ca.pnd as usize) * n_bytes];
                             rdr.read_exact(&mut buf).expect("Could not read i24 array");
-                            let mut temp = ArrayD::<i32>::zeros(IxDyn(&[cycle_count * (ca.pnd as usize)])); // initialisation
+                            let mut temp =
+                                ArrayD::<i32>::zeros(IxDyn(&[cycle_count * (ca.pnd as usize)])); // initialisation
                             if cn.endian {
                                 for (i, mut value) in buf.chunks(n_bytes).enumerate() {
                                     temp[i] = value
@@ -1309,9 +1455,12 @@ fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count:
                                         .expect("Could not read le i24");
                                 }
                             }
-                            *data = temp.to_shape(ca.shape.clone()).expect("shape conversion failed for i24 array").into_owned();
+                            *data = temp
+                                .to_shape(ca.shape.clone())
+                                .expect("shape conversion failed for i24 array")
+                                .into_owned();
                         }
-                        Compo::CN(_) => {},
+                        Compo::CN(_) => {}
                     }
                 }
             }
@@ -1321,7 +1470,8 @@ fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count:
                         Compo::CA(ca) => {
                             let mut buf = vec![0u8; cycle_count * (ca.pnd as usize) * n_bytes];
                             rdr.read_exact(&mut buf).expect("Could not read u24 array");
-                            let mut temp = ArrayD::<u32>::zeros(IxDyn(&[cycle_count * (ca.pnd as usize)])); // initialisation
+                            let mut temp =
+                                ArrayD::<u32>::zeros(IxDyn(&[cycle_count * (ca.pnd as usize)])); // initialisation
                             if cn.endian {
                                 for (i, mut value) in buf.chunks(n_bytes).enumerate() {
                                     temp[i] = value
@@ -1335,9 +1485,12 @@ fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count:
                                         .expect("Could not read le u24");
                                 }
                             }
-                            *data = temp.to_shape(ca.shape.clone()).expect("shape conversion failed for u24 array").into_owned();
+                            *data = temp
+                                .to_shape(ca.shape.clone())
+                                .expect("shape conversion failed for u24 array")
+                                .into_owned();
                         }
-                        Compo::CN(_) => {},
+                        Compo::CN(_) => {}
                     }
                 }
             }
@@ -1353,9 +1506,12 @@ fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count:
                                 rdr.read_i32_into::<LittleEndian>(&mut buf)
                                     .expect("Could not read le i32 array");
                             }
-                            *data = Array::from_vec(buf).to_shape(ca.shape.clone()).expect("shape conversion failed for u24 array").into_owned();
+                            *data = Array::from_vec(buf)
+                                .to_shape(ca.shape.clone())
+                                .expect("shape conversion failed for u24 array")
+                                .into_owned();
                         }
-                        Compo::CN(_) => {},
+                        Compo::CN(_) => {}
                     }
                 }
             }
@@ -1371,9 +1527,12 @@ fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count:
                                 rdr.read_u32_into::<LittleEndian>(&mut buf)
                                     .expect("Could not read le u32 array");
                             }
-                            *data = Array::from_vec(buf).to_shape(ca.shape.clone()).expect("shape conversion failed for u24 array").into_owned();
+                            *data = Array::from_vec(buf)
+                                .to_shape(ca.shape.clone())
+                                .expect("shape conversion failed for u24 array")
+                                .into_owned();
                         }
-                        Compo::CN(_) => {},
+                        Compo::CN(_) => {}
                     }
                 }
             }
@@ -1389,9 +1548,12 @@ fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count:
                                 rdr.read_f32_into::<LittleEndian>(&mut buf)
                                     .expect("Could not read le f32 array");
                             }
-                            *data = Array::from_vec(buf).to_shape(ca.shape.clone()).expect("shape conversion failed for f32 array").into_owned();
+                            *data = Array::from_vec(buf)
+                                .to_shape(ca.shape.clone())
+                                .expect("shape conversion failed for f32 array")
+                                .into_owned();
                         }
-                        Compo::CN(_) => {},
+                        Compo::CN(_) => {}
                     }
                 }
             }
@@ -1401,7 +1563,8 @@ fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count:
                         Compo::CA(ca) => {
                             let mut buf = vec![0u8; cycle_count * (ca.pnd as usize) * n_bytes];
                             rdr.read_exact(&mut buf).expect("Could not read i48 array");
-                            let mut temp_data = ArrayD::<i64>::zeros(IxDyn(&[cycle_count * (ca.pnd as usize)])); // initialisation
+                            let mut temp_data =
+                                ArrayD::<i64>::zeros(IxDyn(&[cycle_count * (ca.pnd as usize)])); // initialisation
                             if cn.endian {
                                 for (i, mut value) in buf.chunks(n_bytes).enumerate() {
                                     temp_data[i] = value
@@ -1415,9 +1578,12 @@ fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count:
                                         .expect("Could not read le i48");
                                 }
                             }
-                            *data = temp_data.to_shape(ca.shape.clone()).expect("shape conversion failed for i48 array").into_owned();
+                            *data = temp_data
+                                .to_shape(ca.shape.clone())
+                                .expect("shape conversion failed for i48 array")
+                                .into_owned();
                         }
-                        Compo::CN(_) => {},
+                        Compo::CN(_) => {}
                     }
                 }
             }
@@ -1427,7 +1593,8 @@ fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count:
                         Compo::CA(ca) => {
                             let mut buf = vec![0u8; cycle_count * (ca.pnd as usize) * n_bytes];
                             rdr.read_exact(&mut buf).expect("Could not read u48 array");
-                            let mut temp_data = ArrayD::<u64>::zeros(IxDyn(&[cycle_count * (ca.pnd as usize)])); // initialisation
+                            let mut temp_data =
+                                ArrayD::<u64>::zeros(IxDyn(&[cycle_count * (ca.pnd as usize)])); // initialisation
                             if cn.endian {
                                 // big endian
                                 if n_bytes == 6 {
@@ -1463,9 +1630,12 @@ fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count:
                                         .expect("Could not read le u48 from 5 bytes");
                                 }
                             }
-                            *data = temp_data.to_shape(ca.shape.clone()).expect("shape conversion failed for u48 array").into_owned();
+                            *data = temp_data
+                                .to_shape(ca.shape.clone())
+                                .expect("shape conversion failed for u48 array")
+                                .into_owned();
                         }
-                        Compo::CN(_) => {},
+                        Compo::CN(_) => {}
                     }
                 }
             }
@@ -1481,9 +1651,12 @@ fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count:
                                 rdr.read_i64_into::<LittleEndian>(&mut buf)
                                     .expect("Could not read le i64 array");
                             }
-                            *data = Array::from_vec(buf).to_shape(ca.shape.clone()).expect("shape conversion failed for i64 array").into_owned();
+                            *data = Array::from_vec(buf)
+                                .to_shape(ca.shape.clone())
+                                .expect("shape conversion failed for i64 array")
+                                .into_owned();
                         }
-                        Compo::CN(_) => {},
+                        Compo::CN(_) => {}
                     }
                 }
             }
@@ -1500,12 +1673,16 @@ fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count:
                                     rdr.read_u64_into::<LittleEndian>(&mut buf)
                                         .expect("Could not read le u64 array");
                                 }
-                                *data = Array::from_vec(buf).to_shape(ca.shape.clone()).expect("shape conversion failed for u64 array").into_owned();
+                                *data = Array::from_vec(buf)
+                                    .to_shape(ca.shape.clone())
+                                    .expect("shape conversion failed for u64 array")
+                                    .into_owned();
                             } else {
                                 // n_bytes = 7
                                 let mut buf = vec![0u8; cycle_count * (ca.pnd as usize) * n_bytes];
                                 rdr.read_exact(&mut buf).expect("Could not read u64 array");
-                                let mut temp_data = ArrayD::<u64>::zeros(IxDyn(&[cycle_count * (ca.pnd as usize)]));
+                                let mut temp_data =
+                                    ArrayD::<u64>::zeros(IxDyn(&[cycle_count * (ca.pnd as usize)]));
                                 let mut temp = [0u8; std::mem::size_of::<u64>()];
                                 if cn.endian {
                                     for (i, value) in buf.chunks(n_bytes).enumerate() {
@@ -1518,10 +1695,13 @@ fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count:
                                         temp_data[i] = u64::from_le_bytes(temp);
                                     }
                                 }
-                                *data = temp_data.to_shape(ca.shape.clone()).expect("shape conversion failed for u64 array").into_owned();
+                                *data = temp_data
+                                    .to_shape(ca.shape.clone())
+                                    .expect("shape conversion failed for u64 array")
+                                    .into_owned();
                             }
                         }
-                        Compo::CN(_) => {},
+                        Compo::CN(_) => {}
                     }
                 }
             }
@@ -1537,9 +1717,12 @@ fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count:
                                 rdr.read_f64_into::<LittleEndian>(&mut buf)
                                     .expect("Could not read le f64 array");
                             }
-                            *data = Array::from_vec(buf).to_shape(ca.shape.clone()).expect("shape conversion failed for u64 array").into_owned();
+                            *data = Array::from_vec(buf)
+                                .to_shape(ca.shape.clone())
+                                .expect("shape conversion failed for u64 array")
+                                .into_owned();
                         }
-                        Compo::CN(_) => {},
+                        Compo::CN(_) => {}
                     }
                 }
             }
@@ -1554,11 +1737,16 @@ fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count:
                             let mut im: f32;
                             let mut re_val: &[u8];
                             let mut im_val: &[u8];
-                            let mut temp_data = ArrayD::<Complex<f32>>::zeros(IxDyn(&[cycle_count * (ca.pnd as usize)])); // initialisation
+                            let mut temp_data = ArrayD::<Complex<f32>>::zeros(IxDyn(&[
+                                cycle_count * (ca.pnd as usize),
+                            ])); // initialisation
                             if cn.endian {
-                                for (i, value) in buf.chunks(std::mem::size_of::<f16>() * 2).enumerate() {
+                                for (i, value) in
+                                    buf.chunks(std::mem::size_of::<f16>() * 2).enumerate()
+                                {
                                     re_val = &value[0..std::mem::size_of::<f16>()];
-                                    im_val = &value[std::mem::size_of::<f16>()..2 * std::mem::size_of::<f16>()];
+                                    im_val = &value[std::mem::size_of::<f16>()
+                                        ..2 * std::mem::size_of::<f16>()];
                                     re = f16::from_be_bytes(
                                         re_val
                                             .try_into()
@@ -1574,9 +1762,12 @@ fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count:
                                     temp_data[i] = Complex::new(re, im);
                                 }
                             } else {
-                                for (i, value) in buf.chunks(std::mem::size_of::<f16>() * 2).enumerate() {
+                                for (i, value) in
+                                    buf.chunks(std::mem::size_of::<f16>() * 2).enumerate()
+                                {
                                     re_val = &value[0..std::mem::size_of::<f16>()];
-                                    im_val = &value[std::mem::size_of::<f16>()..2 * std::mem::size_of::<f16>()];
+                                    im_val = &value[std::mem::size_of::<f16>()
+                                        ..2 * std::mem::size_of::<f16>()];
                                     re = f16::from_le_bytes(
                                         re_val
                                             .try_into()
@@ -1592,9 +1783,12 @@ fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count:
                                     temp_data[i] = Complex::new(re, im);
                                 }
                             }
-                            *data = temp_data.to_shape(ca.shape.clone()).expect("shape conversion failed for complex f16 array").into_owned();
+                            *data = temp_data
+                                .to_shape(ca.shape.clone())
+                                .expect("shape conversion failed for complex f16 array")
+                                .into_owned();
                         }
-                        Compo::CN(_) => {},
+                        Compo::CN(_) => {}
                     }
                 }
             }
@@ -1609,11 +1803,16 @@ fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count:
                             let mut im: f32;
                             let mut re_val: &[u8];
                             let mut im_val: &[u8];
-                            let mut temp = ArrayD::<Complex<f32>>::zeros(IxDyn(&[cycle_count * (ca.pnd as usize)])); // initialisation
+                            let mut temp = ArrayD::<Complex<f32>>::zeros(IxDyn(&[
+                                cycle_count * (ca.pnd as usize)
+                            ])); // initialisation
                             if cn.endian {
-                                for (i, value) in buf.chunks(std::mem::size_of::<f32>() * 2).enumerate() {
+                                for (i, value) in
+                                    buf.chunks(std::mem::size_of::<f32>() * 2).enumerate()
+                                {
                                     re_val = &value[0..std::mem::size_of::<f32>()];
-                                    im_val = &value[std::mem::size_of::<f32>()..2 * std::mem::size_of::<f32>()];
+                                    im_val = &value[std::mem::size_of::<f32>()
+                                        ..2 * std::mem::size_of::<f32>()];
                                     re = f32::from_be_bytes(
                                         re_val
                                             .try_into()
@@ -1627,9 +1826,12 @@ fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count:
                                     temp[i] = Complex::new(re, im);
                                 }
                             } else {
-                                for (i, value) in buf.chunks(std::mem::size_of::<f32>() * 2).enumerate() {
+                                for (i, value) in
+                                    buf.chunks(std::mem::size_of::<f32>() * 2).enumerate()
+                                {
                                     re_val = &value[0..std::mem::size_of::<f32>()];
-                                    im_val = &value[std::mem::size_of::<f32>()..2 * std::mem::size_of::<f32>()];
+                                    im_val = &value[std::mem::size_of::<f32>()
+                                        ..2 * std::mem::size_of::<f32>()];
                                     re = f32::from_le_bytes(
                                         re_val
                                             .try_into()
@@ -1643,9 +1845,12 @@ fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count:
                                     temp[i] = Complex::new(re, im);
                                 }
                             }
-                            *data = temp.to_shape(ca.shape.clone()).expect("shape conversion failed for complex 32 array").into_owned();
+                            *data = temp
+                                .to_shape(ca.shape.clone())
+                                .expect("shape conversion failed for complex 32 array")
+                                .into_owned();
                         }
-                        Compo::CN(_) => {},
+                        Compo::CN(_) => {}
                     }
                 }
             }
@@ -1660,19 +1865,31 @@ fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count:
                             let mut im: f64;
                             let mut re_val: &[u8];
                             let mut im_val: &[u8];
-                            let mut temp = ArrayD::<Complex<f64>>::zeros(IxDyn(&[cycle_count * (ca.pnd as usize)])); // initialisation
+                            let mut temp = ArrayD::<Complex<f64>>::zeros(IxDyn(&[
+                                cycle_count * (ca.pnd as usize)
+                            ])); // initialisation
                             if cn.endian {
-                                for (i, value) in buf.chunks(std::mem::size_of::<f64>() * 2).enumerate() {
+                                for (i, value) in
+                                    buf.chunks(std::mem::size_of::<f64>() * 2).enumerate()
+                                {
                                     re_val = &value[0..std::mem::size_of::<f64>()];
-                                    im_val = &value[std::mem::size_of::<f64>()..2 * std::mem::size_of::<f64>()];
-                                    re = f64::from_be_bytes(re_val.try_into().expect("Could not array"));
-                                    im = f64::from_be_bytes(im_val.try_into().expect("Could not array"));
+                                    im_val = &value[std::mem::size_of::<f64>()
+                                        ..2 * std::mem::size_of::<f64>()];
+                                    re = f64::from_be_bytes(
+                                        re_val.try_into().expect("Could not array"),
+                                    );
+                                    im = f64::from_be_bytes(
+                                        im_val.try_into().expect("Could not array"),
+                                    );
                                     temp[i] = Complex::new(re, im);
                                 }
                             } else {
-                                for (i, value) in buf.chunks(std::mem::size_of::<f64>() * 2).enumerate() {
+                                for (i, value) in
+                                    buf.chunks(std::mem::size_of::<f64>() * 2).enumerate()
+                                {
                                     re_val = &value[0..std::mem::size_of::<f64>()];
-                                    im_val = &value[std::mem::size_of::<f64>()..2 * std::mem::size_of::<f64>()];
+                                    im_val = &value[std::mem::size_of::<f64>()
+                                        ..2 * std::mem::size_of::<f64>()];
                                     re = f64::from_le_bytes(
                                         re_val
                                             .try_into()
@@ -1686,9 +1903,12 @@ fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count:
                                     temp[i] = Complex::new(re, im);
                                 }
                             }
-                            *data = temp.to_shape(ca.shape.clone()).expect("shape conversion failed for complex 64 array").into_owned();
+                            *data = temp
+                                .to_shape(ca.shape.clone())
+                                .expect("shape conversion failed for complex 64 array")
+                                .into_owned();
                         }
-                        Compo::CN(_) => {},
+                        Compo::CN(_) => {}
                     }
                 }
             }
@@ -2848,9 +3068,17 @@ fn read_channels_from_bytes(
 }
 
 /// copies complete sorted data block (not chunk) into each channel array
-fn read_all_channels_sorted_from_bytes(data: &[u8], channel_group: &mut Cg4, channel_names_to_read_in_dg: &HashSet<String>) -> Vec<u32> {
+fn read_all_channels_sorted_from_bytes(
+    data: &[u8],
+    channel_group: &mut Cg4,
+    channel_names_to_read_in_dg: &HashSet<String>,
+) -> Vec<u32> {
     // initialises the arrays
-    initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone(), channel_names_to_read_in_dg);
+    initialise_arrays(
+        channel_group,
+        &channel_group.block.cg_cycle_count.clone(),
+        channel_names_to_read_in_dg,
+    );
     let mut vlsd_channels: Vec<u32> = Vec::new();
     for nrecord in 0..channel_group.block.cg_cycle_count {
         vlsd_channels = read_channels_from_bytes(
@@ -2866,7 +3094,12 @@ fn read_all_channels_sorted_from_bytes(data: &[u8], channel_group: &mut Cg4, cha
 }
 
 /// Reads unsorted data block chunk by chunk
-fn read_all_channels_unsorted(rdr: &mut BufReader<&File>, dg: &mut Dg4, block_length: i64, channel_names_to_read_in_dg: &HashSet<String>) {
+fn read_all_channels_unsorted(
+    rdr: &mut BufReader<&File>,
+    dg: &mut Dg4,
+    block_length: i64,
+    channel_names_to_read_in_dg: &HashSet<String>,
+) {
     let data_block_length = block_length as usize;
     let mut position: usize = 24;
     let mut record_counter: HashMap<u64, (usize, Vec<u8>)> = HashMap::new();
@@ -2957,24 +3190,24 @@ fn save_vlsd(
             };
         }
         ChannelData::ByteArray(_) => {}
-        ChannelData::ArrayDInt8(_) => {},
-        ChannelData::ArrayDUInt8(_) => {},
-        ChannelData::ArrayDInt16(_) => {},
-        ChannelData::ArrayDUInt16(_) => {},
-        ChannelData::ArrayDFloat16(_) => {},
-        ChannelData::ArrayDInt24(_) => {},
-        ChannelData::ArrayDUInt24(_) => {},
-        ChannelData::ArrayDInt32(_) => {},
-        ChannelData::ArrayDUInt32(_) => {},
-        ChannelData::ArrayDFloat32(_) => {},
-        ChannelData::ArrayDInt48(_) => {},
-        ChannelData::ArrayDUInt48(_) => {},
-        ChannelData::ArrayDInt64(_) => {},
-        ChannelData::ArrayDUInt64(_) => {},
-        ChannelData::ArrayDFloat64(_) => {},
-        ChannelData::ArrayDComplex16(_) => {},
-        ChannelData::ArrayDComplex32(_) => {},
-        ChannelData::ArrayDComplex64(_) => {},
+        ChannelData::ArrayDInt8(_) => {}
+        ChannelData::ArrayDUInt8(_) => {}
+        ChannelData::ArrayDInt16(_) => {}
+        ChannelData::ArrayDUInt16(_) => {}
+        ChannelData::ArrayDFloat16(_) => {}
+        ChannelData::ArrayDInt24(_) => {}
+        ChannelData::ArrayDUInt24(_) => {}
+        ChannelData::ArrayDInt32(_) => {}
+        ChannelData::ArrayDUInt32(_) => {}
+        ChannelData::ArrayDFloat32(_) => {}
+        ChannelData::ArrayDInt48(_) => {}
+        ChannelData::ArrayDUInt48(_) => {}
+        ChannelData::ArrayDInt64(_) => {}
+        ChannelData::ArrayDUInt64(_) => {}
+        ChannelData::ArrayDFloat64(_) => {}
+        ChannelData::ArrayDComplex16(_) => {}
+        ChannelData::ArrayDComplex32(_) => {}
+        ChannelData::ArrayDComplex64(_) => {}
     }
 }
 
@@ -3085,12 +3318,16 @@ struct Dec {
 }
 
 /// initialise ndarrays for the data group/block
-fn initialise_arrays(channel_group: &mut Cg4, cg_cycle_count: &u64, channel_names_to_read_in_dg: &HashSet<String>) {
+fn initialise_arrays(
+    channel_group: &mut Cg4,
+    cg_cycle_count: &u64,
+    channel_names_to_read_in_dg: &HashSet<String>,
+) {
     // creates zeroed array in parallel for each channel contained in channel group
     channel_group
         .cn
         .par_iter_mut()
-        .filter(|(_cn_record_position, cn)| {channel_names_to_read_in_dg.contains(&cn.unique_name)})
+        .filter(|(_cn_record_position, cn)| channel_names_to_read_in_dg.contains(&cn.unique_name))
         .for_each(|(_cn_record_position, cn)| {
             let mut n_elements: usize = 0;
             if let Some(compo) = &cn.composition {
@@ -3098,13 +3335,10 @@ fn initialise_arrays(channel_group: &mut Cg4, cg_cycle_count: &u64, channel_name
                     Compo::CA(ca) => n_elements = ca.pnd,
                     Compo::CN(_) => (),
                 }
-            }   
-            cn.data = cn.data.zeros(
-                cn.block.cn_type,
-                *cg_cycle_count,
-                cn.n_bytes,
-                n_elements,
-            );
+            }
+            cn.data = cn
+                .data
+                .zeros(cn.block.cn_type, *cg_cycle_count, cn.n_bytes, n_elements);
         })
 }
 
@@ -3113,227 +3347,229 @@ fn apply_bit_mask_offset(dg: &mut Dg4, channel_names_to_read_in_dg: &HashSet<Str
     // apply bit shift and masking
     for channel_group in dg.cg.values_mut() {
         channel_group
-        .cn
-        .par_iter_mut()
-        .filter(|(_cn_record_position, cn)| {channel_names_to_read_in_dg.contains(&cn.unique_name)})
-        .for_each(|(_rec_pos, cn)| {
-            if cn.block.cn_data_type <= 3 {
-                let left_shift =
-                    cn.n_bytes * 8 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
-                let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
-                if left_shift > 0 || right_shift > 0 {
-                    match &mut cn.data {
-                        ChannelData::Int8(a) => {
-                            if left_shift > 0 {
-                                a.map_inplace(|x| *x <<= left_shift)
-                            };
-                            if right_shift > 0 {
-                                a.map_inplace(|x| *x >>= right_shift)
-                            };
+            .cn
+            .par_iter_mut()
+            .filter(|(_cn_record_position, cn)| {
+                channel_names_to_read_in_dg.contains(&cn.unique_name)
+            })
+            .for_each(|(_rec_pos, cn)| {
+                if cn.block.cn_data_type <= 3 {
+                    let left_shift =
+                        cn.n_bytes * 8 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
+                    let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
+                    if left_shift > 0 || right_shift > 0 {
+                        match &mut cn.data {
+                            ChannelData::Int8(a) => {
+                                if left_shift > 0 {
+                                    a.map_inplace(|x| *x <<= left_shift)
+                                };
+                                if right_shift > 0 {
+                                    a.map_inplace(|x| *x >>= right_shift)
+                                };
+                            }
+                            ChannelData::UInt8(a) => {
+                                if left_shift > 0 {
+                                    a.map_inplace(|x| *x <<= left_shift)
+                                };
+                                if right_shift > 0 {
+                                    a.map_inplace(|x| *x >>= right_shift)
+                                };
+                            }
+                            ChannelData::Int16(a) => {
+                                if left_shift > 0 {
+                                    a.map_inplace(|x| *x <<= left_shift)
+                                };
+                                if right_shift > 0 {
+                                    a.map_inplace(|x| *x >>= right_shift)
+                                };
+                            }
+                            ChannelData::UInt16(a) => {
+                                if left_shift > 0 {
+                                    a.map_inplace(|x| *x <<= left_shift)
+                                };
+                                if right_shift > 0 {
+                                    a.map_inplace(|x| *x >>= right_shift)
+                                };
+                            }
+                            ChannelData::Float16(_) => (),
+                            ChannelData::Int24(a) => {
+                                if left_shift > 0 {
+                                    a.map_inplace(|x| *x <<= left_shift)
+                                };
+                                if right_shift > 0 {
+                                    a.map_inplace(|x| *x >>= right_shift)
+                                };
+                            }
+                            ChannelData::UInt24(a) => {
+                                if left_shift > 0 {
+                                    a.map_inplace(|x| *x <<= left_shift)
+                                };
+                                if right_shift > 0 {
+                                    a.map_inplace(|x| *x >>= right_shift)
+                                };
+                            }
+                            ChannelData::Int32(a) => {
+                                if left_shift > 0 {
+                                    a.map_inplace(|x| *x <<= left_shift)
+                                };
+                                if right_shift > 0 {
+                                    a.map_inplace(|x| *x >>= right_shift)
+                                };
+                            }
+                            ChannelData::UInt32(a) => {
+                                if left_shift > 0 {
+                                    a.map_inplace(|x| *x <<= left_shift)
+                                };
+                                if right_shift > 0 {
+                                    a.map_inplace(|x| *x >>= right_shift)
+                                };
+                            }
+                            ChannelData::Float32(_) => (),
+                            ChannelData::Int48(a) => {
+                                if left_shift > 0 {
+                                    a.map_inplace(|x| *x <<= left_shift)
+                                };
+                                if right_shift > 0 {
+                                    a.map_inplace(|x| *x >>= right_shift)
+                                };
+                            }
+                            ChannelData::UInt48(a) => {
+                                if left_shift > 0 {
+                                    a.map_inplace(|x| *x <<= left_shift)
+                                };
+                                if right_shift > 0 {
+                                    a.map_inplace(|x| *x >>= right_shift)
+                                };
+                            }
+                            ChannelData::Int64(a) => {
+                                if left_shift > 0 {
+                                    a.map_inplace(|x| *x <<= left_shift)
+                                };
+                                if right_shift > 0 {
+                                    a.map_inplace(|x| *x >>= right_shift)
+                                };
+                            }
+                            ChannelData::UInt64(a) => {
+                                if left_shift > 0 {
+                                    a.map_inplace(|x| *x <<= left_shift)
+                                };
+                                if right_shift > 0 {
+                                    a.map_inplace(|x| *x >>= right_shift)
+                                };
+                            }
+                            ChannelData::Float64(_) => (),
+                            ChannelData::Complex16(_) => (),
+                            ChannelData::Complex32(_) => (),
+                            ChannelData::Complex64(_) => (),
+                            ChannelData::StringSBC(_) => (),
+                            ChannelData::StringUTF8(_) => (),
+                            ChannelData::StringUTF16(_) => (),
+                            ChannelData::ByteArray(_) => (),
+                            ChannelData::ArrayDInt8(a) => {
+                                if left_shift > 0 {
+                                    a.map_inplace(|x| *x <<= left_shift)
+                                };
+                                if right_shift > 0 {
+                                    a.map_inplace(|x| *x >>= right_shift)
+                                };
+                            }
+                            ChannelData::ArrayDUInt8(a) => {
+                                if left_shift > 0 {
+                                    a.map_inplace(|x| *x <<= left_shift)
+                                };
+                                if right_shift > 0 {
+                                    a.map_inplace(|x| *x >>= right_shift)
+                                };
+                            }
+                            ChannelData::ArrayDInt16(a) => {
+                                if left_shift > 0 {
+                                    a.map_inplace(|x| *x <<= left_shift)
+                                };
+                                if right_shift > 0 {
+                                    a.map_inplace(|x| *x >>= right_shift)
+                                };
+                            }
+                            ChannelData::ArrayDUInt16(a) => {
+                                if left_shift > 0 {
+                                    a.map_inplace(|x| *x <<= left_shift)
+                                };
+                                if right_shift > 0 {
+                                    a.map_inplace(|x| *x >>= right_shift)
+                                };
+                            }
+                            ChannelData::ArrayDFloat16(_) => (),
+                            ChannelData::ArrayDInt24(a) => {
+                                if left_shift > 0 {
+                                    a.map_inplace(|x| *x <<= left_shift)
+                                };
+                                if right_shift > 0 {
+                                    a.map_inplace(|x| *x >>= right_shift)
+                                };
+                            }
+                            ChannelData::ArrayDUInt24(a) => {
+                                if left_shift > 0 {
+                                    a.map_inplace(|x| *x <<= left_shift)
+                                };
+                                if right_shift > 0 {
+                                    a.map_inplace(|x| *x >>= right_shift)
+                                };
+                            }
+                            ChannelData::ArrayDInt32(a) => {
+                                if left_shift > 0 {
+                                    a.map_inplace(|x| *x <<= left_shift)
+                                };
+                                if right_shift > 0 {
+                                    a.map_inplace(|x| *x >>= right_shift)
+                                };
+                            }
+                            ChannelData::ArrayDUInt32(a) => {
+                                if left_shift > 0 {
+                                    a.map_inplace(|x| *x <<= left_shift)
+                                };
+                                if right_shift > 0 {
+                                    a.map_inplace(|x| *x >>= right_shift)
+                                };
+                            }
+                            ChannelData::ArrayDFloat32(_) => (),
+                            ChannelData::ArrayDInt48(a) => {
+                                if left_shift > 0 {
+                                    a.map_inplace(|x| *x <<= left_shift)
+                                };
+                                if right_shift > 0 {
+                                    a.map_inplace(|x| *x >>= right_shift)
+                                };
+                            }
+                            ChannelData::ArrayDUInt48(a) => {
+                                if left_shift > 0 {
+                                    a.map_inplace(|x| *x <<= left_shift)
+                                };
+                                if right_shift > 0 {
+                                    a.map_inplace(|x| *x >>= right_shift)
+                                };
+                            }
+                            ChannelData::ArrayDInt64(a) => {
+                                if left_shift > 0 {
+                                    a.map_inplace(|x| *x <<= left_shift)
+                                };
+                                if right_shift > 0 {
+                                    a.map_inplace(|x| *x >>= right_shift)
+                                };
+                            }
+                            ChannelData::ArrayDUInt64(a) => {
+                                if left_shift > 0 {
+                                    a.map_inplace(|x| *x <<= left_shift)
+                                };
+                                if right_shift > 0 {
+                                    a.map_inplace(|x| *x >>= right_shift)
+                                };
+                            }
+                            ChannelData::ArrayDFloat64(_) => (),
+                            ChannelData::ArrayDComplex16(_) => (),
+                            ChannelData::ArrayDComplex32(_) => (),
+                            ChannelData::ArrayDComplex64(_) => (),
                         }
-                        ChannelData::UInt8(a) => {
-                            if left_shift > 0 {
-                                a.map_inplace(|x| *x <<= left_shift)
-                            };
-                            if right_shift > 0 {
-                                a.map_inplace(|x| *x >>= right_shift)
-                            };
-                        }
-                        ChannelData::Int16(a) => {
-                            if left_shift > 0 {
-                                a.map_inplace(|x| *x <<= left_shift)
-                            };
-                            if right_shift > 0 {
-                                a.map_inplace(|x| *x >>= right_shift)
-                            };
-                        }
-                        ChannelData::UInt16(a) => {
-                            if left_shift > 0 {
-                                a.map_inplace(|x| *x <<= left_shift)
-                            };
-                            if right_shift > 0 {
-                                a.map_inplace(|x| *x >>= right_shift)
-                            };
-                        }
-                        ChannelData::Float16(_) => (),
-                        ChannelData::Int24(a) => {
-                            if left_shift > 0 {
-                                a.map_inplace(|x| *x <<= left_shift)
-                            };
-                            if right_shift > 0 {
-                                a.map_inplace(|x| *x >>= right_shift)
-                            };
-                        }
-                        ChannelData::UInt24(a) => {
-                            if left_shift > 0 {
-                                a.map_inplace(|x| *x <<= left_shift)
-                            };
-                            if right_shift > 0 {
-                                a.map_inplace(|x| *x >>= right_shift)
-                            };
-                        }
-                        ChannelData::Int32(a) => {
-                            if left_shift > 0 {
-                                a.map_inplace(|x| *x <<= left_shift)
-                            };
-                            if right_shift > 0 {
-                                a.map_inplace(|x| *x >>= right_shift)
-                            };
-                        }
-                        ChannelData::UInt32(a) => {
-                            if left_shift > 0 {
-                                a.map_inplace(|x| *x <<= left_shift)
-                            };
-                            if right_shift > 0 {
-                                a.map_inplace(|x| *x >>= right_shift)
-                            };
-                        }
-                        ChannelData::Float32(_) => (),
-                        ChannelData::Int48(a) => {
-                            if left_shift > 0 {
-                                a.map_inplace(|x| *x <<= left_shift)
-                            };
-                            if right_shift > 0 {
-                                a.map_inplace(|x| *x >>= right_shift)
-                            };
-                        }
-                        ChannelData::UInt48(a) => {
-                            if left_shift > 0 {
-                                a.map_inplace(|x| *x <<= left_shift)
-                            };
-                            if right_shift > 0 {
-                                a.map_inplace(|x| *x >>= right_shift)
-                            };
-                        }
-                        ChannelData::Int64(a) => {
-                            if left_shift > 0 {
-                                a.map_inplace(|x| *x <<= left_shift)
-                            };
-                            if right_shift > 0 {
-                                a.map_inplace(|x| *x >>= right_shift)
-                            };
-                        }
-                        ChannelData::UInt64(a) => {
-                            if left_shift > 0 {
-                                a.map_inplace(|x| *x <<= left_shift)
-                            };
-                            if right_shift > 0 {
-                                a.map_inplace(|x| *x >>= right_shift)
-                            };
-                        }
-                        ChannelData::Float64(_) => (),
-                        ChannelData::Complex16(_) => (),
-                        ChannelData::Complex32(_) => (),
-                        ChannelData::Complex64(_) => (),
-                        ChannelData::StringSBC(_) => (),
-                        ChannelData::StringUTF8(_) => (),
-                        ChannelData::StringUTF16(_) => (),
-                        ChannelData::ByteArray(_) => (),
-                        ChannelData::ArrayDInt8(a) => {
-                            if left_shift > 0 {
-                                a.map_inplace(|x| *x <<= left_shift)
-                            };
-                            if right_shift > 0 {
-                                a.map_inplace(|x| *x >>= right_shift)
-                            };
-                        }
-                        ChannelData::ArrayDUInt8(a) => {
-                            if left_shift > 0 {
-                                a.map_inplace(|x| *x <<= left_shift)
-                            };
-                            if right_shift > 0 {
-                                a.map_inplace(|x| *x >>= right_shift)
-                            };
-                        }
-                        ChannelData::ArrayDInt16(a) => {
-                            if left_shift > 0 {
-                                a.map_inplace(|x| *x <<= left_shift)
-                            };
-                            if right_shift > 0 {
-                                a.map_inplace(|x| *x >>= right_shift)
-                            };
-                        }
-                        ChannelData::ArrayDUInt16(a) => {
-                            if left_shift > 0 {
-                                a.map_inplace(|x| *x <<= left_shift)
-                            };
-                            if right_shift > 0 {
-                                a.map_inplace(|x| *x >>= right_shift)
-                            };
-                        }
-                        ChannelData::ArrayDFloat16(_) => (),
-                        ChannelData::ArrayDInt24(a) => {
-                            if left_shift > 0 {
-                                a.map_inplace(|x| *x <<= left_shift)
-                            };
-                            if right_shift > 0 {
-                                a.map_inplace(|x| *x >>= right_shift)
-                            };
-                        }
-                        ChannelData::ArrayDUInt24(a) => {
-                            if left_shift > 0 {
-                                a.map_inplace(|x| *x <<= left_shift)
-                            };
-                            if right_shift > 0 {
-                                a.map_inplace(|x| *x >>= right_shift)
-                            };
-                        }
-                        ChannelData::ArrayDInt32(a) => {
-                            if left_shift > 0 {
-                                a.map_inplace(|x| *x <<= left_shift)
-                            };
-                            if right_shift > 0 {
-                                a.map_inplace(|x| *x >>= right_shift)
-                            };
-                        }
-                        ChannelData::ArrayDUInt32(a) => {
-                            if left_shift > 0 {
-                                a.map_inplace(|x| *x <<= left_shift)
-                            };
-                            if right_shift > 0 {
-                                a.map_inplace(|x| *x >>= right_shift)
-                            };
-                        }
-                        ChannelData::ArrayDFloat32(_) => (),
-                        ChannelData::ArrayDInt48(a) => {
-                            if left_shift > 0 {
-                                a.map_inplace(|x| *x <<= left_shift)
-                            };
-                            if right_shift > 0 {
-                                a.map_inplace(|x| *x >>= right_shift)
-                            };
-                        }
-                        ChannelData::ArrayDUInt48(a) => {
-                            if left_shift > 0 {
-                                a.map_inplace(|x| *x <<= left_shift)
-                            };
-                            if right_shift > 0 {
-                                a.map_inplace(|x| *x >>= right_shift)
-                            };
-                        }
-                        ChannelData::ArrayDInt64(a) => {
-                            if left_shift > 0 {
-                                a.map_inplace(|x| *x <<= left_shift)
-                            };
-                            if right_shift > 0 {
-                                a.map_inplace(|x| *x >>= right_shift)
-                            };
-                        }
-                        ChannelData::ArrayDUInt64(a) => {
-                            if left_shift > 0 {
-                                a.map_inplace(|x| *x <<= left_shift)
-                            };
-                            if right_shift > 0 {
-                                a.map_inplace(|x| *x >>= right_shift)
-                            };
-                        }
-                        ChannelData::ArrayDFloat64(_) => (),
-                        ChannelData::ArrayDComplex16(_) => (),
-                        ChannelData::ArrayDComplex32(_) => (),
-                        ChannelData::ArrayDComplex64(_) => (),
                     }
                 }
-            }
-        })
+            })
     }
 }

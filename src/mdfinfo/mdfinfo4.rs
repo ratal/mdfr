@@ -8,8 +8,8 @@ use roxmltree;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::convert::TryFrom;
 use std::default::Default;
-use std::io::prelude::*;
 use std::fs::{File, OpenOptions};
+use std::io::prelude::*;
 use std::{fmt, str};
 use std::{
     io::{BufReader, Cursor},
@@ -107,7 +107,7 @@ impl MdfInfo4 {
     }
     pub fn get_channel_master(&self, channel_name: &String) -> String {
         let mut master = String::new();
-        if let Some((m, _dg_pos, (_cg_pos,_rec_idd), (_cn_pos, _rec_pos))) =
+        if let Some((m, _dg_pos, (_cg_pos, _rec_idd), (_cn_pos, _rec_pos))) =
             self.get_channel_id(channel_name)
         {
             master = m.clone();
@@ -118,7 +118,7 @@ impl MdfInfo4 {
     /// 0 = None (normal data channels), 1 = Time (seconds), 2 = Angle (radians),
     /// 3 = Distance (meters), 4 = Index (zero-based index values)
     pub fn get_channel_master_type(&self, channel_name: &String) -> u8 {
-        let mut master_type: u8 = 0;  // default to normal data channel
+        let mut master_type: u8 = 0; // default to normal data channel
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
             self.get_channel_id(channel_name)
         {
@@ -140,7 +140,8 @@ impl MdfInfo4 {
         let mut channel_master_list: HashMap<String, HashSet<String>> = HashMap::new();
         for (_dg_position, dg) in self.dg.iter() {
             for (_record_id, cg) in dg.cg.iter() {
-                channel_master_list.insert(cg.master_channel_name.clone(), cg.channel_names.clone());
+                channel_master_list
+                    .insert(cg.master_channel_name.clone(), cg.channel_names.clone());
             }
         }
         channel_master_list
@@ -983,7 +984,14 @@ fn parse_cg4_block(
     }
 
     // reads CN (and other linked block behind like CC, SI, CA, etc.)
-    let (cn, pos, n_cn) = parse_cn4(rdr, cg.cg_cn_first, position, sharable, record_id_size, cg.cg_cycle_count);
+    let (cn, pos, n_cn) = parse_cn4(
+        rdr,
+        cg.cg_cn_first,
+        position,
+        sharable,
+        record_id_size,
+        cg.cg_cycle_count,
+    );
     position = pos;
 
     // Reads Acq Name
@@ -1044,7 +1052,7 @@ fn parse_cg4_block(
 #[derive(Debug, Clone)]
 pub struct Cg4 {
     pub block: Cg4Block,
-    pub cn: CnType,                     // hashmap of channels
+    pub cn: CnType, // hashmap of channels
     pub master_channel_name: String,
     pub channel_names: HashSet<String>,
     block_position: i64, // as not stored in .block but can still be referenced by other blocks
@@ -1113,21 +1121,20 @@ impl Cg4 {
         let cycle_count = self.block.cg_cycle_count as usize;
         let cg_inval_bytes = self.block.cg_inval_bytes as usize;
         if let Some(invalid_bytes) = &self.invalid_bytes {
-            self
-            .cn
-            .par_iter_mut()
-            .filter(|(_rec_pos, cn)| {!cn.data.is_empty()})
-            .for_each(|(_rec_pos, cn)| {
-                let mut mask = Array1::<u8>::zeros((cycle_count,));
-                let byte_offest = (cn.block.cn_inval_bit_pos >> 3) as usize;
-                let mut bit = 1;
-                bit <<= (cn.block.cn_inval_bit_pos & 0x07) as usize;
-                for (index, record) in invalid_bytes.chunks(cg_inval_bytes).enumerate() {
-                    let byte = record[byte_offest];
-                    mask[index] = byte & bit;
-                }
-                cn.invalid_mask = Some(mask);
-            });
+            self.cn
+                .par_iter_mut()
+                .filter(|(_rec_pos, cn)| !cn.data.is_empty())
+                .for_each(|(_rec_pos, cn)| {
+                    let mut mask = Array1::<u8>::zeros((cycle_count,));
+                    let byte_offest = (cn.block.cn_inval_bit_pos >> 3) as usize;
+                    let mut bit = 1;
+                    bit <<= (cn.block.cn_inval_bit_pos & 0x07) as usize;
+                    for (index, record) in invalid_bytes.chunks(cg_inval_bytes).enumerate() {
+                        let byte = record[byte_offest];
+                        mask[index] = byte & bit;
+                    }
+                    cn.invalid_mask = Some(mask);
+                });
             self.invalid_bytes = None; // Clears out invalid bytes channel
         }
     }
@@ -1145,7 +1152,8 @@ pub fn parse_cg4(
     let mut n_cg: usize = 0;
     let mut n_cn: usize = 0;
     if target != 0 {
-        let (mut cg_struct, pos, num_cn) = parse_cg4_block(rdr, target, position, sharable, record_id_size);
+        let (mut cg_struct, pos, num_cn) =
+            parse_cg4_block(rdr, target, position, sharable, record_id_size);
         position = pos;
         let mut next_pointer = cg_struct.block.cg_cg_next;
         cg_struct.record_length += record_id_size as u32 + cg_struct.block.cg_inval_bytes;
@@ -1228,7 +1236,14 @@ pub fn parse_cn4(
     let mut cn: CnType = HashMap::new();
     let mut n_cn: usize = 0;
     if target != 0 {
-        let (cn_struct, pos) = parse_cn4_block(rdr, target, position, sharable, record_id_size, cg_cycle_count);
+        let (cn_struct, pos) = parse_cn4_block(
+            rdr,
+            target,
+            position,
+            sharable,
+            record_id_size,
+            cg_cycle_count,
+        );
         position = pos;
         n_cn += 1;
         let rec_pos = (cn_struct.block.cn_byte_offset + record_id_size as u32) * 8
@@ -1261,8 +1276,14 @@ pub fn parse_cn4(
         }
 
         while next_pointer != 0 {
-            let (cn_struct, pos) =
-                parse_cn4_block(rdr, next_pointer, position, sharable, record_id_size, cg_cycle_count);
+            let (cn_struct, pos) = parse_cn4_block(
+                rdr,
+                next_pointer,
+                position,
+                sharable,
+                record_id_size,
+                cg_cycle_count,
+            );
             position = pos;
             n_cn += 1;
             let rec_pos = (cn_struct.block.cn_byte_offset + record_id_size as u32) * 8
@@ -1715,10 +1736,10 @@ impl Si4Block {
 #[derive(Debug, PartialEq, Clone)]
 pub struct Ca4Block {
     //header
-    pub ca_id: [u8; 4],    // ##CA
-    reserved: [u8; 4], // reserved
-    ca_len: u64,       // Length of block in bytes
-    ca_links: u64,     // # of links
+    pub ca_id: [u8; 4], // ##CA
+    reserved: [u8; 4],  // reserved
+    ca_len: u64,        // Length of block in bytes
+    ca_links: u64,      // # of links
     // links
     pub ca_composition: i64, // [] Array of composed elements: Pointer to a CNBLOCK for array of structures, or to a CABLOCK for array of arrays (can be NIL). If a CABLOCK is referenced, it must use the "CN template" storage type (ca_storage = 0).
     pub ca_data: Option<Vec<i64>>, // [Π N(d) or empty] Only present for storage type "DG template". List of links to data blocks (DTBLOCK/DLBLOCK) for each element in case of "DG template" storage (ca_storage = 2). A link in this list may only be NIL if the cycle count of the respective element is 0: ca_data[k] = NIL => ca_cycle_count[k] = 0 The links are stored line-oriented, i.e. element k uses ca_data[k] (see explanation below). The size of the list must be equal to Π N(d), i.e. to the product of the number of elements per dimension N(d) over all dimensions D. Note: link ca_data[0] must be equal to dg_data link of the parent DGBLOCK.
@@ -1729,10 +1750,10 @@ pub struct Ca4Block {
     ca_cc_axis_conversion: Option<Vec<i64>>, // [D or empty] Only present if "axis" flag (bit 4) is set. Pointer to a conversion rule (CCBLOCK) for the scaling axis of each dimension. If a link NIL a 1:1 conversion must be used for this axis. If the "fixed axis" flag (Bit 5) is set, the conversion must be applied to the fixed axis values of the respective axis/dimension (ca_axis_value list stores the raw values as REAL). If the link to the CCBLOCK is NIL already the physical values are stored in the ca_axis_value list. If the "fixed axes" flag (Bit 5) is not set, the conversion must be applied to the raw values of the respective axis channel, i.e. it overrules the conversion specified for the axis channel, even if the ca_axis_conversion link is NIL! Note: ca_axis_conversion may reference the same CCBLOCK as referenced by the respective axis channel ("sharing" of CCBLOCK).
     ca_axis: Option<Vec<i64>>, // [Dx3 or empty] Only present if "axis" flag (bit 4) is set and "fixed axes flag" (bit 5) is not set. References to channels for scaling axis of respective dimension (can be NIL). Each reference is a link triple with pointer to parent DGBLOCK, parent CGBLOCK and CNBLOCK for the channel (either all three links are assigned or NIL). Thus the links have the following order: DGBLOCK for axis of dimension 1 CGBLOCK for axis of dimension 1 CNBLOCK for axis of dimension 1 … DGBLOCK for axis of dimension D CGBLOCK for axis of dimension D CNBLOCK for axis of dimension D Each referenced channel must be an array of type "axis". The maximum number of elements of each axis (ca_dim_size[0] in axis) must be equal to the maximum number of elements of respective dimension d in "look-up" array (ca_dim_size[d-1]).
     //members
-    pub ca_type: u8,                // Array type (defines semantic of the array) see CA_T_xxx
+    pub ca_type: u8,    // Array type (defines semantic of the array) see CA_T_xxx
     pub ca_storage: u8, // Storage type (defines how the element values are stored) see CA_S_xxx
     pub ca_ndim: u16,   //Number of dimensions D > 0 For array type "axis", D must be 1.
-    pub ca_flags: u32,  // Flags The value contains the following bit flags (Bit 0 = LSB): see CA_F_xxx
+    pub ca_flags: u32, // Flags The value contains the following bit flags (Bit 0 = LSB): see CA_F_xxx
     pub ca_byte_offset_base: i32, // Base factor for calculation of Byte offsets for "CN template" storage type. ca_byte_offset_base should be larger than or equal to the size of Bytes required to store a component channel value in the record (all must have the same size). If it is equal to this value, then the component values are stored next to each other without gaps. Exact formula for calculation of Byte offset for each component channel see below.
     pub ca_inval_bit_pos_base: u32, //Base factor for calculation of invalidation bit positions for CN template storage type.
     pub ca_dim_size: Vec<u64>,
@@ -1756,7 +1777,11 @@ struct Ca4BlockMembers {
     ca_dim_size: Vec<u64>,
 }
 
-fn parse_ca_block(ca_block: &mut Cursor<Vec<u8>>, block_header: Blockheader4, cg_cycle_count: u64) -> Ca4Block {
+fn parse_ca_block(
+    ca_block: &mut Cursor<Vec<u8>>,
+    block_header: Blockheader4,
+    cg_cycle_count: u64,
+) -> Ca4Block {
     //Reads members first
     ca_block.set_position(block_header.hdr_links * 8); // change buffer position after links section
     let ca_members: Ca4BlockMembers = ca_block.read_le().unwrap();
@@ -1927,7 +1952,7 @@ fn parse_composition(
                 position,
                 sharable,
                 record_id_size,
-                cg_cycle_count
+                cg_cycle_count,
             );
             position = pos;
             ca_compositon = Some(Box::new(ca));
@@ -1945,7 +1970,14 @@ fn parse_composition(
     } else {
         // Channel composition
         is_array = false;
-        let (cn_struct, pos) = parse_cn4_block(rdr, target, position, sharable, record_id_size, cg_cycle_count);
+        let (cn_struct, pos) = parse_cn4_block(
+            rdr,
+            target,
+            position,
+            sharable,
+            record_id_size,
+            cg_cycle_count,
+        );
         position = pos;
         let cn_composition: Option<Box<Composition>>;
         if cn_struct.block.cn_cn_next != 0 {
@@ -1978,8 +2010,13 @@ pub(crate) type ChannelNamesSet = HashMap<String, ChannelId>;
 
 /// parses mdfinfo structure to make channel names unique
 /// create channel set
-pub fn build_channel_db(dg: &mut HashMap<i64, Dg4>, sharable: &SharableBlocks, n_cg: usize, n_cn: usize) -> ChannelNamesSet {
-    let mut channel_list:ChannelNamesSet = HashMap::with_capacity(n_cn);
+pub fn build_channel_db(
+    dg: &mut HashMap<i64, Dg4>,
+    sharable: &SharableBlocks,
+    n_cg: usize,
+    n_cn: usize,
+) -> ChannelNamesSet {
+    let mut channel_list: ChannelNamesSet = HashMap::with_capacity(n_cn);
     let mut master_channel_list: HashMap<i64, String> = HashMap::with_capacity(n_cg);
     // creating channel list for whole file and making channel names unique
     for (dg_position, dg) in dg.iter_mut() {

@@ -124,7 +124,10 @@ impl PyObjectProtocol for Mdf {
                             let data_first_last = data.first_last();
                             let unit = self.get_channel_unit(channel.to_string());
                             let desc = self.get_channel_desc(channel.to_string());
-                            output.push_str(&format!(" {} {} {} {} \n", channel, data_first_last, unit, desc));
+                            output.push_str(&format!(
+                                " {} {} {} {} \n",
+                                channel, data_first_last, unit, desc
+                            ));
                         } else {
                             output.push_str(&format!(" {} \n", channel));
                         }

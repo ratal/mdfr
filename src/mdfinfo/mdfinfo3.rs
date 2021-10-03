@@ -17,7 +17,7 @@ pub struct MdfInfo3 {
     pub hdblock: Hd3,
     pub hd_comment: String,
 }
-//TODO mdf3 blocks reading finish implementing 
+//TODO mdf3 blocks reading finish implementing
 /// MDF4 - common Header
 #[derive(Debug, BinRead)]
 #[br(little)]

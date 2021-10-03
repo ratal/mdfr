@@ -8,11 +8,18 @@ use std::collections::HashMap;
 pub fn convert_all_channels(dg: &mut Dg4, cc: &HashMap<i64, Cc4Block>) {
     for channel_group in dg.cg.values_mut() {
         for (_cn_record_position, cn) in channel_group.cn.iter_mut() {
-            if !cn.data.is_empty() {  // Coudl be empty if only initialised
+            if !cn.data.is_empty() {
+                // Coudl be empty if only initialised
                 if let Some(conv) = cc.get(&cn.block.cn_cc_conversion) {
                     match conv.cc_type {
-                        1 => linear_conversion(cn, &conv.cc_val, &channel_group.block.cg_cycle_count),
-                        2 => rational_conversion(cn, &conv.cc_val, &channel_group.block.cg_cycle_count),
+                        1 => {
+                            linear_conversion(cn, &conv.cc_val, &channel_group.block.cg_cycle_count)
+                        }
+                        2 => rational_conversion(
+                            cn,
+                            &conv.cc_val,
+                            &channel_group.block.cg_cycle_count,
+                        ),
                         _ => {} //TODO further implement conversions
                     }
                 }
@@ -311,7 +318,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
     let p4 = cc_val[3];
     let p5 = cc_val[4];
     let p6 = cc_val[5];
-    
+
     match &mut cn.data {
         ChannelData::UInt8(a) => {
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));

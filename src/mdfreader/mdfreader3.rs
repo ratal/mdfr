@@ -3,5 +3,5 @@ use std::fs::File;
 use std::io::BufReader;
 
 pub fn mdfreader3<'a>(rdr: &'a mut BufReader<&File>, info: &'a mut MdfInfo3) {
-    //TODO mdf3 reading implement 
+    //TODO mdf3 reading implement
 }
