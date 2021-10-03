@@ -92,11 +92,11 @@ impl MdfInfo {
             sharable.md.extend(c.into_iter());
     
             // Read DG Block
-            let (mut dg, _) = parse_dg4(&mut rdr, hd.hd_dg_first, position, &mut sharable);
+            let (mut dg, _, n_cg, n_cn) = parse_dg4(&mut rdr, hd.hd_dg_first, position, &mut sharable);
             extract_xml(&mut sharable.tx); // extract xml from text
     
             // make channel names unique, list channels and create master dictionnary
-            let channel_names_set = build_channel_db(&mut dg, &sharable);
+            let channel_names_set = build_channel_db(&mut dg, &sharable, n_cg, n_cn);
             // println!("{}", db);
     
             mdf_info = MdfInfo::V4(Box::new(MdfInfo4 {

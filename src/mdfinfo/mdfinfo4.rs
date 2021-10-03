@@ -807,19 +807,23 @@ pub fn parse_dg4(
     target: i64,
     mut position: i64,
     sharable: &mut SharableBlocks,
-) -> (HashMap<i64, Dg4>, i64) {
+) -> (HashMap<i64, Dg4>, i64, usize, usize) {
     let mut dg: HashMap<i64, Dg4> = HashMap::new();
+    let mut n_cn: usize = 0;
+    let mut n_cg: usize = 0;
     if target > 0 {
         let (block, comments, pos) = parse_dg4_block(rdr, target, position);
         position = pos;
         let mut next_pointer = block.dg_dg_next;
-        let (mut cg, pos) = parse_cg4(
+        let (mut cg, pos, num_cg, num_cn) = parse_cg4(
             rdr,
             block.dg_cg_first,
             position,
             sharable,
             block.dg_rec_id_size,
         );
+        n_cg += num_cg;
+        n_cn += num_cn;
         identify_vlsd_cg(&mut cg);
         let dg_struct = Dg4 {
             block,
@@ -833,13 +837,15 @@ pub fn parse_dg4(
             let (block, comments, pos) = parse_dg4_block(rdr, next_pointer, position);
             next_pointer = block.dg_dg_next;
             position = pos;
-            let (mut cg, pos) = parse_cg4(
+            let (mut cg, pos, num_cg, num_cn) = parse_cg4(
                 rdr,
                 block.dg_cg_first,
                 position,
                 sharable,
                 block.dg_rec_id_size,
             );
+            n_cg += num_cg;
+            n_cn += num_cn;
             identify_vlsd_cg(&mut cg);
             let dg_struct = Dg4 {
                 block,
@@ -850,7 +856,7 @@ pub fn parse_dg4(
             position = pos;
         }
     }
-    (dg, position)
+    (dg, position, n_cg, n_cn)
 }
 
 fn identify_vlsd_cg(cg: &mut HashMap<u64, Cg4>) {
@@ -963,7 +969,7 @@ fn parse_cg4_block(
     mut position: i64,
     sharable: &mut SharableBlocks,
     record_id_size: u8,
-) -> (Cg4, i64) {
+) -> (Cg4, i64, usize) {
     let (mut block, _block_header, pos) = parse_block_short(rdr, target, position);
     position = pos;
     let cg: Cg4Block = block.read_le().unwrap();
@@ -976,7 +982,8 @@ fn parse_cg4_block(
         sharable.tx.insert(comment_pointer, (d, tx_md_flag));
     }
 
-    let (cn, pos) = parse_cn4(rdr, cg.cg_cn_first, position, sharable, record_id_size, cg.cg_cycle_count);
+    // reads CN (and other linked block behind like CC, SI, CA, etc.)
+    let (cn, pos, n_cn) = parse_cn4(rdr, cg.cg_cn_first, position, sharable, record_id_size, cg.cg_cycle_count);
     position = pos;
 
     // Reads Acq Name
@@ -987,7 +994,7 @@ fn parse_cg4_block(
         sharable.tx.insert(acq_pointer, (d, tx_md_flag));
     }
 
-    // Reads Si Acq name
+    // Reads SI Acq name
     let si_pointer = cg.cg_si_acq_source;
     if (si_pointer != 0) && !sharable.si.contains_key(&si_pointer) {
         let (mut si_block, _header, pos) = parse_block_short(rdr, si_pointer, position);
@@ -1031,7 +1038,7 @@ fn parse_cg4_block(
         invalid_bytes,
     };
 
-    (cg_struct, position)
+    (cg_struct, position, n_cn)
 }
 
 #[derive(Debug, Clone)]
@@ -1133,25 +1140,31 @@ pub fn parse_cg4(
     mut position: i64,
     sharable: &mut SharableBlocks,
     record_id_size: u8,
-) -> (HashMap<u64, Cg4>, i64) {
+) -> (HashMap<u64, Cg4>, i64, usize, usize) {
     let mut cg: HashMap<u64, Cg4> = HashMap::new();
+    let mut n_cg: usize = 0;
+    let mut n_cn: usize = 0;
     if target != 0 {
-        let (mut cg_struct, pos) = parse_cg4_block(rdr, target, position, sharable, record_id_size);
+        let (mut cg_struct, pos, num_cn) = parse_cg4_block(rdr, target, position, sharable, record_id_size);
         position = pos;
         let mut next_pointer = cg_struct.block.cg_cg_next;
         cg_struct.record_length += record_id_size as u32 + cg_struct.block.cg_inval_bytes;
         cg.insert(cg_struct.block.cg_record_id, cg_struct);
+        n_cg += 1;
+        n_cn += num_cn;
 
         while next_pointer != 0 {
-            let (mut cg_struct, pos) =
+            let (mut cg_struct, pos, num_cn) =
                 parse_cg4_block(rdr, next_pointer, position, sharable, record_id_size);
             position = pos;
             cg_struct.record_length += record_id_size as u32 + cg_struct.block.cg_inval_bytes;
             next_pointer = cg_struct.block.cg_cg_next;
             cg.insert(cg_struct.block.cg_record_id, cg_struct);
+            n_cg += 1;
+            n_cn += num_cn;
         }
     }
-    (cg, position)
+    (cg, position, n_cg, n_cn)
 }
 
 /// Cn4 Channel block struct
@@ -1211,11 +1224,13 @@ pub fn parse_cn4(
     sharable: &mut SharableBlocks,
     record_id_size: u8,
     cg_cycle_count: u64,
-) -> (CnType, i64) {
+) -> (CnType, i64, usize) {
     let mut cn: CnType = HashMap::new();
+    let mut n_cn: usize = 0;
     if target != 0 {
         let (cn_struct, pos) = parse_cn4_block(rdr, target, position, sharable, record_id_size, cg_cycle_count);
         position = pos;
+        n_cn += 1;
         let rec_pos = (cn_struct.block.cn_byte_offset + record_id_size as u32) * 8
             + u32::try_from(cn_struct.block.cn_bit_offset).unwrap();
         let mut next_pointer = cn_struct.block.cn_cn_next;
@@ -1249,6 +1264,7 @@ pub fn parse_cn4(
             let (cn_struct, pos) =
                 parse_cn4_block(rdr, next_pointer, position, sharable, record_id_size, cg_cycle_count);
             position = pos;
+            n_cn += 1;
             let rec_pos = (cn_struct.block.cn_byte_offset + record_id_size as u32) * 8
                 + u32::try_from(cn_struct.block.cn_bit_offset).unwrap();
             next_pointer = cn_struct.block.cn_cn_next;
@@ -1279,7 +1295,7 @@ pub fn parse_cn4(
             }
         }
     }
-    (cn, position)
+    (cn, position, n_cn)
 }
 
 fn can_open_date(
@@ -1961,9 +1977,9 @@ pub(crate) type ChannelNamesSet = HashMap<String, ChannelId>;
 
 /// parses mdfinfo structure to make channel names unique
 /// create channel set
-pub fn build_channel_db(dg: &mut HashMap<i64, Dg4>, sharable: &SharableBlocks) -> ChannelNamesSet {
-    let mut channel_list:ChannelNamesSet = HashMap::new();
-    let mut master_channel_list: HashMap<i64, String> = HashMap::new();
+pub fn build_channel_db(dg: &mut HashMap<i64, Dg4>, sharable: &SharableBlocks, n_cg: usize, n_cn: usize) -> ChannelNamesSet {
+    let mut channel_list:ChannelNamesSet = HashMap::with_capacity(n_cn);
+    let mut master_channel_list: HashMap<i64, String> = HashMap::with_capacity(n_cg);
     // creating channel list for whole file and making channel names unique
     for (dg_position, dg) in dg.iter_mut() {
         for (record_id, cg) in dg.cg.iter_mut() {
@@ -1991,12 +2007,14 @@ pub fn build_channel_db(dg: &mut HashMap<i64, Dg4>, sharable: &SharableBlocks) -
                         changed = true;
                     }
                     if let Some(path) = &gp {
+                        cn.unique_name.push_str(" ");
                         cn.unique_name.push_str(path);
                         changed = true;
                     }
                     // No souce or path name to make channel unique
                     if !changed {
                         // extend name with channel block position, unique
+                        cn.unique_name.push_str(" ");
                         cn.unique_name.push_str(&cn.block_position.to_string());
                     }
                 };
@@ -2018,9 +2036,10 @@ pub fn build_channel_db(dg: &mut HashMap<i64, Dg4>, sharable: &SharableBlocks) -
         }
     }
     // identifying master channels
+    let avg_ncn_per_cg = n_cn / n_cg;
     for (_dg_position, dg) in dg.iter_mut() {
         for (_record_id, cg) in dg.cg.iter_mut() {
-            let mut cg_channel_list: HashSet<String> = HashSet::new();
+            let mut cg_channel_list: HashSet<String> = HashSet::with_capacity(avg_ncn_per_cg);
             let mut master_channel_name: String = String::new();
             if let Some(name) = master_channel_list.get(&cg.block_position) {
                 master_channel_name = name.to_string();
