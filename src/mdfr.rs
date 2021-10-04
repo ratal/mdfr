@@ -120,16 +120,17 @@ impl PyObjectProtocol for Mdf {
                 for (master, list) in mdfinfo4.get_master_channel_names_set().iter() {
                     output.push_str(&format!("\nMaster: {}\n", master));
                     for channel in list.iter() {
+                        let unit = self.get_channel_unit(channel.to_string());
+                        let desc = self.get_channel_desc(channel.to_string());
                         if let Some(data) = mdfinfo4.get_channel_data_from_memory(channel) {
                             let data_first_last = data.first_last();
-                            let unit = self.get_channel_unit(channel.to_string());
-                            let desc = self.get_channel_desc(channel.to_string());
+                            
                             output.push_str(&format!(
                                 " {} {} {} {} \n",
                                 channel, data_first_last, unit, desc
                             ));
                         } else {
-                            output.push_str(&format!(" {} \n", channel));
+                            output.push_str(&format!(" {} {} {} \n", channel, unit, desc));
                         }
                     }
                 }
