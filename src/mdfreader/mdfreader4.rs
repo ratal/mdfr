@@ -2184,7 +2184,7 @@ fn read_channels_from_bytes(
                         if n_bytes == 8 {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                data[i + previous_index] = u64::from_le_bytes(
+                                data[i + previous_index] = u64::from_be_bytes(
                                     value.try_into().expect("Could not read be u64"),
                                 );
                             }
@@ -2193,7 +2193,7 @@ fn read_channels_from_bytes(
                             let mut buf = [0u8; std::mem::size_of::<u64>()];
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 buf[0..7].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + 7]);
-                                data[i + previous_index] = u64::from_le_bytes(buf);
+                                data[i + previous_index] = u64::from_be_bytes(buf);
                             }
                         }
                     } else if n_bytes == 8 {
@@ -2204,7 +2204,7 @@ fn read_channels_from_bytes(
                             );
                         }
                     } else {
-                        // n_bytes = 7
+                        // n_bytes = 7, little endian
                         let mut buf = [0u8; std::mem::size_of::<u64>()];
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             buf[0..7].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + 7]);
