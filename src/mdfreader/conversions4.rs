@@ -32,7 +32,7 @@ pub fn convert_all_channels(dg: &mut Dg4, cc: &HashMap<i64, Cc4Block>) {
 fn linear_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
     let p1 = cc_val[0];
     let p2 = cc_val[1];
-    if !(p1 == 0.0 && (p2 - 1.0) < 1e-12) {
+    if !(p1 == 0.0 && num::abs(p2 - 1.0) < 1e-12) {
         match &mut cn.data {
             ChannelData::UInt8(a) => {
                 let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
