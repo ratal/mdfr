@@ -460,11 +460,13 @@ pub fn extract_xml(comment: &mut Tx) {
         .for_each(|mut val| xml_parse(&mut val)); //TODO confirm metadata extraction
 }
 
+#[inline]
 fn xml_parse(val: &mut (String, bool)) {
     let (c, md_flag) = val;
     if *md_flag {
-        match roxmltree::Document::parse(&c) {
+        match roxmltree::Document::parse(c) {
             Ok(md) => {
+                let mut found_tx: bool = false;
                 for node in md.root().descendants() {
                     let text = match node.text() {
                         Some(text) => text.to_string(),
@@ -473,8 +475,12 @@ fn xml_parse(val: &mut (String, bool)) {
                     let tag_name = node.tag_name().name().to_string();
                     if node.is_element() && !text.is_empty() && (tag_name == *"TX") {
                         *val = (text, false);
+                        found_tx = true;
                         break;
                     }
+                }
+                if !found_tx {
+                    *val = (String::new(), false); // empty string in case xml TX tag is not found
                 }
             }
             Err(e) => {
