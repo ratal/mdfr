@@ -115,7 +115,7 @@ impl PyObjectProtocol for Mdf {
                 output.push_str(&format!("{}\n", mdfinfo4.hd_block));
                 let comments = &mdfinfo4.hd_comment;
                 for c in comments.iter() {
-                    output.push_str(&format!("{} {}", c.0, c.1));
+                    output.push_str(&format!("{} {}\n", c.0, c.1));
                 }
                 for (master, list) in mdfinfo4.get_master_channel_names_set().iter() {
                     output.push_str(&format!("\nMaster: {}\n", master));

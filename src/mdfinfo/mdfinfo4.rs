@@ -322,7 +322,7 @@ impl fmt::Display for Hd4 {
         let naive = NaiveDateTime::from_timestamp(i64::try_from(sec).unwrap(), nsec);
         writeln!(
             f,
-            "Time : {}",
+            "Time : {} ",
             DateTime::<Utc>::from_utc(naive, Utc).to_rfc3339()
         )
     }
@@ -457,7 +457,7 @@ pub fn extract_xml(comment: &mut Tx) {
     comment
         .par_iter_mut()
         .filter(|val| val.1)
-        .for_each(|mut val| xml_parse(&mut val)); //TODO confirm metadata extraction
+        .for_each(|mut val| xml_parse(&mut val));
 }
 
 #[inline]

@@ -35,8 +35,8 @@ pub fn mdfreader4<'a>(
 ) {
     let mut position: i64 = 0;
     let mut sorted: bool;
-    let mut channel_names_present_in_dg: HashSet<String>; //TODO CABlock reading reading
-                                                          // read file data
+    let mut channel_names_present_in_dg: HashSet<String>;
+    // read file data
     for (_dg_position, dg) in info.dg.iter_mut() {
         // Let's find channel names
         channel_names_present_in_dg = HashSet::new();
@@ -919,7 +919,6 @@ fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count:
         // cn_type == 0 : fixed length data channel
         // cn_type == 2 : master channel
         // cn_type == 4 : synchronisation channel
-        // TODO add CA Block reading
         let n_bytes = cn.n_bytes as usize;
         match &mut cn.data {
             ChannelData::Int8(data) => {
@@ -2366,7 +2365,7 @@ fn read_channels_from_bytes(
                             decoder.decode_to_string(&value, &mut data[i + previous_index], false);
                         data[i + previous_index] =
                             data[i + previous_index].trim_end_matches('\0').to_string();
-                    }
+                    } // TODO fix for SBC and UTF8
                 }
                 ChannelData::StringUTF8(data) => {
                     let n_bytes = cn.n_bytes as usize;
