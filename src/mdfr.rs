@@ -124,7 +124,7 @@ impl PyObjectProtocol for Mdf {
                         let desc = self.get_channel_desc(channel.to_string());
                         if let Some(data) = mdfinfo4.get_channel_data_from_memory(channel) {
                             let data_first_last = data.first_last();
-                            
+
                             output.push_str(&format!(
                                 " {} {} {} {} \n",
                                 channel, data_first_last, unit, desc

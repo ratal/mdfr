@@ -4,7 +4,7 @@ use crate::mdfinfo::mdfinfo4::{
 };
 use crate::mdfreader::channel_data::ChannelData;
 use crate::mdfreader::conversions4::convert_all_channels;
-use crate::mdfreader::data_read4::{read_one_channel_array, read_channels_from_bytes};
+use crate::mdfreader::data_read4::{read_channels_from_bytes, read_one_channel_array};
 use binread::BinReaderExt;
 use encoding_rs::{Decoder, UTF_16BE, UTF_16LE, WINDOWS_1252};
 use rayon::prelude::*;
@@ -903,8 +903,6 @@ fn read_all_channels_sorted(
     }
     vlsd_channels
 }
-
-
 
 /// copies complete sorted data block (not chunk) into each channel array
 fn read_all_channels_sorted_from_bytes(

@@ -1,8 +1,8 @@
 pub mod channel_data;
 pub mod conversions4;
+pub mod data_read4;
 pub mod mdfreader3;
 pub mod mdfreader4;
-pub mod data_read4;
 use crate::mdfinfo::MdfInfo;
 
 pub fn mdfreader(file_name: &str) {

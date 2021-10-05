@@ -1,15 +1,20 @@
+use super::channel_data::ChannelData;
 use crate::mdfinfo::mdfinfo4::{Cn4, CnType, Compo};
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
+use encoding_rs::{UTF_16BE, UTF_16LE, WINDOWS_1252};
 use half::f16;
 use ndarray::{Array, Array1, ArrayD, IxDyn};
 use num::Complex;
-use std::{collections::HashSet, convert::TryInto, fs::File, io::{BufReader, Read}, sync::{Arc, Mutex}};
-use encoding_rs::{UTF_16BE, UTF_16LE, WINDOWS_1252};
-use super::channel_data::ChannelData;
+use rayon::prelude::*;
 use std::str;
 use std::string::String;
-use rayon::prelude::*;
-
+use std::{
+    collections::HashSet,
+    convert::TryInto,
+    fs::File,
+    io::{BufReader, Read},
+    sync::{Arc, Mutex},
+};
 
 /// reads file if data block contains only one channel in a single DV
 pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count: usize) {
