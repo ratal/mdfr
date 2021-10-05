@@ -5,9 +5,9 @@ use numpy::{IntoPyArray, ToPyArray};
 use pyo3::prelude::*;
 use std::fmt;
 
-/// channel data type enum. 
-/// most common data type is 1D ndarray for timeseries with element types numeric. 
-/// vector of string or bytes also exists. 
+/// channel data type enum.
+/// most common data type is 1D ndarray for timeseries with element types numeric.
+/// vector of string or bytes also exists.
 /// Dynamic dimension arrays ArrayD are also existing to cover CABlock arrays data.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ChannelData {

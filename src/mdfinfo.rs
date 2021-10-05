@@ -29,7 +29,7 @@ pub enum MdfInfo {
     V4(Box<MdfInfo4>), // version 4.x
 }
 
-/// implements MdfInfo creation and manipulation functions 
+/// implements MdfInfo creation and manipulation functions
 impl MdfInfo {
     /// creates new MdfInfo from file
     pub fn new(file_name: &str) -> MdfInfo {
