@@ -1,3 +1,4 @@
+//! this modules implements functions to convert arrays into physical arrays using CCBlock 
 use crate::mdfinfo::mdfinfo4::{Cc4Block, Cn4, Dg4};
 use crate::mdfreader::channel_data::ChannelData;
 use ndarray::{Array1, ArrayD, Zip};
@@ -307,7 +308,7 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
     }
 }
 
-// Apply rational conversion to get physical data
+/// Apply rational conversion to get physical data
 fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
     let p1 = cc_val[0];
     let p2 = cc_val[1];

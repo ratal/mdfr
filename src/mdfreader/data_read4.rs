@@ -1,3 +1,4 @@
+//! this module implements low level data reading.
 use super::channel_data::ChannelData;
 use crate::mdfinfo::mdfinfo4::{Cn4, CnType, Compo};
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt};

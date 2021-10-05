@@ -1,3 +1,4 @@
+//! This module provides python interface using pyo3s
 use std::collections::HashSet;
 
 use crate::mdfinfo::MdfInfo;
@@ -12,6 +13,8 @@ pub(crate) fn register(_py: Python, m: &PyModule) -> PyResult<()> {
     Ok(())
 }
 //TODO export to hdf5 and parquet using arrow, xlswriter
+
+/// Implements Mdf class to provide API to python using pyo3
 #[pymethods]
 impl Mdf {
     /// creates new object from file name

@@ -1,11 +1,15 @@
+//! this module holds the channel data enum and related implementations
 use ndarray::{Array1, ArrayD, IxDyn};
 use num::Complex;
 use numpy::{IntoPyArray, ToPyArray};
 use pyo3::prelude::*;
 use std::fmt;
 
-/// channel data type enum
-#[derive(Debug, Clone)]
+/// channel data type enum. 
+/// most common data type is 1D ndarray for timeseries with element types numeric. 
+/// vector of string or bytes also exists. 
+/// Dynamic dimension arrays ArrayD are also existing to cover CABlock arrays data.
+#[derive(Debug, Clone, PartialEq)]
 pub enum ChannelData {
     Int8(Array1<i8>),
     UInt8(Array1<u8>),
@@ -49,7 +53,9 @@ pub enum ChannelData {
     ArrayDComplex64(ArrayD<Complex<f64>>),
 }
 
+/// ChannelData implementation
 impl ChannelData {
+    /// based on already existing type, rewrite the array filled with zeros at needed size based on cycle_count
     pub fn zeros(
         &self,
         cn_type: u8,
@@ -221,6 +227,7 @@ impl ChannelData {
             }
         }
     }
+    /// small helper to support ChannelData display, returning first and last element of ndarray
     pub fn first_last(&self) -> String {
         let output: String;
         match self {
@@ -507,6 +514,7 @@ impl ChannelData {
         }
         output
     }
+    /// checks is if ndarray is empty
     pub fn is_empty(&self) -> bool {
         match self {
             ChannelData::Int8(data) => data.is_empty(),

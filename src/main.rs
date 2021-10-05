@@ -1,3 +1,4 @@
+//! command line interface to load mdf file and manipulate it.
 extern crate clap;
 
 use clap::{App, Arg, SubCommand};

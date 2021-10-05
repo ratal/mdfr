@@ -1,6 +1,6 @@
 // mdfinfo module
 
-//! This module is reading the mdf file blocks
+//! This module is reading the mdf file blocks (metadata)
 
 use std::collections::HashSet;
 use std::fmt;
@@ -22,13 +22,16 @@ use mdfinfo4::{
 
 use crate::mdfreader::channel_data::ChannelData;
 
+/// joins mdf versions 3.x and 4.x
 #[derive(Debug)]
 pub enum MdfInfo {
-    V3(Box<MdfInfo3>),
-    V4(Box<MdfInfo4>),
+    V3(Box<MdfInfo3>), // version 3.x
+    V4(Box<MdfInfo4>), // version 4.x
 }
 
+/// implements MdfInfo creation and manipulation functions 
 impl MdfInfo {
+    /// creates new MdfInfo from file
     pub fn new(file_name: &str) -> MdfInfo {
         let f: File = OpenOptions::new()
             .read(true)
@@ -126,7 +129,7 @@ impl MdfInfo {
     }
     /// returns the hashmap with :
     /// key = channel_name,
-    /// value = (master,
+    /// value = (master_name,
     ///          dg_position,
     ///            (cg.block_position, record_id),
     ///            (cn.block_position, cn_record_position))
@@ -221,12 +224,12 @@ impl MdfInfo {
             }
         }
     }
-    // load all channels data in memory
+    /// load all channels data in memory
     pub fn load_all_channels_data_in_memory(&mut self) {
         let channel_set = self.get_channel_names_set();
         self.load_channels_data_in_memory(channel_set);
     }
-    /// returns channel's data, numpy array or list, depending if data type is numeric or string|bytes
+    /// returns channel's data ndarray.
     pub fn get_channel_data<'a>(&'a mut self, channel_name: &'a String) -> Option<&ChannelData> {
         let mut data: Option<&ChannelData> = None;
         match self {
@@ -237,6 +240,7 @@ impl MdfInfo {
         }
         data
     }
+    /// Clears all data arrays
     pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) {
         match self {
             MdfInfo::V3(_mdfinfo3) => {}

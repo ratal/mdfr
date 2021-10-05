@@ -1,3 +1,4 @@
+//! data read and load in memory based in MdfInfo4's metadata
 use crate::mdfinfo::mdfinfo4::{parse_block_header, Cg4, Cn4, Compo, Dg4, MdfInfo4};
 use crate::mdfinfo::mdfinfo4::{
     parse_dz, parser_dl4_block, parser_ld4_block, Dl4Block, Dt4Block, Hl4Block, Ld4Block,
@@ -24,6 +25,7 @@ use std::{
 const CHUNK_SIZE_READING: usize = 524288; // can be tuned according to architecture
 
 /// Reads the file data based on headers information contained in info parameter
+/// Hashset of channel names parameter allows to filter which channels to read
 pub fn mdfreader4<'a>(
     rdr: &'a mut BufReader<&File>,
     info: &'a mut MdfInfo4,

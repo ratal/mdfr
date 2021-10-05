@@ -1,3 +1,4 @@
+//! Parsing of file metadata into MdfInfo4 struct
 use binread::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::{naive::NaiveDateTime, DateTime, Utc};
@@ -21,35 +22,55 @@ use yazi::{decompress, Format};
 use crate::mdfreader::channel_data::{data_type_init, ChannelData};
 use crate::mdfreader::mdfreader4::mdfreader4;
 
-/// MdfInfo4 is the struct hold whole metadata of mdf4.x files
+/// MdfInfo4 is the struct holding whole metadata of mdf4.x files
 /// * blocks with unique links are at top level like attachment, events and file history
 /// * sharable blocks (most likely referenced multiple times and shared by several blocks)
 /// that are in sharable fields and holds CC, SI, TX and MD blocks
 /// * the dg fields nests cg itself nesting cn blocks and eventually compositions
-/// (other ccn or ca blocks)
-/// * db is a representation of file content centered on channel names as key
+/// (other cn or ca blocks) and conversion
+/// * channel_names_set is the complete set of channel names contained in file
 /// * in general the blocks are contained in HashMaps with key corresponding
 /// to their position in the file
 #[derive(Debug, Clone)]
 pub struct MdfInfo4 {
+    /// file name string
     pub file_name: String,
+    /// file mdf version
     pub ver: u16,
+    /// program info that create the file
     pub prog: [u8; 8],
+    /// Identifier block
     pub id_block: Id4,
+    /// header block
     pub hd_block: Hd4,
+    /// header's block comments
     pub hd_comment: HashMap<String, String>,
+    /// file history blocks
     pub fh: Fh,
-    pub at: At,
-    pub ev: HashMap<i64, Ev4Block>,
-    pub dg: HashMap<i64, Dg4>,
+    /// attachment blocks
+    pub at: At, // attachments
+    /// event blocks
+    pub ev: HashMap<i64, Ev4Block>, // events
+    /// data group block linking channel group/channel/converiosn/compostion/..etc. and data block
+    pub dg: HashMap<i64, Dg4>, // contains most of the file structure
+    /// cc, md, tx and si blocks that can be referenced by several blocks
     pub sharable: SharableBlocks,
-    pub channel_names_set: ChannelNamesSet,
+    /// set of all channel names
+    pub channel_names_set: ChannelNamesSet, // set of channel names
 }
 
+/// MdfInfo4's implementation
 impl MdfInfo4 {
+    /// returns the hashmap with :
+    /// key = channel_name,
+    /// value = (master_name,
+    ///          dg_position,
+    ///            (cg.block_position, record_id),
+    ///            (cn.block_position, cn_record_position))
     pub fn get_channel_id(&self, channel_name: &String) -> Option<&ChannelId> {
         self.channel_names_set.get(channel_name)
     }
+    /// returns channel's data ndarray.
     pub fn get_channel_data<'a>(&'a mut self, channel_name: &'a String) -> Option<&'a ChannelData> {
         let data: Option<&ChannelData>;
         let mut channel_names: HashSet<String> = HashSet::new();
@@ -58,6 +79,7 @@ impl MdfInfo4 {
         data = self.get_channel_data_from_memory(channel_name).clone();
         data
     }
+    /// Returns the channel's data ndarray if present in memory, otherwise None.
     pub fn get_channel_data_from_memory(&self, channel_name: &String) -> Option<&ChannelData> {
         let mut data: Option<&ChannelData> = None;
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
@@ -75,6 +97,7 @@ impl MdfInfo4 {
         }
         data
     }
+    /// Returns the channel's unit string. If it does not exist, it is an empty string.
     pub fn get_channel_unit(&self, channel_name: &String) -> String {
         let mut unit: String = String::new();
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
@@ -90,6 +113,7 @@ impl MdfInfo4 {
         }
         unit
     }
+    /// Returns the channel's description. If it does not exist, it is an empty string
     pub fn get_channel_desc(&self, channel_name: &String) -> String {
         let mut desc = String::new();
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
@@ -105,6 +129,7 @@ impl MdfInfo4 {
         }
         desc
     }
+    /// returns the master channel associated to the input channel name
     pub fn get_channel_master(&self, channel_name: &String) -> String {
         let mut master = String::new();
         if let Some((m, _dg_pos, (_cg_pos, _rec_idd), (_cn_pos, _rec_pos))) =
@@ -132,10 +157,12 @@ impl MdfInfo4 {
         }
         master_type
     }
+    /// returns the set of channel names
     pub fn get_channel_names_set(&self) -> HashSet<String> {
         let channel_list = self.channel_names_set.keys().cloned().collect();
         channel_list
     }
+    /// returns a hashmap for which master channel names are keys and values its corresponding set of channel names
     pub fn get_master_channel_names_set(&self) -> HashMap<String, HashSet<String>> {
         let mut channel_master_list: HashMap<String, HashSet<String>> = HashMap::new();
         for (_dg_position, dg) in self.dg.iter() {
@@ -146,7 +173,7 @@ impl MdfInfo4 {
         }
         channel_master_list
     }
-    /// load a set of channels in memory
+    /// load in memory the ndarray data of a set of channels
     pub fn load_channels_data_in_memory(&mut self, channel_names: HashSet<String>) {
         let f: File = OpenOptions::new()
             .read(true)
@@ -156,6 +183,7 @@ impl MdfInfo4 {
         let mut rdr = BufReader::new(&f);
         mdfreader4(&mut rdr, self, channel_names);
     }
+    // empty the channels' ndarray
     pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) {
         for channel_name in channel_names {
             if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
@@ -1055,6 +1083,8 @@ fn parse_cg4_block(
     (cg_struct, position, n_cn)
 }
 
+/// Channel Group struct
+/// it contains the related channels structure, a set of channel names, the dedicated master channel name and other helper data.
 #[derive(Debug, Clone)]
 pub struct Cg4 {
     pub block: Cg4Block,
@@ -1215,7 +1245,8 @@ pub struct Cn4Block {
     cn_limit_ext_min: f64, // Lower extended limit for this signal (physical value for numeric conversion rule, otherwise raw value) Only valid if "extended limit range valid" flag (bit 5) is set.
     cn_limit_ext_max: f64, // Upper extended limit for this signal (physical value for numeric conversion rule, otherwise raw value) Only valid if "extended limit range valid" flag (bit 5) is set.
 }
-
+/// Cn4 structure containing block but also unique_name, ndarray data, composition
+/// and other attributes frequently needed and computed
 #[derive(Debug, Default, Clone)]
 pub struct Cn4 {
     pub block: Cn4Block,
@@ -1229,8 +1260,10 @@ pub struct Cn4 {
     pub invalid_mask: Option<Array1<u8>>,
 }
 
+/// hashmap's key is bit position in record, value Cn4
 pub(crate) type CnType = HashMap<u32, Cn4>;
 
+/// creates recursively in the channel group the CN blocks and all its other linked blocks (CC, MD, TX, CA, etc.)
 pub fn parse_cn4(
     rdr: &mut BufReader<&File>,
     target: i64,
@@ -1325,6 +1358,7 @@ pub fn parse_cn4(
     (cn, position, n_cn)
 }
 
+/// returns created CANopenDate channels
 fn can_open_date(
     block_position: i64,
     pos_byte_beg: u32,
@@ -1435,6 +1469,7 @@ fn can_open_date(
     (date_ms, min, hour, day, month, year)
 }
 
+/// returns created CANopenTime channels
 fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) -> (Cn4, Cn4) {
     let block = Cn4Block {
         cn_links: 8,
@@ -1473,6 +1508,7 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
     (ms, days)
 }
 
+/// Simple calculation to convert bit count into equivalent bytes count
 fn calc_n_bytes_not_aligned(bitcount: u32) -> u32 {
     let mut n_bytes = bitcount / 8u32;
     if (bitcount % 8) != 0 {
@@ -1921,18 +1957,23 @@ fn parse_ca_block(
     }
 }
 
+/// contains composition blocks (CN or CA)
+/// can optionaly point to another composition
 #[derive(Debug, Clone)]
 pub struct Composition {
     pub block: Compo,
     pub compo: Option<Box<Composition>>,
 }
 
+/// enum allowing to nest CA or CN blocks for a compostion
 #[derive(Debug, Clone)]
 pub enum Compo {
-    CA(Ca4Block),
+    CA(Box<Ca4Block>),
     CN(Box<Cn4>),
 }
 
+/// parses CN (structure) of CA (Array) blocks
+/// CN (structures of composed channels )and CA (array of arrays) blocks can be nested or vene CA and CN nested and mixed: this is not supported, very complicated
 fn parse_composition(
     rdr: &mut BufReader<&File>,
     target: i64,
@@ -1967,7 +2008,7 @@ fn parse_composition(
         }
         (
             Composition {
-                block: Compo::CA(block),
+                block: Compo::CA(Box::new(block)),
                 compo: ca_compositon,
             },
             position,
@@ -2015,7 +2056,7 @@ pub(crate) type ChannelId = (String, i64, (i64, u64), (i64, u32));
 pub(crate) type ChannelNamesSet = HashMap<String, ChannelId>;
 
 /// parses mdfinfo structure to make channel names unique
-/// create channel set
+/// creates channel names set and links master channels to set of channels
 pub fn build_channel_db(
     dg: &mut HashMap<i64, Dg4>,
     sharable: &SharableBlocks,
@@ -2149,6 +2190,8 @@ pub struct Dl4Block {
     dl_distance_values: Vec<i64>,
 }
 
+/// parses Data List block
+/// pointing to DT, SD, RD or DZ blocks
 pub fn parser_dl4_block(
     rdr: &mut BufReader<&File>,
     target: i64,
@@ -2160,6 +2203,7 @@ pub fn parser_dl4_block(
     (block, position)
 }
 
+/// parses DZBlock
 pub fn parse_dz(rdr: &mut BufReader<&File>) -> (Vec<u8>, Dz4Block) {
     let block: Dz4Block = rdr.read_le().unwrap();
     let mut buf = vec![0u8; block.dz_data_length as usize];
@@ -2233,6 +2277,9 @@ pub struct Ld4Block {
     dl_distance_values: Vec<i64>,
 }
 
+/// parse List Data block
+/// equivalent ot DLBlock but unsorted data is not allowed
+/// pointing to DV/DI and RV/RI blocks
 pub fn parser_ld4_block(
     rdr: &mut BufReader<&File>,
     target: i64,
@@ -2244,7 +2291,7 @@ pub fn parser_ld4_block(
     (block, position)
 }
 
-/// DL4 Data List block struct
+/// HL4 Data List block struct
 #[derive(Debug, PartialEq, Default, Clone, BinRead)]
 #[br(little)]
 pub struct Hl4Block {
