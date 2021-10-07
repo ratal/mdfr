@@ -1,7 +1,9 @@
 #[cfg(test)]
 mod tests {
     use crate::mdfinfo::MdfInfo;
-    use crate::mdfreader;
+    use crate::mdfreader::channel_data::ChannelData;
+    use ndarray::Array1;
+    use ndarray::array;
     use std::fs;
     use std::io;
     use std::path::Path;
@@ -124,14 +126,14 @@ mod tests {
     #[test]
     fn parse_file() {
         let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/error.mf4"); // DT, big many channels
-        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/Measure.mf4"); // DataList, big many channels
-        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/measure2.mf4");  // many cc_ref with value to text
-        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/ZED_1hz_7197.mf4"); // invalid bytes
-        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/20161129_IN-x1234_Erprobungsort_0000032.mf4");
-        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/isse_107.mf4"); // DZ
-        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/Vector_MinimumFile.MF4");  // DT
-        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4");  // DT
-        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/UnsortedData/Vector_Unsorted_VLSD.MF4"); // unsorted with VLSD
+                                                                                                                                                        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/Measure.mf4"); // DataList, big many channels
+                                                                                                                                                        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/measure2.mf4");  // many cc_ref with value to text
+                                                                                                                                                        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/ZED_1hz_7197.mf4"); // invalid bytes
+                                                                                                                                                        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/20161129_IN-x1234_Erprobungsort_0000032.mf4");
+                                                                                                                                                        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/isse_107.mf4"); // DZ
+                                                                                                                                                        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/Vector_MinimumFile.MF4");  // DT
+                                                                                                                                                        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4");  // DT
+                                                                                                                                                        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/UnsortedData/Vector_Unsorted_VLSD.MF4"); // unsorted with VLSD
         let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/test.mf4");
         // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/ASAP2_Demo_V171.mf4");
         // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/V447_20190514_164254_Gearshift_0m_20Grad.mf4"); // HL DL DZ
@@ -142,6 +144,142 @@ mod tests {
         // let file = String::from("/home/ratal/workspace/mdfreader/T3_121121_000_6NEDC_col.mf4");
         // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/ZED_1hz_7197_col.mf4"); // invalid bytes
         let mut mdf = MdfInfo::new(&file);
-        mdf.load_all_channels_data_in_memory();        
+        mdf.load_all_channels_data_in_memory();
+    }
+
+    #[test]
+    fn data_types() {
+        let base_path = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/");
+        let list_of_paths = [
+            "DataTypes/ByteArray/".to_string(),
+            "DataTypes/CANopenTypes/".to_string(),
+            "DataTypes/IntegerTypes/".to_string(),
+            "DataTypes/RealTypes/".to_string(),
+            "DataTypes/StringTypes/".to_string(),
+        ];
+
+        // StringTypes testing
+        // UTF8
+        let expected_string_result: Vec<String> = vec!["zero".to_string(), "one".to_string(), "two".to_string(), "three".to_string(), "four".to_string(),
+            "five".to_string(), "six".to_string(), "seven".to_string(), "eight".to_string(), "nine".to_string()];
+        let file_name = format!(
+            "{}{}{}",
+            base_path, list_of_paths[4], "Vector_FixedLengthStringUTF8.mf4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+        if let Some(data) = info.get_channel_data(&"Time channel".to_string()) {
+            assert_eq!(
+                ChannelData::Float64(array![0., 1., 2., 3., 4., 5., 6., 7., 8., 9.]),
+                *data
+            );
+        }
+        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+            assert_eq!(
+                ChannelData::StringUTF8(expected_string_result.clone()),
+                *data
+            );
+        }
+        //UTF16
+        let file_name = format!(
+            "{}{}{}",
+            base_path, list_of_paths[4], "Vector_FixedLengthStringUTF16_BE.mf4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+            assert_eq!(
+                ChannelData::StringUTF16(expected_string_result.clone()),
+                *data
+            );
+        }
+        //SBC
+        let file_name = format!(
+            "{}{}{}",
+            base_path, list_of_paths[4], "Vector_FixedLengthStringSBC.mf4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+            assert_eq!(
+                ChannelData::StringSBC(expected_string_result),
+                *data
+            );
+        }
+
+        // byteArray testing
+        let file_name = format!(
+            "{}{}{}",
+            base_path, list_of_paths[0], "Vector_ByteArrayFixedLength.mf4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+        if let Some(data) = info.get_channel_data(&"Time channel".to_string()) {
+            assert_eq!(
+                ChannelData::Float64(array![0., 1., 2., 3., 4., 5., 6., 7., 8., 9.]),
+                *data
+            );
+        }
+
+        // Integer testing
+        let file_name = format!(
+            "{}{}{}",
+            base_path, list_of_paths[2], "Vector_IntegerTypes.MF4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+        if let Some(data) = info.get_channel_data(&"Counter_INT64_BE".to_string()) {
+            assert_eq!(
+                ChannelData::Int64(Array1::<i64>::from_iter(100..-100)),
+                *data
+            );
+        }
+        if let Some(data) = info.get_channel_data(&"Counter_INT32_BE".to_string()) {
+            assert_eq!(
+                ChannelData::Int32(Array1::<i32>::from_iter(100..-100)),
+                *data
+            );
+        }
+        if let Some(data) = info.get_channel_data(&"Counter_INT16_LE".to_string()) {
+            assert_eq!(
+                ChannelData::Int16(Array1::<i16>::from_iter(100..-100)),
+                *data
+            );
+        }
+    }
+
+    #[test]
+    fn channel_types() {
+        let base_path = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/");
+        let list_of_paths = [
+            "ChannelTypes/MasterChannels".to_string(),
+            "ChannelTypes/MLSD".to_string(),
+            "ChannelTypes/VLSD".to_string(),
+            "ChannelTypes/VirtualData".to_string(),
+            "ChannelTypes/Synchronization".to_string(),
+        ];
+
+        // MasterTypes testing
+        // 
+        let expected_string_result: Vec<String> = vec!["zero".to_string(), "one".to_string(), "two".to_string(), "three".to_string(), "four".to_string(),
+            "five".to_string(), "six".to_string(), "seven".to_string(), "eight".to_string(), "nine".to_string()];
+        let file_name = format!(
+            "{}{}{}",
+            base_path, list_of_paths[4], "Vector_VirtualTimeMasterChannel.mf4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+        if let Some(data) = info.get_channel_data(&"Time channel".to_string()) {
+            assert_eq!(
+                ChannelData::Float64(array![0., 1., 2., 3., 4., 5., 6., 7., 8., 9.]),
+                *data
+            );
+        }
+        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+            assert_eq!(
+                ChannelData::StringUTF8(expected_string_result.clone()),
+                *data
+            );
+        }
     }
 }
