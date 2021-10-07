@@ -217,9 +217,9 @@ pub struct Blockheader4 {
 #[inline]
 pub fn parse_block_header(rdr: &mut BufReader<&File>) -> Blockheader4 {
     let mut buf = [0u8; 24];
-    rdr.read_exact(&mut buf).unwrap();
+    rdr.read_exact(&mut buf).expect("could not read blockheader4 Id");
     let mut block = Cursor::new(buf);
-    let header: Blockheader4 = block.read_le().unwrap();
+    let header: Blockheader4 = block.read_le().expect("could not parse blockheader4");
     header
 }
 
@@ -236,9 +236,9 @@ pub struct Blockheader4Short {
 #[inline]
 fn parse_block_header_short(rdr: &mut BufReader<&File>) -> Blockheader4Short {
     let mut buf = [0u8; 16];
-    rdr.read_exact(&mut buf).unwrap();
+    rdr.read_exact(&mut buf).expect("could not read short blockheader4 Id");
     let mut block = Cursor::new(buf);
-    let header: Blockheader4Short = block.read_le().unwrap();
+    let header: Blockheader4Short = block.read_le().expect("could not parse short blockheader4");
     header
 }
 
