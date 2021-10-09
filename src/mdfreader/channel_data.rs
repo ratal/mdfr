@@ -737,7 +737,6 @@ pub fn data_type_init(cn_type: u8, cn_data_type: u8, n_bytes: u32, is_array: boo
             }
         } else {
             // virtual channels, cn_bit_count = 0 -> n_bytes = 0, must be LE unsigned int
-            // data_type = ChannelData::UInt64(Array1::<u64>::from_iter(0..cycle_count));
             data_type = ChannelData::UInt64(Array1::<u64>::zeros(0));
         }
     } else {
@@ -794,7 +793,7 @@ pub fn data_type_init(cn_type: u8, cn_data_type: u8, n_bytes: u32, is_array: boo
                         ChannelData::ArrayDComplex64(ArrayD::<Complex<f64>>::zeros(IxDyn(&[0])));
                 }
             } else {
-                // numeric arrays not implemented
+                // strings or bytes arrays not implemented
                 todo!();
             }
         } else {

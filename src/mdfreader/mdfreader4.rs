@@ -92,7 +92,7 @@ fn read_data(
         utf_16_be: UTF_16BE.new_decoder(),
         utf_16_le: UTF_16LE.new_decoder(),
     };
-    let mut vlsd_channels: Vec<u32> = Vec::new();
+    let mut vlsd_channels: Vec<i32> = Vec::new();
     if "##DT".as_bytes() == id {
         let block_header: Dt4Block = rdr.read_le().unwrap();
         // simple data block
@@ -203,7 +203,7 @@ fn read_data(
                     pos,
                     channel_group,
                     &mut decoder,
-                    &0u32,
+                    &0i32,
                     channel_names_to_read_in_dg,
                 );
                 position = pos;
@@ -283,7 +283,7 @@ fn read_hl(rdr: &mut BufReader<&File>, mut position: i64) -> (i64, [u8; 4]) {
 fn read_sd(
     rdr: &mut BufReader<&File>,
     dg: &mut Dg4,
-    vlsd_channels: &[u32],
+    vlsd_channels: &[i32],
     mut position: i64,
     decoder: &mut Dec,
     channel_names_to_read_in_dg: &HashSet<String>,
@@ -733,9 +733,9 @@ fn parser_dl4_sorted(
     mut position: i64,
     channel_group: &mut Cg4,
     decoder: &mut Dec,
-    rec_pos: &u32,
+    rec_pos: &i32,
     channel_names_to_read_in_dg: &HashSet<String>,
-) -> (i64, Vec<u32>) {
+) -> (i64, Vec<i32>) {
     // initialises the arrays
     initialise_arrays(
         channel_group,
@@ -747,7 +747,7 @@ fn parser_dl4_sorted(
     let mut previous_index: usize = 0;
     let cg_cycle_count = channel_group.block.cg_cycle_count as usize;
     let record_length = channel_group.record_length as usize;
-    let mut vlsd_channels: Vec<u32> = Vec::new();
+    let mut vlsd_channels: Vec<i32> = Vec::new();
     for dl in dl_blocks {
         for data_pointer in dl.dl_data {
             // Reads DT or DZ block id
@@ -879,7 +879,7 @@ fn read_all_channels_sorted(
     rdr: &mut BufReader<&File>,
     channel_group: &mut Cg4,
     channel_names_to_read_in_dg: &HashSet<String>,
-) -> Vec<u32> {
+) -> Vec<i32> {
     let chunks = generate_chunks(channel_group);
     // initialises the arrays
     initialise_arrays(
@@ -889,7 +889,7 @@ fn read_all_channels_sorted(
     );
     // read by chunks and store in channel array
     let mut previous_index: usize = 0;
-    let mut vlsd_channels: Vec<u32> = Vec::new();
+    let mut vlsd_channels: Vec<i32> = Vec::new();
     for (n_record_chunk, chunk_size) in chunks {
         let mut data_chunk = vec![0u8; chunk_size];
         rdr.read_exact(&mut data_chunk)
@@ -911,14 +911,14 @@ fn read_all_channels_sorted_from_bytes(
     data: &[u8],
     channel_group: &mut Cg4,
     channel_names_to_read_in_dg: &HashSet<String>,
-) -> Vec<u32> {
+) -> Vec<i32> {
     // initialises the arrays
     initialise_arrays(
         channel_group,
         &channel_group.block.cg_cycle_count.clone(),
         channel_names_to_read_in_dg,
     );
-    let mut vlsd_channels: Vec<u32> = Vec::new();
+    let mut vlsd_channels: Vec<i32> = Vec::new();
     for nrecord in 0..channel_group.block.cg_cycle_count {
         vlsd_channels = read_channels_from_bytes(
             &data[(nrecord * channel_group.record_length as u64) as usize

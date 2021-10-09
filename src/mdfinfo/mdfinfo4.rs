@@ -905,7 +905,7 @@ fn identify_vlsd_cg(cg: &mut HashMap<u64, Cg4>) {
     }
     if !vlsd.is_empty() {
         // try to find corresponding channel in other channel group
-        let mut vlsd_matching: HashMap<u64, (u64, u32)> = HashMap::new();
+        let mut vlsd_matching: HashMap<u64, (u64, i32)> = HashMap::new();
         for (target_rec_id, channel_group) in cg.iter() {
             for (target_rec_pos, cn) in channel_group.cn.iter() {
                 if let Some(vlsd_rec_id) = vlsd.get(&cn.block.cn_data) {
@@ -1093,7 +1093,7 @@ pub struct Cg4 {
     pub channel_names: HashSet<String>,
     block_position: i64, // as not stored in .block but can still be referenced by other blocks
     pub record_length: u32, // record length including recordId and invalid bytes
-    pub vlsd_cg: Option<(u64, u32)>, // pointing to another cg,cn
+    pub vlsd_cg: Option<(u64, i32)>, // pointing to another cg,cn
     pub invalid_bytes: Option<Vec<u8>>, // invalid byte array, optional
 }
 
@@ -1126,10 +1126,10 @@ impl Cg4 {
             None => None,
         }
     }
-    pub fn new_channel(&mut self, bit_position: u32, cn: Cn4) {
+    pub fn new_channel(&mut self, bit_position: i32, cn: Cn4) {
         self.cn.insert(bit_position, cn);
     }
-    pub fn process_channel_invalid_bits(&mut self, rec_pos: u32) -> Option<Array1<u8>> {
+    pub fn process_channel_invalid_bits(&mut self, rec_pos: i32) -> Option<Array1<u8>> {
         // get invalid bytes
         if let Some(invalid_bytes) = &self.invalid_bytes {
             if let Some(cn) = self.cn.get_mut(&rec_pos) {
@@ -1261,7 +1261,7 @@ pub struct Cn4 {
 }
 
 /// hashmap's key is bit position in record, value Cn4
-pub(crate) type CnType = HashMap<u32, Cn4>;
+pub(crate) type CnType = HashMap<i32, Cn4>;
 
 /// creates recursively in the channel group the CN blocks and all its other linked blocks (CC, MD, TX, CA, etc.)
 pub fn parse_cn4(
@@ -1285,8 +1285,8 @@ pub fn parse_cn4(
         );
         position = pos;
         n_cn += 1;
-        let rec_pos = (cn_struct.block.cn_byte_offset + record_id_size as u32) * 8
-            + u32::try_from(cn_struct.block.cn_bit_offset).unwrap();
+        let mut rec_pos = (cn_struct.block.cn_byte_offset as i32 + record_id_size as i32) * 8
+            + i32::try_from(cn_struct.block.cn_bit_offset).unwrap();
         let mut next_pointer = cn_struct.block.cn_cn_next;
         if cn_struct.block.cn_data_type == 13 {
             // CANopen date
@@ -1311,6 +1311,13 @@ pub fn parse_cn4(
             cn.insert(rec_pos, ms);
             cn.insert(rec_pos + 32, days);
         } else {
+            if cn_struct.block.cn_type == 3 || cn_struct.block.cn_type == 6 {
+                // virtual channel, position in record negative
+                rec_pos = -1;
+                while cn.contains_key(&rec_pos) {
+                    rec_pos -= 1;
+                }
+            }
             cn.insert(rec_pos, cn_struct);
         }
 
@@ -1325,8 +1332,8 @@ pub fn parse_cn4(
             );
             position = pos;
             n_cn += 1;
-            let rec_pos = (cn_struct.block.cn_byte_offset + record_id_size as u32) * 8
-                + u32::try_from(cn_struct.block.cn_bit_offset).unwrap();
+            let mut rec_pos = (cn_struct.block.cn_byte_offset as i32 + record_id_size as i32) * 8
+                + i32::try_from(cn_struct.block.cn_bit_offset).unwrap();
             next_pointer = cn_struct.block.cn_cn_next;
             if cn_struct.block.cn_data_type == 13 {
                 // CANopen date
@@ -1351,6 +1358,13 @@ pub fn parse_cn4(
                 cn.insert(rec_pos, ms);
                 cn.insert(rec_pos + 32, days);
             } else {
+                if cn_struct.block.cn_type == 3 || cn_struct.block.cn_type == 6 {
+                    // virtual channel, position in record negative
+                    rec_pos = -1;
+                    while cn.contains_key(&rec_pos) {
+                        rec_pos -= 1;
+                    }
+                }
                 cn.insert(rec_pos, cn_struct);
             }
         }
@@ -2052,7 +2066,7 @@ fn parse_composition(
     }
 }
 
-pub(crate) type ChannelId = (String, i64, (i64, u64), (i64, u32));
+pub(crate) type ChannelId = (String, i64, (i64, u64), (i64, i32));
 pub(crate) type ChannelNamesSet = HashMap<String, ChannelId>;
 
 /// parses mdfinfo structure to make channel names unique
