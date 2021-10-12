@@ -412,6 +412,7 @@ fn read_vlsd_from_bytes(
                     let record = &data[position..position + length];
                     array[nrecord + previous_index] = str::from_utf8(&record)
                         .expect("Found invalid UTF-8")
+                        .trim_end_matches('\0')
                         .to_string();
                     position += length;
                     remaining = data_length - position;
