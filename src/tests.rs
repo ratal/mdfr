@@ -240,7 +240,7 @@ mod tests {
         let mut vect: Vec<i32> = vec![100; 201];
         let mut counter: i32 = 0;
         vect.iter_mut().for_each(|v| {*v-=counter; counter += 1});
-        if let Some(data) = info.get_channel_data(&"Counter_INT32_BE".to_string()) {
+        if let Some(data) = info.get_channel_data(&"Counter_INT32_LE".to_string()) {
             assert_eq!(
                 ChannelData::Int32(Array1::<i32>::from_vec(vect)),
                 *data
@@ -282,6 +282,91 @@ mod tests {
             let target = Array1::<f64>::from_vec(vect);
             assert_eq!(
                 ChannelData::Float64(target),
+                *data
+            );
+        }
+        // MLSD testing
+        let file_name = format!(
+            "{}{}{}",
+            base_path, list_of_paths[1], "Vector_MLSDStringUTF8.mf4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+            let expected_string_result: Vec<String> = vec!["zero".to_string(), "one".to_string(), "two".to_string(), "three".to_string(), "four".to_string(),
+            "five".to_string(), "six".to_string(), "seven".to_string(), "eight".to_string(), "nine".to_string()];
+            assert_eq!(
+                ChannelData::StringUTF8(expected_string_result),
+                *data
+            );
+        }
+        // Virtual data testing
+        let file_name = format!(
+            "{}{}{}",
+            base_path, list_of_paths[3], "Vector_VirtualDataChannelNoConversion.mf4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+        let mut vect: Vec<u64> = vec![0; 200];
+        let mut counter: u64 = 0;
+        vect.iter_mut().for_each(|v| {*v+=counter; counter += 1});
+        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+            assert_eq!(
+                ChannelData::UInt64(Array1::<u64>::from_vec(vect)),
+                *data
+            );
+        }
+        // VLSD testing
+        let file_name = format!(
+            "{}{}{}",
+            base_path, list_of_paths[2], "Vector_VLSDStringUTF8.mf4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+            let expected_string_result: Vec<String> = vec!["zero".to_string(), "one".to_string(), "two".to_string(), "three".to_string(), "four".to_string(),
+            "five".to_string(), "six".to_string(), "seven".to_string(), "eight".to_string(), "nine".to_string()];
+            assert_eq!(
+                ChannelData::StringUTF8(expected_string_result),
+                *data
+            );
+        }
+        // Synchronization
+        let file_name = format!(
+            "{}{}{}",
+            base_path, list_of_paths[4], "Vector_SyncStreamChannel.mf4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+        // TODO how to check ?
+    }
+    #[test]
+    fn record_layout() {
+        // Overlapping signals
+        let base_path = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/");
+        let file_name = format!(
+            "{}{}",
+            base_path, "Vector_OverlappingSignals.mf4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+        // TODO How to check ?
+
+        // Overlapping signals
+        let base_path = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/");
+        let file_name = format!(
+            "{}{}",
+            base_path, "Vector_NotByteAligned.mf4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+        // TODO Fix issue with Channel B
+        if let Some(data) = info.get_channel_data(&"Channel B".to_string()) {
+            let mut vect: Vec<u64> = vec![0; 30];
+            let mut counter: u64 = 0;
+            vect.iter_mut().for_each(|v| {*v+=counter; counter += 1});
+            assert_eq!(
+                ChannelData::UInt64(Array1::<u64>::from_vec(vect)),
                 *data
             );
         }
