@@ -342,18 +342,9 @@ mod tests {
     }
     #[test]
     fn record_layout() {
+        
+        let base_path = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/RecordLayout/");
         // Overlapping signals
-        let base_path = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/");
-        let file_name = format!(
-            "{}{}",
-            base_path, "Vector_OverlappingSignals.mf4"
-        );
-        let mut info = MdfInfo::new(&file_name);
-        info.load_all_channels_data_in_memory();
-        // TODO How to check ?
-
-        // Overlapping signals
-        let base_path = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/");
         let file_name = format!(
             "{}{}",
             base_path, "Vector_NotByteAligned.mf4"
@@ -366,9 +357,20 @@ mod tests {
             let mut counter: u64 = 0;
             vect.iter_mut().for_each(|v| {*v+=counter; counter += 1});
             assert_eq!(
-                ChannelData::UInt64(Array1::<u64>::from_vec(vect)),
+                ChannelData::UInt48(Array1::<u64>::from_vec(vect)),
                 *data
             );
         }
+
+        // Overlapping signals
+        let file_name = format!(
+            "{}{}",
+            base_path, "Vector_OverlappingSignals.mf4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+        // TODO How to check ?
+
+
     }
 }
