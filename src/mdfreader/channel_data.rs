@@ -567,6 +567,51 @@ impl ChannelData {
             ChannelData::ArrayDComplex64(data) => data.is_empty(),
         }
     }
+    /// checks is if ndarray is empty
+    pub fn len(&self) -> usize {
+        match self {
+            ChannelData::Int8(data) => data.len(),
+            ChannelData::UInt8(data) => data.len(),
+            ChannelData::Int16(data) => data.len(),
+            ChannelData::UInt16(data) => data.len(),
+            ChannelData::Float16(data) => data.len(),
+            ChannelData::Int24(data) => data.len(),
+            ChannelData::UInt24(data) => data.len(),
+            ChannelData::Int32(data) => data.len(),
+            ChannelData::UInt32(data) => data.len(),
+            ChannelData::Float32(data) => data.len(),
+            ChannelData::Int48(data) => data.len(),
+            ChannelData::UInt48(data) => data.len(),
+            ChannelData::Int64(data) => data.len(),
+            ChannelData::UInt64(data) => data.len(),
+            ChannelData::Float64(data) => data.len(),
+            ChannelData::Complex16(data) => data.len(),
+            ChannelData::Complex32(data) => data.len(),
+            ChannelData::Complex64(data) => data.len(),
+            ChannelData::StringSBC(data) => data.len(),
+            ChannelData::StringUTF8(data) => data.len(),
+            ChannelData::StringUTF16(data) => data.len(),
+            ChannelData::ByteArray(data) => data.len(),
+            ChannelData::ArrayDInt8(data) => data.len(),
+            ChannelData::ArrayDUInt8(data) => data.len(),
+            ChannelData::ArrayDInt16(data) => data.len(),
+            ChannelData::ArrayDUInt16(data) => data.len(),
+            ChannelData::ArrayDFloat16(data) => data.len(),
+            ChannelData::ArrayDInt24(data) => data.len(),
+            ChannelData::ArrayDUInt24(data) => data.len(),
+            ChannelData::ArrayDInt32(data) => data.len(),
+            ChannelData::ArrayDUInt32(data) => data.len(),
+            ChannelData::ArrayDFloat32(data) => data.len(),
+            ChannelData::ArrayDInt48(data) => data.len(),
+            ChannelData::ArrayDUInt48(data) => data.len(),
+            ChannelData::ArrayDInt64(data) => data.len(),
+            ChannelData::ArrayDUInt64(data) => data.len(),
+            ChannelData::ArrayDFloat64(data) => data.len(),
+            ChannelData::ArrayDComplex16(data) => data.len(),
+            ChannelData::ArrayDComplex32(data) => data.len(),
+            ChannelData::ArrayDComplex64(data) => data.len(),
+        }
+    }
 }
 
 impl IntoPy<PyObject> for ChannelData {
