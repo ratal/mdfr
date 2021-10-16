@@ -342,7 +342,6 @@ mod tests {
     }
     #[test]
     fn record_layout() {
-        
         let base_path = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/RecordLayout/");
         // Overlapping signals
         let file_name = format!(
@@ -351,7 +350,6 @@ mod tests {
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
-        // TODO Fix issue with Channel B
         if let Some(data) = info.get_channel_data(&"Channel B".to_string()) {
             let mut vect: Vec<u64> = vec![0; 30];
             let mut counter: u64 = 0;
@@ -372,5 +370,98 @@ mod tests {
         // TODO How to check ?
 
 
+    }
+    #[test]
+    fn data_list() {
+        let base_path = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/DataList/");
+        // Equal length
+        let file_name = format!(
+            "{}{}",
+            base_path, "Vector_DT_EqualLen.MF4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+        if let Some(data) = info.get_channel_data(&"channel1".to_string()) {
+            assert_eq!(
+                data.len(),
+                254552
+            );
+        }
+        // Equal length
+        let file_name = format!(
+            "{}{}",
+            base_path, "Vector_DL_Linked_List.MF4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+        if let Some(data) = info.get_channel_data(&"channel1".to_string()) {
+            assert_eq!(
+                data.len(),
+                254552
+            );
+        }
+        // TODO conversions missing to be tested for Write and WriteTextToWriteWindow channels
+
+        // Empty data
+        let file_name = format!(
+            "{}{}",
+            base_path, "ETAS_EmptyDL.mf4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+
+        // SD List
+        let file_name = format!(
+            "{}{}",
+            base_path, "Vector_SD_List.MF4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+    }
+    #[test]
+    fn compressed_data() {
+        let base_path = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/CompressedData/");
+        // deflate
+        let file_name = format!(
+            "{}{}",
+            base_path, "DataList/Vector_DataList_Deflate.mf4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+        if let Some(data) = info.get_channel_data(&"channel1".to_string()) {
+            assert_eq!(
+                data.len(),
+                254552
+            );
+        }
+        // transpose deflate
+        let file_name = format!(
+            "{}{}",
+            base_path, "DataList/Vector_DataList_TransposeDeflate.mf4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+        if let Some(data) = info.get_channel_data(&"channel1".to_string()) {
+            assert_eq!(
+                data.len(),
+                254552
+            );
+        }
+
+        // Single DZ deflate
+        let file_name = format!(
+            "{}{}",
+            base_path, "Simple/Vector_SingleDZ_Deflate.mf4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+
+        // Single DZ transpose deflate
+        let file_name = format!(
+            "{}{}",
+            base_path, "Simple/Vector_SingleDZ_TransposeDeflate.mf4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
     }
 }
