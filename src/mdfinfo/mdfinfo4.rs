@@ -2090,18 +2090,22 @@ pub fn build_channel_db(
                     let mut changed: bool = false;
                     // create unique channel name
                     if let Some(cs) = cn.get_cn_source_name(sharable) {
+                        cn.unique_name.push_str(" ");
                         cn.unique_name.push_str(&cs);
                         changed = true;
                     }
                     if let Some(cp) = cn.get_cn_source_path(sharable) {
+                        cn.unique_name.push_str(" ");
                         cn.unique_name.push_str(&cp);
                         changed = true;
                     }
                     if let Some(name) = &gn {
+                        cn.unique_name.push_str(" ");
                         cn.unique_name.push_str(name);
                         changed = true;
                     }
                     if let Some(source) = &gs {
+                        cn.unique_name.push_str(" ");
                         cn.unique_name.push_str(source);
                         changed = true;
                     }
