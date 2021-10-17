@@ -920,16 +920,13 @@ fn read_all_channels_sorted_from_bytes(
         channel_names_to_read_in_dg,
     );
     let mut vlsd_channels: Vec<i32> = Vec::new();
-    for nrecord in 0..channel_group.block.cg_cycle_count {
-        vlsd_channels = read_channels_from_bytes(
-            &data[(nrecord * channel_group.record_length as u64) as usize
-                ..((nrecord + 1) * channel_group.record_length as u64) as usize],
-            &mut channel_group.cn,
-            channel_group.record_length as usize,
-            0,
-            channel_names_to_read_in_dg,
-        );
-    }
+    vlsd_channels = read_channels_from_bytes(
+        &data,
+        &mut channel_group.cn,
+        channel_group.record_length as usize,
+        0,
+        channel_names_to_read_in_dg,
+    );
     vlsd_channels
 }
 

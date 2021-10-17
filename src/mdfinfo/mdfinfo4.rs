@@ -17,7 +17,7 @@ use std::{
     sync::Arc,
 };
 use transpose;
-use yazi::{decompress, Format};
+use yazi::{decompress, Format, Adler32};
 
 use crate::mdfreader::channel_data::{data_type_init, ChannelData};
 use crate::mdfreader::mdfreader4::mdfreader4;
@@ -2226,7 +2226,10 @@ pub fn parse_dz(rdr: &mut BufReader<&File>) -> (Vec<u8>, Dz4Block) {
     let block: Dz4Block = rdr.read_le().unwrap();
     let mut buf = vec![0u8; block.dz_data_length as usize];
     rdr.read_exact(&mut buf).unwrap();
-    let (mut data, _checksum) = decompress(&buf, Format::Zlib).expect("Could not decompress data");
+    let (mut data, checksum) = decompress(&buf, Format::Zlib).expect("Could not decompress data");
+    if Adler32::from_buf(&data).finish() != checksum.unwrap() {
+        panic!("Checksum not ok");
+    }
     if block.dz_zip_type == 1 {
         let m = block.dz_org_data_length / block.dz_zip_parameter as u64;
         let tail: Vec<u8> = data.split_off((m * block.dz_zip_parameter as u64) as usize);
@@ -2234,8 +2237,8 @@ pub fn parse_dz(rdr: &mut BufReader<&File>) -> (Vec<u8>, Dz4Block) {
         transpose::transpose(
             &data,
             &mut output,
-            block.dz_zip_parameter as usize,
             m as usize,
+            block.dz_zip_parameter as usize,
         );
         data = output;
         if !tail.is_empty() {
