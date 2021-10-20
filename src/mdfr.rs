@@ -3,6 +3,7 @@ use std::collections::HashSet;
 
 use crate::mdfinfo::MdfInfo;
 use pyo3::prelude::*;
+use pyo3::types::PyDict;
 use pyo3::PyObjectProtocol;
 
 #[pyclass]
@@ -55,6 +56,16 @@ impl Mdf {
             master
         })
     }
+    /// returns channel's master data, numpy array or list, depending if data type is numeric or string|bytes
+    fn get_channel_master_data(&mut self, channel_name: String) -> Py<PyAny> {
+        let Mdf(mdf) = self;
+        // default py_array value is python None
+        pyo3::Python::with_gil(|py| {
+            let master= mdf.get_channel_master(&channel_name);
+            let py_array: Py<PyAny> = mdf.get_channel_data(&master).to_object(py);
+            py_array
+        })
+    }
     /// returns channel's associated master channel type string
     /// 0 = None (normal data channels), 1 = Time (seconds), 2 = Angle (radians),
     /// 3 = Distance (meters), 4 = Index (zero-based index values)
@@ -100,6 +111,29 @@ impl Mdf {
         let Mdf(mdf) = self;
         pyo3::Python::with_gil(|_py| {
             mdf.load_all_channels_data_in_memory();
+        })
+    }
+    /// plot one channel
+    pub fn plot(&mut self, channel_name: String) {
+        let Mdf(mdf) = self;
+        pyo3::Python::with_gil(|py| {
+            let locals = PyDict::new(py);
+            locals.set_item("channel_name", &channel_name).unwrap();
+            locals.set_item("channel_unit", mdf.get_channel_unit(&channel_name)).unwrap();
+            let master_channel_name = mdf.get_channel_master(&channel_name);
+            locals.set_item("master_channel_name", &master_channel_name).unwrap();
+            locals.set_item("master_channel_unit", mdf.get_channel_unit(&master_channel_name)).unwrap();
+            locals.set_item("master_data", mdf.get_channel_data(&master_channel_name)).unwrap();
+            locals.set_item("channel_data", mdf.get_channel_data(&channel_name)).unwrap();
+            py.import("matplotlib").unwrap();
+            py.run(
+                r#"
+import matplotlib.pyplot as plt
+plt(master_data, channel_data, label='{0} [{1}]'.format(channel_name, channel_unit))
+plt.xlabel('{0} [{1}]'.format(master_channel_name, master_channel_unit))
+"#,
+                None,
+                Some(locals),).unwrap();
         })
     }
 }
