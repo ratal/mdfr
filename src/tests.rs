@@ -421,33 +421,6 @@ mod tests {
     #[test]
     fn compressed_data() {
         let base_path = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/CompressedData/");
-        // deflate
-        let file_name = format!(
-            "{}{}",
-            base_path, "DataList/Vector_DataList_Deflate.mf4"
-        );
-        let mut info = MdfInfo::new(&file_name);
-        info.load_all_channels_data_in_memory();
-        if let Some(data) = info.get_channel_data(&"channel1".to_string()) {
-            assert_eq!(
-                data.len(),
-                254552
-            );
-        }
-        // transpose deflate
-        let file_name = format!(
-            "{}{}",
-            base_path, "DataList/Vector_DataList_TransposeDeflate.mf4"
-        );
-        let mut info = MdfInfo::new(&file_name);
-        info.load_all_channels_data_in_memory();
-        if let Some(data) = info.get_channel_data(&"channel1".to_string()) {
-            assert_eq!(
-                data.len(),
-                254552
-            );
-        }
-
         // Single DZ deflate
         let file_name = format!(
             "{}{}",
@@ -460,6 +433,61 @@ mod tests {
         let file_name = format!(
             "{}{}",
             base_path, "Simple/Vector_SingleDZ_TransposeDeflate.mf4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+
+        // deflate data list
+        let file_name = format!(
+            "{}{}",
+            base_path, "DataList/Vector_DataList_Deflate.mf4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+        if let Some(data) = info.get_channel_data(&"Time channel".to_string()) {
+            let mut vect: Vec<f64> = vec![0.; 10000];
+            let mut counter: f64 = 0.;
+            vect.iter_mut().for_each(|v| {*v=counter.clone(); counter += 0.1});
+            let target = Array1::<f64>::from_vec(vect);
+            assert_eq!(
+                ChannelData::Float64(target),
+                *data
+            );
+        }
+
+        // transpose deflate data list
+        let file_name = format!(
+            "{}{}",
+            base_path, "DataList/Vector_DataList_TransposeDeflate.mf4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+        if let Some(data) = info.get_channel_data(&"Time channel".to_string()) {
+            let mut vect: Vec<f64> = vec![0.; 10000];
+            let mut counter: f64 = 0.;
+            vect.iter_mut().for_each(|v| {*v=counter.clone(); counter += 0.1});
+            let target = Array1::<f64>::from_vec(vect);
+            assert_eq!(
+                ChannelData::Float64(target),
+                *data
+            );
+        }
+
+        // Unsorted
+        let file_name = format!(
+            "{}{}",
+            base_path, "Unsorted/Vector_SingleDZ_Unsorted.MF4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+    }
+
+    #[test]
+    fn unsorted_data() {
+        let base_path = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/UnsortedData/");
+        let file_name = format!(
+            "{}{}",
+            base_path, "Vector_Unsorted_VLSD.MF4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
