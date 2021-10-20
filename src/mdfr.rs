@@ -128,9 +128,15 @@ impl Mdf {
             py.import("matplotlib").unwrap();
             py.run(
                 r#"
-import matplotlib.pyplot as plt
-plt(master_data, channel_data, label='{0} [{1}]'.format(channel_name, channel_unit))
-plt.xlabel('{0} [{1}]'.format(master_channel_name, master_channel_unit))
+from matplotlib import pyplot
+from numpy import arange
+if master_data is None:
+    master_data = arange(0, len(channel_data), 1)
+pyplot.plot(master_data, channel_data, label='{0} [{1}]'.format(channel_name, channel_unit))
+pyplot.xlabel('{0} [{1}]'.format(master_channel_name, master_channel_unit))
+pyplot.ylabel('{0} [{1}]'.format(channel_name, master_channel_unit))
+pyplot.grid(True)
+pyplot.show()
 "#,
                 None,
                 Some(locals),).unwrap();
