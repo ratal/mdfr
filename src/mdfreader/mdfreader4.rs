@@ -165,7 +165,7 @@ fn read_data(
                 );
             }
             // initialise record counter
-            let mut record_counter: HashMap<u64, (usize, Vec<u8>)> = HashMap::new();
+            let mut record_counter: HashMap<u64, (usize, Vec<u8>)> = HashMap::with_capacity(dg.cg.len());
             for cg in dg.cg.values_mut() {
                 record_counter.insert(
                     cg.block.cg_record_id,
@@ -1086,40 +1086,47 @@ fn read_all_channels_unsorted_from_bytes(
         // reads record based on record id
         if let Some(cg) = dg.cg.get_mut(&rec_id) {
             let record_length = cg.record_length as usize;
-            if remaining >= record_length {
-                if (cg.block.cg_flags & 0b1) != 0 {
-                    // VLSD channel
+            if (cg.block.cg_flags & 0b1) != 0 {
+                // VLSD channel
+                if remaining >= 4 {
                     position += dg_rec_id_size;
                     let len = &data[position..position + std::mem::size_of::<u32>()];
                     let length: usize =
                         u32::from_le_bytes(len.try_into().expect("Could not read length")) as usize;
                     position += std::mem::size_of::<u32>();
-                    let record = &data[position..position + length];
-                    if let Some((target_rec_id, target_rec_pos)) = cg.vlsd_cg {
-                        if let Some(target_cg) = dg.cg.get_mut(&target_rec_id) {
-                            if let Some(target_cn) = target_cg.cn.get_mut(&target_rec_pos) {
-                                if let Some((nrecord, _)) = record_counter.get_mut(&rec_id) {
-                                    save_vlsd(
-                                        &mut target_cn.data,
-                                        record,
-                                        nrecord,
-                                        decoder,
-                                        target_cn.endian,
-                                    );
-                                    *nrecord += 1;
+                    remaining = data_length - position;
+                    if remaining >= length {
+                        let record = &data[position..position + length];
+                        if let Some((target_rec_id, target_rec_pos)) = cg.vlsd_cg {
+                            if let Some(target_cg) = dg.cg.get_mut(&target_rec_id) {
+                                if let Some(target_cn) = target_cg.cn.get_mut(&target_rec_pos) {
+                                    if let Some((nrecord, _)) = record_counter.get_mut(&rec_id) {
+                                        save_vlsd(
+                                            &mut target_cn.data,
+                                            record,
+                                            nrecord,
+                                            decoder,
+                                            target_cn.endian,
+                                        );
+                                        *nrecord += 1;
+                                    }
                                 }
                             }
                         }
+                        position += length;
+                    } else {
+                        break; // not enough data remaining
                     }
-                    position += length;
                 } else {
-                    // Not VLSD channel
-                    let record = &data[position..position + cg.record_length as usize];
-                    if let Some((_nrecord, data)) = record_counter.get_mut(&rec_id) {
-                        data.extend(record);
-                    }
-                    position += record_length;
+                    break; // not enough data remaining
                 }
+            } else if remaining >= record_length {
+                // Not VLSD channel
+                let record = &data[position..position + cg.record_length as usize];
+                if let Some((_nrecord, data)) = record_counter.get_mut(&rec_id) {
+                    data.extend(record);
+                }
+                position += record_length;
             } else {
                 break; // not enough data remaining
             }
