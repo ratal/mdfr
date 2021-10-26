@@ -17,7 +17,7 @@ use std::{
     sync::Arc,
 };
 use transpose;
-use yazi::{decompress, Format, Adler32};
+use yazi::{decompress, Adler32, Format};
 
 use crate::mdfreader::channel_data::{data_type_init, ChannelData};
 use crate::mdfreader::mdfreader4::mdfreader4;
@@ -217,7 +217,8 @@ pub struct Blockheader4 {
 #[inline]
 pub fn parse_block_header(rdr: &mut BufReader<&File>) -> Blockheader4 {
     let mut buf = [0u8; 24];
-    rdr.read_exact(&mut buf).expect("could not read blockheader4 Id");
+    rdr.read_exact(&mut buf)
+        .expect("could not read blockheader4 Id");
     let mut block = Cursor::new(buf);
     let header: Blockheader4 = block.read_le().expect("could not parse blockheader4");
     header
@@ -236,7 +237,8 @@ pub struct Blockheader4Short {
 #[inline]
 fn parse_block_header_short(rdr: &mut BufReader<&File>) -> Blockheader4Short {
     let mut buf = [0u8; 16];
-    rdr.read_exact(&mut buf).expect("could not read short blockheader4 Id");
+    rdr.read_exact(&mut buf)
+        .expect("could not read short blockheader4 Id");
     let mut block = Cursor::new(buf);
     let header: Blockheader4Short = block.read_le().expect("could not parse short blockheader4");
     header
@@ -1731,10 +1733,9 @@ pub struct Cc4Block {
     cc_phy_range_min: f64, // Minimum physical signal value that occurred for this signal. Only valid if "physical value range valid" flag (bit 1) is set.
     cc_phy_range_max: f64, // Maximum physical signal value that occurred for this signal. Only valid if "physical value range valid" flag (bit 1) is set.
     #[br(if(cc_val_count > 0 && cc_type < 11), little, count = cc_val_count)]
-    pub cc_val: Vec<f64>, //List of additional conversion parameters. Length of list is given by cc_val_count. The list can be empty. Details are explained in formula-specific block supplement.
-    #[br(if(cc_val_count > 0 && cc_type == 11), little, count = cc_val_count)]
-    // Bitfield text table
-    pub cc_val_bitfield: Vec<u64>, //List of additional conversion parameters. Length of list is given by cc_val_count. The list can be empty. Details are explained in formula-specific block supplement.
+    pub cc_val_real: Vec<f64>, //List of additional conversion parameters. Length of list is given by cc_val_count. The list can be empty. Details are explained in formula-specific block supplement.
+    #[br(if(cc_val_count > 0 && cc_type == 11), little, count = cc_val_count)] // Bitfield text table
+    pub cc_val_uint: Vec<u64>, //List of additional conversion parameters. Length of list is given by cc_val_count. The list can be empty. Details are explained in formula-specific block supplement.
 }
 
 /// Si4 Source Information block struct

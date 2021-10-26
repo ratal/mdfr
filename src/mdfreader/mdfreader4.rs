@@ -165,7 +165,8 @@ fn read_data(
                 );
             }
             // initialise record counter
-            let mut record_counter: HashMap<u64, (usize, Vec<u8>)> = HashMap::with_capacity(dg.cg.len());
+            let mut record_counter: HashMap<u64, (usize, Vec<u8>)> =
+                HashMap::with_capacity(dg.cg.len());
             for cg in dg.cg.values_mut() {
                 record_counter.insert(
                     cg.block.cg_record_id,
@@ -1237,7 +1238,8 @@ fn apply_bit_mask_offset(dg: &mut Dg4, channel_names_to_read_in_dg: &HashSet<Str
                             }
                             ChannelData::Float16(_) => (),
                             ChannelData::Int24(a) => {
-                                let left_shift = 32 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
+                                let left_shift =
+                                    32 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
                                 let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
                                 if left_shift > 0 {
                                     a.map_inplace(|x| *x <<= left_shift)
@@ -1247,7 +1249,8 @@ fn apply_bit_mask_offset(dg: &mut Dg4, channel_names_to_read_in_dg: &HashSet<Str
                                 };
                             }
                             ChannelData::UInt24(a) => {
-                                let left_shift = 32 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
+                                let left_shift =
+                                    32 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
                                 let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
                                 if left_shift > 0 {
                                     a.map_inplace(|x| *x <<= left_shift)
@@ -1274,7 +1277,8 @@ fn apply_bit_mask_offset(dg: &mut Dg4, channel_names_to_read_in_dg: &HashSet<Str
                             }
                             ChannelData::Float32(_) => (),
                             ChannelData::Int48(a) => {
-                                let left_shift = 64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
+                                let left_shift =
+                                    64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
                                 let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
                                 if left_shift > 0 {
                                     a.map_inplace(|x| *x <<= left_shift)
@@ -1284,7 +1288,8 @@ fn apply_bit_mask_offset(dg: &mut Dg4, channel_names_to_read_in_dg: &HashSet<Str
                                 };
                             }
                             ChannelData::UInt48(a) => {
-                                let left_shift = 64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
+                                let left_shift =
+                                    64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
                                 let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
                                 if left_shift > 0 {
                                     a.map_inplace(|x| *x <<= left_shift)
@@ -1294,7 +1299,8 @@ fn apply_bit_mask_offset(dg: &mut Dg4, channel_names_to_read_in_dg: &HashSet<Str
                                 };
                             }
                             ChannelData::Int64(a) => {
-                                let left_shift = 64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
+                                let left_shift =
+                                    64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
                                 let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
                                 if left_shift > 0 {
                                     a.map_inplace(|x| *x <<= left_shift)
@@ -1304,7 +1310,8 @@ fn apply_bit_mask_offset(dg: &mut Dg4, channel_names_to_read_in_dg: &HashSet<Str
                                 };
                             }
                             ChannelData::UInt64(a) => {
-                                let left_shift = 64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
+                                let left_shift =
+                                    64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
                                 let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
                                 if left_shift > 0 {
                                     a.map_inplace(|x| *x <<= left_shift)
@@ -1355,7 +1362,8 @@ fn apply_bit_mask_offset(dg: &mut Dg4, channel_names_to_read_in_dg: &HashSet<Str
                             }
                             ChannelData::ArrayDFloat16(_) => (),
                             ChannelData::ArrayDInt24(a) => {
-                                let left_shift = 32 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
+                                let left_shift =
+                                    32 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
                                 let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
                                 if left_shift > 0 {
                                     a.map_inplace(|x| *x <<= left_shift)
@@ -1365,7 +1373,8 @@ fn apply_bit_mask_offset(dg: &mut Dg4, channel_names_to_read_in_dg: &HashSet<Str
                                 };
                             }
                             ChannelData::ArrayDUInt24(a) => {
-                                let left_shift = 32 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
+                                let left_shift =
+                                    32 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
                                 let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
                                 if left_shift > 0 {
                                     a.map_inplace(|x| *x <<= left_shift)
@@ -1392,7 +1401,8 @@ fn apply_bit_mask_offset(dg: &mut Dg4, channel_names_to_read_in_dg: &HashSet<Str
                             }
                             ChannelData::ArrayDFloat32(_) => (),
                             ChannelData::ArrayDInt48(a) => {
-                                let left_shift = 64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
+                                let left_shift =
+                                    64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
                                 let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
                                 if left_shift > 0 {
                                     a.map_inplace(|x| *x <<= left_shift)
@@ -1402,7 +1412,8 @@ fn apply_bit_mask_offset(dg: &mut Dg4, channel_names_to_read_in_dg: &HashSet<Str
                                 };
                             }
                             ChannelData::ArrayDUInt48(a) => {
-                                let left_shift = 64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
+                                let left_shift =
+                                    64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
                                 let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
                                 if left_shift > 0 {
                                     a.map_inplace(|x| *x <<= left_shift)
@@ -1412,7 +1423,8 @@ fn apply_bit_mask_offset(dg: &mut Dg4, channel_names_to_read_in_dg: &HashSet<Str
                                 };
                             }
                             ChannelData::ArrayDInt64(a) => {
-                                let left_shift = 64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
+                                let left_shift =
+                                    64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
                                 let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
                                 if left_shift > 0 {
                                     a.map_inplace(|x| *x <<= left_shift)
@@ -1422,7 +1434,8 @@ fn apply_bit_mask_offset(dg: &mut Dg4, channel_names_to_read_in_dg: &HashSet<Str
                                 };
                             }
                             ChannelData::ArrayDUInt64(a) => {
-                                let left_shift = 64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
+                                let left_shift =
+                                    64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
                                 let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
                                 if left_shift > 0 {
                                     a.map_inplace(|x| *x <<= left_shift)

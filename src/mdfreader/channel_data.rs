@@ -123,17 +123,22 @@ impl ChannelData {
                     ChannelData::Complex64(Array1::<Complex<f64>>::zeros(cycle_count as usize))
                 }
                 ChannelData::StringSBC(_) => {
-                    let mut target_vect: Vec<String> = vec![String::with_capacity(n_bytes as usize);  cycle_count as usize];
+                    let mut target_vect: Vec<String> =
+                        vec![String::with_capacity(n_bytes as usize); cycle_count as usize];
                     for i in 0..cycle_count as usize {
                         target_vect[i].reserve(n_bytes as usize);
                     }
                     ChannelData::StringSBC(target_vect)
                 }
                 ChannelData::StringUTF8(_) => {
-                    ChannelData::StringUTF8(vec![String::with_capacity(n_bytes as usize); cycle_count as usize])
+                    ChannelData::StringUTF8(vec![
+                        String::with_capacity(n_bytes as usize);
+                        cycle_count as usize
+                    ])
                 }
                 ChannelData::StringUTF16(_) => {
-                    let mut target_vect: Vec<String> = vec![String::with_capacity(n_bytes as usize);  cycle_count as usize];
+                    let mut target_vect: Vec<String> =
+                        vec![String::with_capacity(n_bytes as usize); cycle_count as usize];
                     for i in 0..cycle_count as usize {
                         target_vect[i].reserve(n_bytes as usize);
                     }

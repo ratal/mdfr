@@ -13,7 +13,8 @@ pub(crate) fn register(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<Mdf>()?;
     Ok(())
 }
-//TODO export to hdf5 and parquet using arrow, xlswriter
+// TODO export to hdf5 and parquet using arrow, xlswriter
+// TODO resample and export to csv ?
 
 /// Implements Mdf class to provide API to python using pyo3
 #[pymethods]
@@ -61,7 +62,7 @@ impl Mdf {
         let Mdf(mdf) = self;
         // default py_array value is python None
         pyo3::Python::with_gil(|py| {
-            let master= mdf.get_channel_master(&channel_name);
+            let master = mdf.get_channel_master(&channel_name);
             let py_array: Py<PyAny> = mdf.get_channel_data(&master).to_object(py);
             py_array
         })
@@ -119,12 +120,25 @@ impl Mdf {
         pyo3::Python::with_gil(|py| {
             let locals = PyDict::new(py);
             locals.set_item("channel_name", &channel_name).unwrap();
-            locals.set_item("channel_unit", mdf.get_channel_unit(&channel_name)).unwrap();
+            locals
+                .set_item("channel_unit", mdf.get_channel_unit(&channel_name))
+                .unwrap();
             let master_channel_name = mdf.get_channel_master(&channel_name);
-            locals.set_item("master_channel_name", &master_channel_name).unwrap();
-            locals.set_item("master_channel_unit", mdf.get_channel_unit(&master_channel_name)).unwrap();
-            locals.set_item("master_data", mdf.get_channel_data(&master_channel_name)).unwrap();
-            locals.set_item("channel_data", mdf.get_channel_data(&channel_name)).unwrap();
+            locals
+                .set_item("master_channel_name", &master_channel_name)
+                .unwrap();
+            locals
+                .set_item(
+                    "master_channel_unit",
+                    mdf.get_channel_unit(&master_channel_name),
+                )
+                .unwrap();
+            locals
+                .set_item("master_data", mdf.get_channel_data(&master_channel_name))
+                .unwrap();
+            locals
+                .set_item("channel_data", mdf.get_channel_data(&channel_name))
+                .unwrap();
             py.import("matplotlib").unwrap();
             py.run(
                 r#"
@@ -139,7 +153,9 @@ pyplot.grid(True)
 pyplot.show()
 "#,
                 None,
-                Some(locals),).unwrap();
+                Some(locals),
+            )
+            .unwrap();
         })
     }
 }
