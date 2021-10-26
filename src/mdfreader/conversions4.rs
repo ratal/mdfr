@@ -19,10 +19,10 @@ pub fn convert_all_channels(dg: &mut Dg4, cc: &HashMap<i64, Cc4Block>) {
                 if let Some(conv) = cc.get(&cn.block.cn_cc_conversion) {
                     match conv.cc_type {
                         1 => {
-                            linear_conversion(cn, &conv.cc_val, &cycle_count);
+                            linear_conversion(cn, &conv.cc_val_real, &cycle_count);
                         }
                         2 => {
-                            rational_conversion(cn, &conv.cc_val, &cycle_count);
+                            rational_conversion(cn, &conv.cc_val_real, &cycle_count);
                         }
                         _ => {} //TODO further implement conversions
                     }

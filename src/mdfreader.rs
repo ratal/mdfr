@@ -12,4 +12,3 @@ pub fn mdfreader(file_name: &str) {
     let mut mdf = MdfInfo::new(file_name);
     mdf.load_all_channels_data_in_memory();
 }
-//TODO add Rust graphical interface ?
