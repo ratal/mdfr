@@ -90,7 +90,7 @@
                 }
             },
             "program": "${workspaceFolder}/target/debug/mdfr",
-            "args": ["/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/ChannelTypes/MasterChannels/Vector_VirtualTimeMasterChannel.mf4"],
+            "args": ["/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Conversion/RationalConversion/Vector_RationalConversionIntParams.mf4"],
             "cwd": "${workspaceFolder}"
         },
     ]
