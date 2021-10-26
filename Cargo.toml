@@ -2,7 +2,7 @@
 name = "mdfr"
 version = "0.1.0"
 authors = ["«ratal» <«ratal@ratal.org»>"]
-edition = "2018"
+edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -23,6 +23,7 @@ criterion = "0.3" # for benchmark
 yazi = "0.1" # for DZ block data deflate
 transpose = "0.2" # for DZBlock transpose
 numpy = "0.14" # export rust ndarrays into numpy
+fasteval = "0.2" # for algebraic conversion
 
 [lib]
 name = "mdfr"
