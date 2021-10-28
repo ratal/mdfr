@@ -511,7 +511,7 @@ mod tests {
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
         if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
-            let mut vect: Vec<f64> = vec![3.; 10];
+            let vect: Vec<f64> = vec![3.; 10];
             let target = Array1::<f64>::from_vec(vect);
             assert_eq!(ChannelData::Float64(target), *data);
         }
@@ -522,21 +522,7 @@ mod tests {
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
-        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
-            let expected_string_result: Vec<String> = vec![
-                "zero".to_string(),
-                "one".to_string(),
-                "two".to_string(),
-                "three".to_string(),
-                "four".to_string(),
-                "five".to_string(),
-                "six".to_string(),
-                "seven".to_string(),
-                "eight".to_string(),
-                "nine".to_string(),
-            ];
-            assert_eq!(ChannelData::StringUTF8(expected_string_result), *data);
-        }
+
         // Text conversion
         let file_name = format!(
             "{}{}{}",
@@ -545,19 +531,14 @@ mod tests {
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
         if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
-            let expected_string_result: Vec<String> = vec![
-                "zero".to_string(),
-                "one".to_string(),
-                "two".to_string(),
-                "three".to_string(),
-                "four".to_string(),
-                "five".to_string(),
-                "six".to_string(),
-                "seven".to_string(),
-                "eight".to_string(),
-                "nine".to_string(),
-            ];
-            assert_eq!(ChannelData::StringUTF8(expected_string_result), *data);
+            let mut vect: Vec<f64> = vec![0.; 10];
+            let mut counter: f64 = 0.;
+            vect.iter_mut().for_each(|v| {
+                *v = counter.clone() * 2. + 1.;
+                counter += 1.
+            });
+            let target = Array1::<f64>::from_vec(vect);
+            assert_eq!(ChannelData::Float64(target), *data);
         }
     }
 }

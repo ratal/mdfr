@@ -1709,7 +1709,7 @@ fn parse_cn4_block(
 }
 
 /// Cc4 Channel Conversion block struct
-#[derive(Debug, PartialEq, Default, Clone, BinRead)]
+#[derive(Debug, Clone, BinRead)]
 #[br(little)]
 pub struct Cc4Block {
     // cc_id: [u8; 4],  // ##CC
@@ -1734,7 +1734,8 @@ pub struct Cc4Block {
     cc_phy_range_max: f64, // Maximum physical signal value that occurred for this signal. Only valid if "physical value range valid" flag (bit 1) is set.
     #[br(if(cc_val_count > 0 && cc_type < 11), little, count = cc_val_count)]
     pub cc_val_real: Vec<f64>, //List of additional conversion parameters. Length of list is given by cc_val_count. The list can be empty. Details are explained in formula-specific block supplement.
-    #[br(if(cc_val_count > 0 && cc_type == 11), little, count = cc_val_count)] // Bitfield text table
+    #[br(if(cc_val_count > 0 && cc_type == 11), little, count = cc_val_count)]
+    // Bitfield text table
     pub cc_val_uint: Vec<u64>, //List of additional conversion parameters. Length of list is given by cc_val_count. The list can be empty. Details are explained in formula-specific block supplement.
 }
 

@@ -71,7 +71,7 @@ pub fn mdfreader4<'a>(
                 channel_group.process_all_channel_invalid_bits();
             }
             // conversion of all channels to physical values
-            convert_all_channels(dg, &info.sharable.cc);
+            convert_all_channels(dg, &info.sharable);
         }
     }
 }

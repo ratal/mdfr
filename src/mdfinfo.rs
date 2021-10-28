@@ -58,7 +58,7 @@ impl MdfInfo {
 
             // Read HD Block
             let (hd, position) = hd3_parser(&mut rdr, ver);
-            let (hd_comment, position) = hd3_comment_parser(&mut rdr, &hd, position);
+            let (hd_comment, _position) = hd3_comment_parser(&mut rdr, &hd, position);
 
             mdf_info = MdfInfo::V3(Box::new(MdfInfo3 {
                 ver,
