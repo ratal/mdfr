@@ -7,3 +7,4 @@ callgrind.out.*
 cachegrind.out.*
 massif.*
 /.env
+test_mdf*
