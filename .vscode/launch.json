@@ -1,0 +1,97 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Cargo test",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib"
+                ]
+            },
+            "program": "${cargo:program}",
+            "args": []
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'mdfr'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=mdfr"
+                ],
+                "filter": {
+                    "name": "mdfr",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'mdfr'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=mdfr",
+                    "--package=mdfr",
+                ],
+                "filter": {
+                    "name": "mdfr",
+                    "kind": "bin"
+                }
+            },
+            "args": ["/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/test.mf4"],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'mdfr'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=mdfr",
+                    "--package=mdfr"
+                ],
+                "filter": {
+                    "name": "mdfr",
+                    "kind": "bin"
+                }
+            },
+            "args": ["/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/test.mf4"],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable mdfr executable with perf critical file",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=mdfr",
+                    "--package=mdfr"
+                ],
+                "filter": {
+                    "name": "mdfr",
+                    "kind": "bin"
+                }
+            },
+            "program": "${workspaceFolder}/target/debug/mdfr",
+            "args": ["/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Conversion/RationalConversion/Vector_RationalConversionIntParams.mf4"],
+            "cwd": "${workspaceFolder}"
+        },
+    ]
+}

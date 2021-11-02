@@ -1,0 +1,54 @@
+[package]
+name = "mdfr"
+version = "0.1.0"
+authors = ["«ratal» <«ratal@ratal.org»>"]
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+clap = "2" # for input arguments 
+byteorder = "1.4" # for bytes conversions
+encoding = "0.2" # for bytes to texte conversion (utf8, SBC, UTF16)
+# binrw = "0" # to be introduced when less buggy and needed to write mdf
+binread = "2" # for easy reading of blocks into struct. To change to binrw when stable to later allow mdf writting
+num = "0.4" # for complex numbers
+half = "1" # for f16 handling
+encoding_rs = "0.8" # for endian management
+chrono = "0.4.19" # for time conversion
+ndarray = {version = "0.15", features = ["rayon"]} # for nd arrays
+rayon =  "1.5" # for general purpose parallel computations
+dashmap = {version = "4", features = ["rayon"]} # for parallel hashmap computations
+roxmltree = "0.14" # for xml parsing
+criterion = "0.3" # for benchmark
+yazi = "0.1" # for DZ block data deflate
+transpose = "0.2" # for DZBlock transpose
+numpy = "0.14" # export rust ndarrays into numpy
+fasteval = "0.2" # for algebraic conversion
+
+[lib]
+name = "mdfr"
+crate-type = ["rlib", "cdylib"]
+
+[dependencies.pyo3]
+version = "0.14.2"
+features = ["extension-module", "num-complex"]
+
+[[bench]]
+name = "mdf_benchmark"
+harness = false
+
+[profile.release]
+opt-level = 3
+debug = 2
+lto = true
+
+[profile.bench]
+debug = false
+opt-level = 3
+lto = true
+
+[profile.dev]
+debug = 2
+lto = false
+opt-level = 0
