@@ -531,13 +531,8 @@ mod tests {
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
         if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
-            let mut vect: Vec<f64> = vec![0.; 10];
-            let mut counter: f64 = 0.;
-            vect.iter_mut().for_each(|v| {
-                *v = counter.clone() * 2. + 1.;
-                counter += 1.
-            });
-            let target = Array1::<f64>::from_vec(vect);
+            let vect: [f64; 10] = [ 1.,  2.,  5., 10., 17., 26., 37., 50., 65., 82.];
+            let target = Array1::<f64>::from_vec(vect.to_vec());
             assert_eq!(ChannelData::Float64(target), *data);
         }
     }
