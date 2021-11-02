@@ -3,10 +3,10 @@ use std::collections::BTreeMap;
 
 use crate::mdfinfo::mdfinfo4::{Cn4, Dg4, SharableBlocks};
 use crate::mdfreader::channel_data::ChannelData;
-use ndarray::{Array1, ArrayD, Dim, Zip};
+use ndarray::{Array1, ArrayD, Zip};
 use num::Complex;
 use rayon::prelude::*;
-use fasteval::{Evaler, Instruction};
+use fasteval::Evaler;
 use fasteval::Compiler; 
 
 /// convert all channel arrays into physical values as required by CCBlock content
