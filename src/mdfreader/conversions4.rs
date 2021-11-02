@@ -3,10 +3,10 @@ use std::collections::BTreeMap;
 
 use crate::mdfinfo::mdfinfo4::{Cn4, Dg4, SharableBlocks};
 use crate::mdfreader::channel_data::ChannelData;
-use ndarray::{Array1, ArrayD, Zip};
+use ndarray::{Array1, ArrayD, Dim, Zip};
 use num::Complex;
 use rayon::prelude::*;
-use fasteval::Evaler;
+use fasteval::{Evaler, Instruction};
 use fasteval::Compiler; 
 
 /// convert all channel arrays into physical values as required by CCBlock content
@@ -452,9 +452,9 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             });
             cn.data = ChannelData::Float64(new_array);
         }
-        ChannelData::Complex16(_) => {}
-        ChannelData::Complex32(_) => {}
-        ChannelData::Complex64(_) => {}
+        ChannelData::Complex16(_) => todo!(),
+        ChannelData::Complex32(_) => todo!(),
+        ChannelData::Complex64(_) => todo!(),
         ChannelData::StringSBC(_) => {}
         ChannelData::StringUTF8(_) => {}
         ChannelData::StringUTF16(_) => {}
@@ -723,7 +723,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &String, cycle_count: &u64) {
         ChannelData::Float64(a) => {
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a as f64);
+                map.insert("X".to_string(), *a);
                 *new_array = compiled.eval(&slab, &mut map).expect("could not evaluate algebraic expression");
             });
             cn.data = ChannelData::Float64(new_array);
@@ -735,21 +735,126 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &String, cycle_count: &u64) {
         ChannelData::StringUTF8(_) => todo!(),
         ChannelData::StringUTF16(_) => todo!(),
         ChannelData::ByteArray(_) => todo!(),
-        ChannelData::ArrayDInt8(_) => todo!(),
-        ChannelData::ArrayDUInt8(_) => todo!(),
-        ChannelData::ArrayDInt16(_) => todo!(),
-        ChannelData::ArrayDUInt16(_) => todo!(),
-        ChannelData::ArrayDFloat16(_) => todo!(),
-        ChannelData::ArrayDInt24(_) => todo!(),
-        ChannelData::ArrayDUInt24(_) => todo!(),
-        ChannelData::ArrayDInt32(_) => todo!(),
-        ChannelData::ArrayDUInt32(_) => todo!(),
-        ChannelData::ArrayDFloat32(_) => todo!(),
-        ChannelData::ArrayDInt48(_) => todo!(),
-        ChannelData::ArrayDUInt48(_) => todo!(),
-        ChannelData::ArrayDInt64(_) => todo!(),
-        ChannelData::ArrayDUInt64(_) => todo!(),
-        ChannelData::ArrayDFloat64(_) => todo!(),
+        ChannelData::ArrayDInt8(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                map.insert("X".to_string(), *a as f64);
+                *new_array = compiled.eval(&slab, &mut map).expect("could not evaluate algebraic expression");
+            });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        },
+        ChannelData::ArrayDUInt8(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                map.insert("X".to_string(), *a as f64);
+                *new_array = compiled.eval(&slab, &mut map).expect("could not evaluate algebraic expression");
+            });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        },
+        ChannelData::ArrayDInt16(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                map.insert("X".to_string(), *a as f64);
+                *new_array = compiled.eval(&slab, &mut map).expect("could not evaluate algebraic expression");
+            });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        },
+        ChannelData::ArrayDUInt16(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                map.insert("X".to_string(), *a as f64);
+                *new_array = compiled.eval(&slab, &mut map).expect("could not evaluate algebraic expression");
+            });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        },
+        ChannelData::ArrayDFloat16(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                map.insert("X".to_string(), *a as f64);
+                *new_array = compiled.eval(&slab, &mut map).expect("could not evaluate algebraic expression");
+            });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        },
+        ChannelData::ArrayDInt24(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                map.insert("X".to_string(), *a as f64);
+                *new_array = compiled.eval(&slab, &mut map).expect("could not evaluate algebraic expression");
+            });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        },
+        ChannelData::ArrayDUInt24(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                map.insert("X".to_string(), *a as f64);
+                *new_array = compiled.eval(&slab, &mut map).expect("could not evaluate algebraic expression");
+            });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        },
+        ChannelData::ArrayDInt32(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                map.insert("X".to_string(), *a as f64);
+                *new_array = compiled.eval(&slab, &mut map).expect("could not evaluate algebraic expression");
+            });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        },
+        ChannelData::ArrayDUInt32(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                map.insert("X".to_string(), *a as f64);
+                *new_array = compiled.eval(&slab, &mut map).expect("could not evaluate algebraic expression");
+            });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        },
+        ChannelData::ArrayDFloat32(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                map.insert("X".to_string(), *a as f64);
+                *new_array = compiled.eval(&slab, &mut map).expect("could not evaluate algebraic expression");
+            });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        },
+        ChannelData::ArrayDInt48(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                map.insert("X".to_string(), *a as f64);
+                *new_array = compiled.eval(&slab, &mut map).expect("could not evaluate algebraic expression");
+            });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        },
+        ChannelData::ArrayDUInt48(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                map.insert("X".to_string(), *a as f64);
+                *new_array = compiled.eval(&slab, &mut map).expect("could not evaluate algebraic expression");
+            });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        },
+        ChannelData::ArrayDInt64(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                map.insert("X".to_string(), *a as f64);
+                *new_array = compiled.eval(&slab, &mut map).expect("could not evaluate algebraic expression");
+            });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        },
+        ChannelData::ArrayDUInt64(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                map.insert("X".to_string(), *a as f64);
+                *new_array = compiled.eval(&slab, &mut map).expect("could not evaluate algebraic expression");
+            });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        },
+        ChannelData::ArrayDFloat64(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                map.insert("X".to_string(), *a);
+                *new_array = compiled.eval(&slab, &mut map).expect("could not evaluate algebraic expression");
+            });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        },
         ChannelData::ArrayDComplex16(_) => todo!(),
         ChannelData::ArrayDComplex32(_) => todo!(),
         ChannelData::ArrayDComplex64(_) => todo!(),
