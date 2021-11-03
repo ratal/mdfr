@@ -1732,11 +1732,18 @@ pub struct Cc4Block {
     cc_val_count: u16, // Length N of cc_val list with additional parameters. See formula-specific block supplement for meaning of the parameters.
     cc_phy_range_min: f64, // Minimum physical signal value that occurred for this signal. Only valid if "physical value range valid" flag (bit 1) is set.
     cc_phy_range_max: f64, // Maximum physical signal value that occurred for this signal. Only valid if "physical value range valid" flag (bit 1) is set.
-    #[br(if(cc_val_count > 0 && cc_type < 11), little, count = cc_val_count)]
-    pub cc_val_real: Vec<f64>, //List of additional conversion parameters. Length of list is given by cc_val_count. The list can be empty. Details are explained in formula-specific block supplement.
-    #[br(if(cc_val_count > 0 && cc_type == 11), little, count = cc_val_count)]
-    // Bitfield text table
-    pub cc_val_uint: Vec<u64>, //List of additional conversion parameters. Length of list is given by cc_val_count. The list can be empty. Details are explained in formula-specific block supplement.
+    #[br(args(cc_val_count, cc_type))]
+    pub cc_val: CcVal,
+}
+
+#[derive(Debug, Clone, BinRead)]
+#[br(little, import(count: u16, cc_type: u8))]
+pub enum CcVal {    
+    #[br(pre_assert(cc_type < 11))]
+    Real(#[br(count = count)] Vec<f64>),
+
+    #[br(pre_assert(cc_type == 11))]
+    Uint(#[br(count = count)]  Vec<u64>),
 }
 
 /// Si4 Source Information block struct

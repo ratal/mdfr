@@ -1,7 +1,7 @@
 //! this modules implements functions to convert arrays into physical arrays using CCBlock
 use std::collections::BTreeMap;
 
-use crate::mdfinfo::mdfinfo4::{Cn4, Dg4, SharableBlocks};
+use crate::mdfinfo::mdfinfo4::{Cn4, Dg4, SharableBlocks, CcVal};
 use crate::mdfreader::channel_data::ChannelData;
 use ndarray::{Array1, ArrayD, Zip};
 use num::Complex;
@@ -22,10 +22,16 @@ pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) {
                 if let Some(conv) = sharable.cc.get(&cn.block.cn_cc_conversion) {
                     match conv.cc_type {
                         1 => {
-                            linear_conversion(cn, &conv.cc_val_real, &cycle_count);
+                            match &conv.cc_val {
+                                CcVal::Real(cc_val) => linear_conversion(cn, cc_val, &cycle_count),
+                                CcVal::Uint(_) => (),
+                            }
                         }
                         2 => {
-                            rational_conversion(cn, &conv.cc_val_real, &cycle_count);
+                            match &conv.cc_val {
+                                CcVal::Real(cc_val) => rational_conversion(cn, cc_val, &cycle_count),
+                                CcVal::Uint(_) => (),
+                            }
                         }
                         3 => {
                             if !&conv.cc_ref.is_empty() {
