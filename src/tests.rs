@@ -11,16 +11,21 @@ mod tests {
 
     #[test]
     fn info_test() -> io::Result<()> {
-        let mut file_name = "/home/ratal/workspace/mdfr/test_files/test_basic.mf4";
+        let mut file_name = "test_files/test_basic.mf4";
         println!("reading {}", file_name);
         let mut info = MdfInfo::new(file_name);
         println!("{:#?}", info);
         assert_eq!(info.get_version(), 410);
-        file_name = "/home/ratal/workspace/mdfr/test_files/test_mdf3.mdf";
+        file_name = "test_files/test_mdf3.mdf";
         println!("reading {}", file_name);
         let mut info = MdfInfo::new(file_name);
         println!("{:#?}", &info);
         assert_eq!(info.get_version(), 310);
+        file_name = "test_files/test_mdf4.mf4";
+        println!("reading {}", file_name);
+        let mut info = MdfInfo::new(file_name);
+        println!("{:#?}", &info);
+        assert_eq!(info.get_version(), 400);
         Ok(())
     }
 
@@ -535,5 +540,52 @@ mod tests {
             let target = Array1::<f64>::from_vec(vect.to_vec());
             assert_eq!(ChannelData::Float64(target), *data);
         }
+
+        // Lookup conversion : Value to Value Table With Interpolation
+        let file_name = format!(
+            "{}{}{}",
+            base_path, list_of_paths[1], "Vector_Value2ValueConversionInterpolation.mf4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+            let vect: [f64; 30] = [-5.        , -5.        , -5.        , -5.        , -4.5       ,
+            -4.        , -3.5       , -3.        , -2.5       , -2.        ,
+            -4./3., -2./3.,  0.        ,  1./3.,  2./3.,
+             1.        ,  1.5       ,  2.        ,  1.        ,  0.        ,
+             1.5       ,  3.        ,  4.5       ,  6.        ,  4.5       ,
+             3.        ,  1.5       ,  0.        ,  0.        ,  0.        ];
+            let target = Array1::<f64>::from_vec(vect.to_vec());
+            assert_eq!(ChannelData::Float64(target), *data);
+        }
+
+        // Lookup conversion : Value to Value Table Without Interpolation
+        let file_name = format!(
+            "{}{}{}",
+            base_path, list_of_paths[1], "Vector_Value2ValueConversionNoInterpolation.mf4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+            let vect: [f64; 30] = [-5., -5., -5., -5., -5., -5., -5., -2., -2., -2., -2.,  0.,  0.,
+            0.,  1.,  1.,  1.,  2.,  2.,  0.,  0.,  3.,  3.,  6.,  6.,  3.,
+            3.,  0., 0., 0.];
+            let target = Array1::<f64>::from_vec(vect.to_vec());
+            assert_eq!(ChannelData::Float64(target), *data);
+        }
+
+        // Lookup conversion : Value to Value to Text
+        let file_name = format!(
+            "{}{}{}",
+            base_path, list_of_paths[1], "Vector_Value2TextConversion.mf4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+            let vect: [f64; 10] = [0., 1., 2., 3., 4., 5., 6., 7., 8., 9.];
+            let target = Array1::<f64>::from_vec(vect.to_vec());
+            assert_eq!(ChannelData::Float64(target), *data);
+        }
+
     }
 }
