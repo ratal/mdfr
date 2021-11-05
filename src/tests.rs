@@ -574,7 +574,21 @@ mod tests {
             assert_eq!(ChannelData::Float64(target), *data);
         }
 
-        // Lookup conversion : Value to Value to Text
+        // Lookup conversion : Value Range to Value
+        let file_name = format!(
+            "{}{}{}",
+            base_path, list_of_paths[1], "Vector_ValueRange2ValueConversion.mf4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+            let vect: [f64; 30] = [-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 2.0, 2.0,
+             2.0, 2.0, 2.0, 3.0, 3.0, 5.0, 5.0, 5.0, 6.0, 7.0, 7.0, 8.0, 8.0, 9.0, 9.0, 9.0, 9.0];
+            let target = Array1::<f64>::from_vec(vect.to_vec());
+            assert_eq!(ChannelData::Float64(target), *data);
+        }
+
+        // Lookup conversion : Value to Text
         let file_name = format!(
             "{}{}{}",
             base_path, list_of_paths[1], "Vector_Value2TextConversion.mf4"

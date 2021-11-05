@@ -53,6 +53,12 @@ pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) {
                                 CcVal::Uint(_) => (),
                             }
                         }
+                        6 => {
+                            match &conv.cc_val {
+                                CcVal::Real(cc_val) => value_range_to_value_table(cn, cc_val.clone(), &cycle_count),
+                                CcVal::Uint(_) => (),
+                            }
+                        }
                         _ => {} //TODO further implement conversions
                     }
                 }
@@ -2038,6 +2044,595 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
                         } else {
                             *y0
                         }
+                        },
+                    };
+                });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        },
+        ChannelData::ArrayDComplex16(_) => {},
+        ChannelData::ArrayDComplex32(_) => {},
+        ChannelData::ArrayDComplex64(_) => {},
+    }
+}
+
+/// Apply value to value without interpolation conversion to get physical data
+fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64) {
+    let mut val: Vec<(f64, f64, f64)> = Vec::new();
+    for (a, b, c) in cc_val.iter().tuples::<(_, _, _)>() {
+        val.push((*a, *b, *c));
+    }
+    let default_value = cc_val[cc_val.len() - 1];
+    match &mut cn.data {
+        ChannelData::Int8(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let a64 = *a as f64;
+                *new_array =  match val.binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap()) {
+                    Ok(idx) => val[idx].2,
+                    Err(0) => default_value,
+                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                    Err(idx) => {
+                        if a64 <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
+                        },
+                    };
+                });
+            cn.data = ChannelData::Float64(new_array);
+        },
+        ChannelData::UInt8(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let a64 = *a as f64;
+                *new_array =  match val.binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap()) {
+                    Ok(idx) => val[idx].2,
+                    Err(0) => default_value,
+                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                    Err(idx) => {
+                        if a64 <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
+                        },
+                    };
+                });
+            cn.data = ChannelData::Float64(new_array);
+        },
+        ChannelData::Int16(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let a64 = *a as f64;
+                *new_array =  match val.binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap()) {
+                    Ok(idx) => val[idx].2,
+                    Err(0) => default_value,
+                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                    Err(idx) => {
+                        if a64 <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
+                        },
+                    };
+                });
+            cn.data = ChannelData::Float64(new_array);
+        },
+        ChannelData::UInt16(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let a64 = *a as f64;
+                *new_array =  match val.binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap()) {
+                    Ok(idx) => val[idx].2,
+                    Err(0) => default_value,
+                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                    Err(idx) => {
+                        if a64 <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
+                        },
+                    };
+                });
+            cn.data = ChannelData::Float64(new_array);
+        },
+        ChannelData::Float16(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let a64 = *a as f64;
+                *new_array =  match val.binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap()) {
+                    Ok(idx) => val[idx].2,
+                    Err(0) => default_value,
+                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                    Err(idx) => {
+                        if a64 <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
+                        },
+                    };
+                });
+            cn.data = ChannelData::Float64(new_array);
+        },
+        ChannelData::Int24(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let a64 = *a as f64;
+                *new_array =  match val.binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap()) {
+                    Ok(idx) => val[idx].2,
+                    Err(0) => default_value,
+                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                    Err(idx) => {
+                        if a64 <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
+                        },
+                    };
+                });
+            cn.data = ChannelData::Float64(new_array);
+        },
+        ChannelData::UInt24(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let a64 = *a as f64;
+                *new_array =  match val.binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap()) {
+                    Ok(idx) => val[idx].2,
+                    Err(0) => default_value,
+                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                    Err(idx) => {
+                        if a64 <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
+                        },
+                    };
+                });
+            cn.data = ChannelData::Float64(new_array);
+        },
+        ChannelData::Int32(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let a64 = *a as f64;
+                *new_array =  match val.binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap()) {
+                    Ok(idx) => val[idx].2,
+                    Err(0) => default_value,
+                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                    Err(idx) => {
+                        if a64 <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
+                        },
+                    };
+                });
+            cn.data = ChannelData::Float64(new_array);
+        },
+        ChannelData::UInt32(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let a64 = *a as f64;
+                *new_array =  match val.binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap()) {
+                    Ok(idx) => val[idx].2,
+                    Err(0) => default_value,
+                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                    Err(idx) => {
+                        if a64 <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
+                        },
+                    };
+                });
+            cn.data = ChannelData::Float64(new_array);
+        },
+        ChannelData::Float32(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let a64 = *a as f64;
+                *new_array =  match val.binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap()) {
+                    Ok(idx) => val[idx].2,
+                    Err(0) => default_value,
+                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                    Err(idx) => {
+                        if a64 <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
+                        },
+                    };
+                });
+            cn.data = ChannelData::Float64(new_array);
+        },
+        ChannelData::Int48(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let a64 = *a as f64;
+                *new_array =  match val.binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap()) {
+                    Ok(idx) => val[idx].2,
+                    Err(0) => default_value,
+                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                    Err(idx) => {
+                        if a64 <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
+                        },
+                    };
+                });
+            cn.data = ChannelData::Float64(new_array);
+        },
+        ChannelData::UInt48(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let a64 = *a as f64;
+                *new_array =  match val.binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap()) {
+                    Ok(idx) => val[idx].2,
+                    Err(0) => default_value,
+                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                    Err(idx) => {
+                        if a64 <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
+                        },
+                    };
+                });
+            cn.data = ChannelData::Float64(new_array);
+        },
+        ChannelData::Int64(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let a64 = *a as f64;
+                *new_array =  match val.binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap()) {
+                    Ok(idx) => val[idx].2,
+                    Err(0) => default_value,
+                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                    Err(idx) => {
+                        if a64 <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
+                        },
+                    };
+                });
+            cn.data = ChannelData::Float64(new_array);
+        },
+        ChannelData::UInt64(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let a64 = *a as f64;
+                *new_array =  match val.binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap()) {
+                    Ok(idx) => val[idx].2,
+                    Err(0) => default_value,
+                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                    Err(idx) => {
+                        if a64 <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
+                        },
+                    };
+                });
+            cn.data = ChannelData::Float64(new_array);
+        },
+        ChannelData::Float64(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                *new_array =  match val.binary_search_by(|&(xi, _, _)| xi.partial_cmp(a).unwrap()) {
+                    Ok(idx) => val[idx].2,
+                    Err(0) => default_value,
+                    Err(idx) if (idx >= val.len() && *a <= val[idx - 1].1) => val[idx - 1].2,
+                    Err(idx) => {
+                        if *a <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
+                        },
+                    };
+                });
+            cn.data = ChannelData::Float64(new_array);
+        },
+        ChannelData::Complex16(_) => {},
+        ChannelData::Complex32(_) => {},
+        ChannelData::Complex64(_) => {},
+        ChannelData::StringSBC(_) => {},
+        ChannelData::StringUTF8(_) => {},
+        ChannelData::StringUTF16(_) => {},
+        ChannelData::ByteArray(_) => {},
+        ChannelData::ArrayDInt8(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let a64 = *a as f64;
+                *new_array =  match val.binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap()) {
+                    Ok(idx) => val[idx].2,
+                    Err(0) => default_value,
+                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                    Err(idx) => {
+                        if a64 <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
+                        },
+                    };
+                });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        },
+        ChannelData::ArrayDUInt8(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let a64 = *a as f64;
+                *new_array =  match val.binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap()) {
+                    Ok(idx) => val[idx].2,
+                    Err(0) => default_value,
+                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                    Err(idx) => {
+                        if a64 <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
+                        },
+                    };
+                });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        },
+        ChannelData::ArrayDInt16(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let a64 = *a as f64;
+                *new_array =  match val.binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap()) {
+                    Ok(idx) => val[idx].2,
+                    Err(0) => default_value,
+                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                    Err(idx) => {
+                        if a64 <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
+                        },
+                    };
+                });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        },
+        ChannelData::ArrayDUInt16(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let a64 = *a as f64;
+                *new_array =  match val.binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap()) {
+                    Ok(idx) => val[idx].2,
+                    Err(0) => default_value,
+                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                    Err(idx) => {
+                        if a64 <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
+                        },
+                    };
+                });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        },
+        ChannelData::ArrayDFloat16(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let a64 = *a as f64;
+                *new_array =  match val.binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap()) {
+                    Ok(idx) => val[idx].2,
+                    Err(0) => default_value,
+                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                    Err(idx) => {
+                        if a64 <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
+                        },
+                    };
+                });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        },
+        ChannelData::ArrayDInt24(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let a64 = *a as f64;
+                *new_array =  match val.binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap()) {
+                    Ok(idx) => val[idx].2,
+                    Err(0) => default_value,
+                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                    Err(idx) => {
+                        if a64 <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
+                        },
+                    };
+                });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        },
+        ChannelData::ArrayDUInt24(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let a64 = *a as f64;
+                *new_array =  match val.binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap()) {
+                    Ok(idx) => val[idx].2,
+                    Err(0) => default_value,
+                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                    Err(idx) => {
+                        if a64 <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
+                        },
+                    };
+                });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        },
+        ChannelData::ArrayDInt32(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let a64 = *a as f64;
+                *new_array =  match val.binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap()) {
+                    Ok(idx) => val[idx].2,
+                    Err(0) => default_value,
+                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                    Err(idx) => {
+                        if a64 <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
+                        },
+                    };
+                });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        },
+        ChannelData::ArrayDUInt32(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let a64 = *a as f64;
+                *new_array =  match val.binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap()) {
+                    Ok(idx) => val[idx].2,
+                    Err(0) => default_value,
+                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                    Err(idx) => {
+                        if a64 <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
+                        },
+                    };
+                });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        },
+        ChannelData::ArrayDFloat32(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let a64 = *a as f64;
+                *new_array =  match val.binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap()) {
+                    Ok(idx) => val[idx].2,
+                    Err(0) => default_value,
+                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                    Err(idx) => {
+                        if a64 <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
+                        },
+                    };
+                });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        },
+        ChannelData::ArrayDInt48(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let a64 = *a as f64;
+                *new_array =  match val.binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap()) {
+                    Ok(idx) => val[idx].2,
+                    Err(0) => default_value,
+                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                    Err(idx) => {
+                        if a64 <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
+                        },
+                    };
+                });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        },
+        ChannelData::ArrayDUInt48(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let a64 = *a as f64;
+                *new_array =  match val.binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap()) {
+                    Ok(idx) => val[idx].2,
+                    Err(0) => default_value,
+                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                    Err(idx) => {
+                        if a64 <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
+                        },
+                    };
+                });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        },
+        ChannelData::ArrayDInt64(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let a64 = *a as f64;
+                *new_array =  match val.binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap()) {
+                    Ok(idx) => val[idx].2,
+                    Err(0) => default_value,
+                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                    Err(idx) => {
+                        if a64 <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
+                        },
+                    };
+                });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        },
+        ChannelData::ArrayDUInt64(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let a64 = *a as f64;
+                *new_array =  match val.binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap()) {
+                    Ok(idx) => val[idx].2,
+                    Err(0) => default_value,
+                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                    Err(idx) => {
+                        if a64 <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
+                        },
+                    };
+                });
+            cn.data = ChannelData::ArrayDFloat64(new_array);
+        },
+        ChannelData::ArrayDFloat64(a) => {
+            let mut new_array = ArrayD::<f64>::zeros(a.shape());
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                *new_array =  match val.binary_search_by(|&(xi, _, _)| xi.partial_cmp(a).unwrap()) {
+                    Ok(idx) => val[idx].2,
+                    Err(0) => default_value,
+                    Err(idx) if (idx >= val.len() && *a <= val[idx - 1].1) => val[idx - 1].2,
+                    Err(idx) => {
+                        if *a <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
                         },
                     };
                 });
