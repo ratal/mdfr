@@ -2665,19 +2665,20 @@ enum DefaultTextOrScaleConversion {
 }
 
 fn value_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle_count: &u64, sharable: &SharableBlocks) {
-    let mut table: HashMap<i64, TextOrScaleConversion> = HashMap::with_capacity(cc_val.len());
+    // table applicable only to integers, no canonization
+    let mut table_int: HashMap<i64, TextOrScaleConversion> = HashMap::with_capacity(cc_val.len());
     for (ind, val) in cc_val.iter().enumerate() {
-        let ref_val = (*val* 1024.0 * 1024.0).round() as i64;
+        let val_i64 = (*val).round() as i64;
         if let Some(txt) = sharable.tx.get(&cc_ref[ind]) {
-            table.insert(ref_val,TextOrScaleConversion::Txt(txt.0.clone()));
+            table_int.insert(val_i64,TextOrScaleConversion::Txt(txt.0.clone()));
         } else if let Some(cc) = sharable.cc.get(&cc_ref[ind]){
             if let Some(txt) = sharable.tx.get(&cc.cc_md_comment) {
-                table.insert(ref_val,TextOrScaleConversion::Scale(txt.0.clone()));
+                table_int.insert(val_i64,TextOrScaleConversion::Scale(txt.0.clone()));
             } else {
-                table.insert(ref_val, TextOrScaleConversion::Nil);
+                table_int.insert(val_i64, TextOrScaleConversion::Nil);
             }
         } else {
-            table.insert(ref_val,TextOrScaleConversion::Nil);
+            table_int.insert(val_i64,TextOrScaleConversion::Nil);
         }
     }
     let default: DefaultTextOrScaleConversion;
@@ -2694,25 +2695,11 @@ fn value_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle_count
     }
 
     match &mut cn.data {
-        ChannelData::Int8(_) => todo!(),
-        ChannelData::UInt8(_) => todo!(),
-        ChannelData::Int16(_) => todo!(),
-        ChannelData::UInt16(_) => todo!(),
-        ChannelData::Float16(_) => todo!(),
-        ChannelData::Int24(_) => todo!(),
-        ChannelData::UInt24(_) => todo!(),
-        ChannelData::Int32(_) => todo!(),
-        ChannelData::UInt32(_) => todo!(),
-        ChannelData::Float32(_) => todo!(),
-        ChannelData::Int48(_) => todo!(),
-        ChannelData::UInt48(_) => todo!(),
-        ChannelData::Int64(_) => todo!(),
-        ChannelData::UInt64(_) => todo!(),
-        ChannelData::Float64(a) => {
+        ChannelData::Int8(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array,a| {
-                let ref_val = (*a* 1024.0 * 1024.0).round() as i64;
-                if let Some(tosc) = table.get(&ref_val) {
+                let ref_val = *a as i64;
+                if let Some(tosc) = table_int.get(&ref_val) {
                     match tosc {
                         TextOrScaleConversion::Txt(txt) => {
                             *new_array = txt.clone();
@@ -2740,30 +2727,525 @@ fn value_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle_count
             });
             cn.data = ChannelData::StringUTF8(new_array);
         },
-        ChannelData::Complex16(_) => todo!(),
-        ChannelData::Complex32(_) => todo!(),
-        ChannelData::Complex64(_) => todo!(),
-        ChannelData::StringSBC(_) => todo!(),
-        ChannelData::StringUTF8(_) => todo!(),
-        ChannelData::StringUTF16(_) => todo!(),
-        ChannelData::ByteArray(_) => todo!(),
-        ChannelData::ArrayDInt8(_) => todo!(),
-        ChannelData::ArrayDUInt8(_) => todo!(),
-        ChannelData::ArrayDInt16(_) => todo!(),
-        ChannelData::ArrayDUInt16(_) => todo!(),
-        ChannelData::ArrayDFloat16(_) => todo!(),
-        ChannelData::ArrayDInt24(_) => todo!(),
-        ChannelData::ArrayDUInt24(_) => todo!(),
-        ChannelData::ArrayDInt32(_) => todo!(),
-        ChannelData::ArrayDUInt32(_) => todo!(),
-        ChannelData::ArrayDFloat32(_) => todo!(),
-        ChannelData::ArrayDInt48(_) => todo!(),
-        ChannelData::ArrayDUInt48(_) => todo!(),
-        ChannelData::ArrayDInt64(_) => todo!(),
-        ChannelData::ArrayDUInt64(_) => todo!(),
-        ChannelData::ArrayDFloat64(_) => todo!(),
-        ChannelData::ArrayDComplex16(_) => todo!(),
-        ChannelData::ArrayDComplex32(_) => todo!(),
-        ChannelData::ArrayDComplex64(_) => todo!(),
+        ChannelData::UInt8(a) => {
+            let mut new_array = vec![String::new(); *cycle_count as usize];
+            Zip::from(&mut new_array).and(a).for_each(|new_array,a| {
+                let ref_val = *a as i64;
+                if let Some(tosc) = table_int.get(&ref_val) {
+                    match tosc {
+                        TextOrScaleConversion::Txt(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        TextOrScaleConversion::Scale(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                } else {
+                    match &default {
+                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        DefaultTextOrScaleConversion::DefaultScale(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                }
+            });
+            cn.data = ChannelData::StringUTF8(new_array);
+        },
+        ChannelData::Int16(a) => {
+            let mut new_array = vec![String::new(); *cycle_count as usize];
+            Zip::from(&mut new_array).and(a).for_each(|new_array,a| {
+                let ref_val = *a as i64;
+                if let Some(tosc) = table_int.get(&ref_val) {
+                    match tosc {
+                        TextOrScaleConversion::Txt(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        TextOrScaleConversion::Scale(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                } else {
+                    match &default {
+                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        DefaultTextOrScaleConversion::DefaultScale(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                }
+            });
+            cn.data = ChannelData::StringUTF8(new_array);
+        },
+        ChannelData::UInt16(a) => {
+            let mut new_array = vec![String::new(); *cycle_count as usize];
+            Zip::from(&mut new_array).and(a).for_each(|new_array,a| {
+                let ref_val = *a as i64;
+                if let Some(tosc) = table_int.get(&ref_val) {
+                    match tosc {
+                        TextOrScaleConversion::Txt(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        TextOrScaleConversion::Scale(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                } else {
+                    match &default {
+                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        DefaultTextOrScaleConversion::DefaultScale(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                }
+            });
+            cn.data = ChannelData::StringUTF8(new_array);
+        },
+        ChannelData::Float16(a) => {
+            // table for floating point comparison
+            let mut table_float: HashMap<i64, TextOrScaleConversion> = HashMap::with_capacity(cc_val.len());
+            for (ind, val) in cc_val.iter().enumerate() {
+                let ref_val = (*val* 128.0).round() as i64; // Canonization
+                if let Some(txt) = sharable.tx.get(&cc_ref[ind]) {
+                    table_float.insert(ref_val,TextOrScaleConversion::Txt(txt.0.clone()));
+                } else if let Some(cc) = sharable.cc.get(&cc_ref[ind]){
+                    if let Some(txt) = sharable.tx.get(&cc.cc_md_comment) {
+                        table_float.insert(ref_val,TextOrScaleConversion::Scale(txt.0.clone()));
+                    } else {
+                        table_float.insert(ref_val, TextOrScaleConversion::Nil);
+                    }
+                } else {
+                    table_float.insert(ref_val,TextOrScaleConversion::Nil);
+                }
+            }
+            let mut new_array = vec![String::new(); *cycle_count as usize];
+            Zip::from(&mut new_array).and(a).for_each(|new_array,a| {
+                let ref_val = (*a* 128.0).round() as i64;
+                if let Some(tosc) = table_float.get(&ref_val) {
+                    match tosc {
+                        TextOrScaleConversion::Txt(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        TextOrScaleConversion::Scale(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                } else {
+                    match &default {
+                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        DefaultTextOrScaleConversion::DefaultScale(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                }
+            });
+            cn.data = ChannelData::StringUTF8(new_array);
+        },
+        ChannelData::Int24(a) => {
+            let mut new_array = vec![String::new(); *cycle_count as usize];
+            Zip::from(&mut new_array).and(a).for_each(|new_array,a| {
+                let ref_val = *a as i64;
+                if let Some(tosc) = table_int.get(&ref_val) {
+                    match tosc {
+                        TextOrScaleConversion::Txt(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        TextOrScaleConversion::Scale(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                } else {
+                    match &default {
+                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        DefaultTextOrScaleConversion::DefaultScale(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                }
+            });
+            cn.data = ChannelData::StringUTF8(new_array);
+        },
+        ChannelData::UInt24(a) => {
+            let mut new_array = vec![String::new(); *cycle_count as usize];
+            Zip::from(&mut new_array).and(a).for_each(|new_array,a| {
+                let ref_val = *a as i64;
+                if let Some(tosc) = table_int.get(&ref_val) {
+                    match tosc {
+                        TextOrScaleConversion::Txt(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        TextOrScaleConversion::Scale(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                } else {
+                    match &default {
+                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        DefaultTextOrScaleConversion::DefaultScale(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                }
+            });
+            cn.data = ChannelData::StringUTF8(new_array);
+        },
+        ChannelData::Int32(a) => {
+            let mut new_array = vec![String::new(); *cycle_count as usize];
+            Zip::from(&mut new_array).and(a).for_each(|new_array,a| {
+                let ref_val = *a as i64;
+                if let Some(tosc) = table_int.get(&ref_val) {
+                    match tosc {
+                        TextOrScaleConversion::Txt(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        TextOrScaleConversion::Scale(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                } else {
+                    match &default {
+                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        DefaultTextOrScaleConversion::DefaultScale(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                }
+            });
+            cn.data = ChannelData::StringUTF8(new_array);
+        },
+        ChannelData::UInt32(a) => {
+            let mut new_array = vec![String::new(); *cycle_count as usize];
+            Zip::from(&mut new_array).and(a).for_each(|new_array,a| {
+                let ref_val = *a as i64;
+                if let Some(tosc) = table_int.get(&ref_val) {
+                    match tosc {
+                        TextOrScaleConversion::Txt(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        TextOrScaleConversion::Scale(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                } else {
+                    match &default {
+                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        DefaultTextOrScaleConversion::DefaultScale(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                }
+            });
+            cn.data = ChannelData::StringUTF8(new_array);
+        },
+        ChannelData::Float32(a) => {
+            // table for floating point comparison
+            let mut table_float: HashMap<i64, TextOrScaleConversion> = HashMap::with_capacity(cc_val.len());
+            for (ind, val) in cc_val.iter().enumerate() {
+                let ref_val = (*val* 1024.0 * 1024.0).round() as i64; // Canonization
+                if let Some(txt) = sharable.tx.get(&cc_ref[ind]) {
+                    table_float.insert(ref_val,TextOrScaleConversion::Txt(txt.0.clone()));
+                } else if let Some(cc) = sharable.cc.get(&cc_ref[ind]){
+                    if let Some(txt) = sharable.tx.get(&cc.cc_md_comment) {
+                        table_float.insert(ref_val,TextOrScaleConversion::Scale(txt.0.clone()));
+                    } else {
+                        table_float.insert(ref_val, TextOrScaleConversion::Nil);
+                    }
+                } else {
+                    table_float.insert(ref_val,TextOrScaleConversion::Nil);
+                }
+            }
+            let mut new_array = vec![String::new(); *cycle_count as usize];
+            Zip::from(&mut new_array).and(a).for_each(|new_array,a| {
+                let ref_val = (*a* 1024.0 * 1024.0).round() as i64;
+                if let Some(tosc) = table_float.get(&ref_val) {
+                    match tosc {
+                        TextOrScaleConversion::Txt(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        TextOrScaleConversion::Scale(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                } else {
+                    match &default {
+                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        DefaultTextOrScaleConversion::DefaultScale(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                }
+            });
+            cn.data = ChannelData::StringUTF8(new_array);
+        },
+        ChannelData::Int48(a) => {
+            let mut new_array = vec![String::new(); *cycle_count as usize];
+            Zip::from(&mut new_array).and(a).for_each(|new_array,a| {
+                let ref_val = *a as i64;
+                if let Some(tosc) = table_int.get(&ref_val) {
+                    match tosc {
+                        TextOrScaleConversion::Txt(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        TextOrScaleConversion::Scale(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                } else {
+                    match &default {
+                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        DefaultTextOrScaleConversion::DefaultScale(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                }
+            });
+            cn.data = ChannelData::StringUTF8(new_array);
+        },
+        ChannelData::UInt48(a) => {
+            let mut new_array = vec![String::new(); *cycle_count as usize];
+            Zip::from(&mut new_array).and(a).for_each(|new_array,a| {
+                let ref_val = *a as i64;
+                if let Some(tosc) = table_int.get(&ref_val) {
+                    match tosc {
+                        TextOrScaleConversion::Txt(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        TextOrScaleConversion::Scale(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                } else {
+                    match &default {
+                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        DefaultTextOrScaleConversion::DefaultScale(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                }
+            });
+            cn.data = ChannelData::StringUTF8(new_array);
+        },
+        ChannelData::Int64(a) => {
+            let mut new_array = vec![String::new(); *cycle_count as usize];
+            Zip::from(&mut new_array).and(a).for_each(|new_array,a| {
+                if let Some(tosc) = table_int.get(&a) {
+                    match tosc {
+                        TextOrScaleConversion::Txt(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        TextOrScaleConversion::Scale(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                } else {
+                    match &default {
+                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        DefaultTextOrScaleConversion::DefaultScale(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                }
+            });
+            cn.data = ChannelData::StringUTF8(new_array);
+        },
+        ChannelData::UInt64(a) => {
+            let mut new_array = vec![String::new(); *cycle_count as usize];
+            Zip::from(&mut new_array).and(a).for_each(|new_array,a| {
+                let ref_val = *a as i64;
+                if let Some(tosc) = table_int.get(&ref_val) {
+                    match tosc {
+                        TextOrScaleConversion::Txt(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        TextOrScaleConversion::Scale(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                } else {
+                    match &default {
+                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        DefaultTextOrScaleConversion::DefaultScale(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                }
+            });
+            cn.data = ChannelData::StringUTF8(new_array);
+        },
+        ChannelData::Float64(a) => {
+            // table for floating point comparison
+            let mut table_float: HashMap<i64, TextOrScaleConversion> = HashMap::with_capacity(cc_val.len());
+            for (ind, val) in cc_val.iter().enumerate() {
+                let ref_val = (*val* 1024.0 * 1024.0).round() as i64; // Canonization
+                if let Some(txt) = sharable.tx.get(&cc_ref[ind]) {
+                    table_float.insert(ref_val,TextOrScaleConversion::Txt(txt.0.clone()));
+                } else if let Some(cc) = sharable.cc.get(&cc_ref[ind]){
+                    if let Some(txt) = sharable.tx.get(&cc.cc_md_comment) {
+                        table_float.insert(ref_val,TextOrScaleConversion::Scale(txt.0.clone()));
+                    } else {
+                        table_float.insert(ref_val, TextOrScaleConversion::Nil);
+                    }
+                } else {
+                    table_float.insert(ref_val,TextOrScaleConversion::Nil);
+                }
+            }
+            let mut new_array = vec![String::new(); *cycle_count as usize];
+            Zip::from(&mut new_array).and(a).for_each(|new_array,a| {
+                let ref_val = (*a* 1024.0 * 1024.0).round() as i64;
+                if let Some(tosc) = table_float.get(&ref_val) {
+                    match tosc {
+                        TextOrScaleConversion::Txt(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        TextOrScaleConversion::Scale(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                } else {
+                    match &default {
+                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        DefaultTextOrScaleConversion::DefaultScale(txt) => {
+                            *new_array = txt.clone();
+                        },
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                }
+            });
+            cn.data = ChannelData::StringUTF8(new_array);
+        },
+        ChannelData::Complex16(_) => (),
+        ChannelData::Complex32(_) => (),
+        ChannelData::Complex64(_) => (),
+        ChannelData::StringSBC(_) => (),
+        ChannelData::StringUTF8(_) => (),
+        ChannelData::StringUTF16(_) => (),
+        ChannelData::ByteArray(_) => (),
+        ChannelData::ArrayDInt8(_) => (),
+        ChannelData::ArrayDUInt8(_) => (),
+        ChannelData::ArrayDInt16(_) => (),
+        ChannelData::ArrayDUInt16(_) => (),
+        ChannelData::ArrayDFloat16(_) => (),
+        ChannelData::ArrayDInt24(_) => (),
+        ChannelData::ArrayDUInt24(_) => (),
+        ChannelData::ArrayDInt32(_) => (),
+        ChannelData::ArrayDUInt32(_) => (),
+        ChannelData::ArrayDFloat32(_) => (),
+        ChannelData::ArrayDInt48(_) => (),
+        ChannelData::ArrayDUInt48(_) => (),
+        ChannelData::ArrayDInt64(_) => (),
+        ChannelData::ArrayDUInt64(_) => (),
+        ChannelData::ArrayDFloat64(_) => (),
+        ChannelData::ArrayDComplex16(_) => (),
+        ChannelData::ArrayDComplex32(_) => (),
+        ChannelData::ArrayDComplex64(_) => (),
     }
 }
