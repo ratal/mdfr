@@ -1581,50 +1581,7 @@ fn parse_cn4_block(
     if (cc_pointer != 0) && !sharable.cc.contains_key(&cc_pointer) {
         let (mut cc_block, _header, pos) = parse_block_short(rdr, cc_pointer, position);
         position = pos;
-        let cc_block: Cc4Block = cc_block.read_le().unwrap();
-        if (cc_block.cc_md_unit != 0)
-            && (block.cn_md_unit == 0)
-            && !sharable.tx.contains_key(&cc_block.cc_md_unit)
-        {
-            let (u, pos, tx_md_flag) = md_tx_comment(rdr, cc_block.cc_md_unit, position);
-            position = pos;
-            sharable.tx.insert(cc_block.cc_md_unit, (u, tx_md_flag));
-        }
-        // checks for cc_ref
-        for pointer in &cc_block.cc_ref {
-            if !sharable.cc.contains_key(&pointer)
-                && !sharable.tx.contains_key(&pointer)
-                && *pointer != 0
-            {
-                let (mut ref_block, header, _pos) = parse_block_short(rdr, *pointer, position);
-                if "##TX".as_bytes() == header.hdr_id {
-                    let mut buf = vec![0u8; 8];
-                    ref_block
-                        .read_exact(&mut buf)
-                        .expect("could not read link_count"); // link_count
-                    let mut buf = vec![0u8; (header.hdr_len - 24) as usize];
-                    ref_block
-                        .read_exact(&mut buf)
-                        .expect("could not read the TX comments");
-                    let c = match str::from_utf8(&buf) {
-                        Ok(v) => v,
-                        Err(e) => panic!("Error converting comment into utf8 \n{}", e),
-                    };
-                    let comment: String = match c.parse() {
-                        Ok(v) => v,
-                        Err(e) => panic!("Error parsing comment\n{}", e),
-                    };
-                    let comment: String = comment.trim_end_matches(char::from(0)).into();
-                    sharable.tx.insert(*pointer, (comment, false));
-                } else {
-                    // CC Block
-                    let ref_block: Cc4Block = ref_block.read_le().unwrap();
-                    sharable.cc.insert(*pointer, ref_block);
-                }
-                position = pointer + header.hdr_len as i64;
-            }
-        }
-        sharable.cc.insert(cc_pointer, cc_block);
+        position = read_cc(rdr, &cc_pointer, position, cc_block, sharable);
     }
 
     // Reads MD
@@ -1708,6 +1665,52 @@ fn parse_cn4_block(
     (cn_struct, position)
 }
 
+/// reads pointed TX or CC Block(s) pointed by cc_ref in CCBlock
+fn read_cc(rdr: &mut BufReader<&File>, target: &i64, mut position: i64, mut block: Cursor<Vec<u8>>, sharable: &mut SharableBlocks) -> i64 {
+    let cc_block: Cc4Block = block.read_le().unwrap();
+    if (cc_block.cc_md_unit != 0)
+        && !sharable.tx.contains_key(&cc_block.cc_md_unit)
+    {
+        let (u, pos, tx_md_flag) = md_tx_comment(rdr, cc_block.cc_md_unit, position);
+        position = pos;
+        sharable.tx.insert(cc_block.cc_md_unit, (u, tx_md_flag));
+    }
+    for pointer in &cc_block.cc_ref {
+        if !sharable.cc.contains_key(pointer)
+            && !sharable.tx.contains_key(pointer)
+            && *pointer != 0 {
+            let (mut ref_block, header, _pos) = parse_block_short(rdr, *pointer, position);
+            position = pointer + header.hdr_len as i64;
+            if "##TX".as_bytes() == header.hdr_id {
+                // TX Block
+                let mut buf = vec![0u8; 8];
+                ref_block
+                    .read_exact(&mut buf)
+                    .expect("could not read link_count"); // link_count
+                let mut buf = vec![0u8; (header.hdr_len - 24) as usize];
+                ref_block
+                    .read_exact(&mut buf)
+                    .expect("could not read the TX comments");
+                let c = match str::from_utf8(&buf) {
+                    Ok(v) => v,
+                    Err(e) => panic!("Error converting comment into utf8 \n{}", e),
+                };
+                let comment: String = match c.parse() {
+                    Ok(v) => v,
+                    Err(e) => panic!("Error parsing comment\n{}", e),
+                };
+                let comment: String = comment.trim_end_matches(char::from(0)).into();
+                sharable.tx.insert(*pointer, (comment, false));
+            } else {
+                // CC Block
+                position = read_cc(rdr, pointer, position, ref_block, sharable);
+            }
+        }
+    }
+    sharable.cc.insert(*target, cc_block);
+    position
+}
+
 /// Cc4 Channel Conversion block struct
 #[derive(Debug, Clone, BinRead)]
 #[br(little)]
@@ -1718,8 +1721,8 @@ pub struct Cc4Block {
     cc_links: u64,   // # of links
     cc_tx_name: i64, // Link to TXBLOCK with name (identifier) of conversion (can be NIL). Name must be according to naming rules stated in 4.4.2 Naming Rules.
     cc_md_unit: i64, // Link to TXBLOCK/MDBLOCK with physical unit of signal data (after conversion). (can be NIL) Unit only applies if no unit defined in CNBLOCK. Otherwise the unit of the channel overwrites the conversion unit.
-    // An MDBLOCK can be used to additionally reference the A-HDO unit definition (see Table 55). Note: for channels with cn_sync_type > 0, the unit is already defined, thus a reference to an A-HDO definition should be omitted to avoid redundancy.
-    cc_md_comment: i64, // Link to TXBLOCK/MDBLOCK with comment of conversion and additional information, see Table 54. (can be NIL)
+    // An MDBLOCK can be used to additionally reference the A-HDO unit definition. Note: for channels with cn_sync_type > 0, the unit is already defined, thus a reference to an A-HDO definition should be omitted to avoid redundancy.
+    pub cc_md_comment: i64, // Link to TXBLOCK/MDBLOCK with comment of conversion and additional information. (can be NIL)
     cc_cc_inverse: i64, // Link to CCBLOCK for inverse formula (can be NIL, must be NIL for CCBLOCK of the inverse formula (no cyclic reference allowed).
     #[br(if(cc_links > 4), little, count = cc_links - 4)]
     pub cc_ref: Vec<i64>, // List of additional links to TXBLOCKs with strings or to CCBLOCKs with partial conversion rules. Length of list is given by cc_ref_count. The list can be empty. Details are explained in formula-specific block supplement.
