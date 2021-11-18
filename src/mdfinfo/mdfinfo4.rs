@@ -75,7 +75,9 @@ impl MdfInfo4 {
         let data: Option<&ChannelData>;
         let mut channel_names: HashSet<String> = HashSet::new();
         channel_names.insert(channel_name.to_string());
-        self.load_channels_data_in_memory(channel_names); // will read data only if array is empty
+        if !self.get_channel_data_validity(channel_name) {
+            self.load_channels_data_in_memory(channel_names); // will read data only if array is empty
+        }
         data = self.get_channel_data_from_memory(channel_name).clone();
         data
     }
@@ -96,6 +98,22 @@ impl MdfInfo4 {
             }
         }
         data
+    }
+    /// True if channel contains data 
+    pub fn get_channel_data_validity(&self, channel_name: &String) -> bool {
+        let mut state: bool = false;
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.get_channel_id(channel_name)
+        {
+            if let Some(dg) = self.dg.get(dg_pos) {
+                if let Some(cg) = dg.cg.get(rec_id) {
+                    if let Some(cn) = cg.cn.get(rec_pos) {
+                        state = cn.channel_data_valid
+                    }
+                }
+            }
+        }
+        state
     }
     /// Returns the channel's unit string. If it does not exist, it is an empty string.
     pub fn get_channel_unit(&self, channel_name: &String) -> String {
@@ -1252,14 +1270,22 @@ pub struct Cn4Block {
 #[derive(Debug, Default, Clone)]
 pub struct Cn4 {
     pub block: Cn4Block,
+    /// unique channel name string
     pub unique_name: String,
     block_position: i64,
+    /// beginning position of channel in record
     pub pos_byte_beg: u32,
+    /// number of bytes taken by channel in record
     pub n_bytes: u32,
     pub composition: Option<Composition>,
+    /// channel data
     pub data: ChannelData,
-    pub endian: bool, // false = little endian
+    /// false = little endian
+    pub endian: bool,
+    /// optional invalid mask array
     pub invalid_mask: Option<Array1<u8>>,
+    /// True if channel is valid = contains data converted
+    pub channel_data_valid: bool,
 }
 
 /// hashmap's key is bit position in record, value Cn4
@@ -1396,6 +1422,7 @@ fn can_open_date(
         data: ChannelData::UInt16(Array1::<u16>::zeros((0,))),
         endian: false,
         invalid_mask: None,
+        channel_data_valid: false,
     };
     let block = Cn4Block {
         cn_links: 8,
@@ -1413,6 +1440,7 @@ fn can_open_date(
         data: ChannelData::UInt8(Array1::<u8>::zeros((0,))),
         endian: false,
         invalid_mask: None,
+        channel_data_valid: false,
     };
     let block = Cn4Block {
         cn_links: 8,
@@ -1430,6 +1458,7 @@ fn can_open_date(
         data: ChannelData::UInt8(Array1::<u8>::zeros((0,))),
         endian: false,
         invalid_mask: None,
+        channel_data_valid: false,
     };
     let block = Cn4Block {
         cn_links: 8,
@@ -1447,6 +1476,7 @@ fn can_open_date(
         data: ChannelData::UInt8(Array1::<u8>::zeros((0,))),
         endian: false,
         invalid_mask: None,
+        channel_data_valid: false,
     };
     let block = Cn4Block {
         cn_links: 8,
@@ -1464,6 +1494,7 @@ fn can_open_date(
         data: ChannelData::UInt8(Array1::<u8>::zeros((0,))),
         endian: false,
         invalid_mask: None,
+        channel_data_valid: false,
     };
     let block = Cn4Block {
         cn_links: 8,
@@ -1481,6 +1512,7 @@ fn can_open_date(
         data: ChannelData::UInt8(Array1::<u8>::zeros((0,))),
         endian: false,
         invalid_mask: None,
+        channel_data_valid: false,
     };
     (date_ms, min, hour, day, month, year)
 }
@@ -1503,6 +1535,7 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         data: ChannelData::UInt32(Array1::<u32>::zeros((0,))),
         endian: false,
         invalid_mask: None,
+        channel_data_valid: false
     };
     let block = Cn4Block {
         cn_links: 8,
@@ -1520,6 +1553,7 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         data: ChannelData::UInt16(Array1::<u16>::zeros((0,))),
         endian: false,
         invalid_mask: None,
+        channel_data_valid: false
     };
     (ms, days)
 }
@@ -1660,6 +1694,7 @@ fn parse_cn4_block(
         data: data_type_init(cn_type, data_type, n_bytes, is_array),
         endian,
         invalid_mask: None,
+        channel_data_valid: false
     };
 
     (cn_struct, position)

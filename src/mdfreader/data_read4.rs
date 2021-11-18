@@ -1021,6 +1021,8 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                 }
             }
         }
+        // channel was properly read
+        cn.channel_data_valid = true;
     }
     // Other channel types : virtual channels cn_type 3 & 6 are handled at initialisation
     // cn_type == 1 VLSD not possible for sorted data
@@ -1474,7 +1476,7 @@ pub fn read_channels_from_bytes(
                             decoder.decode_to_string(&value, &mut data[i + previous_index], false);
                         data[i + previous_index] =
                             data[i + previous_index].trim_end_matches('\0').to_string();
-                    } // TODO fix for SBC and UTF8
+                    }
                 }
                 ChannelData::StringUTF8(data) => {
                     let n_bytes = cn.n_bytes as usize;
@@ -2157,6 +2159,8 @@ pub fn read_channels_from_bytes(
                     }
                 }
             }
+            // channel was properly read
+            cn.channel_data_valid = true;
         } else if cn.block.cn_type == 1 {
             // SD Block attached as data block is sorted
             if cn.block.cn_data != 0 {
