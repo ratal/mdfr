@@ -139,7 +139,7 @@ mod tests {
         // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/Vector_MinimumFile.MF4");  // DT
         // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4");  // DT
         // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/UnsortedData/Vector_Unsorted_VLSD.MF4"); // unsorted with VLSD
-        let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/test.mf4");
+        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/test.mf4");
         // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/ASAP2_Demo_V171.mf4");
         // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/V447_20190514_164254_Gearshift_0m_20Grad.mf4"); // HL DL DZ
         // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/ChannelTypes/MLSD/Vector_MLSDStringUTF8.mf4");
@@ -148,6 +148,8 @@ mod tests {
         // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/ChannelTypes/VLSD/Vector_VLSDStringUTF16_LE.mf4");
         // let file = String::from("/home/ratal/workspace/mdfreader/T3_121121_000_6NEDC_col.mf4");
         // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/ZED_1hz_7197_col.mf4"); // invalid bytes
+        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Conversion/PartialConversion/Vector_StatusStringTableConversionAlgebraic.mf4"); // partial conversion
+        let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/ChannelTypes/MasterChannels/Vector_VirtualTimeMasterChannel.mf4"); // virtual master
         let mut mdf = MdfInfo::new(&file);
         mdf.load_all_channels_data_in_memory();
     }
@@ -446,7 +448,7 @@ mod tests {
                 counter += 0.1
             });
             let target = Array1::<f64>::from_vec(vect);
-            assert_eq!(ChannelData::Float64(target), *data);
+            assert!(ChannelData::Float64(target).compare_f64(data, f64::EPSILON));
         }
 
         // transpose deflate data list
@@ -464,7 +466,7 @@ mod tests {
                 counter += 0.1
             });
             let target = Array1::<f64>::from_vec(vect);
-            assert_eq!(ChannelData::Float64(target), *data);
+            assert!(ChannelData::Float64(target).compare_f64(data, f64::EPSILON));
         }
 
         // Unsorted
@@ -507,7 +509,7 @@ mod tests {
                 counter += 1.
             });
             let target = Array1::<f64>::from_vec(vect);
-            assert_eq!(ChannelData::Float64(target), *data);
+            assert!(ChannelData::Float64(target).compare_f64(data, f64::EPSILON));
         }
         let file_name = format!(
             "{}{}{}",
@@ -518,7 +520,7 @@ mod tests {
         if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
             let vect: Vec<f64> = vec![3.; 10];
             let target = Array1::<f64>::from_vec(vect);
-            assert_eq!(ChannelData::Float64(target), *data);
+            assert!(ChannelData::Float64(target).compare_f64(data, f64::EPSILON));
         }
         // Rational conversion
         let file_name = format!(
@@ -538,7 +540,7 @@ mod tests {
         if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
             let vect: [f64; 10] = [ 1.,  2.,  5., 10., 17., 26., 37., 50., 65., 82.];
             let target = Array1::<f64>::from_vec(vect.to_vec());
-            assert_eq!(ChannelData::Float64(target), *data);
+            assert!(ChannelData::Float64(target).compare_f64(data, f64::EPSILON));
         }
 
         // Lookup conversion : Value to Value Table With Interpolation
@@ -556,7 +558,7 @@ mod tests {
              1.5       ,  3.        ,  4.5       ,  6.        ,  4.5       ,
              3.        ,  1.5       ,  0.        ,  0.        ,  0.        ];
             let target = Array1::<f64>::from_vec(vect.to_vec());
-            assert_eq!(ChannelData::Float64(target), *data);
+            assert!(ChannelData::Float64(target).compare_f64(data, f64::EPSILON));
         }
 
         // Lookup conversion : Value to Value Table Without Interpolation
@@ -571,7 +573,7 @@ mod tests {
             0.,  1.,  1.,  1.,  2.,  2.,  0.,  0.,  3.,  3.,  6.,  6.,  3.,
             3.,  0., 0., 0.];
             let target = Array1::<f64>::from_vec(vect.to_vec());
-            assert_eq!(ChannelData::Float64(target), *data);
+            assert!(ChannelData::Float64(target).compare_f64(data, f64::EPSILON));
         }
 
         // Lookup conversion : Value Range to Value
@@ -585,7 +587,7 @@ mod tests {
             let vect: [f64; 30] = [-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 2.0, 2.0,
              2.0, 2.0, 2.0, 3.0, 3.0, 5.0, 5.0, 5.0, 6.0, 7.0, 7.0, 8.0, 8.0, 9.0, 9.0, 9.0, 9.0];
             let target = Array1::<f64>::from_vec(vect.to_vec());
-            assert_eq!(ChannelData::Float64(target), *data);
+            assert!(ChannelData::Float64(target).compare_f64(data, f64::EPSILON));
         }
 
         // Lookup conversion : Value to Text
@@ -596,9 +598,11 @@ mod tests {
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
         if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
-            let vect: [f64; 10] = [0., 1., 2., 3., 4., 5., 6., 7., 8., 9.];
-            let target = Array1::<f64>::from_vec(vect.to_vec());
-            assert_eq!(ChannelData::Float64(target), *data);
+            let target: Vec<String> = ["No match".to_string(), "first gear".to_string(),
+            "second gear".to_string(), "third gear".to_string(), "fourth gear".to_string(),
+            "fifth gear".to_string(), "No match".to_string(), "No match".to_string(), "No match".to_string(),
+            "No match".to_string()].to_vec();
+            assert_eq!(ChannelData::StringUTF8(target), *data);
         }
 
     }
