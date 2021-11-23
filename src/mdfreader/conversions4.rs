@@ -2685,12 +2685,8 @@ fn value_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle_count
         if let Some(txt) = sharable.tx.get(&cc_ref[ind]) {
             table_int.insert(val_i64,TextOrScaleConversion::Txt(txt.0.clone()));
         } else if let Some(cc) = sharable.cc.get(&cc_ref[ind]){
-            if let Some(txt) = sharable.tx.get(&cc.cc_md_comment) {
-                let conv = conversion_function(cc, sharable);
-                table_int.insert(val_i64,TextOrScaleConversion::Scale(conv));
-            } else {
-                table_int.insert(val_i64, TextOrScaleConversion::Nil);
-            }
+            let conv = conversion_function(cc, sharable);
+            table_int.insert(val_i64,TextOrScaleConversion::Scale(conv));
         } else {
             table_int.insert(val_i64,TextOrScaleConversion::Nil);
         }
@@ -2699,12 +2695,8 @@ fn value_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle_count
     if let Some(txt) = sharable.tx.get(&cc_ref[cc_val.len()]) {
         default = DefaultTextOrScaleConversion::DefaultTxt(txt.0.clone());
     } else if let Some(cc) = sharable.cc.get(&cc_ref[cc_val.len()]){
-        if let Some(txt) = sharable.tx.get(&cc.cc_md_comment) {
-            let conv = conversion_function(cc, sharable);
-            default = DefaultTextOrScaleConversion::DefaultScale(conv);
-        } else {
-            default = DefaultTextOrScaleConversion::Nil;
-        }
+        let conv = conversion_function(cc, sharable);
+        default = DefaultTextOrScaleConversion::DefaultScale(conv);
     } else {
         default = DefaultTextOrScaleConversion::Nil;
     }
@@ -2846,12 +2838,8 @@ fn value_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle_count
                 if let Some(txt) = sharable.tx.get(&cc_ref[ind]) {
                     table_float.insert(ref_val,TextOrScaleConversion::Txt(txt.0.clone()));
                 } else if let Some(cc) = sharable.cc.get(&cc_ref[ind]){
-                    if let Some(txt) = sharable.tx.get(&cc.cc_md_comment) {
-                        let conv = conversion_function(cc, sharable);
-                        table_float.insert(ref_val,TextOrScaleConversion::Scale(conv));
-                    } else {
-                        table_float.insert(ref_val, TextOrScaleConversion::Nil);
-                    }
+                    let conv = conversion_function(cc, sharable);
+                    table_float.insert(ref_val,TextOrScaleConversion::Scale(conv));
                 } else {
                     table_float.insert(ref_val,TextOrScaleConversion::Nil);
                 }
@@ -3023,12 +3011,8 @@ fn value_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle_count
                 if let Some(txt) = sharable.tx.get(&cc_ref[ind]) {
                     table_float.insert(ref_val,TextOrScaleConversion::Txt(txt.0.clone()));
                 } else if let Some(cc) = sharable.cc.get(&cc_ref[ind]){
-                    if let Some(txt) = sharable.tx.get(&cc.cc_md_comment) {
-                        let conv = conversion_function(cc, sharable);
-                        table_float.insert(ref_val,TextOrScaleConversion::Scale(conv));
-                    } else {
-                        table_float.insert(ref_val, TextOrScaleConversion::Nil);
-                    }
+                    let conv = conversion_function(cc, sharable);
+                    table_float.insert(ref_val,TextOrScaleConversion::Scale(conv));
                 } else {
                     table_float.insert(ref_val,TextOrScaleConversion::Nil);
                 }
@@ -3199,12 +3183,8 @@ fn value_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle_count
                 if let Some(txt) = sharable.tx.get(&cc_ref[ind]) {
                     table_float.insert(ref_val,TextOrScaleConversion::Txt(txt.0.clone()));
                 } else if let Some(cc) = sharable.cc.get(&cc_ref[ind]){
-                    if let Some(txt) = sharable.tx.get(&cc.cc_md_comment) {
-                        let conv = conversion_function(cc, sharable);
-                        table_float.insert(ref_val,TextOrScaleConversion::Scale(conv));
-                    } else {
-                        table_float.insert(ref_val, TextOrScaleConversion::Nil);
-                    }
+                    let conv = conversion_function(cc, sharable);
+                    table_float.insert(ref_val,TextOrScaleConversion::Scale(conv));
                 } else {
                     table_float.insert(ref_val,TextOrScaleConversion::Nil);
                 }
@@ -3289,7 +3269,6 @@ fn conversion_function(cc: &Cc4Block, sharable: &SharableBlocks) -> ConversionFu
                         if let Some(formulae) = sharable.tx.get(&cc.cc_ref[0]) {
                             let parser = fasteval::Parser::new();
                             let mut slab = fasteval::Slab::new();
-                            let mut map: BTreeMap<String, f64> = BTreeMap::new();
                             let compiled = parser.parse(&formulae.0, &mut slab.ps)
                                 .expect("error parsing formulae for conversion")
                                 .from(&slab.ps).compile(&slab.ps, &mut slab.cs);
@@ -3343,12 +3322,8 @@ fn value_range_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle
         if let Some(t) = sharable.tx.get(pointer) {
             txt.push(TextOrScaleConversion::Txt(t.0.clone()));
         } else if let Some(cc) = sharable.cc.get(pointer){
-            if let Some(t) = sharable.tx.get(&cc.cc_md_comment) {
-                let conv = conversion_function(cc, sharable);
-                txt.push(TextOrScaleConversion::Scale(conv));
-            } else {
-                txt.push(TextOrScaleConversion::Nil);
-            }
+            let conv = conversion_function(cc, sharable);
+            txt.push(TextOrScaleConversion::Scale(conv));
         } else {
             txt.push(TextOrScaleConversion::Nil);
         }
@@ -3357,12 +3332,8 @@ fn value_range_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle
     if let Some(t) = sharable.tx.get(&cc_ref[n_keys]) {
         default=DefaultTextOrScaleConversion::DefaultTxt(t.0.clone());
     } else if let Some(cc) = sharable.cc.get(&cc_ref[n_keys]){
-        if let Some(t) = sharable.tx.get(&cc.cc_md_comment) {
-            let conv = conversion_function(cc, sharable);
-            default=DefaultTextOrScaleConversion::DefaultScale(conv);
-        } else {
-            default=DefaultTextOrScaleConversion::Nil;
-        }
+        let conv = conversion_function(cc, sharable);
+        default=DefaultTextOrScaleConversion::DefaultScale(conv);
     } else {
         default=DefaultTextOrScaleConversion::Nil;
     }
