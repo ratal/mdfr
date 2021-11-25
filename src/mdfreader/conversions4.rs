@@ -75,6 +75,14 @@ pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) {
                                 CcVal::Uint(_) => (),
                             }
                         }
+                        9 => {
+                            match &conv.cc_val {
+                                CcVal::Real(cc_val) => {
+                                    text_to_value(cn, &cc_val, &conv.cc_ref, &cycle_count, sharable)
+                                },
+                                CcVal::Uint(_) => (),
+                            }
+                        }
                         _ => {} //TODO further implement conversions
                     }
                 }
@@ -3248,7 +3256,7 @@ fn value_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle_count
     }
 }
 
-/// conversion function of unique value
+/// enum of conversion functions for unique value
 #[derive(Debug)]
 enum ConversionFunction {
     Identity,
@@ -3257,6 +3265,7 @@ enum ConversionFunction {
     Algebraic(Instruction, Slab),
 }
 
+/// conversion function of single value (not arrays)
 fn conversion_function(cc: &Cc4Block, sharable: &SharableBlocks) -> ConversionFunction {
     match &cc.cc_val {
         CcVal::Real(cc_val) => {
@@ -3282,6 +3291,7 @@ fn conversion_function(cc: &Cc4Block, sharable: &SharableBlocks) -> ConversionFu
     }
 }
 
+/// conversion function implmentation for single value (not arrays)
 impl ConversionFunction {
     fn eval_to_txt(&self, a: f64) -> String {
         match self {
@@ -3301,6 +3311,7 @@ impl ConversionFunction {
 }
 
 /// keys range struct
+#[derive(Debug)]
 struct KeyRange {
     min: f64,
     max: f64,
@@ -3844,5 +3855,136 @@ fn value_range_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle
         ChannelData::ArrayDComplex16(_) => {},
         ChannelData::ArrayDComplex32(_) => {},
         ChannelData::ArrayDComplex64(_) => {},
+    }
+}
+
+/// Apply text to value conversion to get physical data
+fn text_to_value(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle_count: &u64, sharable: &SharableBlocks) {
+    let mut table: HashMap<String, f64> = HashMap::with_capacity(cc_ref.len());
+    for (ind, ccref) in cc_ref.iter().enumerate() {
+        if let Some(txt) = sharable.tx.get(ccref) {
+            table.insert(txt.0.clone(), cc_val[ind]);
+        }
+    }
+    let default = cc_val[cc_val.len() - 1];
+    match &mut cn.data {
+        ChannelData::Int8(_) => {},
+        ChannelData::UInt8(_) => {},
+        ChannelData::Int16(_) => {},
+        ChannelData::UInt16(_) => {},
+        ChannelData::Float16(_) => {},
+        ChannelData::Int24(_) => {},
+        ChannelData::UInt24(_) => {},
+        ChannelData::Int32(_) => {},
+        ChannelData::UInt32(_) => {},
+        ChannelData::Float32(_) => {},
+        ChannelData::Int48(_) => {},
+        ChannelData::UInt48(_) => {},
+        ChannelData::Int64(_) => {},
+        ChannelData::UInt64(_) => {},
+        ChannelData::Float64(_) => {},
+        ChannelData::Complex16(_) => {},
+        ChannelData::Complex32(_) => {},
+        ChannelData::Complex64(_) => {},
+        ChannelData::StringSBC(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            Zip::from(&mut new_array).and(a).for_each(|new_a, a| {
+                if let Some(val) = table.get(a) {
+                    *new_a = *val;
+                } else {
+                    *new_a = default;
+                }
+            });
+            cn.data = ChannelData::Float64(new_array);
+        },
+        ChannelData::StringUTF8(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            Zip::from(&mut new_array).and(a).for_each(|new_a, a| {
+                if let Some(val) = table.get(a) {
+                    *new_a = *val;
+                } else {
+                    *new_a = default;
+                }
+            });
+            cn.data = ChannelData::Float64(new_array);
+        },
+        ChannelData::StringUTF16(a) => {
+            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            Zip::from(&mut new_array).and(a).for_each(|new_a, a| {
+                if let Some(val) = table.get(a) {
+                    *new_a = *val;
+                } else {
+                    *new_a = default;
+                }
+            });
+            cn.data = ChannelData::Float64(new_array);
+        },
+        ChannelData::ByteArray(_) => {},
+        ChannelData::ArrayDInt8(_) => {},
+        ChannelData::ArrayDUInt8(_) => {},
+        ChannelData::ArrayDInt16(_) => {},
+        ChannelData::ArrayDUInt16(_) => {},
+        ChannelData::ArrayDFloat16(_) => {},
+        ChannelData::ArrayDInt24(_) => {},
+        ChannelData::ArrayDUInt24(_) => {},
+        ChannelData::ArrayDInt32(_) => {},
+        ChannelData::ArrayDUInt32(_) => {},
+        ChannelData::ArrayDFloat32(_) => {},
+        ChannelData::ArrayDInt48(_) => {},
+        ChannelData::ArrayDUInt48(_) => {},
+        ChannelData::ArrayDInt64(_) => {},
+        ChannelData::ArrayDUInt64(_) => {},
+        ChannelData::ArrayDFloat64(_) => {},
+        ChannelData::ArrayDComplex16(_) => {},
+        ChannelData::ArrayDComplex32(_) => {},
+        ChannelData::ArrayDComplex64(_) => {},
+    }
+}
+
+/// Apply text to text conversion to get physical data
+fn text_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle_count: &u64, sharable: &SharableBlocks) {
+    let mut table: HashMap<String, Option<String>> = HashMap::with_capacity(cc_ref.len());
+
+    match &mut cn.data {
+        ChannelData::Int8(_) => todo!(),
+        ChannelData::UInt8(_) => todo!(),
+        ChannelData::Int16(_) => todo!(),
+        ChannelData::UInt16(_) => todo!(),
+        ChannelData::Float16(_) => todo!(),
+        ChannelData::Int24(_) => todo!(),
+        ChannelData::UInt24(_) => todo!(),
+        ChannelData::Int32(_) => todo!(),
+        ChannelData::UInt32(_) => todo!(),
+        ChannelData::Float32(_) => todo!(),
+        ChannelData::Int48(_) => todo!(),
+        ChannelData::UInt48(_) => todo!(),
+        ChannelData::Int64(_) => todo!(),
+        ChannelData::UInt64(_) => todo!(),
+        ChannelData::Float64(_) => todo!(),
+        ChannelData::Complex16(_) => todo!(),
+        ChannelData::Complex32(_) => todo!(),
+        ChannelData::Complex64(_) => todo!(),
+        ChannelData::StringSBC(_) => todo!(),
+        ChannelData::StringUTF8(_) => todo!(),
+        ChannelData::StringUTF16(_) => todo!(),
+        ChannelData::ByteArray(_) => todo!(),
+        ChannelData::ArrayDInt8(_) => todo!(),
+        ChannelData::ArrayDUInt8(_) => todo!(),
+        ChannelData::ArrayDInt16(_) => todo!(),
+        ChannelData::ArrayDUInt16(_) => todo!(),
+        ChannelData::ArrayDFloat16(_) => todo!(),
+        ChannelData::ArrayDInt24(_) => todo!(),
+        ChannelData::ArrayDUInt24(_) => todo!(),
+        ChannelData::ArrayDInt32(_) => todo!(),
+        ChannelData::ArrayDUInt32(_) => todo!(),
+        ChannelData::ArrayDFloat32(_) => todo!(),
+        ChannelData::ArrayDInt48(_) => todo!(),
+        ChannelData::ArrayDUInt48(_) => todo!(),
+        ChannelData::ArrayDInt64(_) => todo!(),
+        ChannelData::ArrayDUInt64(_) => todo!(),
+        ChannelData::ArrayDFloat64(_) => todo!(),
+        ChannelData::ArrayDComplex16(_) => todo!(),
+        ChannelData::ArrayDComplex32(_) => todo!(),
+        ChannelData::ArrayDComplex64(_) => todo!(),
     }
 }
