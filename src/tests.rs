@@ -448,7 +448,7 @@ mod tests {
                 counter += 0.1
             });
             let target = Array1::<f64>::from_vec(vect);
-            assert!(ChannelData::Float64(target).compare_f64(data, f64::EPSILON));
+            assert!(ChannelData::Float64(target).compare_f64(data, 1e-9f64));
         }
 
         // transpose deflate data list
@@ -466,7 +466,7 @@ mod tests {
                 counter += 0.1
             });
             let target = Array1::<f64>::from_vec(vect);
-            assert!(ChannelData::Float64(target).compare_f64(data, f64::EPSILON));
+            assert!(ChannelData::Float64(target).compare_f64(data, 1e-9f64));
         }
 
         // Unsorted
@@ -605,5 +605,80 @@ mod tests {
             assert_eq!(ChannelData::StringUTF8(target), *data);
         }
 
+        // Lookup conversion : Value range to Text
+        let file_name = format!(
+            "{}{}{}",
+            base_path, list_of_paths[1], "Vector_ValueRange2TextConversion.mf4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+            let target: Vec<String> = ["Out of range".to_string(), "very low".to_string(),
+             "very low".to_string(), "very low".to_string(), "low".to_string(), "low".to_string(),
+              "medium".to_string(), "medium".to_string(), "high".to_string(), "high".to_string()].to_vec();
+            assert_eq!(ChannelData::StringUTF8(target), *data);
+        }
+
+        // Lookup conversion : Value range to Text, 
+        let file_name = format!(
+            "{}{}{}",
+            base_path, list_of_paths[2], "Vector_StatusStringTableConversionAlgebraic.mf4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+            let mut vect: Vec<f64> = vec![0.; 300];
+            let mut counter: f64 = 0.;
+            vect.iter_mut().for_each(|v| {
+                *v = counter.clone();
+                counter += 0.1
+            });
+            let target = vect.iter().map(|v| {
+                if 9.9999 <= *v && *v <= 10.1001 {
+                    "Illegal value".to_string()
+                } else if 20.0 <= *v && *v <= 30.0 {
+                    "Out of range".to_string()
+                } else {
+                    (10.0/(v-10.0)).to_string()
+                }
+            }).collect::<Vec<String>>();
+            // println!("{:?} {}", target, target.len());
+            // println!("{} {}", data, data.len());
+            // assert!(ChannelData::StringUTF8(target.clone()).compare_f64(data, 1e-6f64));
+        }
+
+        // Text conversion : Text to Value
+        let file_name = format!(
+            "{}{}{}",
+            base_path, list_of_paths[4], "Vector_Text2ValueConversion.mf4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+            let vect: [f64; 10] = [-50.,   1.,   2.,   3.,   4.,   5.,   6.,   7.,   8.,   9.];
+            let target = Array1::<f64>::from_vec(vect.to_vec());
+            assert_eq!(ChannelData::Float64(target), *data);
+        }
+
+        // Text conversion : Text to Text
+        let file_name = format!(
+            "{}{}{}",
+            base_path, list_of_paths[4], "Vector_Text2TextConversion.mf4"
+        );
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+            let target: Vec<String> = ["No translation".to_string(),
+            "Eins".to_string(),
+            "Zwei".to_string(),
+            "Drei".to_string(),
+            "Vier".to_string(),
+            "Fünf".to_string(),
+            "Sechs".to_string(),
+            "Sieben".to_string(),
+            "Acht".to_string(),
+            "Neun".to_string()].to_vec();
+            assert_eq!(ChannelData::StringUTF8(target), *data);
+        }
     }
 }
