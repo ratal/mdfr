@@ -86,6 +86,14 @@ pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) {
                         10 => {
                             text_to_text(cn, &conv.cc_ref, &cycle_count, sharable)
                         }
+                        11 => {
+                            match &conv.cc_val {
+                                CcVal::Real(_) => (),
+                                CcVal::Uint(cc_val) => {
+                                    bitfield_text_table(cn, &cc_val, &conv.cc_ref, &cycle_count, sharable)
+                                },
+                            }
+                        }
                         _ => {} //TODO further implement conversions
                     }
                 }
@@ -2702,14 +2710,14 @@ fn value_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle_count
             table_int.insert(val_i64,TextOrScaleConversion::Nil);
         }
     }
-    let default: DefaultTextOrScaleConversion;
+    let def: DefaultTextOrScaleConversion;
     if let Some(txt) = sharable.tx.get(&cc_ref[cc_val.len()]) {
-        default = DefaultTextOrScaleConversion::DefaultTxt(txt.0.clone());
+        def = DefaultTextOrScaleConversion::DefaultTxt(txt.0.clone());
     } else if let Some(cc) = sharable.cc.get(&cc_ref[cc_val.len()]){
         let conv = conversion_function(cc, sharable);
-        default = DefaultTextOrScaleConversion::DefaultScale(conv);
+        def = DefaultTextOrScaleConversion::DefaultScale(conv);
     } else {
-        default = DefaultTextOrScaleConversion::Nil;
+        def = DefaultTextOrScaleConversion::Nil;
     }
 
     match &mut cn.data {
@@ -2730,7 +2738,7 @@ fn value_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle_count
                         }
                     }
                 } else {
-                    match &default {
+                    match &def {
                         DefaultTextOrScaleConversion::DefaultTxt(txt) => {
                             *new_array = txt.clone();
                         },
@@ -2762,7 +2770,7 @@ fn value_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle_count
                         }
                     }
                 } else {
-                    match &default {
+                    match &def {
                         DefaultTextOrScaleConversion::DefaultTxt(txt) => {
                             *new_array = txt.clone();
                         },
@@ -2794,7 +2802,7 @@ fn value_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle_count
                         }
                     }
                 } else {
-                    match &default {
+                    match &def {
                         DefaultTextOrScaleConversion::DefaultTxt(txt) => {
                             *new_array = txt.clone();
                         },
@@ -2826,7 +2834,7 @@ fn value_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle_count
                         }
                     }
                 } else {
-                    match &default {
+                    match &def {
                         DefaultTextOrScaleConversion::DefaultTxt(txt) => {
                             *new_array = txt.clone();
                         },
@@ -2871,7 +2879,7 @@ fn value_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle_count
                         }
                     }
                 } else {
-                    match &default {
+                    match &def {
                         DefaultTextOrScaleConversion::DefaultTxt(txt) => {
                             *new_array = txt.clone();
                         },
@@ -2903,7 +2911,7 @@ fn value_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle_count
                         }
                     }
                 } else {
-                    match &default {
+                    match &def {
                         DefaultTextOrScaleConversion::DefaultTxt(txt) => {
                             *new_array = txt.clone();
                         },
@@ -2935,7 +2943,7 @@ fn value_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle_count
                         }
                     }
                 } else {
-                    match &default {
+                    match &def {
                         DefaultTextOrScaleConversion::DefaultTxt(txt) => {
                             *new_array = txt.clone();
                         },
@@ -2967,7 +2975,7 @@ fn value_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle_count
                         }
                     }
                 } else {
-                    match &default {
+                    match &def {
                         DefaultTextOrScaleConversion::DefaultTxt(txt) => {
                             *new_array = txt.clone();
                         },
@@ -2999,7 +3007,7 @@ fn value_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle_count
                         }
                     }
                 } else {
-                    match &default {
+                    match &def {
                         DefaultTextOrScaleConversion::DefaultTxt(txt) => {
                             *new_array = txt.clone();
                         },
@@ -3044,7 +3052,7 @@ fn value_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle_count
                         }
                     }
                 } else {
-                    match &default {
+                    match &def {
                         DefaultTextOrScaleConversion::DefaultTxt(txt) => {
                             *new_array = txt.clone();
                         },
@@ -3076,7 +3084,7 @@ fn value_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle_count
                         }
                     }
                 } else {
-                    match &default {
+                    match &def {
                         DefaultTextOrScaleConversion::DefaultTxt(txt) => {
                             *new_array = txt.clone();
                         },
@@ -3108,7 +3116,7 @@ fn value_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle_count
                         }
                     }
                 } else {
-                    match &default {
+                    match &def {
                         DefaultTextOrScaleConversion::DefaultTxt(txt) => {
                             *new_array = txt.clone();
                         },
@@ -3139,7 +3147,7 @@ fn value_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle_count
                         }
                     }
                 } else {
-                    match &default {
+                    match &def {
                         DefaultTextOrScaleConversion::DefaultTxt(txt) => {
                             *new_array = txt.clone();
                         },
@@ -3171,7 +3179,7 @@ fn value_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle_count
                         }
                     }
                 } else {
-                    match &default {
+                    match &def {
                         DefaultTextOrScaleConversion::DefaultTxt(txt) => {
                             *new_array = txt.clone();
                         },
@@ -3216,7 +3224,7 @@ fn value_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle_count
                         }
                     }
                 } else {
-                    match &default {
+                    match &def {
                         DefaultTextOrScaleConversion::DefaultTxt(txt) => {
                             *new_array = txt.clone();
                         },
@@ -3342,14 +3350,14 @@ fn value_range_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle
             txt.push(TextOrScaleConversion::Nil);
         }
     }
-    let default: DefaultTextOrScaleConversion;
+    let def: DefaultTextOrScaleConversion;
     if let Some(t) = sharable.tx.get(&cc_ref[n_keys]) {
-        default=DefaultTextOrScaleConversion::DefaultTxt(t.0.clone());
+        def=DefaultTextOrScaleConversion::DefaultTxt(t.0.clone());
     } else if let Some(cc) = sharable.cc.get(&cc_ref[n_keys]){
         let conv = conversion_function(cc, sharable);
-        default=DefaultTextOrScaleConversion::DefaultScale(conv);
+        def=DefaultTextOrScaleConversion::DefaultScale(conv);
     } else {
-        default=DefaultTextOrScaleConversion::Nil;
+        def=DefaultTextOrScaleConversion::Nil;
     }
 
     match &mut cn.data {
@@ -3370,7 +3378,7 @@ fn value_range_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle
                         }
                     }
                 } else {
-                    match &default {
+                    match &def {
                         DefaultTextOrScaleConversion::DefaultTxt(txt) => {
                             *new_array = txt.clone();
                         },
@@ -3402,7 +3410,7 @@ fn value_range_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle
                         }
                     }
                 } else {
-                    match &default {
+                    match &def {
                         DefaultTextOrScaleConversion::DefaultTxt(txt) => {
                             *new_array = txt.clone();
                         },
@@ -3434,7 +3442,7 @@ fn value_range_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle
                         }
                     }
                 } else {
-                    match &default {
+                    match &def {
                         DefaultTextOrScaleConversion::DefaultTxt(txt) => {
                             *new_array = txt.clone();
                         },
@@ -3466,7 +3474,7 @@ fn value_range_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle
                         }
                     }
                 } else {
-                    match &default {
+                    match &def {
                         DefaultTextOrScaleConversion::DefaultTxt(txt) => {
                             *new_array = txt.clone();
                         },
@@ -3498,7 +3506,7 @@ fn value_range_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle
                         }
                     }
                 } else {
-                    match &default {
+                    match &def {
                         DefaultTextOrScaleConversion::DefaultTxt(txt) => {
                             *new_array = txt.clone();
                         },
@@ -3530,7 +3538,7 @@ fn value_range_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle
                         }
                     }
                 } else {
-                    match &default {
+                    match &def {
                         DefaultTextOrScaleConversion::DefaultTxt(txt) => {
                             *new_array = txt.clone();
                         },
@@ -3562,7 +3570,7 @@ fn value_range_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle
                         }
                     }
                 } else {
-                    match &default {
+                    match &def {
                         DefaultTextOrScaleConversion::DefaultTxt(txt) => {
                             *new_array = txt.clone();
                         },
@@ -3594,7 +3602,7 @@ fn value_range_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle
                         }
                     }
                 } else {
-                    match &default {
+                    match &def {
                         DefaultTextOrScaleConversion::DefaultTxt(txt) => {
                             *new_array = txt.clone();
                         },
@@ -3626,7 +3634,7 @@ fn value_range_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle
                         }
                     }
                 } else {
-                    match &default {
+                    match &def {
                         DefaultTextOrScaleConversion::DefaultTxt(txt) => {
                             *new_array = txt.clone();
                         },
@@ -3658,7 +3666,7 @@ fn value_range_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle
                         }
                     }
                 } else {
-                    match &default {
+                    match &def {
                         DefaultTextOrScaleConversion::DefaultTxt(txt) => {
                             *new_array = txt.clone();
                         },
@@ -3690,7 +3698,7 @@ fn value_range_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle
                         }
                     }
                 } else {
-                    match &default {
+                    match &def {
                         DefaultTextOrScaleConversion::DefaultTxt(txt) => {
                             *new_array = txt.clone();
                         },
@@ -3722,7 +3730,7 @@ fn value_range_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle
                         }
                     }
                 } else {
-                    match &default {
+                    match &def {
                         DefaultTextOrScaleConversion::DefaultTxt(txt) => {
                             *new_array = txt.clone();
                         },
@@ -3754,7 +3762,7 @@ fn value_range_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle
                         }
                     }
                 } else {
-                    match &default {
+                    match &def {
                         DefaultTextOrScaleConversion::DefaultTxt(txt) => {
                             *new_array = txt.clone();
                         },
@@ -3786,7 +3794,7 @@ fn value_range_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle
                         }
                     }
                 } else {
-                    match &default {
+                    match &def {
                         DefaultTextOrScaleConversion::DefaultTxt(txt) => {
                             *new_array = txt.clone();
                         },
@@ -3818,7 +3826,7 @@ fn value_range_to_text(cn: &mut Cn4, cc_val: &Vec<f64>, cc_ref: &Vec<i64>, cycle
                         }
                     }
                 } else {
-                    match &default {
+                    match &def {
                         DefaultTextOrScaleConversion::DefaultTxt(txt) => {
                             *new_array = txt.clone();
                         },
@@ -4037,6 +4045,493 @@ fn text_to_text(cn: &mut Cn4, cc_ref: &Vec<i64>, cycle_count: &u64, sharable: &S
             });
             cn.data = ChannelData::StringUTF8(new_array);
         },
+        ChannelData::ByteArray(_) => {},
+        ChannelData::ArrayDInt8(_) => {},
+        ChannelData::ArrayDUInt8(_) => {},
+        ChannelData::ArrayDInt16(_) => {},
+        ChannelData::ArrayDUInt16(_) => {},
+        ChannelData::ArrayDFloat16(_) => {},
+        ChannelData::ArrayDInt24(_) => {},
+        ChannelData::ArrayDUInt24(_) => {},
+        ChannelData::ArrayDInt32(_) => {},
+        ChannelData::ArrayDUInt32(_) => {},
+        ChannelData::ArrayDFloat32(_) => {},
+        ChannelData::ArrayDInt48(_) => {},
+        ChannelData::ArrayDUInt48(_) => {},
+        ChannelData::ArrayDInt64(_) => {},
+        ChannelData::ArrayDUInt64(_) => {},
+        ChannelData::ArrayDFloat64(_) => {},
+        ChannelData::ArrayDComplex16(_) => {},
+        ChannelData::ArrayDComplex32(_) => {},
+        ChannelData::ArrayDComplex64(_) => {},
+    }
+}
+
+enum ValueOrValueRangeToText {
+    ValueToText(HashMap<i64, TextOrScaleConversion>, DefaultTextOrScaleConversion),
+    ValueRangeToText(Vec<TextOrScaleConversion>, DefaultTextOrScaleConversion, Vec<KeyRange>),
+}
+
+fn bitfield_text_table(cn: &mut Cn4, cc_val: &Vec<u64>, cc_ref: &Vec<i64>, cycle_count: &u64, sharable: &SharableBlocks) {
+    let mut table: Vec<(ValueOrValueRangeToText, Option<String>)> = Vec::with_capacity(cc_ref.len());
+    for pointer in cc_ref.iter() {
+        if let Some(cc) = sharable.cc.get(pointer){
+            let name: Option<String>;
+            if cc.cc_tx_name != 0 {
+                if let Some(n) = sharable.tx.get(&cc.cc_tx_name) {
+                    name = Some(n.0.clone());
+                } else {name = None}
+            } else {name = None}
+            if cc.cc_type == 7 {
+                match &cc.cc_val {
+                    CcVal::Real(cc_val) => {
+                        let mut table_int: HashMap<i64, TextOrScaleConversion> = HashMap::with_capacity(cc_val.len());
+                        for (ind, val) in cc_val.iter().enumerate() {
+                            let val_i64 = (*val).round() as i64;
+                            if let Some(txt) = sharable.tx.get(&cc.cc_ref[ind]) {
+                                table_int.insert(val_i64,TextOrScaleConversion::Txt(txt.0.clone()));
+                            } else if let Some(cc) = sharable.cc.get(&cc.cc_ref[ind]){
+                                let conv = conversion_function(cc, sharable);
+                                table_int.insert(val_i64,TextOrScaleConversion::Scale(conv));
+                            } else {
+                                table_int.insert(val_i64,TextOrScaleConversion::Nil);
+                            }
+                        }
+                        let def: DefaultTextOrScaleConversion;
+                        if let Some(txt) = sharable.tx.get(&cc.cc_ref[cc_val.len()]) {
+                            def = DefaultTextOrScaleConversion::DefaultTxt(txt.0.clone());
+                        } else if let Some(cc) = sharable.cc.get(&cc.cc_ref[cc_val.len()]){
+                            let conv = conversion_function(cc, sharable);
+                            def = DefaultTextOrScaleConversion::DefaultScale(conv);
+                        } else {
+                            def = DefaultTextOrScaleConversion::Nil;
+                        }
+                        table.push((ValueOrValueRangeToText::ValueToText(table_int, def), name));
+                    },
+                    CcVal::Uint(_) => (),
+                }
+            } else if cc.cc_type == 8 {
+                match &cc.cc_val {
+                    CcVal::Real(cc_val) => {
+                        let n_keys = cc_val.len() / 2;
+                        let mut keys: Vec<KeyRange> = Vec::with_capacity(n_keys);
+                        for (key_min, key_max) in cc_val.into_iter().tuples() {
+                            let key: KeyRange = KeyRange {
+                                min: *key_min,
+                                max: *key_max,
+                            };
+                            keys.push(key);
+                        }
+                        let mut txt: Vec<TextOrScaleConversion> = Vec::with_capacity(n_keys);
+                        for pointer in cc.cc_ref.iter() {
+                            if let Some(t) = sharable.tx.get(pointer) {
+                                txt.push(TextOrScaleConversion::Txt(t.0.clone()));
+                            } else if let Some(ccc) = sharable.cc.get(pointer){
+                                let conv = conversion_function(ccc, sharable);
+                                txt.push(TextOrScaleConversion::Scale(conv));
+                            } else {
+                                txt.push(TextOrScaleConversion::Nil);
+                            }
+                        }
+                        let def: DefaultTextOrScaleConversion;
+                        if let Some(t) = sharable.tx.get(&cc.cc_ref[n_keys]) {
+                            def=DefaultTextOrScaleConversion::DefaultTxt(t.0.clone());
+                        } else if let Some(ccc) = sharable.cc.get(&cc.cc_ref[n_keys]){
+                            let conv = conversion_function(ccc, sharable);
+                            def=DefaultTextOrScaleConversion::DefaultScale(conv);
+                        } else {
+                            def=DefaultTextOrScaleConversion::Nil;
+                        }
+                        table.push((ValueOrValueRangeToText::ValueRangeToText(txt, def, keys), name));
+                    }
+                    CcVal::Uint(_) => (),
+                }
+            }
+
+        }
+    }
+    match &mut cn.data {
+        ChannelData::UInt8(a) => {
+            let mut new_array = vec![String::new(); *cycle_count as usize];
+            Zip::from(&mut new_array).and(a).for_each(|new_a, a| {
+                for (ind, val) in cc_val.iter().enumerate() {
+                    let masked_val = *a & (*val as u8);
+                    match &table[ind] {
+                        (ValueOrValueRangeToText::ValueToText(table_int, def), name) => {
+                            let ref_val = masked_val as i64;
+                            if let Some(tosc) = table_int.get(&ref_val) {
+                                match tosc {
+                                    TextOrScaleConversion::Txt(txt) => {
+                                        if let Some(n) = name {
+                                            *new_a = format!("{} | {} = {}", new_a, n, txt.clone());
+                                        } else {
+                                            *new_a = format!("{} | {}", new_a, txt.clone());
+                                        }
+                                    },
+                                    TextOrScaleConversion::Scale(conv) => {
+                                        if let Some(n) = name {
+                                            *new_a = format!("{} | {} = {}", new_a, n, conv.eval_to_txt(*a as f64));
+                                        } else {
+                                            *new_a = format!("{} | {}", new_a, conv.eval_to_txt(*a as f64));
+                                        }
+                                    },
+                                    _ => {
+                                        *new_a = format!("{} | {}", new_a, "nothing");
+                                    }
+                                }
+                            } else {
+                                match &def {
+                                    DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                                        *new_a = txt.clone();
+                                    },
+                                    DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                                        *new_a = conv.eval_to_txt(*a as f64);
+                                    },
+                                    _ => {
+                                        *new_a = format!("{} | {}", new_a, "nothing");
+                                    }
+                                }
+                            }
+                        },
+                        (ValueOrValueRangeToText::ValueRangeToText(txt, def, keys), name) => {
+                            let matched_key = keys.iter().enumerate().find(|&x| { x.1.min <= *a as f64  && *a as f64 <= x.1.max });
+                            if let Some(key) = matched_key {
+                                match &txt[key.0] {
+                                    TextOrScaleConversion::Txt(txt) => {
+                                        if let Some(n) = name {
+                                            *new_a = format!("{} | {} = {}", new_a, n, txt.clone());
+                                        } else {
+                                            *new_a = format!("{} | {}", new_a, txt.clone());
+                                        }
+                                    },
+                                    TextOrScaleConversion::Scale(conv) => {
+                                        if let Some(n) = name {
+                                            *new_a = format!("{} | {} = {}", new_a, n, conv.eval_to_txt(*a as f64));
+                                        }  else {
+                                            *new_a = format!("{} | {}", new_a, conv.eval_to_txt(*a as f64));
+                                        }
+                                    },
+                                    _ => {
+                                        *new_a = format!("{} | {}", new_a, "nothing");
+                                    }
+                                }
+                            } else {
+                                match &def {
+                                    DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                                        if let Some(n) = name {
+                                            *new_a = format!("{} | {} = {}", new_a, n, txt.clone());
+                                        } else {
+                                            *new_a = format!("{} | {}", new_a, txt.clone());
+                                        }
+                                    },
+                                    DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                                        if let Some(n) = name {
+                                            *new_a = format!("{} | {} = {}", new_a, n, conv.eval_to_txt(*a as f64));
+                                        }  else {
+                                            *new_a = format!("{} | {}", new_a, conv.eval_to_txt(*a as f64));
+                                        }
+                                    },
+                                    _ => {
+                                        *new_a = format!("{} | {}", new_a, "nothing");
+                                    }
+                                }
+                            }
+                        },
+                    }
+                }
+            });
+            cn.data = ChannelData::StringUTF8(new_array);
+        },
+        ChannelData::Int8(_) => (),
+        ChannelData::Int16(_) => (),
+        ChannelData::UInt16(a) => {
+            let mut new_array = vec![String::new(); *cycle_count as usize];
+            Zip::from(&mut new_array).and(a).for_each(|new_a, a| {
+                for (ind, val) in cc_val.iter().enumerate() {
+                    let masked_val = *a & (*val as u16);
+                    match &table[ind] {
+                        (ValueOrValueRangeToText::ValueToText(table_int, def), name) => {
+                            let ref_val = masked_val as i64;
+                            if let Some(tosc) = table_int.get(&ref_val) {
+                                match tosc {
+                                    TextOrScaleConversion::Txt(txt) => {
+                                        if let Some(n) = name {
+                                            *new_a = format!("{} | {} = {}", new_a, n, txt.clone());
+                                        } else {
+                                            *new_a = format!("{} | {}", new_a, txt.clone());
+                                        }
+                                    },
+                                    TextOrScaleConversion::Scale(conv) => {
+                                        if let Some(n) = name {
+                                            *new_a = format!("{} | {} = {}", new_a, n, conv.eval_to_txt(*a as f64));
+                                        } else {
+                                            *new_a = format!("{} | {}", new_a, conv.eval_to_txt(*a as f64));
+                                        }
+                                    },
+                                    _ => {
+                                        *new_a = format!("{} | {}", new_a, "nothing");
+                                    }
+                                }
+                            } else {
+                                match &def {
+                                    DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                                        *new_a = txt.clone();
+                                    },
+                                    DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                                        *new_a = conv.eval_to_txt(*a as f64);
+                                    },
+                                    _ => {
+                                        *new_a = format!("{} | {}", new_a, "nothing");
+                                    }
+                                }
+                            }
+                        },
+                        (ValueOrValueRangeToText::ValueRangeToText(txt, def, keys), name) => {
+                            let matched_key = keys.iter().enumerate().find(|&x| { x.1.min <= *a as f64  && *a as f64 <= x.1.max });
+                            if let Some(key) = matched_key {
+                                match &txt[key.0] {
+                                    TextOrScaleConversion::Txt(txt) => {
+                                        if let Some(n) = name {
+                                            *new_a = format!("{} | {} = {}", new_a, n, txt.clone());
+                                        } else {
+                                            *new_a = format!("{} | {}", new_a, txt.clone());
+                                        }
+                                    },
+                                    TextOrScaleConversion::Scale(conv) => {
+                                        if let Some(n) = name {
+                                            *new_a = format!("{} | {} = {}", new_a, n, conv.eval_to_txt(*a as f64));
+                                        }  else {
+                                            *new_a = format!("{} | {}", new_a, conv.eval_to_txt(*a as f64));
+                                        }
+                                    },
+                                    _ => {
+                                        *new_a = format!("{} | {}", new_a, "nothing");
+                                    }
+                                }
+                            } else {
+                                match &def {
+                                    DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                                        if let Some(n) = name {
+                                            *new_a = format!("{} | {} = {}", new_a, n, txt.clone());
+                                        } else {
+                                            *new_a = format!("{} | {}", new_a, txt.clone());
+                                        }
+                                    },
+                                    DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                                        if let Some(n) = name {
+                                            *new_a = format!("{} | {} = {}", new_a, n, conv.eval_to_txt(*a as f64));
+                                        }  else {
+                                            *new_a = format!("{} | {}", new_a, conv.eval_to_txt(*a as f64));
+                                        }
+                                    },
+                                    _ => {
+                                        *new_a = format!("{} | {}", new_a, "nothing");
+                                    }
+                                }
+                            }
+                        },
+                    }
+                }
+            });
+            cn.data = ChannelData::StringUTF8(new_array);
+        },
+        ChannelData::Float16(_) => {},
+        ChannelData::Int24(_) => (),
+        ChannelData::UInt24(_) => (),
+        ChannelData::Int32(_) => (),
+        ChannelData::UInt32(a) => {
+            let mut new_array = vec![String::new(); *cycle_count as usize];
+            Zip::from(&mut new_array).and(a).for_each(|new_a, a| {
+                for (ind, val) in cc_val.iter().enumerate() {
+                    let masked_val = *a & (*val as u32);
+                    match &table[ind] {
+                        (ValueOrValueRangeToText::ValueToText(table_int, def), name) => {
+                            let ref_val = masked_val as i64;
+                            if let Some(tosc) = table_int.get(&ref_val) {
+                                match tosc {
+                                    TextOrScaleConversion::Txt(txt) => {
+                                        if let Some(n) = name {
+                                            *new_a = format!("{} | {} = {}", new_a, n, txt.clone());
+                                        } else {
+                                            *new_a = format!("{} | {}", new_a, txt.clone());
+                                        }
+                                    },
+                                    TextOrScaleConversion::Scale(conv) => {
+                                        if let Some(n) = name {
+                                            *new_a = format!("{} | {} = {}", new_a, n, conv.eval_to_txt(*a as f64));
+                                        } else {
+                                            *new_a = format!("{} | {}", new_a, conv.eval_to_txt(*a as f64));
+                                        }
+                                    },
+                                    _ => {
+                                        *new_a = format!("{} | {}", new_a, "nothing");
+                                    }
+                                }
+                            } else {
+                                match &def {
+                                    DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                                        *new_a = txt.clone();
+                                    },
+                                    DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                                        *new_a = conv.eval_to_txt(*a as f64);
+                                    },
+                                    _ => {
+                                        *new_a = format!("{} | {}", new_a, "nothing");
+                                    }
+                                }
+                            }
+                        },
+                        (ValueOrValueRangeToText::ValueRangeToText(txt, def, keys), name) => {
+                            let matched_key = keys.iter().enumerate().find(|&x| { x.1.min <= *a as f64  && *a as f64 <= x.1.max });
+                            if let Some(key) = matched_key {
+                                match &txt[key.0] {
+                                    TextOrScaleConversion::Txt(txt) => {
+                                        if let Some(n) = name {
+                                            *new_a = format!("{} | {} = {}", new_a, n, txt.clone());
+                                        } else {
+                                            *new_a = format!("{} | {}", new_a, txt.clone());
+                                        }
+                                    },
+                                    TextOrScaleConversion::Scale(conv) => {
+                                        if let Some(n) = name {
+                                            *new_a = format!("{} | {} = {}", new_a, n, conv.eval_to_txt(*a as f64));
+                                        }  else {
+                                            *new_a = format!("{} | {}", new_a, conv.eval_to_txt(*a as f64));
+                                        }
+                                    },
+                                    _ => {
+                                        *new_a = format!("{} | {}", new_a, "nothing");
+                                    }
+                                }
+                            } else {
+                                match &def {
+                                    DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                                        if let Some(n) = name {
+                                            *new_a = format!("{} | {} = {}", new_a, n, txt.clone());
+                                        } else {
+                                            *new_a = format!("{} | {}", new_a, txt.clone());
+                                        }
+                                    },
+                                    DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                                        if let Some(n) = name {
+                                            *new_a = format!("{} | {} = {}", new_a, n, conv.eval_to_txt(*a as f64));
+                                        }  else {
+                                            *new_a = format!("{} | {}", new_a, conv.eval_to_txt(*a as f64));
+                                        }
+                                    },
+                                    _ => {
+                                        *new_a = format!("{} | {}", new_a, "nothing");
+                                    }
+                                }
+                            }
+                        },
+                    }
+                }
+            });
+            cn.data = ChannelData::StringUTF8(new_array);
+        },
+        ChannelData::Float32(_) => {},
+        ChannelData::Int48(_) => (),
+        ChannelData::UInt48(_) => (),
+        ChannelData::Int64(_) => (),
+        ChannelData::UInt64(a) => {
+            let mut new_array = vec![String::new(); *cycle_count as usize];
+            Zip::from(&mut new_array).and(a).for_each(|new_a, a| {
+                for (ind, val) in cc_val.iter().enumerate() {
+                    let masked_val = *a & val;
+                    match &table[ind] {
+                        (ValueOrValueRangeToText::ValueToText(table_int, def), name) => {
+                            let ref_val = masked_val as i64;
+                            if let Some(tosc) = table_int.get(&ref_val) {
+                                match tosc {
+                                    TextOrScaleConversion::Txt(txt) => {
+                                        if let Some(n) = name {
+                                            *new_a = format!("{} | {} = {}", new_a, n, txt.clone());
+                                        } else {
+                                            *new_a = format!("{} | {}", new_a, txt.clone());
+                                        }
+                                    },
+                                    TextOrScaleConversion::Scale(conv) => {
+                                        if let Some(n) = name {
+                                            *new_a = format!("{} | {} = {}", new_a, n, conv.eval_to_txt(*a as f64));
+                                        } else {
+                                            *new_a = format!("{} | {}", new_a, conv.eval_to_txt(*a as f64));
+                                        }
+                                    },
+                                    _ => {
+                                        *new_a = format!("{} | {}", new_a, "nothing");
+                                    }
+                                }
+                            } else {
+                                match &def {
+                                    DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                                        *new_a = txt.clone();
+                                    },
+                                    DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                                        *new_a = conv.eval_to_txt(*a as f64);
+                                    },
+                                    _ => {
+                                        *new_a = format!("{} | {}", new_a, "nothing");
+                                    }
+                                }
+                            }
+                        },
+                        (ValueOrValueRangeToText::ValueRangeToText(txt, def, keys), name) => {
+                            let matched_key = keys.iter().enumerate().find(|&x| { x.1.min <= *a as f64  && *a as f64 <= x.1.max });
+                            if let Some(key) = matched_key {
+                                match &txt[key.0] {
+                                    TextOrScaleConversion::Txt(txt) => {
+                                        if let Some(n) = name {
+                                            *new_a = format!("{} | {} = {}", new_a, n, txt.clone());
+                                        } else {
+                                            *new_a = format!("{} | {}", new_a, txt.clone());
+                                        }
+                                    },
+                                    TextOrScaleConversion::Scale(conv) => {
+                                        if let Some(n) = name {
+                                            *new_a = format!("{} | {} = {}", new_a, n, conv.eval_to_txt(*a as f64));
+                                        }  else {
+                                            *new_a = format!("{} | {}", new_a, conv.eval_to_txt(*a as f64));
+                                        }
+                                    },
+                                    _ => {
+                                        *new_a = format!("{} | {}", new_a, "nothing");
+                                    }
+                                }
+                            } else {
+                                match &def {
+                                    DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                                        if let Some(n) = name {
+                                            *new_a = format!("{} | {} = {}", new_a, n, txt.clone());
+                                        } else {
+                                            *new_a = format!("{} | {}", new_a, txt.clone());
+                                        }
+                                    },
+                                    DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                                        if let Some(n) = name {
+                                            *new_a = format!("{} | {} = {}", new_a, n, conv.eval_to_txt(*a as f64));
+                                        }  else {
+                                            *new_a = format!("{} | {}", new_a, conv.eval_to_txt(*a as f64));
+                                        }
+                                    },
+                                    _ => {
+                                        *new_a = format!("{} | {}", new_a, "nothing");
+                                    }
+                                }
+                            }
+                        },
+                    }
+                }
+            });
+            cn.data = ChannelData::StringUTF8(new_array);
+        },
+        ChannelData::Float64(_) => {},
+        ChannelData::Complex16(_) => {},
+        ChannelData::Complex32(_) => {},
+        ChannelData::Complex64(_) => {},
+        ChannelData::StringSBC(_) => {},
+        ChannelData::StringUTF8(_) => {},
+        ChannelData::StringUTF16(_) => {},
         ChannelData::ByteArray(_) => {},
         ChannelData::ArrayDInt8(_) => {},
         ChannelData::ArrayDUInt8(_) => {},
