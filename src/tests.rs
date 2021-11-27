@@ -408,7 +408,6 @@ mod tests {
         if let Some(data) = info.get_channel_data(&"channel1".to_string()) {
             assert_eq!(data.len(), 254552);
         }
-        // TODO conversions missing to be tested for Write and WriteTextToWriteWindow channels
 
         // Empty data
         let file_name = format!("{}{}", base_path, "ETAS_EmptyDL.mf4");
@@ -538,7 +537,7 @@ mod tests {
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
         if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
-            let vect: [f64; 10] = [ 1.,  2.,  5., 10., 17., 26., 37., 50., 65., 82.];
+            let vect: [f64; 10] = [1., 2., 5., 10., 17., 26., 37., 50., 65., 82.];
             let target = Array1::<f64>::from_vec(vect.to_vec());
             assert!(ChannelData::Float64(target).compare_f64(data, f64::EPSILON));
         }
@@ -551,12 +550,38 @@ mod tests {
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
         if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
-            let vect: [f64; 30] = [-5.        , -5.        , -5.        , -5.        , -4.5       ,
-            -4.        , -3.5       , -3.        , -2.5       , -2.        ,
-            -4./3., -2./3.,  0.        ,  1./3.,  2./3.,
-             1.        ,  1.5       ,  2.        ,  1.        ,  0.        ,
-             1.5       ,  3.        ,  4.5       ,  6.        ,  4.5       ,
-             3.        ,  1.5       ,  0.        ,  0.        ,  0.        ];
+            let vect: [f64; 30] = [
+                -5.,
+                -5.,
+                -5.,
+                -5.,
+                -4.5,
+                -4.,
+                -3.5,
+                -3.,
+                -2.5,
+                -2.,
+                -4. / 3.,
+                -2. / 3.,
+                0.,
+                1. / 3.,
+                2. / 3.,
+                1.,
+                1.5,
+                2.,
+                1.,
+                0.,
+                1.5,
+                3.,
+                4.5,
+                6.,
+                4.5,
+                3.,
+                1.5,
+                0.,
+                0.,
+                0.,
+            ];
             let target = Array1::<f64>::from_vec(vect.to_vec());
             assert!(ChannelData::Float64(target).compare_f64(data, f64::EPSILON));
         }
@@ -569,9 +594,10 @@ mod tests {
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
         if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
-            let vect: [f64; 30] = [-5., -5., -5., -5., -5., -5., -5., -2., -2., -2., -2.,  0.,  0.,
-            0.,  1.,  1.,  1.,  2.,  2.,  0.,  0.,  3.,  3.,  6.,  6.,  3.,
-            3.,  0., 0., 0.];
+            let vect: [f64; 30] = [
+                -5., -5., -5., -5., -5., -5., -5., -2., -2., -2., -2., 0., 0., 0., 1., 1., 1., 2.,
+                2., 0., 0., 3., 3., 6., 6., 3., 3., 0., 0., 0.,
+            ];
             let target = Array1::<f64>::from_vec(vect.to_vec());
             assert!(ChannelData::Float64(target).compare_f64(data, f64::EPSILON));
         }
@@ -584,8 +610,10 @@ mod tests {
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
         if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
-            let vect: [f64; 30] = [-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 2.0, 2.0,
-             2.0, 2.0, 2.0, 3.0, 3.0, 5.0, 5.0, 5.0, 6.0, 7.0, 7.0, 8.0, 8.0, 9.0, 9.0, 9.0, 9.0];
+            let vect: [f64; 30] = [
+                -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 2.0, 2.0, 2.0, 2.0,
+                2.0, 3.0, 3.0, 5.0, 5.0, 5.0, 6.0, 7.0, 7.0, 8.0, 8.0, 9.0, 9.0, 9.0, 9.0,
+            ];
             let target = Array1::<f64>::from_vec(vect.to_vec());
             assert!(ChannelData::Float64(target).compare_f64(data, f64::EPSILON));
         }
@@ -598,10 +626,19 @@ mod tests {
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
         if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
-            let target: Vec<String> = ["No match".to_string(), "first gear".to_string(),
-            "second gear".to_string(), "third gear".to_string(), "fourth gear".to_string(),
-            "fifth gear".to_string(), "No match".to_string(), "No match".to_string(), "No match".to_string(),
-            "No match".to_string()].to_vec();
+            let target: Vec<String> = [
+                "No match".to_string(),
+                "first gear".to_string(),
+                "second gear".to_string(),
+                "third gear".to_string(),
+                "fourth gear".to_string(),
+                "fifth gear".to_string(),
+                "No match".to_string(),
+                "No match".to_string(),
+                "No match".to_string(),
+                "No match".to_string(),
+            ]
+            .to_vec();
             assert_eq!(ChannelData::StringUTF8(target), *data);
         }
 
@@ -613,13 +650,23 @@ mod tests {
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
         if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
-            let target: Vec<String> = ["Out of range".to_string(), "very low".to_string(),
-             "very low".to_string(), "very low".to_string(), "low".to_string(), "low".to_string(),
-              "medium".to_string(), "medium".to_string(), "high".to_string(), "high".to_string()].to_vec();
+            let target: Vec<String> = [
+                "Out of range".to_string(),
+                "very low".to_string(),
+                "very low".to_string(),
+                "very low".to_string(),
+                "low".to_string(),
+                "low".to_string(),
+                "medium".to_string(),
+                "medium".to_string(),
+                "high".to_string(),
+                "high".to_string(),
+            ]
+            .to_vec();
             assert_eq!(ChannelData::StringUTF8(target), *data);
         }
 
-        // Lookup conversion : Value range to Text, 
+        // Lookup conversion : Value range to Text,
         let file_name = format!(
             "{}{}{}",
             base_path, list_of_paths[2], "Vector_StatusStringTableConversionAlgebraic.mf4"
@@ -633,15 +680,18 @@ mod tests {
                 *v = counter.clone();
                 counter += 0.1
             });
-            let target = vect.iter().map(|v| {
-                if 9.9999 <= *v && *v <= 10.1001 {
-                    "Illegal value".to_string()
-                } else if 20.0 <= *v && *v <= 30.0 {
-                    "Out of range".to_string()
-                } else {
-                    (10.0/(v-10.0)).to_string()
-                }
-            }).collect::<Vec<String>>();
+            let target = vect
+                .iter()
+                .map(|v| {
+                    if 9.9999 <= *v && *v <= 10.1001 {
+                        "Illegal value".to_string()
+                    } else if 20.0 <= *v && *v <= 30.0 {
+                        "Out of range".to_string()
+                    } else {
+                        (10.0 / (v - 10.0)).to_string()
+                    }
+                })
+                .collect::<Vec<String>>();
             // println!("{:?} {}", target, target.len());
             // println!("{} {}", data, data.len());
             // assert!(ChannelData::StringUTF8(target.clone()).compare_f64(data, 1e-6f64));
@@ -655,7 +705,7 @@ mod tests {
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
         if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
-            let vect: [f64; 10] = [-50.,   1.,   2.,   3.,   4.,   5.,   6.,   7.,   8.,   9.];
+            let vect: [f64; 10] = [-50., 1., 2., 3., 4., 5., 6., 7., 8., 9.];
             let target = Array1::<f64>::from_vec(vect.to_vec());
             assert_eq!(ChannelData::Float64(target), *data);
         }
@@ -668,16 +718,19 @@ mod tests {
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
         if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
-            let target: Vec<String> = ["No translation".to_string(),
-            "Eins".to_string(),
-            "Zwei".to_string(),
-            "Drei".to_string(),
-            "Vier".to_string(),
-            "Fünf".to_string(),
-            "Sechs".to_string(),
-            "Sieben".to_string(),
-            "Acht".to_string(),
-            "Neun".to_string()].to_vec();
+            let target: Vec<String> = [
+                "No translation".to_string(),
+                "Eins".to_string(),
+                "Zwei".to_string(),
+                "Drei".to_string(),
+                "Vier".to_string(),
+                "Fünf".to_string(),
+                "Sechs".to_string(),
+                "Sieben".to_string(),
+                "Acht".to_string(),
+                "Neun".to_string(),
+            ]
+            .to_vec();
             assert_eq!(ChannelData::StringUTF8(target), *data);
         }
     }

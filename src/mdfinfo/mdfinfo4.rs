@@ -99,7 +99,7 @@ impl MdfInfo4 {
         }
         data
     }
-    /// True if channel contains data 
+    /// True if channel contains data
     pub fn get_channel_data_validity(&self, channel_name: &String) -> bool {
         let mut state: bool = false;
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
@@ -1535,7 +1535,7 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         data: ChannelData::UInt32(Array1::<u32>::zeros((0,))),
         endian: false,
         invalid_mask: None,
-        channel_data_valid: false
+        channel_data_valid: false,
     };
     let block = Cn4Block {
         cn_links: 8,
@@ -1553,7 +1553,7 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         data: ChannelData::UInt16(Array1::<u16>::zeros((0,))),
         endian: false,
         invalid_mask: None,
-        channel_data_valid: false
+        channel_data_valid: false,
     };
     (ms, days)
 }
@@ -1694,33 +1694,34 @@ fn parse_cn4_block(
         data: data_type_init(cn_type, data_type, n_bytes, is_array),
         endian,
         invalid_mask: None,
-        channel_data_valid: false
+        channel_data_valid: false,
     };
 
     (cn_struct, position)
 }
 
 /// reads pointed TX or CC Block(s) pointed by cc_ref in CCBlock
-fn read_cc(rdr: &mut BufReader<&File>, target: &i64, mut position: i64, mut block: Cursor<Vec<u8>>, sharable: &mut SharableBlocks) -> i64 {
+fn read_cc(
+    rdr: &mut BufReader<&File>,
+    target: &i64,
+    mut position: i64,
+    mut block: Cursor<Vec<u8>>,
+    sharable: &mut SharableBlocks,
+) -> i64 {
     let cc_block: Cc4Block = block.read_le().unwrap();
-    if (cc_block.cc_md_unit != 0)
-        && !sharable.tx.contains_key(&cc_block.cc_md_unit)
-    {
+    if (cc_block.cc_md_unit != 0) && !sharable.tx.contains_key(&cc_block.cc_md_unit) {
         let (u, pos, tx_md_flag) = md_tx_comment(rdr, cc_block.cc_md_unit, position);
         position = pos;
         sharable.tx.insert(cc_block.cc_md_unit, (u, tx_md_flag));
     }
-    if (cc_block.cc_tx_name != 0)
-        && !sharable.tx.contains_key(&cc_block.cc_tx_name)
-    {
+    if (cc_block.cc_tx_name != 0) && !sharable.tx.contains_key(&cc_block.cc_tx_name) {
         let (d, pos, tx_md_flag) = md_tx_comment(rdr, cc_block.cc_tx_name, position);
         position = pos;
         sharable.tx.insert(cc_block.cc_tx_name, (d, tx_md_flag));
     }
     for pointer in &cc_block.cc_ref {
-        if !sharable.cc.contains_key(pointer)
-            && !sharable.tx.contains_key(pointer)
-            && *pointer != 0 {
+        if !sharable.cc.contains_key(pointer) && !sharable.tx.contains_key(pointer) && *pointer != 0
+        {
             let (mut ref_block, header, _pos) = parse_block_short(rdr, *pointer, position);
             position = pointer + header.hdr_len as i64;
             if "##TX".as_bytes() == header.hdr_id {
@@ -1760,7 +1761,7 @@ pub struct Cc4Block {
     // cc_id: [u8; 4],  // ##CC
     // reserved: [u8; 4],  // reserved
     // cc_len: u64,      // Length of block in bytes
-    cc_links: u64,   // # of links
+    cc_links: u64,       // # of links
     pub cc_tx_name: i64, // Link to TXBLOCK with name (identifier) of conversion (can be NIL). Name must be according to naming rules stated in 4.4.2 Naming Rules.
     cc_md_unit: i64, // Link to TXBLOCK/MDBLOCK with physical unit of signal data (after conversion). (can be NIL) Unit only applies if no unit defined in CNBLOCK. Otherwise the unit of the channel overwrites the conversion unit.
     // An MDBLOCK can be used to additionally reference the A-HDO unit definition. Note: for channels with cn_sync_type > 0, the unit is already defined, thus a reference to an A-HDO definition should be omitted to avoid redundancy.
@@ -1783,12 +1784,12 @@ pub struct Cc4Block {
 
 #[derive(Debug, Clone, BinRead)]
 #[br(little, import(count: u16, cc_type: u8))]
-pub enum CcVal {    
+pub enum CcVal {
     #[br(pre_assert(cc_type < 11))]
     Real(#[br(count = count)] Vec<f64>),
 
     #[br(pre_assert(cc_type == 11))]
-    Uint(#[br(count = count)]  Vec<u64>),
+    Uint(#[br(count = count)] Vec<u64>),
 }
 
 /// Si4 Source Information block struct
