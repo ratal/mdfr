@@ -1710,6 +1710,13 @@ fn read_cc(rdr: &mut BufReader<&File>, target: &i64, mut position: i64, mut bloc
         position = pos;
         sharable.tx.insert(cc_block.cc_md_unit, (u, tx_md_flag));
     }
+    if (cc_block.cc_tx_name != 0)
+        && !sharable.tx.contains_key(&cc_block.cc_tx_name)
+    {
+        let (d, pos, tx_md_flag) = md_tx_comment(rdr, cc_block.cc_tx_name, position);
+        position = pos;
+        sharable.tx.insert(cc_block.cc_tx_name, (d, tx_md_flag));
+    }
     for pointer in &cc_block.cc_ref {
         if !sharable.cc.contains_key(pointer)
             && !sharable.tx.contains_key(pointer)
@@ -1754,7 +1761,7 @@ pub struct Cc4Block {
     // reserved: [u8; 4],  // reserved
     // cc_len: u64,      // Length of block in bytes
     cc_links: u64,   // # of links
-    cc_tx_name: i64, // Link to TXBLOCK with name (identifier) of conversion (can be NIL). Name must be according to naming rules stated in 4.4.2 Naming Rules.
+    pub cc_tx_name: i64, // Link to TXBLOCK with name (identifier) of conversion (can be NIL). Name must be according to naming rules stated in 4.4.2 Naming Rules.
     cc_md_unit: i64, // Link to TXBLOCK/MDBLOCK with physical unit of signal data (after conversion). (can be NIL) Unit only applies if no unit defined in CNBLOCK. Otherwise the unit of the channel overwrites the conversion unit.
     // An MDBLOCK can be used to additionally reference the A-HDO unit definition. Note: for channels with cn_sync_type > 0, the unit is already defined, thus a reference to an A-HDO definition should be omitted to avoid redundancy.
     pub cc_md_comment: i64, // Link to TXBLOCK/MDBLOCK with comment of conversion and additional information. (can be NIL)
