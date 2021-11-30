@@ -400,126 +400,126 @@ impl ChannelData {
             }
             ChannelData::ArrayDInt8(array) => {
                 if array.len() > 1 {
-                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                    output = format!("dim {:?} {}", array.dim(), array);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::ArrayDUInt8(array) => {
                 if array.len() > 1 {
-                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                    output = format!("dim {:?} {}", array.dim(), array);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::ArrayDInt16(array) => {
                 if array.len() > 1 {
-                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                    output = format!("dim {:?} {}", array.dim(), array);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::ArrayDUInt16(array) => {
                 if array.len() > 1 {
-                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                    output = format!("dim {:?} {}", array.dim(), array);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::ArrayDFloat16(array) => {
                 if array.len() > 1 {
-                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                    output = format!("dim {:?} {}", array.dim(), array);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::ArrayDInt24(array) => {
                 if array.len() > 1 {
-                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                    output = format!("dim {:?} {}", array.dim(), array);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::ArrayDUInt24(array) => {
                 if array.len() > 1 {
-                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                    output = format!("dim {:?} {}", array.dim(), array);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::ArrayDInt32(array) => {
                 if array.len() > 1 {
-                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                    output = format!("dim {:?} {}", array.dim(), array);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::ArrayDUInt32(array) => {
                 if array.len() > 1 {
-                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                    output = format!("dim {:?} {}", array.dim(), array);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::ArrayDFloat32(array) => {
                 if array.len() > 1 {
-                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                    output = format!("dim {:?} {}", array.dim(), array);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::ArrayDInt48(array) => {
                 if array.len() > 1 {
-                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                    output = format!("dim {:?} {}", array.dim(), array);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::ArrayDUInt48(array) => {
                 if array.len() > 1 {
-                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                    output = format!("dim {:?} {}", array.dim(), array);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::ArrayDInt64(array) => {
                 if array.len() > 1 {
-                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                    output = format!("dim {:?} {}", array.dim(), array);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::ArrayDUInt64(array) => {
                 if array.len() > 1 {
-                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                    output = format!("dim {:?} {}", array.dim(), array);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::ArrayDFloat64(array) => {
                 if array.len() > 1 {
-                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                    output = format!("dim {:?} {}", array.dim(), array);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::ArrayDComplex16(array) => {
                 if array.len() > 1 {
-                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                    output = format!("dim {:?} {}", array.dim(), array);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::ArrayDComplex32(array) => {
                 if array.len() > 1 {
-                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                    output = format!("dim {:?} {}", array.dim(), array);
                 } else {
                     output = String::new();
                 }
             }
             ChannelData::ArrayDComplex64(array) => {
                 if array.len() > 1 {
-                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                    output = format!("dim {:?} {}", array.dim(), array);
                 } else {
                     output = String::new();
                 }
