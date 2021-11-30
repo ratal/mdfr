@@ -1595,7 +1595,7 @@ fn parse_cn4_block(
     record_id_size: u8,
     cg_cycle_count: u64,
 ) -> (Cn4, i64, usize, CnType) {
-    let mut n_cn: usize = 0;
+    let mut n_cn: usize = 1;
     let mut cns: HashMap<i32, Cn4> = HashMap::new();
     let (mut block, _header, pos) = parse_block_short(rdr, target, position);
     position = pos;
@@ -2061,8 +2061,8 @@ fn parse_composition(
     let (mut block, block_header, pos) = parse_block(rdr, target, position);
     position = pos;
     let is_array: bool;
-    let mut n_cn: usize= 0;
     let mut cns: CnType;
+    let mut n_cn: usize = 0;
 
     if block_header.hdr_id == "##CA".as_bytes() {
         // Channel Array
@@ -2080,8 +2080,8 @@ fn parse_composition(
                 cg_cycle_count,
             );
             position = pos;
-            n_cn += n_cns;
             cns = cnss;
+            n_cn += n_cns;
             ca_compositon = Some(Box::new(ca));
         } else {
             ca_compositon = None;
