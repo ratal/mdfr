@@ -763,6 +763,7 @@ fn parser_dl4_sorted(
                 data.extend(dt);
                 block_length = block_header.dz_org_data_length as usize;
                 position = data_pointer + block_header.len as i64;
+                id[2..].copy_from_slice(&block_header.dz_org_block_type[..]);
             } else {
                 let block_header: Dt4Block = rdr.read_le().unwrap();
                 let mut buf = vec![0u8; (block_header.len - 24) as usize];
