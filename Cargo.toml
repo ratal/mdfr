@@ -23,7 +23,7 @@ roxmltree = "0.14" # for xml parsing
 criterion = "0.3" # for benchmark
 yazi = "0.1" # for DZ block data deflate
 transpose = "0.2" # for DZBlock transpose
-numpy = "0.14" # export rust ndarrays into numpy
+numpy = "0.15" # export rust ndarrays into numpy
 fasteval = "0.2" # for algebraic conversion
 itertools = "0.10"
 
@@ -32,7 +32,7 @@ name = "mdfr"
 crate-type = ["rlib", "cdylib"]
 
 [dependencies.pyo3]
-version = "0.14.5"
+version = "0.15"
 features = ["extension-module", "num-complex"]
 
 [[bench]]
