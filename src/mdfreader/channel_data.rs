@@ -32,7 +32,7 @@ pub enum ChannelData {
     StringSBC(Vec<String>),
     StringUTF8(Vec<String>),
     StringUTF16(Vec<String>),
-    ByteArray(Vec<u8>),
+    ByteArray(Vec<Vec<u8>>),
     ArrayDInt8(ArrayD<i8>),
     ArrayDUInt8(ArrayD<u8>),
     ArrayDInt16(ArrayD<i16>),
@@ -145,7 +145,7 @@ impl ChannelData {
                     ChannelData::StringUTF16(target_vect)
                 }
                 ChannelData::ByteArray(_) => {
-                    ChannelData::ByteArray(vec![0u8; (n_bytes as u64 * cycle_count) as usize])
+                    ChannelData::ByteArray(vec![vec![0u8; n_bytes as usize]; cycle_count as usize])
                 }
                 ChannelData::ArrayDInt8(_) => {
                     ChannelData::ArrayDInt8(ArrayD::<i8>::zeros(IxDyn(&[
@@ -393,7 +393,7 @@ impl ChannelData {
             }
             ChannelData::ByteArray(array) => {
                 if array.len() > 1 {
-                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                    output = format!("[{:?}, .., {:?}]", array[0], array[array.len() - 1]);
                 } else {
                     output = String::new();
                 }
@@ -1142,7 +1142,7 @@ pub fn data_type_init(cn_type: u8, cn_data_type: u8, n_bytes: u32, is_array: boo
                 data_type = ChannelData::StringUTF16(vec![String::new(); 0]);
             } else {
                 // bytearray
-                data_type = ChannelData::ByteArray(vec![0u8; 0]);
+                data_type = ChannelData::ByteArray(vec![vec![0u8; 0]; 0]);
             }
         } else {
             // virtual channels, cn_bit_count = 0 -> n_bytes = 0, must be LE unsigned int
@@ -1290,7 +1290,7 @@ impl fmt::Display for ChannelData {
             }
             ChannelData::ByteArray(array) => {
                 for text in array.iter() {
-                    writeln!(f, " {} ", text)?;
+                    writeln!(f, " {:?} ", text)?;
                 }
                 writeln!(f, " ")
             }

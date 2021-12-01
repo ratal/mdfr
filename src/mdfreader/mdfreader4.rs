@@ -487,7 +487,31 @@ fn read_vlsd_from_bytes(
                 data.clear()
             }
         }
-        ChannelData::ByteArray(_) => {}
+        ChannelData::ByteArray(array) => {
+            while remaining > 0 {
+                let len = &data[position..position + std::mem::size_of::<u32>()];
+                let length: usize =
+                    u32::from_le_bytes(len.try_into().expect("Could not read length")) as usize;
+                if (position + length + 4) <= data_length {
+                    position += std::mem::size_of::<u32>();
+                    let record = &data[position..position + length];
+                    array[nrecord + previous_index] = record.to_vec();
+                    position += length;
+                    remaining = data_length - position;
+                    nrecord += 1;
+                } else {
+                    remaining = data_length - position;
+                    // copies tail part at beginnning of vect
+                    data.copy_within(position.., 0);
+                    // clears the last part
+                    data.truncate(remaining);
+                    break;
+                }
+            }
+            if remaining == 0 {
+                data.clear()
+            }
+        }
         ChannelData::ArrayDInt8(_) => {}
         ChannelData::ArrayDUInt8(_) => {}
         ChannelData::ArrayDInt16(_) => {}

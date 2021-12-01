@@ -429,8 +429,9 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                 }
             }
             ChannelData::ByteArray(data) => {
-                *data = vec![0u8; cycle_count * n_bytes];
-                rdr.read_exact(data).expect("Could not read byte array");
+                for value in data.iter_mut() {
+                    rdr.read_exact(value).expect("Could not read byte array");
+                }
             }
             ChannelData::ArrayDInt8(data) => {
                 if let Some(compo) = &cn.composition {
@@ -1519,9 +1520,7 @@ pub fn read_channels_from_bytes(
                 ChannelData::ByteArray(data) => {
                     let n_bytes = cn.n_bytes as usize;
                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                        value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                        let index = (i + previous_index) * n_bytes;
-                        data[index..index + n_bytes].copy_from_slice(value);
+                        data[i + previous_index] = record[pos_byte_beg..pos_byte_beg + n_bytes].to_vec();
                     }
                 }
                 ChannelData::ArrayDInt8(data) => {
