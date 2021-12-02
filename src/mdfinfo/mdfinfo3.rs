@@ -9,7 +9,7 @@ use std::fs::File;
 use std::io::prelude::*;
 use std::io::BufReader;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct MdfInfo3 {
     pub ver: u16,
     pub prog: [u8; 8],
@@ -19,7 +19,7 @@ pub struct MdfInfo3 {
 }
 //TODO mdf3 blocks reading finish implementing
 /// MDF4 - common Header
-#[derive(Debug, BinRead)]
+#[derive(Debug, BinRead, Default)]
 #[br(little)]
 pub struct Blockheader3 {
     hdr_id: [u8; 2], // 'XX' Block type identifier
@@ -68,7 +68,7 @@ pub fn parse_id3(
 }
 
 /// HD3 block strucutre
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Default)]
 pub struct Hd3 {
     hd_id: [u8; 2],     // HD
     hd_len: u16,        // Length of block in bytes
@@ -127,19 +127,19 @@ pub fn hd3_parser(rdr: &mut BufReader<&File>, ver: u16) -> (Hd3, i64) {
         .decode_to(&author, DecoderTrap::Replace, &mut hd_author)
         .unwrap();
     let mut organisation = [0u8; 32];
-    rdr.read_exact(&mut organisation).unwrap(); // author
+    rdr.read_exact(&mut organisation).unwrap(); // organisation
     let mut hd_organization = String::new();
     ISO_8859_1
         .decode_to(&organisation, DecoderTrap::Replace, &mut hd_organization)
         .unwrap();
     let mut project = [0u8; 32];
-    rdr.read_exact(&mut project).unwrap(); // author
+    rdr.read_exact(&mut project).unwrap(); // project
     let mut hd_project = String::new();
     ISO_8859_1
         .decode_to(&project, DecoderTrap::Replace, &mut hd_project)
         .unwrap();
     let mut subject = [0u8; 32];
-    rdr.read_exact(&mut subject).unwrap(); // author
+    rdr.read_exact(&mut subject).unwrap(); // subject
     let mut hd_subject = String::new();
     ISO_8859_1
         .decode_to(&subject, DecoderTrap::Replace, &mut hd_subject)
@@ -204,27 +204,28 @@ pub fn hd3_comment_parser(
     hd3_block: &Hd3,
     mut position: i64,
 ) -> (String, i64) {
-    let (_, comment, offset) = parse_tx(
+    let (_, comment, pos) = parse_tx(
         rdr,
-        i64::try_from(hd3_block.hd_md_comment).unwrap() - position,
+        hd3_block.hd_md_comment as i64, position
     );
-    position += offset;
+    position = pos;
     (comment, position)
 }
 
-pub fn parse_tx(rdr: &mut BufReader<&File>, offset: i64) -> (Blockheader3, String, i64) {
-    rdr.seek_relative(offset).unwrap();
+pub fn parse_tx(rdr: &mut BufReader<&File>, target: i64, position: i64) -> (Blockheader3, String, i64) {
+    rdr.seek_relative(target - position).unwrap();
     let block_header: Blockheader3 = parse_block_header(rdr); // reads header
-                                                              // reads comment
-    let mut comment_raw = vec![0; (block_header.hdr_len - 2) as usize];
+    
+    // reads comment
+    let mut comment_raw = vec![0; (block_header.hdr_len - 4) as usize];
     rdr.read_exact(&mut comment_raw).unwrap();
     let mut comment: String = String::new();
     ISO_8859_1
         .decode_to(&comment_raw, DecoderTrap::Replace, &mut comment)
-        .unwrap();
+        .expect("Reads comment iso 8859 coded");
     let comment: String = comment.trim_end_matches(char::from(0)).into();
-    let offset = offset + i64::try_from(block_header.hdr_len).unwrap();
-    (block_header, comment, offset)
+    let position = position + block_header.hdr_len as i64;
+    (block_header, comment, position)
 }
 
 #[derive(Debug, BinRead)]
