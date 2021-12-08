@@ -8,17 +8,20 @@ use std::fs::{File, OpenOptions};
 use std::io::{BufReader, Read};
 use std::str;
 use std::{collections::HashMap, sync::Arc};
+use binread::{BinRead, BinReaderExt};
 
 pub mod mdfinfo3;
 pub mod mdfinfo4;
 
+use binread::io::Cursor;
 use dashmap::DashMap;
-use mdfinfo3::{hd3_comment_parser, hd3_parser, parse_id3, MdfInfo3};
+use mdfinfo3::{hd3_comment_parser, hd3_parser, parse_dg3, MdfInfo3};
 use mdfinfo4::{
     build_channel_db, extract_xml, hd4_comment_parser, hd4_parser, parse_at4, parse_at4_comments,
-    parse_dg4, parse_ev4, parse_ev4_comments, parse_fh, parse_id4, ChannelId, MdfInfo4,
+    parse_dg4, parse_ev4, parse_ev4_comments, parse_fh, ChannelId, MdfInfo4,
     SharableBlocks,
 };
+
 
 use crate::mdfreader::channel_data::ChannelData;
 
@@ -27,6 +30,21 @@ use crate::mdfreader::channel_data::ChannelData;
 pub enum MdfInfo {
     V3(Box<MdfInfo3>), // version 3.x
     V4(Box<MdfInfo4>), // version 4.x
+}
+
+/// Common Id block structure for both versions 2 and 3
+#[derive(Debug, PartialEq, Default, BinRead, Clone)]
+pub struct IdBlock {
+    id_file_id: [u8; 8],              // "MDF
+    id_vers: [u8; 8],                 // version in char
+    id_prog: [u8; 8],                 // logger id
+    pub id_default_byteorder: u16,    // 0 Little endian, >= 1 Big endian, only valid for 3.x
+    id_floatingpointformat: u16,      // default floating point number. 0: IEEE754, 1: G_Float, 2: D_Float, only valid for 3.x
+    pub id_ver: u16,                  // version number, valid for both 3.x and 4.x
+    id_check: [u8; 2],                // check
+    id_reserved: [u8; 26],
+    id_unfin_flags: u16,              // only valid for 4.x but can exist in 3.x
+    id_custom_unfin_flags: u16,       // only valid for 4.x but can exist in 3.x
 }
 
 /// implements MdfInfo creation and manipulation functions
@@ -40,44 +58,34 @@ impl MdfInfo {
             .expect("Cannot find the file");
         let mut rdr = BufReader::new(&f);
         // Read beginning of ID Block
-        let mut id_file_id = [0u8; 8];
-        rdr.read_exact(&mut id_file_id).unwrap(); // "MDF     "
-        let mut id_vers = [0u8; 4];
-        rdr.read_exact(&mut id_vers).unwrap();
-        let ver_char: f32 = str::from_utf8(&id_vers).unwrap().parse().unwrap();
-        let mut gap = [0u8; 4];
-        rdr.read_exact(&mut gap).unwrap();
-        let mut prog = [0u8; 8];
-        rdr.read_exact(&mut prog).unwrap();
-        let ver: u16;
+        let mut buf = [0u8; 64]; // reserved
+        rdr.read_exact(&mut buf).unwrap();
+        let mut block = Cursor::new(buf);
+        let id: IdBlock = block.read_le().unwrap();
         let mdf_info: MdfInfo;
+        let mut sharable: SharableBlocks = SharableBlocks {
+            md: HashMap::new(),
+            tx: Arc::new(DashMap::new()),
+            cc: HashMap::new(),
+            si: HashMap::new(),
+        };
         // Depending of version different blocks
-        if ver_char < 4.0 {
-            let id = parse_id3(&mut rdr, id_file_id, id_vers, prog);
-            ver = id.id_ver;
-
+        if id.id_ver < 400 {
             // Read HD Block
-            let (hd, position) = hd3_parser(&mut rdr, ver);
-            let (hd_comment, _position) = hd3_comment_parser(&mut rdr, &hd, position);
+            let (hd, position) = hd3_parser(&mut rdr, id.id_ver);
+            let (hd_comment, position) = hd3_comment_parser(&mut rdr, &hd, position);
+
+            // Read DG Block
+            let (mut dg, _, n_cg, n_cn) =
+                parse_dg3(&mut rdr, hd.hd_dg_first.into(), position, &mut sharable, id.id_default_byteorder);
 
             mdf_info = MdfInfo::V3(Box::new(MdfInfo3 {
-                ver,
-                prog,
-                idblock: id,
-                hdblock: hd,
+                file_name: file_name.to_string(),
+                id_block: id,
+                hd_block: hd,
                 hd_comment,
             }));
         } else {
-            let mut sharable: SharableBlocks = SharableBlocks {
-                md: HashMap::new(),
-                tx: Arc::new(DashMap::new()),
-                cc: HashMap::new(),
-                si: HashMap::new(),
-            };
-
-            let id = parse_id4(&mut rdr, id_file_id, id_vers, prog);
-            ver = id.id_ver;
-
             // Read HD block
             let hd = hd4_parser(&mut rdr);
             let (hd_comment, position) = hd4_comment_parser(&mut rdr, &hd);
@@ -105,8 +113,6 @@ impl MdfInfo {
 
             mdf_info = MdfInfo::V4(Box::new(MdfInfo4 {
                 file_name: file_name.to_string(),
-                ver,
-                prog,
                 id_block: id,
                 hd_block: hd,
                 hd_comment,
@@ -123,8 +129,8 @@ impl MdfInfo {
     /// gets the version of mdf file
     pub fn get_version(&mut self) -> u16 {
         match self {
-            MdfInfo::V3(mdfinfo3) => mdfinfo3.ver,
-            MdfInfo::V4(mdfinfo4) => mdfinfo4.ver,
+            MdfInfo::V3(mdfinfo3) => mdfinfo3.id_block.id_ver,
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.id_block.id_ver,
         }
     }
     /// returns the hashmap with :
@@ -255,11 +261,11 @@ impl fmt::Display for MdfInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             MdfInfo::V3(mdfinfo3) => {
-                writeln!(f, "Version : {}", mdfinfo3.ver)?;
-                writeln!(f, "Version : {:?}", mdfinfo3.hdblock)
+                writeln!(f, "Version : {}", mdfinfo3.id_block.id_ver)?;
+                writeln!(f, "Version : {:?}", mdfinfo3.hd_block)
             }
             MdfInfo::V4(mdfinfo4) => {
-                writeln!(f, "Version : {}", mdfinfo4.ver)?;
+                writeln!(f, "Version : {}", mdfinfo4.id_block.id_ver)?;
                 writeln!(f, "{}\n", mdfinfo4.hd_block)?;
                 let comments = &mdfinfo4.hd_comment;
                 for c in comments.iter() {

@@ -21,6 +21,7 @@ use yazi::{decompress, Adler32, Format};
 
 use crate::mdfreader::channel_data::{data_type_init, ChannelData};
 use crate::mdfreader::mdfreader4::mdfreader4;
+use crate::mdfinfo::IdBlock;
 
 /// MdfInfo4 is the struct holding whole metadata of mdf4.x files
 /// * blocks with unique links are at top level like attachment, events and file history
@@ -35,12 +36,8 @@ use crate::mdfreader::mdfreader4::mdfreader4;
 pub struct MdfInfo4 {
     /// file name string
     pub file_name: String,
-    /// file mdf version
-    pub ver: u16,
-    /// program info that create the file
-    pub prog: [u8; 8],
     /// Identifier block
-    pub id_block: Id4,
+    pub id_block: IdBlock,
     /// header block
     pub hd_block: Hd4,
     /// header's block comments
@@ -219,6 +216,10 @@ impl MdfInfo4 {
             }
         }
     }
+    // TODO cut data
+    // TODO resample data
+    // TODO Write to mdf4 column
+    // TODO Extract attachments
 }
 
 /// MDF4 - common block Header
@@ -298,40 +299,6 @@ fn parse_block_short(
     position = target + i64::try_from(block_header.hdr_len).unwrap();
     let block = Cursor::new(buf);
     (block, block_header, position)
-}
-
-/// Id4 (File Indentification) block structure
-#[derive(Debug, PartialEq, Default, Copy, Clone)]
-pub struct Id4 {
-    id_file_id: [u8; 8], // "MDF     "
-    id_vers: [u8; 4],
-    pub id_prog: [u8; 8],
-    pub id_ver: u16,
-    pub id_unfin_flags: u16,
-    id_custom_unfin_flags: u16,
-}
-
-/// Reads the ID4 Block structure int he file
-pub fn parse_id4(
-    rdr: &mut BufReader<&File>,
-    id_file_id: [u8; 8],
-    id_vers: [u8; 4],
-    id_prog: [u8; 8],
-) -> Id4 {
-    let _ = rdr.read_u32::<LittleEndian>().unwrap(); // reserved
-    let id_ver = rdr.read_u16::<LittleEndian>().unwrap();
-    let mut gap = [0u8; 30];
-    rdr.read_exact(&mut gap).unwrap();
-    let id_unfin_flags = rdr.read_u16::<LittleEndian>().unwrap();
-    let id_custom_unfin_flags = rdr.read_u16::<LittleEndian>().unwrap();
-    Id4 {
-        id_file_id,
-        id_vers,
-        id_prog,
-        id_ver,
-        id_unfin_flags,
-        id_custom_unfin_flags,
-    }
 }
 
 /// Hd4 (Header) block structure

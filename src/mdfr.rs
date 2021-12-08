@@ -166,11 +166,11 @@ impl PyObjectProtocol for Mdf {
         let mut output: String;
         match &self.0 {
             MdfInfo::V3(mdfinfo3) => {
-                output = format!("Version : {}\n", mdfinfo3.ver);
-                output.push_str(&format!("Version : {:?}\n", mdfinfo3.hdblock));
+                output = format!("Version : {}\n", mdfinfo3.id_block.id_ver);
+                output.push_str(&format!("Version : {:?}\n", mdfinfo3.hd_block));
             }
             MdfInfo::V4(mdfinfo4) => {
-                output = format!("Version : {}\n", mdfinfo4.ver);
+                output = format!("Version : {}\n", mdfinfo4.id_block.id_ver);
                 output.push_str(&format!("{}\n", mdfinfo4.hd_block));
                 let comments = &mdfinfo4.hd_comment;
                 for c in comments.iter() {
