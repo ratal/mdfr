@@ -10,7 +10,6 @@ use std::fs::File;
 use std::io::{prelude::*, Cursor};
 use std::io::BufReader;
 
-use super::mdfinfo4::SharableBlocks;
 use crate::mdfreader::channel_data::{data_type_init, ChannelData};
 use crate::mdfinfo::IdBlock;
 
@@ -22,8 +21,8 @@ pub struct MdfInfo3 {
     pub hd_block: Hd3,
     pub hd_comment: String,
 }
-//TODO mdf3 blocks reading finish implementing
-/// MDF4 - common Header
+
+/// MDF3 - common Header
 #[derive(Debug, BinRead, Default)]
 #[br(little)]
 pub struct Blockheader3 {
@@ -243,7 +242,7 @@ pub fn parse_dg3(
     rdr: &mut BufReader<&File>,
     target: u32,
     mut position: i64,
-    sharable: &mut SharableBlocks,
+    sharable: &mut SharableBlocks3,
     default_byte_order: u16,
 ) -> (HashMap<u32, Dg3>, i64, u16, u16) {
     let mut dg: HashMap<u32, Dg3> = HashMap::new();
@@ -316,7 +315,7 @@ fn parse_cg3_block(
     rdr: &mut BufReader<&File>,
     target: u32,
     mut position: i64,
-    sharable: &mut SharableBlocks,
+    sharable: &mut SharableBlocks3,
     record_id_size: u16,
     default_byte_order: u16,
 ) -> (Cg3, i64, u16) {
@@ -367,7 +366,7 @@ pub fn parse_cg3(
     rdr: &mut BufReader<&File>,
     target: u32,
     mut position: i64,
-    sharable: &mut SharableBlocks,
+    sharable: &mut SharableBlocks3,
     record_id_size: u16,
     default_byte_order: u16,
 ) -> (HashMap<u16, Cg3>, i64, u16) {
@@ -394,7 +393,6 @@ pub fn parse_cg3(
     }
     (cg, position, n_cn)
 }
-
 
 /// Cn3 structure containing block but also unique_name, ndarray data
 /// and other attributes frequently needed and computed
@@ -425,7 +423,7 @@ pub fn parse_cn3(
     rdr: &mut BufReader<&File>,
     mut target: u32,
     mut position: i64,
-    sharable: &mut SharableBlocks,
+    sharable: &mut SharableBlocks3,
     record_id_size: u16,
     default_byte_order: u16,
 ) -> (HashMap<u32, Cn3>, i64, u16) {
@@ -498,7 +496,7 @@ fn parse_cn3_block(
     rdr: &mut BufReader<&File>,
     target: u32,
     mut position: i64,
-    sharable: &mut SharableBlocks,
+    sharable: &mut SharableBlocks3,
     record_id_size: u16,
     default_byte_order: u16,
 ) -> (Cn3, i64) {
@@ -543,11 +541,11 @@ fn parse_cn3_block(
         position = pos; 
     }
 
-    // Reads CC
-    // let cc_pointer = block1.cn_cc_conversion;
-    // if (cc_pointer != 0) && !sharable.cc.contains_key(&cc_pointer) {
-    //    position = read_cc(rdr, &cc_pointer, position, cc_block, sharable);
-    // }
+    // Reads CC block
+    position = parse_cc3_block(rdr, block1.cn_cc_conversion, position, sharable);
+
+    // Reads CE block
+    position = parse_ce(rdr, block1.cn_cc_conversion, position, sharable);
 
     let mut endian: bool = false; // Little endian by default
     if block2.cn_data_type >= 13
@@ -599,4 +597,272 @@ pub fn convert_data_type_3to4(mdf3_datatype:u16) -> u8 {
         16=>4,
         _=>13,
     }
+}
+
+/// sharable blocks (most likely referenced multiple times and shared by several blocks)
+/// that are in sharable fields and holds CC, CE, TX blocks
+#[derive(Debug, Default, Clone)]
+pub struct SharableBlocks3 {
+    pub(crate) cc: HashMap<u32, (Cc3Block, Conversion)>,
+    pub(crate) ce: HashMap<u32, CeBlock>,
+}
+/// Cc3 Channel conversion block struct, second sub block
+#[derive(Debug, Clone, BinRead)]
+#[br(little)]
+pub struct Cc3Block {
+    cc_id: [u8; 2],  // CC
+    cc_len: u16,      // Length of block in bytes
+    cc_valid_range_flags: u16,  // Physical value range valid flag
+    cc_val_range_min: f64, // Minimum physical signal value that occurred for this signal. Only valid if "physical value range valid" flag is set.
+    cc_val_range_max: f64, // Maximum physical signal value that occurred for this signal. Only valid if "physical value range valid" flag is set.
+    cc_unit: [u8; 20], // physical unit of the signal
+    cc_type: u16, // Conversion type
+    cc_size: u16, // Size information, meaning depends of conversion type
+}
+
+#[derive(Debug, Clone)]
+pub enum Conversion {
+    Linear(Vec<f64>),
+    TabularInterpolation(Vec<f64>),
+    Tabular(Vec<f64>),
+    Polynomial(Vec<f64>),
+    Exponential(Vec<f64>),
+    Logarithmic(Vec<f64>),
+    Rational(Vec<f64>),
+    Formula(String),
+    TextTable(Vec<(f64, String)>),
+    TextRangeTable(Vec<(f64, f64, String)>),
+    Date,
+    Time,
+    Identity,
+}
+
+pub fn parse_cc3_block(
+    rdr: &mut BufReader<&File>,
+    target: u32,
+    mut position: i64,
+    sharable: &mut SharableBlocks3,
+) -> i64 {
+    rdr.seek_relative(target as i64 - position).unwrap(); // change buffer position
+    let mut buf = vec![0u8; 46];
+    rdr.read_exact(&mut buf).unwrap();
+    position = target as i64 + 46;
+    let mut block = Cursor::new(buf);
+    let cc_block: Cc3Block = block.read_le().unwrap();
+    let conversion: Conversion;
+    match cc_block.cc_type {
+        0 => {
+            let mut buf = vec![0.0f64; 2];
+            rdr.read_f64_into::<LittleEndian>(&mut buf).unwrap();
+            conversion = Conversion::Linear(buf);
+            position += 16;
+        }
+        1 => {
+            let mut buf = vec![0.0f64; cc_block.cc_size as usize * 2];
+            rdr.read_f64_into::<LittleEndian>(&mut buf).unwrap();
+            conversion = Conversion::TabularInterpolation(buf);
+            position += cc_block.cc_size as i64 * 2 * 8;
+        }
+        2 => {
+            let mut buf = vec![0.0f64; cc_block.cc_size as usize * 2];
+            rdr.read_f64_into::<LittleEndian>(&mut buf).unwrap();
+            conversion = Conversion::Tabular(buf);
+            position += cc_block.cc_size as i64 * 2 * 8;
+        }
+        6 => {
+            let mut buf = vec![0.0f64; 6];
+            rdr.read_f64_into::<LittleEndian>(&mut buf).unwrap();
+            conversion = Conversion::Polynomial(buf);
+            position += 48;
+        }
+        7 => {
+            let mut buf = vec![0.0f64; 7];
+            rdr.read_f64_into::<LittleEndian>(&mut buf).unwrap();
+            conversion = Conversion::Exponential(buf);
+            position += 56;
+        }
+        8 => {
+            let mut buf = vec![0.0f64; 7];
+            rdr.read_f64_into::<LittleEndian>(&mut buf).unwrap();
+            conversion = Conversion::Logarithmic(buf);
+            position += 56;
+        }
+        9 => {
+            let mut buf = vec![0.0f64; 6];
+            rdr.read_f64_into::<LittleEndian>(&mut buf).unwrap();
+            conversion = Conversion::Rational(buf);
+            position += 48;
+        }
+        10 => {
+            let mut buf = vec![0u8; 256];
+            rdr.read_exact(&mut buf).unwrap();
+            position += 256;
+            let mut formula = String::new();
+            ISO_8859_1
+                .decode_to(&buf, DecoderTrap::Replace, &mut formula)
+                .expect("formula text is latin1 encoded");
+            formula = formula.trim_end_matches(char::from(0)).to_string();
+            conversion = Conversion::Formula(formula);
+        }
+        11 => {
+            let mut pairs: Vec<(f64, String)> = vec![(0.0f64, String::with_capacity(32)); cc_block.cc_size as usize];
+            let mut val;
+            let mut buf = vec![0u8; 32];
+            let mut text = String::with_capacity(32);
+            for index in 0..cc_block.cc_size as usize {
+                val = rdr.read_f64::<LittleEndian>().unwrap();
+                rdr.read_exact(&mut buf).unwrap();
+                position += 40;
+                ISO_8859_1
+                    .decode_to(&buf, DecoderTrap::Replace, &mut text)
+                    .expect("formula text is latin1 encoded");
+                text = text.trim_end_matches(char::from(0)).to_string();
+                pairs.insert(index, (val, text.clone()));
+            }
+            conversion = Conversion::TextTable(pairs);
+        }
+        12 => {
+            let mut pairs_pointer: Vec<(f64, f64, u32)> = vec![(0.0f64, 0.0f64, 0u32); cc_block.cc_size as usize];
+            let mut pairs_string: Vec<(f64, f64, String)> = vec![(0.0f64, 0.0f64, String::new()); cc_block.cc_size as usize];
+            let mut low_range;
+            let mut high_range;
+            let mut text_pointer;
+            for index in 0..cc_block.cc_size as usize {
+                low_range = rdr.read_f64::<LittleEndian>().unwrap();
+                high_range = rdr.read_f64::<LittleEndian>().unwrap();
+                text_pointer = rdr.read_u32::<LittleEndian>().unwrap();
+                position += 20;
+                pairs_pointer.insert(index, (low_range, high_range, text_pointer));
+            }
+            for (index, (low_range, high_range, text_pointer)) in pairs_pointer.iter().enumerate() {
+                let (_block_header, text, pos) = parse_tx(
+                    rdr,
+                    *text_pointer,
+                    position,
+                );
+                position = pos;
+                pairs_string.insert(index, (*low_range, *high_range, text));
+            }
+            conversion = Conversion::TextRangeTable(pairs_string);
+        }
+        _ => conversion = Conversion::Identity,
+    }
+    
+    sharable.cc.insert(target, (cc_block, conversion));
+    position
+}
+
+/// CE channel extension block struct, second sub block
+#[derive(Debug, Clone)]
+pub struct CeBlock {
+    ce_id: [u8; 2],  // CE
+    ce_len: u16,      // Length of block in bytes
+    ce_extension_type: u16,   // extension type
+    ce_extension: CeSupplement,
+}
+
+/// Either a DIM or CAN Supplemental block
+#[derive(Debug, Clone)]
+pub enum CeSupplement {
+    DIM(DimBlock),
+    CAN(CANBlock),
+    None,
+}
+
+/// DIM Block supplement
+#[derive(Debug, Clone)]
+pub struct DimBlock {
+    ce_module_number: u16, // Module number
+    ce_address: u32,      // address
+    ce_desc: String,   // description
+    ce_ecu_id: String,   // ECU identifier
+}
+
+/// Vector CAN Block supplement
+#[derive(Debug, Clone)]
+pub struct CANBlock {
+    ce_can_id: u32, // CAN identifier
+    ce_can_index: u32,      // CAN channel index
+    ce_message_name: String,   // message name
+    ce_sender_name: String,   // sender name
+}
+
+/// parses Channel Extension block
+fn parse_ce(rdr: &mut BufReader<&File>,
+    target: u32,
+    mut position: i64,
+    sharable: &mut SharableBlocks3,
+) -> i64 {
+    rdr.seek_relative(target as i64 - position).unwrap(); // change buffer position
+    let mut buf = vec![0u8; 6];
+    rdr.read_exact(&mut buf).unwrap();
+    position = target as i64 + 6;
+    let mut block = Cursor::new(buf);
+    let ce_id: [u8; 2] = block.read_le().unwrap();
+    let ce_len: u16 = block.read_le().unwrap();
+    let ce_extension_type: u16 = block.read_le().unwrap();
+    
+    let ce_extension: CeSupplement;
+    if ce_extension_type == 0x02 {
+        // Reads DIM
+        let mut buf = vec![0u8; 118];
+        rdr.read_exact(&mut buf).unwrap();
+        position += 118;
+        let mut block = Cursor::new(buf);
+        let ce_module_number: u16 = block.read_le().unwrap();
+        let ce_address: u32 = block.read_le().unwrap();
+        let mut desc = vec![0u8; 80];
+        let mut ce_desc = String::new();
+        ISO_8859_1
+            .decode_to(&desc, DecoderTrap::Replace, &mut ce_desc)
+            .expect("DIM block description is latin1 encoded");
+        ce_desc = ce_desc.trim_end_matches(char::from(0)).to_string();
+        let mut desc = vec![0u8; 32];
+        let mut ce_ecu_id = String::new();
+        ISO_8859_1
+            .decode_to(&desc, DecoderTrap::Replace, &mut ce_ecu_id)
+            .expect("DIM block description is latin1 encoded");
+        ce_ecu_id = ce_ecu_id.trim_end_matches(char::from(0)).to_string();
+        ce_extension = CeSupplement::DIM(DimBlock {
+            ce_module_number,
+            ce_address,
+            ce_desc,
+            ce_ecu_id,
+        });
+    } else if ce_extension_type == 19 {
+        // Reads CAN
+        let mut buf = vec![0u8; 80];
+        rdr.read_exact(&mut buf).unwrap();
+        position += 80;
+        let mut block = Cursor::new(buf);
+        let ce_can_id: u32 = block.read_le().unwrap();
+        let ce_can_index: u32 = block.read_le().unwrap();
+        let mut message = vec![0u8; 36];
+        let mut ce_message_name = String::new();
+        ISO_8859_1
+            .decode_to(&message, DecoderTrap::Replace, &mut ce_message_name)
+            .expect("DIM block description is latin1 encoded");
+        ce_message_name = ce_message_name.trim_end_matches(char::from(0)).to_string();
+        let mut sender = vec![0u8; 32];
+        let mut ce_sender_name = String::new();
+        ISO_8859_1
+            .decode_to(&sender, DecoderTrap::Replace, &mut ce_sender_name)
+            .expect("DIM block description is latin1 encoded");
+        ce_sender_name = ce_sender_name.trim_end_matches(char::from(0)).to_string();
+        ce_extension = CeSupplement::CAN(CANBlock {
+            ce_can_id,
+            ce_can_index,
+            ce_message_name,
+            ce_sender_name,
+        });
+    } else {
+        ce_extension = CeSupplement::None;
+    }
+    sharable.ce.insert(target, CeBlock {
+        ce_id,
+        ce_len,
+        ce_extension_type,
+        ce_extension,
+    });
+    position
 }

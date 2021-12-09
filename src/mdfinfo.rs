@@ -15,7 +15,7 @@ pub mod mdfinfo4;
 
 use binread::io::Cursor;
 use dashmap::DashMap;
-use mdfinfo3::{hd3_comment_parser, hd3_parser, parse_dg3, MdfInfo3};
+use mdfinfo3::{hd3_comment_parser, hd3_parser, parse_dg3, MdfInfo3, SharableBlocks3};
 use mdfinfo4::{
     build_channel_db, extract_xml, hd4_comment_parser, hd4_parser, parse_at4, parse_at4_comments,
     parse_dg4, parse_ev4, parse_ev4_comments, parse_fh, ChannelId, MdfInfo4,
@@ -63,14 +63,13 @@ impl MdfInfo {
         let mut block = Cursor::new(buf);
         let id: IdBlock = block.read_le().unwrap();
         let mdf_info: MdfInfo;
-        let mut sharable: SharableBlocks = SharableBlocks {
-            md: HashMap::new(),
-            tx: Arc::new(DashMap::new()),
-            cc: HashMap::new(),
-            si: HashMap::new(),
-        };
+        
         // Depending of version different blocks
         if id.id_ver < 400 {
+            let mut sharable: SharableBlocks3 = SharableBlocks3 {
+                cc: HashMap::new(),
+                ce: HashMap::new(),
+            };
             // Read HD Block
             let (hd, position) = hd3_parser(&mut rdr, id.id_ver);
             let (hd_comment, position) = hd3_comment_parser(&mut rdr, &hd, position);
@@ -86,6 +85,12 @@ impl MdfInfo {
                 hd_comment,
             }));
         } else {
+            let mut sharable: SharableBlocks = SharableBlocks {
+                md: HashMap::new(),
+                tx: Arc::new(DashMap::new()),
+                cc: HashMap::new(),
+                si: HashMap::new(),
+            };
             // Read HD block
             let hd = hd4_parser(&mut rdr);
             let (hd_comment, position) = hd4_comment_parser(&mut rdr, &hd);
