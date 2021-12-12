@@ -20,6 +20,70 @@ pub struct MdfInfo3 {
     pub id_block: IdBlock,
     pub hd_block: Hd3,
     pub hd_comment: String,
+    /// data group block linking channel group/channel/conversion/..etc. and data block
+    pub dg: HashMap<u32, Dg3>,
+    /// Conversion and CE blocks
+    pub sharable: SharableBlocks3,
+    /// set of all channel names
+    pub channel_names_set: ChannelNamesSet3, // set of channel names
+}
+
+pub(crate) type ChannelId3 = (String, u32, (u32, u16), u32);
+pub(crate) type ChannelNamesSet3 = HashMap<String, ChannelId3>;
+
+/// MdfInfo3's implementation
+impl MdfInfo3 {
+    pub fn get_channel_id(&self, channel_name: &String) -> Option<&ChannelId3> {
+        self.channel_names_set.get(channel_name)
+    }
+    /// Returns the channel's unit string. If it does not exist, it is an empty string.
+    pub fn get_channel_unit(&self, channel_name: &String) -> String {
+        let mut unit: String = String::new();
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
+            self.get_channel_id(channel_name)
+        {
+            if let Some(dg) = self.dg.get(dg_pos) {
+                if let Some(cg) = dg.cg.get(&rec_id) {
+                    if let Some(cn) = cg.cn.get(&cn_pos) {
+                        if let Some(array) = self.sharable.cc.get(&cn.block1.cn_cc_conversion) {
+                            let txt = array.0.cc_unit;
+                            ISO_8859_1
+                                .decode_to(&txt, DecoderTrap::Replace, &mut unit)
+                                .expect("channel description is latin1 encoded");
+                            unit = unit.trim_end_matches(char::from(0)).to_string();
+                        } 
+                    }
+                }
+            }
+        }
+        unit
+    }
+    /// Returns the channel's description. If it does not exist, it is an empty string
+    pub fn get_channel_desc(&self, channel_name: &String) -> String {
+        let mut desc = String::new();
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
+            self.get_channel_id(channel_name)
+        {
+            if let Some(dg) = self.dg.get(&dg_pos) {
+                if let Some(cg) = dg.cg.get(&rec_id) {
+                    if let Some(cn) = cg.cn.get(&cn_pos) {
+                        desc = cn.description.clone();
+                    }
+                }
+            }
+        }
+        desc
+    }
+    /// returns the master channel associated to the input channel name
+    pub fn get_channel_master(&self, channel_name: &String) -> String {
+        let mut master = String::new();
+        if let Some((m, _dg_pos, (_cg_pos, _rec_idd), _cn_pos)) =
+            self.get_channel_id(channel_name)
+        {
+            master = m.clone();
+        }
+        master
+    }
 }
 
 /// MDF3 - common Header
@@ -338,10 +402,12 @@ fn parse_cg3_block(
     position = pos;
 
     let record_length = cg.cg_data_bytes;
+    let block_position = target;
 
     let cg_struct = Cg3 {
         block: cg,
         cn,
+        block_position,
         master_channel_name: String::new(),
         channel_names: HashSet::new(),
         record_length,
@@ -356,6 +422,7 @@ fn parse_cg3_block(
 pub struct Cg3 {
     pub block: Cg3Block,
     pub cn: HashMap<u32, Cn3>, // hashmap of channels
+    block_position: u32,
     pub master_channel_name: String,
     pub channel_names: HashSet<String>,
     pub record_length: u16, // record length including recordId
@@ -542,10 +609,14 @@ fn parse_cn3_block(
     }
 
     // Reads CC block
-    position = parse_cc3_block(rdr, block1.cn_cc_conversion, position, sharable);
+    if !sharable.cc.contains_key(&block1.cn_cc_conversion) {
+        position = parse_cc3_block(rdr, block1.cn_cc_conversion, position, sharable);
+    }
 
     // Reads CE block
-    position = parse_ce(rdr, block1.cn_cc_conversion, position, sharable);
+    if !sharable.ce.contains_key(&block1.cn_ce_source) {
+        position = parse_ce(rdr, block1.cn_ce_source, position, sharable);
+    }
 
     let mut endian: bool = false; // Little endian by default
     if block2.cn_data_type >= 13
@@ -865,4 +936,84 @@ fn parse_ce(rdr: &mut BufReader<&File>,
         ce_extension,
     });
     position
+}
+
+/// parses mdfinfo structure to make channel names unique
+/// creates channel names set and links master channels to set of channels
+pub fn build_channel_db3(
+    dg: &mut HashMap<u32, Dg3>,
+    sharable: &SharableBlocks3,
+    n_cg: u16,
+    n_cn: u16,
+) -> ChannelNamesSet3 {
+    let mut channel_list: ChannelNamesSet3 = HashMap::with_capacity(n_cn as usize);
+    let mut master_channel_list: HashMap<u32, String> = HashMap::with_capacity(n_cg as usize);
+    // creating channel list for whole file and making channel names unique
+    for (dg_position, dg) in dg.iter_mut() {
+        for (record_id, cg) in dg.cg.iter_mut() {
+            for (cn_position, cn) in cg.cn.iter_mut() {
+                if channel_list.contains_key(&cn.unique_name) {
+                    let mut changed: bool = false;
+                    // create unique channel name
+                    if let Some(ce) = sharable.ce.get(&cn.block1.cn_ce_source) {
+                        match &ce.ce_extension {
+                            CeSupplement::DIM(dim) => {
+                                cn.unique_name.push_str(" ");
+                                cn.unique_name.push_str(&dim.ce_ecu_id);
+                                changed = true;
+                            }
+                            CeSupplement::CAN(can) => {
+                                cn.unique_name.push_str(" ");
+                                cn.unique_name.push_str(&can.ce_message_name);
+                                changed = true;
+                            }
+                            _ => {}
+                        }
+                    }
+                    // No souce name to make channel unique
+                    if !changed {
+                        // extend name with channel block position, unique
+                        cn.unique_name.push_str(" ");
+                        cn.unique_name.push_str(&cn_position.to_string());
+                    }
+                };
+                let master = String::new();
+                channel_list.insert(
+                    cn.unique_name.clone(),
+                    (
+                        master, // computes at second step master channel name
+                        *dg_position,
+                        (cg.block_position, *record_id),
+                        *cn_position,
+                    ),
+                );
+                if cn.block1.cn_type != 0 {
+                    // Master channel
+                    master_channel_list.insert(cg.block_position, cn.unique_name.clone());
+                }
+            }
+        }
+    }
+    // identifying master channels
+    for (_dg_position, dg) in dg.iter_mut() {
+        for (_record_id, cg) in dg.cg.iter_mut() {
+            let mut cg_channel_list: HashSet<String> = HashSet::with_capacity(cg.block.cg_n_channels as usize);
+            let mut master_channel_name: String = String::new();
+            if let Some(name) = master_channel_list.get(&cg.block_position) {
+                master_channel_name = name.to_string();
+            } else {
+                master_channel_name = format!("master_{}", cg.block_position); // default name in case no master is existing
+            }
+            for (_cn_record_position, cn) in cg.cn.iter_mut() {
+                cg_channel_list.insert(cn.unique_name.clone());
+                // assigns master in channel_list
+                if let Some(id) = channel_list.get_mut(&cn.unique_name) {
+                    id.0 = master_channel_name.clone();
+                }
+            }
+            cg.channel_names = cg_channel_list;
+            cg.master_channel_name = master_channel_name;
+        }
+    }
+    channel_list
 }

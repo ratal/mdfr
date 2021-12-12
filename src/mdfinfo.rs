@@ -18,12 +18,14 @@ use dashmap::DashMap;
 use mdfinfo3::{hd3_comment_parser, hd3_parser, parse_dg3, MdfInfo3, SharableBlocks3};
 use mdfinfo4::{
     build_channel_db, extract_xml, hd4_comment_parser, hd4_parser, parse_at4, parse_at4_comments,
-    parse_dg4, parse_ev4, parse_ev4_comments, parse_fh, ChannelId, MdfInfo4,
+    parse_dg4, parse_ev4, parse_ev4_comments, parse_fh, MdfInfo4, ChannelId,
     SharableBlocks,
 };
 
 
 use crate::mdfreader::channel_data::ChannelData;
+
+use self::mdfinfo3::build_channel_db3;
 
 /// joins mdf versions 3.x and 4.x
 #[derive(Debug)]
@@ -77,12 +79,18 @@ impl MdfInfo {
             // Read DG Block
             let (mut dg, _, n_cg, n_cn) =
                 parse_dg3(&mut rdr, hd.hd_dg_first.into(), position, &mut sharable, id.id_default_byteorder);
+            
+            // make channel names unique, list channels and create master dictionnary
+            let channel_names_set = build_channel_db3(&mut dg, &sharable, n_cg, n_cn);
 
             mdf_info = MdfInfo::V3(Box::new(MdfInfo3 {
                 file_name: file_name.to_string(),
                 id_block: id,
                 hd_block: hd,
                 hd_comment,
+                dg,
+                sharable,
+                channel_names_set,
             }));
         } else {
             let mut sharable: SharableBlocks = SharableBlocks {
@@ -137,22 +145,6 @@ impl MdfInfo {
             MdfInfo::V3(mdfinfo3) => mdfinfo3.id_block.id_ver,
             MdfInfo::V4(mdfinfo4) => mdfinfo4.id_block.id_ver,
         }
-    }
-    /// returns the hashmap with :
-    /// key = channel_name,
-    /// value = (master_name,
-    ///          dg_position,
-    ///            (cg.block_position, record_id),
-    ///            (cn.block_position, cn_record_position))
-    pub fn get_channel_id(&mut self, channel_name: &String) -> Option<&ChannelId> {
-        let mut channel_id: Option<&ChannelId> = None;
-        match self {
-            MdfInfo::V3(_mdfinfo3) => {}
-            MdfInfo::V4(mdfinfo4) => {
-                channel_id = mdfinfo4.get_channel_id(channel_name);
-            }
-        }
-        channel_id
     }
     /// returns channel's unit string
     pub fn get_channel_unit(&self, channel_name: &String) -> String {

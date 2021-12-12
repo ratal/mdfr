@@ -23,6 +23,9 @@ use crate::mdfreader::channel_data::{data_type_init, ChannelData};
 use crate::mdfreader::mdfreader4::mdfreader4;
 use crate::mdfinfo::IdBlock;
 
+pub(crate) type ChannelId = (String, i64, (i64, u64), (i64, i32));
+pub(crate) type ChannelNamesSet = HashMap<String, ChannelId>;
+
 /// MdfInfo4 is the struct holding whole metadata of mdf4.x files
 /// * blocks with unique links are at top level like attachment, events and file history
 /// * sharable blocks (most likely referenced multiple times and shared by several blocks)
@@ -48,7 +51,7 @@ pub struct MdfInfo4 {
     pub at: At, // attachments
     /// event blocks
     pub ev: HashMap<i64, Ev4Block>, // events
-    /// data group block linking channel group/channel/converiosn/compostion/..etc. and data block
+    /// data group block linking channel group/channel/conversion/compostion/..etc. and data block
     pub dg: HashMap<i64, Dg4>, // contains most of the file structure
     /// cc, md, tx and si blocks that can be referenced by several blocks
     pub sharable: SharableBlocks,
@@ -2111,9 +2114,6 @@ fn parse_composition(
         )
     }
 }
-
-pub(crate) type ChannelId = (String, i64, (i64, u64), (i64, i32));
-pub(crate) type ChannelNamesSet = HashMap<String, ChannelId>;
 
 /// parses mdfinfo structure to make channel names unique
 /// creates channel names set and links master channels to set of channels
