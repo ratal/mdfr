@@ -150,7 +150,9 @@ impl MdfInfo {
     pub fn get_channel_unit(&self, channel_name: &String) -> String {
         let mut unit: String = String::new();
         match self {
-            MdfInfo::V3(_mdfinfo3) => {}
+            MdfInfo::V3(mdfinfo3) => {
+                unit = mdfinfo3.get_channel_unit(channel_name);
+            }
             MdfInfo::V4(mdfinfo4) => {
                 unit = mdfinfo4.get_channel_unit(channel_name);
             }
@@ -161,7 +163,9 @@ impl MdfInfo {
     pub fn get_channel_desc(&self, channel_name: &String) -> String {
         let mut desc: String = String::new();
         match self {
-            MdfInfo::V3(_mdfinfo3) => {}
+            MdfInfo::V3(mdfinfo3) => {
+                desc = mdfinfo3.get_channel_desc(channel_name);
+            }
             MdfInfo::V4(mdfinfo4) => {
                 desc = mdfinfo4.get_channel_desc(channel_name);
             }
@@ -172,7 +176,9 @@ impl MdfInfo {
     pub fn get_channel_master(&self, channel_name: &String) -> String {
         let mut master: String = String::new();
         match self {
-            MdfInfo::V3(_mdfinfo3) => {}
+            MdfInfo::V3(mdfinfo3) => {
+                master = mdfinfo3.get_channel_master(channel_name);
+            }
             MdfInfo::V4(mdfinfo4) => {
                 master = mdfinfo4.get_channel_master(channel_name);
             }
@@ -185,7 +191,9 @@ impl MdfInfo {
     pub fn get_channel_master_type(&self, channel_name: &String) -> u8 {
         let mut master: u8 = 0;
         match self {
-            MdfInfo::V3(_mdfinfo3) => {}
+            MdfInfo::V3(mdfinfo3) => {
+                master = mdfinfo3.get_channel_master_type(channel_name);
+            }
             MdfInfo::V4(mdfinfo4) => {
                 master = mdfinfo4.get_channel_master_type(channel_name);
             }
@@ -196,8 +204,8 @@ impl MdfInfo {
     pub fn get_channel_names_set(&self) -> HashSet<String> {
         let channel_list: HashSet<String>;
         match self {
-            MdfInfo::V3(_mdfinfo3) => {
-                channel_list = HashSet::new();
+            MdfInfo::V3(mdfinfo3) => {
+                channel_list = mdfinfo3.get_channel_names_set();
             }
             MdfInfo::V4(mdfinfo4) => {
                 channel_list = mdfinfo4.get_channel_names_set();
@@ -209,8 +217,8 @@ impl MdfInfo {
     pub fn get_master_channel_names_set(&self) -> HashMap<String, HashSet<String>> {
         let channel_master_list: HashMap<String, HashSet<String>>;
         match self {
-            MdfInfo::V3(_mdfinfo3) => {
-                channel_master_list = HashMap::new();
+            MdfInfo::V3(mdfinfo3) => {
+                channel_master_list = mdfinfo3.get_master_channel_names_set().clone();
             }
             MdfInfo::V4(mdfinfo4) => {
                 channel_master_list = mdfinfo4.get_master_channel_names_set().clone();

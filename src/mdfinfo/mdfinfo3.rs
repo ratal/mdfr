@@ -84,6 +84,39 @@ impl MdfInfo3 {
         }
         master
     }
+    /// returns type of master channel link to channel input in parameter:
+    /// 0 = None (normal data channels), 1 = Time (seconds),
+    pub fn get_channel_master_type(&self, channel_name: &String) -> u8 {
+        let mut master_type: u16 = 0; // default to normal data channel
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
+            self.get_channel_id(channel_name)
+        {
+            if let Some(dg) = self.dg.get(&dg_pos) {
+                if let Some(cg) = dg.cg.get(&rec_id) {
+                    if let Some(cn) = cg.cn.get(&cn_pos) {
+                        master_type = cn.block1.cn_type;
+                    }
+                }
+            }
+        }
+        master_type as u8
+    }
+    /// returns the set of channel names
+    pub fn get_channel_names_set(&self) -> HashSet<String> {
+        let channel_list = self.channel_names_set.keys().cloned().collect();
+        channel_list
+    }
+    /// returns a hashmap for which master channel names are keys and values its corresponding set of channel names
+    pub fn get_master_channel_names_set(&self) -> HashMap<String, HashSet<String>> {
+        let mut channel_master_list: HashMap<String, HashSet<String>> = HashMap::new();
+        for (_dg_position, dg) in self.dg.iter() {
+            for (_record_id, cg) in dg.cg.iter() {
+                channel_master_list
+                    .insert(cg.master_channel_name.clone(), cg.channel_names.clone());
+            }
+        }
+        channel_master_list
+    }
 }
 
 /// MDF3 - common Header
