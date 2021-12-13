@@ -117,6 +117,42 @@ impl MdfInfo3 {
         }
         channel_master_list
     }
+    // empty the channels' ndarray
+    pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) {
+        for channel_name in channel_names {
+            if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
+                self.channel_names_set.get_mut(&channel_name)
+            {
+                if let Some(dg) = self.dg.get_mut(dg_pos) {
+                    if let Some(cg) = dg.cg.get_mut(rec_id) {
+                        if let Some(cn) = cg.cn.get_mut(cn_pos) {
+                            if !cn.data.is_empty() {
+                                cn.data = cn.data.zeros(0, 0, 0, 0);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    /// Returns the channel's data ndarray if present in memory, otherwise None.
+    pub fn get_channel_data_from_memory(&self, channel_name: &String) -> Option<&ChannelData> {
+        let mut data: Option<&ChannelData> = None;
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
+            self.get_channel_id(channel_name)
+        {
+            if let Some(dg) = self.dg.get(dg_pos) {
+                if let Some(cg) = dg.cg.get(rec_id) {
+                    if let Some(cn) = cg.cn.get(cn_pos) {
+                        if !cn.data.is_empty() {
+                            data = Some(&cn.data);
+                        }
+                    }
+                }
+            }
+        }
+        data
+    }
 }
 
 /// MDF3 - common Header
@@ -143,12 +179,12 @@ pub struct Hd3 {
 
     // Data members
     hd_n_datagroups: u16, // Time stamp in nanoseconds elapsed since 00:00:00 01.01.1970 (UTC time or local time, depending on "local time" flag, see [UTC]).
-    hd_date: (u32, u32, i32), // Date at which the recording was started in "DD:MM:YYYY" format
-    hd_time: (u32, u32, u32), // Time at which the recording was started in "HH:MM:SS" format
-    hd_author: String,    // Author's name
-    hd_organization: String, // name of the organization or department
-    hd_project: String,   // project name
-    hd_subject: String,   // subject or measurement object
+    pub hd_date: (u32, u32, i32), // Date at which the recording was started in "DD:MM:YYYY" format
+    pub hd_time: (u32, u32, u32), // Time at which the recording was started in "HH:MM:SS" format
+    pub hd_author: String,    // Author's name
+    pub hd_organization: String, // name of the organization or department
+    pub hd_project: String,   // project name
+    pub hd_subject: String,   // subject or measurement object
     hd_start_time_ns: Option<u64>, // time stamp at which recording was started in nanosecond
     hd_time_offset: Option<i16>, // UTC time offset
     hd_time_quality: Option<u16>, // time quality class
@@ -206,18 +242,22 @@ pub fn hd3_parser(rdr: &mut BufReader<&File>, ver: u16) -> (Hd3, i64) {
     ISO_8859_1
         .decode_to(&block.hd_author, DecoderTrap::Replace, &mut hd_author)
         .unwrap();
+    hd_author = hd_author.trim_end_matches(char::from(0)).to_string();
     let mut hd_organization = String::new();
     ISO_8859_1
         .decode_to(&block.hd_organization, DecoderTrap::Replace, &mut hd_organization)
         .unwrap();
+    hd_organization = hd_organization.trim_end_matches(char::from(0)).to_string();
     let mut hd_project = String::new();
     ISO_8859_1
         .decode_to(&block.hd_project, DecoderTrap::Replace, &mut hd_project)
         .unwrap();
+    hd_project = hd_project.trim_end_matches(char::from(0)).to_string();
     let mut hd_subject = String::new();
     ISO_8859_1
         .decode_to(&block.hd_subject, DecoderTrap::Replace, &mut hd_subject)
         .unwrap();
+    hd_subject = hd_subject.trim_end_matches(char::from(0)).to_string();
     let hd_start_time_ns: Option<u64>;
     let hd_time_offset: Option<i16>;
     let hd_time_quality: Option<u16>;

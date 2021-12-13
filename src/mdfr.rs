@@ -167,7 +167,28 @@ impl PyObjectProtocol for Mdf {
         match &self.0 {
             MdfInfo::V3(mdfinfo3) => {
                 output = format!("Version : {}\n", mdfinfo3.id_block.id_ver);
-                output.push_str(&format!("Version : {:?}\n", mdfinfo3.hd_block));
+                output.push_str(&format!("Header :\n Author: {}  Organisation:{}\n", mdfinfo3.hd_block.hd_author, mdfinfo3.hd_block.hd_organization));
+                output.push_str(&format!("Project: {}  Subject:{}\n", mdfinfo3.hd_block.hd_project, mdfinfo3.hd_block.hd_subject));
+                output.push_str(&format!("Date: {:?}  Time:{:?}\n", mdfinfo3.hd_block.hd_date, mdfinfo3.hd_block.hd_time));
+                output.push_str(&format!("Comments: {}", mdfinfo3.hd_comment));
+                for (master, list) in mdfinfo3.get_master_channel_names_set().iter() {
+                    output.push_str(&format!("\nMaster: {}\n", master));
+                    for channel in list.iter() {
+                        let unit = self.get_channel_unit(channel.to_string());
+                        let desc = self.get_channel_desc(channel.to_string());
+                        if let Some(data) = mdfinfo3.get_channel_data_from_memory(channel) {
+                            let data_first_last = data.first_last();
+
+                            output.push_str(&format!(
+                                " {} {} {} {} \n",
+                                channel, data_first_last, unit, desc
+                            ));
+                        } else {
+                            output.push_str(&format!(" {} {} {} \n", channel, unit, desc));
+                        }
+                    }
+                }
+                output.push_str(&format!("\n"));
             }
             MdfInfo::V4(mdfinfo4) => {
                 output = format!("Version : {}\n", mdfinfo4.id_block.id_ver);
@@ -183,7 +204,6 @@ impl PyObjectProtocol for Mdf {
                         let desc = self.get_channel_desc(channel.to_string());
                         if let Some(data) = mdfinfo4.get_channel_data_from_memory(channel) {
                             let data_first_last = data.first_last();
-
                             output.push_str(&format!(
                                 " {} {} {} {} \n",
                                 channel, data_first_last, unit, desc

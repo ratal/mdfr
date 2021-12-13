@@ -254,7 +254,9 @@ impl MdfInfo {
     /// Clears all data arrays
     pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) {
         match self {
-            MdfInfo::V3(_mdfinfo3) => {}
+            MdfInfo::V3(mdfinfo3) => {
+                // mdfinfo3.clear_channel_data_from_memory(channel_names);
+            }
             MdfInfo::V4(mdfinfo4) => {
                 mdfinfo4.clear_channel_data_from_memory(channel_names);
             }
@@ -266,8 +268,12 @@ impl fmt::Display for MdfInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             MdfInfo::V3(mdfinfo3) => {
-                writeln!(f, "Version : {}", mdfinfo3.id_block.id_ver)?;
-                writeln!(f, "Version : {:?}", mdfinfo3.hd_block)
+                writeln!(f, "Version : {}\n", mdfinfo3.id_block.id_ver)?;
+                writeln!(f, "Header :\n Author: {}  Organisation:{}\n", mdfinfo3.hd_block.hd_author, mdfinfo3.hd_block.hd_organization)?;
+                writeln!(f, "Project: {}  Subject:{}\n", mdfinfo3.hd_block.hd_project, mdfinfo3.hd_block.hd_subject)?;
+                writeln!(f, "Date: {:?}  Time:{:?}\n", mdfinfo3.hd_block.hd_date, mdfinfo3.hd_block.hd_time)?;
+                writeln!(f, "Comments: {}", mdfinfo3.hd_comment)?;
+                writeln!(f, "\n")
             }
             MdfInfo::V4(mdfinfo4) => {
                 writeln!(f, "Version : {}", mdfinfo4.id_block.id_ver)?;
