@@ -229,7 +229,9 @@ impl MdfInfo {
     /// load a set of channels data in memory
     pub fn load_channels_data_in_memory(&mut self, channel_names: HashSet<String>) {
         match self {
-            MdfInfo::V3(_mdfinfo3) => {}
+            MdfInfo::V3(mdfinfo3) => {
+                mdfinfo3.load_channels_data_in_memory(channel_names);
+            }
             MdfInfo::V4(mdfinfo4) => {
                 mdfinfo4.load_channels_data_in_memory(channel_names);
             }
@@ -244,7 +246,9 @@ impl MdfInfo {
     pub fn get_channel_data<'a>(&'a mut self, channel_name: &'a String) -> Option<&ChannelData> {
         let mut data: Option<&ChannelData> = None;
         match self {
-            MdfInfo::V3(_mdfinfo3) => {}
+            MdfInfo::V3(mdfinfo3) => {
+                data = mdfinfo3.get_channel_data(channel_name);
+            }
             MdfInfo::V4(mdfinfo4) => {
                 data = mdfinfo4.get_channel_data(channel_name);
             }
@@ -255,7 +259,7 @@ impl MdfInfo {
     pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) {
         match self {
             MdfInfo::V3(mdfinfo3) => {
-                // mdfinfo3.clear_channel_data_from_memory(channel_names);
+                mdfinfo3.clear_channel_data_from_memory(channel_names);
             }
             MdfInfo::V4(mdfinfo4) => {
                 mdfinfo4.clear_channel_data_from_memory(channel_names);

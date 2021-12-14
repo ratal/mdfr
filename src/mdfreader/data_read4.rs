@@ -1,4 +1,4 @@
-//! this module implements low level data reading.
+//! this module implements low level data reading for mdf4 files.
 use super::channel_data::ChannelData;
 use crate::mdfinfo::mdfinfo4::{Cn4, CnType, Compo};
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt};

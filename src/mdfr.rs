@@ -15,6 +15,7 @@ pub(crate) fn register(_py: Python, m: &PyModule) -> PyResult<()> {
 }
 // TODO export to hdf5 and parquet using arrow, xlswriter
 // TODO resample and export to csv ?
+// TODO Masked array when invalid bits available for mdf4
 
 /// Implements Mdf class to provide API to python using pyo3
 #[pymethods]

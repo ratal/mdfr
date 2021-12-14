@@ -6,12 +6,13 @@ use encoding::{DecoderTrap, Encoding};
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::default::Default;
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::{prelude::*, Cursor};
 use std::io::BufReader;
 
 use crate::mdfreader::channel_data::{data_type_init, ChannelData};
 use crate::mdfinfo::IdBlock;
+use crate::mdfreader::mdfreader3::mdfreader3;
 
 #[derive(Debug, Default)]
 pub struct MdfInfo3 {
@@ -151,6 +152,43 @@ impl MdfInfo3 {
                 }
             }
         }
+        data
+    }
+    /// load in memory the ndarray data of a set of channels
+    pub fn load_channels_data_in_memory(&mut self, channel_names: HashSet<String>) {
+        let f: File = OpenOptions::new()
+            .read(true)
+            .write(false)
+            .open(self.file_name.clone())
+            .expect("Cannot find the file");
+        let mut rdr = BufReader::new(&f);
+        mdfreader3(&mut rdr, self, channel_names);
+    }
+    /// True if channel contains data
+    pub fn get_channel_data_validity(&self, channel_name: &String) -> bool {
+        let mut state: bool = false;
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
+            self.get_channel_id(channel_name)
+        {
+            if let Some(dg) = self.dg.get(dg_pos) {
+                if let Some(cg) = dg.cg.get(rec_id) {
+                    if let Some(cn) = cg.cn.get(cn_pos) {
+                        state = cn.channel_data_valid
+                    }
+                }
+            }
+        }
+        state
+    }
+    /// returns channel's data ndarray.
+    pub fn get_channel_data<'a>(&'a mut self, channel_name: &'a String) -> Option<&'a ChannelData> {
+        let data: Option<&ChannelData>;
+        let mut channel_names: HashSet<String> = HashSet::new();
+        channel_names.insert(channel_name.to_string());
+        if !self.get_channel_data_validity(channel_name) {
+            self.load_channels_data_in_memory(channel_names); // will read data only if array is empty
+        }
+        data = self.get_channel_data_from_memory(channel_name).clone();
         data
     }
 }
@@ -352,7 +390,7 @@ pub struct Dg3Block {
     dg_dg_next: u32,      // Pointer to next data group block (DGBLOCK) (can be NIL)
     dg_cg_first: u32,     // Pointer to first channel group block (CGBLOCK) (can be NIL)
     dg_tr: u32,           // Pointer to trigger block
-    dg_data: u32, // Pointer to data block (DTBLOCK or DZBLOCK for this block type) or data list block (DLBLOCK of data blocks or its HLBLOCK)  (can be NIL)
+    pub dg_data: u32, // Pointer to data block (DTBLOCK or DZBLOCK for this block type) or data list block (DLBLOCK of data blocks or its HLBLOCK)  (can be NIL)
     dg_n_cg: u16, // number of channel groups
     dg_n_record_ids: u16, // number of record ids
     // reserved: u32, // reserved
