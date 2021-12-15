@@ -1,4 +1,3 @@
-use encoding_rs::{WINDOWS_1252, Decoder};
 use rayon::prelude::*;
 
 use crate::mdfinfo::mdfinfo3::{MdfInfo3, Cg3, Dg3};
@@ -21,31 +20,31 @@ pub fn mdfreader3<'a>(
     let mut position: i64 = 0;
     let mut channel_names_present_in_dg: HashSet<String>;
     // read file data
-    for (_dg_position, dg) in info.dg.iter_mut() {
+    for (data_position, dg) in info.dg.iter_mut() {
         // Let's find channel names
         channel_names_present_in_dg = HashSet::new();
         for channel_group in dg.cg.values() {
             let cn = channel_group.channel_names.clone();
             channel_names_present_in_dg.par_extend(cn);
         }
-        let channel_names_to_read_in_dg: HashSet<_> = channel_names_present_in_dg
+        let channel_names_to_read_in_dg: HashSet<String> = channel_names_present_in_dg
             .into_par_iter()
             .filter(|v| channel_names.contains(v))
             .collect();
         if dg.block.dg_data != 0 && !channel_names_to_read_in_dg.is_empty() {
             // header block
-            rdr.seek_relative(dg.block.dg_data as i64 - position)
+            rdr.seek_relative(*data_position as i64 - position)
                 .expect("Could not position buffer"); // change buffer position
-            let mut block_length:i64 = 0;
             if dg.cg.len() == 1 {
                 // sorted data group
                 for channel_group in dg.cg.values_mut() {
                     read_all_channels_sorted(rdr, channel_group, &channel_names_to_read_in_dg);
-                    position += channel_group.record_length as i64 * channel_group.block.cg_cycle_count as i64;
+                    position = *data_position as i64 + (channel_group.record_length as i64) * (channel_group.block.cg_cycle_count as i64);
                 }
             } else if !dg.cg.is_empty() {
                 // unsorted data
                 // initialises all arrays
+                let mut block_length:i64 = 0;
                 for channel_group in dg.cg.values_mut() {
                     initialise_arrays(
                         channel_group,
@@ -54,6 +53,7 @@ pub fn mdfreader3<'a>(
                     );
                     block_length += channel_group.record_length as i64 * channel_group.block.cg_cycle_count as i64;
                 }
+                position = *data_position as i64 + block_length;
                 read_all_channels_unsorted(
                     rdr,
                     dg,
@@ -139,10 +139,9 @@ fn read_all_channels_unsorted(
     channel_names_to_read_in_dg: &HashSet<String>,
 ) {
     let data_block_length = block_length as usize;
-    let mut position: usize = 24;
+    let mut position: usize = 0;
     let mut record_counter: HashMap<u16, (usize, Vec<u8>)> = HashMap::new();
-    let mut decoder = WINDOWS_1252.new_decoder();
-;
+
     // initialise record counter that will contain sorted data blocks for each channel group
     for cg in dg.cg.values_mut() {
         record_counter.insert(cg.block.cg_record_id, (0, Vec::new()));
@@ -166,7 +165,6 @@ fn read_all_channels_unsorted(
             &mut data_chunk,
             dg,
             &mut record_counter,
-            &mut decoder,
             channel_names_to_read_in_dg,
         );
     }
@@ -177,7 +175,6 @@ fn read_all_channels_unsorted_from_bytes(
     data: &mut Vec<u8>,
     dg: &mut Dg3,
     record_counter: &mut HashMap<u16, (usize, Vec<u8>)>,
-    decoder: &mut Decoder,
     channel_names_to_read_in_dg: &HashSet<String>,
 ) {
     let mut position: usize = 0;

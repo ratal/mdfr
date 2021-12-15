@@ -24,7 +24,7 @@ pub fn read_channels_from_bytes(
     // iterates for each channel in parallel with rayon crate
     channels.par_iter_mut()
         .filter(|(_cn_record_position, cn)| {channel_names_to_read_in_dg.contains(&cn.unique_name) && !cn.data.is_empty()})
-        .for_each(|(rec_pos, cn)| {
+        .for_each(|(_cn_pos, cn)| {
         let mut value: &[u8]; // value of channel at record
         let pos_byte_beg = cn.pos_byte_beg as usize;
         let n_bytes = cn.n_bytes as usize;

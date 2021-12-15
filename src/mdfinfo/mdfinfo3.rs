@@ -3,7 +3,7 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::NaiveDate;
 use encoding::all::{ASCII, ISO_8859_1};
 use encoding::{DecoderTrap, Encoding};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, BTreeMap};
 use std::convert::TryFrom;
 use std::default::Default;
 use std::fs::{File, OpenOptions};
@@ -22,7 +22,7 @@ pub struct MdfInfo3 {
     pub hd_block: Hd3,
     pub hd_comment: String,
     /// data group block linking channel group/channel/conversion/..etc. and data block
-    pub dg: HashMap<u32, Dg3>,
+    pub dg: BTreeMap<u32, Dg3>,
     /// Conversion and CE blocks
     pub sharable: SharableBlocks3,
     /// set of all channel names
@@ -409,6 +409,7 @@ pub fn parse_dg3_block(rdr: &mut BufReader<&File>, target: u32, position: i64) -
 #[derive(Debug, Clone)]
 pub struct Dg3 {
     pub block: Dg3Block,               // DG Block
+    pub block_position: u32,           // position of block in file
     pub cg: HashMap<u16, Cg3>,         // CG Block
 }
 
@@ -419,8 +420,8 @@ pub fn parse_dg3(
     mut position: i64,
     sharable: &mut SharableBlocks3,
     default_byte_order: u16,
-) -> (HashMap<u32, Dg3>, i64, u16, u16) {
-    let mut dg: HashMap<u32, Dg3> = HashMap::new();
+) -> (BTreeMap<u32, Dg3>, i64, u16, u16) {
+    let mut dg: BTreeMap<u32, Dg3> = BTreeMap::new();
     let mut n_cn: u16 = 0;
     let mut n_cg: u16 = 0;
     if target > 0 {
@@ -439,9 +440,10 @@ pub fn parse_dg3(
         n_cn += num_cn;
         let dg_struct = Dg3 {
             block,
+            block_position: target,
             cg,
         };
-        dg.insert(target, dg_struct);
+        dg.insert(dg_struct.block.dg_data, dg_struct);
         position = pos;
         while next_pointer > 0 {
             let block_start = next_pointer;
@@ -460,9 +462,10 @@ pub fn parse_dg3(
             n_cn += num_cn;
             let dg_struct = Dg3 {
                 block,
+                block_position: block_start,
                 cg,
             };
-            dg.insert(block_start, dg_struct);
+            dg.insert(dg_struct.block.dg_data, dg_struct);
             position = pos;
         }
     }
@@ -994,15 +997,17 @@ fn parse_ce(rdr: &mut BufReader<&File>,
         let ce_module_number: u16 = block.read_le().unwrap();
         let ce_address: u32 = block.read_le().unwrap();
         let mut desc = vec![0u8; 80];
+        block.read_exact(&mut desc).unwrap();
         let mut ce_desc = String::new();
         ISO_8859_1
             .decode_to(&desc, DecoderTrap::Replace, &mut ce_desc)
             .expect("DIM block description is latin1 encoded");
         ce_desc = ce_desc.trim_end_matches(char::from(0)).to_string();
-        let mut desc = vec![0u8; 32];
+        let mut ecu_id = vec![0u8; 32];
+        block.read_exact(&mut ecu_id).unwrap();
         let mut ce_ecu_id = String::new();
         ISO_8859_1
-            .decode_to(&desc, DecoderTrap::Replace, &mut ce_ecu_id)
+            .decode_to(&ecu_id, DecoderTrap::Replace, &mut ce_ecu_id)
             .expect("DIM block description is latin1 encoded");
         ce_ecu_id = ce_ecu_id.trim_end_matches(char::from(0)).to_string();
         ce_extension = CeSupplement::DIM(DimBlock {
@@ -1020,12 +1025,14 @@ fn parse_ce(rdr: &mut BufReader<&File>,
         let ce_can_id: u32 = block.read_le().unwrap();
         let ce_can_index: u32 = block.read_le().unwrap();
         let mut message = vec![0u8; 36];
+        block.read_exact(&mut message).unwrap();
         let mut ce_message_name = String::new();
         ISO_8859_1
             .decode_to(&message, DecoderTrap::Replace, &mut ce_message_name)
             .expect("DIM block description is latin1 encoded");
         ce_message_name = ce_message_name.trim_end_matches(char::from(0)).to_string();
         let mut sender = vec![0u8; 32];
+        block.read_exact(&mut sender).unwrap();
         let mut ce_sender_name = String::new();
         ISO_8859_1
             .decode_to(&sender, DecoderTrap::Replace, &mut ce_sender_name)
@@ -1052,7 +1059,7 @@ fn parse_ce(rdr: &mut BufReader<&File>,
 /// parses mdfinfo structure to make channel names unique
 /// creates channel names set and links master channels to set of channels
 pub fn build_channel_db3(
-    dg: &mut HashMap<u32, Dg3>,
+    dg: &mut BTreeMap<u32, Dg3>,
     sharable: &SharableBlocks3,
     n_cg: u16,
     n_cn: u16,

@@ -18,7 +18,7 @@ use dashmap::DashMap;
 use mdfinfo3::{hd3_comment_parser, hd3_parser, parse_dg3, MdfInfo3, SharableBlocks3};
 use mdfinfo4::{
     build_channel_db, extract_xml, hd4_comment_parser, hd4_parser, parse_at4, parse_at4_comments,
-    parse_dg4, parse_ev4, parse_ev4_comments, parse_fh, MdfInfo4, ChannelId,
+    parse_dg4, parse_ev4, parse_ev4_comments, parse_fh, MdfInfo4,
     SharableBlocks,
 };
 
