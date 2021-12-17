@@ -834,6 +834,7 @@ pub fn parse_dg4(
     sharable: &mut SharableBlocks,
 ) -> (HashMap<i64, Dg4>, i64, usize, usize) {
     let mut dg: HashMap<i64, Dg4> = HashMap::new();
+    // TODO Hash to BTree map performance investigation for only data block positions (DG but also DL/LD ?)
     let mut n_cn: usize = 0;
     let mut n_cg: usize = 0;
     if target > 0 {

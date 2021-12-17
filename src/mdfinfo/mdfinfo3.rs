@@ -816,7 +816,7 @@ pub enum Conversion {
     Rational(Vec<f64>),
     Formula(String),
     TextTable(Vec<(f64, String)>),
-    TextRangeTable(Vec<(f64, f64, String)>),
+    TextRangeTable((Vec<(f64, f64, String)>, String)),
     Date,
     Time,
     Identity,
@@ -907,12 +907,21 @@ pub fn parse_cc3_block(
             conversion = Conversion::TextTable(pairs);
         }
         12 => {
-            let mut pairs_pointer: Vec<(f64, f64, u32)> = vec![(0.0f64, 0.0f64, 0u32); cc_block.cc_size as usize];
-            let mut pairs_string: Vec<(f64, f64, String)> = vec![(0.0f64, 0.0f64, String::new()); cc_block.cc_size as usize];
+            let mut pairs_pointer: Vec<(f64, f64, u32)> = vec![(0.0f64, 0.0f64, 0u32); cc_block.cc_size as usize - 1];
+            let mut pairs_string: Vec<(f64, f64, String)> = vec![(0.0f64, 0.0f64, String::new()); cc_block.cc_size as usize - 1];
             let mut low_range;
             let mut high_range;
             let mut text_pointer;
-            for index in 0..cc_block.cc_size as usize {
+            let mut buf_ignored = [0u8; 16];
+            rdr.read_exact(&mut buf_ignored).unwrap();
+            let default_text_pointer = rdr.read_u32::<LittleEndian>().unwrap();
+            let (_block_header, default_string, pos) = parse_tx(
+                rdr,
+                default_text_pointer,
+                position,
+            );
+            position = pos;
+            for index in 0..cc_block.cc_size as usize - 1 {
                 low_range = rdr.read_f64::<LittleEndian>().unwrap();
                 high_range = rdr.read_f64::<LittleEndian>().unwrap();
                 text_pointer = rdr.read_u32::<LittleEndian>().unwrap();
@@ -928,7 +937,7 @@ pub fn parse_cc3_block(
                 position = pos;
                 pairs_string.insert(index, (*low_range, *high_range, text));
             }
-            conversion = Conversion::TextRangeTable(pairs_string);
+            conversion = Conversion::TextRangeTable((pairs_string, default_string));
         }
         _ => conversion = Conversion::Identity,
     }
