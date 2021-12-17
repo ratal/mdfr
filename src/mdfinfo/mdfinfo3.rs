@@ -886,7 +886,7 @@ pub fn parse_cc3_block(
             ISO_8859_1
                 .decode_to(&buf, DecoderTrap::Replace, &mut formula)
                 .expect("formula text is latin1 encoded");
-            formula = formula.trim_end_matches(char::from(0)).to_string();
+            formula = formula.trim_matches(char::from(0)).to_string();
             conversion = Conversion::Formula(formula);
         }
         11 => {
@@ -907,35 +907,36 @@ pub fn parse_cc3_block(
             conversion = Conversion::TextTable(pairs);
         }
         12 => {
-            let mut pairs_pointer: Vec<(f64, f64, u32)> = vec![(0.0f64, 0.0f64, 0u32); cc_block.cc_size as usize - 1];
-            let mut pairs_string: Vec<(f64, f64, String)> = vec![(0.0f64, 0.0f64, String::new()); cc_block.cc_size as usize - 1];
+            let mut pairs_pointer: Vec<(f64, f64, u32)> = Vec::with_capacity(cc_block.cc_size as usize - 1);
+            let mut pairs_string: Vec<(f64, f64, String)> = Vec::with_capacity(cc_block.cc_size as usize - 1);
             let mut low_range;
             let mut high_range;
             let mut text_pointer;
             let mut buf_ignored = [0u8; 16];
             rdr.read_exact(&mut buf_ignored).unwrap();
             let default_text_pointer = rdr.read_u32::<LittleEndian>().unwrap();
+            position += 20;
+            for index in 0..(cc_block.cc_size as usize - 1) {
+                low_range = rdr.read_f64::<LittleEndian>().unwrap();
+                high_range = rdr.read_f64::<LittleEndian>().unwrap();
+                text_pointer = rdr.read_u32::<LittleEndian>().unwrap();
+                position += 20;
+                pairs_pointer.push((low_range, high_range, text_pointer));
+            }
             let (_block_header, default_string, pos) = parse_tx(
                 rdr,
                 default_text_pointer,
                 position,
             );
             position = pos;
-            for index in 0..cc_block.cc_size as usize - 1 {
-                low_range = rdr.read_f64::<LittleEndian>().unwrap();
-                high_range = rdr.read_f64::<LittleEndian>().unwrap();
-                text_pointer = rdr.read_u32::<LittleEndian>().unwrap();
-                position += 20;
-                pairs_pointer.insert(index, (low_range, high_range, text_pointer));
-            }
-            for (index, (low_range, high_range, text_pointer)) in pairs_pointer.iter().enumerate() {
+            for (low_range, high_range, text_pointer) in pairs_pointer.iter() {
                 let (_block_header, text, pos) = parse_tx(
                     rdr,
                     *text_pointer,
                     position,
                 );
                 position = pos;
-                pairs_string.insert(index, (*low_range, *high_range, text));
+                pairs_string.push((*low_range, *high_range, text));
             }
             conversion = Conversion::TextRangeTable((pairs_string, default_string));
         }
