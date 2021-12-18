@@ -134,7 +134,7 @@ mod tests {
         // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/Measure.mf4"); // DataList, big many channels
         // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/measure2.mf4");  // many cc_ref with value to text
         // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/ZED_1hz_7197.mf4"); // invalid bytes
-        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/20161129_IN-x1234_Erprobungsort_0000032.mf4");
+        let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/20161129_IN-x1234_Erprobungsort_0000032.mf4");
         // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/isse_107.mf4"); // DZ
         // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/Vector_MinimumFile.MF4");  // DT
         // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4");  // DT
@@ -147,9 +147,10 @@ mod tests {
         // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/DataList/Vector_DT_EqualLen.MF4");
         // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/ChannelTypes/VLSD/Vector_VLSDStringUTF16_LE.mf4");
         // let file = String::from("/home/ratal/workspace/mdfreader/T3_121121_000_6NEDC_col.mf4");
+        let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/mdf3/ASCET.dat");
         // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/ZED_1hz_7197_col.mf4"); // invalid bytes
         // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Conversion/PartialConversion/Vector_StatusStringTableConversionAlgebraic.mf4"); // partial conversion
-        let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/ChannelTypes/MasterChannels/Vector_VirtualTimeMasterChannel.mf4"); // virtual master
+        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/ChannelTypes/MasterChannels/Vector_VirtualTimeMasterChannel.mf4"); // virtual master
         let mut mdf = MdfInfo::new(&file);
         mdf.load_all_channels_data_in_memory();
     }
@@ -366,7 +367,6 @@ mod tests {
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
-        // TODO how to check ?
     }
     #[test]
     fn record_layout() {
@@ -389,7 +389,6 @@ mod tests {
         let file_name = format!("{}{}", base_path, "Vector_OverlappingSignals.mf4");
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
-        // TODO How to check ?
     }
     #[test]
     fn data_list() {
@@ -732,6 +731,22 @@ mod tests {
             ]
             .to_vec();
             assert_eq!(ChannelData::StringUTF8(target), *data);
+        }
+    }
+
+    #[test]
+    fn bus_logging() {
+        let base_path = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/BusLogging/");
+
+        // sort bus
+        let file_name = format!("{}{}", base_path, "Vector_CAN_DataFrame_Sort_ID.MF4");
+        let mut info = MdfInfo::new(&file_name);
+        info.load_all_channels_data_in_memory();
+        if let Some(data) = info.get_channel_data(&"CAN_DataFrame.ID CAN_DataFrame_101 CANReplay_7_5 Message".to_string()) {
+            let vect: Vec<f64> = vec![101.; 79];
+            let target = Array1::<f64>::from_vec(vect);
+            // assert!(ChannelData::Float64(target).compare_f64(data, 1e-9f64));
+            assert_eq!(ChannelData::Float64(target), *data);
         }
     }
 }
