@@ -189,7 +189,7 @@ impl PyObjectProtocol for Mdf {
                         }
                     }
                 }
-                output.push_str(&format!("\n"));
+                output.push_str(&"\n".to_string());
             }
             MdfInfo::V4(mdfinfo4) => {
                 output = format!("Version : {}\n", mdfinfo4.id_block.id_ver);
@@ -214,7 +214,7 @@ impl PyObjectProtocol for Mdf {
                         }
                     }
                 }
-                output.push_str(&format!("\n"));
+                output.push_str(&"\n".to_string());
             }
         }
         Ok(output)

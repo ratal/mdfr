@@ -34,18 +34,18 @@ pub(crate) type ChannelNamesSet3 = HashMap<String, ChannelId3>;
 
 /// MdfInfo3's implementation
 impl MdfInfo3 {
-    pub fn get_channel_id(&self, channel_name: &String) -> Option<&ChannelId3> {
+    pub fn get_channel_id(&self, channel_name: &str) -> Option<&ChannelId3> {
         self.channel_names_set.get(channel_name)
     }
     /// Returns the channel's unit string. If it does not exist, it is an empty string.
-    pub fn get_channel_unit(&self, channel_name: &String) -> String {
+    pub fn get_channel_unit(&self, channel_name: &str) -> String {
         let mut unit: String = String::new();
         if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
             self.get_channel_id(channel_name)
         {
             if let Some(dg) = self.dg.get(dg_pos) {
-                if let Some(cg) = dg.cg.get(&rec_id) {
-                    if let Some(cn) = cg.cn.get(&cn_pos) {
+                if let Some(cg) = dg.cg.get(rec_id) {
+                    if let Some(cn) = cg.cn.get(cn_pos) {
                         if let Some(array) = self.sharable.cc.get(&cn.block1.cn_cc_conversion) {
                             let txt = array.0.cc_unit;
                             ISO_8859_1
@@ -60,14 +60,14 @@ impl MdfInfo3 {
         unit
     }
     /// Returns the channel's description. If it does not exist, it is an empty string
-    pub fn get_channel_desc(&self, channel_name: &String) -> String {
+    pub fn get_channel_desc(&self, channel_name: &str) -> String {
         let mut desc = String::new();
         if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
             self.get_channel_id(channel_name)
         {
-            if let Some(dg) = self.dg.get(&dg_pos) {
-                if let Some(cg) = dg.cg.get(&rec_id) {
-                    if let Some(cn) = cg.cn.get(&cn_pos) {
+            if let Some(dg) = self.dg.get(dg_pos) {
+                if let Some(cg) = dg.cg.get(rec_id) {
+                    if let Some(cn) = cg.cn.get(cn_pos) {
                         desc = cn.description.clone();
                     }
                 }
@@ -76,7 +76,7 @@ impl MdfInfo3 {
         desc
     }
     /// returns the master channel associated to the input channel name
-    pub fn get_channel_master(&self, channel_name: &String) -> String {
+    pub fn get_channel_master(&self, channel_name: &str) -> String {
         let mut master = String::new();
         if let Some((m, _dg_pos, (_cg_pos, _rec_idd), _cn_pos)) =
             self.get_channel_id(channel_name)
@@ -87,14 +87,14 @@ impl MdfInfo3 {
     }
     /// returns type of master channel link to channel input in parameter:
     /// 0 = None (normal data channels), 1 = Time (seconds),
-    pub fn get_channel_master_type(&self, channel_name: &String) -> u8 {
+    pub fn get_channel_master_type(&self, channel_name: &str) -> u8 {
         let mut master_type: u16 = 0; // default to normal data channel
         if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
             self.get_channel_id(channel_name)
         {
-            if let Some(dg) = self.dg.get(&dg_pos) {
-                if let Some(cg) = dg.cg.get(&rec_id) {
-                    if let Some(cn) = cg.cn.get(&cn_pos) {
+            if let Some(dg) = self.dg.get(dg_pos) {
+                if let Some(cg) = dg.cg.get(rec_id) {
+                    if let Some(cn) = cg.cn.get(cn_pos) {
                         master_type = cn.block1.cn_type;
                     }
                 }
@@ -137,7 +137,7 @@ impl MdfInfo3 {
         }
     }
     /// Returns the channel's data ndarray if present in memory, otherwise None.
-    pub fn get_channel_data_from_memory(&self, channel_name: &String) -> Option<&ChannelData> {
+    pub fn get_channel_data_from_memory(&self, channel_name: &str) -> Option<&ChannelData> {
         let mut data: Option<&ChannelData> = None;
         if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
             self.get_channel_id(channel_name)
@@ -165,7 +165,7 @@ impl MdfInfo3 {
         mdfreader3(&mut rdr, self, channel_names);
     }
     /// True if channel contains data
-    pub fn get_channel_data_validity(&self, channel_name: &String) -> bool {
+    pub fn get_channel_data_validity(&self, channel_name: &str) -> bool {
         let mut state: bool = false;
         if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
             self.get_channel_id(channel_name)
@@ -181,14 +181,14 @@ impl MdfInfo3 {
         state
     }
     /// returns channel's data ndarray.
-    pub fn get_channel_data<'a>(&'a mut self, channel_name: &'a String) -> Option<&'a ChannelData> {
+    pub fn get_channel_data<'a>(&'a mut self, channel_name: &'a str) -> Option<&'a ChannelData> {
         let data: Option<&ChannelData>;
         let mut channel_names: HashSet<String> = HashSet::new();
         channel_names.insert(channel_name.to_string());
         if !self.get_channel_data_validity(channel_name) {
             self.load_channels_data_in_memory(channel_names); // will read data only if array is empty
         }
-        data = self.get_channel_data_from_memory(channel_name).clone();
+        data = self.get_channel_data_from_memory(channel_name);
         data
     }
 }
@@ -635,7 +635,7 @@ pub fn parse_cn3(
             );
             position = pos;
             n_cn += 1;
-            target = next_pointer.clone();
+            target = next_pointer;
             next_pointer = cn_struct.block1.cn_cn_next;
             cn.insert(target, cn_struct);
         }

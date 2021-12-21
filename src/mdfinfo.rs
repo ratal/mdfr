@@ -78,7 +78,7 @@ impl MdfInfo {
 
             // Read DG Block
             let (mut dg, _, n_cg, n_cn) =
-                parse_dg3(&mut rdr, hd.hd_dg_first.into(), position, &mut sharable, id.id_default_byteorder);
+                parse_dg3(&mut rdr, hd.hd_dg_first, position, &mut sharable, id.id_default_byteorder);
             
             // make channel names unique, list channels and create master dictionnary
             let channel_names_set = build_channel_db3(&mut dg, &sharable, n_cg, n_cn);
@@ -218,10 +218,10 @@ impl MdfInfo {
         let channel_master_list: HashMap<String, HashSet<String>>;
         match self {
             MdfInfo::V3(mdfinfo3) => {
-                channel_master_list = mdfinfo3.get_master_channel_names_set().clone();
+                channel_master_list = mdfinfo3.get_master_channel_names_set();
             }
             MdfInfo::V4(mdfinfo4) => {
-                channel_master_list = mdfinfo4.get_master_channel_names_set().clone();
+                channel_master_list = mdfinfo4.get_master_channel_names_set();
             }
         }
         channel_master_list
@@ -243,7 +243,7 @@ impl MdfInfo {
         self.load_channels_data_in_memory(channel_set);
     }
     /// returns channel's data ndarray.
-    pub fn get_channel_data<'a>(&'a mut self, channel_name: &'a String) -> Option<&ChannelData> {
+    pub fn get_channel_data<'a>(&'a mut self, channel_name: &'a str) -> Option<&ChannelData> {
         let mut data: Option<&ChannelData> = None;
         match self {
             MdfInfo::V3(mdfinfo3) => {
