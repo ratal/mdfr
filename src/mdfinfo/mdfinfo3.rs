@@ -886,7 +886,10 @@ pub fn parse_cc3_block(
             ISO_8859_1
                 .decode_to(&buf, DecoderTrap::Replace, &mut formula)
                 .expect("formula text is latin1 encoded");
-            formula = formula.trim_matches(char::from(0)).to_string();
+            let index = formula.find(char::from(0));
+            if let Some(ind) = index{
+                formula = formula[0..ind].to_string();
+            }
             conversion = Conversion::Formula(formula);
         }
         11 => {

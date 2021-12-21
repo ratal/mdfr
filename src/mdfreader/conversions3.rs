@@ -1816,322 +1816,432 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &String, cycle_count: &u32) {
     let parser = fasteval::Parser::new();
     let mut slab = fasteval::Slab::new();
     let mut map = BTreeMap::new();
-    let compiled = parser
-        .parse(formulae, &mut slab.ps)
-        .expect("error parsing formulae for conversion")
-        .from(&slab.ps)
-        .compile(&slab.ps, &mut slab.cs);
-    match &mut cn.data {
-        ChannelData::UInt8(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
+    let compiled_instruction = parser
+        .parse(formulae, &mut slab.ps);
+    if let Ok(compiled_instruct) = compiled_instruction {
+        let compiled= compiled_instruct.from(&slab.ps)
+            .compile(&slab.ps, &mut slab.cs);
+        match &mut cn.data {
+            ChannelData::UInt8(a) => {
+                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+                let mut error_flag = true;
+                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a as f64);
+                    let result = compiled.eval(&slab, &mut map);
+                    if let Ok(res) = result {
+                        *new_array = res;
+                    } else if let Err(error_message) = result {
+                        if error_flag {
+                            println!("{}\n Could not compute formulae {} for channel {} and value {}", error_message, formulae, cn.unique_name, a);
+                            error_flag=false;
+                        }
+                    }
+                });
+                cn.data = ChannelData::Float64(new_array);
+            }
+            ChannelData::Int8(a) => {
+                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+                let mut error_flag = true;
+                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a as f64);
+                    let result = compiled.eval(&slab, &mut map);
+                    if let Ok(res) = result {
+                        *new_array = res;
+                    } else if let Err(error_message) = result {
+                        if error_flag {
+                            println!("{}\n Could not compute formulae {} for channel {} and value {}", error_message, formulae, cn.unique_name, a);
+                            error_flag=false;
+                        }
+                    }
+                });
+                cn.data = ChannelData::Float64(new_array);
+            }
+            ChannelData::Int16(a) => {
+                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+                let mut error_flag = true;
+                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a as f64);
+                    let result = compiled.eval(&slab, &mut map);
+                    if let Ok(res) = result {
+                        *new_array = res;
+                    } else if let Err(error_message) = result {
+                        if error_flag {
+                            println!("{}\n Could not compute formulae {} for channel {} and value {}", error_message, formulae, cn.unique_name, a);
+                            error_flag=false;
+                        }
+                    }
+                });
+                cn.data = ChannelData::Float64(new_array);
+            }
+            ChannelData::UInt16(a) => {
+                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+                let mut error_flag = true;
+                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a as f64);
+                    let result = compiled.eval(&slab, &mut map);
+                    if let Ok(res) = result {
+                        *new_array = res;
+                    } else if let Err(error_message) = result {
+                        if error_flag {
+                            println!("{}\n Could not compute formulae {} for channel {} and value {}", error_message, formulae, cn.unique_name, a);
+                            error_flag=false;
+                        }
+                    }
+                });
+                cn.data = ChannelData::Float64(new_array);
+            }
+            ChannelData::Float16(a) => {
+                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+                let mut error_flag = true;
+                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a as f64);
+                    let result = compiled.eval(&slab, &mut map);
+                    if let Ok(res) = result {
+                        *new_array = res;
+                    } else if let Err(error_message) = result {
+                        if error_flag {
+                            println!("{}\n Could not compute formulae {} for channel {} and value {}", error_message, formulae, cn.unique_name, a);
+                            error_flag=false;
+                        }
+                    }
+                });
+                cn.data = ChannelData::Float64(new_array);
+            }
+            ChannelData::Int24(a) => {
+                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+                let mut error_flag = true;
+                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a as f64);
+                    let result = compiled.eval(&slab, &mut map);
+                    if let Ok(res) = result {
+                        *new_array = res;
+                    } else if let Err(error_message) = result {
+                        if error_flag {
+                            println!("{}\n Could not compute formulae {} for channel {} and value {}", error_message, formulae, cn.unique_name, a);
+                            error_flag=false;
+                        }
+                    }
+                });
+                cn.data = ChannelData::Float64(new_array);
+            }
+            ChannelData::UInt24(a) => {
+                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+                let mut error_flag = true;
+                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a as f64);
+                    let result = compiled.eval(&slab, &mut map);
+                    if let Ok(res) = result {
+                        *new_array = res;
+                    } else if let Err(error_message) = result {
+                        if error_flag {
+                            println!("{}\n Could not compute formulae {} for channel {} and value {}", error_message, formulae, cn.unique_name, a);
+                            error_flag=false;
+                        }
+                    }
+                });
+                cn.data = ChannelData::Float64(new_array);
+            }
+            ChannelData::Int32(a) => {
+                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+                let mut error_flag = true;
+                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a as f64);
+                    let result = compiled.eval(&slab, &mut map);
+                    if let Ok(res) = result {
+                        *new_array = res;
+                    } else if let Err(error_message) = result {
+                        if error_flag {
+                            println!("{}\n Could not compute formulae {} for channel {} and value {}", error_message, formulae, cn.unique_name, a);
+                            error_flag=false;
+                        }
+                    }
+                });
+                cn.data = ChannelData::Float64(new_array);
+            }
+            ChannelData::UInt32(a) => {
+                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+                let mut error_flag = true;
+                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a as f64);
+                    let result = compiled.eval(&slab, &mut map);
+                    if let Ok(res) = result {
+                        *new_array = res;
+                    } else if let Err(error_message) = result {
+                        if error_flag {
+                            println!("{}\n Could not compute formulae {} for channel {} and value {}", error_message, formulae, cn.unique_name, a);
+                            error_flag=false;
+                        }
+                    }
+                });
+                cn.data = ChannelData::Float64(new_array);
+            }
+            ChannelData::Float32(a) => {
+                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+                let mut error_flag = true;
+                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a as f64);
+                    let result = compiled.eval(&slab, &mut map);
+                    if let Ok(res) = result {
+                        *new_array = res;
+                    } else if let Err(error_message) = result {
+                        if error_flag {
+                            println!("{}\n Could not compute formulae {} for channel {} and value {}", error_message, formulae, cn.unique_name, a);
+                            error_flag=false;
+                        }
+                    }
+                });
+                cn.data = ChannelData::Float64(new_array);
+            }
+            ChannelData::Int48(a) => {
+                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+                let mut error_flag = true;
+                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a as f64);
+                    let result = compiled.eval(&slab, &mut map);
+                    if let Ok(res) = result {
+                        *new_array = res;
+                    } else if let Err(error_message) = result {
+                        if error_flag {
+                            println!("{}\n Could not compute formulae {} for channel {} and value {}", error_message, formulae, cn.unique_name, a);
+                            error_flag=false;
+                        }
+                    }
+                });
+                cn.data = ChannelData::Float64(new_array);
+            }
+            ChannelData::UInt48(a) => {
+                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+                let mut error_flag = true;
+                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a as f64);
+                    let result = compiled.eval(&slab, &mut map);
+                    if let Ok(res) = result {
+                        *new_array = res;
+                    } else if let Err(error_message) = result {
+                        if error_flag {
+                            println!("{}\n Could not compute formulae {} for channel {} and value {}", error_message, formulae, cn.unique_name, a);
+                            error_flag=false;
+                        }
+                    }
+                });
+                cn.data = ChannelData::Float64(new_array);
+            }
+            ChannelData::Int64(a) => {
+                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+                let mut error_flag = true;
+                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a as f64);
+                    let result = compiled.eval(&slab, &mut map);
+                    if let Ok(res) = result {
+                        *new_array = res;
+                    } else if let Err(error_message) = result {
+                        if error_flag {
+                            println!("{}\n Could not compute formulae {} for channel {} and value {}", error_message, formulae, cn.unique_name, a);
+                            error_flag=false;
+                        }
+                    }
+                });
+                cn.data = ChannelData::Float64(new_array);
+            }
+            ChannelData::UInt64(a) => {
+                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+                let mut error_flag = true;
+                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a as f64);
+                    let result = compiled.eval(&slab, &mut map);
+                    if let Ok(res) = result {
+                        *new_array = res;
+                    } else if let Err(error_message) = result {
+                        if error_flag {
+                            println!("{}\n Could not compute formulae {} for channel {} and value {}", error_message, formulae, cn.unique_name, a);
+                            error_flag=false;
+                        }
+                    }
+                });
+                cn.data = ChannelData::Float64(new_array);
+            }
+            ChannelData::Float64(a) => {
+                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+                let mut error_flag = true;
+                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a);
+                    let result = compiled.eval(&slab, &mut map);
+                    if let Ok(res) = result {
+                        *new_array = res;
+                    } else if let Err(error_message) = result {
+                        if error_flag {
+                            println!("{}\n Could not compute formulae {} for channel {} and value {}", error_message, formulae, cn.unique_name, a);
+                            error_flag=false;
+                        }
+                    }
+                });
+                cn.data = ChannelData::Float64(new_array);
+            }
+            ChannelData::Complex16(_) => todo!(),
+            ChannelData::Complex32(_) => todo!(),
+            ChannelData::Complex64(_) => todo!(),
+            ChannelData::StringSBC(_) => (),
+            ChannelData::StringUTF8(_) => (),
+            ChannelData::StringUTF16(_) => (),
+            ChannelData::ByteArray(_) => (),
+            ChannelData::ArrayDInt8(a) => {
+                let mut new_array = ArrayD::<f64>::zeros(a.shape());
+                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a as f64);
+                    *new_array = compiled
+                        .eval(&slab, &mut map)
+                        .expect("could not evaluate algebraic expression");
+                });
+                cn.data = ChannelData::ArrayDFloat64(new_array);
+            }
+            ChannelData::ArrayDUInt8(a) => {
+                let mut new_array = ArrayD::<f64>::zeros(a.shape());
+                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a as f64);
+                    *new_array = compiled
+                        .eval(&slab, &mut map)
+                        .expect("could not evaluate algebraic expression");
+                });
+                cn.data = ChannelData::ArrayDFloat64(new_array);
+            }
+            ChannelData::ArrayDInt16(a) => {
+                let mut new_array = ArrayD::<f64>::zeros(a.shape());
+                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a as f64);
+                    *new_array = compiled
+                        .eval(&slab, &mut map)
+                        .expect("could not evaluate algebraic expression");
+                });
+                cn.data = ChannelData::ArrayDFloat64(new_array);
+            }
+            ChannelData::ArrayDUInt16(a) => {
+                let mut new_array = ArrayD::<f64>::zeros(a.shape());
+                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a as f64);
+                    *new_array = compiled
+                        .eval(&slab, &mut map)
+                        .expect("could not evaluate algebraic expression");
+                });
+                cn.data = ChannelData::ArrayDFloat64(new_array);
+            }
+            ChannelData::ArrayDFloat16(a) => {
+                let mut new_array = ArrayD::<f64>::zeros(a.shape());
+                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a as f64);
+                    *new_array = compiled
+                        .eval(&slab, &mut map)
+                        .expect("could not evaluate algebraic expression");
+                });
+                cn.data = ChannelData::ArrayDFloat64(new_array);
+            }
+            ChannelData::ArrayDInt24(a) => {
+                let mut new_array = ArrayD::<f64>::zeros(a.shape());
+                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a as f64);
+                    *new_array = compiled
+                        .eval(&slab, &mut map)
+                        .expect("could not evaluate algebraic expression");
+                });
+                cn.data = ChannelData::ArrayDFloat64(new_array);
+            }
+            ChannelData::ArrayDUInt24(a) => {
+                let mut new_array = ArrayD::<f64>::zeros(a.shape());
+                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a as f64);
+                    *new_array = compiled
+                        .eval(&slab, &mut map)
+                        .expect("could not evaluate algebraic expression");
+                });
+                cn.data = ChannelData::ArrayDFloat64(new_array);
+            }
+            ChannelData::ArrayDInt32(a) => {
+                let mut new_array = ArrayD::<f64>::zeros(a.shape());
+                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a as f64);
+                    *new_array = compiled
+                        .eval(&slab, &mut map)
+                        .expect("could not evaluate algebraic expression");
+                });
+                cn.data = ChannelData::ArrayDFloat64(new_array);
+            }
+            ChannelData::ArrayDUInt32(a) => {
+                let mut new_array = ArrayD::<f64>::zeros(a.shape());
+                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a as f64);
+                    *new_array = compiled
+                        .eval(&slab, &mut map)
+                        .expect("could not evaluate algebraic expression");
+                });
+                cn.data = ChannelData::ArrayDFloat64(new_array);
+            }
+            ChannelData::ArrayDFloat32(a) => {
+                let mut new_array = ArrayD::<f64>::zeros(a.shape());
+                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a as f64);
+                    *new_array = compiled
+                        .eval(&slab, &mut map)
+                        .expect("could not evaluate algebraic expression");
+                });
+                cn.data = ChannelData::ArrayDFloat64(new_array);
+            }
+            ChannelData::ArrayDInt48(a) => {
+                let mut new_array = ArrayD::<f64>::zeros(a.shape());
+                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a as f64);
+                    *new_array = compiled
+                        .eval(&slab, &mut map)
+                        .expect("could not evaluate algebraic expression");
+                });
+                cn.data = ChannelData::ArrayDFloat64(new_array);
+            }
+            ChannelData::ArrayDUInt48(a) => {
+                let mut new_array = ArrayD::<f64>::zeros(a.shape());
+                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a as f64);
+                    *new_array = compiled
+                        .eval(&slab, &mut map)
+                        .expect("could not evaluate algebraic expression");
+                });
+                cn.data = ChannelData::ArrayDFloat64(new_array);
+            }
+            ChannelData::ArrayDInt64(a) => {
+                let mut new_array = ArrayD::<f64>::zeros(a.shape());
+                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a as f64);
+                    *new_array = compiled
+                        .eval(&slab, &mut map)
+                        .expect("could not evaluate algebraic expression");
+                });
+                cn.data = ChannelData::ArrayDFloat64(new_array);
+            }
+            ChannelData::ArrayDUInt64(a) => {
+                let mut new_array = ArrayD::<f64>::zeros(a.shape());
+                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a as f64);
+                    *new_array = compiled
+                        .eval(&slab, &mut map)
+                        .expect("could not evaluate algebraic expression");
+                });
+                cn.data = ChannelData::ArrayDFloat64(new_array);
+            }
+            ChannelData::ArrayDFloat64(a) => {
+                let mut new_array = ArrayD::<f64>::zeros(a.shape());
+                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a);
+                    *new_array = compiled
+                        .eval(&slab, &mut map)
+                        .expect("could not evaluate algebraic expression");
+                });
+                cn.data = ChannelData::ArrayDFloat64(new_array);
+            }
+            ChannelData::ArrayDComplex16(_) => todo!(),
+            ChannelData::ArrayDComplex32(_) => todo!(),
+            ChannelData::ArrayDComplex64(_) => todo!(),
         }
-        ChannelData::Int8(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::Int16(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::UInt16(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::Float16(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::Int24(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::UInt24(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::Int32(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::UInt32(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::Float32(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::Int48(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::UInt48(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::Int64(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::UInt64(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::Float64(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::Complex16(_) => todo!(),
-        ChannelData::Complex32(_) => todo!(),
-        ChannelData::Complex64(_) => todo!(),
-        ChannelData::StringSBC(_) => (),
-        ChannelData::StringUTF8(_) => (),
-        ChannelData::StringUTF16(_) => (),
-        ChannelData::ByteArray(_) => (),
-        ChannelData::ArrayDInt8(a) => {
-            let mut new_array = ArrayD::<f64>::zeros(a.shape());
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::ArrayDFloat64(new_array);
-        }
-        ChannelData::ArrayDUInt8(a) => {
-            let mut new_array = ArrayD::<f64>::zeros(a.shape());
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::ArrayDFloat64(new_array);
-        }
-        ChannelData::ArrayDInt16(a) => {
-            let mut new_array = ArrayD::<f64>::zeros(a.shape());
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::ArrayDFloat64(new_array);
-        }
-        ChannelData::ArrayDUInt16(a) => {
-            let mut new_array = ArrayD::<f64>::zeros(a.shape());
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::ArrayDFloat64(new_array);
-        }
-        ChannelData::ArrayDFloat16(a) => {
-            let mut new_array = ArrayD::<f64>::zeros(a.shape());
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::ArrayDFloat64(new_array);
-        }
-        ChannelData::ArrayDInt24(a) => {
-            let mut new_array = ArrayD::<f64>::zeros(a.shape());
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::ArrayDFloat64(new_array);
-        }
-        ChannelData::ArrayDUInt24(a) => {
-            let mut new_array = ArrayD::<f64>::zeros(a.shape());
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::ArrayDFloat64(new_array);
-        }
-        ChannelData::ArrayDInt32(a) => {
-            let mut new_array = ArrayD::<f64>::zeros(a.shape());
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::ArrayDFloat64(new_array);
-        }
-        ChannelData::ArrayDUInt32(a) => {
-            let mut new_array = ArrayD::<f64>::zeros(a.shape());
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::ArrayDFloat64(new_array);
-        }
-        ChannelData::ArrayDFloat32(a) => {
-            let mut new_array = ArrayD::<f64>::zeros(a.shape());
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::ArrayDFloat64(new_array);
-        }
-        ChannelData::ArrayDInt48(a) => {
-            let mut new_array = ArrayD::<f64>::zeros(a.shape());
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::ArrayDFloat64(new_array);
-        }
-        ChannelData::ArrayDUInt48(a) => {
-            let mut new_array = ArrayD::<f64>::zeros(a.shape());
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::ArrayDFloat64(new_array);
-        }
-        ChannelData::ArrayDInt64(a) => {
-            let mut new_array = ArrayD::<f64>::zeros(a.shape());
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::ArrayDFloat64(new_array);
-        }
-        ChannelData::ArrayDUInt64(a) => {
-            let mut new_array = ArrayD::<f64>::zeros(a.shape());
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::ArrayDFloat64(new_array);
-        }
-        ChannelData::ArrayDFloat64(a) => {
-            let mut new_array = ArrayD::<f64>::zeros(a.shape());
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::ArrayDFloat64(new_array);
-        }
-        ChannelData::ArrayDComplex16(_) => todo!(),
-        ChannelData::ArrayDComplex32(_) => todo!(),
-        ChannelData::ArrayDComplex64(_) => todo!(),
+    } else if let Err(error_message) = compiled_instruction {
+        // could not parse the formulae, probably some function or syntax not yet implementated by fasteval
+        println!("{}\n Could not parse formulae {} for channel {}", error_message, formulae, cn.unique_name);
+
     }
 }
 
