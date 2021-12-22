@@ -2,7 +2,7 @@
 use itertools::Itertools;
 use std::collections::BTreeMap;
 
-use crate::mdfinfo::mdfinfo3::{Cn3, Dg3, SharableBlocks3, Conversion};
+use crate::mdfinfo::mdfinfo3::{Cn3, Conversion, Dg3, SharableBlocks3};
 use crate::mdfreader::channel_data::ChannelData;
 use fasteval::Compiler;
 use fasteval::Evaler;
@@ -23,26 +23,36 @@ pub fn convert_all_channels(dg: &mut Dg3, sharable: &SharableBlocks3) {
                 if let Some((_block, conv)) = sharable.cc.get(&cn.block1.cn_cc_conversion) {
                     match conv {
                         Conversion::Linear(cc_val) => linear_conversion(cn, cc_val, &cycle_count),
-                        Conversion::TabularInterpolation(cc_val) => value_to_value_with_interpolation(cn, cc_val.clone(), &cycle_count),
-                        Conversion::Tabular(cc_val) => value_to_value_without_interpolation(
-                            cn,
-                            cc_val.clone(),
-                            &cycle_count,
-                        ),
-                        Conversion::Rational(cc_val) => rational_conversion(cn, cc_val, &cycle_count),
-                        Conversion::Formula(formula) => algebraic_conversion(cn, formula, &cycle_count),
-                        Conversion::Identity => {},
-                        Conversion::Polynomial(cc_val) => polynomial_conversion(cn, cc_val, &cycle_count),
-                        Conversion::Exponential(cc_val) => exponential_conversion(cn, cc_val, &cycle_count),
-                        Conversion::Logarithmic(cc_val) => logarithmic_conversion(cn, cc_val, &cycle_count),
-                        Conversion::TextTable(cc_val_ref) => value_to_text(cn, &cc_val_ref, &cycle_count),
-                        Conversion::TextRangeTable(cc_val_ref) => value_range_to_text(
-                            cn,
-                            cc_val_ref,
-                            &cycle_count,
-                        ),
-                        Conversion::Date => {},
-                        Conversion::Time => {},
+                        Conversion::TabularInterpolation(cc_val) => {
+                            value_to_value_with_interpolation(cn, cc_val.clone(), &cycle_count)
+                        }
+                        Conversion::Tabular(cc_val) => {
+                            value_to_value_without_interpolation(cn, cc_val.clone(), &cycle_count)
+                        }
+                        Conversion::Rational(cc_val) => {
+                            rational_conversion(cn, cc_val, &cycle_count)
+                        }
+                        Conversion::Formula(formula) => {
+                            algebraic_conversion(cn, formula, &cycle_count)
+                        }
+                        Conversion::Identity => {}
+                        Conversion::Polynomial(cc_val) => {
+                            polynomial_conversion(cn, cc_val, &cycle_count)
+                        }
+                        Conversion::Exponential(cc_val) => {
+                            exponential_conversion(cn, cc_val, &cycle_count)
+                        }
+                        Conversion::Logarithmic(cc_val) => {
+                            logarithmic_conversion(cn, cc_val, &cycle_count)
+                        }
+                        Conversion::TextTable(cc_val_ref) => {
+                            value_to_text(cn, cc_val_ref, &cycle_count)
+                        }
+                        Conversion::TextRangeTable(cc_val_ref) => {
+                            value_range_to_text(cn, cc_val_ref, &cycle_count)
+                        }
+                        Conversion::Date => {}
+                        Conversion::Time => {}
                     }
                 }
             })
@@ -620,7 +630,7 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5- p6))) / (p3 * (m - p5 - p6) - p1)
+                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
             cn.data = ChannelData::Float64(new_array);
         }
@@ -628,7 +638,7 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5- p6))) / (p3 * (m - p5 - p6) - p1)
+                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
             cn.data = ChannelData::Float64(new_array);
         }
@@ -636,7 +646,7 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5- p6))) / (p3 * (m - p5 - p6) - p1)
+                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
             cn.data = ChannelData::Float64(new_array);
         }
@@ -644,7 +654,7 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5- p6))) / (p3 * (m - p5 - p6) - p1)
+                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
             cn.data = ChannelData::Float64(new_array);
         }
@@ -652,7 +662,7 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5- p6))) / (p3 * (m - p5 - p6) - p1)
+                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
             cn.data = ChannelData::Float64(new_array);
         }
@@ -660,7 +670,7 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5- p6))) / (p3 * (m - p5 - p6) - p1)
+                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
             cn.data = ChannelData::Float64(new_array);
         }
@@ -668,7 +678,7 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5- p6))) / (p3 * (m - p5 - p6) - p1)
+                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
             cn.data = ChannelData::Float64(new_array);
         }
@@ -676,7 +686,7 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5- p6))) / (p3 * (m - p5 - p6) - p1)
+                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
             cn.data = ChannelData::Float64(new_array);
         }
@@ -684,7 +694,7 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5- p6))) / (p3 * (m - p5 - p6) - p1)
+                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
             cn.data = ChannelData::Float64(new_array);
         }
@@ -692,7 +702,7 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5- p6))) / (p3 * (m - p5 - p6) - p1)
+                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
             cn.data = ChannelData::Float64(new_array);
         }
@@ -700,7 +710,7 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5- p6))) / (p3 * (m - p5 - p6) - p1)
+                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
             cn.data = ChannelData::Float64(new_array);
         }
@@ -708,7 +718,7 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5- p6))) / (p3 * (m - p5 - p6) - p1)
+                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
             cn.data = ChannelData::Float64(new_array);
         }
@@ -716,7 +726,7 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5- p6))) / (p3 * (m - p5 - p6) - p1)
+                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
             cn.data = ChannelData::Float64(new_array);
         }
@@ -724,14 +734,14 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5- p6))) / (p3 * (m - p5 - p6) - p1)
+                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Float64(a) => {
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                *new_array = (p2 - (p4 * (*a - p5- p6))) / (p3 * (*a - p5 - p6) - p1)
+                *new_array = (p2 - (p4 * (*a - p5 - p6))) / (p3 * (*a - p5 - p6) - p1)
             });
             cn.data = ChannelData::Float64(new_array);
         }
@@ -746,7 +756,7 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5- p6))) / (p3 * (m - p5 - p6) - p1)
+                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
             cn.data = ChannelData::ArrayDFloat64(new_array);
         }
@@ -754,7 +764,7 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5- p6))) / (p3 * (m - p5 - p6) - p1)
+                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
             cn.data = ChannelData::ArrayDFloat64(new_array);
         }
@@ -762,7 +772,7 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5- p6))) / (p3 * (m - p5 - p6) - p1)
+                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
             cn.data = ChannelData::ArrayDFloat64(new_array);
         }
@@ -770,7 +780,7 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5- p6))) / (p3 * (m - p5 - p6) - p1)
+                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
             cn.data = ChannelData::ArrayDFloat64(new_array);
         }
@@ -778,7 +788,7 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5- p6))) / (p3 * (m - p5 - p6) - p1)
+                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
             cn.data = ChannelData::ArrayDFloat64(new_array);
         }
@@ -786,7 +796,7 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5- p6))) / (p3 * (m - p5 - p6) - p1)
+                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
             cn.data = ChannelData::ArrayDFloat64(new_array);
         }
@@ -794,7 +804,7 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5- p6))) / (p3 * (m - p5 - p6) - p1)
+                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
             cn.data = ChannelData::ArrayDFloat64(new_array);
         }
@@ -802,7 +812,7 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5- p6))) / (p3 * (m - p5 - p6) - p1)
+                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
             cn.data = ChannelData::ArrayDFloat64(new_array);
         }
@@ -810,7 +820,7 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5- p6))) / (p3 * (m - p5 - p6) - p1)
+                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
             cn.data = ChannelData::ArrayDFloat64(new_array);
         }
@@ -818,7 +828,7 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5- p6))) / (p3 * (m - p5 - p6) - p1)
+                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
             cn.data = ChannelData::ArrayDFloat64(new_array);
         }
@@ -826,7 +836,7 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5- p6))) / (p3 * (m - p5 - p6) - p1)
+                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
             cn.data = ChannelData::ArrayDFloat64(new_array);
         }
@@ -834,7 +844,7 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5- p6))) / (p3 * (m - p5 - p6) - p1)
+                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
             cn.data = ChannelData::ArrayDFloat64(new_array);
         }
@@ -842,7 +852,7 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5- p6))) / (p3 * (m - p5 - p6) - p1)
+                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
             cn.data = ChannelData::ArrayDFloat64(new_array);
         }
@@ -850,14 +860,14 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5- p6))) / (p3 * (m - p5 - p6) - p1)
+                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
             cn.data = ChannelData::ArrayDFloat64(new_array);
         }
         ChannelData::ArrayDFloat64(a) => {
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                *new_array = (p2 - (p4 * (*a - p5- p6))) / (p3 * (*a - p5 - p6) - p1)
+                *new_array = (p2 - (p4 * (*a - p5 - p6))) / (p3 * (*a - p5 - p6) - p1)
             });
             cn.data = ChannelData::ArrayDFloat64(new_array);
         }
@@ -886,7 +896,7 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
                 });
                 cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
@@ -902,7 +912,7 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
                 });
                 cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
@@ -918,7 +928,7 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
                 });
                 cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
@@ -934,7 +944,7 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
                 });
                 cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
@@ -950,7 +960,7 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
                 });
                 cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
@@ -966,7 +976,7 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
                 });
                 cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
@@ -982,7 +992,7 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
                 });
                 cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
@@ -998,7 +1008,7 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
                 });
                 cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
@@ -1014,7 +1024,7 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
                 });
                 cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
@@ -1030,7 +1040,7 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
                 });
                 cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
@@ -1046,7 +1056,7 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
                 });
                 cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
@@ -1062,7 +1072,7 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
                 });
                 cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
@@ -1078,7 +1088,7 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
                 });
                 cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
@@ -1094,7 +1104,7 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
                 });
                 cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
@@ -1109,7 +1119,7 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a - p7) * p6 - p3) / p1).ln() / p2;
                 });
                 cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a - p7) - p6) / p4).ln() / p5;
                 });
@@ -1130,7 +1140,7 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a as f64 - p7) * p6 - p3) / p1).ln() / p2;
                 });
                 cn.data = ChannelData::ArrayDFloat64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).ln() / p5;
                 });
@@ -1144,7 +1154,7 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a as f64 - p7) * p6 - p3) / p1).ln() / p2;
                 });
                 cn.data = ChannelData::ArrayDFloat64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).ln() / p5;
                 });
@@ -1158,7 +1168,7 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a as f64 - p7) * p6 - p3) / p1).ln() / p2;
                 });
                 cn.data = ChannelData::ArrayDFloat64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).ln() / p5;
                 });
@@ -1172,7 +1182,7 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a as f64 - p7) * p6 - p3) / p1).ln() / p2;
                 });
                 cn.data = ChannelData::ArrayDFloat64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).ln() / p5;
                 });
@@ -1186,7 +1196,7 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a as f64 - p7) * p6 - p3) / p1).ln() / p2;
                 });
                 cn.data = ChannelData::ArrayDFloat64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).ln() / p5;
                 });
@@ -1200,7 +1210,7 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a as f64 - p7) * p6 - p3) / p1).ln() / p2;
                 });
                 cn.data = ChannelData::ArrayDFloat64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).ln() / p5;
                 });
@@ -1214,7 +1224,7 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a as f64 - p7) * p6 - p3) / p1).ln() / p2;
                 });
                 cn.data = ChannelData::ArrayDFloat64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).ln() / p5;
                 });
@@ -1228,7 +1238,7 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a as f64 - p7) * p6 - p3) / p1).ln() / p2;
                 });
                 cn.data = ChannelData::ArrayDFloat64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).ln() / p5;
                 });
@@ -1242,7 +1252,7 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a as f64 - p7) * p6 - p3) / p1).ln() / p2;
                 });
                 cn.data = ChannelData::ArrayDFloat64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).ln() / p5;
                 });
@@ -1256,7 +1266,7 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a as f64 - p7) * p6 - p3) / p1).ln() / p2;
                 });
                 cn.data = ChannelData::ArrayDFloat64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).ln() / p5;
                 });
@@ -1270,7 +1280,7 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a as f64 - p7) * p6 - p3) / p1).ln() / p2;
                 });
                 cn.data = ChannelData::ArrayDFloat64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).ln() / p5;
                 });
@@ -1284,7 +1294,7 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a as f64 - p7) * p6 - p3) / p1).ln() / p2;
                 });
                 cn.data = ChannelData::ArrayDFloat64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).ln() / p5;
                 });
@@ -1298,7 +1308,7 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a as f64 - p7) * p6 - p3) / p1).ln() / p2;
                 });
                 cn.data = ChannelData::ArrayDFloat64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).ln() / p5;
                 });
@@ -1312,7 +1322,7 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a as f64 - p7) * p6 - p3) / p1).ln() / p2;
                 });
                 cn.data = ChannelData::ArrayDFloat64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).ln() / p5;
                 });
@@ -1326,7 +1336,7 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a - p7) * p6 - p3) / p1).ln() / p2;
                 });
                 cn.data = ChannelData::ArrayDFloat64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a - p7) - p6) / p4).ln() / p5;
                 });
@@ -1358,7 +1368,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
                 });
                 cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
@@ -1374,7 +1384,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
                 });
                 cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
@@ -1390,7 +1400,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
                 });
                 cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
@@ -1406,7 +1416,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
                 });
                 cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
@@ -1422,7 +1432,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
                 });
                 cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
@@ -1438,7 +1448,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
                 });
                 cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
@@ -1454,7 +1464,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
                 });
                 cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
@@ -1470,7 +1480,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
                 });
                 cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
@@ -1486,7 +1496,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
                 });
                 cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
@@ -1502,7 +1512,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
                 });
                 cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
@@ -1518,7 +1528,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
                 });
                 cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
@@ -1534,7 +1544,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
                 });
                 cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
@@ -1550,7 +1560,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
                 });
                 cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
@@ -1566,7 +1576,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
                 });
                 cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
@@ -1581,7 +1591,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a - p7) * p6 - p3) / p1).exp() / p2;
                 });
                 cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a - p7) - p6) / p4).exp() / p5;
                 });
@@ -1602,7 +1612,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a as f64 - p7) * p6 - p3) / p1).exp() / p2;
                 });
                 cn.data = ChannelData::ArrayDFloat64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).exp() / p5;
                 });
@@ -1616,7 +1626,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a as f64 - p7) * p6 - p3) / p1).exp() / p2;
                 });
                 cn.data = ChannelData::ArrayDFloat64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).exp() / p5;
                 });
@@ -1630,7 +1640,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a as f64 - p7) * p6 - p3) / p1).exp() / p2;
                 });
                 cn.data = ChannelData::ArrayDFloat64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).exp() / p5;
                 });
@@ -1644,7 +1654,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a as f64 - p7) * p6 - p3) / p1).exp() / p2;
                 });
                 cn.data = ChannelData::ArrayDFloat64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).exp() / p5;
                 });
@@ -1658,7 +1668,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a as f64 - p7) * p6 - p3) / p1).exp() / p2;
                 });
                 cn.data = ChannelData::ArrayDFloat64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).exp() / p5;
                 });
@@ -1672,7 +1682,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a as f64 - p7) * p6 - p3) / p1).exp() / p2;
                 });
                 cn.data = ChannelData::ArrayDFloat64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).exp() / p5;
                 });
@@ -1686,7 +1696,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a as f64 - p7) * p6 - p3) / p1).exp() / p2;
                 });
                 cn.data = ChannelData::ArrayDFloat64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).exp() / p5;
                 });
@@ -1700,7 +1710,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a as f64 - p7) * p6 - p3) / p1).exp() / p2;
                 });
                 cn.data = ChannelData::ArrayDFloat64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).exp() / p5;
                 });
@@ -1714,7 +1724,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a as f64 - p7) * p6 - p3) / p1).exp() / p2;
                 });
                 cn.data = ChannelData::ArrayDFloat64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).exp() / p5;
                 });
@@ -1728,7 +1738,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a as f64 - p7) * p6 - p3) / p1).exp() / p2;
                 });
                 cn.data = ChannelData::ArrayDFloat64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).exp() / p5;
                 });
@@ -1742,7 +1752,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a as f64 - p7) * p6 - p3) / p1).exp() / p2;
                 });
                 cn.data = ChannelData::ArrayDFloat64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).exp() / p5;
                 });
@@ -1756,7 +1766,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a as f64 - p7) * p6 - p3) / p1).exp() / p2;
                 });
                 cn.data = ChannelData::ArrayDFloat64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).exp() / p5;
                 });
@@ -1770,7 +1780,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a as f64 - p7) * p6 - p3) / p1).exp() / p2;
                 });
                 cn.data = ChannelData::ArrayDFloat64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).exp() / p5;
                 });
@@ -1784,7 +1794,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a as f64 - p7) * p6 - p3) / p1).exp() / p2;
                 });
                 cn.data = ChannelData::ArrayDFloat64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).exp() / p5;
                 });
@@ -1798,7 +1808,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     *new_array = (((*a - p7) * p6 - p3) / p1).exp() / p2;
                 });
                 cn.data = ChannelData::ArrayDFloat64(new_array);
-            } else if p1 == 0.0{
+            } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     *new_array = ((p3 / (*a - p7) - p6) / p4).exp() / p5;
                 });
@@ -1812,14 +1822,14 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
 }
 
 /// Apply algebraic conversion to get physical data
-fn algebraic_conversion(cn: &mut Cn3, formulae: &String, cycle_count: &u32) {
+fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
     let parser = fasteval::Parser::new();
     let mut slab = fasteval::Slab::new();
     let mut map = BTreeMap::new();
-    let compiled_instruction = parser
-        .parse(formulae, &mut slab.ps);
+    let compiled_instruction = parser.parse(formulae, &mut slab.ps);
     if let Ok(compiled_instruct) = compiled_instruction {
-        let compiled= compiled_instruct.from(&slab.ps)
+        let compiled = compiled_instruct
+            .from(&slab.ps)
             .compile(&slab.ps, &mut slab.cs);
         match &mut cn.data {
             ChannelData::UInt8(a) => {
@@ -1832,8 +1842,11 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &String, cycle_count: &u32) {
                         *new_array = res;
                     } else if let Err(error_message) = result {
                         if error_flag {
-                            println!("{}\n Could not compute formulae {} for channel {} and value {}", error_message, formulae, cn.unique_name, a);
-                            error_flag=false;
+                            println!(
+                                "{}\n Could not compute formulae {} for channel {} and value {}",
+                                error_message, formulae, cn.unique_name, a
+                            );
+                            error_flag = false;
                         }
                     }
                 });
@@ -1849,8 +1862,11 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &String, cycle_count: &u32) {
                         *new_array = res;
                     } else if let Err(error_message) = result {
                         if error_flag {
-                            println!("{}\n Could not compute formulae {} for channel {} and value {}", error_message, formulae, cn.unique_name, a);
-                            error_flag=false;
+                            println!(
+                                "{}\n Could not compute formulae {} for channel {} and value {}",
+                                error_message, formulae, cn.unique_name, a
+                            );
+                            error_flag = false;
                         }
                     }
                 });
@@ -1866,8 +1882,11 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &String, cycle_count: &u32) {
                         *new_array = res;
                     } else if let Err(error_message) = result {
                         if error_flag {
-                            println!("{}\n Could not compute formulae {} for channel {} and value {}", error_message, formulae, cn.unique_name, a);
-                            error_flag=false;
+                            println!(
+                                "{}\n Could not compute formulae {} for channel {} and value {}",
+                                error_message, formulae, cn.unique_name, a
+                            );
+                            error_flag = false;
                         }
                     }
                 });
@@ -1883,8 +1902,11 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &String, cycle_count: &u32) {
                         *new_array = res;
                     } else if let Err(error_message) = result {
                         if error_flag {
-                            println!("{}\n Could not compute formulae {} for channel {} and value {}", error_message, formulae, cn.unique_name, a);
-                            error_flag=false;
+                            println!(
+                                "{}\n Could not compute formulae {} for channel {} and value {}",
+                                error_message, formulae, cn.unique_name, a
+                            );
+                            error_flag = false;
                         }
                     }
                 });
@@ -1900,8 +1922,11 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &String, cycle_count: &u32) {
                         *new_array = res;
                     } else if let Err(error_message) = result {
                         if error_flag {
-                            println!("{}\n Could not compute formulae {} for channel {} and value {}", error_message, formulae, cn.unique_name, a);
-                            error_flag=false;
+                            println!(
+                                "{}\n Could not compute formulae {} for channel {} and value {}",
+                                error_message, formulae, cn.unique_name, a
+                            );
+                            error_flag = false;
                         }
                     }
                 });
@@ -1917,8 +1942,11 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &String, cycle_count: &u32) {
                         *new_array = res;
                     } else if let Err(error_message) = result {
                         if error_flag {
-                            println!("{}\n Could not compute formulae {} for channel {} and value {}", error_message, formulae, cn.unique_name, a);
-                            error_flag=false;
+                            println!(
+                                "{}\n Could not compute formulae {} for channel {} and value {}",
+                                error_message, formulae, cn.unique_name, a
+                            );
+                            error_flag = false;
                         }
                     }
                 });
@@ -1934,8 +1962,11 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &String, cycle_count: &u32) {
                         *new_array = res;
                     } else if let Err(error_message) = result {
                         if error_flag {
-                            println!("{}\n Could not compute formulae {} for channel {} and value {}", error_message, formulae, cn.unique_name, a);
-                            error_flag=false;
+                            println!(
+                                "{}\n Could not compute formulae {} for channel {} and value {}",
+                                error_message, formulae, cn.unique_name, a
+                            );
+                            error_flag = false;
                         }
                     }
                 });
@@ -1951,8 +1982,11 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &String, cycle_count: &u32) {
                         *new_array = res;
                     } else if let Err(error_message) = result {
                         if error_flag {
-                            println!("{}\n Could not compute formulae {} for channel {} and value {}", error_message, formulae, cn.unique_name, a);
-                            error_flag=false;
+                            println!(
+                                "{}\n Could not compute formulae {} for channel {} and value {}",
+                                error_message, formulae, cn.unique_name, a
+                            );
+                            error_flag = false;
                         }
                     }
                 });
@@ -1968,8 +2002,11 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &String, cycle_count: &u32) {
                         *new_array = res;
                     } else if let Err(error_message) = result {
                         if error_flag {
-                            println!("{}\n Could not compute formulae {} for channel {} and value {}", error_message, formulae, cn.unique_name, a);
-                            error_flag=false;
+                            println!(
+                                "{}\n Could not compute formulae {} for channel {} and value {}",
+                                error_message, formulae, cn.unique_name, a
+                            );
+                            error_flag = false;
                         }
                     }
                 });
@@ -1985,8 +2022,11 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &String, cycle_count: &u32) {
                         *new_array = res;
                     } else if let Err(error_message) = result {
                         if error_flag {
-                            println!("{}\n Could not compute formulae {} for channel {} and value {}", error_message, formulae, cn.unique_name, a);
-                            error_flag=false;
+                            println!(
+                                "{}\n Could not compute formulae {} for channel {} and value {}",
+                                error_message, formulae, cn.unique_name, a
+                            );
+                            error_flag = false;
                         }
                     }
                 });
@@ -2002,8 +2042,11 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &String, cycle_count: &u32) {
                         *new_array = res;
                     } else if let Err(error_message) = result {
                         if error_flag {
-                            println!("{}\n Could not compute formulae {} for channel {} and value {}", error_message, formulae, cn.unique_name, a);
-                            error_flag=false;
+                            println!(
+                                "{}\n Could not compute formulae {} for channel {} and value {}",
+                                error_message, formulae, cn.unique_name, a
+                            );
+                            error_flag = false;
                         }
                     }
                 });
@@ -2019,8 +2062,11 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &String, cycle_count: &u32) {
                         *new_array = res;
                     } else if let Err(error_message) = result {
                         if error_flag {
-                            println!("{}\n Could not compute formulae {} for channel {} and value {}", error_message, formulae, cn.unique_name, a);
-                            error_flag=false;
+                            println!(
+                                "{}\n Could not compute formulae {} for channel {} and value {}",
+                                error_message, formulae, cn.unique_name, a
+                            );
+                            error_flag = false;
                         }
                     }
                 });
@@ -2036,8 +2082,11 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &String, cycle_count: &u32) {
                         *new_array = res;
                     } else if let Err(error_message) = result {
                         if error_flag {
-                            println!("{}\n Could not compute formulae {} for channel {} and value {}", error_message, formulae, cn.unique_name, a);
-                            error_flag=false;
+                            println!(
+                                "{}\n Could not compute formulae {} for channel {} and value {}",
+                                error_message, formulae, cn.unique_name, a
+                            );
+                            error_flag = false;
                         }
                     }
                 });
@@ -2053,8 +2102,11 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &String, cycle_count: &u32) {
                         *new_array = res;
                     } else if let Err(error_message) = result {
                         if error_flag {
-                            println!("{}\n Could not compute formulae {} for channel {} and value {}", error_message, formulae, cn.unique_name, a);
-                            error_flag=false;
+                            println!(
+                                "{}\n Could not compute formulae {} for channel {} and value {}",
+                                error_message, formulae, cn.unique_name, a
+                            );
+                            error_flag = false;
                         }
                     }
                 });
@@ -2070,8 +2122,11 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &String, cycle_count: &u32) {
                         *new_array = res;
                     } else if let Err(error_message) = result {
                         if error_flag {
-                            println!("{}\n Could not compute formulae {} for channel {} and value {}", error_message, formulae, cn.unique_name, a);
-                            error_flag=false;
+                            println!(
+                                "{}\n Could not compute formulae {} for channel {} and value {}",
+                                error_message, formulae, cn.unique_name, a
+                            );
+                            error_flag = false;
                         }
                     }
                 });
@@ -2240,8 +2295,10 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &String, cycle_count: &u32) {
         }
     } else if let Err(error_message) = compiled_instruction {
         // could not parse the formulae, probably some function or syntax not yet implementated by fasteval
-        println!("{}\n Could not parse formulae {} for channel {}", error_message, formulae, cn.unique_name);
-
+        println!(
+            "{}\n Could not parse formulae {} for channel {}",
+            error_message, formulae, cn.unique_name
+        );
     }
 }
 
@@ -3415,20 +3472,13 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
     }
 }
 
-
 /// Apply value to text or scale conversion to get physical data
-fn value_to_text(
-    cn: &mut Cn3,
-    cc_val_ref: &Vec<(f64, String)>,
-    cycle_count: &u32,
-) {
+fn value_to_text(cn: &mut Cn3, cc_val_ref: &[(f64, String)], cycle_count: &u32) {
     match &mut cn.data {
         ChannelData::Int8(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref
-                    .iter()
-                    .find(|&x| x.0 == *a as f64);
+                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
                 if let Some(key) = matched_key {
                     *new_array = key.1.clone();
                 } else {
@@ -3440,9 +3490,7 @@ fn value_to_text(
         ChannelData::UInt8(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref
-                    .iter()
-                    .find(|&x| x.0 == *a as f64);
+                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
                 if let Some(key) = matched_key {
                     *new_array = key.1.clone();
                 } else {
@@ -3454,9 +3502,7 @@ fn value_to_text(
         ChannelData::Int16(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref
-                    .iter()
-                    .find(|&x| x.0 == *a as f64);
+                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
                 if let Some(key) = matched_key {
                     *new_array = key.1.clone();
                 } else {
@@ -3468,9 +3514,7 @@ fn value_to_text(
         ChannelData::UInt16(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref
-                    .iter()
-                    .find(|&x| x.0 == *a as f64);
+                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
                 if let Some(key) = matched_key {
                     *new_array = key.1.clone();
                 } else {
@@ -3482,9 +3526,7 @@ fn value_to_text(
         ChannelData::Float16(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref
-                    .iter()
-                    .find(|&x| x.0 == *a as f64);
+                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
                 if let Some(key) = matched_key {
                     *new_array = key.1.clone();
                 } else {
@@ -3496,9 +3538,7 @@ fn value_to_text(
         ChannelData::Int24(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref
-                    .iter()
-                    .find(|&x| x.0 == *a as f64);
+                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
                 if let Some(key) = matched_key {
                     *new_array = key.1.clone();
                 } else {
@@ -3510,9 +3550,7 @@ fn value_to_text(
         ChannelData::UInt24(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref
-                    .iter()
-                    .find(|&x| x.0 == *a as f64);
+                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
                 if let Some(key) = matched_key {
                     *new_array = key.1.clone();
                 } else {
@@ -3524,9 +3562,7 @@ fn value_to_text(
         ChannelData::Int32(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref
-                    .iter()
-                    .find(|&x| x.0 == *a as f64);
+                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
                 if let Some(key) = matched_key {
                     *new_array = key.1.clone();
                 } else {
@@ -3538,9 +3574,7 @@ fn value_to_text(
         ChannelData::UInt32(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref
-                    .iter()
-                    .find(|&x| x.0 == *a as f64);
+                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
                 if let Some(key) = matched_key {
                     *new_array = key.1.clone();
                 } else {
@@ -3552,9 +3586,7 @@ fn value_to_text(
         ChannelData::Float32(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref
-                    .iter()
-                    .find(|&x| x.0 == *a as f64);
+                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
                 if let Some(key) = matched_key {
                     *new_array = key.1.clone();
                 } else {
@@ -3566,9 +3598,7 @@ fn value_to_text(
         ChannelData::Int48(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref
-                    .iter()
-                    .find(|&x| x.0 == *a as f64);
+                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
                 if let Some(key) = matched_key {
                     *new_array = key.1.clone();
                 } else {
@@ -3580,9 +3610,7 @@ fn value_to_text(
         ChannelData::UInt48(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref
-                    .iter()
-                    .find(|&x| x.0 == *a as f64);
+                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
                 if let Some(key) = matched_key {
                     *new_array = key.1.clone();
                 } else {
@@ -3594,9 +3622,7 @@ fn value_to_text(
         ChannelData::Int64(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref
-                    .iter()
-                    .find(|&x| x.0 == *a as f64);
+                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
                 if let Some(key) = matched_key {
                     *new_array = key.1.clone();
                 } else {
@@ -3608,9 +3634,7 @@ fn value_to_text(
         ChannelData::UInt64(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref
-                    .iter()
-                    .find(|&x| x.0 == *a as f64);
+                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
                 if let Some(key) = matched_key {
                     *new_array = key.1.clone();
                 } else {
@@ -3622,9 +3646,7 @@ fn value_to_text(
         ChannelData::Float64(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref
-                    .iter()
-                    .find(|&x| x.0 == *a);
+                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a);
                 if let Some(key) = matched_key {
                     *new_array = key.1.clone();
                 } else {
@@ -3671,12 +3693,13 @@ fn value_range_to_text(
         ChannelData::Int8(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref.0
+                let matched_key = cc_val_ref
+                    .0
                     .iter()
                     .enumerate()
-                    .find(|&x| (x.1.0 <= (*a as f64)) && ((*a as f64) < x.1.1));
+                    .find(|&x| (x.1 .0 <= (*a as f64)) && ((*a as f64) < x.1 .1));
                 if let Some(key) = matched_key {
-                    *new_array = key.1.2.clone();
+                    *new_array = key.1 .2.clone();
                 } else {
                     *new_array = cc_val_ref.1.clone();
                 }
@@ -3686,12 +3709,13 @@ fn value_range_to_text(
         ChannelData::UInt8(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref.0
+                let matched_key = cc_val_ref
+                    .0
                     .iter()
                     .enumerate()
-                    .find(|&x| (x.1.0 <= (*a as f64)) && ((*a as f64) < x.1.1));
+                    .find(|&x| (x.1 .0 <= (*a as f64)) && ((*a as f64) < x.1 .1));
                 if let Some(key) = matched_key {
-                    *new_array = key.1.2.clone();
+                    *new_array = key.1 .2.clone();
                 } else {
                     *new_array = cc_val_ref.1.clone();
                 }
@@ -3701,12 +3725,13 @@ fn value_range_to_text(
         ChannelData::Int16(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref.0
+                let matched_key = cc_val_ref
+                    .0
                     .iter()
                     .enumerate()
-                    .find(|&x| (x.1.0 <= (*a as f64)) && ((*a as f64) < x.1.1));
+                    .find(|&x| (x.1 .0 <= (*a as f64)) && ((*a as f64) < x.1 .1));
                 if let Some(key) = matched_key {
-                    *new_array = key.1.2.clone();
+                    *new_array = key.1 .2.clone();
                 } else {
                     *new_array = cc_val_ref.1.clone();
                 }
@@ -3716,12 +3741,13 @@ fn value_range_to_text(
         ChannelData::UInt16(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref.0
+                let matched_key = cc_val_ref
+                    .0
                     .iter()
                     .enumerate()
-                    .find(|&x| (x.1.0 <= (*a as f64)) && ((*a as f64) < x.1.1));
+                    .find(|&x| (x.1 .0 <= (*a as f64)) && ((*a as f64) < x.1 .1));
                 if let Some(key) = matched_key {
-                    *new_array = key.1.2.clone();
+                    *new_array = key.1 .2.clone();
                 } else {
                     *new_array = cc_val_ref.1.clone();
                 }
@@ -3731,12 +3757,13 @@ fn value_range_to_text(
         ChannelData::Float16(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref.0
+                let matched_key = cc_val_ref
+                    .0
                     .iter()
                     .enumerate()
-                    .find(|&x| (x.1.0 <= (*a as f64)) && ((*a as f64) < x.1.1));
+                    .find(|&x| (x.1 .0 <= (*a as f64)) && ((*a as f64) < x.1 .1));
                 if let Some(key) = matched_key {
-                    *new_array = key.1.2.clone();
+                    *new_array = key.1 .2.clone();
                 } else {
                     *new_array = cc_val_ref.1.clone();
                 }
@@ -3746,12 +3773,13 @@ fn value_range_to_text(
         ChannelData::Int24(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref.0
+                let matched_key = cc_val_ref
+                    .0
                     .iter()
                     .enumerate()
-                    .find(|&x| (x.1.0 <= (*a as f64)) && ((*a as f64) < x.1.1));
+                    .find(|&x| (x.1 .0 <= (*a as f64)) && ((*a as f64) < x.1 .1));
                 if let Some(key) = matched_key {
-                    *new_array = key.1.2.clone();
+                    *new_array = key.1 .2.clone();
                 } else {
                     *new_array = cc_val_ref.1.clone();
                 }
@@ -3761,12 +3789,13 @@ fn value_range_to_text(
         ChannelData::UInt24(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref.0
+                let matched_key = cc_val_ref
+                    .0
                     .iter()
                     .enumerate()
-                    .find(|&x| (x.1.0 <= (*a as f64)) && ((*a as f64) < x.1.1));
+                    .find(|&x| (x.1 .0 <= (*a as f64)) && ((*a as f64) < x.1 .1));
                 if let Some(key) = matched_key {
-                    *new_array = key.1.2.clone();
+                    *new_array = key.1 .2.clone();
                 } else {
                     *new_array = cc_val_ref.1.clone();
                 }
@@ -3776,12 +3805,13 @@ fn value_range_to_text(
         ChannelData::Int32(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref.0
+                let matched_key = cc_val_ref
+                    .0
                     .iter()
                     .enumerate()
-                    .find(|&x| (x.1.0 <= (*a as f64)) && ((*a as f64) < x.1.1));
+                    .find(|&x| (x.1 .0 <= (*a as f64)) && ((*a as f64) < x.1 .1));
                 if let Some(key) = matched_key {
-                    *new_array = key.1.2.clone();
+                    *new_array = key.1 .2.clone();
                 } else {
                     *new_array = cc_val_ref.1.clone();
                 }
@@ -3791,12 +3821,13 @@ fn value_range_to_text(
         ChannelData::UInt32(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref.0
+                let matched_key = cc_val_ref
+                    .0
                     .iter()
                     .enumerate()
-                    .find(|&x| (x.1.0 <= (*a as f64)) && ((*a as f64) < x.1.1));
+                    .find(|&x| (x.1 .0 <= (*a as f64)) && ((*a as f64) < x.1 .1));
                 if let Some(key) = matched_key {
-                    *new_array = key.1.2.clone();
+                    *new_array = key.1 .2.clone();
                 } else {
                     *new_array = cc_val_ref.1.clone();
                 }
@@ -3806,12 +3837,13 @@ fn value_range_to_text(
         ChannelData::Float32(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref.0
+                let matched_key = cc_val_ref
+                    .0
                     .iter()
                     .enumerate()
-                    .find(|&x| (x.1.0 <= (*a as f64)) && ((*a as f64) < x.1.1));
+                    .find(|&x| (x.1 .0 <= (*a as f64)) && ((*a as f64) < x.1 .1));
                 if let Some(key) = matched_key {
-                    *new_array = key.1.2.clone();
+                    *new_array = key.1 .2.clone();
                 } else {
                     *new_array = cc_val_ref.1.clone();
                 }
@@ -3821,12 +3853,13 @@ fn value_range_to_text(
         ChannelData::Int48(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref.0
+                let matched_key = cc_val_ref
+                    .0
                     .iter()
                     .enumerate()
-                    .find(|&x| (x.1.0 <= (*a as f64)) && ((*a as f64) < x.1.1));
+                    .find(|&x| (x.1 .0 <= (*a as f64)) && ((*a as f64) < x.1 .1));
                 if let Some(key) = matched_key {
-                    *new_array = key.1.2.clone();
+                    *new_array = key.1 .2.clone();
                 } else {
                     *new_array = cc_val_ref.1.clone();
                 }
@@ -3836,12 +3869,13 @@ fn value_range_to_text(
         ChannelData::UInt48(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref.0
+                let matched_key = cc_val_ref
+                    .0
                     .iter()
                     .enumerate()
-                    .find(|&x| (x.1.0 <= (*a as f64)) && ((*a as f64) < x.1.1));
+                    .find(|&x| (x.1 .0 <= (*a as f64)) && ((*a as f64) < x.1 .1));
                 if let Some(key) = matched_key {
-                    *new_array = key.1.2.clone();
+                    *new_array = key.1 .2.clone();
                 } else {
                     *new_array = cc_val_ref.1.clone();
                 }
@@ -3851,12 +3885,13 @@ fn value_range_to_text(
         ChannelData::Int64(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref.0
+                let matched_key = cc_val_ref
+                    .0
                     .iter()
                     .enumerate()
-                    .find(|&x| (x.1.0 <= (*a as f64)) && ((*a as f64) < x.1.1));
+                    .find(|&x| (x.1 .0 <= (*a as f64)) && ((*a as f64) < x.1 .1));
                 if let Some(key) = matched_key {
-                    *new_array = key.1.2.clone();
+                    *new_array = key.1 .2.clone();
                 } else {
                     *new_array = cc_val_ref.1.clone();
                 }
@@ -3866,12 +3901,13 @@ fn value_range_to_text(
         ChannelData::UInt64(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref.0
+                let matched_key = cc_val_ref
+                    .0
                     .iter()
                     .enumerate()
-                    .find(|&x| (x.1.0 <= (*a as f64)) && ((*a as f64) < x.1.1));
+                    .find(|&x| (x.1 .0 <= (*a as f64)) && ((*a as f64) < x.1 .1));
                 if let Some(key) = matched_key {
-                    *new_array = key.1.2.clone();
+                    *new_array = key.1 .2.clone();
                 } else {
                     *new_array = cc_val_ref.1.clone();
                 }
@@ -3881,12 +3917,13 @@ fn value_range_to_text(
         ChannelData::Float64(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref.0
+                let matched_key = cc_val_ref
+                    .0
                     .iter()
                     .enumerate()
-                    .find(|&x| (x.1.0 <= *a) && (*a < x.1.1));
+                    .find(|&x| (x.1 .0 <= *a) && (*a < x.1 .1));
                 if let Some(key) = matched_key {
-                    *new_array = key.1.2.clone();
+                    *new_array = key.1 .2.clone();
                 } else {
                     *new_array = cc_val_ref.1.clone();
                 }

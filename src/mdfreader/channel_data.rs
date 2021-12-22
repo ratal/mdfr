@@ -54,6 +54,7 @@ pub enum ChannelData {
 }
 
 /// ChannelData implementation
+#[allow(dead_code)]
 impl ChannelData {
     /// based on already existing type, rewrite the array filled with zeros at needed size based on cycle_count
     pub fn zeros(
@@ -848,12 +849,12 @@ impl ChannelData {
             ChannelData::UInt8(_) => false,
             ChannelData::Int16(_) => false,
             ChannelData::UInt16(_) => false,
-            ChannelData::Float16(a) => false,
+            ChannelData::Float16(_) => false,
             ChannelData::Int24(_) => false,
             ChannelData::UInt24(_) => false,
             ChannelData::Int32(_) => false,
             ChannelData::UInt32(_) => false,
-            ChannelData::Float32(a) => false,
+            ChannelData::Float32(_) => false,
             ChannelData::Int48(_) => false,
             ChannelData::UInt48(_) => false,
             ChannelData::Int64(_) => false,
@@ -903,8 +904,8 @@ impl ChannelData {
                 ChannelData::ArrayDComplex32(_) => false,
                 ChannelData::ArrayDComplex64(_) => false,
             },
-            ChannelData::Complex16(a) => false,
-            ChannelData::Complex32(a) => false,
+            ChannelData::Complex16(_) => false,
+            ChannelData::Complex32(_) => false,
             ChannelData::Complex64(a) => match other {
                 ChannelData::Int8(_) => false,
                 ChannelData::UInt8(_) => false,
@@ -1148,67 +1149,65 @@ pub fn data_type_init(cn_type: u8, cn_data_type: u8, n_bytes: u32, is_array: boo
             // virtual channels, cn_bit_count = 0 -> n_bytes = 0, must be LE unsigned int
             data_type = ChannelData::UInt64(Array1::<u64>::zeros(0));
         }
-    } else {
-        if cn_type != 3 || cn_type != 6 {
-            if cn_data_type == 0 || cn_data_type == 1 {
-                // unsigned int
-                if n_bytes <= 1 {
-                    data_type = ChannelData::ArrayDUInt8(ArrayD::<u8>::zeros(IxDyn(&[0])));
-                } else if n_bytes == 2 {
-                    data_type = ChannelData::ArrayDUInt16(ArrayD::<u16>::zeros(IxDyn(&[0])));
-                } else if n_bytes == 3 {
-                    data_type = ChannelData::ArrayDUInt24(ArrayD::<u32>::zeros(IxDyn(&[0])));
-                } else if n_bytes == 4 {
-                    data_type = ChannelData::ArrayDUInt32(ArrayD::<u32>::zeros(IxDyn(&[0])));
-                } else if n_bytes <= 6 {
-                    data_type = ChannelData::ArrayDUInt48(ArrayD::<u64>::zeros(IxDyn(&[0])));
-                } else {
-                    data_type = ChannelData::ArrayDUInt64(ArrayD::<u64>::zeros(IxDyn(&[0])));
-                }
-            } else if cn_data_type == 2 || cn_data_type == 3 {
-                // signed int
-                if n_bytes <= 1 {
-                    data_type = ChannelData::ArrayDInt8(ArrayD::<i8>::zeros(IxDyn(&[0])));
-                } else if n_bytes == 2 {
-                    data_type = ChannelData::ArrayDInt16(ArrayD::<i16>::zeros(IxDyn(&[0])));
-                } else if n_bytes == 3 {
-                    data_type = ChannelData::ArrayDInt24(ArrayD::<i32>::zeros(IxDyn(&[0])));
-                } else if n_bytes == 4 {
-                    data_type = ChannelData::ArrayDInt32(ArrayD::<i32>::zeros(IxDyn(&[0])));
-                } else if n_bytes <= 6 {
-                    data_type = ChannelData::ArrayDInt48(ArrayD::<i64>::zeros(IxDyn(&[0])));
-                } else {
-                    data_type = ChannelData::ArrayDInt64(ArrayD::<i64>::zeros(IxDyn(&[0])));
-                }
-            } else if cn_data_type == 4 || cn_data_type == 5 {
-                // float
-                if n_bytes <= 2 {
-                    data_type = ChannelData::ArrayDFloat16(ArrayD::<f32>::zeros(IxDyn(&[0])));
-                } else if n_bytes <= 4 {
-                    data_type = ChannelData::ArrayDFloat32(ArrayD::<f32>::zeros(IxDyn(&[0])));
-                } else {
-                    data_type = ChannelData::ArrayDFloat64(ArrayD::<f64>::zeros(IxDyn(&[0])));
-                }
-            } else if cn_data_type == 15 || cn_data_type == 16 {
-                // complex
-                if n_bytes <= 2 {
-                    data_type =
-                        ChannelData::ArrayDComplex16(ArrayD::<Complex<f32>>::zeros(IxDyn(&[0])));
-                } else if n_bytes <= 4 {
-                    data_type =
-                        ChannelData::ArrayDComplex32(ArrayD::<Complex<f32>>::zeros(IxDyn(&[0])));
-                } else {
-                    data_type =
-                        ChannelData::ArrayDComplex64(ArrayD::<Complex<f64>>::zeros(IxDyn(&[0])));
-                }
+    } else if cn_type != 3 || cn_type != 6 {
+        if cn_data_type == 0 || cn_data_type == 1 {
+            // unsigned int
+            if n_bytes <= 1 {
+                data_type = ChannelData::ArrayDUInt8(ArrayD::<u8>::zeros(IxDyn(&[0])));
+            } else if n_bytes == 2 {
+                data_type = ChannelData::ArrayDUInt16(ArrayD::<u16>::zeros(IxDyn(&[0])));
+            } else if n_bytes == 3 {
+                data_type = ChannelData::ArrayDUInt24(ArrayD::<u32>::zeros(IxDyn(&[0])));
+            } else if n_bytes == 4 {
+                data_type = ChannelData::ArrayDUInt32(ArrayD::<u32>::zeros(IxDyn(&[0])));
+            } else if n_bytes <= 6 {
+                data_type = ChannelData::ArrayDUInt48(ArrayD::<u64>::zeros(IxDyn(&[0])));
             } else {
-                // strings or bytes arrays not implemented
-                todo!();
+                data_type = ChannelData::ArrayDUInt64(ArrayD::<u64>::zeros(IxDyn(&[0])));
+            }
+        } else if cn_data_type == 2 || cn_data_type == 3 {
+            // signed int
+            if n_bytes <= 1 {
+                data_type = ChannelData::ArrayDInt8(ArrayD::<i8>::zeros(IxDyn(&[0])));
+            } else if n_bytes == 2 {
+                data_type = ChannelData::ArrayDInt16(ArrayD::<i16>::zeros(IxDyn(&[0])));
+            } else if n_bytes == 3 {
+                data_type = ChannelData::ArrayDInt24(ArrayD::<i32>::zeros(IxDyn(&[0])));
+            } else if n_bytes == 4 {
+                data_type = ChannelData::ArrayDInt32(ArrayD::<i32>::zeros(IxDyn(&[0])));
+            } else if n_bytes <= 6 {
+                data_type = ChannelData::ArrayDInt48(ArrayD::<i64>::zeros(IxDyn(&[0])));
+            } else {
+                data_type = ChannelData::ArrayDInt64(ArrayD::<i64>::zeros(IxDyn(&[0])));
+            }
+        } else if cn_data_type == 4 || cn_data_type == 5 {
+            // float
+            if n_bytes <= 2 {
+                data_type = ChannelData::ArrayDFloat16(ArrayD::<f32>::zeros(IxDyn(&[0])));
+            } else if n_bytes <= 4 {
+                data_type = ChannelData::ArrayDFloat32(ArrayD::<f32>::zeros(IxDyn(&[0])));
+            } else {
+                data_type = ChannelData::ArrayDFloat64(ArrayD::<f64>::zeros(IxDyn(&[0])));
+            }
+        } else if cn_data_type == 15 || cn_data_type == 16 {
+            // complex
+            if n_bytes <= 2 {
+                data_type =
+                    ChannelData::ArrayDComplex16(ArrayD::<Complex<f32>>::zeros(IxDyn(&[0])));
+            } else if n_bytes <= 4 {
+                data_type =
+                    ChannelData::ArrayDComplex32(ArrayD::<Complex<f32>>::zeros(IxDyn(&[0])));
+            } else {
+                data_type =
+                    ChannelData::ArrayDComplex64(ArrayD::<Complex<f64>>::zeros(IxDyn(&[0])));
             }
         } else {
-            // virtual channels arrays not implemented, can it even exists ?
+            // strings or bytes arrays not implemented
             todo!();
         }
+    } else {
+        // virtual channels arrays not implemented, can it even exists ?
+        todo!();
     }
     data_type
 }

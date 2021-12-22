@@ -59,14 +59,14 @@ pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) {
                         },
                         7 => match &conv.cc_val {
                             CcVal::Real(cc_val) => {
-                                value_to_text(cn, &cc_val, &conv.cc_ref, &cycle_count, sharable)
+                                value_to_text(cn, cc_val, &conv.cc_ref, &cycle_count, sharable)
                             }
                             CcVal::Uint(_) => (),
                         },
                         8 => match &conv.cc_val {
                             CcVal::Real(cc_val) => value_range_to_text(
                                 cn,
-                                &cc_val,
+                                cc_val,
                                 &conv.cc_ref,
                                 &cycle_count,
                                 sharable,
@@ -75,7 +75,7 @@ pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) {
                         },
                         9 => match &conv.cc_val {
                             CcVal::Real(cc_val) => {
-                                text_to_value(cn, &cc_val, &conv.cc_ref, &cycle_count, sharable)
+                                text_to_value(cn, cc_val, &conv.cc_ref, &cycle_count, sharable)
                             }
                             CcVal::Uint(_) => (),
                         },
@@ -84,7 +84,7 @@ pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) {
                             CcVal::Real(_) => (),
                             CcVal::Uint(cc_val) => bitfield_text_table(
                                 cn,
-                                &cc_val,
+                                cc_val,
                                 &conv.cc_ref,
                                 &cycle_count,
                                 sharable,
@@ -655,7 +655,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
 }
 
 /// Apply algebraic conversion to get physical data
-fn algebraic_conversion(cn: &mut Cn4, formulae: &String, cycle_count: &u64) {
+fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
     let parser = fasteval::Parser::new();
     let mut slab = fasteval::Slab::new();
     let mut map = BTreeMap::new();
@@ -2784,8 +2784,8 @@ enum DefaultTextOrScaleConversion {
 /// Apply value to text or scale conversion to get physical data
 fn value_to_text(
     cn: &mut Cn4,
-    cc_val: &Vec<f64>,
-    cc_ref: &Vec<i64>,
+    cc_val: &[f64],
+    cc_ref: &[i64],
     cycle_count: &u64,
     sharable: &SharableBlocks,
 ) {
@@ -3228,7 +3228,7 @@ fn value_to_text(
         ChannelData::Int64(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                if let Some(tosc) = table_int.get(&a) {
+                if let Some(tosc) = table_int.get(a) {
                     match tosc {
                         TextOrScaleConversion::Txt(txt) => {
                             *new_array = txt.clone();
@@ -3436,14 +3436,14 @@ struct KeyRange {
 /// Apply value range to text or scale conversion to get physical data
 fn value_range_to_text(
     cn: &mut Cn4,
-    cc_val: &Vec<f64>,
-    cc_ref: &Vec<i64>,
+    cc_val: &[f64],
+    cc_ref: &[i64],
     cycle_count: &u64,
     sharable: &SharableBlocks,
 ) {
     let n_keys = cc_val.len() / 2;
     let mut keys: Vec<KeyRange> = Vec::with_capacity(n_keys);
-    for (key_min, key_max) in cc_val.into_iter().tuples() {
+    for (key_min, key_max) in cc_val.iter().tuples() {
         let key: KeyRange = KeyRange {
             min: *key_min,
             max: *key_max,
@@ -4028,8 +4028,8 @@ fn value_range_to_text(
 /// Apply text to value conversion to get physical data
 fn text_to_value(
     cn: &mut Cn4,
-    cc_val: &Vec<f64>,
-    cc_ref: &Vec<i64>,
+    cc_val: &[f64],
+    cc_ref: &[i64],
     cycle_count: &u64,
     sharable: &SharableBlocks,
 ) {
@@ -4115,7 +4115,7 @@ fn text_to_value(
 }
 
 /// Apply text to text conversion to get physical data
-fn text_to_text(cn: &mut Cn4, cc_ref: &Vec<i64>, cycle_count: &u64, sharable: &SharableBlocks) {
+fn text_to_text(cn: &mut Cn4, cc_ref: &[i64], cycle_count: &u64, sharable: &SharableBlocks) {
     let pairs: Vec<(&i64, &i64)> = cc_ref.iter().tuples().collect();
     let mut table: HashMap<String, Option<String>> = HashMap::with_capacity(cc_ref.len());
     for ccref in pairs.iter() {
@@ -4161,7 +4161,7 @@ fn text_to_text(cn: &mut Cn4, cc_ref: &Vec<i64>, cycle_count: &u64, sharable: &S
                     }
                 } else {
                     if let Some(tx) = default.clone() {
-                        *new_a = tx.clone();
+                        *new_a = tx;
                     } else {
                         *new_a = a.clone();
                     }
@@ -4180,7 +4180,7 @@ fn text_to_text(cn: &mut Cn4, cc_ref: &Vec<i64>, cycle_count: &u64, sharable: &S
                     }
                 } else {
                     if let Some(tx) = default.clone() {
-                        *new_a = tx.clone();
+                        *new_a = tx;
                     } else {
                         *new_a = a.clone();
                     }
@@ -4197,12 +4197,10 @@ fn text_to_text(cn: &mut Cn4, cc_ref: &Vec<i64>, cycle_count: &u64, sharable: &S
                     } else {
                         *new_a = a.clone();
                     }
+                } else if let Some(tx) = default.clone() {
+                    *new_a = tx;
                 } else {
-                    if let Some(tx) = default.clone() {
-                        *new_a = tx.clone();
-                    } else {
-                        *new_a = a.clone();
-                    }
+                    *new_a = a.clone();
                 }
             });
             cn.data = ChannelData::StringUTF8(new_array);
@@ -4243,8 +4241,8 @@ enum ValueOrValueRangeToText {
 
 fn bitfield_text_table(
     cn: &mut Cn4,
-    cc_val: &Vec<u64>,
-    cc_ref: &Vec<i64>,
+    cc_val: &[u64],
+    cc_ref: &[i64],
     cycle_count: &u64,
     sharable: &SharableBlocks,
 ) {
@@ -4297,7 +4295,7 @@ fn bitfield_text_table(
                     CcVal::Real(cc_val) => {
                         let n_keys = cc_val.len() / 2;
                         let mut keys: Vec<KeyRange> = Vec::with_capacity(n_keys);
-                        for (key_min, key_max) in cc_val.into_iter().tuples() {
+                        for (key_min, key_max) in cc_val.iter().tuples() {
                             let key: KeyRange = KeyRange {
                                 min: *key_min,
                                 max: *key_max,

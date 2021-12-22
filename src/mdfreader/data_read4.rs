@@ -391,7 +391,7 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                 *data = vec![String::new(); cycle_count]; // initialisation
                 for (i, value) in buf.chunks(n_bytes).enumerate() {
                     let (_result, _size, _replacement) =
-                        decoder.decode_to_string(&value, &mut data[i], false);
+                        decoder.decode_to_string(value, &mut data[i], false);
                     data[i] = data[i].trim_end_matches('\0').to_string();
                 }
             }
@@ -401,7 +401,7 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                     .expect("Could not read String UTF8");
                 *data = vec![String::new(); cycle_count]; // initialisation
                 for (i, value) in buf.chunks(n_bytes).enumerate() {
-                    data[i] = str::from_utf8(&value)
+                    data[i] = str::from_utf8(value)
                         .expect("Found invalid UTF-8")
                         .trim_end_matches('\0')
                         .to_string();
@@ -416,14 +416,14 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                     let mut decoder = UTF_16BE.new_decoder();
                     for (i, value) in buf.chunks(n_bytes).enumerate() {
                         let (_result, _size, _replacement) =
-                            decoder.decode_to_string(&value, &mut data[i], false);
+                            decoder.decode_to_string(value, &mut data[i], false);
                         data[i] = data[i].trim_end_matches('\0').to_string();
                     }
                 } else {
                     let mut decoder = UTF_16LE.new_decoder();
                     for (i, value) in buf.chunks(n_bytes).enumerate() {
                         let (_result, _size, _replacement) =
-                            decoder.decode_to_string(&value, &mut data[i], false);
+                            decoder.decode_to_string(value, &mut data[i], false);
                         data[i] = data[i].trim_end_matches('\0').to_string();
                     }
                 }
@@ -1474,7 +1474,7 @@ pub fn read_channels_from_bytes(
                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
                         value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
                         let (_result, _size, _replacement) =
-                            decoder.decode_to_string(&value, &mut data[i + previous_index], false);
+                            decoder.decode_to_string(value, &mut data[i + previous_index], false);
                         data[i + previous_index] =
                             data[i + previous_index].trim_end_matches('\0').to_string();
                     }
@@ -1483,7 +1483,7 @@ pub fn read_channels_from_bytes(
                     let n_bytes = cn.n_bytes as usize;
                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
                         value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                        data[i + previous_index] = str::from_utf8(&value)
+                        data[i + previous_index] = str::from_utf8(value)
                             .expect("Found invalid UTF-8")
                             .trim_end_matches('\0')
                             .to_string();
@@ -1496,7 +1496,7 @@ pub fn read_channels_from_bytes(
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
                             let (_result, _size, _replacement) = decoder.decode_to_string(
-                                &value,
+                                value,
                                 &mut data[i + previous_index],
                                 false,
                             );
@@ -1508,7 +1508,7 @@ pub fn read_channels_from_bytes(
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
                             let (_result, _size, _replacement) = decoder.decode_to_string(
-                                &value,
+                                value,
                                 &mut data[i + previous_index],
                                 false,
                             );

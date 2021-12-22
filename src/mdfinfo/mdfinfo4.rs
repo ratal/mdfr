@@ -19,9 +19,9 @@ use std::{
 use transpose;
 use yazi::{decompress, Adler32, Format};
 
+use crate::mdfinfo::IdBlock;
 use crate::mdfreader::channel_data::{data_type_init, ChannelData};
 use crate::mdfreader::mdfreader4::mdfreader4;
-use crate::mdfinfo::IdBlock;
 
 pub(crate) type ChannelId = (String, i64, (i64, u64), (i64, i32));
 pub(crate) type ChannelNamesSet = HashMap<String, ChannelId>;
@@ -249,6 +249,7 @@ pub fn parse_block_header(rdr: &mut BufReader<&File>) -> Blockheader4 {
 /// MDF4 - common block Header without the number of links
 #[derive(Debug, Copy, Clone, BinRead)]
 #[br(little)]
+#[allow(dead_code)]
 pub struct Blockheader4Short {
     hdr_id: [u8; 4],  // '##XX'
     hdr_gap: [u8; 4], // reserved, must be 0
@@ -307,6 +308,7 @@ fn parse_block_short(
 /// Hd4 (Header) block structure
 #[derive(Debug, Copy, Clone, BinRead)]
 #[br(little)]
+#[allow(dead_code)]
 pub struct Hd4 {
     hd_id: [u8; 4],       // ##HD
     hd_reserved: [u8; 4], // reserved
@@ -511,6 +513,7 @@ fn xml_parse(val: &mut (String, bool)) {
 /// Fh4 (File History) block struct, including the header
 #[derive(Debug, Copy, Clone, BinRead)]
 #[br(little)]
+#[allow(dead_code)]
 pub struct FhBlock {
     fh_id: [u8; 4],             // '##FH'
     fh_gap: [u8; 4],            // reserved, must be 0
@@ -596,6 +599,7 @@ pub fn parse_fh(rdr: &mut BufReader<&File>, target: i64, position: i64) -> (Fh, 
 /// At4 Attachment block struct
 #[derive(Debug, Copy, Clone, BinRead)]
 #[br(little)]
+#[allow(dead_code)]
 pub struct At4Block {
     at_id: [u8; 4],            // DG
     reserved: [u8; 4],         // reserved
@@ -700,6 +704,7 @@ pub fn parse_at4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> 
 /// Ev4 Event block struct
 #[derive(Debug, Clone, BinRead)]
 #[br(little)]
+#[allow(dead_code)]
 pub struct Ev4Block {
     //ev_id: [u8; 4],  // DG
     //reserved: [u8; 4],  // reserved
@@ -786,6 +791,7 @@ pub fn parse_ev4(
 /// Dg4 Data Group block struct
 #[derive(Debug, Copy, Clone, BinRead)]
 #[br(little)]
+#[allow(dead_code)]
 pub struct Dg4Block {
     dg_id: [u8; 4],         // ##DG
     reserved: [u8; 4],      // reserved
@@ -965,6 +971,7 @@ impl SharableBlocks {
 /// Cg4 Channel Group block struct
 #[derive(Debug, Copy, Clone, Default, BinRead)]
 #[br(little)]
+#[allow(dead_code)]
 pub struct Cg4Block {
     // cg_id: [u8; 4],  // ##CG
     // reserved: [u8; 4],  // reserved
@@ -1009,7 +1016,7 @@ fn parse_cg4_block(
     }
 
     // reads CN (and other linked block behind like CC, SI, CA, etc.)
-    let (cn, pos, n_cn, first_rec_pos) = parse_cn4(
+    let (cn, pos, n_cn, _first_rec_pos) = parse_cn4(
         rdr,
         cg.cg_cn_first,
         position,
@@ -1735,6 +1742,7 @@ fn read_cc(
 /// Cc4 Channel Conversion block struct
 #[derive(Debug, Clone, BinRead)]
 #[br(little)]
+#[allow(dead_code)]
 pub struct Cc4Block {
     // cc_id: [u8; 4],  // ##CC
     // reserved: [u8; 4],  // reserved
@@ -2086,7 +2094,9 @@ fn parse_composition(
         let cn_struct: Cn4;
         if let Some(cn) = cns.get(&first_rec_pos) {
             cn_struct = cn.clone();
-        } else {cn_struct = Cn4::default()}
+        } else {
+            cn_struct = Cn4::default()
+        }
         if cn_struct.block.cn_composition != 0 {
             let (cn, pos, _is_array, n_cns, cnss) = parse_composition(
                 rdr,

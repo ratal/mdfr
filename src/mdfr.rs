@@ -168,9 +168,18 @@ impl PyObjectProtocol for Mdf {
         match &self.0 {
             MdfInfo::V3(mdfinfo3) => {
                 output = format!("Version : {}\n", mdfinfo3.id_block.id_ver);
-                output.push_str(&format!("Header :\n Author: {}  Organisation:{}\n", mdfinfo3.hd_block.hd_author, mdfinfo3.hd_block.hd_organization));
-                output.push_str(&format!("Project: {}  Subject:{}\n", mdfinfo3.hd_block.hd_project, mdfinfo3.hd_block.hd_subject));
-                output.push_str(&format!("Date: {:?}  Time:{:?}\n", mdfinfo3.hd_block.hd_date, mdfinfo3.hd_block.hd_time));
+                output.push_str(&format!(
+                    "Header :\n Author: {}  Organisation:{}\n",
+                    mdfinfo3.hd_block.hd_author, mdfinfo3.hd_block.hd_organization
+                ));
+                output.push_str(&format!(
+                    "Project: {}  Subject:{}\n",
+                    mdfinfo3.hd_block.hd_project, mdfinfo3.hd_block.hd_subject
+                ));
+                output.push_str(&format!(
+                    "Date: {:?}  Time:{:?}\n",
+                    mdfinfo3.hd_block.hd_date, mdfinfo3.hd_block.hd_time
+                ));
                 output.push_str(&format!("Comments: {}", mdfinfo3.hd_comment));
                 for (master, list) in mdfinfo3.get_master_channel_names_set().iter() {
                     output.push_str(&format!("\nMaster: {}\n", master));

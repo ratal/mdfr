@@ -3,15 +3,15 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::NaiveDate;
 use encoding::all::{ASCII, ISO_8859_1};
 use encoding::{DecoderTrap, Encoding};
-use std::collections::{HashMap, HashSet, BTreeMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::TryFrom;
 use std::default::Default;
 use std::fs::{File, OpenOptions};
-use std::io::{prelude::*, Cursor};
 use std::io::BufReader;
+use std::io::{prelude::*, Cursor};
 
-use crate::mdfreader::channel_data::{data_type_init, ChannelData};
 use crate::mdfinfo::IdBlock;
+use crate::mdfreader::channel_data::{data_type_init, ChannelData};
 use crate::mdfreader::mdfreader3::mdfreader3;
 
 #[derive(Debug, Default)]
@@ -33,6 +33,7 @@ pub(crate) type ChannelId3 = (String, u32, (u32, u16), u32);
 pub(crate) type ChannelNamesSet3 = HashMap<String, ChannelId3>;
 
 /// MdfInfo3's implementation
+#[allow(dead_code)]
 impl MdfInfo3 {
     pub fn get_channel_id(&self, channel_name: &str) -> Option<&ChannelId3> {
         self.channel_names_set.get(channel_name)
@@ -52,7 +53,7 @@ impl MdfInfo3 {
                                 .decode_to(&txt, DecoderTrap::Replace, &mut unit)
                                 .expect("channel description is latin1 encoded");
                             unit = unit.trim_end_matches(char::from(0)).to_string();
-                        } 
+                        }
                     }
                 }
             }
@@ -78,8 +79,7 @@ impl MdfInfo3 {
     /// returns the master channel associated to the input channel name
     pub fn get_channel_master(&self, channel_name: &str) -> String {
         let mut master = String::new();
-        if let Some((m, _dg_pos, (_cg_pos, _rec_idd), _cn_pos)) =
-            self.get_channel_id(channel_name)
+        if let Some((m, _dg_pos, (_cg_pos, _rec_idd), _cn_pos)) = self.get_channel_id(channel_name)
         {
             master = m.clone();
         }
@@ -196,6 +196,7 @@ impl MdfInfo3 {
 /// MDF3 - common Header
 #[derive(Debug, BinRead, Default)]
 #[br(little)]
+#[allow(dead_code)]
 pub struct Blockheader3 {
     hdr_id: [u8; 2], // 'XX' Block type identifier
     hdr_len: u16,    // block size
@@ -208,21 +209,22 @@ pub fn parse_block_header(rdr: &mut BufReader<&File>) -> Blockheader3 {
 
 /// HD3 strucutre
 #[derive(Debug, PartialEq, Default)]
+#[allow(dead_code)]
 pub struct Hd3 {
-    hd_id: [u8; 2],     // HD
-    hd_len: u16,        // Length of block in bytes
-    pub hd_dg_first: u32,   // Pointer to the first data group block (DGBLOCK) (can be NIL)
-    hd_md_comment: u32, // Pointer to the measurement file comment (TXBLOCK) (can be NIL)
-    hd_pr: u32,         // Program block
+    hd_id: [u8; 2],       // HD
+    hd_len: u16,          // Length of block in bytes
+    pub hd_dg_first: u32, // Pointer to the first data group block (DGBLOCK) (can be NIL)
+    hd_md_comment: u32,   // Pointer to the measurement file comment (TXBLOCK) (can be NIL)
+    hd_pr: u32,           // Program block
 
     // Data members
     hd_n_datagroups: u16, // Time stamp in nanoseconds elapsed since 00:00:00 01.01.1970 (UTC time or local time, depending on "local time" flag, see [UTC]).
     pub hd_date: (u32, u32, i32), // Date at which the recording was started in "DD:MM:YYYY" format
     pub hd_time: (u32, u32, u32), // Time at which the recording was started in "HH:MM:SS" format
-    pub hd_author: String,    // Author's name
+    pub hd_author: String, // Author's name
     pub hd_organization: String, // name of the organization or department
-    pub hd_project: String,   // project name
-    pub hd_subject: String,   // subject or measurement object
+    pub hd_project: String, // project name
+    pub hd_subject: String, // subject or measurement object
     hd_start_time_ns: Option<u64>, // time stamp at which recording was started in nanosecond
     hd_time_offset: Option<i16>, // UTC time offset
     hd_time_quality: Option<u16>, // time quality class
@@ -232,24 +234,24 @@ pub struct Hd3 {
 /// HD3 block strucutre
 #[derive(Debug, PartialEq, Default, BinRead)]
 pub struct Hd3Block {
-    hd_id: [u8; 2],     // HD
-    hd_len: u16,        // Length of block in bytes
-    pub hd_dg_first: u32,   // Pointer to the first data group block (DGBLOCK) (can be NIL)
-    hd_md_comment: u32, // Pointer to the measurement file comment (TXBLOCK) (can be NIL)
-    hd_pr: u32,         // Program block
-    hd_n_datagroups: u16, // number of datagroup
-    hd_date: [u8; 10], // Date at which the recording was started in "DD:MM:YYYY" format
-    hd_time: [u8; 8], // Time at which the recording was started in "HH:MM:SS" format
-    hd_author: [u8; 32],    // Author's name
+    hd_id: [u8; 2],            // HD
+    hd_len: u16,               // Length of block in bytes
+    pub hd_dg_first: u32,      // Pointer to the first data group block (DGBLOCK) (can be NIL)
+    hd_md_comment: u32,        // Pointer to the measurement file comment (TXBLOCK) (can be NIL)
+    hd_pr: u32,                // Program block
+    hd_n_datagroups: u16,      // number of datagroup
+    hd_date: [u8; 10],         // Date at which the recording was started in "DD:MM:YYYY" format
+    hd_time: [u8; 8],          // Time at which the recording was started in "HH:MM:SS" format
+    hd_author: [u8; 32],       // Author's name
     hd_organization: [u8; 32], // name of the organization or department
-    hd_project: [u8; 32],   // project name
-    hd_subject: [u8; 32],   // subject or measurement object
+    hd_project: [u8; 32],      // project name
+    hd_subject: [u8; 32],      // subject or measurement object
 }
 #[derive(Debug, PartialEq, Default, BinRead)]
 pub struct Hd3Block32 {
     hd_start_time_ns: u64, // time stamp at which recording was started in nanosecond
-    hd_time_offset: i16, // UTC time offset
-    hd_time_quality: u16, // time quality class
+    hd_time_offset: i16,   // UTC time offset
+    hd_time_quality: u16,  // time quality class
     hd_time_identifier: [u8; 32], // timer identification or time source
 }
 
@@ -283,7 +285,11 @@ pub fn hd3_parser(rdr: &mut BufReader<&File>, ver: u16) -> (Hd3, i64) {
     hd_author = hd_author.trim_end_matches(char::from(0)).to_string();
     let mut hd_organization = String::new();
     ISO_8859_1
-        .decode_to(&block.hd_organization, DecoderTrap::Replace, &mut hd_organization)
+        .decode_to(
+            &block.hd_organization,
+            DecoderTrap::Replace,
+            &mut hd_organization,
+        )
         .unwrap();
     hd_organization = hd_organization.trim_end_matches(char::from(0)).to_string();
     let mut hd_project = String::new();
@@ -358,18 +364,19 @@ pub fn hd3_comment_parser(
     hd3_block: &Hd3,
     mut position: i64,
 ) -> (String, i64) {
-    let (_, comment, pos) = parse_tx(
-        rdr,
-        hd3_block.hd_md_comment, position
-    );
+    let (_, comment, pos) = parse_tx(rdr, hd3_block.hd_md_comment, position);
     position = pos;
     (comment, position)
 }
 
-pub fn parse_tx(rdr: &mut BufReader<&File>, target: u32, position: i64) -> (Blockheader3, String, i64) {
+pub fn parse_tx(
+    rdr: &mut BufReader<&File>,
+    target: u32,
+    position: i64,
+) -> (Blockheader3, String, i64) {
     rdr.seek_relative(target as i64 - position).unwrap();
     let block_header: Blockheader3 = parse_block_header(rdr); // reads header
-    
+
     // reads comment
     let mut comment_raw = vec![0; (block_header.hdr_len - 4) as usize];
     rdr.read_exact(&mut comment_raw).unwrap();
@@ -384,16 +391,17 @@ pub fn parse_tx(rdr: &mut BufReader<&File>, target: u32, position: i64) -> (Bloc
 
 #[derive(Debug, BinRead, Clone)]
 #[br(little)]
+#[allow(dead_code)]
 pub struct Dg3Block {
-    dg_id: [u8; 2],       // DG
-    dg_len: u16,          // Length of block in bytes
-    dg_dg_next: u32,      // Pointer to next data group block (DGBLOCK) (can be NIL)
-    dg_cg_first: u32,     // Pointer to first channel group block (CGBLOCK) (can be NIL)
-    dg_tr: u32,           // Pointer to trigger block
+    dg_id: [u8; 2],   // DG
+    dg_len: u16,      // Length of block in bytes
+    dg_dg_next: u32,  // Pointer to next data group block (DGBLOCK) (can be NIL)
+    dg_cg_first: u32, // Pointer to first channel group block (CGBLOCK) (can be NIL)
+    dg_tr: u32,       // Pointer to trigger block
     pub dg_data: u32, // Pointer to data block (DTBLOCK or DZBLOCK for this block type) or data list block (DLBLOCK of data blocks or its HLBLOCK)  (can be NIL)
-    dg_n_cg: u16, // number of channel groups
+    dg_n_cg: u16,     // number of channel groups
     dg_n_record_ids: u16, // number of record ids
-    // reserved: u32, // reserved
+                      // reserved: u32, // reserved
 }
 
 pub fn parse_dg3_block(rdr: &mut BufReader<&File>, target: u32, position: i64) -> (Dg3Block, i64) {
@@ -408,9 +416,9 @@ pub fn parse_dg3_block(rdr: &mut BufReader<&File>, target: u32, position: i64) -
 /// Dg3 struct wrapping block, comments and linked CG
 #[derive(Debug, Clone)]
 pub struct Dg3 {
-    pub block: Dg3Block,               // DG Block
-    pub block_position: u32,           // position of block in file
-    pub cg: HashMap<u16, Cg3>,         // CG Block
+    pub block: Dg3Block,       // DG Block
+    pub block_position: u32,   // position of block in file
+    pub cg: HashMap<u16, Cg3>, // CG Block
 }
 
 /// Parser for Dg3 and all linked blocks (cg, cn, cc)
@@ -475,17 +483,18 @@ pub fn parse_dg3(
 /// Cg3 Channel Group block struct
 #[derive(Debug, Copy, Clone, Default, BinRead)]
 #[br(little)]
+#[allow(dead_code)]
 pub struct Cg3Block {
-    cg_id: [u8; 2],  // CG
-    cg_len: u16,      // Length of block in bytes
-    pub cg_cg_next: u32,   // Pointer to next channel group block (CGBLOCK) (can be NIL)
-    cg_cn_first: u32, // Pointer to first channel block (CNBLOCK) (NIL allowed)
-    cg_comment: u32, // CG comment (TXBLOCK) (can be NIL)
+    cg_id: [u8; 2],          // CG
+    cg_len: u16,             // Length of block in bytes
+    pub cg_cg_next: u32,     // Pointer to next channel group block (CGBLOCK) (can be NIL)
+    cg_cn_first: u32,        // Pointer to first channel block (CNBLOCK) (NIL allowed)
+    cg_comment: u32,         // CG comment (TXBLOCK) (can be NIL)
     pub cg_record_id: u16, // Record ID, value of the identifier for a record if the DGBLOCK defines a number of record IDs > 0
-    cg_n_channels: u16, // number of channels
+    cg_n_channels: u16,    // number of channels
     pub cg_data_bytes: u16, // Size of data record in Bytes (without record ID)
     pub cg_cycle_count: u32, // Number of records of this type in the data block
-    cg_sr: u32, // Pointer to first sample reduction block (SRBLOCK) (NIL allowed)
+    cg_sr: u32,            // Pointer to first sample reduction block (SRBLOCK) (NIL allowed)
 }
 
 /// Cg3 (Channel Group) block struct parser with linked comments Source Information in sharable blocks
@@ -502,7 +511,7 @@ fn parse_cg3_block(
     rdr.read_exact(&mut buf).unwrap();
     let mut block = Cursor::new(buf);
     let cg: Cg3Block = block.read_le().unwrap();
-    position = target as i64 + 30; 
+    position = target as i64 + 30;
 
     // reads CN (and other linked block behind like CC, SI, CA, etc.)
     let (cn, pos, n_cn) = parse_cn3(
@@ -554,8 +563,14 @@ pub fn parse_cg3(
     let mut cg: HashMap<u16, Cg3> = HashMap::new();
     let mut n_cn: u16 = 0;
     if target != 0 {
-        let (mut cg_struct, pos, num_cn) =
-            parse_cg3_block(rdr, target, position, sharable, record_id_size, default_byte_order);
+        let (mut cg_struct, pos, num_cn) = parse_cg3_block(
+            rdr,
+            target,
+            position,
+            sharable,
+            record_id_size,
+            default_byte_order,
+        );
         position = pos;
         let mut next_pointer = cg_struct.block.cg_cg_next;
         cg_struct.record_length += record_id_size;
@@ -563,8 +578,14 @@ pub fn parse_cg3(
         n_cn += num_cn;
 
         while next_pointer != 0 {
-            let (mut cg_struct, pos, num_cn) =
-                parse_cg3_block(rdr, next_pointer, position, sharable, record_id_size, default_byte_order);
+            let (mut cg_struct, pos, num_cn) = parse_cg3_block(
+                rdr,
+                next_pointer,
+                position,
+                sharable,
+                record_id_size,
+                default_byte_order,
+            );
             position = pos;
             cg_struct.record_length += record_id_size;
             next_pointer = cg_struct.block.cg_cg_next;
@@ -617,7 +638,7 @@ pub fn parse_cn3(
             position,
             sharable,
             record_id_size,
-            default_byte_order, 
+            default_byte_order,
         );
         position = pos;
         n_cn += 1;
@@ -647,14 +668,14 @@ pub fn parse_cn3(
 #[derive(Debug, PartialEq, Default, Clone, BinRead)]
 #[br(little)]
 pub struct Cn3Block1 {
-    cn_id: [u8; 2],  // CN
-    cn_len: u16,      // Length of block in bytes
-    cn_cn_next: u32, // Pointer to next channel block (CNBLOCK) (can be NIL)
+    cn_id: [u8; 2],            // CN
+    cn_len: u16,               // Length of block in bytes
+    cn_cn_next: u32,           // Pointer to next channel block (CNBLOCK) (can be NIL)
     pub cn_cc_conversion: u32, // Pointer to the conversion formula (CCBLOCK) (can be NIL)
     cn_ce_source: u32, // Pointer to the source-depending extensions (CEBLOCK) of this signal (can be NIL)
     cn_cd_source: u32, // Pointer to the dependency block (CDBLOCK) of this signal (NIL allowed)
     cn_tx_comment: u32, // Pointer to the channel comment (TXBLOCK) of this signal (NIL allowed)
-    pub cn_type: u16,       // Channel type, 0 normal data, 1 time channel
+    pub cn_type: u16,  // Channel type, 0 normal data, 1 time channel
     cn_short_name: [u8; 32], // Short signal name
 }
 /// Cn3 Channel block struct, second sub block
@@ -663,14 +684,14 @@ pub struct Cn3Block1 {
 pub struct Cn3Block2 {
     pub cn_bit_offset: u16, // Start offset in bits to determine the first bit of the signal in the data record.
     pub cn_bit_count: u16, // Number of bits used to encode the value of this signal in a data record
-    pub cn_data_type: u16,  // Channel data type of raw signal value
-    cn_valid_range_flags: u16,  // Value range valid flag:
+    pub cn_data_type: u16, // Channel data type of raw signal value
+    cn_valid_range_flags: u16, // Value range valid flag:
     cn_val_range_min: f64, // Minimum signal value that occurred for this signal (raw value) Only valid if "value range valid" flag (bit 3) is set.
     cn_val_range_max: f64, // Maximum signal value that occurred for this signal (raw value) Only valid if "value range valid" flag (bit 3) is set.
     cn_sampling_rate: f64, // Sampling rate of the signal in sec
-    cn_tx_long_name: u32, // Short signal name
+    cn_tx_long_name: u32,  // Short signal name
     cn_tx_display_name: u32, // Short signal name
-    cn_byte_offset: u16, // 
+    cn_byte_offset: u16,   //
 }
 
 fn parse_cn3_block(
@@ -695,13 +716,17 @@ fn parse_cn3_block(
     if (block2.cn_bit_count % 8) != 0 {
         n_bytes += 1;
     }
-    
+
     let mut unique_name = String::new();
     ISO_8859_1
-        .decode_to(&block1.cn_short_name, DecoderTrap::Replace, &mut unique_name)
+        .decode_to(
+            &block1.cn_short_name,
+            DecoderTrap::Replace,
+            &mut unique_name,
+        )
         .expect("channel name is latin1 encoded");
     unique_name = unique_name.trim_end_matches(char::from(0)).to_string();
-    if block2.cn_tx_long_name !=0 {
+    if block2.cn_tx_long_name != 0 {
         // Reads TX long name
         let (_, name, pos) = parse_tx(rdr, block2.cn_tx_long_name, position);
         unique_name = name;
@@ -715,11 +740,11 @@ fn parse_cn3_block(
     description = description.trim_end_matches(char::from(0)).to_string();
 
     let mut comment = String::new();
-    if block1.cn_tx_comment !=0 {
+    if block1.cn_tx_comment != 0 {
         // Reads TX comment
         let (_, cm, pos) = parse_tx(rdr, block1.cn_tx_comment, position);
         comment = cm;
-        position = pos; 
+        position = pos;
     }
 
     // Reads CC block
@@ -733,11 +758,9 @@ fn parse_cn3_block(
     }
 
     let mut endian: bool = false; // Little endian by default
-    if block2.cn_data_type >= 13
-    {
+    if block2.cn_data_type >= 13 {
         endian = false; // little endian
-    } else if block2.cn_data_type >=9
-    {
+    } else if block2.cn_data_type >= 9 {
         endian = true; // big endian
     } else if block2.cn_data_type <= 3 {
         if default_byte_order == 0 {
@@ -764,23 +787,23 @@ fn parse_cn3_block(
     (cn_struct, position)
 }
 
-pub fn convert_data_type_3to4(mdf3_datatype:u16) -> u8 {
+pub fn convert_data_type_3to4(mdf3_datatype: u16) -> u8 {
     match mdf3_datatype {
         0 => 0,
         1 => 2,
         2 => 4,
         3 => 4,
         7 => 6,
-        8=>10,
-        9=>1,
-        10=> 3,
-        11=> 5,
-        12=> 5,
-        13=>0,
-        14=>2,
-        15=>4,
-        16=>4,
-        _=>13,
+        8 => 10,
+        9 => 1,
+        10 => 3,
+        11 => 5,
+        12 => 5,
+        13 => 0,
+        14 => 2,
+        15 => 4,
+        16 => 4,
+        _ => 13,
     }
 }
 
@@ -794,15 +817,16 @@ pub struct SharableBlocks3 {
 /// Cc3 Channel conversion block struct, second sub block
 #[derive(Debug, Clone, BinRead)]
 #[br(little)]
+#[allow(dead_code)]
 pub struct Cc3Block {
-    cc_id: [u8; 2],  // CC
-    cc_len: u16,      // Length of block in bytes
-    cc_valid_range_flags: u16,  // Physical value range valid flag
+    cc_id: [u8; 2],            // CC
+    cc_len: u16,               // Length of block in bytes
+    cc_valid_range_flags: u16, // Physical value range valid flag
     cc_val_range_min: f64, // Minimum physical signal value that occurred for this signal. Only valid if "physical value range valid" flag is set.
     cc_val_range_max: f64, // Maximum physical signal value that occurred for this signal. Only valid if "physical value range valid" flag is set.
-    cc_unit: [u8; 20], // physical unit of the signal
-    cc_type: u16, // Conversion type
-    cc_size: u16, // Size information, meaning depends of conversion type
+    cc_unit: [u8; 20],     // physical unit of the signal
+    cc_type: u16,          // Conversion type
+    cc_size: u16,          // Size information, meaning depends of conversion type
 }
 
 #[derive(Debug, Clone)]
@@ -887,13 +911,14 @@ pub fn parse_cc3_block(
                 .decode_to(&buf, DecoderTrap::Replace, &mut formula)
                 .expect("formula text is latin1 encoded");
             let index = formula.find(char::from(0));
-            if let Some(ind) = index{
+            if let Some(ind) = index {
                 formula = formula[0..ind].to_string();
             }
             conversion = Conversion::Formula(formula);
         }
         11 => {
-            let mut pairs: Vec<(f64, String)> = vec![(0.0f64, String::with_capacity(32)); cc_block.cc_size as usize];
+            let mut pairs: Vec<(f64, String)> =
+                vec![(0.0f64, String::with_capacity(32)); cc_block.cc_size as usize];
             let mut val;
             let mut buf = vec![0u8; 32];
             let mut text = String::with_capacity(32);
@@ -910,8 +935,10 @@ pub fn parse_cc3_block(
             conversion = Conversion::TextTable(pairs);
         }
         12 => {
-            let mut pairs_pointer: Vec<(f64, f64, u32)> = Vec::with_capacity(cc_block.cc_size as usize - 1);
-            let mut pairs_string: Vec<(f64, f64, String)> = Vec::with_capacity(cc_block.cc_size as usize - 1);
+            let mut pairs_pointer: Vec<(f64, f64, u32)> =
+                Vec::with_capacity(cc_block.cc_size as usize - 1);
+            let mut pairs_string: Vec<(f64, f64, String)> =
+                Vec::with_capacity(cc_block.cc_size as usize - 1);
             let mut low_range;
             let mut high_range;
             let mut text_pointer;
@@ -926,18 +953,11 @@ pub fn parse_cc3_block(
                 position += 20;
                 pairs_pointer.push((low_range, high_range, text_pointer));
             }
-            let (_block_header, default_string, pos) = parse_tx(
-                rdr,
-                default_text_pointer,
-                position,
-            );
+            let (_block_header, default_string, pos) =
+                parse_tx(rdr, default_text_pointer, position);
             position = pos;
             for (low_range, high_range, text_pointer) in pairs_pointer.iter() {
-                let (_block_header, text, pos) = parse_tx(
-                    rdr,
-                    *text_pointer,
-                    position,
-                );
+                let (_block_header, text, pos) = parse_tx(rdr, *text_pointer, position);
                 position = pos;
                 pairs_string.push((*low_range, *high_range, text));
             }
@@ -945,48 +965,52 @@ pub fn parse_cc3_block(
         }
         _ => conversion = Conversion::Identity,
     }
-    
+
     sharable.cc.insert(target, (cc_block, conversion));
     position
 }
 
 /// CE channel extension block struct, second sub block
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct CeBlock {
-    ce_id: [u8; 2],  // CE
-    ce_len: u16,      // Length of block in bytes
-    ce_extension_type: u16,   // extension type
+    ce_id: [u8; 2],         // CE
+    ce_len: u16,            // Length of block in bytes
+    ce_extension_type: u16, // extension type
     ce_extension: CeSupplement,
 }
 
 /// Either a DIM or CAN Supplemental block
 #[derive(Debug, Clone)]
 pub enum CeSupplement {
-    DIM(DimBlock),
-    CAN(CANBlock),
+    Dim(DimBlock),
+    Can(CanBlock),
     None,
 }
 
 /// DIM Block supplement
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct DimBlock {
     ce_module_number: u16, // Module number
-    ce_address: u32,      // address
-    ce_desc: String,   // description
-    ce_ecu_id: String,   // ECU identifier
+    ce_address: u32,       // address
+    ce_desc: String,       // description
+    ce_ecu_id: String,     // ECU identifier
 }
 
 /// Vector CAN Block supplement
 #[derive(Debug, Clone)]
-pub struct CANBlock {
-    ce_can_id: u32, // CAN identifier
-    ce_can_index: u32,      // CAN channel index
-    ce_message_name: String,   // message name
-    ce_sender_name: String,   // sender name
+#[allow(dead_code)]
+pub struct CanBlock {
+    ce_can_id: u32,          // CAN identifier
+    ce_can_index: u32,       // CAN channel index
+    ce_message_name: String, // message name
+    ce_sender_name: String,  // sender name
 }
 
 /// parses Channel Extension block
-fn parse_ce(rdr: &mut BufReader<&File>,
+fn parse_ce(
+    rdr: &mut BufReader<&File>,
     target: u32,
     mut position: i64,
     sharable: &mut SharableBlocks3,
@@ -999,7 +1023,7 @@ fn parse_ce(rdr: &mut BufReader<&File>,
     let ce_id: [u8; 2] = block.read_le().unwrap();
     let ce_len: u16 = block.read_le().unwrap();
     let ce_extension_type: u16 = block.read_le().unwrap();
-    
+
     let ce_extension: CeSupplement;
     if ce_extension_type == 0x02 {
         // Reads DIM
@@ -1023,7 +1047,7 @@ fn parse_ce(rdr: &mut BufReader<&File>,
             .decode_to(&ecu_id, DecoderTrap::Replace, &mut ce_ecu_id)
             .expect("DIM block description is latin1 encoded");
         ce_ecu_id = ce_ecu_id.trim_end_matches(char::from(0)).to_string();
-        ce_extension = CeSupplement::DIM(DimBlock {
+        ce_extension = CeSupplement::Dim(DimBlock {
             ce_module_number,
             ce_address,
             ce_desc,
@@ -1051,7 +1075,7 @@ fn parse_ce(rdr: &mut BufReader<&File>,
             .decode_to(&sender, DecoderTrap::Replace, &mut ce_sender_name)
             .expect("DIM block description is latin1 encoded");
         ce_sender_name = ce_sender_name.trim_end_matches(char::from(0)).to_string();
-        ce_extension = CeSupplement::CAN(CANBlock {
+        ce_extension = CeSupplement::Can(CanBlock {
             ce_can_id,
             ce_can_index,
             ce_message_name,
@@ -1060,12 +1084,15 @@ fn parse_ce(rdr: &mut BufReader<&File>,
     } else {
         ce_extension = CeSupplement::None;
     }
-    sharable.ce.insert(target, CeBlock {
-        ce_id,
-        ce_len,
-        ce_extension_type,
-        ce_extension,
-    });
+    sharable.ce.insert(
+        target,
+        CeBlock {
+            ce_id,
+            ce_len,
+            ce_extension_type,
+            ce_extension,
+        },
+    );
     position
 }
 
@@ -1088,12 +1115,12 @@ pub fn build_channel_db3(
                     // create unique channel name
                     if let Some(ce) = sharable.ce.get(&cn.block1.cn_ce_source) {
                         match &ce.ce_extension {
-                            CeSupplement::DIM(dim) => {
+                            CeSupplement::Dim(dim) => {
                                 cn.unique_name.push_str(" ");
                                 cn.unique_name.push_str(&dim.ce_ecu_id);
                                 changed = true;
                             }
-                            CeSupplement::CAN(can) => {
+                            CeSupplement::Can(can) => {
                                 cn.unique_name.push_str(" ");
                                 cn.unique_name.push_str(&can.ce_message_name);
                                 changed = true;
@@ -1128,8 +1155,9 @@ pub fn build_channel_db3(
     // identifying master channels
     for (_dg_position, dg) in dg.iter_mut() {
         for (_record_id, cg) in dg.cg.iter_mut() {
-            let mut cg_channel_list: HashSet<String> = HashSet::with_capacity(cg.block.cg_n_channels as usize);
-            let mut master_channel_name: String = String::new();
+            let mut cg_channel_list: HashSet<String> =
+                HashSet::with_capacity(cg.block.cg_n_channels as usize);
+            let master_channel_name: String;
             if let Some(name) = master_channel_list.get(&cg.block_position) {
                 master_channel_name = name.to_string();
             } else {

@@ -1,9 +1,9 @@
 //! This module contains the data reading features
 pub mod channel_data;
-pub mod conversions4;
 pub mod conversions3;
-pub mod data_read4;
+pub mod conversions4;
 pub mod data_read3;
+pub mod data_read4;
 pub mod mdfreader3;
 pub mod mdfreader4;
 use crate::mdfinfo::MdfInfo;

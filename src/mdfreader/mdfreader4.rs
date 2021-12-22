@@ -291,7 +291,7 @@ fn read_sd(
 ) -> i64 {
     for channel_group in dg.cg.values_mut() {
         for rec_pos in vlsd_channels {
-            if let Some(cn) = channel_group.cn.get_mut(&rec_pos) {
+            if let Some(cn) = channel_group.cn.get_mut(rec_pos) {
                 // header block
                 rdr.seek_relative(cn.block.cn_data - position)
                     .expect("Could not position buffer"); // change buffer position
@@ -383,7 +383,7 @@ fn read_vlsd_from_bytes(
                     position += std::mem::size_of::<u32>();
                     let record = &data[position..position + length];
                     let (_result, _size, _replacement) = decoder.windows_1252.decode_to_string(
-                        &record,
+                        record,
                         &mut array[nrecord + previous_index],
                         false,
                     );
@@ -411,7 +411,7 @@ fn read_vlsd_from_bytes(
                 if (position + length + 4) <= data_length {
                     position += std::mem::size_of::<u32>();
                     let record = &data[position..position + length];
-                    array[nrecord + previous_index] = str::from_utf8(&record)
+                    array[nrecord + previous_index] = str::from_utf8(record)
                         .expect("Found invalid UTF-8")
                         .trim_end_matches('\0')
                         .to_string();
@@ -441,7 +441,7 @@ fn read_vlsd_from_bytes(
                         position += std::mem::size_of::<u32>();
                         let record = &data[position..position + length];
                         let (_result, _size, _replacement) = decoder.utf_16_be.decode_to_string(
-                            &record,
+                            record,
                             &mut array[nrecord + previous_index],
                             false,
                         );
@@ -466,7 +466,7 @@ fn read_vlsd_from_bytes(
                         position += std::mem::size_of::<u32>();
                         let record = &data[position..position + length];
                         let (_result, _size, _replacement) = decoder.utf_16_le.decode_to_string(
-                            &record,
+                            record,
                             &mut array[nrecord + previous_index],
                             false,
                         );
@@ -946,7 +946,7 @@ fn read_all_channels_sorted_from_bytes(
         channel_names_to_read_in_dg,
     );
     let vlsd_channels: Vec<i32> = read_channels_from_bytes(
-        &data,
+        data,
         &mut channel_group.cn,
         channel_group.record_length as usize,
         0,
@@ -1031,10 +1031,10 @@ fn save_vlsd(
             let (_result, _size, _replacement) =
                 decoder
                     .windows_1252
-                    .decode_to_string(&record, &mut array[*nrecord], false);
+                    .decode_to_string(record, &mut array[*nrecord], false);
         }
         ChannelData::StringUTF8(array) => {
-            array[*nrecord] = str::from_utf8(&record)
+            array[*nrecord] = str::from_utf8(record)
                 .expect("Found invalid UTF-8")
                 .to_string();
         }
@@ -1043,12 +1043,12 @@ fn save_vlsd(
                 let (_result, _size, _replacement) =
                     decoder
                         .utf_16_be
-                        .decode_to_string(&record, &mut array[*nrecord], false);
+                        .decode_to_string(record, &mut array[*nrecord], false);
             } else {
                 let (_result, _size, _replacement) =
                     decoder
                         .utf_16_le
-                        .decode_to_string(&record, &mut array[*nrecord], false);
+                        .decode_to_string(record, &mut array[*nrecord], false);
             };
         }
         ChannelData::ByteArray(_) => {}
@@ -1168,7 +1168,7 @@ fn read_all_channels_unsorted_from_bytes(
     for (rec_id, (index, record_data)) in record_counter.iter_mut() {
         if let Some(channel_group) = dg.cg.get_mut(rec_id) {
             read_channels_from_bytes(
-                &record_data,
+                record_data,
                 &mut channel_group.cn,
                 channel_group.record_length as usize,
                 *index,
