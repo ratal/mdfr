@@ -2769,7 +2769,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
 #[derive(Debug)]
 enum TextOrScaleConversion {
     Txt(String),
-    Scale(ConversionFunction),
+    Scale(Box<ConversionFunction>),
     Nil,
 }
 
@@ -2777,7 +2777,7 @@ enum TextOrScaleConversion {
 #[derive(Debug)]
 enum DefaultTextOrScaleConversion {
     DefaultTxt(String),
-    DefaultScale(ConversionFunction),
+    DefaultScale(Box<ConversionFunction>),
     Nil,
 }
 
@@ -2797,7 +2797,7 @@ fn value_to_text(
             table_int.insert(val_i64, TextOrScaleConversion::Txt(txt.0.clone()));
         } else if let Some(cc) = sharable.cc.get(&cc_ref[ind]) {
             let conv = conversion_function(cc, sharable);
-            table_int.insert(val_i64, TextOrScaleConversion::Scale(conv));
+            table_int.insert(val_i64, TextOrScaleConversion::Scale(Box::new(conv)));
         } else {
             table_int.insert(val_i64, TextOrScaleConversion::Nil);
         }
@@ -2807,7 +2807,7 @@ fn value_to_text(
         def = DefaultTextOrScaleConversion::DefaultTxt(txt.0.clone());
     } else if let Some(cc) = sharable.cc.get(&cc_ref[cc_val.len()]) {
         let conv = conversion_function(cc, sharable);
-        def = DefaultTextOrScaleConversion::DefaultScale(conv);
+        def = DefaultTextOrScaleConversion::DefaultScale(Box::new(conv));
     } else {
         def = DefaultTextOrScaleConversion::Nil;
     }
@@ -2951,7 +2951,7 @@ fn value_to_text(
                     table_float.insert(ref_val, TextOrScaleConversion::Txt(txt.0.clone()));
                 } else if let Some(cc) = sharable.cc.get(&cc_ref[ind]) {
                     let conv = conversion_function(cc, sharable);
-                    table_float.insert(ref_val, TextOrScaleConversion::Scale(conv));
+                    table_float.insert(ref_val, TextOrScaleConversion::Scale(Box::new(conv)));
                 } else {
                     table_float.insert(ref_val, TextOrScaleConversion::Nil);
                 }
@@ -3125,7 +3125,7 @@ fn value_to_text(
                     table_float.insert(ref_val, TextOrScaleConversion::Txt(txt.0.clone()));
                 } else if let Some(cc) = sharable.cc.get(&cc_ref[ind]) {
                     let conv = conversion_function(cc, sharable);
-                    table_float.insert(ref_val, TextOrScaleConversion::Scale(conv));
+                    table_float.insert(ref_val, TextOrScaleConversion::Scale(Box::new(conv)));
                 } else {
                     table_float.insert(ref_val, TextOrScaleConversion::Nil);
                 }
@@ -3298,7 +3298,7 @@ fn value_to_text(
                     table_float.insert(ref_val, TextOrScaleConversion::Txt(txt.0.clone()));
                 } else if let Some(cc) = sharable.cc.get(&cc_ref[ind]) {
                     let conv = conversion_function(cc, sharable);
-                    table_float.insert(ref_val, TextOrScaleConversion::Scale(conv));
+                    table_float.insert(ref_val, TextOrScaleConversion::Scale(Box::new(conv)));
                 } else {
                     table_float.insert(ref_val, TextOrScaleConversion::Nil);
                 }
@@ -3368,7 +3368,7 @@ enum ConversionFunction {
     Identity,
     Linear(f64, f64),
     Rational(f64, f64, f64, f64, f64, f64),
-    Algebraic(Instruction, Slab),
+    Algebraic(Instruction, Box<Slab>),
 }
 
 /// conversion function of single value (not arrays)
@@ -3390,7 +3390,7 @@ fn conversion_function(cc: &Cc4Block, sharable: &SharableBlocks) -> ConversionFu
                             .expect("error parsing formulae for conversion")
                             .from(&slab.ps)
                             .compile(&slab.ps, &mut slab.cs);
-                        ConversionFunction::Algebraic(compiled, slab)
+                        ConversionFunction::Algebraic(compiled, Box::new(slab))
                     } else {
                         ConversionFunction::Identity
                     }
@@ -3456,7 +3456,7 @@ fn value_range_to_text(
             txt.push(TextOrScaleConversion::Txt(t.0.clone()));
         } else if let Some(cc) = sharable.cc.get(pointer) {
             let conv = conversion_function(cc, sharable);
-            txt.push(TextOrScaleConversion::Scale(conv));
+            txt.push(TextOrScaleConversion::Scale(Box::new(conv)));
         } else {
             txt.push(TextOrScaleConversion::Nil);
         }
@@ -3466,7 +3466,7 @@ fn value_range_to_text(
         def = DefaultTextOrScaleConversion::DefaultTxt(t.0.clone());
     } else if let Some(cc) = sharable.cc.get(&cc_ref[n_keys]) {
         let conv = conversion_function(cc, sharable);
-        def = DefaultTextOrScaleConversion::DefaultScale(conv);
+        def = DefaultTextOrScaleConversion::DefaultScale(Box::new(conv));
     } else {
         def = DefaultTextOrScaleConversion::Nil;
     }
@@ -4159,12 +4159,10 @@ fn text_to_text(cn: &mut Cn4, cc_ref: &[i64], cycle_count: &u64, sharable: &Shar
                     } else {
                         *new_a = a.clone();
                     }
+                } else if let Some(tx) = default.clone() {
+                    *new_a = tx;
                 } else {
-                    if let Some(tx) = default.clone() {
-                        *new_a = tx;
-                    } else {
-                        *new_a = a.clone();
-                    }
+                    *new_a = a.clone();
                 }
             });
             cn.data = ChannelData::StringUTF8(new_array);
@@ -4178,12 +4176,10 @@ fn text_to_text(cn: &mut Cn4, cc_ref: &[i64], cycle_count: &u64, sharable: &Shar
                     } else {
                         *new_a = a.clone();
                     }
+                } else if let Some(tx) = default.clone() {
+                    *new_a = tx;
                 } else {
-                    if let Some(tx) = default.clone() {
-                        *new_a = tx;
-                    } else {
-                        *new_a = a.clone();
-                    }
+                    *new_a = a.clone();
                 }
             });
             cn.data = ChannelData::StringUTF8(new_array);
@@ -4272,7 +4268,7 @@ fn bitfield_text_table(
                                     .insert(val_i64, TextOrScaleConversion::Txt(txt.0.clone()));
                             } else if let Some(cc) = sharable.cc.get(&cc.cc_ref[ind]) {
                                 let conv = conversion_function(cc, sharable);
-                                table_int.insert(val_i64, TextOrScaleConversion::Scale(conv));
+                                table_int.insert(val_i64, TextOrScaleConversion::Scale(Box::new(conv)));
                             } else {
                                 table_int.insert(val_i64, TextOrScaleConversion::Nil);
                             }
@@ -4282,7 +4278,7 @@ fn bitfield_text_table(
                             def = DefaultTextOrScaleConversion::DefaultTxt(txt.0.clone());
                         } else if let Some(cc) = sharable.cc.get(&cc.cc_ref[cc_val.len()]) {
                             let conv = conversion_function(cc, sharable);
-                            def = DefaultTextOrScaleConversion::DefaultScale(conv);
+                            def = DefaultTextOrScaleConversion::DefaultScale(Box::new(conv));
                         } else {
                             def = DefaultTextOrScaleConversion::Nil;
                         }
@@ -4308,7 +4304,7 @@ fn bitfield_text_table(
                                 txt.push(TextOrScaleConversion::Txt(t.0.clone()));
                             } else if let Some(ccc) = sharable.cc.get(pointer) {
                                 let conv = conversion_function(ccc, sharable);
-                                txt.push(TextOrScaleConversion::Scale(conv));
+                                txt.push(TextOrScaleConversion::Scale(Box::new(conv)));
                             } else {
                                 txt.push(TextOrScaleConversion::Nil);
                             }
@@ -4318,7 +4314,7 @@ fn bitfield_text_table(
                             def = DefaultTextOrScaleConversion::DefaultTxt(t.0.clone());
                         } else if let Some(ccc) = sharable.cc.get(&cc.cc_ref[n_keys]) {
                             let conv = conversion_function(ccc, sharable);
-                            def = DefaultTextOrScaleConversion::DefaultScale(conv);
+                            def = DefaultTextOrScaleConversion::DefaultScale(Box::new(conv));
                         } else {
                             def = DefaultTextOrScaleConversion::Nil;
                         }

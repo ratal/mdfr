@@ -826,6 +826,7 @@ fn parse_dg4_block(
 
 /// Dg4 struct wrapping block, comments and linked CG
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct Dg4 {
     pub block: Dg4Block,               // DG Block
     comments: HashMap<String, String>, // Comments
@@ -2145,36 +2146,37 @@ pub fn build_channel_db(
             for (cn_record_position, cn) in cg.cn.iter_mut() {
                 if channel_list.contains_key(&cn.unique_name) {
                     let mut changed: bool = false;
+                    let space_char = String::from(" ");
                     // create unique channel name
                     if let Some(cs) = cn.get_cn_source_name(sharable) {
-                        cn.unique_name.push_str(" ");
+                        cn.unique_name.push_str(&space_char);
                         cn.unique_name.push_str(&cs);
                         changed = true;
                     }
                     if let Some(cp) = cn.get_cn_source_path(sharable) {
-                        cn.unique_name.push_str(" ");
+                        cn.unique_name.push_str(&space_char);
                         cn.unique_name.push_str(&cp);
                         changed = true;
                     }
                     if let Some(name) = &gn {
-                        cn.unique_name.push_str(" ");
+                        cn.unique_name.push_str(&space_char);
                         cn.unique_name.push_str(name);
                         changed = true;
                     }
                     if let Some(source) = &gs {
-                        cn.unique_name.push_str(" ");
+                        cn.unique_name.push_str(&space_char);
                         cn.unique_name.push_str(source);
                         changed = true;
                     }
                     if let Some(path) = &gp {
-                        cn.unique_name.push_str(" ");
+                        cn.unique_name.push_str(&space_char);
                         cn.unique_name.push_str(path);
                         changed = true;
                     }
                     // No souce or path name to make channel unique
                     if !changed {
                         // extend name with channel block position, unique
-                        cn.unique_name.push_str(" ");
+                        cn.unique_name.push_str(&space_char);
                         cn.unique_name.push_str(&cn.block_position.to_string());
                     }
                 };

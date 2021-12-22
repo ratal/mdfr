@@ -946,7 +946,7 @@ pub fn parse_cc3_block(
             rdr.read_exact(&mut buf_ignored).unwrap();
             let default_text_pointer = rdr.read_u32::<LittleEndian>().unwrap();
             position += 20;
-            for index in 0..(cc_block.cc_size as usize - 1) {
+            for _index in 0..(cc_block.cc_size as usize - 1) {
                 low_range = rdr.read_f64::<LittleEndian>().unwrap();
                 high_range = rdr.read_f64::<LittleEndian>().unwrap();
                 text_pointer = rdr.read_u32::<LittleEndian>().unwrap();
@@ -1112,16 +1112,17 @@ pub fn build_channel_db3(
             for (cn_position, cn) in cg.cn.iter_mut() {
                 if channel_list.contains_key(&cn.unique_name) {
                     let mut changed: bool = false;
+                    let space_char = String::from(" ");
                     // create unique channel name
                     if let Some(ce) = sharable.ce.get(&cn.block1.cn_ce_source) {
                         match &ce.ce_extension {
                             CeSupplement::Dim(dim) => {
-                                cn.unique_name.push_str(" ");
+                                cn.unique_name.push_str(&space_char);
                                 cn.unique_name.push_str(&dim.ce_ecu_id);
                                 changed = true;
                             }
                             CeSupplement::Can(can) => {
-                                cn.unique_name.push_str(" ");
+                                cn.unique_name.push_str(&space_char);
                                 cn.unique_name.push_str(&can.ce_message_name);
                                 changed = true;
                             }
@@ -1131,7 +1132,7 @@ pub fn build_channel_db3(
                     // No souce name to make channel unique
                     if !changed {
                         // extend name with channel block position, unique
-                        cn.unique_name.push_str(" ");
+                        cn.unique_name.push_str(&space_char);
                         cn.unique_name.push_str(&cn_position.to_string());
                     }
                 };
