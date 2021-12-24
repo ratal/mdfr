@@ -61,9 +61,12 @@ impl MdfInfo {
         let mut rdr = BufReader::new(&f);
         // Read beginning of ID Block
         let mut buf = [0u8; 64]; // reserved
-        rdr.read_exact(&mut buf).unwrap();
+        rdr.read_exact(&mut buf)
+            .expect("Could not read IdBlock buffer");
         let mut block = Cursor::new(buf);
-        let id: IdBlock = block.read_le().unwrap();
+        let id: IdBlock = block
+            .read_le()
+            .expect("Could not read buffer into IdBlock structure");
         let mdf_info: MdfInfo;
 
         // Depending of version different blocks

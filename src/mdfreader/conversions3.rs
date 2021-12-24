@@ -2308,7 +2308,9 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2325,7 +2327,9 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2342,7 +2346,9 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2359,7 +2365,9 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2376,7 +2384,9 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2393,7 +2403,9 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2410,7 +2422,9 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2427,7 +2441,9 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2444,7 +2460,9 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2461,7 +2479,9 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2478,7 +2498,9 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2495,7 +2517,9 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2512,7 +2536,9 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2529,7 +2555,9 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2545,7 +2573,9 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
         ChannelData::Float64(a) => {
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(a).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(a).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2569,7 +2599,9 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2586,7 +2618,9 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2603,7 +2637,9 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2620,7 +2656,9 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2637,7 +2675,9 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2654,7 +2694,9 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2671,7 +2713,9 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2688,7 +2732,9 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2705,7 +2751,9 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2722,7 +2770,9 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2739,7 +2789,9 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2756,7 +2808,9 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2773,7 +2827,9 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2790,7 +2846,9 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2806,7 +2864,9 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
         ChannelData::ArrayDFloat64(a) => {
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(a).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(a).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2833,7 +2893,9 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2854,7 +2916,9 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2875,7 +2939,9 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2896,7 +2962,9 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2917,7 +2985,9 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2938,7 +3008,9 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2959,7 +3031,9 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -2980,7 +3054,9 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -3001,7 +3077,9 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -3022,7 +3100,9 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -3043,7 +3123,9 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -3064,7 +3146,9 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -3085,7 +3169,9 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -3106,7 +3192,9 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -3126,7 +3214,9 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
         ChannelData::Float64(a) => {
             let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(a).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(a).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -3154,7 +3244,9 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -3175,7 +3267,9 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -3196,7 +3290,9 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -3217,7 +3313,9 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -3238,7 +3336,9 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -3259,7 +3359,9 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -3280,7 +3382,9 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -3301,7 +3405,9 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -3322,7 +3428,9 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -3343,7 +3451,9 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -3364,7 +3474,9 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -3385,7 +3497,9 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -3406,7 +3520,9 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -3427,7 +3543,9 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -3447,7 +3565,9 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
         ChannelData::ArrayDFloat64(a) => {
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                *new_array = match val.binary_search_by(|&(xi, _)| xi.partial_cmp(a).unwrap()) {
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(a).expect("Could not compare values")
+                }) {
                     Ok(idx) => *val[idx].1,
                     Err(0) => *val[0].1,
                     Err(idx) if idx >= val.len() => *val[idx - 1].1,

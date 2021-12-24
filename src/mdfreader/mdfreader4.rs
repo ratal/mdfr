@@ -94,7 +94,9 @@ fn read_data(
     };
     let mut vlsd_channels: Vec<i32> = Vec::new();
     if "##DT".as_bytes() == id {
-        let block_header: Dt4Block = rdr.read_le().unwrap();
+        let block_header: Dt4Block = rdr
+            .read_le()
+            .expect("could not read into Dt4Blcok structure");
         // simple data block
         if sorted {
             // sorted data group
@@ -243,7 +245,9 @@ fn read_data(
     } else if "##DV".as_bytes() == id {
         // data values
         // sorted data group only, no record id, no invalid bytes
-        let block_header: Dt4Block = rdr.read_le().unwrap();
+        let block_header: Dt4Block = rdr
+            .read_le()
+            .expect("could not read into Dv4Block structure");
         for channel_group in dg.cg.values_mut() {
             match channel_group.cn.len() {
                 l if l > 1 => {
@@ -299,7 +303,8 @@ fn read_sd(
                 let mut id = [0u8; 4];
                 rdr.read_exact(&mut id).expect("could not read block id");
                 if "##SD".as_bytes() == id {
-                    let block_header: Dt4Block = rdr.read_le().unwrap();
+                    let block_header: Dt4Block =
+                        rdr.read_le().expect("Could not read Sd4Block struct");
                     let mut data = vec![0u8; block_header.len as usize - 24];
                     rdr.read_exact(&mut data)
                         .expect("could not read SD data buffer");
@@ -547,7 +552,8 @@ fn parser_ld4(
     ld_blocks.push(block.clone());
     let mut next_ld = block.ld_ld_next;
     while next_ld > 0 {
-        rdr.seek_relative(next_ld - position).unwrap();
+        rdr.seek_relative(next_ld - position)
+            .expect("Could not reach LD block position");
         position = next_ld;
         let mut id = [0u8; 4];
         rdr.read_exact(&mut id).expect("could not read LD block id");
@@ -560,7 +566,7 @@ fn parser_ld4(
         // only one DV block, reading can be optimised
         // Reads DV or DZ block id
         rdr.seek_relative(ld_blocks[0].ld_data[0] - position)
-            .unwrap();
+            .expect("Could not reach DV or DZ block position from LD block");
         let mut id = [0u8; 4];
         rdr.read_exact(&mut id)
             .expect("could not read data block id from ld4 invalid");
@@ -580,7 +586,7 @@ fn parser_ld4(
             );
             position = ld_blocks[0].ld_data[0] + block_header.len as i64;
         } else {
-            let block_header: Dt4Block = rdr.read_le().unwrap();
+            let block_header: Dt4Block = rdr.read_le().expect("Could not read DV block header");
             for (_rec_pos, cn) in channel_group.cn.iter_mut() {
                 read_one_channel_array(rdr, cn, channel_group.block.cg_cycle_count as usize);
             }
@@ -589,7 +595,7 @@ fn parser_ld4(
         if channel_group.block.cg_inval_bytes > 0 {
             // Reads invalid DI or DZ block
             rdr.seek_relative(ld_blocks[0].ld_invalid_data[0] - position)
-                .unwrap();
+                .expect("Could not reach DI or DZ block position");
             let mut id = [0u8; 4];
             rdr.read_exact(&mut id)
                 .expect("could not read data block id from ld4 invalid");
@@ -598,9 +604,11 @@ fn parser_ld4(
                 channel_group.invalid_bytes = Some(dt);
                 position = ld_blocks[0].ld_invalid_data[0] + block_header.len as i64;
             } else {
-                let block_header: Dt4Block = rdr.read_le().unwrap();
+                let block_header: Dt4Block = rdr
+                    .read_le()
+                    .expect("Could not read into DZ or DI block header");
                 let mut buf = vec![0u8; (block_header.len - 24) as usize];
-                rdr.read_exact(&mut buf).unwrap();
+                rdr.read_exact(&mut buf).expect("Could not read data block");
                 channel_group.invalid_bytes = Some(buf);
                 position = ld_blocks[0].ld_invalid_data[0] + block_header.len as i64;
             }
@@ -648,7 +656,8 @@ fn read_dv_di(
     for ld in ld_blocks {
         for data_pointer in ld.ld_data {
             // Reads DV or DZ block id
-            rdr.seek_relative(data_pointer - position).unwrap();
+            rdr.seek_relative(data_pointer - position)
+                .expect("Could not reach DV or DZ block position");
             let mut id = [0u8; 4];
             rdr.read_exact(&mut id)
                 .expect("could not read data block id from LD4");
@@ -659,9 +668,10 @@ fn read_dv_di(
                 block_length = block_header.dz_org_data_length as usize;
                 position = data_pointer + block_header.len as i64;
             } else {
-                let block_header: Dt4Block = rdr.read_le().unwrap();
+                let block_header: Dt4Block =
+                    rdr.read_le().expect("Could not read DV block structure");
                 let mut buf = vec![0u8; (block_header.len - 24) as usize];
-                rdr.read_exact(&mut buf).unwrap();
+                rdr.read_exact(&mut buf).expect("Could not read DV data");
                 data.extend(buf);
                 block_length = (block_header.len - 24) as usize;
                 position = data_pointer + block_header.len as i64;
@@ -702,7 +712,8 @@ fn read_dv_di(
         // Invalid data reading
         for data_pointer in ld.ld_invalid_data {
             // Reads DV or DZ block id
-            rdr.seek_relative(data_pointer - position).unwrap();
+            rdr.seek_relative(data_pointer - position)
+                .expect("Could not reach invalid block position");
             let mut id = [0u8; 4];
             rdr.read_exact(&mut id)
                 .expect("could not read data block id from ld4 invalid");
@@ -713,9 +724,11 @@ fn read_dv_di(
                 block_length = block_header.dz_org_data_length as usize;
                 position = data_pointer + block_header.len as i64;
             } else {
-                let block_header: Dt4Block = rdr.read_le().unwrap();
+                let block_header: Dt4Block =
+                    rdr.read_le().expect("Could not read invalid block header");
                 let mut buf = vec![0u8; (block_header.len - 24) as usize];
-                rdr.read_exact(&mut buf).unwrap();
+                rdr.read_exact(&mut buf)
+                    .expect("Could not read invalid data");
                 invalid_data.extend(buf);
                 block_length = (block_header.len - 24) as usize;
                 position = data_pointer + block_header.len as i64;
@@ -740,7 +753,8 @@ fn parser_dl4(rdr: &mut BufReader<&File>, mut position: i64) -> (Vec<Dl4Block>, 
     dl_blocks.push(block.clone());
     let mut next_dl = block.dl_dl_next;
     while next_dl > 0 {
-        rdr.seek_relative(next_dl - position).unwrap();
+        rdr.seek_relative(next_dl - position)
+            .expect("Could not reach DL4 block position");
         position = next_dl;
         let mut id = [0u8; 4];
         rdr.read_exact(&mut id).expect("could not read DL block id");
@@ -777,7 +791,8 @@ fn parser_dl4_sorted(
     for dl in dl_blocks {
         for data_pointer in dl.dl_data {
             // Reads DT or DZ block id
-            rdr.seek_relative(data_pointer - position).unwrap();
+            rdr.seek_relative(data_pointer - position)
+                .expect("Could not reach DV or DZ block position from DL4");
             let mut id = [0u8; 4];
             rdr.read_exact(&mut id)
                 .expect("could not read data block id");
@@ -789,9 +804,10 @@ fn parser_dl4_sorted(
                 position = data_pointer + block_header.len as i64;
                 id[2..].copy_from_slice(&block_header.dz_org_block_type[..]);
             } else {
-                let block_header: Dt4Block = rdr.read_le().unwrap();
+                let block_header: Dt4Block = rdr.read_le().expect("Could not DT block header");
                 let mut buf = vec![0u8; (block_header.len - 24) as usize];
-                rdr.read_exact(&mut buf).unwrap();
+                rdr.read_exact(&mut buf)
+                    .expect("Could not read DT block data");
                 data.extend(buf);
                 block_length = (block_header.len - 24) as usize;
                 position = data_pointer + block_header.len as i64;
@@ -861,14 +877,16 @@ fn parser_dl4_unsorted(
     }
     for dl in dl_blocks {
         for data_pointer in dl.dl_data {
-            rdr.seek_relative(data_pointer - position).unwrap();
+            rdr.seek_relative(data_pointer - position)
+                .expect("Could not reach DT or DZ position from DL");
             let header = parse_block_header(rdr);
             if header.hdr_id == "##DZ".as_bytes() {
                 let (dt, _block) = parse_dz(rdr);
                 data.extend(dt);
             } else {
                 let mut buf = vec![0u8; (header.hdr_len - 24) as usize];
-                rdr.read_exact(&mut buf).unwrap();
+                rdr.read_exact(&mut buf)
+                    .expect("Could not read DT block data");
                 data.extend(buf);
             }
             // saves records as much as possible

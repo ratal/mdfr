@@ -274,12 +274,14 @@ fn parse_block(
     mut position: i64,
 ) -> (Cursor<Vec<u8>>, Blockheader4, i64) {
     // Reads block header
-    rdr.seek_relative(target - position).expect("Could not reach block header position"); // change buffer position
+    rdr.seek_relative(target - position)
+        .expect("Could not reach block header position"); // change buffer position
     let block_header: Blockheader4 = parse_block_header(rdr); // reads header
 
     // Reads in buffer rest of block
     let mut buf = vec![0u8; (block_header.hdr_len - 24) as usize];
-    rdr.read_exact(&mut buf).expect("Could not read rest of block after header");
+    rdr.read_exact(&mut buf)
+        .expect("Could not read rest of block after header");
     position = target + block_header.hdr_len as i64;
     let block = Cursor::new(buf);
     (block, block_header, position)
@@ -293,12 +295,14 @@ fn parse_block_short(
     mut position: i64,
 ) -> (Cursor<Vec<u8>>, Blockheader4Short, i64) {
     // Reads block header
-    rdr.seek_relative(target - position).expect("Could not reach block short header position"); // change buffer position
+    rdr.seek_relative(target - position)
+        .expect("Could not reach block short header position"); // change buffer position
     let block_header: Blockheader4Short = parse_block_header_short(rdr); // reads header
 
     // Reads in buffer rest of block
     let mut buf = vec![0u8; (block_header.hdr_len - 16) as usize];
-    rdr.read_exact(&mut buf).expect("Could not read rest of block after short header");
+    rdr.read_exact(&mut buf)
+        .expect("Could not read rest of block after short header");
     position = target + block_header.hdr_len as i64;
     let block = Cursor::new(buf);
     (block, block_header, position)
@@ -310,45 +314,45 @@ fn parse_block_short(
 #[allow(dead_code)]
 pub struct Hd4 {
     /// ##HD
-    hd_id: [u8; 4],     
+    hd_id: [u8; 4],
     /// reserved  
-    hd_reserved: [u8; 4], 
+    hd_reserved: [u8; 4],
     /// Length of block in bytes
-    hd_len: u64,          
+    hd_len: u64,
     /// # of links
-    hd_link_counts: u64,  
+    hd_link_counts: u64,
     /// Pointer to the first data group block (DGBLOCK) (can be NIL)
-    pub hd_dg_first: i64, 
+    pub hd_dg_first: i64,
     /// Pointer to first file history block (FHBLOCK)
     /// There must be at least one FHBLOCK with information about the application which created the MDF file.
-    pub hd_fh_first: i64, 
+    pub hd_fh_first: i64,
     /// Pointer to first channel hierarchy block (CHBLOCK) (can be NIL).
-    hd_ch_first: i64, 
+    hd_ch_first: i64,
     /// Pointer to first attachment block (ATBLOCK) (can be NIL)
-    pub hd_at_first: i64, 
+    pub hd_at_first: i64,
     /// Pointer to first event block (EVBLOCK) (can be NIL)
-    pub hd_ev_first: i64, 
+    pub hd_ev_first: i64,
     /// Pointer to the measurement file comment (TXBLOCK or MDBLOCK) (can be NIL) For MDBLOCK contents, see Table 14.
-    pub hd_md_comment: i64, 
+    pub hd_md_comment: i64,
     /// Data members
     /// Time stamp in nanoseconds elapsed since 00:00:00 01.01.1970 (UTC time or local time, depending on "local time" flag, see [UTC]).
-    pub hd_start_time_ns: u64, 
+    pub hd_start_time_ns: u64,
     /// Time zone offset in minutes. The value must be in range [-720,720], i.e. it can be negative! For example a value of 60 (min) means UTC+1 time zone = Central European Time (CET). Only valid if "time offsets valid" flag is set in time flags.
-    pub hd_tz_offset_min: i16, 
+    pub hd_tz_offset_min: i16,
     /// Daylight saving time (DST) offset in minutes for start time stamp. During the summer months, most regions observe a DST offset of 60 min (1 hour). Only valid if "time offsets valid" flag is set in time flags.
-    pub hd_dst_offset_min: i16, 
+    pub hd_dst_offset_min: i16,
     /// Time flags The value contains the following bit flags (see HD_TF_xxx)
-    pub hd_time_flags: u8, 
+    pub hd_time_flags: u8,
     /// Time quality class (see HD_TC_xxx)
-    pub hd_time_class: u8, 
+    pub hd_time_class: u8,
     /// Flags The value contains the following bit flags (see HD_FL_xxx):
-    pub hd_flags: u8,      
+    pub hd_flags: u8,
     /// reserved
-    pub hd_reserved2: u8,  
+    pub hd_reserved2: u8,
     /// Start angle in radians at start of measurement (only for angle synchronous measurements) Only valid if "start angle valid" flag is set. All angle values for angle synchronized master channels or events are relative to this start angle.
-    pub hd_start_angle_rad: f64, 
+    pub hd_start_angle_rad: f64,
     /// Start distance in meters at start of measurement (only for distance synchronous measurements) Only valid if "start distance valid" flag is set. All distance values for distance synchronized master channels or events are relative to this start distance.
-    pub hd_start_distance_m: f64, 
+    pub hd_start_distance_m: f64,
 }
 
 /// Hd4 display implementation
@@ -368,9 +372,12 @@ impl fmt::Display for Hd4 {
 /// Hd4 block struct parser
 pub fn hd4_parser(rdr: &mut BufReader<&File>) -> Hd4 {
     let mut buf = [0u8; 104];
-    rdr.read_exact(&mut buf).expect("could not read HB block buffer");
+    rdr.read_exact(&mut buf)
+        .expect("could not read HB block buffer");
     let mut block = Cursor::new(buf);
-    let hd: Hd4 = block.read_le().expect("Could not read HD block buffer into Hd4 struct");
+    let hd: Hd4 = block
+        .read_le()
+        .expect("Could not read HD block buffer into Hd4 struct");
     hd
 }
 
@@ -406,11 +413,13 @@ fn parse_comment(
     target: i64,
     mut position: i64,
 ) -> (Blockheader4, String, i64) {
-    rdr.seek_relative(target - position).expect("could not reach comment block position"); // change buffer position
+    rdr.seek_relative(target - position)
+        .expect("could not reach comment block position"); // change buffer position
     let block_header: Blockheader4 = parse_block_header(rdr); // reads header
                                                               // reads comment
     let mut comment_raw = vec![0u8; (block_header.hdr_len - 24) as usize];
-    rdr.read_exact(&mut comment_raw).expect("could not read comment raw data");
+    rdr.read_exact(&mut comment_raw)
+        .expect("could not read comment raw data");
     let c = match str::from_utf8(&comment_raw) {
         Ok(v) => v,
         Err(e) => panic!("Error converting comment into utf8 \n{}", e),
@@ -547,9 +556,11 @@ pub struct FhBlock {
 
 /// Fh4 (File History) block struct parser
 fn parse_fh_block(rdr: &mut BufReader<&File>, target: i64, position: i64) -> (FhBlock, i64) {
-    rdr.seek_relative(target - position).expect("Could not reach FH Block position"); // change buffer position
+    rdr.seek_relative(target - position)
+        .expect("Could not reach FH Block position"); // change buffer position
     let mut buf = [0u8; 56];
-    rdr.read_exact(&mut buf).expect("Could not read FH block buffer");
+    rdr.read_exact(&mut buf)
+        .expect("Could not read FH block buffer");
     let mut block = Cursor::new(buf);
     let fh: FhBlock = match block.read_le() {
         Ok(v) => v,
@@ -641,18 +652,23 @@ fn parser_at4_block(
     target: i64,
     mut position: i64,
 ) -> (At4Block, Option<Vec<u8>>, i64) {
-    rdr.seek_relative(target - position).expect("Could not reach At4 Block position");
+    rdr.seek_relative(target - position)
+        .expect("Could not reach At4 Block position");
     let mut buf = [0u8; 96];
-    rdr.read_exact(&mut buf).expect("Could not read At4 Block buffer");
+    rdr.read_exact(&mut buf)
+        .expect("Could not read At4 Block buffer");
     let mut block = Cursor::new(buf);
-    let block: At4Block = block.read_le().expect("Could not read At4 Block buffer into At4Block struct");
+    let block: At4Block = block
+        .read_le()
+        .expect("Could not read At4 Block buffer into At4Block struct");
     position = target + 96;
 
     let data: Option<Vec<u8>>;
     // reads embedded if exists
     if (block.at_flags & 0b1) > 0 {
         let mut embedded_data = vec![0u8; block.at_embedded_size as usize];
-        rdr.read_exact(&mut embedded_data).expect("Could not read At4Block embedded attachement");
+        rdr.read_exact(&mut embedded_data)
+            .expect("Could not read At4Block embedded attachement");
         position += block.at_embedded_size as i64;
         data = Some(embedded_data);
     } else {
@@ -828,11 +844,15 @@ fn parse_dg4_block(
     target: i64,
     mut position: i64,
 ) -> (Dg4Block, HashMap<String, String>, i64) {
-    rdr.seek_relative(target - position).expect("Could not reach position of Dg4 block");
+    rdr.seek_relative(target - position)
+        .expect("Could not reach position of Dg4 block");
     let mut buf = [0u8; 64];
-    rdr.read_exact(&mut buf).expect("Could not read Dg4Blcok buffer");
+    rdr.read_exact(&mut buf)
+        .expect("Could not read Dg4Blcok buffer");
     let mut block = Cursor::new(buf);
-    let dg: Dg4Block = block.read_le().expect("Could not read Dg4Block buffer into Dg4Block struct");
+    let dg: Dg4Block = block
+        .read_le()
+        .expect("Could not read Dg4Block buffer into Dg4Block struct");
     position = target + 64;
 
     // Reads MD
@@ -1023,7 +1043,9 @@ fn parse_cg4_block(
 ) -> (Cg4, i64, usize) {
     let (mut block, _block_header, pos) = parse_block_short(rdr, target, position);
     position = pos;
-    let cg: Cg4Block = block.read_le().expect("Could not read buffer into Cg4Block struct");
+    let cg: Cg4Block = block
+        .read_le()
+        .expect("Could not read buffer into Cg4Block struct");
 
     // Reads MD
     let comment_pointer = cg.cg_md_comment;
@@ -1057,7 +1079,9 @@ fn parse_cg4_block(
     if (si_pointer != 0) && !sharable.si.contains_key(&si_pointer) {
         let (mut si_block, _header, pos) = parse_block_short(rdr, si_pointer, position);
         position = pos;
-        let si_block: Si4Block = si_block.read_le().expect("Could not read buffer into Si4block struct");
+        let si_block: Si4Block = si_block
+            .read_le()
+            .expect("Could not read buffer into Si4block struct");
         if (si_block.si_tx_name != 0) && !sharable.tx.contains_key(&si_block.si_tx_name) {
             let (s, pos, md_flag) = md_tx_comment(rdr, si_block.si_tx_name, position);
             position = pos;
@@ -1595,7 +1619,9 @@ fn parse_cn4_block(
     let mut cns: HashMap<i32, Cn4> = HashMap::new();
     let (mut block, _header, pos) = parse_block_short(rdr, target, position);
     position = pos;
-    let block: Cn4Block = block.read_le().expect("Could not read buffer into Cn4Block struct");
+    let block: Cn4Block = block
+        .read_le()
+        .expect("Could not read buffer into Cn4Block struct");
     let pos_byte_beg = block.cn_byte_offset + record_id_size as u32;
     let n_bytes = calc_n_bytes_not_aligned(block.cn_bit_count + (block.cn_bit_offset as u32));
 
@@ -1632,7 +1658,9 @@ fn parse_cn4_block(
     if (si_pointer != 0) && !sharable.si.contains_key(&si_pointer) {
         let (mut si_block, _header, pos) = parse_block_short(rdr, si_pointer, position);
         position = pos;
-        let si_block: Si4Block = si_block.read_le().expect("Could into read buffer into Si4Block struct");
+        let si_block: Si4Block = si_block
+            .read_le()
+            .expect("Could into read buffer into Si4Block struct");
         if (si_block.si_tx_name != 0) && !sharable.tx.contains_key(&si_block.si_tx_name) {
             let (s, pos, md_flag) = md_tx_comment(rdr, si_block.si_tx_name, position);
             position = pos;
@@ -1711,7 +1739,9 @@ fn read_cc(
     mut block: Cursor<Vec<u8>>,
     sharable: &mut SharableBlocks,
 ) -> i64 {
-    let cc_block: Cc4Block = block.read_le().expect("Could nto read buffer into Cc4Block struct");
+    let cc_block: Cc4Block = block
+        .read_le()
+        .expect("Could nto read buffer into Cc4Block struct");
     if (cc_block.cc_md_unit != 0) && !sharable.tx.contains_key(&cc_block.cc_md_unit) {
         let (u, pos, tx_md_flag) = md_tx_comment(rdr, cc_block.cc_md_unit, position);
         position = pos;
@@ -1899,7 +1929,9 @@ fn parse_ca_block(
 ) -> Ca4Block {
     //Reads members first
     ca_block.set_position(block_header.hdr_links * 8); // change buffer position after links section
-    let ca_members: Ca4BlockMembers = ca_block.read_le().expect("Coudl tno read buffer into CaBlockMembers struct");
+    let ca_members: Ca4BlockMembers = ca_block
+        .read_le()
+        .expect("Coudl tno read buffer into CaBlockMembers struct");
     let mut snd: usize;
     let mut pnd: usize;
     // converts  ca_dim_size from u64 to usize
@@ -1927,7 +1959,9 @@ fn parse_ca_block(
     let ca_axis_value: Option<Vec<f64>>;
     let mut val = vec![0.0f64; snd as usize];
     if (ca_members.ca_flags & 0b100000) > 0 {
-        ca_block.read_f64_into::<LittleEndian>(&mut val).expect("Could not read ca_axis_value");
+        ca_block
+            .read_f64_into::<LittleEndian>(&mut val)
+            .expect("Could not read ca_axis_value");
         ca_axis_value = Some(val);
     } else {
         ca_axis_value = None
@@ -1935,7 +1969,9 @@ fn parse_ca_block(
     let ca_cycle_count: Option<Vec<u64>>;
     let mut val = vec![0u64; pnd];
     if ca_members.ca_storage >= 1 {
-        ca_block.read_u64_into::<LittleEndian>(&mut val).expect("Could not read ca_cycle_count");
+        ca_block
+            .read_u64_into::<LittleEndian>(&mut val)
+            .expect("Could not read ca_cycle_count");
         ca_cycle_count = Some(val);
     } else {
         ca_cycle_count = None;
@@ -1944,11 +1980,15 @@ fn parse_ca_block(
     // Reads links
     ca_block.set_position(0); // change buffer position to beginning of links section
     let ca_composition: i64;
-    ca_composition = ca_block.read_i64::<LittleEndian>().expect("Could not read ca_composition");
+    ca_composition = ca_block
+        .read_i64::<LittleEndian>()
+        .expect("Could not read ca_composition");
     let ca_data: Option<Vec<i64>>;
     let mut val = vec![0i64; pnd];
     if ca_members.ca_storage == 2 {
-        ca_block.read_i64_into::<LittleEndian>(&mut val).expect("Could not read ca_storage");
+        ca_block
+            .read_i64_into::<LittleEndian>(&mut val)
+            .expect("Could not read ca_storage");
         ca_data = Some(val);
     } else {
         ca_data = None
@@ -1956,7 +1996,9 @@ fn parse_ca_block(
     let ca_dynamic_size: Option<Vec<i64>>;
     let mut val = vec![0i64; (ca_members.ca_ndim * 3) as usize];
     if (ca_members.ca_flags & 0b1) > 0 {
-        ca_block.read_i64_into::<LittleEndian>(&mut val).expect("Could not read ca_dynamic_size");
+        ca_block
+            .read_i64_into::<LittleEndian>(&mut val)
+            .expect("Could not read ca_dynamic_size");
         ca_dynamic_size = Some(val);
     } else {
         ca_dynamic_size = None
@@ -1964,7 +2006,9 @@ fn parse_ca_block(
     let ca_input_quantity: Option<Vec<i64>>;
     let mut val = vec![0i64; (ca_members.ca_ndim * 3) as usize];
     if (ca_members.ca_flags & 0b10) > 0 {
-        ca_block.read_i64_into::<LittleEndian>(&mut val).expect("Could not read ca_input_quantity");
+        ca_block
+            .read_i64_into::<LittleEndian>(&mut val)
+            .expect("Could not read ca_input_quantity");
         ca_input_quantity = Some(val);
     } else {
         ca_input_quantity = None
@@ -1972,7 +2016,9 @@ fn parse_ca_block(
     let ca_output_quantity: Option<Vec<i64>>;
     let mut val = vec![0i64; 3];
     if (ca_members.ca_flags & 0b100) > 0 {
-        ca_block.read_i64_into::<LittleEndian>(&mut val).expect("Could not read ca_output_quantity");
+        ca_block
+            .read_i64_into::<LittleEndian>(&mut val)
+            .expect("Could not read ca_output_quantity");
         ca_output_quantity = Some(val);
     } else {
         ca_output_quantity = None
@@ -1980,7 +2026,9 @@ fn parse_ca_block(
     let ca_comparison_quantity: Option<Vec<i64>>;
     let mut val = vec![0i64; 3];
     if (ca_members.ca_flags & 0b1000) > 0 {
-        ca_block.read_i64_into::<LittleEndian>(&mut val).expect("Could not read ca_comparison_quantity");
+        ca_block
+            .read_i64_into::<LittleEndian>(&mut val)
+            .expect("Could not read ca_comparison_quantity");
         ca_comparison_quantity = Some(val);
     } else {
         ca_comparison_quantity = None
@@ -1988,7 +2036,9 @@ fn parse_ca_block(
     let ca_cc_axis_conversion: Option<Vec<i64>>;
     let mut val = vec![0i64; ca_members.ca_ndim as usize];
     if (ca_members.ca_flags & 0b10000) > 0 {
-        ca_block.read_i64_into::<LittleEndian>(&mut val).expect("Could not read ca_cc_axis_conversion");
+        ca_block
+            .read_i64_into::<LittleEndian>(&mut val)
+            .expect("Could not read ca_cc_axis_conversion");
         ca_cc_axis_conversion = Some(val);
     } else {
         ca_cc_axis_conversion = None
@@ -1996,7 +2046,9 @@ fn parse_ca_block(
     let ca_axis: Option<Vec<i64>>;
     let mut val = vec![0i64; (ca_members.ca_ndim * 3) as usize];
     if ((ca_members.ca_flags & 0b10000) > 0) & ((ca_members.ca_flags & 0b100000) > 0) {
-        ca_block.read_i64_into::<LittleEndian>(&mut val).expect("Could not read ca_axis");
+        ca_block
+            .read_i64_into::<LittleEndian>(&mut val)
+            .expect("Could not read ca_axis");
         ca_axis = Some(val);
     } else {
         ca_axis = None
@@ -2291,7 +2343,8 @@ pub fn parser_dl4_block(
     target: i64,
     mut position: i64,
 ) -> (Dl4Block, i64) {
-    rdr.seek_relative(target - position).expect("Could not reach position to read Dl4Block");
+    rdr.seek_relative(target - position)
+        .expect("Could not reach position to read Dl4Block");
     let block: Dl4Block = rdr.read_le().expect("Could not read into Dl4Block struct");
     position = target + block.dl_len as i64;
     (block, position)
@@ -2382,8 +2435,11 @@ pub fn parser_ld4_block(
     target: i64,
     mut position: i64,
 ) -> (Ld4Block, i64) {
-    rdr.seek_relative(target - position).expect("Could not reach Ld4Block position");
-    let block: Ld4Block = rdr.read_le().expect("Could not read buffer into Ld4Block struct");
+    rdr.seek_relative(target - position)
+        .expect("Could not reach Ld4Block position");
+    let block: Ld4Block = rdr
+        .read_le()
+        .expect("Could not read buffer into Ld4Block struct");
     position = target + block.ld_len as i64;
     (block, position)
 }

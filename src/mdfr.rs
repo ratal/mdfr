@@ -120,27 +120,30 @@ impl Mdf {
         let Mdf(mdf) = self;
         pyo3::Python::with_gil(|py| {
             let locals = PyDict::new(py);
-            locals.set_item("channel_name", &channel_name).unwrap();
+            locals
+                .set_item("channel_name", &channel_name)
+                .expect("cannot set python channel_name");
             locals
                 .set_item("channel_unit", mdf.get_channel_unit(&channel_name))
-                .unwrap();
+                .expect("cannot set python channel_unit");
             let master_channel_name = mdf.get_channel_master(&channel_name);
             locals
                 .set_item("master_channel_name", &master_channel_name)
-                .unwrap();
+                .expect("cannot set python master_channel_name");
             locals
                 .set_item(
                     "master_channel_unit",
                     mdf.get_channel_unit(&master_channel_name),
                 )
-                .unwrap();
+                .expect("cannot set python master_channel_unit");
             locals
                 .set_item("master_data", mdf.get_channel_data(&master_channel_name))
-                .unwrap();
+                .expect("cannot set python master_data");
             locals
                 .set_item("channel_data", mdf.get_channel_data(&channel_name))
-                .unwrap();
-            py.import("matplotlib").unwrap();
+                .expect("cannot set python channel_data");
+            py.import("matplotlib")
+                .expect("Could not plot channel with matplotlib");
             py.run(
                 r#"
 from matplotlib import pyplot
@@ -156,7 +159,7 @@ pyplot.show()
                 None,
                 Some(locals),
             )
-            .unwrap();
+            .expect("plot python script failed");
         })
     }
 }
