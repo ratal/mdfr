@@ -979,7 +979,7 @@ fn can_open_date(
         ..Default::default()
     };
     let year = Cn3 {
-        block1: block1.clone(),
+        block1,
         block2,
         unique_name: String::from("year"),
         comment: String::new(),
@@ -1030,7 +1030,7 @@ fn can_open_time(
         ..Default::default()
     };
     let days: Cn3 = Cn3 {
-        block1: block1.clone(),
+        block1,
         block2,
         unique_name: String::from("day"),
         comment: String::new(),
