@@ -3,6 +3,7 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::NaiveDate;
 use encoding::all::{ASCII, ISO_8859_1};
 use encoding::{DecoderTrap, Encoding};
+use ndarray::Array1;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::TryFrom;
 use std::default::Default;
@@ -393,14 +394,22 @@ pub fn parse_tx(
 #[br(little)]
 #[allow(dead_code)]
 pub struct Dg3Block {
-    dg_id: [u8; 2],   // DG
-    dg_len: u16,      // Length of block in bytes
-    dg_dg_next: u32,  // Pointer to next data group block (DGBLOCK) (can be NIL)
-    dg_cg_first: u32, // Pointer to first channel group block (CGBLOCK) (can be NIL)
-    dg_tr: u32,       // Pointer to trigger block
-    pub dg_data: u32, // Pointer to data block (DTBLOCK or DZBLOCK for this block type) or data list block (DLBLOCK of data blocks or its HLBLOCK)  (can be NIL)
-    dg_n_cg: u16,     // number of channel groups
-    dg_n_record_ids: u16, // number of record ids
+    /// DG
+    dg_id: [u8; 2],   
+    /// Length of block in bytes
+    dg_len: u16,    
+    /// Pointer to next data group block (DGBLOCK) (can be NIL)  
+    dg_dg_next: u32,
+    /// Pointer to first channel group block (CGBLOCK) (can be NIL)
+    dg_cg_first: u32, 
+    /// Pointer to trigger block
+    dg_tr: u32,       
+    /// Pointer to data block (DTBLOCK or DZBLOCK for this block type) or data list block (DLBLOCK of data blocks or its HLBLOCK)  (can be NIL)
+    pub dg_data: u32, 
+    /// number of channel groups
+    dg_n_cg: u16,     
+    /// number of record ids
+    dg_n_record_ids: u16, 
                       // reserved: u32, // reserved
 }
 
@@ -416,9 +425,12 @@ pub fn parse_dg3_block(rdr: &mut BufReader<&File>, target: u32, position: i64) -
 /// Dg3 struct wrapping block, comments and linked CG
 #[derive(Debug, Clone)]
 pub struct Dg3 {
-    pub block: Dg3Block,       // DG Block
-    pub block_position: u32,   // position of block in file
-    pub cg: HashMap<u16, Cg3>, // CG Block
+    /// DG Block
+    pub block: Dg3Block,       
+    /// position of block in file
+    pub block_position: u32,   
+    /// CG Block
+    pub cg: HashMap<u16, Cg3>, 
 }
 
 /// Parser for Dg3 and all linked blocks (cg, cn, cc)
@@ -485,16 +497,26 @@ pub fn parse_dg3(
 #[br(little)]
 #[allow(dead_code)]
 pub struct Cg3Block {
-    cg_id: [u8; 2],          // CG
-    cg_len: u16,             // Length of block in bytes
-    pub cg_cg_next: u32,     // Pointer to next channel group block (CGBLOCK) (can be NIL)
-    cg_cn_first: u32,        // Pointer to first channel block (CNBLOCK) (NIL allowed)
-    cg_comment: u32,         // CG comment (TXBLOCK) (can be NIL)
-    pub cg_record_id: u16, // Record ID, value of the identifier for a record if the DGBLOCK defines a number of record IDs > 0
-    cg_n_channels: u16,    // number of channels
-    pub cg_data_bytes: u16, // Size of data record in Bytes (without record ID)
-    pub cg_cycle_count: u32, // Number of records of this type in the data block
-    cg_sr: u32,            // Pointer to first sample reduction block (SRBLOCK) (NIL allowed)
+    /// CG
+    cg_id: [u8; 2],          
+    // Length of block in bytes
+    cg_len: u16,
+    /// Pointer to next channel group block (CGBLOCK) (can be NIL)
+    pub cg_cg_next: u32,     
+    /// Pointer to first channel block (CNBLOCK) (NIL allowed)
+    cg_cn_first: u32,        
+    /// CG comment (TXBLOCK) (can be NIL)
+    cg_comment: u32,       
+    /// Record ID, value of the identifier for a record if the DGBLOCK defines a number of record IDs > 0  
+    pub cg_record_id: u16, 
+    /// number of channels
+    cg_n_channels: u16,    
+    /// Size of data record in Bytes (without record ID)
+    pub cg_data_bytes: u16, 
+    /// Number of records of this type in the data block
+    pub cg_cycle_count: u32, 
+    /// Pointer to first sample reduction block (SRBLOCK) (NIL allowed)
+    cg_sr: u32,            
 }
 
 /// Cg3 (Channel Group) block struct parser with linked comments Source Information in sharable blocks
@@ -637,6 +659,7 @@ pub fn parse_cn3(
             target,
             position,
             sharable,
+            &mut cn,
             record_id_size,
             default_byte_order,
         );
@@ -651,6 +674,7 @@ pub fn parse_cn3(
                 next_pointer,
                 position,
                 sharable,
+                &mut cn,
                 record_id_size,
                 default_byte_order,
             );
@@ -668,23 +692,35 @@ pub fn parse_cn3(
 #[derive(Debug, PartialEq, Default, Clone, BinRead)]
 #[br(little)]
 pub struct Cn3Block1 {
-    cn_id: [u8; 2],            // CN
-    cn_len: u16,               // Length of block in bytes
-    cn_cn_next: u32,           // Pointer to next channel block (CNBLOCK) (can be NIL)
-    pub cn_cc_conversion: u32, // Pointer to the conversion formula (CCBLOCK) (can be NIL)
-    cn_ce_source: u32, // Pointer to the source-depending extensions (CEBLOCK) of this signal (can be NIL)
-    cn_cd_source: u32, // Pointer to the dependency block (CDBLOCK) of this signal (NIL allowed)
-    cn_tx_comment: u32, // Pointer to the channel comment (TXBLOCK) of this signal (NIL allowed)
-    pub cn_type: u16,  // Channel type, 0 normal data, 1 time channel
-    cn_short_name: [u8; 32], // Short signal name
+    /// CN
+    cn_id: [u8; 2],            
+    /// Length of block in bytes
+    cn_len: u16,               
+    /// Pointer to next channel block (CNBLOCK) (can be NIL)
+    cn_cn_next: u32,           
+    /// Pointer to the conversion formula (CCBLOCK) (can be NIL)
+    pub cn_cc_conversion: u32, 
+    /// Pointer to the source-depending extensions (CEBLOCK) of this signal (can be NIL)
+    cn_ce_source: u32, 
+    /// Pointer to the dependency block (CDBLOCK) of this signal (NIL allowed)
+    cn_cd_source: u32, 
+    /// Pointer to the channel comment (TXBLOCK) of this signal (NIL allowed)
+    cn_tx_comment: u32,
+    /// Channel type, 0 normal data, 1 time channel 
+    pub cn_type: u16,  
+    /// Short signal name
+    cn_short_name: [u8; 32], 
 }
 /// Cn3 Channel block struct, second sub block
 #[derive(Debug, PartialEq, Default, Clone, BinRead)]
 #[br(little)]
 pub struct Cn3Block2 {
-    pub cn_bit_offset: u16, // Start offset in bits to determine the first bit of the signal in the data record.
-    pub cn_bit_count: u16, // Number of bits used to encode the value of this signal in a data record
-    pub cn_data_type: u16, // Channel data type of raw signal value
+    /// Start offset in bits to determine the first bit of the signal in the data record.
+    pub cn_bit_offset: u16,
+    /// Number of bits used to encode the value of this signal in a data record
+    pub cn_bit_count: u16, 
+    /// Channel data type of raw signal value
+    pub cn_data_type: u16, 
     cn_valid_range_flags: u16, // Value range valid flag:
     cn_val_range_min: f64, // Minimum signal value that occurred for this signal (raw value) Only valid if "value range valid" flag (bit 3) is set.
     cn_val_range_max: f64, // Maximum signal value that occurred for this signal (raw value) Only valid if "value range valid" flag (bit 3) is set.
@@ -699,6 +735,7 @@ fn parse_cn3_block(
     target: u32,
     mut position: i64,
     sharable: &mut SharableBlocks3,
+    cn: &mut HashMap<u32, Cn3>,
     record_id_size: u16,
     default_byte_order: u16,
 ) -> (Cn3, i64) {
@@ -749,7 +786,29 @@ fn parse_cn3_block(
 
     // Reads CC block
     if !sharable.cc.contains_key(&block1.cn_cc_conversion) {
-        position = parse_cc3_block(rdr, block1.cn_cc_conversion, position, sharable);
+        let (pos, cc_block) = parse_cc3_block(rdr, block1.cn_cc_conversion, position, sharable);
+        position = pos;
+        if cc_block.cc_type == 132 {
+            // CANopen date
+            let (date_ms, min, hour, day, month, year) = can_open_date(
+                pos_byte_beg,
+                block2.cn_bit_offset,
+            );
+            cn.insert(block1.cn_cc_conversion + 1, date_ms);
+            cn.insert(block1.cn_cc_conversion + 2, min);
+            cn.insert(block1.cn_cc_conversion + 3, hour);
+            cn.insert(block1.cn_cc_conversion + 4, day);
+            cn.insert(block1.cn_cc_conversion + 5, month);
+            cn.insert(block1.cn_cc_conversion + 6, year);
+        } else if cc_block.cc_type == 133 {
+            // CANopen time
+            let (ms, days) = can_open_time(
+                pos_byte_beg,
+                block2.cn_bit_offset,
+            );
+            cn.insert(block1.cn_cc_conversion + 1, ms);
+            cn.insert(block1.cn_cc_conversion + 2 + 32, days);
+        }
     }
 
     // Reads CE block
@@ -807,6 +866,184 @@ pub fn convert_data_type_3to4(mdf3_datatype: u16) -> u8 {
     }
 }
 
+/// returns created CANopenDate channels
+fn can_open_date(
+    pos_byte_beg: u16,
+    cn_bit_offset: u16,
+) -> (Cn3, Cn3, Cn3, Cn3, Cn3, Cn3) {
+    let block1 = Cn3Block1 {
+        cn_type: 0,
+        cn_cc_conversion: 0,
+        ..Default::default()
+    };
+    let block2 = Cn3Block2 {
+        cn_data_type: 13,
+        cn_byte_offset: pos_byte_beg,
+        cn_bit_count: 16,
+        cn_bit_offset,
+        ..Default::default()
+    };
+    let date_ms = Cn3 {
+        block1: block1.clone(),
+        block2,
+        unique_name: String::from("ms"),
+        comment: String::new(),
+        description: String::from("Milliseconds"),
+        pos_byte_beg,
+        n_bytes: 2,
+        data: ChannelData::UInt16(Array1::<u16>::zeros((0,))),
+        endian: false,
+        channel_data_valid: false,
+    };
+    let block2 = Cn3Block2 {
+        cn_data_type: 13,
+        cn_byte_offset: pos_byte_beg + 2,
+        cn_bit_count: 6,
+        cn_bit_offset: cn_bit_offset + 16,
+        ..Default::default()
+    };
+    let min = Cn3 {
+        block1: block1.clone(),
+        block2,
+        unique_name: String::from("min"),
+        comment: String::new(),
+        description: String::from("Minutes"),
+        pos_byte_beg: pos_byte_beg + 2,
+        n_bytes: 1,
+        data: ChannelData::UInt8(Array1::<u8>::zeros((0,))),
+        endian: false,
+        channel_data_valid: false,
+    };
+    let block2 = Cn3Block2 {
+        cn_data_type: 13,
+        cn_byte_offset: pos_byte_beg + 3,
+        cn_bit_count: 5,
+        cn_bit_offset: cn_bit_offset + 24,
+        ..Default::default()
+    };
+    let hour = Cn3 {
+        block1: block1.clone(),
+        block2,
+        unique_name: String::from("hour"),
+        comment: String::new(),
+        description: String::from("Hours"),
+        pos_byte_beg: pos_byte_beg + 3,
+        n_bytes: 1,
+        data: ChannelData::UInt8(Array1::<u8>::zeros((0,))),
+        endian: false,
+        channel_data_valid: false,
+    };
+    let block2 = Cn3Block2 {
+        cn_data_type: 13,
+        cn_byte_offset: pos_byte_beg + 4,
+        cn_bit_count: 5,
+        cn_bit_offset: cn_bit_offset + 32,
+        ..Default::default()
+    };
+    let day = Cn3 {
+        block1: block1.clone(),
+        block2,
+        unique_name: String::from("day"),
+        comment: String::new(),
+        description: String::from("Days"),
+        pos_byte_beg: pos_byte_beg + 4,
+        n_bytes: 1,
+        data: ChannelData::UInt8(Array1::<u8>::zeros((0,))),
+        endian: false,
+        channel_data_valid: false,
+    };
+    let block2 = Cn3Block2 {
+        cn_data_type: 13,
+        cn_byte_offset: pos_byte_beg + 5,
+        cn_bit_count: 6,
+        cn_bit_offset: cn_bit_offset + 40,
+        ..Default::default()
+    };
+    let month = Cn3 {
+        block1: block1.clone(),
+        block2,
+        unique_name: String::from("month"),
+        comment: String::new(),
+        description: String::from("Month"),
+        pos_byte_beg: pos_byte_beg + 5,
+        n_bytes: 1,
+        data: ChannelData::UInt8(Array1::<u8>::zeros((0,))),
+        endian: false,
+        channel_data_valid: false,
+    };
+    let block2 = Cn3Block2 {
+        cn_data_type: 13,
+        cn_byte_offset: pos_byte_beg + 6,
+        cn_bit_count: 7,
+        cn_bit_offset: cn_bit_offset + 48,
+        ..Default::default()
+    };
+    let year = Cn3 {
+        block1: block1.clone(),
+        block2,
+        unique_name: String::from("year"),
+        comment: String::new(),
+        description: String::from("Years"),
+        pos_byte_beg: pos_byte_beg + 7,
+        n_bytes: 1,
+        data: ChannelData::UInt8(Array1::<u8>::zeros((0,))),
+        endian: false,
+        channel_data_valid: false,
+    };
+    (date_ms, min, hour, day, month, year)
+}
+
+/// returns created CANopenTime channels
+fn can_open_time(
+    pos_byte_beg: u16,
+    cn_bit_offset: u16,
+) -> (Cn3, Cn3) {
+    let block1 = Cn3Block1 {
+        cn_type: 0,
+        cn_cc_conversion: 0,
+        ..Default::default()
+    };
+    let block2 = Cn3Block2 {
+        cn_data_type: 13,
+        cn_byte_offset: pos_byte_beg,
+        cn_bit_count: 32,
+        cn_bit_offset,
+        ..Default::default()
+    };
+    let ms: Cn3 = Cn3 {
+        block1: block1.clone(),
+        block2,
+        unique_name: String::from("ms"),
+        comment: String::new(),
+        description: String::from("Milliseconds"),
+        pos_byte_beg,
+        n_bytes: 4,
+        data: ChannelData::UInt32(Array1::<u32>::zeros((0,))),
+        endian: false,
+        channel_data_valid: false,
+    };
+    let block2 = Cn3Block2 {
+        cn_data_type: 13,
+        cn_byte_offset: pos_byte_beg + 4,
+        cn_bit_count: 16,
+        cn_bit_offset: cn_bit_offset + 32,
+        ..Default::default()
+    };
+    let days: Cn3 = Cn3 {
+        block1: block1.clone(),
+        block2,
+        unique_name: String::from("day"),
+        comment: String::new(),
+        description: String::from("Days"),
+        pos_byte_beg: pos_byte_beg + 4,
+        n_bytes: 2,
+        data: ChannelData::UInt16(Array1::<u16>::zeros((0,))),
+        endian: false,
+        channel_data_valid: false,
+    };
+    (ms, days)
+}
+
 /// sharable blocks (most likely referenced multiple times and shared by several blocks)
 /// that are in sharable fields and holds CC, CE, TX blocks
 #[derive(Debug, Default, Clone)]
@@ -851,7 +1088,7 @@ pub fn parse_cc3_block(
     target: u32,
     mut position: i64,
     sharable: &mut SharableBlocks3,
-) -> i64 {
+) -> (i64, Cc3Block) {
     rdr.seek_relative(target as i64 - position).unwrap(); // change buffer position
     let mut buf = vec![0u8; 46];
     rdr.read_exact(&mut buf).unwrap();
@@ -966,8 +1203,8 @@ pub fn parse_cc3_block(
         _ => conversion = Conversion::Identity,
     }
 
-    sharable.cc.insert(target, (cc_block, conversion));
-    position
+    sharable.cc.insert(target, (cc_block.clone(), conversion));
+    (position, cc_block)
 }
 
 /// CE channel extension block struct, second sub block
