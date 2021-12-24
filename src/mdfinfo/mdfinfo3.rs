@@ -1078,8 +1078,6 @@ pub enum Conversion {
     Formula(String),
     TextTable(Vec<(f64, String)>),
     TextRangeTable((Vec<(f64, f64, String)>, String)),
-    Date,
-    Time,
     Identity,
 }
 

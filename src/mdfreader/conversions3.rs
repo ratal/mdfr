@@ -51,8 +51,6 @@ pub fn convert_all_channels(dg: &mut Dg3, sharable: &SharableBlocks3) {
                         Conversion::TextRangeTable(cc_val_ref) => {
                             value_range_to_text(cn, cc_val_ref, &cycle_count)
                         }
-                        Conversion::Date => {}
-                        Conversion::Time => {}
                     }
                 }
             })
