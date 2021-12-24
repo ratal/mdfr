@@ -212,24 +212,40 @@ pub fn parse_block_header(rdr: &mut BufReader<&File>) -> Blockheader3 {
 #[derive(Debug, PartialEq, Default)]
 #[allow(dead_code)]
 pub struct Hd3 {
-    hd_id: [u8; 2],       // HD
-    hd_len: u16,          // Length of block in bytes
-    pub hd_dg_first: u32, // Pointer to the first data group block (DGBLOCK) (can be NIL)
-    hd_md_comment: u32,   // Pointer to the measurement file comment (TXBLOCK) (can be NIL)
-    hd_pr: u32,           // Program block
+    /// HD
+    hd_id: [u8; 2],       
+    /// Length of block in bytes
+    hd_len: u16,          
+    /// Pointer to the first data group block (DGBLOCK) (can be NIL)
+    pub hd_dg_first: u32, 
+    /// Pointer to the measurement file comment (TXBLOCK) (can be NIL)
+    hd_md_comment: u32,   
+    /// Program block
+    hd_pr: u32,           
 
     // Data members
-    hd_n_datagroups: u16, // Time stamp in nanoseconds elapsed since 00:00:00 01.01.1970 (UTC time or local time, depending on "local time" flag, see [UTC]).
-    pub hd_date: (u32, u32, i32), // Date at which the recording was started in "DD:MM:YYYY" format
-    pub hd_time: (u32, u32, u32), // Time at which the recording was started in "HH:MM:SS" format
-    pub hd_author: String, // Author's name
-    pub hd_organization: String, // name of the organization or department
-    pub hd_project: String, // project name
-    pub hd_subject: String, // subject or measurement object
-    hd_start_time_ns: Option<u64>, // time stamp at which recording was started in nanosecond
-    hd_time_offset: Option<i16>, // UTC time offset
-    hd_time_quality: Option<u16>, // time quality class
-    hd_time_identifier: Option<String>, // timer identification or time source
+    /// Time stamp in nanoseconds elapsed since 00:00:00 01.01.1970 (UTC time or local time, depending on "local time" flag, see [UTC]).
+    hd_n_datagroups: u16, 
+    /// Date at which the recording was started in "DD:MM:YYYY" format
+    pub hd_date: (u32, u32, i32), 
+    /// Time at which the recording was started in "HH:MM:SS" format
+    pub hd_time: (u32, u32, u32), 
+    /// Author's name
+    pub hd_author: String, 
+    /// name of the organization or department
+    pub hd_organization: String, 
+    /// project name
+    pub hd_project: String, 
+    /// subject or measurement object
+    pub hd_subject: String, 
+    /// time stamp at which recording was started in nanosecond
+    hd_start_time_ns: Option<u64>, 
+    /// time stamp at which recording was started in nanosecond
+    hd_time_offset: Option<i16>, 
+    /// time quality class
+    hd_time_quality: Option<u16>, 
+    /// timer identification or time source
+    hd_time_identifier: Option<String>, 
 }
 
 /// HD3 block strucutre
@@ -1092,14 +1108,22 @@ pub struct SharableBlocks3 {
 #[br(little)]
 #[allow(dead_code)]
 pub struct Cc3Block {
-    cc_id: [u8; 2],            // CC
-    cc_len: u16,               // Length of block in bytes
-    cc_valid_range_flags: u16, // Physical value range valid flag
-    cc_val_range_min: f64, // Minimum physical signal value that occurred for this signal. Only valid if "physical value range valid" flag is set.
-    cc_val_range_max: f64, // Maximum physical signal value that occurred for this signal. Only valid if "physical value range valid" flag is set.
-    cc_unit: [u8; 20],     // physical unit of the signal
-    cc_type: u16,          // Conversion type
-    cc_size: u16,          // Size information, meaning depends of conversion type
+    /// CC
+    cc_id: [u8; 2],            
+    /// Length of block in bytes
+    cc_len: u16,               
+    /// Physical value range valid flag
+    cc_valid_range_flags: u16, 
+    /// Minimum physical signal value that occurred for this signal. Only valid if "physical value range valid" flag is set.
+    cc_val_range_min: f64, 
+    /// Maximum physical signal value that occurred for this signal. Only valid if "physical value range valid" flag is set.
+    cc_val_range_max: f64, 
+    /// physical unit of the signal
+    cc_unit: [u8; 20],     
+    /// Conversion type
+    cc_type: u16,          
+    /// Size information, meaning depends of conversion type
+    cc_size: u16,          
 }
 
 #[derive(Debug, Clone)]
@@ -1269,9 +1293,12 @@ pub fn parse_cc3_block(
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct CeBlock {
-    ce_id: [u8; 2],         // CE
-    ce_len: u16,            // Length of block in bytes
-    ce_extension_type: u16, // extension type
+    /// CE
+    ce_id: [u8; 2],         
+    /// Length of block in bytes
+    ce_len: u16,            
+    /// extension type
+    ce_extension_type: u16, 
     ce_extension: CeSupplement,
 }
 
@@ -1287,20 +1314,28 @@ pub enum CeSupplement {
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct DimBlock {
-    ce_module_number: u16, // Module number
-    ce_address: u32,       // address
-    ce_desc: String,       // description
-    ce_ecu_id: String,     // ECU identifier
+    /// Module number
+    ce_module_number: u16, 
+    /// address
+    ce_address: u32,       
+    // description
+    ce_desc: String,       
+    /// ECU identifier
+    ce_ecu_id: String,     
 }
 
 /// Vector CAN Block supplement
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct CanBlock {
-    ce_can_id: u32,          // CAN identifier
-    ce_can_index: u32,       // CAN channel index
-    ce_message_name: String, // message name
-    ce_sender_name: String,  // sender name
+    /// CAN identifier
+    ce_can_id: u32,          
+    /// CAN channel index
+    ce_can_index: u32,       
+    /// message name
+    ce_message_name: String, 
+    /// sender name
+    ce_sender_name: String,  
 }
 
 /// parses Channel Extension block
