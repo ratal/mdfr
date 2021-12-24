@@ -213,39 +213,39 @@ pub fn parse_block_header(rdr: &mut BufReader<&File>) -> Blockheader3 {
 #[allow(dead_code)]
 pub struct Hd3 {
     /// HD
-    hd_id: [u8; 2],       
+    hd_id: [u8; 2],
     /// Length of block in bytes
-    hd_len: u16,          
+    hd_len: u16,
     /// Pointer to the first data group block (DGBLOCK) (can be NIL)
-    pub hd_dg_first: u32, 
+    pub hd_dg_first: u32,
     /// Pointer to the measurement file comment (TXBLOCK) (can be NIL)
-    hd_md_comment: u32,   
+    hd_md_comment: u32,
     /// Program block
-    hd_pr: u32,           
+    hd_pr: u32,
 
     // Data members
     /// Time stamp in nanoseconds elapsed since 00:00:00 01.01.1970 (UTC time or local time, depending on "local time" flag, see [UTC]).
-    hd_n_datagroups: u16, 
+    hd_n_datagroups: u16,
     /// Date at which the recording was started in "DD:MM:YYYY" format
-    pub hd_date: (u32, u32, i32), 
+    pub hd_date: (u32, u32, i32),
     /// Time at which the recording was started in "HH:MM:SS" format
-    pub hd_time: (u32, u32, u32), 
+    pub hd_time: (u32, u32, u32),
     /// Author's name
-    pub hd_author: String, 
+    pub hd_author: String,
     /// name of the organization or department
-    pub hd_organization: String, 
+    pub hd_organization: String,
     /// project name
-    pub hd_project: String, 
+    pub hd_project: String,
     /// subject or measurement object
-    pub hd_subject: String, 
+    pub hd_subject: String,
     /// time stamp at which recording was started in nanosecond
-    hd_start_time_ns: Option<u64>, 
+    hd_start_time_ns: Option<u64>,
     /// time stamp at which recording was started in nanosecond
-    hd_time_offset: Option<i16>, 
+    hd_time_offset: Option<i16>,
     /// time quality class
-    hd_time_quality: Option<u16>, 
+    hd_time_quality: Option<u16>,
     /// timer identification or time source
-    hd_time_identifier: Option<String>, 
+    hd_time_identifier: Option<String>,
 }
 
 /// HD3 block strucutre
@@ -1109,21 +1109,21 @@ pub struct SharableBlocks3 {
 #[allow(dead_code)]
 pub struct Cc3Block {
     /// CC
-    cc_id: [u8; 2],            
+    cc_id: [u8; 2],
     /// Length of block in bytes
-    cc_len: u16,               
+    cc_len: u16,
     /// Physical value range valid flag
-    cc_valid_range_flags: u16, 
+    cc_valid_range_flags: u16,
     /// Minimum physical signal value that occurred for this signal. Only valid if "physical value range valid" flag is set.
-    cc_val_range_min: f64, 
+    cc_val_range_min: f64,
     /// Maximum physical signal value that occurred for this signal. Only valid if "physical value range valid" flag is set.
-    cc_val_range_max: f64, 
+    cc_val_range_max: f64,
     /// physical unit of the signal
-    cc_unit: [u8; 20],     
+    cc_unit: [u8; 20],
     /// Conversion type
-    cc_type: u16,          
+    cc_type: u16,
     /// Size information, meaning depends of conversion type
-    cc_size: u16,          
+    cc_size: u16,
 }
 
 #[derive(Debug, Clone)]
@@ -1294,11 +1294,11 @@ pub fn parse_cc3_block(
 #[allow(dead_code)]
 pub struct CeBlock {
     /// CE
-    ce_id: [u8; 2],         
+    ce_id: [u8; 2],
     /// Length of block in bytes
-    ce_len: u16,            
+    ce_len: u16,
     /// extension type
-    ce_extension_type: u16, 
+    ce_extension_type: u16,
     ce_extension: CeSupplement,
 }
 
@@ -1315,13 +1315,13 @@ pub enum CeSupplement {
 #[allow(dead_code)]
 pub struct DimBlock {
     /// Module number
-    ce_module_number: u16, 
+    ce_module_number: u16,
     /// address
-    ce_address: u32,       
+    ce_address: u32,
     // description
-    ce_desc: String,       
+    ce_desc: String,
     /// ECU identifier
-    ce_ecu_id: String,     
+    ce_ecu_id: String,
 }
 
 /// Vector CAN Block supplement
@@ -1329,13 +1329,13 @@ pub struct DimBlock {
 #[allow(dead_code)]
 pub struct CanBlock {
     /// CAN identifier
-    ce_can_id: u32,          
+    ce_can_id: u32,
     /// CAN channel index
-    ce_can_index: u32,       
+    ce_can_index: u32,
     /// message name
-    ce_message_name: String, 
+    ce_message_name: String,
     /// sender name
-    ce_sender_name: String,  
+    ce_sender_name: String,
 }
 
 /// parses Channel Extension block

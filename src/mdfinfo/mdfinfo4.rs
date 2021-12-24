@@ -228,10 +228,14 @@ impl MdfInfo4 {
 #[derive(Debug, Copy, Clone, BinRead)]
 #[br(little)]
 pub struct Blockheader4 {
-    pub hdr_id: [u8; 4], // '##XX'
-    hdr_gap: [u8; 4],    // reserved, must be 0
-    pub hdr_len: u64,    // Length of block in bytes
-    pub hdr_links: u64,  // # of links
+    /// '##XX'
+    pub hdr_id: [u8; 4],
+    /// reserved, must be 0
+    hdr_gap: [u8; 4],
+    /// Length of block in bytes
+    pub hdr_len: u64,
+    /// # of links
+    pub hdr_links: u64,
 }
 
 /// parse the block header and its fields id, (reserved), length and number of links
@@ -250,9 +254,12 @@ pub fn parse_block_header(rdr: &mut BufReader<&File>) -> Blockheader4 {
 #[br(little)]
 #[allow(dead_code)]
 pub struct Blockheader4Short {
-    hdr_id: [u8; 4],  // '##XX'
-    hdr_gap: [u8; 4], // reserved, must be 0
-    hdr_len: u64,     // Length of block in bytes
+    /// '##XX'
+    hdr_id: [u8; 4],
+    /// reserved, must be 0
+    hdr_gap: [u8; 4],
+    /// Length of block in bytes
+    hdr_len: u64,
 }
 
 /// parse the block header and its fields id, (reserved), length except the number of links
@@ -541,17 +548,28 @@ fn xml_parse(val: &mut (String, bool)) {
 #[br(little)]
 #[allow(dead_code)]
 pub struct FhBlock {
-    fh_id: [u8; 4],             // '##FH'
-    fh_gap: [u8; 4],            // reserved, must be 0
-    fh_len: u64,                // Length of block in bytes
-    fh_links: u64,              // # of links
-    pub fh_fh_next: i64,        // Link to next FHBLOCK (can be NIL if list finished)
-    pub fh_md_comment: i64, // Link to MDBLOCK containing comment about the creation or modification of the MDF file.
-    pub fh_time_ns: u64,    // time stamp in nanosecs
-    pub fh_tz_offset_min: i16, // time zone offset on minutes
-    pub fh_dst_offset_min: i16, // daylight saving time offset in minutes for start time stamp
-    pub fh_time_flags: u8,  // time flags, but 1 local, bit 2 time offsets
-    fh_reserved: [u8; 3],   // reserved
+    /// '##FH'
+    fh_id: [u8; 4],
+    /// reserved, must be 0
+    fh_gap: [u8; 4],
+    /// Length of block in bytes
+    fh_len: u64,
+    /// # of links
+    fh_links: u64,
+    /// Link to next FHBLOCK (can be NIL if list finished)
+    pub fh_fh_next: i64,
+    /// Link to MDBLOCK containing comment about the creation or modification of the MDF file.    
+    pub fh_md_comment: i64,
+    /// time stamp in nanosecs
+    pub fh_time_ns: u64,
+    /// time zone offset on minutes
+    pub fh_tz_offset_min: i16,
+    /// daylight saving time offset in minutes for start time stamp
+    pub fh_dst_offset_min: i16,
+    /// time flags, but 1 local, bit 2 time offsets
+    pub fh_time_flags: u8,
+    /// reserved
+    fh_reserved: [u8; 3],
 }
 
 /// Fh4 (File History) block struct parser
@@ -629,21 +647,35 @@ pub fn parse_fh(rdr: &mut BufReader<&File>, target: i64, position: i64) -> (Fh, 
 #[br(little)]
 #[allow(dead_code)]
 pub struct At4Block {
-    at_id: [u8; 4],            // DG
-    reserved: [u8; 4],         // reserved
-    at_len: u64,               // Length of block in bytes
-    at_links: u64,             // # of links
-    at_at_next: i64,           // Link to next ATBLOCK (linked list) (can be NIL)
-    at_tx_filename: i64, // Link to TXBLOCK with the path and file name of the embedded or referenced file (can only be NIL if data is embedded). The path of the file can be relative or absolute. If relative, it is relative to the directory of the MDF file. If no path is given, the file must be in the same directory as the MDF file.
-    at_tx_mimetype: i64, // Link to TXBLOCK with MIME content-type text that gives information about the attached data. Can be NIL if the content-type is unknown, but should be specified whenever possible. The MIME content-type string must be written in lowercase.
-    at_md_comment: i64, // Link to MDBLOCK with comment and additional information about the attachment (can be NIL).
-    at_flags: u16,      // Flags The value contains the following bit flags (see AT_FL_xxx):
-    at_creator_index: u16, // Creator index, i.e. zero-based index of FHBLOCK in global list of FHBLOCKs that specifies which application has created this attachment, or changed it most recently.
-    at_reserved: [u8; 4],  // Reserved
-    at_md5_checksum: [u8; 16], // 128-bit value for MD5 check sum (of the uncompressed data if data is embedded and compressed). Only valid if "MD5 check sum valid" flag (bit 2) is set.
-    at_original_size: u64, // Original data size in Bytes, i.e. either for external file or for uncompressed data.
-    at_embedded_size: u64, // Embedded data size N, i.e. number of Bytes for binary embedded data following this element. Must be 0 if external file is referenced.
-                           // followed by embedded data depending of flag
+    /// ##DG
+    at_id: [u8; 4],
+    /// reserved
+    reserved: [u8; 4],
+    /// Length of block in bytes
+    at_len: u64,
+    /// # of links
+    at_links: u64,
+    /// Link to next ATBLOCK (linked list) (can be NIL)
+    at_at_next: i64,
+    /// Link to TXBLOCK with the path and file name of the embedded or referenced file (can only be NIL if data is embedded). The path of the file can be relative or absolute. If relative, it is relative to the directory of the MDF file. If no path is given, the file must be in the same directory as the MDF file.      
+    at_tx_filename: i64,
+    /// Link to TXBLOCK with MIME content-type text that gives information about the attached data. Can be NIL if the content-type is unknown, but should be specified whenever possible. The MIME content-type string must be written in lowercase.
+    at_tx_mimetype: i64,
+    /// Link to MDBLOCK with comment and additional information about the attachment (can be NIL).
+    at_md_comment: i64,
+    /// Flags The value contains the following bit flags (see AT_FL_xxx):
+    at_flags: u16,
+    /// Creator index, i.e. zero-based index of FHBLOCK in global list of FHBLOCKs that specifies which application has created this attachment, or changed it most recently.
+    at_creator_index: u16,
+    /// Reserved
+    at_reserved: [u8; 4],
+    /// 128-bit value for MD5 check sum (of the uncompressed data if data is embedded and compressed). Only valid if "MD5 check sum valid" flag (bit 2) is set.
+    at_md5_checksum: [u8; 16],
+    /// Original data size in Bytes, i.e. either for external file or for uncompressed data.
+    at_original_size: u64,
+    /// Embedded data size N, i.e. number of Bytes for binary embedded data following this element. Must be 0 if external file is referenced.
+    at_embedded_size: u64,
+    // followed by embedded data depending of flag
 }
 
 /// At4 (Attachment) block struct parser
@@ -742,26 +774,44 @@ pub struct Ev4Block {
     //ev_id: [u8; 4],  // DG
     //reserved: [u8; 4],  // reserved
     //ev_len: u64,      // Length of block in bytes
-    ev_links: u64,      // # of links
-    ev_ev_next: i64,    // Link to next EVBLOCK (linked list) (can be NIL)
-    ev_ev_parent: i64,  // Referencing link to EVBLOCK with parent event (can be NIL).
-    ev_ev_range: i64, // Referencing link to EVBLOCK with event that defines the beginning of a range (can be NIL, must be NIL if ev_range_type ≠ 2).
-    ev_tx_name: i64, // Pointer to TXBLOCK with event name (can be NIL) Name must be according to naming rules stated in 4.4.2 Naming Rules. If available, the name of a named trigger condition should be used as event name. Other event types may have individual names or no names.
-    ev_md_comment: i64, // Pointer to TX/MDBLOCK with event comment and additional information, e.g. trigger condition or formatted user comment text (can be NIL)
+    /// # of links
+    ev_links: u64,
+    /// Link to next EVBLOCK (linked list) (can be NIL)
+    ev_ev_next: i64,
+    /// Referencing link to EVBLOCK with parent event (can be NIL).
+    ev_ev_parent: i64,
+    /// Referencing link to EVBLOCK with event that defines the beginning of a range (can be NIL, must be NIL if ev_range_type ≠ 2).  
+    ev_ev_range: i64,
+    /// Pointer to TXBLOCK with event name (can be NIL) Name must be according to naming rules stated in 4.4.2 Naming Rules. If available, the name of a named trigger condition should be used as event name. Other event types may have individual names or no names.
+    ev_tx_name: i64,
+    /// Pointer to TX/MDBLOCK with event comment and additional information, e.g. trigger condition or formatted user comment text (can be NIL)
+    ev_md_comment: i64,
     #[br(if(ev_links > 5), little, count = ev_links - 5)]
-    links: Vec<i64>, // links
+    /// links
+    links: Vec<i64>,
 
-    ev_type: u8,              // Event type (see EV_T_xxx)
-    ev_sync_type: u8,         // Sync type (see EV_S_xxx)
-    ev_range_type: u8,        // Range Type (see EV_R_xxx)
-    ev_cause: u8,             // Cause of event (see EV_C_xxx)
-    ev_flags: u8,             // flags (see EV_F_xxx)
-    ev_reserved: [u8; 3],     // Reserved
-    ev_scope_count: u32,      // Length M of ev_scope list. Can be zero.
-    ev_attachment_count: u16, // Length N of ev_at_reference list, i.e. number of attachments for this event. Can be zero.
-    ev_creator_index: u16, // Creator index, i.e. zero-based index of FHBLOCK in global list of FHBLOCKs that specifies which application has created or changed this event (e.g. when generating event offline).
-    ev_sync_base_value: i64, // Base value for synchronization value.
-    ev_sync_factor: f64,   // Factor for event synchronization value.
+    /// Event type (see EV_T_xxx)
+    ev_type: u8,
+    /// Sync type (see EV_S_xxx)
+    ev_sync_type: u8,
+    /// Range Type (see EV_R_xxx)
+    ev_range_type: u8,
+    /// Cause of event (see EV_C_xxx)
+    ev_cause: u8,
+    /// flags (see EV_F_xxx)
+    ev_flags: u8,
+    /// Reserved
+    ev_reserved: [u8; 3],
+    /// Length M of ev_scope list. Can be zero.
+    ev_scope_count: u32,
+    /// Length N of ev_at_reference list, i.e. number of attachments for this event. Can be zero.
+    ev_attachment_count: u16,
+    /// Creator index, i.e. zero-based index of FHBLOCK in global list of FHBLOCKs that specifies which application has created or changed this event (e.g. when generating event offline).
+    ev_creator_index: u16,
+    /// Base value for synchronization value.
+    ev_sync_base_value: i64,
+    /// Factor for event synchronization value.
+    ev_sync_factor: f64,
 }
 
 /// Ev4 (Event) block struct parser
@@ -826,16 +876,26 @@ pub fn parse_ev4(
 #[br(little)]
 #[allow(dead_code)]
 pub struct Dg4Block {
-    dg_id: [u8; 4],         // ##DG
-    reserved: [u8; 4],      // reserved
-    dg_len: u64,            // Length of block in bytes
-    dg_links: u64,          // # of links
-    pub dg_dg_next: i64,    // Pointer to next data group block (DGBLOCK) (can be NIL)
-    pub dg_cg_first: i64,   // Pointer to first channel group block (CGBLOCK) (can be NIL)
-    pub dg_data: i64, // Pointer to data block (DTBLOCK or DZBLOCK for this block type) or data list block (DLBLOCK of data blocks or its HLBLOCK)  (can be NIL)
-    dg_md_comment: i64, // comment
-    pub dg_rec_id_size: u8, // number of bytes used for record IDs. 0 no recordID
-    reserved_2: [u8; 7], // reserved
+    /// ##DG
+    dg_id: [u8; 4],
+    /// reserved
+    reserved: [u8; 4],
+    /// Length of block in bytes
+    dg_len: u64,
+    /// # of links
+    dg_links: u64,
+    /// Pointer to next data group block (DGBLOCK) (can be NIL)
+    pub dg_dg_next: i64,
+    /// Pointer to first channel group block (CGBLOCK) (can be NIL)
+    pub dg_cg_first: i64,
+    // Pointer to data block (DTBLOCK or DZBLOCK for this block type) or data list block (DLBLOCK of data blocks or its HLBLOCK)  (can be NIL)
+    pub dg_data: i64,
+    /// comment
+    dg_md_comment: i64,
+    /// number of bytes used for record IDs. 0 no recordID
+    pub dg_rec_id_size: u8,
+    // reserved
+    reserved_2: [u8; 7],
 }
 
 /// Dg4 (Data Group) block struct parser with comments
@@ -865,9 +925,12 @@ fn parse_dg4_block(
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct Dg4 {
-    pub block: Dg4Block,               // DG Block
-    comments: HashMap<String, String>, // Comments
-    pub cg: HashMap<u64, Cg4>,         // CG Block
+    /// DG Block
+    pub block: Dg4Block,
+    /// Comments
+    comments: HashMap<String, String>,
+    /// CG Block
+    pub cg: HashMap<u64, Cg4>,
 }
 
 /// Parser for Dg4 and all linked blocks (cg, cn, cc, ca, si)
@@ -1014,23 +1077,36 @@ pub struct Cg4Block {
     // cg_id: [u8; 4],  // ##CG
     // reserved: [u8; 4],  // reserved
     // cg_len: u64,      // Length of block in bytes
-    cg_links: u64,         // # of links
-    pub cg_cg_next: i64,   // Pointer to next channel group block (CGBLOCK) (can be NIL)
-    cg_cn_first: i64, // Pointer to first channel block (CNBLOCK) (can be NIL, must be NIL for VLSD CGBLOCK, i.e. if "VLSD channel group" flag (bit 0) is set)
-    cg_tx_acq_name: i64, // Pointer to acquisition name (TXBLOCK) (can be NIL, must be NIL for VLSD CGBLOCK)
-    cg_si_acq_source: i64, // Pointer to acquisition source (SIBLOCK) (can be NIL, must be NIL for VLSD CGBLOCK) See also rules for uniqueness explained in 4.4.3 Identification of Channels.
-    cg_sr_first: i64, // Pointer to first sample reduction block (SRBLOCK) (can be NIL, must be NIL for VLSD CGBLOCK)
-    cg_md_comment: i64, //Pointer to comment and additional information (TXBLOCK or MDBLOCK) (can be NIL, must be NIL for VLSD CGBLOCK)
+    /// # of links
+    cg_links: u64,
+    /// Pointer to next channel group block (CGBLOCK) (can be NIL)
+    pub cg_cg_next: i64,
+    /// Pointer to first channel block (CNBLOCK) (can be NIL, must be NIL for VLSD CGBLOCK, i.e. if "VLSD channel group" flag (bit 0) is set)
+    cg_cn_first: i64,
+    /// Pointer to acquisition name (TXBLOCK) (can be NIL, must be NIL for VLSD CGBLOCK)
+    cg_tx_acq_name: i64,
+    /// Pointer to acquisition source (SIBLOCK) (can be NIL, must be NIL for VLSD CGBLOCK) See also rules for uniqueness explained in 4.4.3 Identification of Channels.
+    cg_si_acq_source: i64,
+    /// Pointer to first sample reduction block (SRBLOCK) (can be NIL, must be NIL for VLSD CGBLOCK)
+    cg_sr_first: i64,
+    ///Pointer to comment and additional information (TXBLOCK or MDBLOCK) (can be NIL, must be NIL for VLSD CGBLOCK)
+    cg_md_comment: i64,
     #[br(if(cg_links > 6))]
     cg_cg_master: i64,
     // Data Members
-    pub cg_record_id: u64, // Record ID, value must be less than maximum unsigned integer value allowed by dg_rec_id_size in parent DGBLOCK. Record ID must be unique within linked list of CGBLOCKs.
-    pub cg_cycle_count: u64, // Number of cycles, i.e. number of samples for this channel group. This specifies the number of records of this type in the data block.
-    pub cg_flags: u16,       // Flags The value contains the following bit flags (see CG_F_xx):
+    /// Record ID, value must be less than maximum unsigned integer value allowed by dg_rec_id_size in parent DGBLOCK. Record ID must be unique within linked list of CGBLOCKs.
+    pub cg_record_id: u64,
+    /// Number of cycles, i.e. number of samples for this channel group. This specifies the number of records of this type in the data block.
+    pub cg_cycle_count: u64,
+    /// Flags The value contains the following bit flags (see CG_F_xx):
+    pub cg_flags: u16,
     cg_path_separator: u16,
-    cg_reserved: [u8; 4],    // Reserved.
-    pub cg_data_bytes: u32, // Normal CGBLOCK: Number of data Bytes (after record ID) used for signal values in record, i.e. size of plain data for each recorded sample of this channel group. VLSD CGBLOCK: Low part of a UINT64 value that specifies the total size in Bytes of all variable length signal values for the recorded samples of this channel group. See explanation for cg_inval_bytes.
-    pub cg_inval_bytes: u32, // Normal CGBLOCK: Number of additional Bytes for record used for invalidation bits. Can be zero if no invalidation bits are used at all. Invalidation bits may only occur in the specified number of Bytes after the data Bytes, not within the data Bytes that contain the signal values. VLSD CGBLOCK: High part of UINT64 value that specifies the total size in Bytes of all variable length signal values for the recorded samples of this channel group, i.e. the total size in Bytes can be calculated by cg_data_bytes + (cg_inval_bytes << 32) Note: this value does not include the Bytes used to specify the length of each VLSD value!
+    /// Reserved.
+    cg_reserved: [u8; 4],
+    /// Normal CGBLOCK: Number of data Bytes (after record ID) used for signal values in record, i.e. size of plain data for each recorded sample of this channel group. VLSD CGBLOCK: Low part of a UINT64 value that specifies the total size in Bytes of all variable length signal values for the recorded samples of this channel group. See explanation for cg_inval_bytes.
+    pub cg_data_bytes: u32,
+    /// Normal CGBLOCK: Number of additional Bytes for record used for invalidation bits. Can be zero if no invalidation bits are used at all. Invalidation bits may only occur in the specified number of Bytes after the data Bytes, not within the data Bytes that contain the signal values. VLSD CGBLOCK: High part of UINT64 value that specifies the total size in Bytes of all variable length signal values for the recorded samples of this channel group, i.e. the total size in Bytes can be calculated by cg_data_bytes + (cg_inval_bytes << 32) Note: this value does not include the Bytes used to specify the length of each VLSD value!
+    pub cg_inval_bytes: u32,
 }
 
 /// Cg4 (Channel Group) block struct parser with linked comments Source Information in sharable blocks
@@ -1128,13 +1204,18 @@ fn parse_cg4_block(
 #[derive(Debug, Clone)]
 pub struct Cg4 {
     pub block: Cg4Block,
-    pub cn: CnType, // hashmap of channels
+    /// hashmap of channels
+    pub cn: CnType,
     pub master_channel_name: String,
     pub channel_names: HashSet<String>,
-    block_position: i64, // as not stored in .block but can still be referenced by other blocks
-    pub record_length: u32, // record length including recordId and invalid bytes
-    pub vlsd_cg: Option<(u64, i32)>, // pointing to another cg,cn
-    pub invalid_bytes: Option<Vec<u8>>, // invalid byte array, optional
+    /// as not stored in .block but can still be referenced by other blocks
+    block_position: i64,
+    /// record length including recordId and invalid bytes
+    pub record_length: u32,
+    /// pointing to another cg,cn
+    pub vlsd_cg: Option<(u64, i32)>,
+    /// invalid byte array, optional
+    pub invalid_bytes: Option<Vec<u8>>,
 }
 
 /// Cg4 implementations for extracting acquisition and source name and path
@@ -1255,35 +1336,60 @@ pub fn parse_cg4(
 #[derive(Debug, PartialEq, Default, Clone, BinRead)]
 #[br(little)]
 pub struct Cn4Block {
-    cn_links: u64,             // # of links
-    cn_cn_next: i64,           // Pointer to next channel block (CNBLOCK) (can be NIL)
-    cn_composition: i64, // Composition of channels: Pointer to channel array block (CABLOCK) or channel block (CNBLOCK) (can be NIL). Details see 4.18 Composition of Channels
-    cn_tx_name: i64, // Pointer to TXBLOCK with name (identification) of channel. Name must be according to naming rules stated in 4.4.2 Naming Rules.
-    cn_si_source: i64, // Pointer to channel source (SIBLOCK) (can be NIL) Must be NIL for component channels (members of a structure or array elements) because they all must have the same source and thus simply use the SIBLOCK of their parent CNBLOCK (direct child of CGBLOCK).
-    pub cn_cc_conversion: i64, // Pointer to the conversion formula (CCBLOCK) (can be NIL, must be NIL for complex channel data types, i.e. for cn_data_type ≥ 10). If the pointer is NIL, this means that a 1:1 conversion is used (phys = int).  };
-    pub cn_data: i64, // Pointer to channel type specific signal data For variable length data channel (cn_type = 1): unique link to signal data block (SDBLOCK) or data list block (DLBLOCK) or, only for unsorted data groups, referencing link to a VLSD channel group block (CGBLOCK). Can only be NIL if SDBLOCK would be empty. For synchronization channel (cn_type = 4): referencing link to attachment block (ATBLOCK) in global linked list of ATBLOCKs starting at hd_at_first. Cannot be NIL.
-    cn_md_unit: i64, // Pointer to TXBLOCK/MDBLOCK with designation for physical unit of signal data (after conversion) or (only for channel data types "MIME sample" and "MIME stream") to MIME context-type text. (can be NIL). The unit can be used if no conversion rule is specified or to overwrite the unit specified for the conversion rule (e.g. if a conversion rule is shared between channels). If the link is NIL, then the unit from the conversion rule must be used. If the content is an empty string, no unit should be displayed. If an MDBLOCK is used, in addition the A-HDO unit definition can be stored, see Table 38. Note: for (virtual) master and synchronization channels the A-HDO definition should be omitted to avoid redundancy. Here the unit is already specified by cn_sync_type of the channel. In case of channel data types "MIME sample" and "MIME stream", the text of the unit must be the content-type text of a MIME type which specifies the content of the values of the channel (either fixed length in record or variable length in SDBLOCK). The MIME content-type string must be written in lowercase, and it must apply to the same rules as defined for at_tx_mimetype in 4.11 The Attachment Block ATBLOCK.
-    cn_md_comment: i64, // Pointer to TXBLOCK/MDBLOCK with comment and additional information about the channel, see Table 37. (can be NIL)
+    /// # of links
+    cn_links: u64,
+    /// Pointer to next channel block (CNBLOCK) (can be NIL)
+    cn_cn_next: i64,
+    /// Composition of channels: Pointer to channel array block (CABLOCK) or channel block (CNBLOCK) (can be NIL). Details see 4.18 Composition of Channels      
+    cn_composition: i64,
+    /// Pointer to TXBLOCK with name (identification) of channel. Name must be according to naming rules stated in 4.4.2 Naming Rules.
+    cn_tx_name: i64,
+    /// Pointer to channel source (SIBLOCK) (can be NIL) Must be NIL for component channels (members of a structure or array elements) because they all must have the same source and thus simply use the SIBLOCK of their parent CNBLOCK (direct child of CGBLOCK).
+    cn_si_source: i64,
+    /// Pointer to the conversion formula (CCBLOCK) (can be NIL, must be NIL for complex channel data types, i.e. for cn_data_type ≥ 10). If the pointer is NIL, this means that a 1:1 conversion is used (phys = int).  };
+    pub cn_cc_conversion: i64,
+    /// Pointer to channel type specific signal data For variable length data channel (cn_type = 1): unique link to signal data block (SDBLOCK) or data list block (DLBLOCK) or, only for unsorted data groups, referencing link to a VLSD channel group block (CGBLOCK). Can only be NIL if SDBLOCK would be empty. For synchronization channel (cn_type = 4): referencing link to attachment block (ATBLOCK) in global linked list of ATBLOCKs starting at hd_at_first. Cannot be NIL.
+    pub cn_data: i64,
+    /// Pointer to TXBLOCK/MDBLOCK with designation for physical unit of signal data (after conversion) or (only for channel data types "MIME sample" and "MIME stream") to MIME context-type text. (can be NIL). The unit can be used if no conversion rule is specified or to overwrite the unit specified for the conversion rule (e.g. if a conversion rule is shared between channels). If the link is NIL, then the unit from the conversion rule must be used. If the content is an empty string, no unit should be displayed. If an MDBLOCK is used, in addition the A-HDO unit definition can be stored, see Table 38. Note: for (virtual) master and synchronization channels the A-HDO definition should be omitted to avoid redundancy. Here the unit is already specified by cn_sync_type of the channel. In case of channel data types "MIME sample" and "MIME stream", the text of the unit must be the content-type text of a MIME type which specifies the content of the values of the channel (either fixed length in record or variable length in SDBLOCK). The MIME content-type string must be written in lowercase, and it must apply to the same rules as defined for at_tx_mimetype in 4.11 The Attachment Block ATBLOCK.
+    cn_md_unit: i64,
+    /// Pointer to TXBLOCK/MDBLOCK with designation for physical unit of signal data (after conversion) or (only for channel data types "MIME sample" and "MIME stream") to MIME context-type text. (can be NIL). The unit can be used if no conversion rule is specified or to overwrite the unit specified for the conversion rule (e.g. if a conversion rule is shared between channels). If the link is NIL, then the unit from the conversion rule must be used. If the content is an empty string, no unit should be displayed. If an MDBLOCK is used, in addition the A-HDO unit definition can be stored, see Table 38. Note: for (virtual) master and synchronization channels the A-HDO definition should be omitted to avoid redundancy. Here the unit is already specified by cn_sync_type of the channel. In case of channel data types "MIME sample" and "MIME stream", the text of the unit must be the content-type text of a MIME type which specifies the content of the values of the channel (either fixed length in record or variable length in SDBLOCK). The MIME content-type string must be written in lowercase, and it must apply to the same rules as defined for at_tx_mimetype in 4.11 The Attachment Block ATBLOCK.
+    cn_md_comment: i64,
     #[br(if(cn_links > 8), little, count = cn_links - 8)]
     links: Vec<i64>,
 
     // Data Members
-    pub cn_type: u8,       // Channel type (see CN_T_xxx)
-    cn_sync_type: u8,      // Sync type: (see CN_S_xxx)
-    pub cn_data_type: u8,  // Channel data type of raw signal value (see CN_DT_xxx)
-    pub cn_bit_offset: u8, // Bit offset (0-7): first bit (=LSB) of signal value after Byte offset has been applied (see 4.21.4.2 Reading the Signal Value). If zero, the signal value is 1-Byte aligned. A value different to zero is only allowed for Integer data types (cn_data_type ≤ 3) and if the Integer signal value fits into 8 contiguous Bytes (cn_bit_count + cn_bit_offset ≤ 64). For all other cases, cn_bit_offset must be zero.
-    cn_byte_offset: u32, // Offset to first Byte in the data record that contains bits of the signal value. The offset is applied to the plain record data, i.e. skipping the record ID.
-    pub cn_bit_count: u32, // Number of bits for signal value in record
-    cn_flags: u32,       // Flags (see CN_F_xxx)
-    cn_inval_bit_pos: u32, // Position of invalidation bit.
-    cn_precision: u8, // Precision for display of floating point values. 0xFF means unrestricted precision (infinite). Any other value specifies the number of decimal places to use for display of floating point values. Only valid if "precision valid" flag (bit 2) is set
-    cn_reserved: [u8; 3], // Reserved
-    cn_val_range_min: f64, // Minimum signal value that occurred for this signal (raw value) Only valid if "value range valid" flag (bit 3) is set.
-    cn_val_range_max: f64, // Maximum signal value that occurred for this signal (raw value) Only valid if "value range valid" flag (bit 3) is set.
-    cn_limit_min: f64, // Lower limit for this signal (physical value for numeric conversion rule, otherwise raw value) Only valid if "limit range valid" flag (bit 4) is set.
-    cn_limit_max: f64, // Upper limit for this signal (physical value for numeric conversion rule, otherwise raw value) Only valid if "limit range valid" flag (bit 4) is set.
-    cn_limit_ext_min: f64, // Lower extended limit for this signal (physical value for numeric conversion rule, otherwise raw value) Only valid if "extended limit range valid" flag (bit 5) is set.
-    cn_limit_ext_max: f64, // Upper extended limit for this signal (physical value for numeric conversion rule, otherwise raw value) Only valid if "extended limit range valid" flag (bit 5) is set.
+    /// Channel type (see CN_T_xxx)
+    pub cn_type: u8,
+    /// Sync type: (see CN_S_xxx)
+    cn_sync_type: u8,
+    /// Channel data type of raw signal value (see CN_DT_xxx)
+    pub cn_data_type: u8,
+    /// Bit offset (0-7): first bit (=LSB) of signal value after Byte offset has been applied (see 4.21.4.2 Reading the Signal Value). If zero, the signal value is 1-Byte aligned. A value different to zero is only allowed for Integer data types (cn_data_type ≤ 3) and if the Integer signal value fits into 8 contiguous Bytes (cn_bit_count + cn_bit_offset ≤ 64). For all other cases, cn_bit_offset must be zero.
+    pub cn_bit_offset: u8,
+    /// Offset to first Byte in the data record that contains bits of the signal value. The offset is applied to the plain record data, i.e. skipping the record ID.
+    cn_byte_offset: u32,
+    /// Number of bits for signal value in record
+    pub cn_bit_count: u32,
+    /// Flags (see CN_F_xxx)
+    cn_flags: u32,
+    /// Position of invalidation bit.
+    cn_inval_bit_pos: u32,
+    /// Precision for display of floating point values. 0xFF means unrestricted precision (infinite). Any other value specifies the number of decimal places to use for display of floating point values. Only valid if "precision valid" flag (bit 2) is set
+    cn_precision: u8,
+    /// Reserved
+    cn_reserved: [u8; 3],
+    /// Minimum signal value that occurred for this signal (raw value) Only valid if "value range valid" flag (bit 3) is set.
+    cn_val_range_min: f64,
+    /// Maximum signal value that occurred for this signal (raw value) Only valid if "value range valid" flag (bit 3) is set.
+    cn_val_range_max: f64,
+    /// Lower limit for this signal (physical value for numeric conversion rule, otherwise raw value) Only valid if "limit range valid" flag (bit 4) is set.
+    cn_limit_min: f64,
+    /// Upper limit for this signal (physical value for numeric conversion rule, otherwise raw value) Only valid if "limit range valid" flag (bit 4) is set.
+    cn_limit_max: f64,
+    /// Lower extended limit for this signal (physical value for numeric conversion rule, otherwise raw value) Only valid if "extended limit range valid" flag (bit 5) is set.
+    cn_limit_ext_min: f64,
+    /// Upper extended limit for this signal (physical value for numeric conversion rule, otherwise raw value) Only valid if "extended limit range valid" flag (bit 5) is set.
+    cn_limit_ext_max: f64,
 }
 /// Cn4 structure containing block but also unique_name, ndarray data, composition
 /// and other attributes frequently needed and computed
@@ -1795,23 +1901,36 @@ pub struct Cc4Block {
     // cc_id: [u8; 4],  // ##CC
     // reserved: [u8; 4],  // reserved
     // cc_len: u64,      // Length of block in bytes
-    cc_links: u64,       // # of links
-    pub cc_tx_name: i64, // Link to TXBLOCK with name (identifier) of conversion (can be NIL). Name must be according to naming rules stated in 4.4.2 Naming Rules.
-    cc_md_unit: i64, // Link to TXBLOCK/MDBLOCK with physical unit of signal data (after conversion). (can be NIL) Unit only applies if no unit defined in CNBLOCK. Otherwise the unit of the channel overwrites the conversion unit.
+    /// # of links
+    cc_links: u64,
+    /// Link to TXBLOCK with name (identifier) of conversion (can be NIL). Name must be according to naming rules stated in 4.4.2 Naming Rules.
+    pub cc_tx_name: i64,
+    /// Link to TXBLOCK/MDBLOCK with physical unit of signal data (after conversion). (can be NIL) Unit only applies if no unit defined in CNBLOCK. Otherwise the unit of the channel overwrites the conversion unit.
+    cc_md_unit: i64,
     // An MDBLOCK can be used to additionally reference the A-HDO unit definition. Note: for channels with cn_sync_type > 0, the unit is already defined, thus a reference to an A-HDO definition should be omitted to avoid redundancy.
-    pub cc_md_comment: i64, // Link to TXBLOCK/MDBLOCK with comment of conversion and additional information. (can be NIL)
-    cc_cc_inverse: i64, // Link to CCBLOCK for inverse formula (can be NIL, must be NIL for CCBLOCK of the inverse formula (no cyclic reference allowed).
+    /// Link to TXBLOCK/MDBLOCK with comment of conversion and additional information. (can be NIL)
+    pub cc_md_comment: i64,
+    /// Link to CCBLOCK for inverse formula (can be NIL, must be NIL for CCBLOCK of the inverse formula (no cyclic reference allowed).
+    cc_cc_inverse: i64,
     #[br(if(cc_links > 4), little, count = cc_links - 4)]
-    pub cc_ref: Vec<i64>, // List of additional links to TXBLOCKs with strings or to CCBLOCKs with partial conversion rules. Length of list is given by cc_ref_count. The list can be empty. Details are explained in formula-specific block supplement.
+    /// List of additional links to TXBLOCKs with strings or to CCBLOCKs with partial conversion rules. Length of list is given by cc_ref_count. The list can be empty. Details are explained in formula-specific block supplement.
+    pub cc_ref: Vec<i64>,
 
     // Data Members
-    pub cc_type: u8,       // Conversion type (formula identifier) (see CC_T_xxx)
-    cc_precision: u8, // Precision for display of floating point values. 0xFF means unrestricted precision (infinite) Any other value specifies the number of decimal places to use for display of floating point values. Note: only valid if "precision valid" flag (bit 0) is set and if cn_precision of the parent CNBLOCK is invalid, otherwise cn_precision must be used.
-    cc_flags: u16,    // Flags  (see CC_F_xxx)
-    cc_ref_count: u16, // Length M of cc_ref list with additional links. See formula-specific block supplement for meaning of the links.
-    cc_val_count: u16, // Length N of cc_val list with additional parameters. See formula-specific block supplement for meaning of the parameters.
-    cc_phy_range_min: f64, // Minimum physical signal value that occurred for this signal. Only valid if "physical value range valid" flag (bit 1) is set.
-    cc_phy_range_max: f64, // Maximum physical signal value that occurred for this signal. Only valid if "physical value range valid" flag (bit 1) is set.
+    /// Conversion type (formula identifier) (see CC_T_xxx)
+    pub cc_type: u8,
+    /// Precision for display of floating point values. 0xFF means unrestricted precision (infinite) Any other value specifies the number of decimal places to use for display of floating point values. Note: only valid if "precision valid" flag (bit 0) is set and if cn_precision of the parent CNBLOCK is invalid, otherwise cn_precision must be used.     
+    cc_precision: u8,
+    /// Flags  (see CC_F_xxx)
+    cc_flags: u16,
+    /// Length M of cc_ref list with additional links. See formula-specific block supplement for meaning of the links.
+    cc_ref_count: u16,
+    /// Length N of cc_val list with additional parameters. See formula-specific block supplement for meaning of the parameters.
+    cc_val_count: u16,
+    /// Minimum physical signal value that occurred for this signal. Only valid if "physical value range valid" flag (bit 1) is set.
+    cc_phy_range_min: f64,
+    /// Maximum physical signal value that occurred for this signal. Only valid if "physical value range valid" flag (bit 1) is set.
+    cc_phy_range_max: f64,
     #[br(args(cc_val_count, cc_type))]
     pub cc_val: CcVal,
 }
@@ -1833,17 +1952,25 @@ pub struct Si4Block {
     // si_id: [u8; 4],  // ##SI
     // reserved: [u8; 4],  // reserved
     // si_len: u64,      // Length of block in bytes
-    si_links: u64,   // # of links
-    si_tx_name: i64, // Pointer to TXBLOCK with name (identification) of source (must not be NIL). The source name must be according to naming rules stated in 4.4.2 Naming Rules.
-    si_tx_path: i64, // Pointer to TXBLOCK with (tool-specific) path of source (can be NIL). The path string must be according to naming rules stated in 4.4.2 Naming Rules.
+    /// # of links
+    si_links: u64,
+    /// Pointer to TXBLOCK with name (identification) of source (must not be NIL). The source name must be according to naming rules stated in 4.4.2 Naming Rules.
+    si_tx_name: i64,
+    /// Pointer to TXBLOCK with (tool-specific) path of source (can be NIL). The path string must be according to naming rules stated in 4.4.2 Naming Rules.
+    si_tx_path: i64,
     // Each tool may generate a different path string. The only purpose is to ensure uniqueness as explained in section 4.4.3 Identification of Channels. As a recommendation, the path should be a human readable string containing additional information about the source. However, the path string should not be used to store this information in order to retrieve it later by parsing the string. Instead, additional source information should be stored in generic or custom XML fields in the comment MDBLOCK si_md_comment.
-    si_md_comment: i64, // Pointer to source comment and additional information (TXBLOCK or MDBLOCK) (can be NIL)
+    /// Pointer to source comment and additional information (TXBLOCK or MDBLOCK) (can be NIL)
+    si_md_comment: i64,
 
     // Data Members
-    si_type: u8,     // Source type additional classification of source (see SI_T_xxx)
-    si_bus_type: u8, // Bus type additional classification of used bus (should be 0 for si_type ≥ 3) (see SI_BUS_xxx)
-    si_flags: u8,    // Flags The value contains the following bit flags (see SI_F_xxx)):
-    si_reserved: [u8; 5], //reserved
+    /// Source type additional classification of source (see SI_T_xxx)
+    si_type: u8,
+    /// Bus type additional classification of used bus (should be 0 for si_type ≥ 3) (see SI_BUS_xxx)
+    si_bus_type: u8,
+    /// Flags The value contains the following bit flags (see SI_F_xxx)):
+    si_flags: u8,
+    /// reserved
+    si_reserved: [u8; 5],
 }
 
 impl Si4Block {
@@ -1880,27 +2007,45 @@ impl Si4Block {
 /// Ca4 Channel Array block struct
 #[derive(Debug, PartialEq, Clone)]
 pub struct Ca4Block {
-    //header
-    pub ca_id: [u8; 4], // ##CA
-    reserved: [u8; 4],  // reserved
-    ca_len: u64,        // Length of block in bytes
-    ca_links: u64,      // # of links
+    // header
+    /// ##CA
+    pub ca_id: [u8; 4], 
+    /// reserved
+    reserved: [u8; 4],  
+    /// Length of block in bytes
+    ca_len: u64,        
+    /// # of links
+    ca_links: u64,      
     // links
-    pub ca_composition: i64, // [] Array of composed elements: Pointer to a CNBLOCK for array of structures, or to a CABLOCK for array of arrays (can be NIL). If a CABLOCK is referenced, it must use the "CN template" storage type (ca_storage = 0).
-    pub ca_data: Option<Vec<i64>>, // [Π N(d) or empty] Only present for storage type "DG template". List of links to data blocks (DTBLOCK/DLBLOCK) for each element in case of "DG template" storage (ca_storage = 2). A link in this list may only be NIL if the cycle count of the respective element is 0: ca_data[k] = NIL => ca_cycle_count[k] = 0 The links are stored line-oriented, i.e. element k uses ca_data[k] (see explanation below). The size of the list must be equal to Π N(d), i.e. to the product of the number of elements per dimension N(d) over all dimensions D. Note: link ca_data[0] must be equal to dg_data link of the parent DGBLOCK.
-    ca_dynamic_size: Option<Vec<i64>>, // [Dx3 or empty] Only present if "dynamic size" flag (bit 0) is set. References to channels for size signal of each dimension (can be NIL). Each reference is a link triple with pointer to parent DGBLOCK, parent CGBLOCK and CNBLOCK for the channel (either all three links are assigned or NIL). Thus the links have the following order: DGBLOCK for size signal of dimension 1 CGBLOCK for size signal of dimension 1 CNBLOCK for size signal of dimension 1 … DGBLOCK for size signal of dimension D CGBLOCK for size signal of dimension D CNBLOCK for size signal of dimension D The size signal can be used to model arrays whose number of elements per dimension can vary over time. If a size signal is specified for a dimension, the number of elements for this dimension at some point in time is equal to the value of the size signal at this time (i.e. for time-synchronized signals, the size signal value with highest time stamp less or equal to current time stamp). If the size signal has no recorded signal value for this time (yet), assume 0 as size.
-    ca_input_quantity: Option<Vec<i64>>, // [Dx3 or empty] Only present if "input quantity" flag (bit 1) is set. Reference to channels for input quantity signal for each dimension (can be NIL). Each reference is a link triple with pointer to parent DGBLOCK, parent CGBLOCK and CNBLOCK for the channel (either all three links are assigned or NIL). Thus the links have the following order: DGBLOCK for input quantity of dimension 1 CGBLOCK for input quantity of dimension 1 CNBLOCK for input quantity of dimension 1 … DGBLOCK for input quantity of dimension D CGBLOCK for input quantity of dimension D CNBLOCK for input quantity of dimension D Since the input quantity signal and the array signal must be synchronized, their channel groups must contain at least one common master channel type.
-    ca_output_quantity: Option<Vec<i64>>, // [3 or empty] Only present if "output quantity" flag (bit 2) is set. Reference to channel for output quantity (can be NIL). The reference is a link triple with pointer to parent DGBLOCK, parent CGBLOCK and CNBLOCK for the channel (either all three links are assigned or NIL). Since the output quantity signal and the array signal must be synchronized, their channel groups must contain at least one common master channel type. For array type "look-up", the output quantity is the result of the complete look-up (see [MCD-2 MC] keyword RIP_ADDR_W). The output quantity should have the same physical unit as the array elements of the array that references it.
-    ca_comparison_quantity: Option<Vec<i64>>, // [3 or empty] Only present if "comparison quantity" flag (bit 3) is set. Reference to channel for comparison quantity (can be NIL). The reference is a link triple with pointer to parent DGBLOCK, parent CGBLOCK and CNBLOCK for the channel (either all three links are assigned or NIL). Since the comparison quantity signal and the array signal must be synchronized, their channel groups must contain at least one common master channel type. The comparison quantity should have the same physical unit as the array elements.
-    ca_cc_axis_conversion: Option<Vec<i64>>, // [D or empty] Only present if "axis" flag (bit 4) is set. Pointer to a conversion rule (CCBLOCK) for the scaling axis of each dimension. If a link NIL a 1:1 conversion must be used for this axis. If the "fixed axis" flag (Bit 5) is set, the conversion must be applied to the fixed axis values of the respective axis/dimension (ca_axis_value list stores the raw values as REAL). If the link to the CCBLOCK is NIL already the physical values are stored in the ca_axis_value list. If the "fixed axes" flag (Bit 5) is not set, the conversion must be applied to the raw values of the respective axis channel, i.e. it overrules the conversion specified for the axis channel, even if the ca_axis_conversion link is NIL! Note: ca_axis_conversion may reference the same CCBLOCK as referenced by the respective axis channel ("sharing" of CCBLOCK).
-    ca_axis: Option<Vec<i64>>, // [Dx3 or empty] Only present if "axis" flag (bit 4) is set and "fixed axes flag" (bit 5) is not set. References to channels for scaling axis of respective dimension (can be NIL). Each reference is a link triple with pointer to parent DGBLOCK, parent CGBLOCK and CNBLOCK for the channel (either all three links are assigned or NIL). Thus the links have the following order: DGBLOCK for axis of dimension 1 CGBLOCK for axis of dimension 1 CNBLOCK for axis of dimension 1 … DGBLOCK for axis of dimension D CGBLOCK for axis of dimension D CNBLOCK for axis of dimension D Each referenced channel must be an array of type "axis". The maximum number of elements of each axis (ca_dim_size[0] in axis) must be equal to the maximum number of elements of respective dimension d in "look-up" array (ca_dim_size[d-1]).
+    /// [] Array of composed elements: Pointer to a CNBLOCK for array of structures, or to a CABLOCK for array of arrays (can be NIL). If a CABLOCK is referenced, it must use the "CN template" storage type (ca_storage = 0).
+    pub ca_composition: i64, 
+    /// [Π N(d) or empty] Only present for storage type "DG template". List of links to data blocks (DTBLOCK/DLBLOCK) for each element in case of "DG template" storage (ca_storage = 2). A link in this list may only be NIL if the cycle count of the respective element is 0: ca_data[k] = NIL => ca_cycle_count[k] = 0 The links are stored line-oriented, i.e. element k uses ca_data[k] (see explanation below). The size of the list must be equal to Π N(d), i.e. to the product of the number of elements per dimension N(d) over all dimensions D. Note: link ca_data[0] must be equal to dg_data link of the parent DGBLOCK.
+    pub ca_data: Option<Vec<i64>>, 
+    /// [Dx3 or empty] Only present if "dynamic size" flag (bit 0) is set. References to channels for size signal of each dimension (can be NIL). Each reference is a link triple with pointer to parent DGBLOCK, parent CGBLOCK and CNBLOCK for the channel (either all three links are assigned or NIL). Thus the links have the following order: DGBLOCK for size signal of dimension 1 CGBLOCK for size signal of dimension 1 CNBLOCK for size signal of dimension 1 … DGBLOCK for size signal of dimension D CGBLOCK for size signal of dimension D CNBLOCK for size signal of dimension D The size signal can be used to model arrays whose number of elements per dimension can vary over time. If a size signal is specified for a dimension, the number of elements for this dimension at some point in time is equal to the value of the size signal at this time (i.e. for time-synchronized signals, the size signal value with highest time stamp less or equal to current time stamp). If the size signal has no recorded signal value for this time (yet), assume 0 as size.
+    ca_dynamic_size: Option<Vec<i64>>, 
+    /// [Dx3 or empty] Only present if "input quantity" flag (bit 1) is set. Reference to channels for input quantity signal for each dimension (can be NIL). Each reference is a link triple with pointer to parent DGBLOCK, parent CGBLOCK and CNBLOCK for the channel (either all three links are assigned or NIL). Thus the links have the following order: DGBLOCK for input quantity of dimension 1 CGBLOCK for input quantity of dimension 1 CNBLOCK for input quantity of dimension 1 … DGBLOCK for input quantity of dimension D CGBLOCK for input quantity of dimension D CNBLOCK for input quantity of dimension D Since the input quantity signal and the array signal must be synchronized, their channel groups must contain at least one common master channel type.
+    ca_input_quantity: Option<Vec<i64>>, 
+    /// [3 or empty] Only present if "output quantity" flag (bit 2) is set. Reference to channel for output quantity (can be NIL). The reference is a link triple with pointer to parent DGBLOCK, parent CGBLOCK and CNBLOCK for the channel (either all three links are assigned or NIL). Since the output quantity signal and the array signal must be synchronized, their channel groups must contain at least one common master channel type. For array type "look-up", the output quantity is the result of the complete look-up (see [MCD-2 MC] keyword RIP_ADDR_W). The output quantity should have the same physical unit as the array elements of the array that references it.
+    ca_output_quantity: Option<Vec<i64>>, 
+    /// [3 or empty] Only present if "comparison quantity" flag (bit 3) is set. Reference to channel for comparison quantity (can be NIL). The reference is a link triple with pointer to parent DGBLOCK, parent CGBLOCK and CNBLOCK for the channel (either all three links are assigned or NIL). Since the comparison quantity signal and the array signal must be synchronized, their channel groups must contain at least one common master channel type. The comparison quantity should have the same physical unit as the array elements.
+    ca_comparison_quantity: Option<Vec<i64>>,
+    /// [D or empty] Only present if "axis" flag (bit 4) is set. Pointer to a conversion rule (CCBLOCK) for the scaling axis of each dimension. If a link NIL a 1:1 conversion must be used for this axis. If the "fixed axis" flag (Bit 5) is set, the conversion must be applied to the fixed axis values of the respective axis/dimension (ca_axis_value list stores the raw values as REAL). If the link to the CCBLOCK is NIL already the physical values are stored in the ca_axis_value list. If the "fixed axes" flag (Bit 5) is not set, the conversion must be applied to the raw values of the respective axis channel, i.e. it overrules the conversion specified for the axis channel, even if the ca_axis_conversion link is NIL! Note: ca_axis_conversion may reference the same CCBLOCK as referenced by the respective axis channel ("sharing" of CCBLOCK). 
+    ca_cc_axis_conversion: Option<Vec<i64>>, 
+    /// [Dx3 or empty] Only present if "axis" flag (bit 4) is set and "fixed axes flag" (bit 5) is not set. References to channels for scaling axis of respective dimension (can be NIL). Each reference is a link triple with pointer to parent DGBLOCK, parent CGBLOCK and CNBLOCK for the channel (either all three links are assigned or NIL). Thus the links have the following order: DGBLOCK for axis of dimension 1 CGBLOCK for axis of dimension 1 CNBLOCK for axis of dimension 1 … DGBLOCK for axis of dimension D CGBLOCK for axis of dimension D CNBLOCK for axis of dimension D Each referenced channel must be an array of type "axis". The maximum number of elements of each axis (ca_dim_size[0] in axis) must be equal to the maximum number of elements of respective dimension d in "look-up" array (ca_dim_size[d-1]).
+    ca_axis: Option<Vec<i64>>, 
     //members
-    pub ca_type: u8,    // Array type (defines semantic of the array) see CA_T_xxx
-    pub ca_storage: u8, // Storage type (defines how the element values are stored) see CA_S_xxx
-    pub ca_ndim: u16,   //Number of dimensions D > 0 For array type "axis", D must be 1.
-    pub ca_flags: u32, // Flags The value contains the following bit flags (Bit 0 = LSB): see CA_F_xxx
-    pub ca_byte_offset_base: i32, // Base factor for calculation of Byte offsets for "CN template" storage type. ca_byte_offset_base should be larger than or equal to the size of Bytes required to store a component channel value in the record (all must have the same size). If it is equal to this value, then the component values are stored next to each other without gaps. Exact formula for calculation of Byte offset for each component channel see below.
-    pub ca_inval_bit_pos_base: u32, //Base factor for calculation of invalidation bit positions for CN template storage type.
+    /// Array type (defines semantic of the array) see CA_T_xxx
+    pub ca_type: u8,    
+    /// Storage type (defines how the element values are stored) see CA_S_xxx
+    pub ca_storage: u8, 
+    /// Number of dimensions D > 0 For array type "axis", D must be 1.
+    pub ca_ndim: u16,  
+    /// Flags The value contains the following bit flags (Bit 0 = LSB): see CA_F_xxx 
+    pub ca_flags: u32, 
+    /// Base factor for calculation of Byte offsets for "CN template" storage type. ca_byte_offset_base should be larger than or equal to the size of Bytes required to store a component channel value in the record (all must have the same size). If it is equal to this value, then the component values are stored next to each other without gaps. Exact formula for calculation of Byte offset for each component channel see below.
+    pub ca_byte_offset_base: i32, 
+    /// Base factor for calculation of invalidation bit positions for CN template storage type.
+    pub ca_inval_bit_pos_base: u32, 
     pub ca_dim_size: Vec<u64>,
     pub ca_axis_value: Option<Vec<f64>>,
     pub ca_cycle_count: Option<Vec<u64>>,
@@ -1912,12 +2057,18 @@ pub struct Ca4Block {
 #[derive(Debug, Clone, BinRead)]
 #[br(little)]
 struct Ca4BlockMembers {
-    ca_type: u8,                // Array type (defines semantic of the array) see CA_T_xxx
-    ca_storage: u8, // Storage type (defines how the element values are stored) see CA_S_xxx
-    ca_ndim: u16,   //Number of dimensions D > 0 For array type "axis", D must be 1.
-    ca_flags: u32,  // Flags The value contains the following bit flags (Bit 0 = LSB): see CA_F_xxx
-    ca_byte_offset_base: i32, // Base factor for calculation of Byte offsets for "CN template" storage type. ca_byte_offset_base should be larger than or equal to the size of Bytes required to store a component channel value in the record (all must have the same size). If it is equal to this value, then the component values are stored next to each other without gaps. Exact formula for calculation of Byte offset for each component channel see below.
-    ca_inval_bit_pos_base: u32, //Base factor for calculation of invalidation bit positions for CN template storage type.
+    /// Array type (defines semantic of the array) see CA_T_xxx
+    ca_type: u8,    
+    /// Storage type (defines how the element values are stored) see CA_S_xxx            
+    ca_storage: u8, 
+    /// Number of dimensions D > 0 For array type "axis", D must be 1.
+    ca_ndim: u16,   
+    /// Flags The value contains the following bit flags (Bit 0 = LSB): see CA_F_xxx
+    ca_flags: u32,  
+    /// Base factor for calculation of Byte offsets for "CN template" storage type. ca_byte_offset_base should be larger than or equal to the size of Bytes required to store a component channel value in the record (all must have the same size). If it is equal to this value, then the component values are stored next to each other without gaps. Exact formula for calculation of Byte offset for each component channel see below.
+    ca_byte_offset_base: i32, 
+    /// Base factor for calculation of invalidation bit positions for CN template storage type.
+    ca_inval_bit_pos_base: u32, 
     #[br(if(ca_ndim > 0), little, count = ca_ndim)]
     ca_dim_size: Vec<u64>,
 }
@@ -2302,9 +2453,12 @@ pub fn build_channel_db(
 pub struct Dt4Block {
     //header
     // dl_id: [u8; 4],  // ##DL
-    reserved: [u8; 4], // reserved
-    pub len: u64,      // Length of block in bytes
-    links: u64,        // # of links
+    /// reserved
+    reserved: [u8; 4], 
+    /// Length of block in bytes
+    pub len: u64,      
+    /// # of links
+    links: u64,        
 }
 
 /// DL4 Data List block struct
@@ -2313,17 +2467,22 @@ pub struct Dt4Block {
 pub struct Dl4Block {
     //header
     // dl_id: [u8; 4],  // ##DL
-    reserved: [u8; 4], // reserved
-    dl_len: u64,       // Length of block in bytes
-    dl_links: u64,     // # of links
+    /// reserved
+    reserved: [u8; 4], 
+    /// Length of block in bytes
+    dl_len: u64,       
+    /// # of links
+    dl_links: u64,     
     // links
-    pub dl_dl_next: i64, // next DL
+    /// next DL
+    pub dl_dl_next: i64, 
     #[br(if(dl_links > 1), little, count = dl_links - 1)]
     pub dl_data: Vec<i64>,
-    //members
-    dl_flags: u8, //
+    // members
+    dl_flags: u8,
     dl_reserved: [u8; 3],
-    dl_count: u32, // Number of data blocks
+    /// Number of data blocks
+    dl_count: u32, 
     #[br(if((dl_flags & 0b1)>0), little)]
     dl_equal_length: u64,
     #[br(if((dl_flags & 0b1)==0),little, count = dl_count)]
@@ -2387,13 +2546,18 @@ pub struct Dz4Block {
     pub len: u64,      // Length of block in bytes
     dz_links: u64,     // # of links
     // links
-    //members
-    pub dz_org_block_type: [u8; 2], // "DT", "SD", "RD" or "DV", "DI", "RV", "RI"
-    dz_zip_type: u8,                // Zip algorithm, 0 deflate, 1 transpose + deflate
-    dz_reserved: u8,                // reserved
+    // members
+    /// "DT", "SD", "RD" or "DV", "DI", "RV", "RI"
+    pub dz_org_block_type: [u8; 2], 
+    /// Zip algorithm, 0 deflate, 1 transpose + deflate
+    dz_zip_type: u8,                
+    /// reserved
+    dz_reserved: u8,                
     dz_zip_parameter: u32,          //
-    pub dz_org_data_length: u64,    // length of uncompressed data
-    pub dz_data_length: u64,        // length of compressed data
+    /// length of uncompressed data
+    pub dz_org_data_length: u64,    
+    /// length of compressed data
+    pub dz_data_length: u64,        
 }
 
 /// DL4 Data List block struct
@@ -2406,7 +2570,8 @@ pub struct Ld4Block {
     ld_len: u64,       // Length of block in bytes
     ld_links: u64,     // # of links
     // links
-    pub ld_ld_next: i64, // next LD
+    /// next LD
+    pub ld_ld_next: i64, 
     #[br(if(ld_links > 1), little, count = (ld_links -1) / 2)]
     pub ld_data: Vec<i64>,
     #[br(if(ld_links > 1), little, count = (ld_links -1) / 2)]
@@ -2414,7 +2579,8 @@ pub struct Ld4Block {
     //members
     ld_flags: u8, //
     ld_reserved: [u8; 3],
-    ld_count: u32, // Number of data blocks
+    /// Number of data blocks
+    ld_count: u32, 
     #[br(if((ld_flags & 0b1)>0), little)]
     ld_equal_sample_count: u64,
     #[br(if((ld_flags & 0b1)==0), little, count = ld_count)]
@@ -2449,14 +2615,21 @@ pub fn parser_ld4_block(
 #[br(little)]
 pub struct Hl4Block {
     //header
-    // hl_id: [u8; 4],  // ##HL
-    reserved: [u8; 4], // reserved
-    pub hl_len: u64,   // Length of block in bytes
-    hl_links: u64,     // # of links
-    // links
+    // ##HL
+    // hl_id: [u8; 4],  
+    /// reserved
+    reserved: [u8; 4], 
+    /// Length of block in bytes
+    pub hl_len: u64,   
+    /// # of links
+    hl_links: u64,     
+    /// links
     pub hl_dl_first: i64, // first LD block
-    //members
-    hl_flags: u16,        // flags
-    hl_zip_type: u8,      // Zip algorithn
-    hl_reserved: [u8; 5], // reserved
+    // members
+    /// flags
+    hl_flags: u16,        
+    /// Zip algorithn
+    hl_zip_type: u8,      
+    /// reserved
+    hl_reserved: [u8; 5], 
 }
