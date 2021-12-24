@@ -204,7 +204,7 @@ pub struct Blockheader3 {
 }
 
 pub fn parse_block_header(rdr: &mut BufReader<&File>) -> Blockheader3 {
-    let header: Blockheader3 = rdr.read_le().unwrap();
+    let header: Blockheader3 = rdr.read_le().expect("Could not read Blockheader3 struct");
     header
 }
 
@@ -258,31 +258,31 @@ pub struct Hd3Block32 {
 
 pub fn hd3_parser(rdr: &mut BufReader<&File>, ver: u16) -> (Hd3, i64) {
     let mut buf = [0u8; 164];
-    rdr.read_exact(&mut buf).unwrap();
+    rdr.read_exact(&mut buf).expect("Could not read hd3 buffer");
     let mut block = Cursor::new(buf);
-    let block: Hd3Block = block.read_le().unwrap();
+    let block: Hd3Block = block.read_le().expect("Could not read buffer into Hd3Block struct");
     let mut datestr = String::new();
     ASCII
         .decode_to(&block.hd_date, DecoderTrap::Replace, &mut datestr)
-        .unwrap();
+        .expect("Could not decode date string from Hd3 block");
     let mut dateiter = datestr.split(':');
-    let day: u32 = dateiter.next().unwrap().parse::<u32>().unwrap();
-    let month: u32 = dateiter.next().unwrap().parse::<u32>().unwrap();
-    let year: i32 = dateiter.next().unwrap().parse::<i32>().unwrap();
+    let day: u32 = dateiter.next().expect("date iteration ended").parse::<u32>().expect("Could not parse day");
+    let month: u32 = dateiter.next().expect("date iteration ended").parse::<u32>().expect("Could not parse month");
+    let year: i32 = dateiter.next().expect("date iteration ended").parse::<i32>().expect("Could not parse year");
     let hd_date = (day, month, year);
     let mut timestr = String::new();
     ASCII
         .decode_to(&block.hd_time, DecoderTrap::Replace, &mut timestr)
-        .unwrap();
+        .expect("Could not decode time string from Hd3 block");
     let mut timeiter = timestr.split(':');
-    let hour: u32 = timeiter.next().unwrap().parse::<u32>().unwrap();
-    let minute: u32 = timeiter.next().unwrap().parse::<u32>().unwrap();
-    let sec: u32 = timeiter.next().unwrap().parse::<u32>().unwrap();
+    let hour: u32 = timeiter.next().expect("time iteration ended").parse::<u32>().expect("Could not parse hour");
+    let minute: u32 = timeiter.next().expect("time iteration ended").parse::<u32>().expect("Could not parse minute");
+    let sec: u32 = timeiter.next().expect("time iteration ended").parse::<u32>().expect("Could not parse sec");
     let hd_time = (hour, minute, sec);
     let mut hd_author = String::new();
     ISO_8859_1
         .decode_to(&block.hd_author, DecoderTrap::Replace, &mut hd_author)
-        .unwrap();
+        .expect("Could not decode author string from Hd3 block");
     hd_author = hd_author.trim_end_matches(char::from(0)).to_string();
     let mut hd_organization = String::new();
     ISO_8859_1
@@ -291,17 +291,17 @@ pub fn hd3_parser(rdr: &mut BufReader<&File>, ver: u16) -> (Hd3, i64) {
             DecoderTrap::Replace,
             &mut hd_organization,
         )
-        .unwrap();
+        .expect("Could not decode organisation string from Hd3 block");
     hd_organization = hd_organization.trim_end_matches(char::from(0)).to_string();
     let mut hd_project = String::new();
     ISO_8859_1
         .decode_to(&block.hd_project, DecoderTrap::Replace, &mut hd_project)
-        .unwrap();
+        .expect("Could not decode project string from Hd3 block");
     hd_project = hd_project.trim_end_matches(char::from(0)).to_string();
     let mut hd_subject = String::new();
     ISO_8859_1
         .decode_to(&block.hd_subject, DecoderTrap::Replace, &mut hd_subject)
-        .unwrap();
+        .expect("Could not decode subject string from Hd3 block");
     hd_subject = hd_subject.trim_end_matches(char::from(0)).to_string();
     let hd_start_time_ns: Option<u64>;
     let hd_time_offset: Option<i16>;
@@ -310,13 +310,13 @@ pub fn hd3_parser(rdr: &mut BufReader<&File>, ver: u16) -> (Hd3, i64) {
     let position: i64;
     if ver >= 320 {
         let mut buf = [0u8; 44];
-        rdr.read_exact(&mut buf).unwrap();
+        rdr.read_exact(&mut buf).expect("Could not read buffer for Hd3Block32");
         let mut block = Cursor::new(buf);
-        let block: Hd3Block32 = block.read_le().unwrap();
+        let block: Hd3Block32 = block.read_le().expect("Could not read buffer into Hd3Block32 struct");
         let mut ti = String::new();
         ISO_8859_1
             .decode_to(&block.hd_time_identifier, DecoderTrap::Replace, &mut ti)
-            .unwrap();
+            .expect("Could not decode time identifier string from Hd3 block");
         hd_start_time_ns = Some(block.hd_start_time_ns);
         hd_time_offset = Some(block.hd_time_offset);
         hd_time_quality = Some(block.hd_time_quality);
@@ -330,7 +330,7 @@ pub fn hd3_parser(rdr: &mut BufReader<&File>, ver: u16) -> (Hd3, i64) {
                     .and_hms(hd_time.0, hd_time.1, hd_time.2)
                     .timestamp_nanos(),
             )
-            .unwrap(),
+            .expect("cannot convert date into ns u64"),
         );
         hd_time_offset = None;
         hd_time_quality = None;
@@ -375,12 +375,12 @@ pub fn parse_tx(
     target: u32,
     position: i64,
 ) -> (Blockheader3, String, i64) {
-    rdr.seek_relative(target as i64 - position).unwrap();
+    rdr.seek_relative(target as i64 - position).expect("Could not reach position of TX block");
     let block_header: Blockheader3 = parse_block_header(rdr); // reads header
 
     // reads comment
     let mut comment_raw = vec![0; (block_header.hdr_len - 4) as usize];
-    rdr.read_exact(&mut comment_raw).unwrap();
+    rdr.read_exact(&mut comment_raw).expect("Could not read comment raw data");
     let mut comment: String = String::new();
     ISO_8859_1
         .decode_to(&comment_raw, DecoderTrap::Replace, &mut comment)
@@ -414,11 +414,11 @@ pub struct Dg3Block {
 }
 
 pub fn parse_dg3_block(rdr: &mut BufReader<&File>, target: u32, position: i64) -> (Dg3Block, i64) {
-    rdr.seek_relative(target as i64 - position).unwrap();
+    rdr.seek_relative(target as i64 - position).expect("Could not reach position of Dg3 block");
     let mut buf = [0u8; 24];
-    rdr.read_exact(&mut buf).unwrap();
+    rdr.read_exact(&mut buf).expect("Could not read Dg3 Block buffer");
     let mut block = Cursor::new(buf);
-    let block: Dg3Block = block.read_le().unwrap();
+    let block: Dg3Block = block.read_le().expect("Could not read buffer into Dg3Block structure");
     (block, (target + 24).into())
 }
 
@@ -528,11 +528,11 @@ fn parse_cg3_block(
     record_id_size: u16,
     default_byte_order: u16,
 ) -> (Cg3, i64, u16) {
-    rdr.seek_relative(target as i64 - position).unwrap(); // change buffer position
+    rdr.seek_relative(target as i64 - position).expect("Could not reach position of Cg3Block"); // change buffer position
     let mut buf = vec![0u8; 30];
-    rdr.read_exact(&mut buf).unwrap();
+    rdr.read_exact(&mut buf).expect("Could not read Cg3Block buffer");
     let mut block = Cursor::new(buf);
-    let cg: Cg3Block = block.read_le().unwrap();
+    let cg: Cg3Block = block.read_le().expect("Could not read buffer into Cg3Block structure");
     position = target as i64 + 30;
 
     // reads CN (and other linked block behind like CC, SI, CA, etc.)
@@ -739,15 +739,15 @@ fn parse_cn3_block(
     record_id_size: u16,
     default_byte_order: u16,
 ) -> (Cn3, i64) {
-    rdr.seek_relative(target as i64 - position).unwrap(); // change buffer position
+    rdr.seek_relative(target as i64 - position).expect("Coudl not reach position of CN Block"); // change buffer position
     let mut buf = vec![0u8; 228];
-    rdr.read_exact(&mut buf).unwrap();
+    rdr.read_exact(&mut buf).expect("Could not read Cn3 block buffer");
     position = target as i64 + 228;
     let mut block = Cursor::new(buf);
-    let block1: Cn3Block1 = block.read_le().unwrap();
+    let block1: Cn3Block1 = block.read_le().expect("Could not read buffer into Cn3Block1 structure");
     let mut desc = vec![0u8; 128];
-    block.read_exact(&mut desc).unwrap();
-    let block2: Cn3Block2 = block.read_le().unwrap();
+    block.read_exact(&mut desc).expect("Could not read channel description");
+    let block2: Cn3Block2 = block.read_le().expect("Could not read buffer into Cn3Block2 struct");
     let pos_byte_beg = block2.cn_bit_offset / 8 + record_id_size;
     let mut n_bytes = block2.cn_bit_count / 8u16;
     if (block2.cn_bit_count % 8) != 0 {
@@ -1087,59 +1087,59 @@ pub fn parse_cc3_block(
     mut position: i64,
     sharable: &mut SharableBlocks3,
 ) -> (i64, Cc3Block) {
-    rdr.seek_relative(target as i64 - position).unwrap(); // change buffer position
+    rdr.seek_relative(target as i64 - position).expect("Could not reach CC Block position"); // change buffer position
     let mut buf = vec![0u8; 46];
-    rdr.read_exact(&mut buf).unwrap();
+    rdr.read_exact(&mut buf).expect("Could not read Cc3Block buffer");
     position = target as i64 + 46;
     let mut block = Cursor::new(buf);
-    let cc_block: Cc3Block = block.read_le().unwrap();
+    let cc_block: Cc3Block = block.read_le().expect("Could not read buffer into Cc3Block structure");
     let conversion: Conversion;
     match cc_block.cc_type {
         0 => {
             let mut buf = vec![0.0f64; 2];
-            rdr.read_f64_into::<LittleEndian>(&mut buf).unwrap();
+            rdr.read_f64_into::<LittleEndian>(&mut buf).expect("Could not read linear conversion parameters");
             conversion = Conversion::Linear(buf);
             position += 16;
         }
         1 => {
             let mut buf = vec![0.0f64; cc_block.cc_size as usize * 2];
-            rdr.read_f64_into::<LittleEndian>(&mut buf).unwrap();
+            rdr.read_f64_into::<LittleEndian>(&mut buf).expect("Could not read tabular interpolation conversion parameters");
             conversion = Conversion::TabularInterpolation(buf);
             position += cc_block.cc_size as i64 * 2 * 8;
         }
         2 => {
             let mut buf = vec![0.0f64; cc_block.cc_size as usize * 2];
-            rdr.read_f64_into::<LittleEndian>(&mut buf).unwrap();
+            rdr.read_f64_into::<LittleEndian>(&mut buf).expect("Could not read tabular conversion parameters");
             conversion = Conversion::Tabular(buf);
             position += cc_block.cc_size as i64 * 2 * 8;
         }
         6 => {
             let mut buf = vec![0.0f64; 6];
-            rdr.read_f64_into::<LittleEndian>(&mut buf).unwrap();
+            rdr.read_f64_into::<LittleEndian>(&mut buf).expect("Could not read polynomial conversion parameters");
             conversion = Conversion::Polynomial(buf);
             position += 48;
         }
         7 => {
             let mut buf = vec![0.0f64; 7];
-            rdr.read_f64_into::<LittleEndian>(&mut buf).unwrap();
+            rdr.read_f64_into::<LittleEndian>(&mut buf).expect("Could not read exponential conversion parameters");
             conversion = Conversion::Exponential(buf);
             position += 56;
         }
         8 => {
             let mut buf = vec![0.0f64; 7];
-            rdr.read_f64_into::<LittleEndian>(&mut buf).unwrap();
+            rdr.read_f64_into::<LittleEndian>(&mut buf).expect("Could not read logarithmic conversion parameters");
             conversion = Conversion::Logarithmic(buf);
             position += 56;
         }
         9 => {
             let mut buf = vec![0.0f64; 6];
-            rdr.read_f64_into::<LittleEndian>(&mut buf).unwrap();
+            rdr.read_f64_into::<LittleEndian>(&mut buf).expect("Could not read rational conversion parameters");
             conversion = Conversion::Rational(buf);
             position += 48;
         }
         10 => {
             let mut buf = vec![0u8; 256];
-            rdr.read_exact(&mut buf).unwrap();
+            rdr.read_exact(&mut buf).expect("Could not read formulae conversion parameters");
             position += 256;
             let mut formula = String::new();
             ISO_8859_1
@@ -1158,8 +1158,8 @@ pub fn parse_cc3_block(
             let mut buf = vec![0u8; 32];
             let mut text = String::with_capacity(32);
             for index in 0..cc_block.cc_size as usize {
-                val = rdr.read_f64::<LittleEndian>().unwrap();
-                rdr.read_exact(&mut buf).unwrap();
+                val = rdr.read_f64::<LittleEndian>().expect("Could not read text table conversion value parameters");
+                rdr.read_exact(&mut buf).expect("Could not read text-table conversion text parameters");
                 position += 40;
                 ISO_8859_1
                     .decode_to(&buf, DecoderTrap::Replace, &mut text)
@@ -1178,13 +1178,13 @@ pub fn parse_cc3_block(
             let mut high_range;
             let mut text_pointer;
             let mut buf_ignored = [0u8; 16];
-            rdr.read_exact(&mut buf_ignored).unwrap();
-            let default_text_pointer = rdr.read_u32::<LittleEndian>().unwrap();
+            rdr.read_exact(&mut buf_ignored).expect("Could not read text range table conversion default value parameters");
+            let default_text_pointer = rdr.read_u32::<LittleEndian>().expect("Could not read text range table conversion default text parameters");
             position += 20;
             for _index in 0..(cc_block.cc_size as usize - 1) {
-                low_range = rdr.read_f64::<LittleEndian>().unwrap();
-                high_range = rdr.read_f64::<LittleEndian>().unwrap();
-                text_pointer = rdr.read_u32::<LittleEndian>().unwrap();
+                low_range = rdr.read_f64::<LittleEndian>().expect("Could not read text range table conversion low value parameters");
+                high_range = rdr.read_f64::<LittleEndian>().expect("Could not read text range table conversion high value parameters");
+                text_pointer = rdr.read_u32::<LittleEndian>().expect("Could not read text range table conversion value parameters");
                 position += 20;
                 pairs_pointer.push((low_range, high_range, text_pointer));
             }
@@ -1250,33 +1250,33 @@ fn parse_ce(
     mut position: i64,
     sharable: &mut SharableBlocks3,
 ) -> i64 {
-    rdr.seek_relative(target as i64 - position).unwrap(); // change buffer position
+    rdr.seek_relative(target as i64 - position).expect("Could not reach CE block position"); // change buffer position
     let mut buf = vec![0u8; 6];
-    rdr.read_exact(&mut buf).unwrap();
+    rdr.read_exact(&mut buf).expect("Could not read buffer for CE Block");
     position = target as i64 + 6;
     let mut block = Cursor::new(buf);
-    let ce_id: [u8; 2] = block.read_le().unwrap();
-    let ce_len: u16 = block.read_le().unwrap();
-    let ce_extension_type: u16 = block.read_le().unwrap();
+    let ce_id: [u8; 2] = block.read_le().expect("could not read ce_id");
+    let ce_len: u16 = block.read_le().expect("could not read ce_len");
+    let ce_extension_type: u16 = block.read_le().expect("could not read ce_extension_type");
 
     let ce_extension: CeSupplement;
     if ce_extension_type == 0x02 {
         // Reads DIM
         let mut buf = vec![0u8; 118];
-        rdr.read_exact(&mut buf).unwrap();
+        rdr.read_exact(&mut buf).expect("Could not DIM Supplement buffer");
         position += 118;
         let mut block = Cursor::new(buf);
-        let ce_module_number: u16 = block.read_le().unwrap();
-        let ce_address: u32 = block.read_le().unwrap();
+        let ce_module_number: u16 = block.read_le().expect("could not read ce_module_number");
+        let ce_address: u32 = block.read_le().expect("could not read ce_address");
         let mut desc = vec![0u8; 80];
-        block.read_exact(&mut desc).unwrap();
+        block.read_exact(&mut desc).expect("Could not read DIM description");
         let mut ce_desc = String::new();
         ISO_8859_1
             .decode_to(&desc, DecoderTrap::Replace, &mut ce_desc)
             .expect("DIM block description is latin1 encoded");
         ce_desc = ce_desc.trim_end_matches(char::from(0)).to_string();
         let mut ecu_id = vec![0u8; 32];
-        block.read_exact(&mut ecu_id).unwrap();
+        block.read_exact(&mut ecu_id).expect("Could not read DIM ecu_id");
         let mut ce_ecu_id = String::new();
         ISO_8859_1
             .decode_to(&ecu_id, DecoderTrap::Replace, &mut ce_ecu_id)
@@ -1291,20 +1291,20 @@ fn parse_ce(
     } else if ce_extension_type == 19 {
         // Reads CAN
         let mut buf = vec![0u8; 80];
-        rdr.read_exact(&mut buf).unwrap();
+        rdr.read_exact(&mut buf).expect("Could not CAN Supplement buffer");
         position += 80;
         let mut block = Cursor::new(buf);
-        let ce_can_id: u32 = block.read_le().unwrap();
-        let ce_can_index: u32 = block.read_le().unwrap();
+        let ce_can_id: u32 = block.read_le().expect("Could not read CAN ce_can_id");
+        let ce_can_index: u32 = block.read_le().expect("Could not read CAN ce_can_index");
         let mut message = vec![0u8; 36];
-        block.read_exact(&mut message).unwrap();
+        block.read_exact(&mut message).expect("Could not read CAN Supplement message");
         let mut ce_message_name = String::new();
         ISO_8859_1
             .decode_to(&message, DecoderTrap::Replace, &mut ce_message_name)
             .expect("DIM block description is latin1 encoded");
         ce_message_name = ce_message_name.trim_end_matches(char::from(0)).to_string();
         let mut sender = vec![0u8; 32];
-        block.read_exact(&mut sender).unwrap();
+        block.read_exact(&mut sender).expect("Could not read CAN Supplement sender");
         let mut ce_sender_name = String::new();
         ISO_8859_1
             .decode_to(&sender, DecoderTrap::Replace, &mut ce_sender_name)

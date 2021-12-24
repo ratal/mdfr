@@ -7,7 +7,6 @@ use ndarray::{Array1, Order};
 use rayon::prelude::*;
 use roxmltree;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::convert::TryFrom;
 use std::default::Default;
 use std::fs::{File, OpenOptions};
 use std::io::prelude::*;
