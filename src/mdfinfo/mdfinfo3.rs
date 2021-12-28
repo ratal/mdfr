@@ -1,4 +1,4 @@
-use binread::{BinRead, BinReaderExt};
+use binrw::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::NaiveDate;
 use encoding::all::{ASCII, ISO_8859_1};

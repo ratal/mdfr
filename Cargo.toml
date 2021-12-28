@@ -10,15 +10,15 @@ edition = "2021"
 clap = "2" # for input arguments 
 byteorder = "1.4" # for bytes conversions
 encoding = "0.2" # for bytes to texte conversion (utf8, SBC, UTF16)
-# binrw = "0" # to be introduced when less buggy and needed to write mdf
-binread = "2" # for easy reading of blocks into struct. To change to binrw when stable to later allow mdf writting
+binrw = "0" # to be introduced when less buggy and needed to write mdf
+# binread = "2" # for easy reading of blocks into struct. To change to binrw when stable to later allow mdf writting
 num = "0.4" # for complex numbers
 half = "1" # for f16 handling
 encoding_rs = "0.8" # for endian management
 chrono = "0.4.19" # for time conversion
 ndarray = {version = "0.15", features = ["rayon"]} # for nd arrays
 rayon =  "1.5" # for general purpose parallel computations
-dashmap = {version = "4", features = ["rayon"]} # for parallel hashmap computations
+dashmap = {version = "5", features = ["rayon"]} # for parallel hashmap computations
 roxmltree = "0.14" # for xml parsing
 criterion = "0.3" # for benchmark
 yazi = "0.1" # for DZ block data deflate

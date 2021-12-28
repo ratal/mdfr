@@ -1,5 +1,5 @@
 //! Parsing of file metadata into MdfInfo4 struct
-use binread::{BinRead, BinReaderExt};
+use binrw::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::{naive::NaiveDateTime, DateTime, Utc};
 use dashmap::DashMap;
@@ -70,19 +70,27 @@ impl MdfInfo4 {
         self.channel_names_set.get(channel_name)
     }
     /// returns channel's data ndarray.
-    pub fn get_channel_data<'a>(&'a mut self, channel_name: &'a str) -> Option<&'a ChannelData> {
+    pub fn get_channel_data<'a>(
+        &'a mut self,
+        channel_name: &'a str,
+    ) -> (Option<&'a ChannelData>, &Option<Array1<u8>>) {
         let data: Option<&ChannelData>;
         let mut channel_names: HashSet<String> = HashSet::new();
         channel_names.insert(channel_name.to_string());
         if !self.get_channel_data_validity(channel_name) {
             self.load_channels_data_in_memory(channel_names); // will read data only if array is empty
         }
-        data = self.get_channel_data_from_memory(channel_name);
-        data
+        let (dt, mask) = self.get_channel_data_from_memory(channel_name);
+        data = dt;
+        (data, mask)
     }
     /// Returns the channel's data ndarray if present in memory, otherwise None.
-    pub fn get_channel_data_from_memory(&self, channel_name: &str) -> Option<&ChannelData> {
+    pub fn get_channel_data_from_memory(
+        &self,
+        channel_name: &str,
+    ) -> (Option<&ChannelData>, &Option<Array1<u8>>) {
         let mut data: Option<&ChannelData> = None;
+        let mut mask: &Option<Array1<u8>> = &None;
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
             self.get_channel_id(channel_name)
         {
@@ -92,11 +100,12 @@ impl MdfInfo4 {
                         if !cn.data.is_empty() {
                             data = Some(&cn.data);
                         }
+                        mask = &cn.invalid_mask;
                     }
                 }
             }
         }
-        data
+        (data, mask)
     }
     /// True if channel contains data
     pub fn get_channel_data_validity(&self, channel_name: &str) -> bool {
@@ -2009,43 +2018,43 @@ impl Si4Block {
 pub struct Ca4Block {
     // header
     /// ##CA
-    pub ca_id: [u8; 4], 
+    pub ca_id: [u8; 4],
     /// reserved
-    reserved: [u8; 4],  
+    reserved: [u8; 4],
     /// Length of block in bytes
-    ca_len: u64,        
+    ca_len: u64,
     /// # of links
-    ca_links: u64,      
+    ca_links: u64,
     // links
     /// [] Array of composed elements: Pointer to a CNBLOCK for array of structures, or to a CABLOCK for array of arrays (can be NIL). If a CABLOCK is referenced, it must use the "CN template" storage type (ca_storage = 0).
-    pub ca_composition: i64, 
+    pub ca_composition: i64,
     /// [Π N(d) or empty] Only present for storage type "DG template". List of links to data blocks (DTBLOCK/DLBLOCK) for each element in case of "DG template" storage (ca_storage = 2). A link in this list may only be NIL if the cycle count of the respective element is 0: ca_data[k] = NIL => ca_cycle_count[k] = 0 The links are stored line-oriented, i.e. element k uses ca_data[k] (see explanation below). The size of the list must be equal to Π N(d), i.e. to the product of the number of elements per dimension N(d) over all dimensions D. Note: link ca_data[0] must be equal to dg_data link of the parent DGBLOCK.
-    pub ca_data: Option<Vec<i64>>, 
+    pub ca_data: Option<Vec<i64>>,
     /// [Dx3 or empty] Only present if "dynamic size" flag (bit 0) is set. References to channels for size signal of each dimension (can be NIL). Each reference is a link triple with pointer to parent DGBLOCK, parent CGBLOCK and CNBLOCK for the channel (either all three links are assigned or NIL). Thus the links have the following order: DGBLOCK for size signal of dimension 1 CGBLOCK for size signal of dimension 1 CNBLOCK for size signal of dimension 1 … DGBLOCK for size signal of dimension D CGBLOCK for size signal of dimension D CNBLOCK for size signal of dimension D The size signal can be used to model arrays whose number of elements per dimension can vary over time. If a size signal is specified for a dimension, the number of elements for this dimension at some point in time is equal to the value of the size signal at this time (i.e. for time-synchronized signals, the size signal value with highest time stamp less or equal to current time stamp). If the size signal has no recorded signal value for this time (yet), assume 0 as size.
-    ca_dynamic_size: Option<Vec<i64>>, 
+    ca_dynamic_size: Option<Vec<i64>>,
     /// [Dx3 or empty] Only present if "input quantity" flag (bit 1) is set. Reference to channels for input quantity signal for each dimension (can be NIL). Each reference is a link triple with pointer to parent DGBLOCK, parent CGBLOCK and CNBLOCK for the channel (either all three links are assigned or NIL). Thus the links have the following order: DGBLOCK for input quantity of dimension 1 CGBLOCK for input quantity of dimension 1 CNBLOCK for input quantity of dimension 1 … DGBLOCK for input quantity of dimension D CGBLOCK for input quantity of dimension D CNBLOCK for input quantity of dimension D Since the input quantity signal and the array signal must be synchronized, their channel groups must contain at least one common master channel type.
-    ca_input_quantity: Option<Vec<i64>>, 
+    ca_input_quantity: Option<Vec<i64>>,
     /// [3 or empty] Only present if "output quantity" flag (bit 2) is set. Reference to channel for output quantity (can be NIL). The reference is a link triple with pointer to parent DGBLOCK, parent CGBLOCK and CNBLOCK for the channel (either all three links are assigned or NIL). Since the output quantity signal and the array signal must be synchronized, their channel groups must contain at least one common master channel type. For array type "look-up", the output quantity is the result of the complete look-up (see [MCD-2 MC] keyword RIP_ADDR_W). The output quantity should have the same physical unit as the array elements of the array that references it.
-    ca_output_quantity: Option<Vec<i64>>, 
+    ca_output_quantity: Option<Vec<i64>>,
     /// [3 or empty] Only present if "comparison quantity" flag (bit 3) is set. Reference to channel for comparison quantity (can be NIL). The reference is a link triple with pointer to parent DGBLOCK, parent CGBLOCK and CNBLOCK for the channel (either all three links are assigned or NIL). Since the comparison quantity signal and the array signal must be synchronized, their channel groups must contain at least one common master channel type. The comparison quantity should have the same physical unit as the array elements.
     ca_comparison_quantity: Option<Vec<i64>>,
-    /// [D or empty] Only present if "axis" flag (bit 4) is set. Pointer to a conversion rule (CCBLOCK) for the scaling axis of each dimension. If a link NIL a 1:1 conversion must be used for this axis. If the "fixed axis" flag (Bit 5) is set, the conversion must be applied to the fixed axis values of the respective axis/dimension (ca_axis_value list stores the raw values as REAL). If the link to the CCBLOCK is NIL already the physical values are stored in the ca_axis_value list. If the "fixed axes" flag (Bit 5) is not set, the conversion must be applied to the raw values of the respective axis channel, i.e. it overrules the conversion specified for the axis channel, even if the ca_axis_conversion link is NIL! Note: ca_axis_conversion may reference the same CCBLOCK as referenced by the respective axis channel ("sharing" of CCBLOCK). 
-    ca_cc_axis_conversion: Option<Vec<i64>>, 
+    /// [D or empty] Only present if "axis" flag (bit 4) is set. Pointer to a conversion rule (CCBLOCK) for the scaling axis of each dimension. If a link NIL a 1:1 conversion must be used for this axis. If the "fixed axis" flag (Bit 5) is set, the conversion must be applied to the fixed axis values of the respective axis/dimension (ca_axis_value list stores the raw values as REAL). If the link to the CCBLOCK is NIL already the physical values are stored in the ca_axis_value list. If the "fixed axes" flag (Bit 5) is not set, the conversion must be applied to the raw values of the respective axis channel, i.e. it overrules the conversion specified for the axis channel, even if the ca_axis_conversion link is NIL! Note: ca_axis_conversion may reference the same CCBLOCK as referenced by the respective axis channel ("sharing" of CCBLOCK).
+    ca_cc_axis_conversion: Option<Vec<i64>>,
     /// [Dx3 or empty] Only present if "axis" flag (bit 4) is set and "fixed axes flag" (bit 5) is not set. References to channels for scaling axis of respective dimension (can be NIL). Each reference is a link triple with pointer to parent DGBLOCK, parent CGBLOCK and CNBLOCK for the channel (either all three links are assigned or NIL). Thus the links have the following order: DGBLOCK for axis of dimension 1 CGBLOCK for axis of dimension 1 CNBLOCK for axis of dimension 1 … DGBLOCK for axis of dimension D CGBLOCK for axis of dimension D CNBLOCK for axis of dimension D Each referenced channel must be an array of type "axis". The maximum number of elements of each axis (ca_dim_size[0] in axis) must be equal to the maximum number of elements of respective dimension d in "look-up" array (ca_dim_size[d-1]).
-    ca_axis: Option<Vec<i64>>, 
+    ca_axis: Option<Vec<i64>>,
     //members
     /// Array type (defines semantic of the array) see CA_T_xxx
-    pub ca_type: u8,    
+    pub ca_type: u8,
     /// Storage type (defines how the element values are stored) see CA_S_xxx
-    pub ca_storage: u8, 
+    pub ca_storage: u8,
     /// Number of dimensions D > 0 For array type "axis", D must be 1.
-    pub ca_ndim: u16,  
-    /// Flags The value contains the following bit flags (Bit 0 = LSB): see CA_F_xxx 
-    pub ca_flags: u32, 
+    pub ca_ndim: u16,
+    /// Flags The value contains the following bit flags (Bit 0 = LSB): see CA_F_xxx
+    pub ca_flags: u32,
     /// Base factor for calculation of Byte offsets for "CN template" storage type. ca_byte_offset_base should be larger than or equal to the size of Bytes required to store a component channel value in the record (all must have the same size). If it is equal to this value, then the component values are stored next to each other without gaps. Exact formula for calculation of Byte offset for each component channel see below.
-    pub ca_byte_offset_base: i32, 
+    pub ca_byte_offset_base: i32,
     /// Base factor for calculation of invalidation bit positions for CN template storage type.
-    pub ca_inval_bit_pos_base: u32, 
+    pub ca_inval_bit_pos_base: u32,
     pub ca_dim_size: Vec<u64>,
     pub ca_axis_value: Option<Vec<f64>>,
     pub ca_cycle_count: Option<Vec<u64>>,
@@ -2058,17 +2067,17 @@ pub struct Ca4Block {
 #[br(little)]
 struct Ca4BlockMembers {
     /// Array type (defines semantic of the array) see CA_T_xxx
-    ca_type: u8,    
+    ca_type: u8,
     /// Storage type (defines how the element values are stored) see CA_S_xxx            
-    ca_storage: u8, 
+    ca_storage: u8,
     /// Number of dimensions D > 0 For array type "axis", D must be 1.
-    ca_ndim: u16,   
+    ca_ndim: u16,
     /// Flags The value contains the following bit flags (Bit 0 = LSB): see CA_F_xxx
-    ca_flags: u32,  
+    ca_flags: u32,
     /// Base factor for calculation of Byte offsets for "CN template" storage type. ca_byte_offset_base should be larger than or equal to the size of Bytes required to store a component channel value in the record (all must have the same size). If it is equal to this value, then the component values are stored next to each other without gaps. Exact formula for calculation of Byte offset for each component channel see below.
-    ca_byte_offset_base: i32, 
+    ca_byte_offset_base: i32,
     /// Base factor for calculation of invalidation bit positions for CN template storage type.
-    ca_inval_bit_pos_base: u32, 
+    ca_inval_bit_pos_base: u32,
     #[br(if(ca_ndim > 0), little, count = ca_ndim)]
     ca_dim_size: Vec<u64>,
 }
@@ -2454,11 +2463,11 @@ pub struct Dt4Block {
     //header
     // dl_id: [u8; 4],  // ##DL
     /// reserved
-    reserved: [u8; 4], 
+    reserved: [u8; 4],
     /// Length of block in bytes
-    pub len: u64,      
+    pub len: u64,
     /// # of links
-    links: u64,        
+    links: u64,
 }
 
 /// DL4 Data List block struct
@@ -2468,21 +2477,21 @@ pub struct Dl4Block {
     //header
     // dl_id: [u8; 4],  // ##DL
     /// reserved
-    reserved: [u8; 4], 
+    reserved: [u8; 4],
     /// Length of block in bytes
-    dl_len: u64,       
+    dl_len: u64,
     /// # of links
-    dl_links: u64,     
+    dl_links: u64,
     // links
     /// next DL
-    pub dl_dl_next: i64, 
+    pub dl_dl_next: i64,
     #[br(if(dl_links > 1), little, count = dl_links - 1)]
     pub dl_data: Vec<i64>,
     // members
     dl_flags: u8,
     dl_reserved: [u8; 3],
     /// Number of data blocks
-    dl_count: u32, 
+    dl_count: u32,
     #[br(if((dl_flags & 0b1)>0), little)]
     dl_equal_length: u64,
     #[br(if((dl_flags & 0b1)==0),little, count = dl_count)]
@@ -2548,16 +2557,16 @@ pub struct Dz4Block {
     // links
     // members
     /// "DT", "SD", "RD" or "DV", "DI", "RV", "RI"
-    pub dz_org_block_type: [u8; 2], 
+    pub dz_org_block_type: [u8; 2],
     /// Zip algorithm, 0 deflate, 1 transpose + deflate
-    dz_zip_type: u8,                
+    dz_zip_type: u8,
     /// reserved
-    dz_reserved: u8,                
-    dz_zip_parameter: u32,          //
+    dz_reserved: u8,
+    dz_zip_parameter: u32, //
     /// length of uncompressed data
-    pub dz_org_data_length: u64,    
+    pub dz_org_data_length: u64,
     /// length of compressed data
-    pub dz_data_length: u64,        
+    pub dz_data_length: u64,
 }
 
 /// DL4 Data List block struct
@@ -2571,7 +2580,7 @@ pub struct Ld4Block {
     ld_links: u64,     // # of links
     // links
     /// next LD
-    pub ld_ld_next: i64, 
+    pub ld_ld_next: i64,
     #[br(if(ld_links > 1), little, count = (ld_links -1) / 2)]
     pub ld_data: Vec<i64>,
     #[br(if(ld_links > 1), little, count = (ld_links -1) / 2)]
@@ -2580,7 +2589,7 @@ pub struct Ld4Block {
     ld_flags: u8, //
     ld_reserved: [u8; 3],
     /// Number of data blocks
-    ld_count: u32, 
+    ld_count: u32,
     #[br(if((ld_flags & 0b1)>0), little)]
     ld_equal_sample_count: u64,
     #[br(if((ld_flags & 0b1)==0), little, count = ld_count)]
@@ -2616,20 +2625,20 @@ pub fn parser_ld4_block(
 pub struct Hl4Block {
     //header
     // ##HL
-    // hl_id: [u8; 4],  
+    // hl_id: [u8; 4],
     /// reserved
-    reserved: [u8; 4], 
+    reserved: [u8; 4],
     /// Length of block in bytes
-    pub hl_len: u64,   
+    pub hl_len: u64,
     /// # of links
-    hl_links: u64,     
+    hl_links: u64,
     /// links
     pub hl_dl_first: i64, // first LD block
     // members
     /// flags
-    hl_flags: u16,        
+    hl_flags: u16,
     /// Zip algorithn
-    hl_zip_type: u8,      
+    hl_zip_type: u8,
     /// reserved
-    hl_reserved: [u8; 5], 
+    hl_reserved: [u8; 5],
 }

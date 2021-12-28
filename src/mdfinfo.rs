@@ -2,7 +2,7 @@
 
 //! This module is reading the mdf file blocks (metadata)
 
-use binread::{BinRead, BinReaderExt};
+use binrw::{BinRead, BinReaderExt};
 use std::collections::HashSet;
 use std::fmt;
 use std::fs::{File, OpenOptions};
@@ -13,7 +13,7 @@ use std::{collections::HashMap, sync::Arc};
 pub mod mdfinfo3;
 pub mod mdfinfo4;
 
-use binread::io::Cursor;
+use binrw::io::Cursor;
 use dashmap::DashMap;
 use mdfinfo3::{hd3_comment_parser, hd3_parser, parse_dg3, MdfInfo3, SharableBlocks3};
 use mdfinfo4::{
@@ -258,7 +258,8 @@ impl MdfInfo {
                 data = mdfinfo3.get_channel_data(channel_name);
             }
             MdfInfo::V4(mdfinfo4) => {
-                data = mdfinfo4.get_channel_data(channel_name);
+                let (dt, _mask) = mdfinfo4.get_channel_data(channel_name);
+                data = dt;
             }
         }
         data

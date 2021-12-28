@@ -215,7 +215,8 @@ impl PyObjectProtocol for Mdf {
                     for channel in list.iter() {
                         let unit = self.get_channel_unit(channel.to_string());
                         let desc = self.get_channel_desc(channel.to_string());
-                        if let Some(data) = mdfinfo4.get_channel_data_from_memory(channel) {
+                        let dtmsk = mdfinfo4.get_channel_data_from_memory(channel);
+                        if let Some(data) = dtmsk.0 {
                             let data_first_last = data.first_last();
                             output.push_str(&format!(
                                 " {} {} {} {} \n",

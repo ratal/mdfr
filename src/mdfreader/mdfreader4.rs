@@ -6,7 +6,7 @@ use crate::mdfinfo::mdfinfo4::{
 use crate::mdfreader::channel_data::ChannelData;
 use crate::mdfreader::conversions4::convert_all_channels;
 use crate::mdfreader::data_read4::{read_channels_from_bytes, read_one_channel_array};
-use binread::BinReaderExt;
+use binrw::BinReaderExt;
 use encoding_rs::{Decoder, UTF_16BE, UTF_16LE, WINDOWS_1252};
 use rayon::prelude::*;
 use std::fs::File;
