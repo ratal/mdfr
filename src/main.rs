@@ -5,6 +5,7 @@ use clap::{App, Arg, SubCommand};
 use std::io;
 mod mdfinfo;
 mod mdfreader;
+mod mdfwriter;
 
 fn main() -> io::Result<()> {
     let matches = App::new("mdfr")

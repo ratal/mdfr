@@ -2,7 +2,7 @@
 
 //! This module is reading the mdf file blocks (metadata)
 
-use binrw::{BinRead, BinReaderExt};
+use binrw::{binrw, BinReaderExt};
 use std::collections::HashSet;
 use std::fmt;
 use std::fs::{File, OpenOptions};
@@ -33,19 +33,48 @@ pub enum MdfInfo {
 }
 
 /// Common Id block structure for both versions 2 and 3
-#[derive(Debug, PartialEq, Default, BinRead, Clone)]
+#[derive(Debug, PartialEq, Clone)]
+#[binrw]
 #[allow(dead_code)]
 pub struct IdBlock {
-    id_file_id: [u8; 8],           // "MDF
-    id_vers: [u8; 8],              // version in char
-    id_prog: [u8; 8],              // logger id
-    pub id_default_byteorder: u16, // 0 Little endian, >= 1 Big endian, only valid for 3.x
-    id_floatingpointformat: u16, // default floating point number. 0: IEEE754, 1: G_Float, 2: D_Float, only valid for 3.x
-    pub id_ver: u16,             // version number, valid for both 3.x and 4.x
-    id_check: [u8; 2],           // check
-    id_reserved: [u8; 26],
-    id_unfin_flags: u16,        // only valid for 4.x but can exist in 3.x
-    id_custom_unfin_flags: u16, // only valid for 4.x but can exist in 3.x
+    /// "MDF
+    pub id_file_id: [u8; 8],
+    /// version in char
+    pub id_vers: [u8; 8],
+    // logger id
+    pub id_prog: [u8; 8],
+    /// 0 Little endian, >= 1 Big endian, only valid for 3.x
+    pub id_default_byteorder: u16,
+    /// default floating point number. 0: IEEE754, 1: G_Float, 2: D_Float, only valid for 3.x
+    id_floatingpointformat: u16,
+    /// version number, valid for both 3.x and 4.x
+    pub id_ver: u16,
+    id_reserved: [u8; 2],
+    /// check
+    id_check: [u8; 2],
+    id_fill: [u8; 26],
+    /// only valid for 4.x but can exist in 3.x
+    id_unfin_flags: u16,
+    /// only valid for 4.x but can exist in 3.x
+    id_custom_unfin_flags: u16,
+}
+
+impl Default for IdBlock {
+    fn default() -> Self {
+        IdBlock {
+            id_file_id: [77, 68, 70, 32, 32, 32, 32, 32], // "MDF     "
+            id_vers: [52, 46, 50, 48, 32, 32, 32, 32],    // "4.20    "
+            id_prog: [109, 100, 102, 114, 32, 32, 32, 32], // "mdfr    "
+            id_ver: 420,
+            id_default_byteorder: 0,
+            id_floatingpointformat: 0,
+            id_reserved: [0u8; 2],
+            id_check: [0, 0],
+            id_fill: [0u8; 26],
+            id_unfin_flags: 0,
+            id_custom_unfin_flags: 0,
+        }
+    }
 }
 
 /// implements MdfInfo creation and manipulation functions
@@ -272,6 +301,18 @@ impl MdfInfo {
             }
             MdfInfo::V4(mdfinfo4) => {
                 mdfinfo4.clear_channel_data_from_memory(channel_names);
+            }
+        }
+    }
+    /// Writes mdf4 file
+    pub fn write(&mut self, file_name: &str) {
+        match self {
+            MdfInfo::V3(_mdfinfo3) => {
+                // convert mdf3 to mdf4
+                // write mdf4
+            }
+            MdfInfo::V4(mdfinfo4) => {
+                mdfinfo4.write(file_name);
             }
         }
     }

@@ -26,6 +26,7 @@ transpose = "0.2" # for DZBlock transpose
 numpy = "0.15" # export rust ndarrays into numpy
 fasteval = "0.2" # for algebraic conversion
 itertools = "0.10"
+whoami = "1.2" # to get user nam for writing file
 
 [lib]
 name = "mdfr"

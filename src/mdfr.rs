@@ -115,6 +115,13 @@ impl Mdf {
             mdf.load_all_channels_data_in_memory();
         })
     }
+    /// writes file
+    pub fn write(&mut self, file_name: &str) {
+        let Mdf(mdf) = self;
+        pyo3::Python::with_gil(|_py| {
+            mdf.write(file_name);
+        })
+    }
     /// plot one channel
     pub fn plot(&mut self, channel_name: String) {
         let Mdf(mdf) = self;

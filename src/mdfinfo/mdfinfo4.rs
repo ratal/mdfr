@@ -1,6 +1,7 @@
 //! Parsing of file metadata into MdfInfo4 struct
-use binrw::{BinRead, BinReaderExt};
+use binrw::{binrw, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
+use chrono::Local;
 use chrono::{naive::NaiveDateTime, DateTime, Utc};
 use dashmap::DashMap;
 use ndarray::{Array1, Order};
@@ -9,7 +10,7 @@ use roxmltree;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::default::Default;
 use std::fs::{File, OpenOptions};
-use std::io::prelude::*;
+use std::io::{prelude::*, BufWriter};
 use std::{fmt, str};
 use std::{
     io::{BufReader, Cursor},
@@ -21,6 +22,7 @@ use yazi::{decompress, Adler32, Format};
 use crate::mdfinfo::IdBlock;
 use crate::mdfreader::channel_data::{data_type_init, ChannelData};
 use crate::mdfreader::mdfreader4::mdfreader4;
+use crate::mdfwriter::mdfwriter4::mdfwriter4;
 
 pub(crate) type ChannelId = (String, i64, (i64, u64), (i64, i32));
 pub(crate) type ChannelNamesSet = HashMap<String, ChannelId>;
@@ -34,7 +36,7 @@ pub(crate) type ChannelNamesSet = HashMap<String, ChannelId>;
 /// * channel_names_set is the complete set of channel names contained in file
 /// * in general the blocks are contained in HashMaps with key corresponding
 /// to their position in the file
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct MdfInfo4 {
     /// file name string
     pub file_name: String,
@@ -227,6 +229,16 @@ impl MdfInfo4 {
             }
         }
     }
+    pub fn write(&mut self, file_name: &str) {
+        let f: File = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(file_name)
+            .expect("Cannot create the file");
+        let mut rdr = BufWriter::new(&f);
+        mdfwriter4(&mut rdr, self);
+    }
     // TODO cut data
     // TODO resample data
     // TODO Write to mdf4 column
@@ -234,7 +246,8 @@ impl MdfInfo4 {
 }
 
 /// MDF4 - common block Header
-#[derive(Debug, Copy, Clone, BinRead)]
+#[derive(Debug, Copy, Clone)]
+#[binrw]
 #[br(little)]
 pub struct Blockheader4 {
     /// '##XX'
@@ -259,7 +272,8 @@ pub fn parse_block_header(rdr: &mut BufReader<&File>) -> Blockheader4 {
 }
 
 /// MDF4 - common block Header without the number of links
-#[derive(Debug, Copy, Clone, BinRead)]
+#[derive(Debug, Copy, Clone)]
+#[binrw]
 #[br(little)]
 #[allow(dead_code)]
 pub struct Blockheader4Short {
@@ -324,8 +338,44 @@ fn parse_block_short(
     (block, block_header, position)
 }
 
+/// Meta Data Block struct, including the header
+#[derive(Debug, Clone)]
+#[binrw]
+#[br(little)]
+#[allow(dead_code)]
+pub struct MDBlock {
+    md_id: [u8; 4], // '##MD'
+    md_gap: [u8; 4],
+    pub md_len: u64,
+    md_links: u64,
+    #[br(count = md_len)]
+    md_data: Vec<u8>,
+}
+
+impl Default for MDBlock {
+    fn default() -> Self {
+        let user_name = whoami::username();
+        let comments = format!("<FHcomment>
+<TX>created</TX>
+<tool_id>mdfr</tool_id>
+<tool_vendor>ratalco</tool_vendor>
+<tool_version>0.1</tool_version>
+<user_name>{}</user_name>
+</FHcomment>", user_name);
+        let raw_comments = format!("{:\0<width$}", comments, width=(comments.len() / 8 + 1) * 8);
+        let fh_comments = raw_comments.as_bytes();
+        MDBlock {
+            md_id: [35, 35, 77, 68], // '##MD'
+            md_gap: [0u8; 4],
+            md_len: fh_comments.len() as u64 + 24,
+            md_links: 0,
+            md_data: fh_comments.to_vec(),}
+    }
+}
+
 /// Hd4 (Header) block structure
-#[derive(Debug, Copy, Clone, BinRead)]
+#[derive(Debug, Copy, Clone)]
+#[binrw]
 #[br(little)]
 #[allow(dead_code)]
 pub struct Hd4 {
@@ -359,7 +409,7 @@ pub struct Hd4 {
     pub hd_dst_offset_min: i16,
     /// Time flags The value contains the following bit flags (see HD_TF_xxx)
     pub hd_time_flags: u8,
-    /// Time quality class (see HD_TC_xxx)
+    /// Time quality class (see HD_TC[35, 35, 72, 68]_xxx)
     pub hd_time_class: u8,
     /// Flags The value contains the following bit flags (see HD_FL_xxx):
     pub hd_flags: u8,
@@ -369,6 +419,32 @@ pub struct Hd4 {
     pub hd_start_angle_rad: f64,
     /// Start distance in meters at start of measurement (only for distance synchronous measurements) Only valid if "start distance valid" flag is set. All distance values for distance synchronized master channels or events are relative to this start distance.
     pub hd_start_distance_m: f64,
+}
+
+impl Default for Hd4 {
+    fn default() -> Self {
+        Hd4 {
+            hd_id: [35, 35, 72, 68], // ##HD
+            hd_len: 104,
+            hd_link_counts: 6,
+            hd_reserved: [0u8; 4],
+            hd_dg_first: 0,
+            hd_fh_first: 0,
+            hd_ch_first: 0,
+            hd_at_first: 0,
+            hd_ev_first: 0,
+            hd_md_comment: 0,
+            hd_start_time_ns: Local::now().timestamp_nanos() as u64,
+            hd_tz_offset_min: 0,
+            hd_dst_offset_min: 0,
+            hd_time_flags: 0,
+            hd_time_class: 0,
+            hd_flags: 0,
+            hd_reserved2: 0,
+            hd_start_angle_rad: 0.0,
+            hd_start_distance_m: 0.0,
+        }
+    }
 }
 
 /// Hd4 display implementation
@@ -553,7 +629,8 @@ fn xml_parse(val: &mut (String, bool)) {
 }
 
 /// Fh4 (File History) block struct, including the header
-#[derive(Debug, Copy, Clone, BinRead)]
+#[derive(Debug, Copy, Clone)]
+#[binrw]
 #[br(little)]
 #[allow(dead_code)]
 pub struct FhBlock {
@@ -579,6 +656,23 @@ pub struct FhBlock {
     pub fh_time_flags: u8,
     /// reserved
     fh_reserved: [u8; 3],
+}
+
+impl Default for FhBlock {
+    fn default() -> Self {
+        FhBlock { 
+            fh_id: [35, 35, 70, 72], // '##FH'
+            fh_gap: [0u8; 4],
+            fh_len: 56,
+            fh_links: 2,
+            fh_fh_next: 0,
+            fh_md_comment: 0,
+            fh_time_ns: Local::now().timestamp_nanos() as u64,
+            fh_tz_offset_min: 0,
+            fh_dst_offset_min: 0,
+            fh_time_flags: 0,
+            fh_reserved: [0u8; 3] }
+    }
 }
 
 /// Fh4 (File History) block struct parser
@@ -652,7 +746,8 @@ pub fn parse_fh(rdr: &mut BufReader<&File>, target: i64, position: i64) -> (Fh, 
     (fh, position)
 }
 /// At4 Attachment block struct
-#[derive(Debug, Copy, Clone, BinRead)]
+#[derive(Debug, Copy, Clone)]
+#[binrw]
 #[br(little)]
 #[allow(dead_code)]
 pub struct At4Block {
@@ -776,7 +871,8 @@ pub fn parse_at4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> 
 }
 
 /// Ev4 Event block struct
-#[derive(Debug, Clone, BinRead)]
+#[derive(Debug, Clone)]
+#[binrw]
 #[br(little)]
 #[allow(dead_code)]
 pub struct Ev4Block {
@@ -881,7 +977,8 @@ pub fn parse_ev4(
 }
 
 /// Dg4 Data Group block struct
-#[derive(Debug, Copy, Clone, BinRead)]
+#[derive(Debug, Copy, Clone)]
+#[binrw]
 #[br(little)]
 #[allow(dead_code)]
 pub struct Dg4Block {
@@ -1079,7 +1176,8 @@ impl SharableBlocks {
     }
 }
 /// Cg4 Channel Group block struct
-#[derive(Debug, Copy, Clone, Default, BinRead)]
+#[derive(Debug, Copy, Clone, Default)]
+#[binrw]
 #[br(little)]
 #[allow(dead_code)]
 pub struct Cg4Block {
@@ -1342,7 +1440,8 @@ pub fn parse_cg4(
 }
 
 /// Cn4 Channel block struct
-#[derive(Debug, PartialEq, Default, Clone, BinRead)]
+#[derive(Debug, PartialEq, Default, Clone)]
+#[binrw]
 #[br(little)]
 pub struct Cn4Block {
     /// # of links
@@ -1903,7 +2002,8 @@ fn read_cc(
 }
 
 /// Cc4 Channel Conversion block struct
-#[derive(Debug, Clone, BinRead)]
+#[derive(Debug, Clone)]
+#[binrw]
 #[br(little)]
 #[allow(dead_code)]
 pub struct Cc4Block {
@@ -1944,7 +2044,8 @@ pub struct Cc4Block {
     pub cc_val: CcVal,
 }
 
-#[derive(Debug, Clone, BinRead)]
+#[derive(Debug, Clone)]
+#[binrw]
 #[br(little, import(count: u16, cc_type: u8))]
 pub enum CcVal {
     #[br(pre_assert(cc_type < 11))]
@@ -1955,7 +2056,8 @@ pub enum CcVal {
 }
 
 /// Si4 Source Information block struct
-#[derive(Debug, PartialEq, Default, Copy, Clone, BinRead)]
+#[derive(Debug, PartialEq, Default, Copy, Clone)]
+#[binrw]
 #[br(little)]
 pub struct Si4Block {
     // si_id: [u8; 4],  // ##SI
@@ -2063,7 +2165,8 @@ pub struct Ca4Block {
     pub shape: (Vec<usize>, Order),
 }
 
-#[derive(Debug, Clone, BinRead)]
+#[derive(Debug, Clone)]
+#[binrw]
 #[br(little)]
 struct Ca4BlockMembers {
     /// Array type (defines semantic of the array) see CA_T_xxx
@@ -2457,7 +2560,8 @@ pub fn build_channel_db(
 }
 
 /// DT4 Data List block struct
-#[derive(Debug, PartialEq, Default, Clone, BinRead)]
+#[derive(Debug, PartialEq, Default, Clone)]
+#[binrw]
 #[br(little)]
 pub struct Dt4Block {
     //header
@@ -2471,7 +2575,8 @@ pub struct Dt4Block {
 }
 
 /// DL4 Data List block struct
-#[derive(Debug, PartialEq, Default, Clone, BinRead)]
+#[derive(Debug, PartialEq, Default, Clone)]
+#[binrw]
 #[br(little)]
 pub struct Dl4Block {
     //header
@@ -2546,7 +2651,8 @@ pub fn parse_dz(rdr: &mut BufReader<&File>) -> (Vec<u8>, Dz4Block) {
 }
 
 /// DZ4 Data List block struct
-#[derive(Debug, PartialEq, Default, Clone, BinRead)]
+#[derive(Debug, PartialEq, Default, Clone)]
+#[binrw]
 #[br(little)]
 pub struct Dz4Block {
     //header
@@ -2570,7 +2676,8 @@ pub struct Dz4Block {
 }
 
 /// DL4 Data List block struct
-#[derive(Debug, PartialEq, Default, Clone, BinRead)]
+#[derive(Debug, PartialEq, Default, Clone)]
+#[binrw]
 #[br(little)]
 pub struct Ld4Block {
     // header
@@ -2620,7 +2727,8 @@ pub fn parser_ld4_block(
 }
 
 /// HL4 Data List block struct
-#[derive(Debug, PartialEq, Default, Clone, BinRead)]
+#[derive(Debug, PartialEq, Default, Clone)]
+#[binrw]
 #[br(little)]
 pub struct Hl4Block {
     //header
