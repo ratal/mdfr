@@ -352,8 +352,8 @@ pub struct MDBlock {
     md_data: Vec<u8>,
 }
 
-impl Default for MDBlock {
-    fn default() -> Self {
+impl MDBlock {
+    pub fn fh(&mut self) {
         let user_name = whoami::username();
         let comments = format!("<FHcomment>
 <TX>created</TX>
@@ -364,12 +364,19 @@ impl Default for MDBlock {
 </FHcomment>", user_name);
         let raw_comments = format!("{:\0<width$}", comments, width=(comments.len() / 8 + 1) * 8);
         let fh_comments = raw_comments.as_bytes();
+        self.md_len = fh_comments.len() as u64 + 24;
+        self.md_data = fh_comments.to_vec();
+    }
+}
+
+impl Default for MDBlock {
+    fn default() -> Self {
         MDBlock {
             md_id: [35, 35, 77, 68], // '##MD'
             md_gap: [0u8; 4],
-            md_len: fh_comments.len() as u64 + 24,
+            md_len: 24,
             md_links: 0,
-            md_data: fh_comments.to_vec(),}
+            md_data: Vec::new(),}
     }
 }
 
@@ -1004,6 +1011,23 @@ pub struct Dg4Block {
     reserved_2: [u8; 7],
 }
 
+impl Default for Dg4Block {
+    fn default() -> Self {
+        Dg4Block {
+            dg_id: [35, 35, 68, 71],
+            reserved: [0; 4],
+            dg_len: 64,
+            dg_links: 4,
+            dg_dg_next: 0,
+            dg_cg_first: 0,
+            dg_data: 0,
+            dg_md_comment: 0,
+            dg_rec_id_size: 0,
+            reserved_2: [0; 7],
+        }
+    }
+}
+
 /// Dg4 (Data Group) block struct parser with comments
 fn parse_dg4_block(
     rdr: &mut BufReader<&File>,
@@ -1176,7 +1200,7 @@ impl SharableBlocks {
     }
 }
 /// Cg4 Channel Group block struct
-#[derive(Debug, Copy, Clone, Default)]
+#[derive(Debug, Copy, Clone)]
 #[binrw]
 #[br(little)]
 #[allow(dead_code)]
@@ -1214,6 +1238,28 @@ pub struct Cg4Block {
     pub cg_data_bytes: u32,
     /// Normal CGBLOCK: Number of additional Bytes for record used for invalidation bits. Can be zero if no invalidation bits are used at all. Invalidation bits may only occur in the specified number of Bytes after the data Bytes, not within the data Bytes that contain the signal values. VLSD CGBLOCK: High part of UINT64 value that specifies the total size in Bytes of all variable length signal values for the recorded samples of this channel group, i.e. the total size in Bytes can be calculated by cg_data_bytes + (cg_inval_bytes << 32) Note: this value does not include the Bytes used to specify the length of each VLSD value!
     pub cg_inval_bytes: u32,
+}
+
+impl Default for Cg4Block {
+    fn default() -> Self {
+        Cg4Block {
+            cg_links: 7,
+            cg_cg_next: 0,
+            cg_cn_first: 0,
+            cg_tx_acq_name: 0,
+            cg_si_acq_source: 0,
+            cg_sr_first: 0,
+            cg_md_comment: 0,
+            cg_cg_master: 0,
+            cg_record_id: 0,
+            cg_cycle_count: 0,
+            cg_flags: 0,
+            cg_path_separator: 0,
+            cg_reserved: [0; 4],
+            cg_data_bytes: 0,
+            cg_inval_bytes: 0,
+        }
+    }
 }
 
 /// Cg4 (Channel Group) block struct parser with linked comments Source Information in sharable blocks
@@ -1440,7 +1486,7 @@ pub fn parse_cg4(
 }
 
 /// Cn4 Channel block struct
-#[derive(Debug, PartialEq, Default, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 #[binrw]
 #[br(little)]
 pub struct Cn4Block {
@@ -1499,6 +1545,40 @@ pub struct Cn4Block {
     /// Upper extended limit for this signal (physical value for numeric conversion rule, otherwise raw value) Only valid if "extended limit range valid" flag (bit 5) is set.
     cn_limit_ext_max: f64,
 }
+
+impl Default for Cn4Block {
+    fn default() -> Self {
+        Cn4Block {
+            cn_links: 8,
+            cn_cn_next: 0,
+            cn_composition: 0,
+            cn_tx_name: 0,
+            cn_si_source: 0,
+            cn_cc_conversion: 0,
+            cn_data: 0,
+            cn_md_unit: 0,
+            cn_md_comment: 0,
+            links: vec![],
+            cn_type: 0,
+            cn_sync_type: 0,
+            cn_data_type: 0,
+            cn_bit_offset: 0,
+            cn_byte_offset: 0,
+            cn_bit_count: 0,
+            cn_flags: 0,
+            cn_inval_bit_pos: 0,
+            cn_precision: 0,
+            cn_reserved: [0; 3],
+            cn_val_range_min: 0.0,
+            cn_val_range_max: 0.0,
+            cn_limit_min: 0.0,
+            cn_limit_max: 0.0,
+            cn_limit_ext_min: 0.0,
+            cn_limit_ext_max: 0.0,
+        }
+    }
+}
+
 /// Cn4 structure containing block but also unique_name, ndarray data, composition
 /// and other attributes frequently needed and computed
 #[derive(Debug, Default, Clone)]
