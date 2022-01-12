@@ -1014,7 +1014,7 @@ pub struct Dg4Block {
 impl Default for Dg4Block {
     fn default() -> Self {
         Dg4Block {
-            dg_id: [35, 35, 68, 71],
+            dg_id: [35, 35, 68, 71], // ##DG
             reserved: [0; 4],
             dg_len: 64,
             dg_links: 4,
@@ -1205,9 +1205,12 @@ impl SharableBlocks {
 #[br(little)]
 #[allow(dead_code)]
 pub struct Cg4Block {
-    // cg_id: [u8; 4],  // ##CG
-    // reserved: [u8; 4],  // reserved
-    // cg_len: u64,      // Length of block in bytes
+    /// ##CG
+    cg_id: [u8; 4],  
+    /// reserved
+    reserved: [u8; 4],  
+    /// Length of block in bytes
+    cg_len: u64,      
     /// # of links
     cg_links: u64,
     /// Pointer to next channel group block (CGBLOCK) (can be NIL)
@@ -1243,7 +1246,10 @@ pub struct Cg4Block {
 impl Default for Cg4Block {
     fn default() -> Self {
         Cg4Block {
-            cg_links: 7,
+            cg_id: [35, 35, 67, 71], // ##CG
+            reserved: [0u8; 4],
+            cg_len: 112,
+            cg_links: 7, // with cg_cg_master
             cg_cg_next: 0,
             cg_cn_first: 0,
             cg_tx_acq_name: 0,
@@ -1270,11 +1276,12 @@ fn parse_cg4_block(
     sharable: &mut SharableBlocks,
     record_id_size: u8,
 ) -> (Cg4, i64, usize) {
-    let (mut block, _block_header, pos) = parse_block_short(rdr, target, position);
-    position = pos;
-    let cg: Cg4Block = block
+    rdr.seek_relative(target - position)
+        .expect("Could not reach CG block position"); // change buffer position
+    let cg: Cg4Block = rdr
         .read_le()
         .expect("Could not read buffer into Cg4Block struct");
+    position = target + cg.cg_len as i64;
 
     // Reads MD
     let comment_pointer = cg.cg_md_comment;
@@ -1490,6 +1497,12 @@ pub fn parse_cg4(
 #[binrw]
 #[br(little)]
 pub struct Cn4Block {
+    /// ##CN
+    cn_id: [u8; 4],  
+    /// reserved
+    reserved: [u8; 4],  
+    /// Length of block in bytes
+    cn_len: u64,      
     /// # of links
     cn_links: u64,
     /// Pointer to next channel block (CNBLOCK) (can be NIL)
@@ -1549,6 +1562,9 @@ pub struct Cn4Block {
 impl Default for Cn4Block {
     fn default() -> Self {
         Cn4Block {
+            cn_id: [35, 35, 67, 78], // ##CN
+            reserved: [0; 4],
+            cn_len: 160,
             cn_links: 8,
             cn_cn_next: 0,
             cn_composition: 0,
@@ -1911,11 +1927,13 @@ fn parse_cn4_block(
 ) -> (Cn4, i64, usize, CnType) {
     let mut n_cn: usize = 1;
     let mut cns: HashMap<i32, Cn4> = HashMap::new();
-    let (mut block, _header, pos) = parse_block_short(rdr, target, position);
-    position = pos;
-    let block: Cn4Block = block
+    rdr.seek_relative(target - position)
+        .expect("Could not reach CN block position"); // change buffer position
+    let block: Cn4Block = rdr
         .read_le()
         .expect("Could not read buffer into Cn4Block struct");
+    position = target + block.cn_len as i64;
+
     let pos_byte_beg = block.cn_byte_offset + record_id_size as u32;
     let n_bytes = calc_n_bytes_not_aligned(block.cn_bit_count + (block.cn_bit_offset as u32));
 

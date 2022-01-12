@@ -19,7 +19,8 @@ pub fn mdfwriter4<'a>(writer: &'a mut BufWriter<&File>, info: &'a mut MdfInfo4) 
     let mut fh = FhBlock::default();
     pointer += 56;
     fh.fh_md_comment = pointer;
-    let fh_comments_header = MDBlock::default();
+    let mut fh_comments_header = MDBlock::default();
+    fh_comments_header.fh();
     pointer += fh_comments_header.md_len as i64;
 
     writer
