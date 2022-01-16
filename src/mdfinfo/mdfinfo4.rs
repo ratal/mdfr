@@ -338,6 +338,39 @@ fn parse_block_short(
     (block, block_header, position)
 }
 
+/// Text Block struct, including the header
+#[derive(Debug, Clone)]
+#[binrw]
+#[br(little)]
+#[allow(dead_code)]
+pub struct TXBlock {
+    tx_id: [u8; 4], // '##TX'
+    tx_gap: [u8; 4],
+    pub tx_len: u64,
+    tx_links: u64,
+    #[br(count = tx_len)]
+    tx_data: Vec<u8>,
+}
+
+impl TXBlock {
+    pub fn data(&mut self, data: String) {
+        self.tx_data = format!("{:\0<width$}", data, width=(data.len() / 8 + 1) * 8).into_bytes();
+        self.tx_len = self.tx_data.len() as u64 + 24;
+    }
+}
+
+impl Default for TXBlock {
+    fn default() -> Self {
+        TXBlock {
+            tx_id: [35, 35, 84, 88],
+            tx_gap: [0x00, 0x00, 0x00, 0x00],
+            tx_len: 0,
+            tx_links: 0,
+            tx_data: vec![],
+        }
+    }
+}
+
 /// Meta Data Block struct, including the header
 #[derive(Debug, Clone)]
 #[binrw]
@@ -994,7 +1027,7 @@ pub struct Dg4Block {
     /// reserved
     reserved: [u8; 4],
     /// Length of block in bytes
-    dg_len: u64,
+    pub dg_len: u64,
     /// # of links
     dg_links: u64,
     /// Pointer to next data group block (DGBLOCK) (can be NIL)
@@ -1058,7 +1091,7 @@ pub struct Dg4 {
     /// DG Block
     pub block: Dg4Block,
     /// Comments
-    comments: HashMap<String, String>,
+    pub comments: HashMap<String, String>,
     /// CG Block
     pub cg: HashMap<u64, Cg4>,
 }
@@ -1210,13 +1243,13 @@ pub struct Cg4Block {
     /// reserved
     reserved: [u8; 4],  
     /// Length of block in bytes
-    cg_len: u64,      
+    pub cg_len: u64,      
     /// # of links
     cg_links: u64,
     /// Pointer to next channel group block (CGBLOCK) (can be NIL)
     pub cg_cg_next: i64,
     /// Pointer to first channel block (CNBLOCK) (can be NIL, must be NIL for VLSD CGBLOCK, i.e. if "VLSD channel group" flag (bit 0) is set)
-    cg_cn_first: i64,
+    pub cg_cn_first: i64,
     /// Pointer to acquisition name (TXBLOCK) (can be NIL, must be NIL for VLSD CGBLOCK)
     cg_tx_acq_name: i64,
     /// Pointer to acquisition source (SIBLOCK) (can be NIL, must be NIL for VLSD CGBLOCK) See also rules for uniqueness explained in 4.4.3 Identification of Channels.
@@ -1226,7 +1259,7 @@ pub struct Cg4Block {
     ///Pointer to comment and additional information (TXBLOCK or MDBLOCK) (can be NIL, must be NIL for VLSD CGBLOCK)
     cg_md_comment: i64,
     #[br(if(cg_links > 6))]
-    cg_cg_master: i64,
+    pub cg_cg_master: i64,
     // Data Members
     /// Record ID, value must be less than maximum unsigned integer value allowed by dg_rec_id_size in parent DGBLOCK. Record ID must be unique within linked list of CGBLOCKs.
     pub cg_record_id: u64,
@@ -1249,7 +1282,7 @@ impl Default for Cg4Block {
             cg_id: [35, 35, 67, 71], // ##CG
             reserved: [0u8; 4],
             cg_len: 112,
-            cg_links: 7, // with cg_cg_master
+            cg_links: 6, // 7 with cg_cg_master
             cg_cg_next: 0,
             cg_cn_first: 0,
             cg_tx_acq_name: 0,
@@ -1259,7 +1292,7 @@ impl Default for Cg4Block {
             cg_cg_master: 0,
             cg_record_id: 0,
             cg_cycle_count: 0,
-            cg_flags: 0,
+            cg_flags: 8, // bit 3 set for remote master
             cg_path_separator: 0,
             cg_reserved: [0; 4],
             cg_data_bytes: 0,
@@ -1369,7 +1402,7 @@ pub struct Cg4 {
     pub master_channel_name: String,
     pub channel_names: HashSet<String>,
     /// as not stored in .block but can still be referenced by other blocks
-    block_position: i64,
+    pub block_position: i64,
     /// record length including recordId and invalid bytes
     pub record_length: u32,
     /// pointing to another cg,cn
@@ -1502,7 +1535,7 @@ pub struct Cn4Block {
     /// reserved
     reserved: [u8; 4],  
     /// Length of block in bytes
-    cn_len: u64,      
+    pub cn_len: u64,      
     /// # of links
     cn_links: u64,
     /// Pointer to next channel block (CNBLOCK) (can be NIL)
@@ -1518,9 +1551,9 @@ pub struct Cn4Block {
     /// Pointer to channel type specific signal data For variable length data channel (cn_type = 1): unique link to signal data block (SDBLOCK) or data list block (DLBLOCK) or, only for unsorted data groups, referencing link to a VLSD channel group block (CGBLOCK). Can only be NIL if SDBLOCK would be empty. For synchronization channel (cn_type = 4): referencing link to attachment block (ATBLOCK) in global linked list of ATBLOCKs starting at hd_at_first. Cannot be NIL.
     pub cn_data: i64,
     /// Pointer to TXBLOCK/MDBLOCK with designation for physical unit of signal data (after conversion) or (only for channel data types "MIME sample" and "MIME stream") to MIME context-type text. (can be NIL). The unit can be used if no conversion rule is specified or to overwrite the unit specified for the conversion rule (e.g. if a conversion rule is shared between channels). If the link is NIL, then the unit from the conversion rule must be used. If the content is an empty string, no unit should be displayed. If an MDBLOCK is used, in addition the A-HDO unit definition can be stored, see Table 38. Note: for (virtual) master and synchronization channels the A-HDO definition should be omitted to avoid redundancy. Here the unit is already specified by cn_sync_type of the channel. In case of channel data types "MIME sample" and "MIME stream", the text of the unit must be the content-type text of a MIME type which specifies the content of the values of the channel (either fixed length in record or variable length in SDBLOCK). The MIME content-type string must be written in lowercase, and it must apply to the same rules as defined for at_tx_mimetype in 4.11 The Attachment Block ATBLOCK.
-    cn_md_unit: i64,
+    pub cn_md_unit: i64,
     /// Pointer to TXBLOCK/MDBLOCK with designation for physical unit of signal data (after conversion) or (only for channel data types "MIME sample" and "MIME stream") to MIME context-type text. (can be NIL). The unit can be used if no conversion rule is specified or to overwrite the unit specified for the conversion rule (e.g. if a conversion rule is shared between channels). If the link is NIL, then the unit from the conversion rule must be used. If the content is an empty string, no unit should be displayed. If an MDBLOCK is used, in addition the A-HDO unit definition can be stored, see Table 38. Note: for (virtual) master and synchronization channels the A-HDO definition should be omitted to avoid redundancy. Here the unit is already specified by cn_sync_type of the channel. In case of channel data types "MIME sample" and "MIME stream", the text of the unit must be the content-type text of a MIME type which specifies the content of the values of the channel (either fixed length in record or variable length in SDBLOCK). The MIME content-type string must be written in lowercase, and it must apply to the same rules as defined for at_tx_mimetype in 4.11 The Attachment Block ATBLOCK.
-    cn_md_comment: i64,
+    pub cn_md_comment: i64,
     #[br(if(cn_links > 8), little, count = cn_links - 8)]
     links: Vec<i64>,
 
@@ -1602,7 +1635,7 @@ pub struct Cn4 {
     pub block: Cn4Block,
     /// unique channel name string
     pub unique_name: String,
-    block_position: i64,
+    pub block_position: i64,
     /// beginning position of channel in record
     pub pos_byte_beg: u32,
     /// number of bytes taken by channel in record
