@@ -13,27 +13,15 @@ fn main() -> io::Result<()> {
         .author("Aymeric Rateau <aymeric.rateau@gmail.com>")
         .about("reads ASAM mdf file")
         .arg(
-            Arg::with_name("file")
+            Arg::new("file")
                 .help("Sets the input file to use")
                 .required(true)
                 .index(1),
         )
         .arg(
-            Arg::with_name("v")
-                .short("v")
-                .multiple(true)
+            Arg::new("v")
+                .multiple_values(true)
                 .help("Sets the level of verbosity"),
-        )
-        .subcommand(
-            SubCommand::with_name("test")
-                .about("controls testing features")
-                .version("0.1")
-                .author("Aymeric Rateau <aymeric.rateau@gmail.com>")
-                .arg(
-                    Arg::with_name("debug")
-                        .short("d")
-                        .help("print debug information verbosely"),
-                ),
         )
         .get_matches();
 
