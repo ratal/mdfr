@@ -1,5 +1,5 @@
 //! Parsing of file metadata into MdfInfo4 struct
-use binrw::{binrw, BinReaderExt};
+use binrw::{binrw, BinReaderExt, BinWriterExt};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::Local;
 use chrono::{naive::NaiveDateTime, DateTime, Utc};
@@ -44,8 +44,6 @@ pub struct MdfInfo4 {
     pub id_block: IdBlock,
     /// header block
     pub hd_block: Hd4,
-    /// header's block comments
-    pub hd_comment: HashMap<String, String>,
     /// file history blocks
     pub fh: Fh,
     /// attachment blocks
@@ -76,14 +74,13 @@ impl MdfInfo4 {
         &'a mut self,
         channel_name: &'a str,
     ) -> (Option<&'a ChannelData>, &Option<Array1<u8>>) {
-        let data: Option<&ChannelData>;
         let mut channel_names: HashSet<String> = HashSet::new();
         channel_names.insert(channel_name.to_string());
         if !self.get_channel_data_validity(channel_name) {
             self.load_channels_data_in_memory(channel_names); // will read data only if array is empty
         }
         let (dt, mask) = self.get_channel_data_from_memory(channel_name);
-        data = dt;
+        let data: Option<&ChannelData> = dt;
         (data, mask)
     }
     /// Returns the channel's data ndarray if present in memory, otherwise None.
@@ -126,8 +123,8 @@ impl MdfInfo4 {
         state
     }
     /// Returns the channel's unit string. If it does not exist, it is an empty string.
-    pub fn get_channel_unit(&self, channel_name: &str) -> String {
-        let mut unit: String = String::new();
+    pub fn get_channel_unit(&self, channel_name: &str) -> Option<String> {
+        let mut unit: Option<String> = None;
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
             self.get_channel_id(channel_name)
         {
@@ -142,8 +139,8 @@ impl MdfInfo4 {
         unit
     }
     /// Returns the channel's description. If it does not exist, it is an empty string
-    pub fn get_channel_desc(&self, channel_name: &str) -> String {
-        let mut desc = String::new();
+    pub fn get_channel_desc(&self, channel_name: &str) -> Option<String> {
+        let mut desc: Option<String> = None;
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
             self.get_channel_id(channel_name)
         {
@@ -260,6 +257,17 @@ pub struct Blockheader4 {
     pub hdr_links: u64,
 }
 
+impl Default for Blockheader4 {
+    fn default() -> Self {
+        Blockheader4 {
+            hdr_id: [35, 35, 84, 88], // ##TX
+            hdr_gap: [0x00, 0x00, 0x00, 0x00],
+            hdr_len: 24,
+            hdr_links: 0,
+        }
+    }
+}
+
 /// parse the block header and its fields id, (reserved), length and number of links
 #[inline]
 pub fn parse_block_header(rdr: &mut BufReader<&File>) -> Blockheader4 {
@@ -338,78 +346,240 @@ fn parse_block_short(
     (block, block_header, position)
 }
 
-/// Text Block struct, including the header
+/// metadata are either stored in TX (text) or MD (xml) blocks for mdf version 4
 #[derive(Debug, Clone)]
-#[binrw]
-#[br(little)]
-#[allow(dead_code)]
-pub struct TXBlock {
-    tx_id: [u8; 4], // '##TX'
-    tx_gap: [u8; 4],
-    pub tx_len: u64,
-    tx_links: u64,
-    #[br(count = tx_len)]
-    tx_data: Vec<u8>,
+pub enum MetaDataBlockType {
+    MdBlock,
+    MdParsed,
+    TX,
 }
 
-impl TXBlock {
-    pub fn data(&mut self, data: String) {
-        self.tx_data = format!("{:\0<width$}", data, width=(data.len() / 8 + 1) * 8).into_bytes();
-        self.tx_len = self.tx_data.len() as u64 + 24;
+impl Default for MetaDataBlockType {
+    fn default() -> Self {
+        MetaDataBlockType::TX
     }
 }
 
-impl Default for TXBlock {
+#[derive(Debug, Clone)]
+pub enum BlockType {
+    HD,
+    FH,
+    AT,
+    EV,
+    DG,
+    CG,
+    CN,
+    CC,
+    SI,
+}
+
+impl Default for BlockType {
     fn default() -> Self {
-        TXBlock {
-            tx_id: [35, 35, 84, 88],
-            tx_gap: [0x00, 0x00, 0x00, 0x00],
-            tx_len: 0,
-            tx_links: 0,
-            tx_data: vec![],
+        BlockType::CN
+    }
+}
+
+/// struct linking MD or TX block with
+#[derive(Debug, Default, Clone)]
+pub struct MetaData {
+    pub block: Blockheader4,
+    pub raw_data: Vec<u8>,
+    pub block_type: MetaDataBlockType,
+    pub comments: HashMap<String, String>,
+    pub parent_block_type: BlockType,
+}
+
+fn read_meta_data(
+    rdr: &mut BufReader<&File>,
+    sharable: &mut SharableBlocks,
+    target: i64,
+    mut position: i64,
+    parent_block_type: BlockType,
+) -> i64 {
+    if target != 0 && !sharable.md_tx.contains_key(&target) {
+        rdr.seek_relative(target - position)
+            .expect("Could not reach block short header position"); // change buffer position
+        let block: Blockheader4 = rdr.read_le().expect("Could not read MD or TX Block");
+        let mut raw_data = vec![0u8; (block.hdr_len - 24) as usize];
+        rdr.read_exact(&mut raw_data)
+            .expect("Could not read rest of block after header");
+        position = target + block.hdr_len as i64;
+        let block_type = match block.hdr_id {
+            [35, 35, 77, 68] => MetaDataBlockType::MdBlock,
+            [35, 35, 84, 88] => MetaDataBlockType::TX,
+            _ => MetaDataBlockType::TX,
+        };
+        let md = MetaData {
+            block,
+            raw_data,
+            block_type,
+            comments: HashMap::new(),
+            parent_block_type,
+        };
+        sharable.md_tx.insert(target, md);
+        position
+    } else {
+        position
+    }
+}
+
+impl MetaData {
+    pub fn new(block_type: MetaDataBlockType, parent_block_type: BlockType) -> Self {
+        let header = match block_type {
+            MetaDataBlockType::MdBlock => Blockheader4 {
+                hdr_id: [35, 35, 77, 68], // '##MD'
+                hdr_gap: [0u8; 4],
+                hdr_len: 24,
+                hdr_links: 0,
+            },
+            MetaDataBlockType::TX => Blockheader4 {
+                hdr_id: [35, 35, 84, 88], // '##TX'
+                hdr_gap: [0u8; 4],
+                hdr_len: 0,
+                hdr_links: 0,
+            },
+            MetaDataBlockType::MdParsed => panic!("MdParsed not implemented for read function"),
+        };
+        MetaData {
+            block: header,
+            raw_data: Vec::new(),
+            block_type: MetaDataBlockType::TX,
+            comments: HashMap::new(),
+            parent_block_type,
         }
     }
-}
-
-/// Meta Data Block struct, including the header
-#[derive(Debug, Clone)]
-#[binrw]
-#[br(little)]
-#[allow(dead_code)]
-pub struct MDBlock {
-    md_id: [u8; 4], // '##MD'
-    md_gap: [u8; 4],
-    pub md_len: u64,
-    md_links: u64,
-    #[br(count = md_len)]
-    md_data: Vec<u8>,
-}
-
-impl MDBlock {
-    pub fn fh(&mut self) {
+    pub fn parse_xml(&mut self) {
+        match self.block_type {
+            MetaDataBlockType::MdBlock => match self.parent_block_type {
+                BlockType::HD => self.parse_hd_xml(),
+                BlockType::FH => self.parse_fh_xml(),
+                _ => self.parse_generic_xml(),
+            },
+            _ => (),
+        }
+    }
+    pub fn get_data_string(&self) -> String {
+        match self.block_type {
+            MetaDataBlockType::MdParsed => String::new(),
+            _ => {
+                let comment = match str::from_utf8(&self.raw_data) {
+                    Ok(v) => v,
+                    Err(e) => panic!("Invalid UTF-8 sequence in metadata: {}", e),
+                };
+                let comment: String = comment.trim_end_matches(char::from(0)).into();
+                comment
+            }
+        }
+    }
+    pub fn set_data_buffer(&mut self, data: String) {
+        self.raw_data = data.into();
+        self.block.hdr_len = self.raw_data.len() as u64 + 24;
+    }
+    fn parse_hd_xml(&mut self) {
+        let mut comments: HashMap<String, String> = HashMap::new();
+        // MD Block from HD Block, reading xml
+        let comment: String = self
+            .get_data_string()
+            .trim_end_matches(|c| c == '\n' || c == '\r' || c == ' ')
+            .into(); // removes ending spaces
+        match roxmltree::Document::parse(&comment) {
+            Ok(md) => {
+                for node in md.root().descendants().filter(|p| p.has_tag_name("e")) {
+                    if let (Some(value), Some(text)) = (node.attribute("name"), node.text()) {
+                        comments.insert(value.to_string(), text.to_string());
+                    }
+                }
+            }
+            Err(e) => {
+                println!("Error parsing HD MD comment : \n{}\n{}", comment, e);
+            }
+        };
+        self.comments = comments;
+        self.block_type = MetaDataBlockType::MdParsed;
+        self.raw_data = vec![]; // empty the data from block as already parsed
+    }
+    pub fn create_fh(&mut self) {
         let user_name = whoami::username();
-        let comments = format!("<FHcomment>
+        let comments = format!(
+            "<FHcomment>
 <TX>created</TX>
 <tool_id>mdfr</tool_id>
 <tool_vendor>ratalco</tool_vendor>
 <tool_version>0.1</tool_version>
 <user_name>{}</user_name>
-</FHcomment>", user_name);
-        let raw_comments = format!("{:\0<width$}", comments, width=(comments.len() / 8 + 1) * 8);
+</FHcomment>",
+            user_name
+        );
+        let raw_comments = format!(
+            "{:\0<width$}",
+            comments,
+            width = (comments.len() / 8 + 1) * 8
+        );
         let fh_comments = raw_comments.as_bytes();
-        self.md_len = fh_comments.len() as u64 + 24;
-        self.md_data = fh_comments.to_vec();
+        self.block.hdr_len = fh_comments.len() as u64 + 24;
+        self.raw_data = fh_comments.to_vec();
     }
-}
-
-impl Default for MDBlock {
-    fn default() -> Self {
-        MDBlock {
-            md_id: [35, 35, 77, 68], // '##MD'
-            md_gap: [0u8; 4],
-            md_len: 24,
-            md_links: 0,
-            md_data: Vec::new(),}
+    fn parse_fh_xml(&mut self) {
+        let mut comments: HashMap<String, String> = HashMap::new();
+        // MD Block from FH Block, reading xml
+        let comment: String = self
+            .get_data_string()
+            .trim_end_matches(|c| c == '\n' || c == '\r' || c == ' ')
+            .into(); // removes ending spaces
+        match roxmltree::Document::parse(&comment) {
+            Ok(md) => {
+                for node in md.root().descendants() {
+                    let text = match node.text() {
+                        Some(text) => text.to_string(),
+                        None => String::new(),
+                    };
+                    comments.insert(node.tag_name().name().to_string(), text);
+                }
+            }
+            Err(e) => {
+                println!("Error parsing FH comment : \n{}\n{}", comment, e);
+            }
+        };
+        self.comments = comments;
+        self.block_type = MetaDataBlockType::MdParsed;
+        self.raw_data = vec![]; // empty the data from block as already parsed
+    }
+    fn parse_generic_xml(&mut self) {
+        let mut comments: HashMap<String, String> = HashMap::new();
+        let comment: String = self
+            .get_data_string()
+            .trim_end_matches(|c| c == '\n' || c == '\r' || c == ' ')
+            .into(); // removes ending spaces
+        match roxmltree::Document::parse(&comment) {
+            Ok(md) => {
+                for node in md.root().descendants() {
+                    let text = match node.text() {
+                        Some(text) => text.to_string(),
+                        None => String::new(),
+                    };
+                    if node.is_element()
+                        && !text.is_empty()
+                        && !node.tag_name().name().to_string().is_empty()
+                    {
+                        comments.insert(node.tag_name().name().to_string(), text);
+                    }
+                }
+            }
+            Err(e) => {
+                println!("Error parsing comment : \n{}\n{}", comment, e);
+            }
+        };
+        self.comments = comments;
+        self.block_type = MetaDataBlockType::MdParsed;
+        self.raw_data = vec![]; // empty the data from block as already parsed
+    }
+    pub fn write(&self, writer: &mut BufWriter<&File>) {
+        writer
+            .write_le(&self.block)
+            .expect("Could not write comment block header");
+        writer
+            .write_all(&self.raw_data)
+            .expect("Could not write comment block data");
     }
 }
 
@@ -502,7 +672,7 @@ impl fmt::Display for Hd4 {
 }
 
 /// Hd4 block struct parser
-pub fn hd4_parser(rdr: &mut BufReader<&File>) -> Hd4 {
+pub fn hd4_parser(rdr: &mut BufReader<&File>, sharable: &mut SharableBlocks) -> (Hd4, i64) {
     let mut buf = [0u8; 104];
     rdr.read_exact(&mut buf)
         .expect("could not read HB block buffer");
@@ -510,162 +680,8 @@ pub fn hd4_parser(rdr: &mut BufReader<&File>) -> Hd4 {
     let hd: Hd4 = block
         .read_le()
         .expect("Could not read HD block buffer into Hd4 struct");
-    hd
-}
-
-/// Hd4 linked comment block metadata parser, returns a hashmap of xml tags as keys and corresponding text as values
-pub fn hd4_comment_parser(
-    rdr: &mut BufReader<&File>,
-    hd4_block: &Hd4,
-) -> (HashMap<String, String>, i64) {
-    let mut position: i64 = 168;
-    let mut comments: HashMap<String, String> = HashMap::new();
-    // parsing HD comment block
-    if hd4_block.hd_md_comment != 0 {
-        let (block_header, comment, pos) = parse_comment(rdr, hd4_block.hd_md_comment, position);
-        position = pos;
-        if block_header.hdr_id == "##TX".as_bytes() {
-            // TX Block
-            comments.insert(String::from("comment"), comment);
-        } else {
-            // MD Block, reading xml
-            let md = roxmltree::Document::parse(&comment).expect("Could not parse HD MD block");
-            for node in md.root().descendants().filter(|p| p.has_tag_name("e")) {
-                if let (Some(value), Some(text)) = (node.attribute("name"), node.text()) {
-                    comments.insert(value.to_string(), text.to_string());
-                }
-            }
-        }
-    }
-    (comments, position)
-}
-
-fn parse_comment(
-    rdr: &mut BufReader<&File>,
-    target: i64,
-    mut position: i64,
-) -> (Blockheader4, String, i64) {
-    rdr.seek_relative(target - position)
-        .expect("could not reach comment block position"); // change buffer position
-    let block_header: Blockheader4 = parse_block_header(rdr); // reads header
-                                                              // reads comment
-    let mut comment_raw = vec![0u8; (block_header.hdr_len - 24) as usize];
-    rdr.read_exact(&mut comment_raw)
-        .expect("could not read comment raw data");
-    let c = match str::from_utf8(&comment_raw) {
-        Ok(v) => v,
-        Err(e) => panic!("Error converting comment into utf8 \n{}", e),
-    };
-    let comment: String = match c.parse() {
-        Ok(v) => v,
-        Err(e) => panic!("Error parsing comment\n{}", e),
-    };
-    let comment: String = comment.trim_end_matches(char::from(0)).into();
-    position = target + block_header.hdr_len as i64;
-    (block_header, comment, position)
-}
-
-fn comment(
-    rdr: &mut BufReader<&File>,
-    target: i64,
-    mut position: i64,
-) -> (HashMap<String, String>, i64) {
-    let mut comments: HashMap<String, String> = HashMap::new();
-    // Reads MD
-    if target > 0 {
-        let (block_header, comment, pos) = parse_comment(rdr, target, position);
-        position = pos;
-        if block_header.hdr_id == "##TX".as_bytes() {
-            // TX Block
-            comments.insert(String::from("comment"), comment);
-        } else {
-            let comment: String = comment
-                .trim_end_matches(|c| c == '\n' || c == '\r' || c == ' ')
-                .into(); // removes ending spaces
-            match roxmltree::Document::parse(&comment) {
-                Ok(md) => {
-                    for node in md.root().descendants() {
-                        let text = match node.text() {
-                            Some(text) => text.to_string(),
-                            None => String::new(),
-                        };
-                        if node.is_element()
-                            && !text.is_empty()
-                            && !node.tag_name().name().to_string().is_empty()
-                        {
-                            comments.insert(node.tag_name().name().to_string(), text);
-                        }
-                    }
-                }
-                Err(e) => {
-                    println!("Error parsing comment : \n{}\n{}", comment, e);
-                }
-            };
-        }
-    }
-    (comments, position)
-}
-
-/// parses a TX or MD block and returns the contained string (xml not parsed yet)
-/// along with current position and boolean true for a MD block and false for TX block
-fn md_tx_comment(
-    rdr: &mut BufReader<&File>,
-    target: i64,
-    mut position: i64,
-) -> (String, i64, bool) {
-    let mut comment = String::new();
-    let mut md_flag: bool = false;
-    // Reads MD
-    if target > 0 {
-        let (block_header, c, pos) = parse_comment(rdr, target, position);
-        comment = c;
-        position = pos;
-        if block_header.hdr_id == "##TX".as_bytes() {
-            // TX Block
-            md_flag = false;
-        } else {
-            md_flag = true;
-        }
-    }
-    (comment, position, md_flag)
-}
-
-/// parses the xml string to extract TX tag and replaces the xml with the corresponding TX's text
-pub fn extract_xml(comment: &mut Tx) {
-    comment
-        .par_iter_mut()
-        .filter(|val| val.1)
-        .for_each(|mut val| xml_parse(&mut val));
-}
-
-#[inline]
-fn xml_parse(val: &mut (String, bool)) {
-    let (c, md_flag) = val;
-    if *md_flag {
-        match roxmltree::Document::parse(c) {
-            Ok(md) => {
-                let mut found_tx: bool = false;
-                for node in md.root().descendants() {
-                    let text = match node.text() {
-                        Some(text) => text.to_string(),
-                        None => String::new(),
-                    };
-                    let tag_name = node.tag_name().name().to_string();
-                    if node.is_element() && !text.is_empty() && (tag_name == *"TX") {
-                        *val = (text, false);
-                        found_tx = true;
-                        break;
-                    }
-                }
-                if !found_tx {
-                    *val = (String::new(), false); // empty string in case xml TX tag is not found
-                }
-            }
-            Err(e) => {
-                println!("Error parsing comment : \n{}\n{}", c, e);
-            }
-        };
-    }
+    let position = read_meta_data(rdr, sharable, hd.hd_md_comment, 168, BlockType::HD);
+    (hd, position)
 }
 
 /// Fh4 (File History) block struct, including the header
@@ -700,7 +716,7 @@ pub struct FhBlock {
 
 impl Default for FhBlock {
     fn default() -> Self {
-        FhBlock { 
+        FhBlock {
             fh_id: [35, 35, 70, 72], // '##FH'
             fh_gap: [0u8; 4],
             fh_len: 56,
@@ -711,7 +727,8 @@ impl Default for FhBlock {
             fh_tz_offset_min: 0,
             fh_dst_offset_min: 0,
             fh_time_flags: 0,
-            fh_reserved: [0u8; 3] }
+            fh_reserved: [0u8; 3],
+        }
     }
 }
 
@@ -730,58 +747,27 @@ fn parse_fh_block(rdr: &mut BufReader<&File>, target: i64, position: i64) -> (Fh
     (fh, target + 56)
 }
 
-/// parses Fh4 linked comments and eventually parses its related xml returning a hashmap of (tag, text)
-fn parse_fh_comment(
-    rdr: &mut BufReader<&File>,
-    fh_block: &FhBlock,
-    target: i64,
-    mut position: i64,
-) -> (HashMap<String, String>, i64) {
-    let mut comments: HashMap<String, String> = HashMap::new();
-    if fh_block.fh_md_comment != 0 {
-        let (block_header, comment, pos) = parse_comment(rdr, target, position);
-        position = pos;
-        if block_header.hdr_id == "##TX".as_bytes() {
-            // TX Block
-            comments.insert(String::from("comment"), comment);
-        } else {
-            // MD Block, reading xml
-            //let comment:String = comment.trim_end_matches(|c| c == '\n' || c == '\r' || c == ' ').into(); // removes ending spaces
-            match roxmltree::Document::parse(&comment) {
-                Ok(md) => {
-                    for node in md.root().descendants() {
-                        let text = match node.text() {
-                            Some(text) => text.to_string(),
-                            None => String::new(),
-                        };
-                        comments.insert(node.tag_name().name().to_string(), text);
-                    }
-                }
-                Err(e) => {
-                    println!("Error parsing FH comment : \n{}\n{}", comment, e);
-                }
-            };
-        }
-    }
-    (comments, position)
-}
-
-type Fh = Vec<(FhBlock, HashMap<String, String>)>;
+type Fh = Vec<FhBlock>;
 
 /// parses File History blocks along with its linked comments returns a vect of Fh4 block with comments
-pub fn parse_fh(rdr: &mut BufReader<&File>, target: i64, position: i64) -> (Fh, i64) {
+pub fn parse_fh(
+    rdr: &mut BufReader<&File>,
+    sharable: &mut SharableBlocks,
+    target: i64,
+    mut position: i64,
+) -> (Fh, i64) {
     let mut fh: Fh = Vec::new();
-    let (block, position) = parse_fh_block(rdr, target, position);
-    let (comment_temp, mut position) = parse_fh_comment(rdr, &block, block.fh_md_comment, position);
+    let (block, pos) = parse_fh_block(rdr, target, position);
+    position = pos;
+    position = read_meta_data(rdr, sharable, block.fh_md_comment, position, BlockType::FH);
     let mut next_pointer = block.fh_fh_next;
-    fh.push((block, comment_temp));
+    fh.push(block);
     while next_pointer != 0 {
         let (block, pos) = parse_fh_block(rdr, next_pointer, position);
         position = pos;
         next_pointer = block.fh_fh_next;
-        let (comment_temp, pos) = parse_fh_comment(rdr, &block, block.fh_md_comment, position);
-        position = pos;
-        fh.push((block, comment_temp));
+        position = read_meta_data(rdr, sharable, block.fh_md_comment, position, BlockType::FH);
+        fh.push(block);
     }
     (fh, position)
 }
@@ -839,72 +825,53 @@ fn parser_at4_block(
         .expect("Could not read At4 Block buffer into At4Block struct");
     position = target + 96;
 
-    let data: Option<Vec<u8>>;
     // reads embedded if exists
-    if (block.at_flags & 0b1) > 0 {
+    let data: Option<Vec<u8>> = if (block.at_flags & 0b1) > 0 {
         let mut embedded_data = vec![0u8; block.at_embedded_size as usize];
         rdr.read_exact(&mut embedded_data)
             .expect("Could not read At4Block embedded attachement");
         position += block.at_embedded_size as i64;
-        data = Some(embedded_data);
+        Some(embedded_data)
     } else {
-        data = None;
-    }
+        None
+    };
     (block, data, position)
-}
-
-/// parses At4 linked comments and eventually parses its related xml returning a hashmap of (tag, text)
-pub fn parse_at4_comments(
-    rdr: &mut BufReader<&File>,
-    block: &At,
-    mut position: i64,
-) -> (HashMap<i64, HashMap<String, String>>, i64) {
-    let mut comments: HashMap<i64, HashMap<String, String>> = HashMap::new();
-    for (at, _) in block.values() {
-        // Reads MD
-        if at.at_md_comment > 0 && !comments.contains_key(&at.at_md_comment) {
-            let (c, pos) = comment(rdr, at.at_md_comment, position);
-            position = pos;
-            comments.insert(at.at_md_comment, c);
-        }
-
-        // reads TX
-        if at.at_tx_filename > 0 && !comments.contains_key(&at.at_tx_filename) {
-            let (_, c, pos) = parse_comment(rdr, at.at_tx_filename, position);
-            position = pos;
-            let mut comment = HashMap::new();
-            comment.insert(String::from("comment"), c);
-            comments.insert(at.at_md_comment, comment);
-        }
-
-        // Reads tx mime type
-        if at.at_tx_mimetype > 0 && !comments.contains_key(&at.at_tx_mimetype) {
-            let (_, c, pos) = parse_comment(rdr, at.at_tx_mimetype, position);
-            position = pos;
-            let mut comment = HashMap::new();
-            comment.insert(String::from("comment_mimetype"), c);
-            comments.insert(at.at_md_comment, comment);
-        }
-    }
-    (comments, position)
 }
 
 type At = HashMap<i64, (At4Block, Option<Vec<u8>>)>;
 
 /// parses Attachment blocks along with its linked comments, returns a hashmap of At4 block and attached data in a vect
-pub fn parse_at4(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (At, i64) {
+pub fn parse_at4(
+    rdr: &mut BufReader<&File>,
+    sharable: &mut SharableBlocks,
+    target: i64,
+    mut position: i64,
+) -> (At, i64) {
     let mut at: At = HashMap::new();
     if target > 0 {
         let (block, data, pos) = parser_at4_block(rdr, target, position);
+        position = pos;
+        // Reads MD
+        position = read_meta_data(rdr, sharable, block.at_md_comment, position, BlockType::AT);
+        // reads TX file_name
+        position = read_meta_data(rdr, sharable, block.at_tx_filename, position, BlockType::AT);
+        // Reads tx mime type
+        position = read_meta_data(rdr, sharable, block.at_tx_mimetype, position, BlockType::AT);
         let mut next_pointer = block.at_at_next;
         at.insert(target, (block, data));
-        position = pos;
+
         while next_pointer > 0 {
             let block_start = next_pointer;
             let (block, data, pos) = parser_at4_block(rdr, next_pointer, position);
+            position = pos;
+            // Reads MD
+            position = read_meta_data(rdr, sharable, block.at_md_comment, position, BlockType::AT);
+            // reads TX file_name
+            position = read_meta_data(rdr, sharable, block.at_tx_filename, position, BlockType::AT);
+            // Reads tx mime type
+            position = read_meta_data(rdr, sharable, block.at_tx_mimetype, position, BlockType::AT);
             next_pointer = block.at_at_next;
             at.insert(block_start, (block, data));
-            position = pos;
         }
     }
     (at, position)
@@ -971,46 +938,34 @@ fn parse_ev4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -
     (block, position)
 }
 
-/// parses Ev4 linked comments and eventually parses its related xml returning a hashmap of (tag, text)
-pub fn parse_ev4_comments(
-    rdr: &mut BufReader<&File>,
-    block: &HashMap<i64, Ev4Block>,
-    mut position: i64,
-) -> (HashMap<i64, HashMap<String, String>>, i64) {
-    let comments: HashMap<i64, HashMap<String, String>> = HashMap::new();
-    for ev in block.values() {
-        // Reads MD
-        let (mut comments, pos) = comment(rdr, ev.ev_md_comment, position);
-        position = pos;
-
-        // reads TX name
-        if ev.ev_tx_name > 0 {
-            let (_, comment, pos) = parse_comment(rdr, ev.ev_tx_name, position);
-            comments.insert(String::from("comment"), comment);
-            position = pos;
-        }
-    }
-    (comments, position)
-}
-
 /// parses Event blocks along with its linked comments, returns a hashmap of Ev4 block with position as key
 pub fn parse_ev4(
     rdr: &mut BufReader<&File>,
+    sharable: &mut SharableBlocks,
     target: i64,
     mut position: i64,
 ) -> (HashMap<i64, Ev4Block>, i64) {
     let mut ev: HashMap<i64, Ev4Block> = HashMap::new();
     if target > 0 {
         let (block, pos) = parse_ev4_block(rdr, target, position);
+        position = pos;
+        // Reads MD
+        position = read_meta_data(rdr, sharable, block.ev_md_comment, position, BlockType::EV);
+        // reads TX event name
+        position = read_meta_data(rdr, sharable, block.ev_tx_name, position, BlockType::EV);
         let mut next_pointer = block.ev_ev_next;
         ev.insert(target, block);
-        position = pos;
+
         while next_pointer > 0 {
             let block_start = next_pointer;
             let (block, pos) = parse_ev4_block(rdr, next_pointer, position);
+            position = pos;
+            // Reads MD
+            position = read_meta_data(rdr, sharable, block.ev_md_comment, position, BlockType::EV);
+            // reads TX event name
+            position = read_meta_data(rdr, sharable, block.ev_tx_name, position, BlockType::EV);
             next_pointer = block.ev_ev_next;
             ev.insert(block_start, block);
-            position = pos;
         }
     }
     (ev, position)
@@ -1064,9 +1019,10 @@ impl Default for Dg4Block {
 /// Dg4 (Data Group) block struct parser with comments
 fn parse_dg4_block(
     rdr: &mut BufReader<&File>,
+    sharable: &mut SharableBlocks,
     target: i64,
     mut position: i64,
-) -> (Dg4Block, HashMap<String, String>, i64) {
+) -> (Dg4Block, i64) {
     rdr.seek_relative(target - position)
         .expect("Could not reach position of Dg4 block");
     let mut buf = [0u8; 64];
@@ -1079,9 +1035,9 @@ fn parse_dg4_block(
     position = target + 64;
 
     // Reads MD
-    let (comments, position) = comment(rdr, dg.dg_md_comment, position);
+    position = read_meta_data(rdr, sharable, dg.dg_md_comment, position, BlockType::DG);
 
-    (dg, comments, position)
+    (dg, position)
 }
 
 /// Dg4 struct wrapping block, comments and linked CG
@@ -1090,8 +1046,6 @@ fn parse_dg4_block(
 pub struct Dg4 {
     /// DG Block
     pub block: Dg4Block,
-    /// Comments
-    pub comments: HashMap<String, String>,
     /// CG Block
     pub cg: HashMap<u64, Cg4>,
 }
@@ -1108,7 +1062,7 @@ pub fn parse_dg4(
     let mut n_cn: usize = 0;
     let mut n_cg: usize = 0;
     if target > 0 {
-        let (block, comments, pos) = parse_dg4_block(rdr, target, position);
+        let (block, pos) = parse_dg4_block(rdr, sharable, target, position);
         position = pos;
         let mut next_pointer = block.dg_dg_next;
         let (mut cg, pos, num_cg, num_cn) = parse_cg4(
@@ -1121,16 +1075,12 @@ pub fn parse_dg4(
         n_cg += num_cg;
         n_cn += num_cn;
         identify_vlsd_cg(&mut cg);
-        let dg_struct = Dg4 {
-            block,
-            comments,
-            cg,
-        };
+        let dg_struct = Dg4 { block, cg };
         dg.insert(target, dg_struct);
         position = pos;
         while next_pointer > 0 {
             let block_start = next_pointer;
-            let (block, comments, pos) = parse_dg4_block(rdr, next_pointer, position);
+            let (block, pos) = parse_dg4_block(rdr, sharable, next_pointer, position);
             next_pointer = block.dg_dg_next;
             position = pos;
             let (mut cg, pos, num_cg, num_cn) = parse_cg4(
@@ -1143,11 +1093,7 @@ pub fn parse_dg4(
             n_cg += num_cg;
             n_cn += num_cn;
             identify_vlsd_cg(&mut cg);
-            let dg_struct = Dg4 {
-                block,
-                comments,
-                cg,
-            };
+            let dg_struct = Dg4 { block, cg };
             dg.insert(block_start, dg_struct);
             position = pos;
         }
@@ -1183,16 +1129,11 @@ fn identify_vlsd_cg(cg: &mut HashMap<u64, Cg4>) {
     }
 }
 
-/// TX data type : hashmap will concurrent capability (dashmap crate) embedded into an Arc
-/// to allow concurrent xml processing with rayon crate
-pub(crate) type Tx = Arc<DashMap<i64, (String, bool)>>;
-
 /// sharable blocks (most likely referenced multiple times and shared by several blocks)
 /// that are in sharable fields and holds CC, SI, TX and MD blocks
 #[derive(Debug, Default, Clone)]
 pub struct SharableBlocks {
-    pub(crate) md: HashMap<i64, HashMap<String, String>>,
-    pub(crate) tx: Tx,
+    pub(crate) md_tx: Arc<DashMap<i64, MetaData>>,
     pub(crate) cc: HashMap<i64, Cc4Block>,
     pub(crate) si: HashMap<i64, Si4Block>,
 }
@@ -1200,16 +1141,19 @@ pub struct SharableBlocks {
 /// SharableBlocks display implementation to facilitate debugging
 impl fmt::Display for SharableBlocks {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "MD comments : ")?;
-        for (position, md) in self.md.iter() {
-            for (tag, text) in md.iter() {
-                writeln!(f, "Position: {}  Tag: {}  Text: {}", position, tag, text)?;
+        writeln!(f, "MD TX comments : \n")?;
+        for c in self.md_tx.iter() {
+            match c.block_type {
+                MetaDataBlockType::MdParsed => {
+                    for (tag, text) in c.comments.iter() {
+                        writeln!(f, "Tag: {}  Text: {}", tag, text)?;
+                    }
+                }
+                MetaDataBlockType::TX => {
+                    writeln!(f, "Text: {}", c.get_data_string())?;
+                }
+                _ => (),
             }
-        }
-        writeln!(f, "TX comments : \n")?;
-        for c in self.tx.iter() {
-            let (text, _) = c.clone();
-            writeln!(f, "Text: {}", text)?;
         }
         writeln!(f, "CC : \n")?;
         for (position, cc) in self.cc.iter() {
@@ -1224,12 +1168,38 @@ impl fmt::Display for SharableBlocks {
 }
 
 impl SharableBlocks {
-    pub fn get_tx(&self, position: i64) -> String {
-        let mut txt: String = String::new();
-        if let Some(str) = self.tx.get(&position) {
-            txt = str.0.clone();
+    pub fn get_tx(&self, position: i64) -> Option<String> {
+        let mut txt: Option<String> = None;
+        if let Some(md) = self.md_tx.get(&position) {
+            match md.block_type {
+                MetaDataBlockType::MdParsed => {
+                    if let Some(t) = md.comments.get("TX") {
+                        txt = Some(t.to_string());
+                    }
+                }
+                MetaDataBlockType::TX => {
+                    txt = Some(md.get_data_string());
+                }
+                MetaDataBlockType::MdBlock => {
+                    txt = Some(md.get_data_string());
+                }
+            }
         };
         txt
+    }
+    pub fn get_comments(&self, position: i64) -> HashMap<String, String> {
+        let mut comments: HashMap<String, String> = HashMap::new();
+        if let Some(md) = self.md_tx.get(&position) {
+            if let MetaDataBlockType::MdParsed = md.block_type {
+                comments = md.comments.clone();
+            }
+        };
+        comments
+    }
+    pub fn extract_xml(&self) {
+        self.md_tx
+            .par_iter_mut()
+            .for_each(|mut val| val.parse_xml());
     }
 }
 /// Cg4 Channel Group block struct
@@ -1239,11 +1209,11 @@ impl SharableBlocks {
 #[allow(dead_code)]
 pub struct Cg4Block {
     /// ##CG
-    cg_id: [u8; 4],  
+    cg_id: [u8; 4],
     /// reserved
-    reserved: [u8; 4],  
+    reserved: [u8; 4],
     /// Length of block in bytes
-    pub cg_len: u64,      
+    pub cg_len: u64,
     /// # of links
     cg_links: u64,
     /// Pointer to next channel group block (CGBLOCK) (can be NIL)
@@ -1317,12 +1287,7 @@ fn parse_cg4_block(
     position = target + cg.cg_len as i64;
 
     // Reads MD
-    let comment_pointer = cg.cg_md_comment;
-    if (comment_pointer != 0) && !sharable.tx.contains_key(&comment_pointer) {
-        let (d, pos, tx_md_flag) = md_tx_comment(rdr, comment_pointer, position);
-        position = pos;
-        sharable.tx.insert(comment_pointer, (d, tx_md_flag));
-    }
+    position = read_meta_data(rdr, sharable, cg.cg_md_comment, position, BlockType::CG);
 
     // reads CN (and other linked block behind like CC, SI, CA, etc.)
     let (cn, pos, n_cn, _first_rec_pos) = parse_cn4(
@@ -1336,12 +1301,7 @@ fn parse_cg4_block(
     position = pos;
 
     // Reads Acq Name
-    let acq_pointer = cg.cg_tx_acq_name;
-    if (acq_pointer != 0) && !sharable.tx.contains_key(&acq_pointer) {
-        let (d, pos, tx_md_flag) = md_tx_comment(rdr, acq_pointer, position);
-        position = pos;
-        sharable.tx.insert(acq_pointer, (d, tx_md_flag));
-    }
+    position = read_meta_data(rdr, sharable, cg.cg_tx_acq_name, position, BlockType::CG);
 
     // Reads SI Acq name
     let si_pointer = cg.cg_si_acq_source;
@@ -1351,32 +1311,23 @@ fn parse_cg4_block(
         let si_block: Si4Block = si_block
             .read_le()
             .expect("Could not read buffer into Si4block struct");
-        if (si_block.si_tx_name != 0) && !sharable.tx.contains_key(&si_block.si_tx_name) {
-            let (s, pos, md_flag) = md_tx_comment(rdr, si_block.si_tx_name, position);
-            position = pos;
-            sharable.tx.insert(si_block.si_tx_name, (s, md_flag));
-        }
-        if (si_block.si_tx_path != 0) && !sharable.tx.contains_key(&si_block.si_tx_path) {
-            let (s, pos, md_flag) = md_tx_comment(rdr, si_block.si_tx_path, position);
-            position = pos;
-            sharable.tx.insert(si_block.si_tx_path, (s, md_flag));
-        }
+        position = read_meta_data(rdr, sharable, si_block.si_tx_name, position, BlockType::SI);
+        position = read_meta_data(rdr, sharable, si_block.si_tx_path, position, BlockType::SI);
         sharable.si.insert(si_pointer, si_block);
     }
 
     let record_length = cg.cg_data_bytes;
 
     // Invalid bytes
-    let invalid_bytes: Option<Vec<u8>>;
-    if cg.cg_inval_bytes > 0 {
+    let invalid_bytes: Option<Vec<u8>> = if cg.cg_inval_bytes > 0 {
         // invalid bytes exist, adding byte array channel
-        invalid_bytes = Some(vec![
+        Some(vec![
             0u8;
             (cg.cg_inval_bytes as u64 * cg.cg_cycle_count) as usize
-        ]);
+        ])
     } else {
-        invalid_bytes = None;
-    }
+        None
+    };
 
     let cg_struct = Cg4 {
         block: cg,
@@ -1414,17 +1365,7 @@ pub struct Cg4 {
 /// Cg4 implementations for extracting acquisition and source name and path
 impl Cg4 {
     fn get_cg_name(&self, sharable: &SharableBlocks) -> Option<String> {
-        match sharable.tx.get(&self.block.cg_tx_acq_name) {
-            Some(block) => {
-                let gn = block.0.clone();
-                if !gn.is_empty() {
-                    Some(gn)
-                } else {
-                    None
-                }
-            }
-            None => None,
-        }
+        sharable.get_tx(self.block.cg_tx_acq_name)
     }
     fn get_cg_source_name(&self, sharable: &SharableBlocks) -> Option<String> {
         let si = sharable.si.get(&self.block.cg_si_acq_source);
@@ -1531,11 +1472,11 @@ pub fn parse_cg4(
 #[br(little)]
 pub struct Cn4Block {
     /// ##CN
-    cn_id: [u8; 4],  
+    cn_id: [u8; 4],
     /// reserved
-    reserved: [u8; 4],  
+    reserved: [u8; 4],
     /// Length of block in bytes
-    pub cn_len: u64,      
+    pub cn_len: u64,
     /// # of links
     cn_links: u64,
     /// Pointer to next channel block (CNBLOCK) (can be NIL)
@@ -1971,16 +1912,15 @@ fn parse_cn4_block(
     let n_bytes = calc_n_bytes_not_aligned(block.cn_bit_count + (block.cn_bit_offset as u32));
 
     // Reads TX name
-    let (_, name, pos) = parse_comment(rdr, block.cn_tx_name, position);
-    position = pos;
+    position = read_meta_data(rdr, sharable, block.cn_tx_name, position, BlockType::CN);
+    let name: String = if let Some(n) = sharable.get_tx(block.cn_tx_name) {
+        n
+    } else {
+        String::new()
+    };
 
     // Reads unit
-    let unit_pointer = block.cn_md_unit;
-    if (unit_pointer != 0) && !sharable.tx.contains_key(&unit_pointer) {
-        let (u, pos, tx_md_flag) = md_tx_comment(rdr, unit_pointer, position);
-        position = pos;
-        sharable.tx.insert(unit_pointer, (u, tx_md_flag));
-    }
+    position = read_meta_data(rdr, sharable, block.cn_md_unit, position, BlockType::CN);
 
     // Reads CC
     let cc_pointer = block.cn_cc_conversion;
@@ -1991,12 +1931,7 @@ fn parse_cn4_block(
     }
 
     // Reads MD
-    let desc_pointer = block.cn_md_comment;
-    if (desc_pointer != 0) && !sharable.tx.contains_key(&desc_pointer) {
-        let (d, pos, tx_md_flag) = md_tx_comment(rdr, desc_pointer, position);
-        position = pos;
-        sharable.tx.insert(desc_pointer, (d, tx_md_flag));
-    }
+    position = read_meta_data(rdr, sharable, block.cn_md_comment, position, BlockType::CN);
 
     //Reads SI
     let si_pointer = block.cn_si_source;
@@ -2006,16 +1941,8 @@ fn parse_cn4_block(
         let si_block: Si4Block = si_block
             .read_le()
             .expect("Could into read buffer into Si4Block struct");
-        if (si_block.si_tx_name != 0) && !sharable.tx.contains_key(&si_block.si_tx_name) {
-            let (s, pos, md_flag) = md_tx_comment(rdr, si_block.si_tx_name, position);
-            position = pos;
-            sharable.tx.insert(si_block.si_tx_name, (s, md_flag));
-        }
-        if (si_block.si_tx_path != 0) && !sharable.tx.contains_key(&si_block.si_tx_path) {
-            let (s, pos, md_flag) = md_tx_comment(rdr, si_block.si_tx_path, position);
-            position = pos;
-            sharable.tx.insert(si_block.si_tx_path, (s, md_flag));
-        }
+        position = read_meta_data(rdr, sharable, si_block.si_tx_name, position, BlockType::SI);
+        position = read_meta_data(rdr, sharable, si_block.si_tx_path, position, BlockType::SI);
         sharable.si.insert(si_pointer, si_block);
     }
 
@@ -2087,41 +2014,19 @@ fn read_cc(
     let cc_block: Cc4Block = block
         .read_le()
         .expect("Could nto read buffer into Cc4Block struct");
-    if (cc_block.cc_md_unit != 0) && !sharable.tx.contains_key(&cc_block.cc_md_unit) {
-        let (u, pos, tx_md_flag) = md_tx_comment(rdr, cc_block.cc_md_unit, position);
-        position = pos;
-        sharable.tx.insert(cc_block.cc_md_unit, (u, tx_md_flag));
-    }
-    if (cc_block.cc_tx_name != 0) && !sharable.tx.contains_key(&cc_block.cc_tx_name) {
-        let (d, pos, tx_md_flag) = md_tx_comment(rdr, cc_block.cc_tx_name, position);
-        position = pos;
-        sharable.tx.insert(cc_block.cc_tx_name, (d, tx_md_flag));
-    }
+    position = read_meta_data(rdr, sharable, cc_block.cc_md_unit, position, BlockType::CC);
+    position = read_meta_data(rdr, sharable, cc_block.cc_tx_name, position, BlockType::CC);
+
     for pointer in &cc_block.cc_ref {
-        if !sharable.cc.contains_key(pointer) && !sharable.tx.contains_key(pointer) && *pointer != 0
+        if !sharable.cc.contains_key(pointer)
+            && !sharable.md_tx.contains_key(pointer)
+            && *pointer != 0
         {
-            let (mut ref_block, header, _pos) = parse_block_short(rdr, *pointer, position);
+            let (ref_block, header, _pos) = parse_block_short(rdr, *pointer, position);
             position = pointer + header.hdr_len as i64;
             if "##TX".as_bytes() == header.hdr_id {
                 // TX Block
-                let mut buf = vec![0u8; 8];
-                ref_block
-                    .read_exact(&mut buf)
-                    .expect("could not read link_count"); // link_count
-                let mut buf = vec![0u8; (header.hdr_len - 24) as usize];
-                ref_block
-                    .read_exact(&mut buf)
-                    .expect("could not read the TX comments");
-                let c = match str::from_utf8(&buf) {
-                    Ok(v) => v,
-                    Err(e) => panic!("Error converting comment into utf8 \n{}", e),
-                };
-                let comment: String = match c.parse() {
-                    Ok(v) => v,
-                    Err(e) => panic!("Error parsing comment\n{}", e),
-                };
-                let comment: String = comment.trim_end_matches(char::from(0)).into();
-                sharable.tx.insert(*pointer, (comment, false));
+                position = read_meta_data(rdr, sharable, *pointer, position, BlockType::CC)
             } else {
                 // CC Block
                 position = read_cc(rdr, pointer, position, ref_block, sharable);
@@ -2217,32 +2122,10 @@ pub struct Si4Block {
 
 impl Si4Block {
     fn get_si_source_name(&self, sharable: &SharableBlocks) -> Option<String> {
-        let cs = match sharable.tx.get(&self.si_tx_name) {
-            Some(block) => {
-                let cs = block.0.clone();
-                if !cs.is_empty() {
-                    Some(cs)
-                } else {
-                    None
-                }
-            }
-            None => None,
-        };
-        cs
+        sharable.get_tx(self.si_tx_name)
     }
     fn get_si_path_name(&self, sharable: &SharableBlocks) -> Option<String> {
-        let cp = match sharable.tx.get(&self.si_tx_path) {
-            Some(block) => {
-                let cp = block.0.clone();
-                if !cp.is_empty() {
-                    Some(cp)
-                } else {
-                    None
-                }
-            }
-            None => None,
-        };
-        cp
+        sharable.get_tx(self.si_tx_path)
     }
 }
 

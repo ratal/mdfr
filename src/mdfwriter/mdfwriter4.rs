@@ -1,44 +1,60 @@
-use std::{io::BufWriter, collections::{HashMap, HashSet}};
+use std::{
+    collections::{HashMap, HashSet},
+    io::BufWriter,
+};
 
-use crate::{mdfinfo::{
-    mdfinfo4::{Hd4, MdfInfo4, FhBlock, MDBlock, Dg4Block, Cg4Block, Cn4Block, TXBlock, Cg4, Cn4, Dg4},
-    IdBlock,
-}, mdfreader::channel_data::ChannelData};
+use crate::{
+    mdfinfo::mdfinfo4::{
+        BlockType, Cg4, Cg4Block, Cn4, Cn4Block, Dg4, Dg4Block, FhBlock, MdfInfo4, MetaData,
+        MetaDataBlockType,
+    },
+    mdfreader::channel_data::ChannelData,
+};
 use binrw::BinWriterExt;
 use std::fs::File;
 
 /// writes file on hard drive
 pub fn mdfwriter4<'a>(writer: &'a mut BufWriter<&File>, info: &'a mut MdfInfo4) {
     let mut new_info = MdfInfo4::default();
-    new_info.id_block = IdBlock::default();
-    let mut pointer:i64 = 64;
-    new_info.hd_block = Hd4::default();
-    pointer += 104;
+    // IDBlock
+    // HDblock
+    let mut pointer: i64 = 168;
     new_info.hd_block.hd_fh_first = pointer;
     new_info.fh = Vec::new();
     let mut fh = FhBlock::default();
     pointer += 56;
     fh.fh_md_comment = pointer;
-    let mut fh_comments_header = MDBlock::default();
-    fh_comments_header.fh();
-    pointer += fh_comments_header.md_len as i64;
+    let mut fh_comments = MetaData::new(MetaDataBlockType::MdBlock, BlockType::FH);
+    fh_comments.create_fh();
+    pointer += fh_comments.block.hdr_len as i64;
 
     new_info.hd_block.hd_dg_first = pointer;
     for (_dg_position, dg) in info.dg.iter() {
         for (_record_id, cg) in dg.cg.iter() {
             let cn_master_record_position: i64 = 0;
             let mut cg_cg_master: i64 = 0;
-            
+
             // find master channel and start to write blocks for it
-            if let Some((_master_name, _dg_master_position,
-                (_cg_master_block_position, _record_id), 
-                (_cn_master_block_position, cn_master_record_position))) 
-                = info.get_channel_id(&cg.master_channel_name) {
-                if let Some(cn_master) = cg.cn.get(&cn_master_record_position) {
+            if let Some((
+                _master_name,
+                _dg_master_position,
+                (_cg_master_block_position, _record_id),
+                (_cn_master_block_position, cn_master_record_position),
+            )) = info.get_channel_id(&cg.master_channel_name)
+            {
+                if let Some(cn_master) = cg.cn.get(cn_master_record_position) {
                     // Writing master channel
                     cg_cg_master = pointer + 64; // after DGBlock
 
-                    pointer = create_blocks(&mut new_info, info, pointer, cg, cn_master, cg_cg_master, true);
+                    pointer = create_blocks(
+                        &mut new_info,
+                        info,
+                        pointer,
+                        cg,
+                        cn_master,
+                        cg_cg_master,
+                        true,
+                    );
                 }
             }
 
@@ -46,7 +62,8 @@ pub fn mdfwriter4<'a>(writer: &'a mut BufWriter<&File>, info: &'a mut MdfInfo4) 
             for (_cn_record_position, cn) in cg.cn.iter() {
                 // not master channel
                 if cn_master_record_position != 0 {
-                    pointer = create_blocks(&mut new_info, info, pointer, cg, cn, cg_cg_master, false);
+                    pointer =
+                        create_blocks(&mut new_info, info, pointer, cg, cn, cg_cg_master, false);
                 }
             }
         }
@@ -58,26 +75,16 @@ pub fn mdfwriter4<'a>(writer: &'a mut BufWriter<&File>, info: &'a mut MdfInfo4) 
     writer
         .write_le(&new_info.hd_block)
         .expect("Could not write HDBlock");
-    writer
-        .write_le(&fh)
-        .expect("Could not write FHBlock");
-    writer
-        .write_le(&fh_comments_header)
-        .expect("Could not write FH MD comments header");
+    writer.write_le(&fh).expect("Could not write FHBlock");
+    fh_comments.write(writer);
 
     // writes the channel blocks
     for (_position, dg) in new_info.dg.iter() {
-        writer
-            .write_le(&dg.block)
-            .expect("Could not write CGBlock");
+        writer.write_le(&dg.block).expect("Could not write CGBlock");
         for (_position, cg) in dg.cg.iter() {
-            writer
-                .write_le(&cg.block)
-                .expect("Could not write CGBlock");
+            writer.write_le(&cg.block).expect("Could not write CGBlock");
             for (_position, cn) in cg.cn.iter() {
-                writer
-                    .write_le(&cn.block)
-                    .expect("Could not write CNBlock");
+                writer.write_le(&cn.block).expect("Could not write CNBlock");
                 writer
                     .write_le(&cn.block)
                     .expect("Could not write TXBlock for channel name");
@@ -98,8 +105,15 @@ pub fn mdfwriter4<'a>(writer: &'a mut BufWriter<&File>, info: &'a mut MdfInfo4) 
     // writes the channels data
 }
 
-fn create_blocks(new_info: &mut MdfInfo4, info: &MdfInfo4, mut pointer: i64,
-    cg: &Cg4, cn: &Cn4, cg_cg_master: i64, master_flag: bool) -> i64 {
+fn create_blocks(
+    new_info: &mut MdfInfo4,
+    info: &MdfInfo4,
+    mut pointer: i64,
+    cg: &Cg4,
+    cn: &Cn4,
+    cg_cg_master: i64,
+    master_flag: bool,
+) -> i64 {
     let mut dg_block = Dg4Block::default();
     let mut cg_block = Cg4Block::default();
     let mut cn_block = Cn4Block::default();
@@ -119,7 +133,7 @@ fn create_blocks(new_info: &mut MdfInfo4, info: &MdfInfo4, mut pointer: i64,
     pointer += cg_block.cg_len as i64;
     let cg_position = pointer;
     cg_block.cg_cn_first = pointer;
-    
+
     // CN Block
     if master_flag {
         cn_block.cn_type = 2; // master channel
@@ -130,28 +144,29 @@ fn create_blocks(new_info: &mut MdfInfo4, info: &MdfInfo4, mut pointer: i64,
     pointer += cn_block.cn_len as i64;
 
     // channel name TX
-    let mut tx_name_block = TXBlock::default();
-    tx_name_block.data(cn.unique_name.clone());
-    pointer += tx_name_block.tx_len as i64;
+    let mut tx_name_block = MetaData::new(MetaDataBlockType::TX, BlockType::CN);
+    tx_name_block.set_data_buffer(cn.unique_name.clone());
+    pointer += tx_name_block.block.hdr_len as i64;
 
     // channel unit
-    if let Some(str) = info.sharable.tx.get(&cn.block.cn_md_unit) {
-        let mut tx_unit_block = TXBlock::default();
+    if let Some(str) = info.sharable.md_tx.get(&cn.block.cn_md_unit) {
+        let mut tx_unit_block = MetaData::new(MetaDataBlockType::TX, BlockType::CN);
         cn_block.cn_md_unit = pointer;
-        tx_unit_block.data(str.0.clone());
-        new_info.sharable.tx.insert(pointer, (str.0.clone(), false));
-        pointer += tx_unit_block.tx_len as i64;
+        tx_unit_block.raw_data = str.raw_data.clone();
+        tx_unit_block.block.hdr_len = tx_unit_block.raw_data.len() as u64 + 24;
+        pointer += tx_unit_block.block.hdr_len as i64;
+        new_info.sharable.md_tx.insert(pointer, tx_unit_block);
     }
 
     // channel comment
-    if let Some(str) = info.sharable.tx.get(&cn.block.cn_md_unit) {
-        let mut tx_comment_block = TXBlock::default();
+    if let Some(str) = info.sharable.md_tx.get(&cn.block.cn_md_unit) {
+        let mut tx_comment_block = MetaData::new(MetaDataBlockType::TX, BlockType::CN);
         cn_block.cn_md_comment = pointer;
-        tx_comment_block.data(str.0.clone());
-        new_info.sharable.tx.insert(pointer, (str.0.clone(), false));
-        pointer += tx_comment_block.tx_len as i64;
+        tx_comment_block.raw_data = str.raw_data.clone();
+        tx_comment_block.block.hdr_len = tx_comment_block.raw_data.len() as u64 + 24;
+        pointer += tx_comment_block.block.hdr_len as i64;
+        new_info.sharable.md_tx.insert(pointer, tx_comment_block);
     }
-
 
     dg_block.dg_dg_next = pointer;
     // saves the blocks in the mdfinfo4 structure
@@ -180,11 +195,10 @@ fn create_blocks(new_info: &mut MdfInfo4, info: &MdfInfo4, mut pointer: i64,
     new_cg.cn.insert(0, new_cn);
     let mut new_dg = Dg4 {
         block: dg_block,
-        comments: HashMap::new(),
         cg: HashMap::new(),
     };
     new_dg.cg.insert(0, new_cg);
     new_info.dg.insert(dg_position, new_dg);
-    
+
     pointer
 }

@@ -32,8 +32,8 @@ pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) {
                         },
                         3 => {
                             if !&conv.cc_ref.is_empty() {
-                                if let Some(conv) = sharable.tx.get(&conv.cc_ref[0]) {
-                                    algebraic_conversion(cn, &conv.0, &cycle_count);
+                                if let Some(conv) = sharable.get_tx(conv.cc_ref[0]) {
+                                    algebraic_conversion(cn, &conv, &cycle_count);
                                 }
                             }
                         }
@@ -2945,8 +2945,8 @@ fn value_to_text(
     let mut table_int: HashMap<i64, TextOrScaleConversion> = HashMap::with_capacity(cc_val.len());
     for (ind, val) in cc_val.iter().enumerate() {
         let val_i64 = (*val).round() as i64;
-        if let Some(txt) = sharable.tx.get(&cc_ref[ind]) {
-            table_int.insert(val_i64, TextOrScaleConversion::Txt(txt.0.clone()));
+        if let Some(txt) = sharable.get_tx(cc_ref[ind]) {
+            table_int.insert(val_i64, TextOrScaleConversion::Txt(txt));
         } else if let Some(cc) = sharable.cc.get(&cc_ref[ind]) {
             let conv = conversion_function(cc, sharable);
             table_int.insert(val_i64, TextOrScaleConversion::Scale(Box::new(conv)));
@@ -2955,8 +2955,8 @@ fn value_to_text(
         }
     }
     let def: DefaultTextOrScaleConversion;
-    if let Some(txt) = sharable.tx.get(&cc_ref[cc_val.len()]) {
-        def = DefaultTextOrScaleConversion::DefaultTxt(txt.0.clone());
+    if let Some(txt) = sharable.get_tx(cc_ref[cc_val.len()]) {
+        def = DefaultTextOrScaleConversion::DefaultTxt(txt);
     } else if let Some(cc) = sharable.cc.get(&cc_ref[cc_val.len()]) {
         let conv = conversion_function(cc, sharable);
         def = DefaultTextOrScaleConversion::DefaultScale(Box::new(conv));
@@ -3099,8 +3099,8 @@ fn value_to_text(
                 HashMap::with_capacity(cc_val.len());
             for (ind, val) in cc_val.iter().enumerate() {
                 let ref_val = (*val * 128.0).round() as i64; // Canonization
-                if let Some(txt) = sharable.tx.get(&cc_ref[ind]) {
-                    table_float.insert(ref_val, TextOrScaleConversion::Txt(txt.0.clone()));
+                if let Some(txt) = sharable.get_tx(cc_ref[ind]) {
+                    table_float.insert(ref_val, TextOrScaleConversion::Txt(txt));
                 } else if let Some(cc) = sharable.cc.get(&cc_ref[ind]) {
                     let conv = conversion_function(cc, sharable);
                     table_float.insert(ref_val, TextOrScaleConversion::Scale(Box::new(conv)));
@@ -3273,8 +3273,8 @@ fn value_to_text(
                 HashMap::with_capacity(cc_val.len());
             for (ind, val) in cc_val.iter().enumerate() {
                 let ref_val = (*val * 1024.0 * 1024.0).round() as i64; // Canonization
-                if let Some(txt) = sharable.tx.get(&cc_ref[ind]) {
-                    table_float.insert(ref_val, TextOrScaleConversion::Txt(txt.0.clone()));
+                if let Some(txt) = sharable.get_tx(cc_ref[ind]) {
+                    table_float.insert(ref_val, TextOrScaleConversion::Txt(txt));
                 } else if let Some(cc) = sharable.cc.get(&cc_ref[ind]) {
                     let conv = conversion_function(cc, sharable);
                     table_float.insert(ref_val, TextOrScaleConversion::Scale(Box::new(conv)));
@@ -3446,8 +3446,8 @@ fn value_to_text(
                 HashMap::with_capacity(cc_val.len());
             for (ind, val) in cc_val.iter().enumerate() {
                 let ref_val = (*val * 1024.0 * 1024.0).round() as i64; // Canonization
-                if let Some(txt) = sharable.tx.get(&cc_ref[ind]) {
-                    table_float.insert(ref_val, TextOrScaleConversion::Txt(txt.0.clone()));
+                if let Some(txt) = sharable.get_tx(cc_ref[ind]) {
+                    table_float.insert(ref_val, TextOrScaleConversion::Txt(txt));
                 } else if let Some(cc) = sharable.cc.get(&cc_ref[ind]) {
                     let conv = conversion_function(cc, sharable);
                     table_float.insert(ref_val, TextOrScaleConversion::Scale(Box::new(conv)));
@@ -3534,11 +3534,11 @@ fn conversion_function(cc: &Cc4Block, sharable: &SharableBlocks) -> ConversionFu
             ),
             3 => {
                 if !&cc.cc_ref.is_empty() {
-                    if let Some(formulae) = sharable.tx.get(&cc.cc_ref[0]) {
+                    if let Some(formulae) = sharable.get_tx(cc.cc_ref[0]) {
                         let parser = fasteval::Parser::new();
                         let mut slab = fasteval::Slab::new();
                         let compiled = parser
-                            .parse(&formulae.0, &mut slab.ps)
+                            .parse(&formulae, &mut slab.ps)
                             .expect("error parsing formulae for conversion")
                             .from(&slab.ps)
                             .compile(&slab.ps, &mut slab.cs);
@@ -3604,8 +3604,8 @@ fn value_range_to_text(
     }
     let mut txt: Vec<TextOrScaleConversion> = Vec::with_capacity(n_keys);
     for pointer in cc_ref.iter() {
-        if let Some(t) = sharable.tx.get(pointer) {
-            txt.push(TextOrScaleConversion::Txt(t.0.clone()));
+        if let Some(t) = sharable.get_tx(*pointer) {
+            txt.push(TextOrScaleConversion::Txt(t));
         } else if let Some(cc) = sharable.cc.get(pointer) {
             let conv = conversion_function(cc, sharable);
             txt.push(TextOrScaleConversion::Scale(Box::new(conv)));
@@ -3614,8 +3614,8 @@ fn value_range_to_text(
         }
     }
     let def: DefaultTextOrScaleConversion;
-    if let Some(t) = sharable.tx.get(&cc_ref[n_keys]) {
-        def = DefaultTextOrScaleConversion::DefaultTxt(t.0.clone());
+    if let Some(t) = sharable.get_tx(cc_ref[n_keys]) {
+        def = DefaultTextOrScaleConversion::DefaultTxt(t);
     } else if let Some(cc) = sharable.cc.get(&cc_ref[n_keys]) {
         let conv = conversion_function(cc, sharable);
         def = DefaultTextOrScaleConversion::DefaultScale(Box::new(conv));
@@ -4187,8 +4187,8 @@ fn text_to_value(
 ) {
     let mut table: HashMap<String, f64> = HashMap::with_capacity(cc_ref.len());
     for (ind, ccref) in cc_ref.iter().enumerate() {
-        if let Some(txt) = sharable.tx.get(ccref) {
-            table.insert(txt.0.clone(), cc_val[ind]);
+        if let Some(txt) = sharable.get_tx(*ccref) {
+            table.insert(txt, cc_val[ind]);
         }
     }
     let default = cc_val[cc_val.len() - 1];
@@ -4271,17 +4271,17 @@ fn text_to_text(cn: &mut Cn4, cc_ref: &[i64], cycle_count: &u64, sharable: &Shar
     let pairs: Vec<(&i64, &i64)> = cc_ref.iter().tuples().collect();
     let mut table: HashMap<String, Option<String>> = HashMap::with_capacity(cc_ref.len());
     for ccref in pairs.iter() {
-        if let Some(key) = sharable.tx.get(ccref.0) {
-            if let Some(txt) = sharable.tx.get(ccref.1) {
-                table.insert(key.0.clone(), Some(txt.0.clone()));
+        if let Some(key) = sharable.get_tx(*ccref.0) {
+            if let Some(txt) = sharable.get_tx(*ccref.1) {
+                table.insert(key, Some(txt));
             } else {
-                table.insert(key.0.clone(), None);
+                table.insert(key, None);
             }
         }
     }
     let mut default: Option<String> = None;
-    if let Some(txt) = sharable.tx.get(&cc_ref[(cc_ref.len() - 1) as usize]) {
-        default = Some(txt.0.clone());
+    if let Some(txt) = sharable.get_tx(cc_ref[(cc_ref.len() - 1) as usize]) {
+        default = Some(txt);
     }
     match &mut cn.data {
         ChannelData::Int8(_) => {}
@@ -4400,8 +4400,8 @@ fn bitfield_text_table(
         if let Some(cc) = sharable.cc.get(pointer) {
             let name: Option<String>;
             if cc.cc_tx_name != 0 {
-                if let Some(n) = sharable.tx.get(&cc.cc_tx_name) {
-                    name = Some(n.0.clone());
+                if let Some(n) = sharable.get_tx(cc.cc_tx_name) {
+                    name = Some(n);
                 } else {
                     name = None
                 }
@@ -4415,9 +4415,8 @@ fn bitfield_text_table(
                             HashMap::with_capacity(cc_val.len());
                         for (ind, val) in cc_val.iter().enumerate() {
                             let val_i64 = (*val).round() as i64;
-                            if let Some(txt) = sharable.tx.get(&cc.cc_ref[ind]) {
-                                table_int
-                                    .insert(val_i64, TextOrScaleConversion::Txt(txt.0.clone()));
+                            if let Some(txt) = sharable.get_tx(cc.cc_ref[ind]) {
+                                table_int.insert(val_i64, TextOrScaleConversion::Txt(txt));
                             } else if let Some(cc) = sharable.cc.get(&cc.cc_ref[ind]) {
                                 let conv = conversion_function(cc, sharable);
                                 table_int
@@ -4427,8 +4426,8 @@ fn bitfield_text_table(
                             }
                         }
                         let def: DefaultTextOrScaleConversion;
-                        if let Some(txt) = sharable.tx.get(&cc.cc_ref[cc_val.len()]) {
-                            def = DefaultTextOrScaleConversion::DefaultTxt(txt.0.clone());
+                        if let Some(txt) = sharable.get_tx(cc.cc_ref[cc_val.len()]) {
+                            def = DefaultTextOrScaleConversion::DefaultTxt(txt);
                         } else if let Some(cc) = sharable.cc.get(&cc.cc_ref[cc_val.len()]) {
                             let conv = conversion_function(cc, sharable);
                             def = DefaultTextOrScaleConversion::DefaultScale(Box::new(conv));
@@ -4453,8 +4452,8 @@ fn bitfield_text_table(
                         }
                         let mut txt: Vec<TextOrScaleConversion> = Vec::with_capacity(n_keys);
                         for pointer in cc.cc_ref.iter() {
-                            if let Some(t) = sharable.tx.get(pointer) {
-                                txt.push(TextOrScaleConversion::Txt(t.0.clone()));
+                            if let Some(t) = sharable.get_tx(*pointer) {
+                                txt.push(TextOrScaleConversion::Txt(t));
                             } else if let Some(ccc) = sharable.cc.get(pointer) {
                                 let conv = conversion_function(ccc, sharable);
                                 txt.push(TextOrScaleConversion::Scale(Box::new(conv)));
@@ -4463,8 +4462,8 @@ fn bitfield_text_table(
                             }
                         }
                         let def: DefaultTextOrScaleConversion;
-                        if let Some(t) = sharable.tx.get(&cc.cc_ref[n_keys]) {
-                            def = DefaultTextOrScaleConversion::DefaultTxt(t.0.clone());
+                        if let Some(t) = sharable.get_tx(cc.cc_ref[n_keys]) {
+                            def = DefaultTextOrScaleConversion::DefaultTxt(t);
                         } else if let Some(ccc) = sharable.cc.get(&cc.cc_ref[n_keys]) {
                             let conv = conversion_function(ccc, sharable);
                             def = DefaultTextOrScaleConversion::DefaultScale(Box::new(conv));

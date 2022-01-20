@@ -637,22 +637,12 @@ impl ChannelData {
             ChannelData::Complex16(_) => 32,
             ChannelData::Complex32(_) => 64,
             ChannelData::Complex64(_) => 128,
-            ChannelData::StringSBC(data) => match data.iter().map(|s| s.len() as u32).max() {
-                Some(max) => max,
-                None => 0,
-            },
-            ChannelData::StringUTF8(data) => match data.iter().map(|s| s.len() as u32).max() {
-                Some(max) => max,
-                None => 0,
-            },
-            ChannelData::StringUTF16(data) => match data.iter().map(|s| s.len() as u32).max() {
-                Some(max) => max,
-                None => 0,
-            },
-            ChannelData::ByteArray(data) => match data.iter().map(|s| s.len() as u32).max() {
-                Some(max) => max,
-                None => 0,
-            },
+            ChannelData::StringSBC(data) => data.iter().map(|s| s.len() as u32).max().unwrap_or(0),
+            ChannelData::StringUTF8(data) => data.iter().map(|s| s.len() as u32).max().unwrap_or(0),
+            ChannelData::StringUTF16(data) => {
+                data.iter().map(|s| s.len() as u32).max().unwrap_or(0)
+            }
+            ChannelData::ByteArray(data) => data.iter().map(|s| s.len() as u32).max().unwrap_or(0),
             ChannelData::ArrayDInt8(_) => 8,
             ChannelData::ArrayDUInt8(_) => 8,
             ChannelData::ArrayDInt16(_) => 16,
@@ -719,7 +709,7 @@ impl ChannelData {
                 ChannelData::ArrayDComplex32(_) => 16,
                 ChannelData::ArrayDComplex64(_) => 16,
             }
-        } else  {
+        } else {
             // LE
             match self {
                 ChannelData::Int8(_) => 2,

@@ -40,8 +40,8 @@ impl MdfInfo3 {
         self.channel_names_set.get(channel_name)
     }
     /// Returns the channel's unit string. If it does not exist, it is an empty string.
-    pub fn get_channel_unit(&self, channel_name: &str) -> String {
-        let mut unit: String = String::new();
+    pub fn get_channel_unit(&self, channel_name: &str) -> Option<String> {
+        let mut unit: Option<String> = None;
         if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
             self.get_channel_id(channel_name)
         {
@@ -50,10 +50,11 @@ impl MdfInfo3 {
                     if let Some(cn) = cg.cn.get(cn_pos) {
                         if let Some(array) = self.sharable.cc.get(&cn.block1.cn_cc_conversion) {
                             let txt = array.0.cc_unit;
+                            let mut u = String::new();
                             ISO_8859_1
-                                .decode_to(&txt, DecoderTrap::Replace, &mut unit)
+                                .decode_to(&txt, DecoderTrap::Replace, &mut u)
                                 .expect("channel description is latin1 encoded");
-                            unit = unit.trim_end_matches(char::from(0)).to_string();
+                            unit = Some(u.trim_end_matches(char::from(0)).to_string());
                         }
                     }
                 }
@@ -62,15 +63,15 @@ impl MdfInfo3 {
         unit
     }
     /// Returns the channel's description. If it does not exist, it is an empty string
-    pub fn get_channel_desc(&self, channel_name: &str) -> String {
-        let mut desc = String::new();
+    pub fn get_channel_desc(&self, channel_name: &str) -> Option<String> {
+        let mut desc: Option<String> = None;
         if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
             self.get_channel_id(channel_name)
         {
             if let Some(dg) = self.dg.get(dg_pos) {
                 if let Some(cg) = dg.cg.get(rec_id) {
                     if let Some(cn) = cg.cn.get(cn_pos) {
-                        desc = cn.description.clone();
+                        desc = Some(cn.description.clone());
                     }
                 }
             }
@@ -183,14 +184,12 @@ impl MdfInfo3 {
     }
     /// returns channel's data ndarray.
     pub fn get_channel_data<'a>(&'a mut self, channel_name: &'a str) -> Option<&'a ChannelData> {
-        let data: Option<&ChannelData>;
         let mut channel_names: HashSet<String> = HashSet::new();
         channel_names.insert(channel_name.to_string());
         if !self.get_channel_data_validity(channel_name) {
             self.load_channels_data_in_memory(channel_names); // will read data only if array is empty
         }
-        data = self.get_channel_data_from_memory(channel_name);
-        data
+        self.get_channel_data_from_memory(channel_name)
     }
 }
 
@@ -795,7 +794,7 @@ fn parse_cn3_block(
     default_byte_order: u16,
 ) -> (Cn3, i64) {
     rdr.seek_relative(target as i64 - position)
-        .expect("Coudl not reach position of CN Block"); // change buffer position
+        .expect("Could not reach position of CN Block"); // change buffer position
     let mut buf = vec![0u8; 228];
     rdr.read_exact(&mut buf)
         .expect("Could not read Cn3 block buffer");
@@ -1500,12 +1499,12 @@ pub fn build_channel_db3(
         for (_record_id, cg) in dg.cg.iter_mut() {
             let mut cg_channel_list: HashSet<String> =
                 HashSet::with_capacity(cg.block.cg_n_channels as usize);
-            let master_channel_name: String;
-            if let Some(name) = master_channel_list.get(&cg.block_position) {
-                master_channel_name = name.to_string();
-            } else {
-                master_channel_name = format!("master_{}", cg.block_position); // default name in case no master is existing
-            }
+            let master_channel_name: String =
+                if let Some(name) = master_channel_list.get(&cg.block_position) {
+                    name.to_string()
+                } else {
+                    format!("master_{}", cg.block_position) // default name in case no master is existing
+                };
             for (_cn_record_position, cn) in cg.cn.iter_mut() {
                 cg_channel_list.insert(cn.unique_name.clone());
                 // assigns master in channel_list

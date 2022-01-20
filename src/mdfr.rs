@@ -208,12 +208,14 @@ impl PyObjectProtocol for Mdf {
                         }
                     }
                 }
-                output.push_str(&"\n".to_string());
+                output.push_str("\n");
             }
             MdfInfo::V4(mdfinfo4) => {
                 output = format!("Version : {}\n", mdfinfo4.id_block.id_ver);
                 output.push_str(&format!("{}\n", mdfinfo4.hd_block));
-                let comments = &mdfinfo4.hd_comment;
+                let comments = &mdfinfo4
+                    .sharable
+                    .get_comments(mdfinfo4.hd_block.hd_md_comment);
                 for c in comments.iter() {
                     output.push_str(&format!("{} {}\n", c.0, c.1));
                 }
@@ -234,7 +236,7 @@ impl PyObjectProtocol for Mdf {
                         }
                     }
                 }
-                output.push_str(&"\n".to_string());
+                output.push_str("\n");
             }
         }
         Ok(output)

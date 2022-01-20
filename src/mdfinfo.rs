@@ -17,8 +17,8 @@ use binrw::io::Cursor;
 use dashmap::DashMap;
 use mdfinfo3::{hd3_comment_parser, hd3_parser, parse_dg3, MdfInfo3, SharableBlocks3};
 use mdfinfo4::{
-    build_channel_db, extract_xml, hd4_comment_parser, hd4_parser, parse_at4, parse_at4_comments,
-    parse_dg4, parse_ev4, parse_ev4_comments, parse_fh, MdfInfo4, SharableBlocks,
+    build_channel_db, hd4_parser, parse_at4, parse_dg4, parse_ev4, parse_fh, MdfInfo4,
+    SharableBlocks,
 };
 
 use crate::mdfreader::channel_data::ChannelData;
@@ -131,31 +131,26 @@ impl MdfInfo {
             }));
         } else {
             let mut sharable: SharableBlocks = SharableBlocks {
-                md: HashMap::new(),
-                tx: Arc::new(DashMap::new()),
+                md_tx: Arc::new(DashMap::new()),
                 cc: HashMap::new(),
                 si: HashMap::new(),
             };
             // Read HD block
-            let hd = hd4_parser(&mut rdr);
-            let (hd_comment, position) = hd4_comment_parser(&mut rdr, &hd);
+            let (hd, position) = hd4_parser(&mut rdr, &mut sharable);
+
             // FH block
-            let (fh, position) = parse_fh(&mut rdr, hd.hd_fh_first, position);
+            let (fh, position) = parse_fh(&mut rdr, &mut sharable, hd.hd_fh_first, position);
 
             // AT Block read
-            let (at, position) = parse_at4(&mut rdr, hd.hd_at_first, position);
-            let (c, position) = parse_at4_comments(&mut rdr, &at, position);
-            sharable.md.extend(c.into_iter());
+            let (at, position) = parse_at4(&mut rdr, &mut sharable, hd.hd_at_first, position);
 
             // EV Block read
-            let (ev, position) = parse_ev4(&mut rdr, hd.hd_ev_first, position);
-            let (c, position) = parse_ev4_comments(&mut rdr, &ev, position);
-            sharable.md.extend(c.into_iter());
+            let (ev, position) = parse_ev4(&mut rdr, &mut sharable, hd.hd_ev_first, position);
 
             // Read DG Block
             let (mut dg, _, n_cg, n_cn) =
                 parse_dg4(&mut rdr, hd.hd_dg_first, position, &mut sharable);
-            extract_xml(&mut sharable.tx); // extract TX xml tag from text
+            sharable.extract_xml(); // extract TX xml tag from text
 
             // make channel names unique, list channels and create master dictionnary
             let channel_names_set = build_channel_db(&mut dg, &sharable, n_cg, n_cn);
@@ -165,7 +160,6 @@ impl MdfInfo {
                 file_name: file_name.to_string(),
                 id_block: id,
                 hd_block: hd,
-                hd_comment,
                 fh,
                 at,
                 ev,
@@ -184,8 +178,8 @@ impl MdfInfo {
         }
     }
     /// returns channel's unit string
-    pub fn get_channel_unit(&self, channel_name: &str) -> String {
-        let unit: String;
+    pub fn get_channel_unit(&self, channel_name: &str) -> Option<String> {
+        let unit: Option<String>;
         match self {
             MdfInfo::V3(mdfinfo3) => {
                 unit = mdfinfo3.get_channel_unit(channel_name);
@@ -197,8 +191,8 @@ impl MdfInfo {
         unit
     }
     /// returns channel's description string
-    pub fn get_channel_desc(&self, channel_name: &str) -> String {
-        let desc: String;
+    pub fn get_channel_desc(&self, channel_name: &str) -> Option<String> {
+        let desc: Option<String>;
         match self {
             MdfInfo::V3(mdfinfo3) => {
                 desc = mdfinfo3.get_channel_desc(channel_name);
@@ -344,7 +338,9 @@ impl fmt::Display for MdfInfo {
             MdfInfo::V4(mdfinfo4) => {
                 writeln!(f, "Version : {}", mdfinfo4.id_block.id_ver)?;
                 writeln!(f, "{}\n", mdfinfo4.hd_block)?;
-                let comments = &mdfinfo4.hd_comment;
+                let comments = &mdfinfo4
+                    .sharable
+                    .get_comments(mdfinfo4.hd_block.hd_md_comment);
                 for c in comments.iter() {
                     writeln!(f, "{} {}", c.0, c.1)?;
                 }

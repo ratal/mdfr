@@ -182,14 +182,13 @@ fn read_all_channels_unsorted_from_bytes(
     let mut remaining: usize = data_length - position;
     while remaining > 0 {
         // reads record id
-        let rec_id: u16;
-        if remaining >= 1 {
-            rec_id = data[position]
+        let rec_id: u16 = if remaining >= 1 {
+            data[position]
                 .try_into()
-                .expect("Could not convert record id u8");
+                .expect("Could not convert record id u8")
         } else {
             break; // not enough data remaining
-        }
+        };
         // reads record based on record id
         if let Some(cg) = dg.cg.get_mut(&rec_id) {
             let record_length = cg.record_length as usize;
