@@ -96,10 +96,9 @@ impl MdfInfo {
         let id: IdBlock = block
             .read_le()
             .expect("Could not read buffer into IdBlock structure");
-        let mdf_info: MdfInfo;
 
         // Depending of version different blocks
-        if id.id_ver < 400 {
+        let mdf_info: MdfInfo = if id.id_ver < 400 {
             let mut sharable: SharableBlocks3 = SharableBlocks3 {
                 cc: HashMap::new(),
                 ce: HashMap::new(),
@@ -120,7 +119,7 @@ impl MdfInfo {
             // make channel names unique, list channels and create master dictionnary
             let channel_names_set = build_channel_db3(&mut dg, &sharable, n_cg, n_cn);
 
-            mdf_info = MdfInfo::V3(Box::new(MdfInfo3 {
+            MdfInfo::V3(Box::new(MdfInfo3 {
                 file_name: file_name.to_string(),
                 id_block: id,
                 hd_block: hd,
@@ -128,7 +127,7 @@ impl MdfInfo {
                 dg,
                 sharable,
                 channel_names_set,
-            }));
+            }))
         } else {
             let mut sharable: SharableBlocks = SharableBlocks {
                 md_tx: Arc::new(DashMap::new()),
@@ -156,7 +155,7 @@ impl MdfInfo {
             let channel_names_set = build_channel_db(&mut dg, &sharable, n_cg, n_cn);
             // println!("{}", db);
 
-            mdf_info = MdfInfo::V4(Box::new(MdfInfo4 {
+            MdfInfo::V4(Box::new(MdfInfo4 {
                 file_name: file_name.to_string(),
                 id_block: id,
                 hd_block: hd,
@@ -166,7 +165,7 @@ impl MdfInfo {
                 dg,
                 sharable,
                 channel_names_set,
-            }));
+            }))
         };
         mdf_info
     }
@@ -179,82 +178,52 @@ impl MdfInfo {
     }
     /// returns channel's unit string
     pub fn get_channel_unit(&self, channel_name: &str) -> Option<String> {
-        let unit: Option<String>;
-        match self {
-            MdfInfo::V3(mdfinfo3) => {
-                unit = mdfinfo3.get_channel_unit(channel_name);
-            }
-            MdfInfo::V4(mdfinfo4) => {
-                unit = mdfinfo4.get_channel_unit(channel_name);
-            }
-        }
+        let unit: Option<String> = match self {
+            MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_unit(channel_name),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_unit(channel_name),
+        };
         unit
     }
     /// returns channel's description string
     pub fn get_channel_desc(&self, channel_name: &str) -> Option<String> {
-        let desc: Option<String>;
-        match self {
-            MdfInfo::V3(mdfinfo3) => {
-                desc = mdfinfo3.get_channel_desc(channel_name);
-            }
-            MdfInfo::V4(mdfinfo4) => {
-                desc = mdfinfo4.get_channel_desc(channel_name);
-            }
-        }
+        let desc: Option<String> = match self {
+            MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_desc(channel_name),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_desc(channel_name),
+        };
         desc
     }
     /// returns channel's associated master channel name string
     pub fn get_channel_master(&self, channel_name: &str) -> String {
-        let master: String;
-        match self {
-            MdfInfo::V3(mdfinfo3) => {
-                master = mdfinfo3.get_channel_master(channel_name);
-            }
-            MdfInfo::V4(mdfinfo4) => {
-                master = mdfinfo4.get_channel_master(channel_name);
-            }
-        }
+        let master: String = match self {
+            MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_master(channel_name),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_master(channel_name),
+        };
         master
     }
     /// returns channel's associated master channel type string
     /// 0 = None (normal data channels), 1 = Time (seconds), 2 = Angle (radians),
     /// 3 = Distance (meters), 4 = Index (zero-based index values)
     pub fn get_channel_master_type(&self, channel_name: &str) -> u8 {
-        let master: u8;
-        match self {
-            MdfInfo::V3(mdfinfo3) => {
-                master = mdfinfo3.get_channel_master_type(channel_name);
-            }
-            MdfInfo::V4(mdfinfo4) => {
-                master = mdfinfo4.get_channel_master_type(channel_name);
-            }
-        }
+        let master: u8 = match self {
+            MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_master_type(channel_name),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_master_type(channel_name),
+        };
         master
     }
     /// returns a set of all channel names contained in file
     pub fn get_channel_names_set(&self) -> HashSet<String> {
-        let channel_list: HashSet<String>;
-        match self {
-            MdfInfo::V3(mdfinfo3) => {
-                channel_list = mdfinfo3.get_channel_names_set();
-            }
-            MdfInfo::V4(mdfinfo4) => {
-                channel_list = mdfinfo4.get_channel_names_set();
-            }
-        }
+        let channel_list: HashSet<String> = match self {
+            MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_names_set(),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_names_set(),
+        };
         channel_list
     }
     /// returns a dict of master names keys for which values are a set of associated channel names
     pub fn get_master_channel_names_set(&self) -> HashMap<String, HashSet<String>> {
-        let channel_master_list: HashMap<String, HashSet<String>>;
-        match self {
-            MdfInfo::V3(mdfinfo3) => {
-                channel_master_list = mdfinfo3.get_master_channel_names_set();
-            }
-            MdfInfo::V4(mdfinfo4) => {
-                channel_master_list = mdfinfo4.get_master_channel_names_set();
-            }
-        }
+        let channel_master_list: HashMap<String, HashSet<String>> = match self {
+            MdfInfo::V3(mdfinfo3) => mdfinfo3.get_master_channel_names_set(),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_master_channel_names_set(),
+        };
         channel_master_list
     }
     /// load a set of channels data in memory
@@ -275,16 +244,13 @@ impl MdfInfo {
     }
     /// returns channel's data ndarray.
     pub fn get_channel_data<'a>(&'a mut self, channel_name: &'a str) -> Option<&ChannelData> {
-        let data: Option<&ChannelData>;
-        match self {
-            MdfInfo::V3(mdfinfo3) => {
-                data = mdfinfo3.get_channel_data(channel_name);
-            }
+        let data: Option<&ChannelData> = match self {
+            MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_data(channel_name),
             MdfInfo::V4(mdfinfo4) => {
                 let (dt, _mask) = mdfinfo4.get_channel_data(channel_name);
-                data = dt;
+                dt
             }
-        }
+        };
         data
     }
     /// Clears all data arrays

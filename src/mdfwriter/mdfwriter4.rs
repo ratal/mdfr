@@ -88,16 +88,18 @@ pub fn mdfwriter4<'a>(writer: &'a mut BufWriter<&File>, info: &'a mut MdfInfo4) 
                 writer
                     .write_le(&cn.block)
                     .expect("Could not write TXBlock for channel name");
-                //if new_info.sharable.tx.contains(&cn.cn_cmd_unit) {
-                //    writer
-                //        .write_le(&cn.tx_block)
-                //        .expect("Could not write TXBlock for channel unit");
-                //}
-                //if new_info.sharable.tx.contains(&cn.cn_md_comment) {
-                //    writer
-                //        .write_le(&cn.tx_block)
-                //        .expect("Could not write TXBlock for channel comments");
-                //}
+                // TX Block channel name
+                if let Some(tx_name_metadata) = new_info.sharable.md_tx.get(&cn.block.cn_tx_name) {
+                    tx_name_metadata.write(writer);
+                }
+                if let Some(tx_unit_metadata) = new_info.sharable.md_tx.get(&cn.block.cn_md_unit) {
+                    tx_unit_metadata.write(writer);
+                }
+                if let Some(tx_comment_metadata) =
+                    new_info.sharable.md_tx.get(&cn.block.cn_md_comment)
+                {
+                    tx_comment_metadata.write(writer);
+                }
             }
         }
     }
@@ -120,6 +122,7 @@ fn create_blocks(
     // DG Block
     pointer += dg_block.dg_len as i64;
     let dg_position = pointer;
+    dg_block.dg_cg_first = pointer;
 
     // CG Block
     if cg_cg_master != 0 {
@@ -146,7 +149,9 @@ fn create_blocks(
     // channel name TX
     let mut tx_name_block = MetaData::new(MetaDataBlockType::TX, BlockType::CN);
     tx_name_block.set_data_buffer(cn.unique_name.clone());
+    let tx_position = pointer;
     pointer += tx_name_block.block.hdr_len as i64;
+    new_info.sharable.md_tx.insert(tx_position, tx_name_block);
 
     // channel unit
     if let Some(str) = info.sharable.md_tx.get(&cn.block.cn_md_unit) {

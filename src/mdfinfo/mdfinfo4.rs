@@ -449,13 +449,12 @@ impl MetaData {
         }
     }
     pub fn parse_xml(&mut self) {
-        match self.block_type {
-            MetaDataBlockType::MdBlock => match self.parent_block_type {
+        if let MetaDataBlockType::MdBlock = self.block_type {
+            match self.parent_block_type {
                 BlockType::HD => self.parse_hd_xml(),
                 BlockType::FH => self.parse_fh_xml(),
                 _ => self.parse_generic_xml(),
-            },
-            _ => (),
+            }
         }
     }
     pub fn get_data_string(&self) -> String {
@@ -1484,7 +1483,7 @@ pub struct Cn4Block {
     /// Composition of channels: Pointer to channel array block (CABLOCK) or channel block (CNBLOCK) (can be NIL). Details see 4.18 Composition of Channels      
     cn_composition: i64,
     /// Pointer to TXBLOCK with name (identification) of channel. Name must be according to naming rules stated in 4.4.2 Naming Rules.
-    cn_tx_name: i64,
+    pub cn_tx_name: i64,
     /// Pointer to channel source (SIBLOCK) (can be NIL) Must be NIL for component channels (members of a structure or array elements) because they all must have the same source and thus simply use the SIBLOCK of their parent CNBLOCK (direct child of CGBLOCK).
     cn_si_source: i64,
     /// Pointer to the conversion formula (CCBLOCK) (can be NIL, must be NIL for complex channel data types, i.e. for cn_data_type ≥ 10). If the pointer is NIL, this means that a 1:1 conversion is used (phys = int).  };
@@ -2227,109 +2226,110 @@ fn parse_ca_block(
     }
     let mut shape_dim: VecDeque<usize> = VecDeque::from(shape_dim_usize);
     shape_dim.push_front(cg_cycle_count as usize);
-    let shape: (Vec<usize>, Order);
-    if (ca_members.ca_flags >> 6 & 1) != 0 {
-        shape = (shape_dim.into(), Order::ColumnMajor);
+
+    let shape: (Vec<usize>, Order) = if (ca_members.ca_flags >> 6 & 1) != 0 {
+        (shape_dim.into(), Order::ColumnMajor)
     } else {
-        shape = (shape_dim.into(), Order::RowMajor);
-    }
-    let ca_axis_value: Option<Vec<f64>>;
+        (shape_dim.into(), Order::RowMajor)
+    };
+
     let mut val = vec![0.0f64; snd as usize];
-    if (ca_members.ca_flags & 0b100000) > 0 {
+    let ca_axis_value: Option<Vec<f64>> = if (ca_members.ca_flags & 0b100000) > 0 {
         ca_block
             .read_f64_into::<LittleEndian>(&mut val)
             .expect("Could not read ca_axis_value");
-        ca_axis_value = Some(val);
+        Some(val)
     } else {
-        ca_axis_value = None
-    }
-    let ca_cycle_count: Option<Vec<u64>>;
+        None
+    };
+
     let mut val = vec![0u64; pnd];
-    if ca_members.ca_storage >= 1 {
+    let ca_cycle_count: Option<Vec<u64>> = if ca_members.ca_storage >= 1 {
         ca_block
             .read_u64_into::<LittleEndian>(&mut val)
             .expect("Could not read ca_cycle_count");
-        ca_cycle_count = Some(val);
+        Some(val)
     } else {
-        ca_cycle_count = None;
-    }
+        None
+    };
 
     // Reads links
     ca_block.set_position(0); // change buffer position to beginning of links section
-    let ca_composition: i64;
-    ca_composition = ca_block
+
+    let ca_composition: i64 = ca_block
         .read_i64::<LittleEndian>()
         .expect("Could not read ca_composition");
-    let ca_data: Option<Vec<i64>>;
+
     let mut val = vec![0i64; pnd];
-    if ca_members.ca_storage == 2 {
+    let ca_data: Option<Vec<i64>> = if ca_members.ca_storage == 2 {
         ca_block
             .read_i64_into::<LittleEndian>(&mut val)
             .expect("Could not read ca_storage");
-        ca_data = Some(val);
+        Some(val)
     } else {
-        ca_data = None
-    }
-    let ca_dynamic_size: Option<Vec<i64>>;
+        None
+    };
+
     let mut val = vec![0i64; (ca_members.ca_ndim * 3) as usize];
-    if (ca_members.ca_flags & 0b1) > 0 {
+    let ca_dynamic_size: Option<Vec<i64>> = if (ca_members.ca_flags & 0b1) > 0 {
         ca_block
             .read_i64_into::<LittleEndian>(&mut val)
             .expect("Could not read ca_dynamic_size");
-        ca_dynamic_size = Some(val);
+        Some(val)
     } else {
-        ca_dynamic_size = None
-    }
-    let ca_input_quantity: Option<Vec<i64>>;
+        None
+    };
+
     let mut val = vec![0i64; (ca_members.ca_ndim * 3) as usize];
-    if (ca_members.ca_flags & 0b10) > 0 {
+    let ca_input_quantity: Option<Vec<i64>> = if (ca_members.ca_flags & 0b10) > 0 {
         ca_block
             .read_i64_into::<LittleEndian>(&mut val)
             .expect("Could not read ca_input_quantity");
-        ca_input_quantity = Some(val);
+        Some(val)
     } else {
-        ca_input_quantity = None
-    }
-    let ca_output_quantity: Option<Vec<i64>>;
+        None
+    };
+
     let mut val = vec![0i64; 3];
-    if (ca_members.ca_flags & 0b100) > 0 {
+    let ca_output_quantity: Option<Vec<i64>> = if (ca_members.ca_flags & 0b100) > 0 {
         ca_block
             .read_i64_into::<LittleEndian>(&mut val)
             .expect("Could not read ca_output_quantity");
-        ca_output_quantity = Some(val);
+        Some(val)
     } else {
-        ca_output_quantity = None
-    }
-    let ca_comparison_quantity: Option<Vec<i64>>;
+        None
+    };
+
     let mut val = vec![0i64; 3];
-    if (ca_members.ca_flags & 0b1000) > 0 {
+    let ca_comparison_quantity: Option<Vec<i64>> = if (ca_members.ca_flags & 0b1000) > 0 {
         ca_block
             .read_i64_into::<LittleEndian>(&mut val)
             .expect("Could not read ca_comparison_quantity");
-        ca_comparison_quantity = Some(val);
+        Some(val)
     } else {
-        ca_comparison_quantity = None
-    }
-    let ca_cc_axis_conversion: Option<Vec<i64>>;
+        None
+    };
+
     let mut val = vec![0i64; ca_members.ca_ndim as usize];
-    if (ca_members.ca_flags & 0b10000) > 0 {
+    let ca_cc_axis_conversion: Option<Vec<i64>> = if (ca_members.ca_flags & 0b10000) > 0 {
         ca_block
             .read_i64_into::<LittleEndian>(&mut val)
             .expect("Could not read ca_cc_axis_conversion");
-        ca_cc_axis_conversion = Some(val);
+        Some(val)
     } else {
-        ca_cc_axis_conversion = None
-    }
-    let ca_axis: Option<Vec<i64>>;
+        None
+    };
+
     let mut val = vec![0i64; (ca_members.ca_ndim * 3) as usize];
-    if ((ca_members.ca_flags & 0b10000) > 0) & ((ca_members.ca_flags & 0b100000) > 0) {
-        ca_block
-            .read_i64_into::<LittleEndian>(&mut val)
-            .expect("Could not read ca_axis");
-        ca_axis = Some(val);
-    } else {
-        ca_axis = None
-    }
+    let ca_axis: Option<Vec<i64>> =
+        if ((ca_members.ca_flags & 0b10000) > 0) & ((ca_members.ca_flags & 0b100000) > 0) {
+            ca_block
+                .read_i64_into::<LittleEndian>(&mut val)
+                .expect("Could not read ca_axis");
+            Some(val)
+        } else {
+            None
+        };
 
     Ca4Block {
         ca_id: block_header.hdr_id,
@@ -2438,12 +2438,11 @@ fn parse_composition(
         n_cn += n_cns;
         cns = cnss;
         let cn_composition: Option<Box<Composition>>;
-        let cn_struct: Cn4;
-        if let Some(cn) = cns.get(&first_rec_pos) {
-            cn_struct = cn.clone();
+        let cn_struct: Cn4 = if let Some(cn) = cns.get(&first_rec_pos) {
+            cn.clone()
         } else {
-            cn_struct = Cn4::default()
-        }
+            Cn4::default()
+        };
         if cn_struct.block.cn_composition != 0 {
             let (cn, pos, _is_array, n_cns, cnss) = parse_composition(
                 rdr,
