@@ -7,7 +7,7 @@ use dashmap::DashMap;
 use ndarray::{Array1, Order};
 use rayon::prelude::*;
 use roxmltree;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque, BTreeMap};
 use std::default::Default;
 use std::fs::{File, OpenOptions};
 use std::io::{prelude::*, BufWriter};
@@ -51,7 +51,7 @@ pub struct MdfInfo4 {
     /// event blocks
     pub ev: HashMap<i64, Ev4Block>, // events
     /// data group block linking channel group/channel/conversion/compostion/..etc. and data block
-    pub dg: HashMap<i64, Dg4>, // contains most of the file structure
+    pub dg: BTreeMap<i64, Dg4>, // contains most of the file structure
     /// cc, md, tx and si blocks that can be referenced by several blocks
     pub sharable: SharableBlocks,
     /// set of all channel names
@@ -234,7 +234,7 @@ impl MdfInfo4 {
             .open(file_name)
             .expect("Cannot create the file");
         let mut rdr = BufWriter::new(&f);
-        mdfwriter4(&mut rdr, self);
+        mdfwriter4(&mut rdr, self, file_name);
     }
     // TODO cut data
     // TODO resample data
@@ -1055,8 +1055,8 @@ pub fn parse_dg4(
     target: i64,
     mut position: i64,
     sharable: &mut SharableBlocks,
-) -> (HashMap<i64, Dg4>, i64, usize, usize) {
-    let mut dg: HashMap<i64, Dg4> = HashMap::new();
+) -> (BTreeMap<i64, Dg4>, i64, usize, usize) {
+    let mut dg: BTreeMap<i64, Dg4> = BTreeMap::new();
     // TODO Hash to BTree map performance investigation for only data block positions (DG but also DL/LD ?)
     let mut n_cn: usize = 0;
     let mut n_cg: usize = 0;
@@ -2475,7 +2475,7 @@ fn parse_composition(
 /// parses mdfinfo structure to make channel names unique
 /// creates channel names set and links master channels to set of channels
 pub fn build_channel_db(
-    dg: &mut HashMap<i64, Dg4>,
+    dg: &mut BTreeMap<i64, Dg4>,
     sharable: &SharableBlocks,
     n_cg: usize,
     n_cn: usize,

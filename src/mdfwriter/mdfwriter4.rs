@@ -14,8 +14,9 @@ use binrw::BinWriterExt;
 use std::fs::File;
 
 /// writes file on hard drive
-pub fn mdfwriter4<'a>(writer: &'a mut BufWriter<&File>, info: &'a mut MdfInfo4) {
+pub fn mdfwriter4<'a>(writer: &'a mut BufWriter<&File>, info: &'a mut MdfInfo4, file_name: &str) {
     let mut new_info = MdfInfo4::default();
+    new_info.file_name = file_name.to_string();
     // IDBlock
     // HDblock
     let mut pointer: i64 = 168;
@@ -120,11 +121,12 @@ fn create_blocks(
     let mut cg_block = Cg4Block::default();
     let mut cn_block = Cn4Block::default();
     // DG Block
-    pointer += dg_block.dg_len as i64;
     let dg_position = pointer;
+    pointer += dg_block.dg_len as i64;
     dg_block.dg_cg_first = pointer;
 
     // CG Block
+    let cg_position = pointer;
     if cg_cg_master != 0 {
         cg_block.cg_len = 7; // with cg_cg_master
         cg_block.cg_cg_master = pointer;
@@ -134,16 +136,15 @@ fn create_blocks(
     let bit_count = cn.data.bit_count();
     cg_block.cg_data_bytes = bit_count / 8;
     pointer += cg_block.cg_len as i64;
-    let cg_position = pointer;
     cg_block.cg_cn_first = pointer;
 
     // CN Block
+    let cn_position = pointer;
     if master_flag {
         cn_block.cn_type = 2; // master channel
     }
     cn_block.cn_data_type = cn.data.data_type(cn.endian);
     cn_block.cn_bit_count = bit_count;
-    let cn_position = pointer;
     pointer += cn_block.cn_len as i64;
 
     // channel name TX
