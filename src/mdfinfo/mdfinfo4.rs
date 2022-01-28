@@ -7,7 +7,7 @@ use dashmap::DashMap;
 use ndarray::{Array1, Order};
 use rayon::prelude::*;
 use roxmltree;
-use std::collections::{HashMap, HashSet, VecDeque, BTreeMap};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::default::Default;
 use std::fs::{File, OpenOptions};
 use std::io::{prelude::*, BufWriter};
@@ -471,7 +471,7 @@ impl MetaData {
         }
     }
     pub fn set_data_buffer(&mut self, data: String) {
-        self.raw_data = data.into();
+        self.raw_data = format!("{:\0<width$}", data, width = (data.len() / 8 + 1) * 8).into();
         self.block.hdr_len = self.raw_data.len() as u64 + 24;
     }
     fn parse_hd_xml(&mut self) {
@@ -1214,7 +1214,7 @@ pub struct Cg4Block {
     /// Length of block in bytes
     pub cg_len: u64,
     /// # of links
-    cg_links: u64,
+    pub cg_links: u64,
     /// Pointer to next channel group block (CGBLOCK) (can be NIL)
     pub cg_cg_next: i64,
     /// Pointer to first channel block (CNBLOCK) (can be NIL, must be NIL for VLSD CGBLOCK, i.e. if "VLSD channel group" flag (bit 0) is set)
@@ -1228,7 +1228,7 @@ pub struct Cg4Block {
     ///Pointer to comment and additional information (TXBLOCK or MDBLOCK) (can be NIL, must be NIL for VLSD CGBLOCK)
     cg_md_comment: i64,
     #[br(if(cg_links > 6))]
-    pub cg_cg_master: i64,
+    pub cg_cg_master: Option<i64>,
     // Data Members
     /// Record ID, value must be less than maximum unsigned integer value allowed by dg_rec_id_size in parent DGBLOCK. Record ID must be unique within linked list of CGBLOCKs.
     pub cg_record_id: u64,
@@ -1250,18 +1250,18 @@ impl Default for Cg4Block {
         Cg4Block {
             cg_id: [35, 35, 67, 71], // ##CG
             reserved: [0u8; 4],
-            cg_len: 112,
-            cg_links: 6, // 7 with cg_cg_master
+            cg_len: 104, // 112 with cg_cg_master, 104 without
+            cg_links: 6, // 7 with cg_cg_master, 6 without
             cg_cg_next: 0,
             cg_cn_first: 0,
             cg_tx_acq_name: 0,
             cg_si_acq_source: 0,
             cg_sr_first: 0,
             cg_md_comment: 0,
-            cg_cg_master: 0,
+            cg_cg_master: None,
             cg_record_id: 0,
             cg_cycle_count: 0,
-            cg_flags: 8, // bit 3 set for remote master
+            cg_flags: 0, // bit 3 set for remote master
             cg_path_separator: 0,
             cg_reserved: [0; 4],
             cg_data_bytes: 0,
@@ -1501,7 +1501,7 @@ pub struct Cn4Block {
     /// Channel type (see CN_T_xxx)
     pub cn_type: u8,
     /// Sync type: (see CN_S_xxx)
-    cn_sync_type: u8,
+    pub cn_sync_type: u8,
     /// Channel data type of raw signal value (see CN_DT_xxx)
     pub cn_data_type: u8,
     /// Bit offset (0-7): first bit (=LSB) of signal value after Byte offset has been applied (see 4.21.4.2 Reading the Signal Value). If zero, the signal value is 1-Byte aligned. A value different to zero is only allowed for Integer data types (cn_data_type ≤ 3) and if the Integer signal value fits into 8 contiguous Bytes (cn_bit_count + cn_bit_offset ≤ 64). For all other cases, cn_bit_offset must be zero.
@@ -2550,9 +2550,9 @@ pub fn build_channel_db(
             let mut master_channel_name: String = String::new();
             if let Some(name) = master_channel_list.get(&cg.block_position) {
                 master_channel_name = name.to_string();
-            } else if cg.block.cg_cg_master != 0 {
+            } else if let Some(cg_cg_master) = cg.block.cg_cg_master {
                 // master is in another cg block, possible from 4.2
-                if let Some(name) = master_channel_list.get(&cg.block.cg_cg_master) {
+                if let Some(name) = master_channel_list.get(&cg_cg_master) {
                     master_channel_name = name.to_string();
                 }
             } else {
@@ -2664,7 +2664,7 @@ pub fn parse_dz(rdr: &mut BufReader<&File>) -> (Vec<u8>, Dz4Block) {
 }
 
 /// DZ4 Data List block struct
-#[derive(Debug, PartialEq, Default, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 #[binrw]
 #[br(little)]
 pub struct Dz4Block {
@@ -2688,8 +2688,24 @@ pub struct Dz4Block {
     pub dz_data_length: u64,
 }
 
+impl Default for Dz4Block {
+    fn default() -> Self {
+        Dz4Block {
+            reserved: [0; 4],
+            len: 0,
+            dz_links: 0,
+            dz_org_block_type: [68, 86], // DV
+            dz_zip_type: 0,              // No transposition for a single channel
+            dz_reserved: 0,
+            dz_zip_parameter: 0,
+            dz_org_data_length: 0,
+            dz_data_length: 0,
+        }
+    }
+}
+
 /// DL4 Data List block struct
-#[derive(Debug, PartialEq, Default, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 #[binrw]
 #[br(little)]
 pub struct Ld4Block {
@@ -2720,6 +2736,27 @@ pub struct Ld4Block {
     dl_angle_values: Vec<i64>,
     #[br(if((ld_flags & 0b1000)>0), little, count = ld_count)]
     dl_distance_values: Vec<i64>,
+}
+
+impl Default for Ld4Block {
+    fn default() -> Self {
+        Ld4Block {
+            reserved: [0; 4],
+            ld_len: 40,
+            ld_links: 0,
+            ld_ld_next: 0,
+            ld_data: vec![],
+            ld_invalid_data: vec![],
+            ld_flags: 0,
+            ld_reserved: [0; 3],
+            ld_count: 0,
+            ld_equal_sample_count: 0,
+            ld_sample_offset: vec![],
+            dl_time_values: vec![],
+            dl_angle_values: vec![],
+            dl_distance_values: vec![],
+        }
+    }
 }
 
 /// parse List Data block

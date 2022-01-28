@@ -15,8 +15,10 @@ use std::fs::File;
 
 /// writes file on hard drive
 pub fn mdfwriter4<'a>(writer: &'a mut BufWriter<&File>, info: &'a mut MdfInfo4, file_name: &str) {
-    let mut new_info = MdfInfo4::default();
-    new_info.file_name = file_name.to_string();
+    let mut new_info = MdfInfo4 {
+        file_name: file_name.to_string(),
+        ..Default::default()
+    };
     // IDBlock
     // HDblock
     let mut pointer: i64 = 168;
@@ -28,9 +30,11 @@ pub fn mdfwriter4<'a>(writer: &'a mut BufWriter<&File>, info: &'a mut MdfInfo4, 
     let mut fh_comments = MetaData::new(MetaDataBlockType::MdBlock, BlockType::FH);
     fh_comments.create_fh();
     pointer += fh_comments.block.hdr_len as i64;
+    let mut last_dg_pointer: i64 = pointer;
 
     new_info.hd_block.hd_dg_first = pointer;
     for (_dg_position, dg) in info.dg.iter() {
+        last_dg_pointer = pointer;
         for (_record_id, cg) in dg.cg.iter() {
             let cn_master_record_position: i64 = 0;
             let mut cg_cg_master: i64 = 0;
@@ -69,6 +73,10 @@ pub fn mdfwriter4<'a>(writer: &'a mut BufWriter<&File>, info: &'a mut MdfInfo4, 
             }
         }
     }
+    // last DG must point to null DGBlock
+    if let Some(mut last_dg) = new_info.dg.get_mut(&last_dg_pointer) {
+        last_dg.block.dg_dg_next = 0;
+    }
 
     writer
         .write_le(&new_info.id_block)
@@ -86,9 +94,6 @@ pub fn mdfwriter4<'a>(writer: &'a mut BufWriter<&File>, info: &'a mut MdfInfo4, 
             writer.write_le(&cg.block).expect("Could not write CGBlock");
             for (_position, cn) in cg.cn.iter() {
                 writer.write_le(&cn.block).expect("Could not write CNBlock");
-                writer
-                    .write_le(&cn.block)
-                    .expect("Could not write TXBlock for channel name");
                 // TX Block channel name
                 if let Some(tx_name_metadata) = new_info.sharable.md_tx.get(&cn.block.cn_tx_name) {
                     tx_name_metadata.write(writer);
@@ -127,9 +132,10 @@ fn create_blocks(
 
     // CG Block
     let cg_position = pointer;
-    if cg_cg_master != 0 {
-        cg_block.cg_len = 7; // with cg_cg_master
-        cg_block.cg_cg_master = pointer;
+    if cg_cg_master != 0 && !master_flag {
+        cg_block.cg_links = 7; // with cg_cg_master
+        cg_block.cg_len = 112;
+        cg_block.cg_cg_master = Some(pointer);
         cg_block.cg_flags = 0b1000;
     }
     cg_block.cg_cycle_count = cg.block.cg_cycle_count;
@@ -142,17 +148,27 @@ fn create_blocks(
     let cn_position = pointer;
     if master_flag {
         cn_block.cn_type = 2; // master channel
+        if cn.block.cn_sync_type != 0 {
+            cn_block.cn_sync_type = cn.block.cn_sync_type;
+        } else {
+            cn_block.cn_sync_type = 1; // Default is time
+        }
     }
     cn_block.cn_data_type = cn.data.data_type(cn.endian);
     cn_block.cn_bit_count = bit_count;
+
     pointer += cn_block.cn_len as i64;
 
     // channel name TX
     let mut tx_name_block = MetaData::new(MetaDataBlockType::TX, BlockType::CN);
     tx_name_block.set_data_buffer(cn.unique_name.clone());
-    let tx_position = pointer;
+    cn_block.cn_tx_name = pointer;
+    let tx_name_position = pointer;
     pointer += tx_name_block.block.hdr_len as i64;
-    new_info.sharable.md_tx.insert(tx_position, tx_name_block);
+    new_info
+        .sharable
+        .md_tx
+        .insert(tx_name_position, tx_name_block);
 
     // channel unit
     if let Some(str) = info.sharable.md_tx.get(&cn.block.cn_md_unit) {
@@ -199,6 +215,7 @@ fn create_blocks(
         invalid_bytes: None,
     };
     new_cg.cn.insert(0, new_cn);
+    new_cg.channel_names.insert(cn.unique_name.clone());
     let mut new_dg = Dg4 {
         block: dg_block,
         cg: HashMap::new(),
