@@ -1114,6 +1114,50 @@ impl ChannelData {
             ChannelData::ArrayDComplex64(_) => todo!(),
         }
     }
+    pub fn to_bytes(&self) -> &[u8]{
+        match self {
+            ChannelData::Int8(_) => todo!(),
+            ChannelData::UInt8(_) => todo!(),
+            ChannelData::Int16(_) => todo!(),
+            ChannelData::UInt16(_) => todo!(),
+            ChannelData::Float16(_) => todo!(),
+            ChannelData::Int24(_) => todo!(),
+            ChannelData::UInt24(_) => todo!(),
+            ChannelData::Int32(_) => todo!(),
+            ChannelData::UInt32(_) => todo!(),
+            ChannelData::Float32(_) => todo!(),
+            ChannelData::Int48(_) => todo!(),
+            ChannelData::UInt48(_) => todo!(),
+            ChannelData::Int64(_) => todo!(),
+            ChannelData::UInt64(_) => todo!(),
+            ChannelData::Float64(_) => todo!(),
+            ChannelData::Complex16(_) => todo!(),
+            ChannelData::Complex32(_) => todo!(),
+            ChannelData::Complex64(_) => todo!(),
+            ChannelData::StringSBC(_) => todo!(),
+            ChannelData::StringUTF8(_) => todo!(),
+            ChannelData::StringUTF16(_) => todo!(),
+            ChannelData::ByteArray(_) => todo!(),
+            ChannelData::ArrayDInt8(_) => todo!(),
+            ChannelData::ArrayDUInt8(_) => todo!(),
+            ChannelData::ArrayDInt16(_) => todo!(),
+            ChannelData::ArrayDUInt16(_) => todo!(),
+            ChannelData::ArrayDFloat16(_) => todo!(),
+            ChannelData::ArrayDInt24(_) => todo!(),
+            ChannelData::ArrayDUInt24(_) => todo!(),
+            ChannelData::ArrayDInt32(_) => todo!(),
+            ChannelData::ArrayDUInt32(_) => todo!(),
+            ChannelData::ArrayDFloat32(_) => todo!(),
+            ChannelData::ArrayDInt48(_) => todo!(),
+            ChannelData::ArrayDUInt48(_) => todo!(),
+            ChannelData::ArrayDInt64(_) => todo!(),
+            ChannelData::ArrayDUInt64(_) => todo!(),
+            ChannelData::ArrayDFloat64(_) => todo!(),
+            ChannelData::ArrayDComplex16(_) => todo!(),
+            ChannelData::ArrayDComplex32(_) => todo!(),
+            ChannelData::ArrayDComplex64(_) => todo!(),
+        }
+    }
 }
 
 impl IntoPy<PyObject> for ChannelData {

@@ -742,7 +742,9 @@ mod tests {
         let file_name = format!("{}{}", base_path, "Vector_CAN_DataFrame_Sort_ID.MF4");
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
-        if let Some(data) = info.get_channel_data(&"CAN_DataFrame.ID CAN_DataFrame_101 CANReplay_7_5 Message".to_string()) {
+        if let Some(data) = info.get_channel_data(
+            &"CAN_DataFrame.ID CAN_DataFrame_101 CANReplay_7_5 Message".to_string(),
+        ) {
             let vect: Vec<f64> = vec![101.; 79];
             let target = Array1::<f64>::from_vec(vect);
             // assert!(ChannelData::Float64(target).compare_f64(data, 1e-9f64));

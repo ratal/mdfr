@@ -2611,8 +2611,8 @@ pub struct Dl4Block {
     /// Number of data blocks
     dl_count: u32,
     #[br(if((dl_flags & 0b1)>0), little)]
-    dl_equal_length: u64,
-    #[br(if((dl_flags & 0b1)==0),little, count = dl_count)]
+    dl_equal_length: Option<u64>,
+    #[br(if((dl_flags & 0b1)==0), little, count = dl_count)]
     dl_offset: Vec<u64>,
     #[br(if((dl_flags & 0b10)>0), little, count = dl_count)]
     dl_time_values: Vec<i64>,
@@ -2640,7 +2640,7 @@ pub fn parser_dl4_block(
 pub fn parse_dz(rdr: &mut BufReader<&File>) -> (Vec<u8>, Dz4Block) {
     let block: Dz4Block = rdr.read_le().expect("Could not read into Dz4Block struct");
     let mut buf = vec![0u8; block.dz_data_length as usize];
-    rdr.read_exact(&mut buf).expect("Coudl nto read Dz data");
+    rdr.read_exact(&mut buf).expect("Could not read Dz data");
     let (mut data, checksum) = decompress(&buf, Format::Zlib).expect("Could not decompress data");
     if Adler32::from_buf(&data).finish() != checksum.expect("dz block checksum") {
         panic!("Checksum not ok");

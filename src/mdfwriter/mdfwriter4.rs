@@ -6,12 +6,14 @@ use std::{
 use crate::{
     mdfinfo::mdfinfo4::{
         BlockType, Cg4, Cg4Block, Cn4, Cn4Block, Dg4, Dg4Block, FhBlock, MdfInfo4, MetaData,
-        MetaDataBlockType,
+        MetaDataBlockType, Ld4Block, Dz4Block,
     },
     mdfreader::channel_data::ChannelData,
 };
 use binrw::BinWriterExt;
 use std::fs::File;
+
+use yazi::{compress, Format, CompressionLevel};
 
 /// writes file on hard drive
 pub fn mdfwriter4<'a>(writer: &'a mut BufWriter<&File>, info: &'a mut MdfInfo4, file_name: &str) {
@@ -90,9 +92,9 @@ pub fn mdfwriter4<'a>(writer: &'a mut BufWriter<&File>, info: &'a mut MdfInfo4, 
     // writes the channel blocks
     for (_position, dg) in new_info.dg.iter() {
         writer.write_le(&dg.block).expect("Could not write CGBlock");
-        for (_position, cg) in dg.cg.iter() {
+        for (_red_id, cg) in dg.cg.iter() {
             writer.write_le(&cg.block).expect("Could not write CGBlock");
-            for (_position, cn) in cg.cn.iter() {
+            for (_rec_pos, cn) in cg.cn.iter() {
                 writer.write_le(&cn.block).expect("Could not write CNBlock");
                 // TX Block channel name
                 if let Some(tx_name_metadata) = new_info.sharable.md_tx.get(&cn.block.cn_tx_name) {
@@ -111,6 +113,16 @@ pub fn mdfwriter4<'a>(writer: &'a mut BufWriter<&File>, info: &'a mut MdfInfo4, 
     }
 
     // writes the channels data
+    for (_position, dg) in new_info.dg.iter_mut() {
+        for (_rec_id, cg) in dg.cg.iter() {
+            for (_rec_pos, cn) in cg.cn.iter() {
+                let mut ld_block = Ld4Block::default();
+                let mut dz_block = Dz4Block::default();
+
+                let mut data = compress(cn.data.to_bytes(), Format::Zlib, CompressionLevel::Default).expect("Could not compress data");
+            }
+        }
+    }
 }
 
 fn create_blocks(
