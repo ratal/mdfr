@@ -226,7 +226,7 @@ impl MdfInfo4 {
             }
         }
     }
-    pub fn write(&mut self, file_name: &str) {
+    pub fn write(&mut self, file_name: &str) -> MdfInfo4 {
         let f: File = OpenOptions::new()
             .read(true)
             .write(true)
@@ -234,7 +234,7 @@ impl MdfInfo4 {
             .open(file_name)
             .expect("Cannot create the file");
         let mut rdr = BufWriter::new(&f);
-        mdfwriter4(&mut rdr, self, file_name);
+        mdfwriter4(&mut rdr, self, file_name)
     }
     // TODO cut data
     // TODO resample data
@@ -2712,8 +2712,8 @@ pub struct Ld4Block {
     // header
     // ld_id: [u8; 4],  // ##LD
     reserved: [u8; 4], // reserved
-    ld_len: u64,       // Length of block in bytes
-    ld_links: u64,     // # of links
+    pub ld_len: u64,   // Length of block in bytes
+    pub ld_links: u64, // # of links
     // links
     /// next LD
     pub ld_ld_next: i64,

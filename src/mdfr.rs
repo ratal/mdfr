@@ -116,10 +116,10 @@ impl Mdf {
         })
     }
     /// writes file
-    pub fn write(&mut self, file_name: &str) {
+    pub fn write(&mut self, file_name: &str) -> Mdf {
         let Mdf(mdf) = self;
         pyo3::Python::with_gil(|_py| {
-            mdf.write(file_name);
+            Mdf(mdf.write(file_name))
         })
     }
     /// plot one channel

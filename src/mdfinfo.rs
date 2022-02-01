@@ -265,14 +265,15 @@ impl MdfInfo {
         }
     }
     /// Writes mdf4 file
-    pub fn write(&mut self, file_name: &str) {
+    pub fn write(&mut self, file_name: &str) -> MdfInfo {
         match self {
             MdfInfo::V3(_mdfinfo3) => {
-                // convert mdf3 to mdf4
+                // TODO convert mdf3 to mdf4
                 // write mdf4
+                todo!();
             }
             MdfInfo::V4(mdfinfo4) => {
-                mdfinfo4.write(file_name);
+                MdfInfo::V4(Box::new(mdfinfo4.write(file_name)))
             }
         }
     }
