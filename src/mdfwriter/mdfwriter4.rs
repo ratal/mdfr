@@ -1,44 +1,53 @@
 use std::{
     collections::{HashMap, HashSet},
-    io::BufWriter,
+    io::{BufWriter, Seek, SeekFrom, Write},
 };
 
 use crate::{
     mdfinfo::mdfinfo4::{
-        BlockType, Cg4, Cg4Block, Cn4, Cn4Block, Dg4, Dg4Block, FhBlock, MdfInfo4, MetaData,
-        MetaDataBlockType, Ld4Block, Dz4Block,
+        BlockType, Cg4, Cg4Block, Cn4, Cn4Block, Dg4, Dg4Block, Dz4Block, FhBlock, Ld4Block,
+        MdfInfo4, MetaData, MetaDataBlockType,
     },
     mdfreader::channel_data::ChannelData,
 };
 use binrw::BinWriterExt;
 use std::fs::File;
 
-use yazi::{compress, Format, CompressionLevel};
+use yazi::{compress, CompressionLevel, Format};
 
 /// writes file on hard drive
-pub fn mdfwriter4<'a>(writer: &'a mut BufWriter<&File>, info: &'a mut MdfInfo4, file_name: &str) {
+pub fn mdfwriter4<'a>(
+    writer: &'a mut BufWriter<&File>,
+    info: &'a mut MdfInfo4,
+    file_name: &str,
+) -> MdfInfo4 {
     let mut new_info = MdfInfo4 {
         file_name: file_name.to_string(),
         ..Default::default()
     };
     // IDBlock
-    // HDblock
-    let mut pointer: i64 = 168;
-    new_info.hd_block.hd_fh_first = pointer;
+    writer
+        .write_le(&new_info.id_block)
+        .expect("Could not write IdBlock");
+
+    let mut pointer: i64 = 168; // after HD block
+                                // FH block
     new_info.fh = Vec::new();
     let mut fh = FhBlock::default();
+    new_info.hd_block.hd_fh_first = pointer;
     pointer += 56;
+    // Writes FH comments
     fh.fh_md_comment = pointer;
     let mut fh_comments = MetaData::new(MetaDataBlockType::MdBlock, BlockType::FH);
     fh_comments.create_fh();
     pointer += fh_comments.block.hdr_len as i64;
     let mut last_dg_pointer: i64 = pointer;
-
     new_info.hd_block.hd_dg_first = pointer;
+
+    // build meta data blocks for the written file
     for (_dg_position, dg) in info.dg.iter() {
         last_dg_pointer = pointer;
         for (_record_id, cg) in dg.cg.iter() {
-            let cn_master_record_position: i64 = 0;
             let mut cg_cg_master: i64 = 0;
 
             // find master channel and start to write blocks for it
@@ -68,7 +77,7 @@ pub fn mdfwriter4<'a>(writer: &'a mut BufWriter<&File>, info: &'a mut MdfInfo4, 
             // create the other non master channel blocks
             for (_cn_record_position, cn) in cg.cn.iter() {
                 // not master channel
-                if cn_master_record_position != 0 {
+                if cg_cg_master != 0 {
                     pointer =
                         create_blocks(&mut new_info, info, pointer, cg, cn, cg_cg_master, false);
                 }
@@ -80,16 +89,113 @@ pub fn mdfwriter4<'a>(writer: &'a mut BufWriter<&File>, info: &'a mut MdfInfo4, 
         last_dg.block.dg_dg_next = 0;
     }
 
+    // writes the channels data first as block size is unknown due to compression
     writer
-        .write_le(&new_info.id_block)
-        .expect("Could not write IdBlock");
+        .seek(SeekFrom::Start(pointer as u64))
+        .expect("Could not reach position to write data blocks");
+    for (_position, dg) in new_info.dg.iter_mut() {
+        for (_rec_id, cg) in dg.cg.iter() {
+            for (_rec_pos, cn) in cg.cn.iter() {
+                let (cd, m) = info.get_channel_data(&cn.unique_name);
+                if let Some(channel_data) = cd {
+                    let id_ld: [u8; 4] = [35, 35, 76, 68]; // ##LD
+                    let mut ld_block = Ld4Block::default();
+                    dg.block.dg_data = pointer;
+                    ld_block.ld_count = 1;
+                    ld_block.ld_sample_offset.push(0);
+                    if m.is_some() {
+                        ld_block.ld_links = (ld_block.ld_count * 2 + 1) as u64;
+                        ld_block.ld_flags = 1u32<<31;
+                    } else {
+                        ld_block.ld_links = (ld_block.ld_count + 1) as u64;
+                        ld_block.ld_flags = 0b0;
+                    }
+                    ld_block.ld_len = 40 + (ld_block.ld_links * 8) as u64;
+                    pointer += ld_block.ld_len as i64;
+                    ld_block.ld_data.push(pointer);
+
+                    let id_dz: [u8; 4] = [35, 35, 68, 90]; // ##DZ
+                    let mut dz_block = Dz4Block::default();
+                    dz_block.dz_org_data_length =
+                        (channel_data.len() * channel_data.bit_count() as usize / 8) as u64;
+                    let mut compressed_data = compress(
+                        &channel_data.to_bytes(),
+                        Format::Zlib,
+                        CompressionLevel::Default,
+                    )
+                    .expect("Could not compress data");
+                    let compressed_data_length = compressed_data.len();
+                    dz_block.dz_data_length = compressed_data_length as u64;
+                    // 8 byte align
+                    compressed_data = [
+                        compressed_data,
+                        vec![0; (compressed_data_length / 8 + 1) * 8 - compressed_data_length],
+                    ]
+                    .concat();
+                    dz_block.len = compressed_data.len() as u64 + 48;
+                    pointer += dz_block.len as i64;
+                    if m.is_some() {
+                        ld_block.ld_invalid_data.push(pointer);
+                    }
+
+                    // Writes blocks
+                    writer.write_le(&id_ld).expect("Could not write LDBlock id");
+                    writer.write_le(&ld_block).expect("Could not write LDBlock");
+                    writer.write_le(&id_dz).expect("Could not write DZBlock id");
+                    writer.write_le(&dz_block).expect("Could not write DZBlock");
+                    writer
+                        .write(&compressed_data)
+                        .expect("Could not write data");
+
+                    // invalid mask existing
+                    if let Some(mask) = m {
+                        let mut dz_invalid_block = Dz4Block::default();
+                        dz_invalid_block.dz_org_data_length = mask.len() as u64;
+                        let mut invalid_compressed_data =
+                            compress(&mask.to_vec(), Format::Zlib, CompressionLevel::Default)
+                                .expect("Could not compress invalid data");
+                        dz_invalid_block.dz_data_length = invalid_compressed_data.len() as u64;
+                        invalid_compressed_data = [
+                            invalid_compressed_data,
+                            vec![
+                                0;
+                                ((dz_invalid_block.dz_data_length / 8 + 1) * 8
+                                    - dz_invalid_block.dz_data_length)
+                                    as usize
+                            ],
+                        ]
+                        .concat();
+                        dz_invalid_block.len = invalid_compressed_data.len() as u64 + 48;
+                        dz_invalid_block.dz_org_block_type = [68, 73]; // DI
+                        pointer += dz_invalid_block.len as i64;
+                        writer
+                            .write_le(&id_dz)
+                            .expect("Could not write invalid DZBlock id");
+                        writer
+                            .write_le(&dz_invalid_block)
+                            .expect("Could not write invalid DZBlock");
+                        writer
+                            .write(&invalid_compressed_data)
+                            .expect("Could not write invalid data");
+                    }
+                }
+            }
+        }
+    }
+
+    // position after IdBlock
+    writer
+        .seek(SeekFrom::Start(64))
+        .expect("Could not reach position to write HD block");
+    // Writes HDblock
     writer
         .write_le(&new_info.hd_block)
         .expect("Could not write HDBlock");
+    // Writes FHBlock
     writer.write_le(&fh).expect("Could not write FHBlock");
-    fh_comments.write(writer);
+    fh_comments.write(writer); // FH comments
 
-    // writes the channel blocks
+    // Writes DG+CG+CN blocks
     for (_position, dg) in new_info.dg.iter() {
         writer.write_le(&dg.block).expect("Could not write CGBlock");
         for (_red_id, cg) in dg.cg.iter() {
@@ -111,18 +217,7 @@ pub fn mdfwriter4<'a>(writer: &'a mut BufWriter<&File>, info: &'a mut MdfInfo4, 
             }
         }
     }
-
-    // writes the channels data
-    for (_position, dg) in new_info.dg.iter_mut() {
-        for (_rec_id, cg) in dg.cg.iter() {
-            for (_rec_pos, cn) in cg.cn.iter() {
-                let mut ld_block = Ld4Block::default();
-                let mut dz_block = Dz4Block::default();
-
-                let mut data = compress(cn.data.to_bytes(), Format::Zlib, CompressionLevel::Default).expect("Could not compress data");
-            }
-        }
-    }
+    new_info
 }
 
 fn create_blocks(

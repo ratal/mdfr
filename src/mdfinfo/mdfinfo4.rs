@@ -2722,14 +2722,13 @@ pub struct Ld4Block {
     #[br(if(ld_links > 1), little, count = (ld_links -1) / 2)]
     pub ld_invalid_data: Vec<i64>,
     //members
-    ld_flags: u8, //
-    ld_reserved: [u8; 3],
+    pub ld_flags: u32,
     /// Number of data blocks
-    ld_count: u32,
-    #[br(if((ld_flags & 0b1)>0), little)]
-    ld_equal_sample_count: u64,
+    pub ld_count: u32,
+    #[br(if((ld_flags & 0b1)!=0), little)]
+    pub ld_equal_sample_count: Option<u64>,
     #[br(if((ld_flags & 0b1)==0), little, count = ld_count)]
-    ld_sample_offset: Vec<u64>,
+    pub ld_sample_offset: Vec<u64>,
     #[br(if((ld_flags & 0b10)>0), little, count = ld_count)]
     dl_time_values: Vec<i64>,
     #[br(if((ld_flags & 0b100)>0), little, count = ld_count)]
@@ -2742,15 +2741,14 @@ impl Default for Ld4Block {
     fn default() -> Self {
         Ld4Block {
             reserved: [0; 4],
-            ld_len: 40,
-            ld_links: 0,
+            ld_len: 48,
+            ld_links: 2,
             ld_ld_next: 0,
             ld_data: vec![],
             ld_invalid_data: vec![],
             ld_flags: 0,
-            ld_reserved: [0; 3],
             ld_count: 0,
-            ld_equal_sample_count: 0,
+            ld_equal_sample_count: None,
             ld_sample_offset: vec![],
             dl_time_values: vec![],
             dl_angle_values: vec![],
