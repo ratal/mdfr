@@ -272,9 +272,7 @@ impl MdfInfo {
                 // write mdf4
                 todo!();
             }
-            MdfInfo::V4(mdfinfo4) => {
-                MdfInfo::V4(Box::new(mdfinfo4.write(file_name)))
-            }
+            MdfInfo::V4(mdfinfo4) => MdfInfo::V4(Box::new(mdfinfo4.write(file_name))),
         }
     }
 }
