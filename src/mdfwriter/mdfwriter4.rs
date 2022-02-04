@@ -144,7 +144,7 @@ pub fn mdfwriter4<'a>(
                     writer.write_le(&id_dz).expect("Could not write DZBlock id");
                     writer.write_le(&dz_block).expect("Could not write DZBlock");
                     writer
-                        .write(&compressed_data)
+                        .write_all(&compressed_data)
                         .expect("Could not write data");
 
                     // invalid mask existing
@@ -175,7 +175,7 @@ pub fn mdfwriter4<'a>(
                             .write_le(&dz_invalid_block)
                             .expect("Could not write invalid DZBlock");
                         writer
-                            .write(&invalid_compressed_data)
+                            .write_all(&invalid_compressed_data)
                             .expect("Could not write invalid data");
                     }
                 }
