@@ -68,7 +68,7 @@ pub fn mdfwriter4<'a>(
                         pointer,
                         cg,
                         cn_master,
-                        cg_cg_master,
+                        &cg_cg_master,
                         true,
                     );
                 }
@@ -77,9 +77,9 @@ pub fn mdfwriter4<'a>(
             // create the other non master channel blocks
             for (_cn_record_position, cn) in cg.cn.iter() {
                 // not master channel
-                if cg_cg_master != 0 {
+                if cn.block.cn_type != 2 || cn.block.cn_type != 3 {
                     pointer =
-                        create_blocks(&mut new_info, info, pointer, cg, cn, cg_cg_master, false);
+                        create_blocks(&mut new_info, info, pointer, cg, cn, &cg_cg_master, false);
                 }
             }
         }
@@ -105,7 +105,7 @@ pub fn mdfwriter4<'a>(
                     ld_block.ld_sample_offset.push(0);
                     if m.is_some() {
                         ld_block.ld_links = (ld_block.ld_count * 2 + 1) as u64;
-                        ld_block.ld_flags = 1u32<<31;
+                        ld_block.ld_flags = 1u32 << 31;
                     } else {
                         ld_block.ld_links = (ld_block.ld_count + 1) as u64;
                         ld_block.ld_flags = 0b0;
@@ -217,6 +217,7 @@ pub fn mdfwriter4<'a>(
             }
         }
     }
+    writer.flush().expect("Could not flush file");
     new_info
 }
 
@@ -226,7 +227,7 @@ fn create_blocks(
     mut pointer: i64,
     cg: &Cg4,
     cn: &Cn4,
-    cg_cg_master: i64,
+    cg_cg_master: &i64,
     master_flag: bool,
 ) -> i64 {
     let mut dg_block = Dg4Block::default();
@@ -239,10 +240,10 @@ fn create_blocks(
 
     // CG Block
     let cg_position = pointer;
-    if cg_cg_master != 0 && !master_flag {
+    if *cg_cg_master != 0 && !master_flag {
         cg_block.cg_links = 7; // with cg_cg_master
         cg_block.cg_len = 112;
-        cg_block.cg_cg_master = Some(pointer);
+        cg_block.cg_cg_master = Some(*cg_cg_master);
         cg_block.cg_flags = 0b1000;
     }
     cg_block.cg_cycle_count = cg.block.cg_cycle_count;
