@@ -21,20 +21,23 @@ fn main() -> io::Result<()> {
                 .index(1),
         )
         .arg(
-            Arg::new("verbose")
-                .long("verbose")
-                .short('v')
+            Arg::new("write")
+                .long("write")
+                .short('w')
+                .required(false)
                 .takes_value(true)
-                .help("Sets the level of verbosity"),
+                .help("write read content into mdf4.2 file"),
         )
         .get_matches();
 
     let file_name = matches.value_of("file").expect("File name missing");
+    let mdf4_file_name = matches.value_of("write");
 
-    //let info = mdfinfo::mdfinfo(file_name);
-    mdfreader::mdfreader(file_name);
+    let mut mdf_file = mdfreader::mdfreader(file_name);
 
-    //println!(r#"{:?}"#, info);
+    if let Some(file_name) = mdf4_file_name {
+        mdf_file.write(&file_name);
+    }
 
     Ok(())
 }

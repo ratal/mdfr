@@ -9,8 +9,9 @@ pub mod mdfreader4;
 use crate::mdfinfo::MdfInfo;
 
 /// reads files metadata and loads all channels data into memory
-pub fn mdfreader(file_name: &str) {
+pub fn mdfreader(file_name: &str) -> MdfInfo {
     // read file blocks
     let mut mdf = MdfInfo::new(file_name);
     mdf.load_all_channels_data_in_memory();
+    mdf
 }
