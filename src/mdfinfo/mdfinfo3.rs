@@ -30,7 +30,7 @@ pub struct MdfInfo3 {
     pub channel_names_set: ChannelNamesSet3, // set of channel names
 }
 
-pub(crate) type ChannelId3 = (String, u32, (u32, u16), u32);
+pub(crate) type ChannelId3 = (Option<String>, u32, (u32, u16), u32);
 pub(crate) type ChannelNamesSet3 = HashMap<String, ChannelId3>;
 
 /// MdfInfo3's implementation
@@ -79,8 +79,8 @@ impl MdfInfo3 {
         desc
     }
     /// returns the master channel associated to the input channel name
-    pub fn get_channel_master(&self, channel_name: &str) -> String {
-        let mut master = String::new();
+    pub fn get_channel_master(&self, channel_name: &str) -> Option<String> {
+        let mut master = None;
         if let Some((m, _dg_pos, (_cg_pos, _rec_idd), _cn_pos)) = self.get_channel_id(channel_name)
         {
             master = m.clone();
@@ -110,12 +110,16 @@ impl MdfInfo3 {
         channel_list
     }
     /// returns a hashmap for which master channel names are keys and values its corresponding set of channel names
-    pub fn get_master_channel_names_set(&self) -> HashMap<String, HashSet<String>> {
-        let mut channel_master_list: HashMap<String, HashSet<String>> = HashMap::new();
+    pub fn get_master_channel_names_set(&self) -> HashMap<Option<String>, HashSet<String>> {
+        let mut channel_master_list: HashMap<Option<String>, HashSet<String>> = HashMap::new();
         for (_dg_position, dg) in self.dg.iter() {
             for (_record_id, cg) in dg.cg.iter() {
-                channel_master_list
-                    .insert(cg.master_channel_name.clone(), cg.channel_names.clone());
+                if let Some(list) = channel_master_list.get_mut(&None) {
+                    list.extend(list.clone().into_iter());
+                } else {
+                    channel_master_list
+                        .insert(cg.master_channel_name.clone(), cg.channel_names.clone());
+                }
             }
         }
         channel_master_list
@@ -607,7 +611,7 @@ fn parse_cg3_block(
         block: cg,
         cn,
         block_position,
-        master_channel_name: String::new(),
+        master_channel_name: None,
         channel_names: HashSet::new(),
         record_length,
     };
@@ -622,7 +626,7 @@ pub struct Cg3 {
     pub block: Cg3Block,
     pub cn: HashMap<u32, Cn3>, // hashmap of channels
     block_position: u32,
-    pub master_channel_name: String,
+    pub master_channel_name: Option<String>,
     pub channel_names: HashSet<String>,
     pub record_length: u16, // record length including recordId
 }
@@ -1477,11 +1481,10 @@ pub fn build_channel_db3(
                         cn.unique_name.push_str(&cn_position.to_string());
                     }
                 };
-                let master = String::new();
                 channel_list.insert(
                     cn.unique_name.clone(),
                     (
-                        master, // computes at second step master channel name
+                        None, // computes at second step master channel name
                         *dg_position,
                         (cg.block_position, *record_id),
                         *cn_position,
@@ -1499,12 +1502,9 @@ pub fn build_channel_db3(
         for (_record_id, cg) in dg.cg.iter_mut() {
             let mut cg_channel_list: HashSet<String> =
                 HashSet::with_capacity(cg.block.cg_n_channels as usize);
-            let master_channel_name: String =
-                if let Some(name) = master_channel_list.get(&cg.block_position) {
-                    name.to_string()
-                } else {
-                    format!("master_{}", cg.block_position) // default name in case no master is existing
-                };
+            let master_channel_name: Option<String> = master_channel_list
+                .get(&cg.block_position)
+                .map(|name| name.to_string());
             for (_cn_record_position, cn) in cg.cn.iter_mut() {
                 cg_channel_list.insert(cn.unique_name.clone());
                 // assigns master in channel_list

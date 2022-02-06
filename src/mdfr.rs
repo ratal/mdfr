@@ -63,8 +63,11 @@ impl Mdf {
         let Mdf(mdf) = self;
         // default py_array value is python None
         pyo3::Python::with_gil(|py| {
-            let master = mdf.get_channel_master(&channel_name);
-            let py_array: Py<PyAny> = mdf.get_channel_data(&master).to_object(py);
+            let py_array: Py<PyAny> = if let Some(master) = mdf.get_channel_master(&channel_name) {
+                mdf.get_channel_data(&master).to_object(py)
+            } else {
+                py.None()
+            };
             py_array
         })
     }
@@ -131,19 +134,27 @@ impl Mdf {
             locals
                 .set_item("channel_unit", mdf.get_channel_unit(&channel_name))
                 .expect("cannot set python channel_unit");
-            let master_channel_name = mdf.get_channel_master(&channel_name);
-            locals
-                .set_item("master_channel_name", &master_channel_name)
-                .expect("cannot set python master_channel_name");
-            locals
-                .set_item(
-                    "master_channel_unit",
-                    mdf.get_channel_unit(&master_channel_name),
-                )
-                .expect("cannot set python master_channel_unit");
-            locals
-                .set_item("master_data", mdf.get_channel_data(&master_channel_name))
-                .expect("cannot set python master_data");
+            if let Some(master_name) = mdf.get_channel_master(&channel_name) {
+                locals
+                    .set_item("master_channel_name", &master_name)
+                    .expect("cannot set python master_channel_name");
+                locals
+                    .set_item("master_channel_unit", mdf.get_channel_unit(&master_name))
+                    .expect("cannot set python master_channel_unit");
+                locals
+                    .set_item("master_data", mdf.get_channel_data(&master_name))
+                    .expect("cannot set python master_data");
+            } else {
+                locals
+                    .set_item("master_channel_name", py.None())
+                    .expect("cannot set python master_channel_name");
+                locals
+                    .set_item("master_channel_unit", py.None())
+                    .expect("cannot set python master_channel_unit");
+                locals
+                    .set_item("master_data", py.None())
+                    .expect("cannot set python master_data");
+            }
             locals
                 .set_item("channel_data", mdf.get_channel_data(&channel_name))
                 .expect("cannot set python channel_data");
@@ -156,8 +167,12 @@ from numpy import arange
 if master_data is None:
     master_data = arange(0, len(channel_data), 1)
 pyplot.plot(master_data, channel_data, label='{0} [{1}]'.format(channel_name, channel_unit))
-pyplot.xlabel('{0} [{1}]'.format(master_channel_name, master_channel_unit))
-pyplot.ylabel('{0} [{1}]'.format(channel_name, master_channel_unit))
+if master_channel_name is not None:
+    if master_channel_unit is not None:
+        pyplot.xlabel('{0} [{1}]'.format(master_channel_name, master_channel_unit))
+    else:
+        pyplot.xlabel('{0}'.format(master_channel_name))
+pyplot.ylabel('{0} [{1}]'.format(channel_name, channel_unit))
 pyplot.grid(True)
 pyplot.show()
 "#,
@@ -190,7 +205,11 @@ impl PyObjectProtocol for Mdf {
                 ));
                 output.push_str(&format!("Comments: {}", mdfinfo3.hd_comment));
                 for (master, list) in mdfinfo3.get_master_channel_names_set().iter() {
-                    output.push_str(&format!("\nMaster: {}\n", master));
+                    if let Some(master_name) = master {
+                        output.push_str(&format!("\nMaster: {}\n", master_name));
+                    } else {
+                        output.push_str("\nWithout Master channel\n");
+                    }
                     for channel in list.iter() {
                         let unit = self.get_channel_unit(channel.to_string());
                         let desc = self.get_channel_desc(channel.to_string());
@@ -218,7 +237,11 @@ impl PyObjectProtocol for Mdf {
                     output.push_str(&format!("{} {}\n", c.0, c.1));
                 }
                 for (master, list) in mdfinfo4.get_master_channel_names_set().iter() {
-                    output.push_str(&format!("\nMaster: {}\n", master));
+                    if let Some(master_name) = master {
+                        output.push_str(&format!("\nMaster: {}\n", master_name));
+                    } else {
+                        output.push_str("\nWithout Master channel\n");
+                    }
                     for channel in list.iter() {
                         let unit = self.get_channel_unit(channel.to_string());
                         let desc = self.get_channel_desc(channel.to_string());

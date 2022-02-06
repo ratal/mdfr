@@ -193,8 +193,8 @@ impl MdfInfo {
         desc
     }
     /// returns channel's associated master channel name string
-    pub fn get_channel_master(&self, channel_name: &str) -> String {
-        let master: String = match self {
+    pub fn get_channel_master(&self, channel_name: &str) -> Option<String> {
+        let master: Option<String> = match self {
             MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_master(channel_name),
             MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_master(channel_name),
         };
@@ -219,8 +219,8 @@ impl MdfInfo {
         channel_list
     }
     /// returns a dict of master names keys for which values are a set of associated channel names
-    pub fn get_master_channel_names_set(&self) -> HashMap<String, HashSet<String>> {
-        let channel_master_list: HashMap<String, HashSet<String>> = match self {
+    pub fn get_master_channel_names_set(&self) -> HashMap<Option<String>, HashSet<String>> {
+        let channel_master_list: HashMap<Option<String>, HashSet<String>> = match self {
             MdfInfo::V3(mdfinfo3) => mdfinfo3.get_master_channel_names_set(),
             MdfInfo::V4(mdfinfo4) => mdfinfo4.get_master_channel_names_set(),
         };
