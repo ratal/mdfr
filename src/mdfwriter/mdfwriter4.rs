@@ -45,42 +45,53 @@ pub fn mdfwriter4<'a>(
     new_info.hd_block.hd_dg_first = pointer;
 
     // build meta data blocks for the written file
-    for (_dg_position, dg) in info.dg.iter() {
+    for (dg_position, dg) in info.dg.iter() {
         last_dg_pointer = pointer;
-        for (_record_id, cg) in dg.cg.iter() {
+        for (record_id, cg) in dg.cg.iter() {
             let mut cg_cg_master: i64 = 0;
 
             // find master channel and start to write blocks for it
-            if let Some((
-                _master_name,
-                _dg_master_position,
-                (_cg_master_block_position, _record_id),
-                (_cn_master_block_position, cn_master_record_position),
-            )) = info.get_channel_id(&cg.master_channel_name)
-            {
-                if let Some(cn_master) = cg.cn.get(cn_master_record_position) {
-                    // Writing master channel
-                    cg_cg_master = pointer + 64; // after DGBlock
+            if let Some(master_channel_name) = &cg.master_channel_name {
+                if let Some((
+                    _master_name,
+                    _dg_master_position,
+                    (_cg_master_block_position, _record_id),
+                    (_cn_master_block_position, cn_master_record_position),
+                )) = info.get_channel_id(master_channel_name)
+                {
+                    if let Some(cn_master) = cg.cn.get(cn_master_record_position) {
+                        // Writing master channel
+                        cg_cg_master = pointer + 64; // after DGBlock
 
-                    pointer = create_blocks(
-                        &mut new_info,
-                        info,
-                        pointer,
-                        cg,
-                        cn_master,
-                        &cg_cg_master,
-                        true,
-                    );
+                        pointer = create_blocks(
+                            &mut new_info,
+                            info,
+                            pointer,
+                            cg,
+                            cn_master,
+                            &cg_cg_master,
+                            true,
+                        );
+                    }
                 }
             }
 
             // create the other non master channel blocks
-            for (_cn_record_position, cn) in cg.cn.iter() {
+            for (cn_record_position, cn) in cg.cn.iter() {
                 // not master channel
                 if cn.block.cn_type != 2 || cn.block.cn_type != 3 {
                     pointer =
                         create_blocks(&mut new_info, info, pointer, cg, cn, &cg_cg_master, false);
                 }
+                new_info.channel_names_set.insert(
+                    cn.unique_name.clone(),
+                    (
+                        cg.master_channel_name.clone(), // computes at second step master channel because of cg_cg_master
+                        *dg_position,
+                        (cg.block_position, *record_id),
+                        (cn.block_position, *cn_record_position),
+                    ),
+                );
             }
         }
     }
@@ -96,14 +107,13 @@ pub fn mdfwriter4<'a>(
     for (_position, dg) in new_info.dg.iter_mut() {
         for (_rec_id, cg) in dg.cg.iter() {
             for (_rec_pos, cn) in cg.cn.iter() {
-                let (cd, m) = info.get_channel_data(&cn.unique_name);
-                if let Some(channel_data) = cd {
+                if !cn.data.is_empty() {
                     let id_ld: [u8; 4] = [35, 35, 76, 68]; // ##LD
                     let mut ld_block = Ld4Block::default();
                     dg.block.dg_data = pointer;
                     ld_block.ld_count = 1;
                     ld_block.ld_sample_offset.push(0);
-                    if m.is_some() {
+                    if cn.invalid_mask.is_some() {
                         ld_block.ld_links = (ld_block.ld_count * 2 + 1) as u64;
                         ld_block.ld_flags = 1u32 << 31;
                     } else {
@@ -117,24 +127,17 @@ pub fn mdfwriter4<'a>(
                     let id_dz: [u8; 4] = [35, 35, 68, 90]; // ##DZ
                     let mut dz_block = Dz4Block::default();
                     dz_block.dz_org_data_length =
-                        (channel_data.len() * channel_data.bit_count() as usize / 8) as u64;
-                    let mut compressed_data = compress(
-                        &channel_data.to_bytes(),
+                        (cn.data.len() * cn.data.bit_count() as usize / 8) as u64;
+                    let compressed_data = compress(
+                        &cn.data.to_bytes(),
                         Format::Zlib,
                         CompressionLevel::Default,
                     )
-                    .expect("Could not compress data");
-                    let compressed_data_length = compressed_data.len();
-                    dz_block.dz_data_length = compressed_data_length as u64;
-                    // 8 byte align
-                    compressed_data = [
-                        compressed_data,
-                        vec![0; (compressed_data_length / 8 + 1) * 8 - compressed_data_length],
-                    ]
-                    .concat();
-                    dz_block.len = compressed_data.len() as u64 + 48;
+                    .expect("Could not compress invalid data");
+                    dz_block.dz_data_length = compressed_data.len() as u64;
+                    dz_block.len = dz_block.dz_data_length + 48;
                     pointer += dz_block.len as i64;
-                    if m.is_some() {
+                    if cn.invalid_mask.is_some() {
                         ld_block.ld_invalid_data.push(pointer);
                     }
 
@@ -146,9 +149,17 @@ pub fn mdfwriter4<'a>(
                     writer
                         .write_all(&compressed_data)
                         .expect("Could not write data");
+                    // 8 byte align
+                    writer
+                        .write_all(&vec![
+                            0;
+                            ((dz_block.dz_data_length / 8 + 1) * 8 - dz_block.dz_data_length)
+                                as usize
+                        ])
+                        .expect("Could not align written data to 8 bytes");
 
                     // invalid mask existing
-                    if let Some(mask) = m {
+                    if let Some(mask) = &cn.invalid_mask {
                         let mut dz_invalid_block = Dz4Block::default();
                         dz_invalid_block.dz_org_data_length = mask.len() as u64;
                         let mut invalid_compressed_data =
