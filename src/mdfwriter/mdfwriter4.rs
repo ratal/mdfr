@@ -214,10 +214,14 @@ pub fn mdfwriter4<'a>(
             for (_rec_pos, cn) in cg.cn.iter() {
                 writer.write_le(&cn.block).expect("Could not write CNBlock");
                 // TX Block channel name
-                if let Some(tx_name_metadata) = new_info.sharable.md_tx.get(&cn.block.cn_tx_name) {
+                if let Some(tx_name_metadata) = 
+                    new_info.sharable.md_tx.get(&cn.block.cn_tx_name)
+                {
                     tx_name_metadata.write(writer);
                 }
-                if let Some(tx_unit_metadata) = new_info.sharable.md_tx.get(&cn.block.cn_md_unit) {
+                if let Some(tx_unit_metadata) = 
+                    new_info.sharable.md_tx.get(&cn.block.cn_md_unit)
+                {
                     tx_unit_metadata.write(writer);
                 }
                 if let Some(tx_comment_metadata) =
@@ -296,17 +300,17 @@ fn create_blocks(
         tx_unit_block.raw_data = str.raw_data.clone();
         tx_unit_block.block.hdr_len = tx_unit_block.raw_data.len() as u64 + 24;
         pointer += tx_unit_block.block.hdr_len as i64;
-        new_info.sharable.md_tx.insert(pointer, tx_unit_block);
+        new_info.sharable.md_tx.insert(cn_block.cn_md_unit, tx_unit_block);
     }
 
     // channel comment
-    if let Some(str) = info.sharable.md_tx.get(&cn.block.cn_md_unit) {
+    if let Some(str) = info.sharable.md_tx.get(&cn.block.cn_md_comment) {
         let mut tx_comment_block = MetaData::new(MetaDataBlockType::TX, BlockType::CN);
         cn_block.cn_md_comment = pointer;
         tx_comment_block.raw_data = str.raw_data.clone();
         tx_comment_block.block.hdr_len = tx_comment_block.raw_data.len() as u64 + 24;
         pointer += tx_comment_block.block.hdr_len as i64;
-        new_info.sharable.md_tx.insert(pointer, tx_comment_block);
+        new_info.sharable.md_tx.insert(cn_block.cn_md_comment, tx_comment_block);
     }
 
     dg_block.dg_dg_next = pointer;
