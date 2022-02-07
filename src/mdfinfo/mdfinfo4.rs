@@ -192,8 +192,8 @@ impl MdfInfo4 {
         let mut channel_master_list: HashMap<Option<String>, HashSet<String>> = HashMap::new();
         for (_dg_position, dg) in self.dg.iter() {
             for (_record_id, cg) in dg.cg.iter() {
-                if let Some(list) = channel_master_list.get_mut(&None) {
-                    list.extend(list.clone().into_iter());
+                if let Some(list) = channel_master_list.get_mut(&cg.master_channel_name) {
+                    list.extend(cg.channel_names.clone().into_iter());
                 } else {
                     channel_master_list
                         .insert(cg.master_channel_name.clone(), cg.channel_names.clone());
