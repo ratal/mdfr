@@ -246,6 +246,43 @@ impl MdfInfo4 {
     // TODO Extract attachments
 }
 
+/// MdfInfo4 display implementation
+impl fmt::Display for MdfInfo4 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "MdfInfo4: {}", self.file_name)?;
+        writeln!(f, "Version : {}\n", self.id_block.id_ver)?;
+        writeln!(f, "{}\n", self.hd_block)?;
+        let comments = &self
+            .sharable
+            .get_comments(self.hd_block.hd_md_comment);
+        for c in comments.iter() {
+            writeln!(f, "{} {}\n", c.0, c.1)?;
+        };
+        for (master, list) in self.get_master_channel_names_set().iter() {
+            if let Some(master_name) = master {
+                writeln!(f, "\nMaster: {}\n", master_name)?;
+            } else {
+                writeln!(f, "\nWithout Master channel\n")?;
+            }
+            for channel in list.iter() {
+                let unit = self.get_channel_unit(channel);
+                let desc = self.get_channel_desc(channel);
+                let dtmsk = self.get_channel_data_from_memory(channel);
+                if let Some(data) = dtmsk.0 {
+                    let data_first_last = data.first_last();
+                    writeln!(f, 
+                        " {} {} {:?} {:?} \n",
+                        channel, data_first_last, unit, desc
+                    )?;
+                } else {
+                    writeln!(f, " {} {:?} {:?} \n", channel, unit, desc)?;
+                }
+            }
+        }
+        writeln!(f, "\n")
+    }
+}
+
 /// MDF4 - common block Header
 #[derive(Debug, Copy, Clone)]
 #[binrw]
