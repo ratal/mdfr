@@ -7,6 +7,7 @@ use ndarray::Array1;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::TryFrom;
 use std::default::Default;
+use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::BufReader;
 use std::io::{prelude::*, Cursor};
@@ -194,6 +195,37 @@ impl MdfInfo3 {
             self.load_channels_data_in_memory(channel_names); // will read data only if array is empty
         }
         self.get_channel_data_from_memory(channel_name)
+    }
+}
+
+/// MdfInfo3 display implementation
+impl fmt::Display for MdfInfo3 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "MdfInfo3: {}", self.file_name)?;
+        writeln!(f, "Version : {}\n", self.id_block.id_ver)?;
+        writeln!(f, "{}\n", self.hd_block)?;
+        for (master, list) in self.get_master_channel_names_set().iter() {
+            if let Some(master_name) = master {
+                writeln!(f, "\nMaster: {}\n", master_name)?;
+            } else {
+                writeln!(f, "\nWithout Master channel\n")?;
+            }
+            for channel in list.iter() {
+                let unit = self.get_channel_unit(channel);
+                let desc = self.get_channel_desc(channel);
+                let dtmsk = self.get_channel_data_from_memory(channel);
+                if let Some(data) = dtmsk {
+                    let data_first_last = data.first_last();
+                    writeln!(f, 
+                        " {} {} {:?} {:?} \n",
+                        channel, data_first_last, unit, desc
+                    )?;
+                } else {
+                    writeln!(f, " {} {:?} {:?} \n", channel, unit, desc)?;
+                }
+            }
+        }
+        writeln!(f, "\n")
     }
 }
 
@@ -406,6 +438,22 @@ pub fn hd3_parser(rdr: &mut BufReader<&File>, ver: u16) -> (Hd3, i64) {
         },
         position,
     )
+}
+
+/// Hd3 display implementation
+impl fmt::Display for Hd3 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "Date : {}:{}:{}, Time: {}:{}:{} ",
+            self.hd_date.0, self.hd_date.1, self.hd_date.2,
+            self.hd_time.0, self.hd_time.1, self.hd_time.2,
+        )?;
+        writeln!(f, "Author: {}", self.hd_author)?;
+        writeln!(f, "Organization: {}", self.hd_organization)?;
+        writeln!(f, "Project: {}", self.hd_project)?;
+        writeln!(f, "Subject: {}", self.hd_subject)
+    }
 }
 
 pub fn hd3_comment_parser(
