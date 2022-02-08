@@ -45,9 +45,9 @@ pub fn mdfwriter4<'a>(
     new_info.hd_block.hd_dg_first = pointer;
 
     // build meta data blocks for the written file
-    for (dg_position, dg) in info.dg.iter() {
+    for (_dg_position, dg) in info.dg.iter() {
         last_dg_pointer = pointer;
-        for (record_id, cg) in dg.cg.iter() {
+        for (_record_id, cg) in dg.cg.iter() {
             let mut cg_cg_master: i64 = 0;
 
             // find master channel and start to write blocks for it
@@ -77,21 +77,12 @@ pub fn mdfwriter4<'a>(
             }
 
             // create the other non master channel blocks
-            for (cn_record_position, cn) in cg.cn.iter() {
+            for (_cn_record_position, cn) in cg.cn.iter() {
                 // not master channel
                 if cn.block.cn_type != 2 || cn.block.cn_type != 3 {
                     pointer =
                         create_blocks(&mut new_info, info, pointer, cg, cn, &cg_cg_master, false);
                 }
-                new_info.channel_names_set.insert(
-                    cn.unique_name.clone(),
-                    (
-                        cg.master_channel_name.clone(), // computes at second step master channel because of cg_cg_master
-                        *dg_position,
-                        (cg.block_position, *record_id),
-                        (cn.block_position, *cn_record_position),
-                    ),
-                );
             }
         }
     }
@@ -345,6 +336,15 @@ fn create_blocks(
     };
     new_dg.cg.insert(0, new_cg);
     new_info.dg.insert(dg_position, new_dg);
+    new_info.channel_names_set.insert(
+        cn.unique_name.clone(),
+        (
+            cg.master_channel_name.clone(), // computes at second step master channel because of cg_cg_master
+            dg_position,
+            (cg_position, 0),
+            (cn_position, 0),
+        ),
+    );
 
     pointer
 }
