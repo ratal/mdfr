@@ -96,7 +96,7 @@ pub fn mdfwriter4<'a>(
         .seek(SeekFrom::Start(pointer as u64))
         .expect("Could not reach position to write data blocks");
     for (_position, dg) in new_info.dg.iter_mut() {
-        for (_rec_id, cg) in dg.cg.iter() {
+        for (_rec_id, cg) in dg.cg.iter_mut() {
             for (_rec_pos, cn) in cg.cn.iter() {
                 if !cn.data.is_empty() {
                     let id_ld: [u8; 4] = [35, 35, 76, 68]; // ##LD
@@ -151,6 +151,7 @@ pub fn mdfwriter4<'a>(
 
                     // invalid mask existing
                     if let Some(mask) = &cn.invalid_mask {
+                        cg.block.cg_inval_bytes = 1; // one byte invalid
                         let mut dz_invalid_block = Dz4Block::default();
                         dz_invalid_block.dz_org_data_length = mask.len() as u64;
                         let mut invalid_compressed_data =
@@ -254,14 +255,14 @@ fn create_blocks(
     }
     cg_block.cg_cycle_count = cg.block.cg_cycle_count;
     let bit_count = cn.data.bit_count();
-    cg_block.cg_data_bytes = bit_count / 8;
+    cg_block.cg_data_bytes = cn.data.byte_count();
     pointer += cg_block.cg_len as i64;
     cg_block.cg_cn_first = pointer;
 
     // CN Block
     let cn_position = pointer;
     if master_flag {
-        cn_block.cn_type = 2; // master channel
+        cn_block.cn_type = cn.block.cn_type; // master channel
         if cn.block.cn_sync_type != 0 {
             cn_block.cn_sync_type = cn.block.cn_sync_type;
         } else {

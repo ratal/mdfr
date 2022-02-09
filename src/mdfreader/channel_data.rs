@@ -617,7 +617,7 @@ impl ChannelData {
             ChannelData::ArrayDComplex64(data) => data.len(),
         }
     }
-    /// returns the bit count of each values in array
+    /// returns the max bit count of each values in array
     pub fn bit_count(&self) -> u32 {
         match self {
             ChannelData::Int8(_) => 8,
@@ -638,12 +638,12 @@ impl ChannelData {
             ChannelData::Complex16(_) => 32,
             ChannelData::Complex32(_) => 64,
             ChannelData::Complex64(_) => 128,
-            ChannelData::StringSBC(data) => data.iter().map(|s| s.len() as u32).max().unwrap_or(0),
-            ChannelData::StringUTF8(data) => data.iter().map(|s| s.len() as u32).max().unwrap_or(0),
+            ChannelData::StringSBC(data) => data.iter().map(|s| s.len() as u32).max().unwrap_or(0) * 8,
+            ChannelData::StringUTF8(data) => data.iter().map(|s| s.len() as u32).max().unwrap_or(0) * 8,
             ChannelData::StringUTF16(data) => {
-                data.iter().map(|s| s.len() as u32).max().unwrap_or(0)
+                data.iter().map(|s| s.len() as u32).max().unwrap_or(0) * 8
             }
-            ChannelData::ByteArray(data) => data.iter().map(|s| s.len() as u32).max().unwrap_or(0),
+            ChannelData::ByteArray(data) => data.iter().map(|s| s.len() as u32).max().unwrap_or(0) * 8,
             ChannelData::ArrayDInt8(_) => 8,
             ChannelData::ArrayDUInt8(_) => 8,
             ChannelData::ArrayDInt16(_) => 16,
@@ -662,6 +662,53 @@ impl ChannelData {
             ChannelData::ArrayDComplex16(_) => 32,
             ChannelData::ArrayDComplex32(_) => 64,
             ChannelData::ArrayDComplex64(_) => 128,
+        }
+    }
+    /// returns the max byte count of each values in array
+    pub fn byte_count(&self) -> u32 {
+        match self {
+            ChannelData::Int8(_) => 1,
+            ChannelData::UInt8(_) => 1,
+            ChannelData::Int16(_) => 2,
+            ChannelData::UInt16(_) => 2,
+            ChannelData::Float16(_) => 2,
+            ChannelData::Int24(_) => 3,
+            ChannelData::UInt24(_) => 3,
+            ChannelData::Int32(_) => 4,
+            ChannelData::UInt32(_) => 4,
+            ChannelData::Float32(_) => 4,
+            ChannelData::Int48(_) => 6,
+            ChannelData::UInt48(_) => 6,
+            ChannelData::Int64(_) => 8,
+            ChannelData::UInt64(_) => 8,
+            ChannelData::Float64(_) => 8,
+            ChannelData::Complex16(_) => 4,
+            ChannelData::Complex32(_) => 8,
+            ChannelData::Complex64(_) => 16,
+            ChannelData::StringSBC(data) => data.iter().map(|s| s.len() as u32).max().unwrap_or(0),
+            ChannelData::StringUTF8(data) => data.iter().map(|s| s.len() as u32).max().unwrap_or(0),
+            ChannelData::StringUTF16(data) => {
+                data.iter().map(|s| s.len() as u32).max().unwrap_or(0)
+            }
+            ChannelData::ByteArray(data) => data.iter().map(|s| s.len() as u32).max().unwrap_or(0),
+            ChannelData::ArrayDInt8(_) => 1,
+            ChannelData::ArrayDUInt8(_) => 1,
+            ChannelData::ArrayDInt16(_) => 2,
+            ChannelData::ArrayDUInt16(_) => 2,
+            ChannelData::ArrayDFloat16(_) => 2,
+            ChannelData::ArrayDInt24(_) => 3,
+            ChannelData::ArrayDUInt24(_) => 3,
+            ChannelData::ArrayDInt32(_) => 4,
+            ChannelData::ArrayDUInt32(_) => 4,
+            ChannelData::ArrayDFloat32(_) => 4,
+            ChannelData::ArrayDInt48(_) => 6,
+            ChannelData::ArrayDUInt48(_) => 6,
+            ChannelData::ArrayDInt64(_) => 8,
+            ChannelData::ArrayDUInt64(_) => 8,
+            ChannelData::ArrayDFloat64(_) => 8,
+            ChannelData::ArrayDComplex16(_) => 4,
+            ChannelData::ArrayDComplex32(_) => 8,
+            ChannelData::ArrayDComplex64(_) => 16,
         }
     }
     // returns mdf4 data type
@@ -1145,13 +1192,40 @@ impl ChannelData {
                 .flat_map(|x| [x.re.to_le_bytes(), x.im.to_le_bytes()].concat())
                 .collect(),
             ChannelData::StringSBC(a) => {
-                a.iter().flat_map(|x| x.to_string().into_bytes()).collect()
+                let nbytes = self.byte_count() as usize;
+                a.iter().flat_map(|x| {
+                    let str_bytes = x.to_string().into_bytes();
+                    let n_str_bytes = str_bytes.len();
+                    if nbytes > n_str_bytes {
+                        [str_bytes, vec![0u8; nbytes - n_str_bytes]].concat()
+                    } else {
+                        str_bytes
+                    }
+                }).collect()
             }
             ChannelData::StringUTF8(a) => {
-                a.iter().flat_map(|x| x.to_string().into_bytes()).collect()
+                let nbytes = self.byte_count() as usize;
+                a.iter().flat_map(|x| {
+                    let str_bytes = x.to_string().into_bytes();
+                    let n_str_bytes = str_bytes.len();
+                    if nbytes > n_str_bytes {
+                        [str_bytes, vec![0u8; nbytes - n_str_bytes]].concat()
+                    } else {
+                        str_bytes
+                    }
+                }).collect()
             }
             ChannelData::StringUTF16(a) => {
-                a.iter().flat_map(|x| x.to_string().into_bytes()).collect()
+                let nbytes = self.byte_count() as usize;
+                a.iter().flat_map(|x| {
+                    let str_bytes = x.to_string().into_bytes();
+                    let n_str_bytes = str_bytes.len();
+                    if nbytes > n_str_bytes {
+                        [str_bytes, vec![0u8; nbytes - n_str_bytes]].concat()
+                    } else {
+                        str_bytes
+                    }
+                }).collect()
             }
             ChannelData::ByteArray(a) => a.iter().flatten().cloned().collect::<Vec<u8>>(),
             ChannelData::ArrayDInt8(a) => a.par_iter().flat_map(|x| x.to_le_bytes()).collect(),
@@ -1181,6 +1255,50 @@ impl ChannelData {
                 .par_iter()
                 .flat_map(|x| [x.re.to_le_bytes(), x.im.to_le_bytes()].concat())
                 .collect(),
+        }
+    }
+    pub fn ndim(&self) -> usize {
+        match self {
+            ChannelData::Int8(_) => 1,
+            ChannelData::UInt8(_) => 1,
+            ChannelData::Int16(_) => 1,
+            ChannelData::UInt16(_) => 1,
+            ChannelData::Float16(_) => 1,
+            ChannelData::Int24(_) => 1,
+            ChannelData::UInt24(_) => 1,
+            ChannelData::Int32(_) => 1,
+            ChannelData::UInt32(_) => 1,
+            ChannelData::Float32(_) => 1,
+            ChannelData::Int48(_) => 1,
+            ChannelData::UInt48(_) => 1,
+            ChannelData::Int64(_) => 1,
+            ChannelData::UInt64(_) => 1,
+            ChannelData::Float64(_) => 1,
+            ChannelData::Complex16(_) => 1,
+            ChannelData::Complex32(_) => 1,
+            ChannelData::Complex64(_) => 1,
+            ChannelData::StringSBC(_) => 1,
+            ChannelData::StringUTF8(_) => 1,
+            ChannelData::StringUTF16(_) => 1,
+            ChannelData::ByteArray(_) => 1,
+            ChannelData::ArrayDInt8(a) => a.ndim(),
+            ChannelData::ArrayDUInt8(a) => a.ndim(),
+            ChannelData::ArrayDInt16(a) => a.ndim(),
+            ChannelData::ArrayDUInt16(a) => a.ndim(),
+            ChannelData::ArrayDFloat16(a) => a.ndim(),
+            ChannelData::ArrayDInt24(a) => a.ndim(),
+            ChannelData::ArrayDUInt24(a) => a.ndim(),
+            ChannelData::ArrayDInt32(a) => a.ndim(),
+            ChannelData::ArrayDUInt32(a) => a.ndim(),
+            ChannelData::ArrayDFloat32(a) => a.ndim(),
+            ChannelData::ArrayDInt48(a) => a.ndim(),
+            ChannelData::ArrayDUInt48(a) => a.ndim(),
+            ChannelData::ArrayDInt64(a) => a.ndim(),
+            ChannelData::ArrayDUInt64(a) => a.ndim(),
+            ChannelData::ArrayDFloat64(a) => a.ndim(),
+            ChannelData::ArrayDComplex16(a) => a.ndim(),
+            ChannelData::ArrayDComplex32(a) => a.ndim(),
+            ChannelData::ArrayDComplex64(a) => a.ndim(),
         }
     }
 }
