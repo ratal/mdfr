@@ -252,12 +252,10 @@ impl fmt::Display for MdfInfo4 {
         writeln!(f, "MdfInfo4: {}", self.file_name)?;
         writeln!(f, "Version : {}\n", self.id_block.id_ver)?;
         writeln!(f, "{}\n", self.hd_block)?;
-        let comments = &self
-            .sharable
-            .get_comments(self.hd_block.hd_md_comment);
+        let comments = &self.sharable.get_comments(self.hd_block.hd_md_comment);
         for c in comments.iter() {
             writeln!(f, "{} {}\n", c.0, c.1)?;
-        };
+        }
         for (master, list) in self.get_master_channel_names_set().iter() {
             if let Some(master_name) = master {
                 writeln!(f, "\nMaster: {}\n", master_name)?;
@@ -270,7 +268,8 @@ impl fmt::Display for MdfInfo4 {
                 let dtmsk = self.get_channel_data_from_memory(channel);
                 if let Some(data) = dtmsk.0 {
                     let data_first_last = data.first_last();
-                    writeln!(f, 
+                    writeln!(
+                        f,
                         " {} {} {:?} {:?} \n",
                         channel, data_first_last, unit, desc
                     )?;
@@ -1522,7 +1521,7 @@ pub struct Cn4Block {
     /// Pointer to next channel block (CNBLOCK) (can be NIL)
     cn_cn_next: i64,
     /// Composition of channels: Pointer to channel array block (CABLOCK) or channel block (CNBLOCK) (can be NIL). Details see 4.18 Composition of Channels      
-    cn_composition: i64,
+    pub cn_composition: i64,
     /// Pointer to TXBLOCK with name (identification) of channel. Name must be according to naming rules stated in 4.4.2 Naming Rules.
     pub cn_tx_name: i64,
     /// Pointer to channel source (SIBLOCK) (can be NIL) Must be NIL for component channels (members of a structure or array elements) because they all must have the same source and thus simply use the SIBLOCK of their parent CNBLOCK (direct child of CGBLOCK).
@@ -2178,7 +2177,7 @@ pub struct Ca4Block {
     /// reserved
     reserved: [u8; 4],
     /// Length of block in bytes
-    ca_len: u64,
+    pub ca_len: u64,
     /// # of links
     ca_links: u64,
     // links
@@ -2219,16 +2218,47 @@ pub struct Ca4Block {
     pub shape: (Vec<usize>, Order),
 }
 
+impl Default for Ca4Block {
+    fn default() -> Self {
+        Self {
+            ca_id: [35, 35, 67, 65],  // ##CA
+            reserved: [0u8; 4],
+            ca_len: 48,
+            ca_links: 1,
+            ca_composition: 0,
+            ca_data: None,
+            ca_dynamic_size: None,
+            ca_input_quantity: None,
+            ca_output_quantity: None,
+            ca_comparison_quantity: None,
+            ca_cc_axis_conversion: None,
+            ca_axis: None,
+            ca_type: 0, // Array
+            ca_storage: 0, // CN template
+            ca_ndim: 1,
+            ca_flags: 0,
+            ca_byte_offset_base: 0,  // first
+            ca_inval_bit_pos_base: 0, // present in DIBlock
+            ca_dim_size: vec![],
+            ca_axis_value: None,
+            ca_cycle_count:None,
+            snd: 0,
+            pnd: 1,
+            shape: (vec![], Order::RowMajor),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 #[binrw]
 #[br(little)]
-struct Ca4BlockMembers {
+pub struct Ca4BlockMembers {
     /// Array type (defines semantic of the array) see CA_T_xxx
     ca_type: u8,
     /// Storage type (defines how the element values are stored) see CA_S_xxx            
     ca_storage: u8,
     /// Number of dimensions D > 0 For array type "axis", D must be 1.
-    ca_ndim: u16,
+    pub ca_ndim: u16,
     /// Flags The value contains the following bit flags (Bit 0 = LSB): see CA_F_xxx
     ca_flags: u32,
     /// Base factor for calculation of Byte offsets for "CN template" storage type. ca_byte_offset_base should be larger than or equal to the size of Bytes required to store a component channel value in the record (all must have the same size). If it is equal to this value, then the component values are stored next to each other without gaps. Exact formula for calculation of Byte offset for each component channel see below.
@@ -2236,7 +2266,21 @@ struct Ca4BlockMembers {
     /// Base factor for calculation of invalidation bit positions for CN template storage type.
     ca_inval_bit_pos_base: u32,
     #[br(if(ca_ndim > 0), little, count = ca_ndim)]
-    ca_dim_size: Vec<u64>,
+    pub ca_dim_size: Vec<u64>,
+}
+
+impl Default for Ca4BlockMembers {
+    fn default() -> Self {
+        Self {
+            ca_type: 0,
+            ca_storage: 0,
+            ca_ndim: 1,
+            ca_flags: 0,
+            ca_byte_offset_base: 0,
+            ca_inval_bit_pos_base: 0,
+            ca_dim_size: vec![],
+        }
+    }
 }
 
 fn parse_ca_block(

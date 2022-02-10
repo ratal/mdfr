@@ -638,12 +638,18 @@ impl ChannelData {
             ChannelData::Complex16(_) => 32,
             ChannelData::Complex32(_) => 64,
             ChannelData::Complex64(_) => 128,
-            ChannelData::StringSBC(data) => data.iter().map(|s| s.len() as u32).max().unwrap_or(0) * 8,
-            ChannelData::StringUTF8(data) => data.iter().map(|s| s.len() as u32).max().unwrap_or(0) * 8,
+            ChannelData::StringSBC(data) => {
+                data.iter().map(|s| s.len() as u32).max().unwrap_or(0) * 8
+            }
+            ChannelData::StringUTF8(data) => {
+                data.iter().map(|s| s.len() as u32).max().unwrap_or(0) * 8
+            }
             ChannelData::StringUTF16(data) => {
                 data.iter().map(|s| s.len() as u32).max().unwrap_or(0) * 8
             }
-            ChannelData::ByteArray(data) => data.iter().map(|s| s.len() as u32).max().unwrap_or(0) * 8,
+            ChannelData::ByteArray(data) => {
+                data.iter().map(|s| s.len() as u32).max().unwrap_or(0) * 8
+            }
             ChannelData::ArrayDInt8(_) => 8,
             ChannelData::ArrayDUInt8(_) => 8,
             ChannelData::ArrayDInt16(_) => 16,
@@ -1193,39 +1199,45 @@ impl ChannelData {
                 .collect(),
             ChannelData::StringSBC(a) => {
                 let nbytes = self.byte_count() as usize;
-                a.iter().flat_map(|x| {
-                    let str_bytes = x.to_string().into_bytes();
-                    let n_str_bytes = str_bytes.len();
-                    if nbytes > n_str_bytes {
-                        [str_bytes, vec![0u8; nbytes - n_str_bytes]].concat()
-                    } else {
-                        str_bytes
-                    }
-                }).collect()
+                a.iter()
+                    .flat_map(|x| {
+                        let str_bytes = x.to_string().into_bytes();
+                        let n_str_bytes = str_bytes.len();
+                        if nbytes > n_str_bytes {
+                            [str_bytes, vec![0u8; nbytes - n_str_bytes]].concat()
+                        } else {
+                            str_bytes
+                        }
+                    })
+                    .collect()
             }
             ChannelData::StringUTF8(a) => {
                 let nbytes = self.byte_count() as usize;
-                a.iter().flat_map(|x| {
-                    let str_bytes = x.to_string().into_bytes();
-                    let n_str_bytes = str_bytes.len();
-                    if nbytes > n_str_bytes {
-                        [str_bytes, vec![0u8; nbytes - n_str_bytes]].concat()
-                    } else {
-                        str_bytes
-                    }
-                }).collect()
+                a.iter()
+                    .flat_map(|x| {
+                        let str_bytes = x.to_string().into_bytes();
+                        let n_str_bytes = str_bytes.len();
+                        if nbytes > n_str_bytes {
+                            [str_bytes, vec![0u8; nbytes - n_str_bytes]].concat()
+                        } else {
+                            str_bytes
+                        }
+                    })
+                    .collect()
             }
             ChannelData::StringUTF16(a) => {
                 let nbytes = self.byte_count() as usize;
-                a.iter().flat_map(|x| {
-                    let str_bytes = x.to_string().into_bytes();
-                    let n_str_bytes = str_bytes.len();
-                    if nbytes > n_str_bytes {
-                        [str_bytes, vec![0u8; nbytes - n_str_bytes]].concat()
-                    } else {
-                        str_bytes
-                    }
-                }).collect()
+                a.iter()
+                    .flat_map(|x| {
+                        let str_bytes = x.to_string().into_bytes();
+                        let n_str_bytes = str_bytes.len();
+                        if nbytes > n_str_bytes {
+                            [str_bytes, vec![0u8; nbytes - n_str_bytes]].concat()
+                        } else {
+                            str_bytes
+                        }
+                    })
+                    .collect()
             }
             ChannelData::ByteArray(a) => a.iter().flatten().cloned().collect::<Vec<u8>>(),
             ChannelData::ArrayDInt8(a) => a.par_iter().flat_map(|x| x.to_le_bytes()).collect(),
@@ -1299,6 +1311,52 @@ impl ChannelData {
             ChannelData::ArrayDComplex16(a) => a.ndim(),
             ChannelData::ArrayDComplex32(a) => a.ndim(),
             ChannelData::ArrayDComplex64(a) => a.ndim(),
+        }
+    }
+    pub fn shape(&self) -> Vec<usize> {
+        match self {
+            ChannelData::Int8(_) => {
+                vec![self.len(); 1]
+            }
+            ChannelData::UInt8(_) => vec![self.len(); 1],
+            ChannelData::Int16(_) => vec![self.len(); 1],
+            ChannelData::UInt16(_) => vec![self.len(); 1],
+            ChannelData::Float16(_) => vec![self.len(); 1],
+            ChannelData::Int24(_) => vec![self.len(); 1],
+            ChannelData::UInt24(_) => vec![self.len(); 1],
+            ChannelData::Int32(_) => vec![self.len(); 1],
+            ChannelData::UInt32(_) => vec![self.len(); 1],
+            ChannelData::Float32(_) => vec![self.len(); 1],
+            ChannelData::Int48(_) => vec![self.len(); 1],
+            ChannelData::UInt48(_) => vec![self.len(); 1],
+            ChannelData::Int64(_) => vec![self.len(); 1],
+            ChannelData::UInt64(_) => vec![self.len(); 1],
+            ChannelData::Float64(_) => vec![self.len(); 1],
+            ChannelData::Complex16(_) => vec![self.len(); 1],
+            ChannelData::Complex32(_) => vec![self.len(); 1],
+            ChannelData::Complex64(_) => vec![self.len(); 1],
+            ChannelData::StringSBC(_) => vec![self.len(); 1],
+            ChannelData::StringUTF8(_) => vec![self.len(); 1],
+            ChannelData::StringUTF16(_) => vec![self.len(); 1],
+            ChannelData::ByteArray(_) => vec![self.len(); 1],
+            ChannelData::ArrayDInt8(a) => a.shape().to_owned(),
+            ChannelData::ArrayDUInt8(a) => a.shape().to_owned(),
+            ChannelData::ArrayDInt16(a) => a.shape().to_owned(),
+            ChannelData::ArrayDUInt16(a) => a.shape().to_owned(),
+            ChannelData::ArrayDFloat16(a) => a.shape().to_owned(),
+            ChannelData::ArrayDInt24(a) => a.shape().to_owned(),
+            ChannelData::ArrayDUInt24(a) => a.shape().to_owned(),
+            ChannelData::ArrayDInt32(a) => a.shape().to_owned(),
+            ChannelData::ArrayDUInt32(a) => a.shape().to_owned(),
+            ChannelData::ArrayDFloat32(a) => a.shape().to_owned(),
+            ChannelData::ArrayDInt48(a) => a.shape().to_owned(),
+            ChannelData::ArrayDUInt48(a) => a.shape().to_owned(),
+            ChannelData::ArrayDInt64(a) => a.shape().to_owned(),
+            ChannelData::ArrayDUInt64(a) => a.shape().to_owned(),
+            ChannelData::ArrayDFloat64(a) => a.shape().to_owned(),
+            ChannelData::ArrayDComplex16(a) => a.shape().to_owned(),
+            ChannelData::ArrayDComplex32(a) => a.shape().to_owned(),
+            ChannelData::ArrayDComplex64(a) => a.shape().to_owned(),
         }
     }
 }

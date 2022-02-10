@@ -5,8 +5,8 @@ use std::{
 
 use crate::{
     mdfinfo::mdfinfo4::{
-        BlockType, Cg4, Cg4Block, Cn4, Cn4Block, Dg4, Dg4Block, Dz4Block, FhBlock, Ld4Block,
-        MdfInfo4, MetaData, MetaDataBlockType,
+        BlockType, Ca4Block, Ca4BlockMembers, Cg4, Cg4Block, Cn4, Cn4Block, Dg4, Dg4Block,
+        Dz4Block, FhBlock, Ld4Block, MdfInfo4, MetaData, MetaDataBlockType, Composition, Compo, Blockheader4,
     },
     mdfreader::channel_data::ChannelData,
 };
@@ -119,12 +119,9 @@ pub fn mdfwriter4<'a>(
                     let mut dz_block = Dz4Block::default();
                     dz_block.dz_org_data_length =
                         (cn.data.len() * cn.data.bit_count() as usize / 8) as u64;
-                    let compressed_data = compress(
-                        &cn.data.to_bytes(),
-                        Format::Zlib,
-                        CompressionLevel::Default,
-                    )
-                    .expect("Could not compress invalid data");
+                    let compressed_data =
+                        compress(&cn.data.to_bytes(), Format::Zlib, CompressionLevel::Default)
+                            .expect("Could not compress invalid data");
                     dz_block.dz_data_length = compressed_data.len() as u64;
                     dz_block.len = dz_block.dz_data_length + 48;
                     pointer += dz_block.len as i64;
@@ -206,20 +203,41 @@ pub fn mdfwriter4<'a>(
             for (_rec_pos, cn) in cg.cn.iter() {
                 writer.write_le(&cn.block).expect("Could not write CNBlock");
                 // TX Block channel name
-                if let Some(tx_name_metadata) = 
-                    new_info.sharable.md_tx.get(&cn.block.cn_tx_name)
-                {
+                if let Some(tx_name_metadata) = new_info.sharable.md_tx.get(&cn.block.cn_tx_name) {
                     tx_name_metadata.write(writer);
                 }
-                if let Some(tx_unit_metadata) = 
-                    new_info.sharable.md_tx.get(&cn.block.cn_md_unit)
-                {
+                if let Some(tx_unit_metadata) = new_info.sharable.md_tx.get(&cn.block.cn_md_unit) {
                     tx_unit_metadata.write(writer);
                 }
                 if let Some(tx_comment_metadata) =
                     new_info.sharable.md_tx.get(&cn.block.cn_md_comment)
                 {
                     tx_comment_metadata.write(writer);
+                }
+                // channel array
+                if let Some(compo) = &cn.composition {
+                    match &compo.block {
+                        Compo::CA(c) => {
+                            let mut header = Blockheader4::default();
+                            header.hdr_id = [35, 35, 67, 65];  // ##CA
+                            header.hdr_len = c.ca_len as u64;
+                            header.hdr_links = 1;
+                            writer
+                                .write_le(&header)
+                                .expect("Could not write CABlock header");
+                            let ca_composition: u64 = 0;
+                            writer
+                                .write_le(&ca_composition)
+                                .expect("Could not write CABlock ca_composition");
+                            let mut ca_block = Ca4BlockMembers::default();
+                            ca_block.ca_ndim = c.ca_ndim;
+                            ca_block.ca_dim_size = c.ca_dim_size.clone();
+                            writer
+                                .write_le(&ca_composition)
+                                .expect("Could not write CABlock members");
+                        }
+                        Compo::CN(_) => {},
+                    }
                 }
             }
         }
@@ -292,7 +310,10 @@ fn create_blocks(
         tx_unit_block.raw_data = str.raw_data.clone();
         tx_unit_block.block.hdr_len = tx_unit_block.raw_data.len() as u64 + 24;
         pointer += tx_unit_block.block.hdr_len as i64;
-        new_info.sharable.md_tx.insert(cn_block.cn_md_unit, tx_unit_block);
+        new_info
+            .sharable
+            .md_tx
+            .insert(cn_block.cn_md_unit, tx_unit_block);
     }
 
     // channel comment
@@ -302,7 +323,41 @@ fn create_blocks(
         tx_comment_block.raw_data = str.raw_data.clone();
         tx_comment_block.block.hdr_len = tx_comment_block.raw_data.len() as u64 + 24;
         pointer += tx_comment_block.block.hdr_len as i64;
-        new_info.sharable.md_tx.insert(cn_block.cn_md_comment, tx_comment_block);
+        new_info
+            .sharable
+            .md_tx
+            .insert(cn_block.cn_md_comment, tx_comment_block);
+    }
+
+    // Channel array
+    let data_ndim = cn.data.ndim() - 1;
+    let mut composition: Option<Composition> = None;
+    if data_ndim > 0 {
+        let data_dim_size = cn
+            .data
+            .shape()
+            .iter()
+            .skip(1)
+            .map(|x| *x as u64)
+            .collect::<Vec<_>>();
+        // data_dim_size.remove(0);
+        let mut ca_block = Ca4Block::default();
+        for x in data_dim_size.clone() {
+            ca_block.snd += x as usize;
+            ca_block.pnd *= x as usize;
+        }
+        cg_block.cg_data_bytes = ca_block.pnd as u32 * cn.data.byte_count();
+        
+        cn_block.cn_composition = pointer;
+        ca_block.ca_ndim = data_ndim as u16;
+        ca_block.ca_dim_size = data_dim_size.clone();
+        ca_block.shape.0 = data_dim_size.iter().map(|x| *x as usize).collect::<Vec<_>>();
+        ca_block.ca_len = 48 + 8 * data_ndim as u64;
+        pointer += ca_block.ca_len as i64;
+        composition = Some(Composition {
+            block: Compo::CA(Box::new(ca_block)),
+            compo: None,
+        });
     }
 
     dg_block.dg_dg_next = pointer;
@@ -315,7 +370,7 @@ fn create_blocks(
         block_position: cn_position,
         pos_byte_beg: 0,
         n_bytes: cg_block.cg_data_bytes,
-        composition: None,
+        composition,
         invalid_mask: None,
         channel_data_valid: false,
     };

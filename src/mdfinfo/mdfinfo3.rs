@@ -216,7 +216,8 @@ impl fmt::Display for MdfInfo3 {
                 let dtmsk = self.get_channel_data_from_memory(channel);
                 if let Some(data) = dtmsk {
                     let data_first_last = data.first_last();
-                    writeln!(f, 
+                    writeln!(
+                        f,
                         " {} {} {:?} {:?} \n",
                         channel, data_first_last, unit, desc
                     )?;
@@ -446,8 +447,12 @@ impl fmt::Display for Hd3 {
         writeln!(
             f,
             "Date : {}:{}:{}, Time: {}:{}:{} ",
-            self.hd_date.0, self.hd_date.1, self.hd_date.2,
-            self.hd_time.0, self.hd_time.1, self.hd_time.2,
+            self.hd_date.0,
+            self.hd_date.1,
+            self.hd_date.2,
+            self.hd_time.0,
+            self.hd_time.1,
+            self.hd_time.2,
         )?;
         writeln!(f, "Author: {}", self.hd_author)?;
         writeln!(f, "Organization: {}", self.hd_organization)?;
