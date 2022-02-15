@@ -28,7 +28,9 @@ pub struct MdfInfo3 {
     /// Conversion and CE blocks
     pub sharable: SharableBlocks3,
     /// set of all channel names
-    pub channel_names_set: ChannelNamesSet3, // set of channel names
+    pub channel_names_set: ChannelNamesSet3,
+    /// flag for all data loaded in memory
+    pub all_data_in_memory: bool,
 }
 
 pub(crate) type ChannelId3 = (Option<String>, u32, (u32, u16), u32);
@@ -142,6 +144,7 @@ impl MdfInfo3 {
                 }
             }
         }
+        self.all_data_in_memory = false;
     }
     /// Returns the channel's data ndarray if present in memory, otherwise None.
     pub fn get_channel_data_from_memory(&self, channel_name: &str) -> Option<&ChannelData> {
@@ -171,6 +174,12 @@ impl MdfInfo3 {
         let mut rdr = BufReader::new(&f);
         mdfreader3(&mut rdr, self, channel_names);
     }
+    /// load all channels data in memory
+    pub fn load_all_channels_data_in_memory(&mut self) {
+        let channel_set = self.get_channel_names_set();
+        self.load_channels_data_in_memory(channel_set);
+        self.all_data_in_memory = true;
+    }
     /// True if channel contains data
     pub fn get_channel_data_validity(&self, channel_name: &str) -> bool {
         let mut state: bool = false;
@@ -191,7 +200,7 @@ impl MdfInfo3 {
     pub fn get_channel_data<'a>(&'a mut self, channel_name: &'a str) -> Option<&'a ChannelData> {
         let mut channel_names: HashSet<String> = HashSet::new();
         channel_names.insert(channel_name.to_string());
-        if !self.get_channel_data_validity(channel_name) {
+        if !self.all_data_in_memory || !self.get_channel_data_validity(channel_name) {
             self.load_channels_data_in_memory(channel_names); // will read data only if array is empty
         }
         self.get_channel_data_from_memory(channel_name)

@@ -127,6 +127,7 @@ impl MdfInfo {
                 dg,
                 sharable,
                 channel_names_set,
+                all_data_in_memory: false,
             }))
         } else {
             let mut sharable: SharableBlocks = SharableBlocks {
@@ -165,6 +166,7 @@ impl MdfInfo {
                 dg,
                 sharable,
                 channel_names_set,
+                all_data_in_memory: false,
             }))
         };
         mdf_info
@@ -239,8 +241,14 @@ impl MdfInfo {
     }
     /// load all channels data in memory
     pub fn load_all_channels_data_in_memory(&mut self) {
-        let channel_set = self.get_channel_names_set();
-        self.load_channels_data_in_memory(channel_set);
+        match self {
+            MdfInfo::V3(mdfinfo3) => {
+                mdfinfo3.load_all_channels_data_in_memory();
+            }
+            MdfInfo::V4(mdfinfo4) => {
+                mdfinfo4.load_all_channels_data_in_memory();
+            }
+        }
     }
     /// returns channel's data ndarray.
     pub fn get_channel_data<'a>(&'a mut self, channel_name: &'a str) -> Option<&ChannelData> {

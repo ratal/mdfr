@@ -9,6 +9,7 @@ use rayon::prelude::*;
 use roxmltree;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::default::Default;
+use std::fmt::Debug;
 use std::fs::{File, OpenOptions};
 use std::io::{prelude::*, BufWriter};
 use std::{fmt, str};
@@ -56,6 +57,8 @@ pub struct MdfInfo4 {
     pub sharable: SharableBlocks,
     /// set of all channel names
     pub channel_names_set: ChannelNamesSet, // set of channel names
+    /// flag for all data loaded in memory
+    pub all_data_in_memory: bool,
 }
 
 /// MdfInfo4's implementation
@@ -76,7 +79,7 @@ impl MdfInfo4 {
     ) -> (Option<&'a ChannelData>, &Option<Array1<u8>>) {
         let mut channel_names: HashSet<String> = HashSet::new();
         channel_names.insert(channel_name.to_string());
-        if !self.get_channel_data_validity(channel_name) {
+        if !self.all_data_in_memory || !self.get_channel_data_validity(channel_name) {
             self.load_channels_data_in_memory(channel_names); // will read data only if array is empty
         }
         let (dt, mask) = self.get_channel_data_from_memory(channel_name);
@@ -212,6 +215,12 @@ impl MdfInfo4 {
         let mut rdr = BufReader::new(&f);
         mdfreader4(&mut rdr, self, channel_names);
     }
+    /// load all channels data in memory
+    pub fn load_all_channels_data_in_memory(&mut self) {
+        let channel_set = self.get_channel_names_set();
+        self.load_channels_data_in_memory(channel_set);
+        self.all_data_in_memory = true;
+    }
     // empty the channels' ndarray
     pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) {
         for channel_name in channel_names {
@@ -229,6 +238,7 @@ impl MdfInfo4 {
                 }
             }
         }
+        self.all_data_in_memory = false;
     }
     pub fn write(&mut self, file_name: &str) -> MdfInfo4 {
         let f: File = OpenOptions::new()
@@ -239,6 +249,20 @@ impl MdfInfo4 {
             .expect("Cannot create the file");
         let mut rdr = BufWriter::new(&f);
         mdfwriter4(&mut rdr, self, file_name)
+    }
+    pub fn new(file_name: &str, n_channels: usize) -> MdfInfo4 {
+        MdfInfo4 {
+            file_name: file_name.to_string(),
+            dg: BTreeMap::new(),
+            sharable: SharableBlocks::new(n_channels),
+            channel_names_set: HashMap::with_capacity(n_channels),
+            id_block: IdBlock::default(),
+            fh: Vec::new(),
+            at: HashMap::new(),
+            ev: HashMap::new(),
+            hd_block: Hd4::default(),
+            all_data_in_memory: false,
+        }
     }
     // TODO cut data
     // TODO resample data
@@ -1240,6 +1264,16 @@ impl SharableBlocks {
             .par_iter_mut()
             .for_each(|mut val| val.parse_xml());
     }
+    pub fn new(n_channels: usize) -> SharableBlocks {
+        let md_tx: DashMap<i64, MetaData> = DashMap::with_capacity(n_channels);
+        let cc: HashMap<i64, Cc4Block> = HashMap::new();
+        let si: HashMap<i64, Si4Block> = HashMap::new();
+        SharableBlocks {
+            md_tx: Arc::new(md_tx),
+            cc,
+            si,
+        }
+    }
 }
 /// Cg4 Channel Group block struct
 #[derive(Debug, Copy, Clone)]
@@ -2221,7 +2255,7 @@ pub struct Ca4Block {
 impl Default for Ca4Block {
     fn default() -> Self {
         Self {
-            ca_id: [35, 35, 67, 65],  // ##CA
+            ca_id: [35, 35, 67, 65], // ##CA
             reserved: [0u8; 4],
             ca_len: 48,
             ca_links: 1,
@@ -2233,15 +2267,15 @@ impl Default for Ca4Block {
             ca_comparison_quantity: None,
             ca_cc_axis_conversion: None,
             ca_axis: None,
-            ca_type: 0, // Array
+            ca_type: 0,    // Array
             ca_storage: 0, // CN template
             ca_ndim: 1,
             ca_flags: 0,
-            ca_byte_offset_base: 0,  // first
+            ca_byte_offset_base: 0,   // first
             ca_inval_bit_pos_base: 0, // present in DIBlock
             ca_dim_size: vec![],
             ca_axis_value: None,
-            ca_cycle_count:None,
+            ca_cycle_count: None,
             snd: 0,
             pnd: 1,
             shape: (vec![], Order::RowMajor),
@@ -2793,16 +2827,12 @@ impl Default for Dz4Block {
 pub struct Ld4Block {
     // header
     // ld_id: [u8; 4],  // ##LD
-    reserved: [u8; 4], // reserved
-    pub ld_len: u64,   // Length of block in bytes
-    pub ld_links: u64, // # of links
+    reserved: [u8; 4],   // reserved
+    pub ld_len: u64,     // Length of block in bytes
+    pub ld_n_links: u64, // # of links
     // links
-    /// next LD
-    pub ld_ld_next: i64,
-    #[br(if(ld_links > 1), little, count = (ld_links -1) / 2)]
-    pub ld_data: Vec<i64>,
-    #[br(if(ld_links > 1), little, count = (ld_links -1) / 2)]
-    pub ld_invalid_data: Vec<i64>,
+    #[br(little, count = ld_n_links)]
+    pub ld_links: Vec<i64>,
     //members
     pub ld_flags: u32,
     /// Number of data blocks
@@ -2823,11 +2853,9 @@ impl Default for Ld4Block {
     fn default() -> Self {
         Ld4Block {
             reserved: [0; 4],
-            ld_len: 48,
-            ld_links: 2,
-            ld_ld_next: 0,
-            ld_data: vec![],
-            ld_invalid_data: vec![],
+            ld_len: 56,
+            ld_n_links: 2,
+            ld_links: vec![0],
             ld_flags: 0,
             ld_count: 0,
             ld_equal_sample_count: None,
@@ -2835,6 +2863,36 @@ impl Default for Ld4Block {
             dl_time_values: vec![],
             dl_angle_values: vec![],
             dl_distance_values: vec![],
+        }
+    }
+}
+
+impl Ld4Block {
+    pub fn ld_ld_next(&self) -> i64 {
+        self.ld_links[0]
+    }
+    pub fn ld_data(&self) -> Vec<i64> {
+        if (1u32 << 31) & self.ld_flags > 0 {
+            self.ld_links
+                .iter()
+                .take(1)
+                .step_by(2)
+                .map(|x| *x)
+                .collect()
+        } else {
+            self.ld_links[1..].to_vec()
+        }
+    }
+    pub fn ld_invalid_data(&self) -> Vec<i64> {
+        if (1u32 << 31) & self.ld_flags > 0 {
+            self.ld_links
+                .iter()
+                .take(2)
+                .step_by(2)
+                .map(|x| *x)
+                .collect()
+        } else {
+            Vec::<i64>::new()
         }
     }
 }
