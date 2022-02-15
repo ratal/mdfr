@@ -2875,9 +2875,9 @@ impl Ld4Block {
         if (1u32 << 31) & self.ld_flags > 0 {
             self.ld_links
                 .iter()
-                .take(1)
+                .skip(1)
                 .step_by(2)
-                .map(|x| *x)
+                .copied()
                 .collect()
         } else {
             self.ld_links[1..].to_vec()
@@ -2887,9 +2887,9 @@ impl Ld4Block {
         if (1u32 << 31) & self.ld_flags > 0 {
             self.ld_links
                 .iter()
-                .take(2)
+                .skip(2)
                 .step_by(2)
-                .map(|x| *x)
+                .copied()
                 .collect()
         } else {
             Vec::<i64>::new()

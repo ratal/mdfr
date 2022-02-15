@@ -368,7 +368,7 @@ fn create_blocks(
         unique_name: cn.unique_name.clone(),
         data: data_type_init(
             cn_block.cn_type,
-            cn_block.cn_data_type.clone(),
+            cn_block.cn_data_type,
             cg_block.cg_data_bytes,
             data_ndim > 0,
         ),
