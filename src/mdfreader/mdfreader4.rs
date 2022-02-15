@@ -257,7 +257,11 @@ fn read_data(
                     let cycle_count = channel_group.block.cg_cycle_count;
                     // only one channel, can be optimised
                     for (_rec_pos, cn) in channel_group.cn.iter_mut() {
-                        read_one_channel_array(rdr, cn, cycle_count as usize);
+                        let block_header: Dt4Block =
+                            rdr.read_le().expect("Could not read DV block header");
+                        let mut buf = vec![0u8; block_header.len as usize - 24];
+                        rdr.read_exact(&mut buf).expect("Could not read DV block");
+                        read_one_channel_array(&mut buf, cn, cycle_count as usize);
                     }
                 }
                 _ => (),
@@ -550,7 +554,7 @@ fn parser_ld4(
     let (block, pos) = parser_ld4_block(rdr, position, position);
     position = pos;
     ld_blocks.push(block.clone());
-    let mut next_ld = block.ld_ld_next;
+    let mut next_ld = block.ld_ld_next();
     while next_ld > 0 {
         rdr.seek_relative(next_ld - position)
             .expect("Could not reach LD block position");
@@ -560,41 +564,41 @@ fn parser_ld4(
         let (block, pos) = parser_ld4_block(rdr, position, position);
         position = pos;
         ld_blocks.push(block.clone());
-        next_ld = block.ld_ld_next;
+        next_ld = block.ld_ld_next();
     }
-    if ld_blocks.len() == 1 && ld_blocks[0].ld_data.len() == 1 && channel_group.cn.len() == 1 {
+    if ld_blocks.len() == 1 && ld_blocks[0].ld_data().len() == 1 && channel_group.cn.len() == 1 {
         // only one DV block, reading can be optimised
         // Reads DV or DZ block id
-        rdr.seek_relative(ld_blocks[0].ld_data[0] - position)
+        let ld_data = ld_blocks[0].ld_data()[0];
+        rdr.seek_relative(ld_data - position)
             .expect("Could not reach DV or DZ block position from LD block");
         let mut id = [0u8; 4];
         rdr.read_exact(&mut id)
             .expect("could not read data block id from ld4 invalid");
+        initialise_arrays(
+            channel_group,
+            &channel_group.block.cg_cycle_count.clone(),
+            channel_names_to_read_in_dg,
+        );
         if id == "##DZ".as_bytes() {
-            initialise_arrays(
-                channel_group,
-                &channel_group.block.cg_cycle_count.clone(),
-                channel_names_to_read_in_dg,
-            );
-            let (dt, block_header) = parse_dz(rdr);
-            read_channels_from_bytes(
-                &dt,
-                &mut channel_group.cn,
-                channel_group.record_length as usize,
-                0,
-                channel_names_to_read_in_dg,
-            );
-            position = ld_blocks[0].ld_data[0] + block_header.len as i64;
+            let (mut dt, block_header) = parse_dz(rdr);
+            for (_rec_pos, cn) in channel_group.cn.iter_mut() {
+                read_one_channel_array(&mut dt, cn, channel_group.block.cg_cycle_count as usize);
+            }
+            position = ld_data + block_header.len as i64;
         } else {
             let block_header: Dt4Block = rdr.read_le().expect("Could not read DV block header");
+            let mut buf = vec![0u8; block_header.len as usize - 24];
+            rdr.read_exact(&mut buf).expect("Could not read Dt4 block");
             for (_rec_pos, cn) in channel_group.cn.iter_mut() {
-                read_one_channel_array(rdr, cn, channel_group.block.cg_cycle_count as usize);
+                read_one_channel_array(&mut buf, cn, channel_group.block.cg_cycle_count as usize);
             }
-            position = ld_blocks[0].ld_data[0] + block_header.len as i64;
+            position = ld_data + block_header.len as i64;
         }
         if channel_group.block.cg_inval_bytes > 0 {
             // Reads invalid DI or DZ block
-            rdr.seek_relative(ld_blocks[0].ld_invalid_data[0] - position)
+            let ld_invalid_data = ld_blocks[0].ld_invalid_data()[0];
+            rdr.seek_relative(ld_invalid_data - position)
                 .expect("Could not reach DI or DZ block position");
             let mut id = [0u8; 4];
             rdr.read_exact(&mut id)
@@ -602,7 +606,7 @@ fn parser_ld4(
             if id == "##DZ".as_bytes() {
                 let (dt, block_header) = parse_dz(rdr);
                 channel_group.invalid_bytes = Some(dt);
-                position = ld_blocks[0].ld_invalid_data[0] + block_header.len as i64;
+                position = ld_invalid_data + block_header.len as i64;
             } else {
                 let block_header: Dt4Block = rdr
                     .read_le()
@@ -610,7 +614,7 @@ fn parser_ld4(
                 let mut buf = vec![0u8; (block_header.len - 24) as usize];
                 rdr.read_exact(&mut buf).expect("Could not read data block");
                 channel_group.invalid_bytes = Some(buf);
-                position = ld_blocks[0].ld_invalid_data[0] + block_header.len as i64;
+                position = ld_invalid_data + block_header.len as i64;
             }
         }
     } else {
@@ -643,7 +647,7 @@ fn read_dv_di(
         channel_names_to_read_in_dg,
     );
     for ld in &ld_blocks {
-        if !ld.ld_invalid_data.is_empty() {
+        if !ld.ld_invalid_data().is_empty() {
             // initialises the invalid bytes vector
             channel_group.invalid_bytes = Some(vec![0u8; cg_inval_bytes * cg_cycle_count]);
         }
@@ -654,7 +658,7 @@ fn read_dv_di(
     let mut previous_index: usize = 0;
     let mut previous_invalid_pos: usize = 0;
     for ld in ld_blocks {
-        for data_pointer in ld.ld_data {
+        for data_pointer in ld.ld_data() {
             // Reads DV or DZ block id
             rdr.seek_relative(data_pointer - position)
                 .expect("Could not reach DV or DZ block position");
@@ -710,7 +714,7 @@ fn read_dv_di(
             previous_index += n_record_chunk;
         }
         // Invalid data reading
-        for data_pointer in ld.ld_invalid_data {
+        for data_pointer in ld.ld_invalid_data() {
             // Reads DV or DZ block id
             rdr.seek_relative(data_pointer - position)
                 .expect("Could not reach invalid block position");
@@ -1214,7 +1218,9 @@ fn initialise_arrays(
     channel_group
         .cn
         .par_iter_mut()
-        .filter(|(_cn_record_position, cn)| channel_names_to_read_in_dg.contains(&cn.unique_name))
+        .filter(|(_cn_record_position, cn)| {
+            channel_names_to_read_in_dg.contains(&cn.unique_name) && !cn.channel_data_valid
+        })
         .for_each(|(_cn_record_position, cn)| {
             let mut n_elements: usize = 0;
             if let Some(compo) = &cn.composition {
@@ -1226,6 +1232,7 @@ fn initialise_arrays(
             cn.data = cn
                 .data
                 .zeros(cn.block.cn_type, *cg_cycle_count, cn.n_bytes, n_elements);
+            cn.channel_data_valid = false;
         })
 }
 

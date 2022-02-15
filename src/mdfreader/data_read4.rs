@@ -4,21 +4,20 @@ use crate::mdfinfo::mdfinfo4::{Cn4, CnType, Compo};
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
 use encoding_rs::{UTF_16BE, UTF_16LE, WINDOWS_1252};
 use half::f16;
-use ndarray::{Array, Array1, ArrayD, IxDyn};
+use ndarray::{Array, ArrayD, IxDyn};
 use num::Complex;
 use rayon::prelude::*;
+use std::io::Cursor;
 use std::str;
 use std::string::String;
 use std::{
     collections::HashSet,
     convert::TryInto,
-    fs::File,
-    io::{BufReader, Read},
     sync::{Arc, Mutex},
 };
 
 /// reads file if data block contains only one channel in a single DV
-pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_count: usize) {
+pub fn read_one_channel_array(data_bytes: &mut Vec<u8>, cn: &mut Cn4, cycle_count: usize) {
     if cn.block.cn_type == 0
         || cn.block.cn_type == 2
         || cn.block.cn_type == 4
@@ -32,21 +31,23 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
         match &mut cn.data {
             ChannelData::Int8(data) => {
                 let mut buf = vec![0; cycle_count];
-                rdr.read_i8_into(&mut buf).expect("Could not read i8 array");
+                Cursor::new(data_bytes)
+                    .read_i8_into(&mut buf)
+                    .expect("Could not read i8 array");
                 *data = Array::from_vec(buf);
             }
             ChannelData::UInt8(data) => {
-                let mut buf = vec![0; cycle_count];
-                rdr.read_exact(&mut buf).expect("Could not read u8 array");
-                *data = Array::from_vec(buf);
+                *data = Array::from_vec(data_bytes.to_vec());
             }
             ChannelData::Int16(data) => {
                 let mut buf = vec![0; cycle_count];
                 if cn.endian {
-                    rdr.read_i16_into::<BigEndian>(&mut buf)
+                    Cursor::new(data_bytes)
+                        .read_i16_into::<BigEndian>(&mut buf)
                         .expect("Could not read be i16 array");
                 } else {
-                    rdr.read_i16_into::<LittleEndian>(&mut buf)
+                    Cursor::new(data_bytes)
+                        .read_i16_into::<LittleEndian>(&mut buf)
                         .expect("Could not read le i16 array");
                 }
                 *data = Array::from_vec(buf);
@@ -54,26 +55,25 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
             ChannelData::UInt16(data) => {
                 let mut buf = vec![0; cycle_count];
                 if cn.endian {
-                    rdr.read_u16_into::<BigEndian>(&mut buf)
+                    Cursor::new(data_bytes)
+                        .read_u16_into::<BigEndian>(&mut buf)
                         .expect("Could not read be u16 array");
                 } else {
-                    rdr.read_u16_into::<LittleEndian>(&mut buf)
+                    Cursor::new(data_bytes)
+                        .read_u16_into::<LittleEndian>(&mut buf)
                         .expect("Could not read le 16 array");
                 }
                 *data = Array::from_vec(buf);
             }
             ChannelData::Float16(data) => {
-                let mut buf = vec![0u8; cycle_count * std::mem::size_of::<f16>()];
-                rdr.read_exact(&mut buf).expect("Could not read f16 array");
-                *data = Array1::<f32>::zeros((cycle_count,)); // initialisation
                 if cn.endian {
-                    for (i, value) in buf.chunks(std::mem::size_of::<f16>()).enumerate() {
+                    for (i, value) in data_bytes.chunks(std::mem::size_of::<f16>()).enumerate() {
                         data[i] =
                             f16::from_be_bytes(value.try_into().expect("Could not read be f16"))
                                 .to_f32();
                     }
                 } else {
-                    for (i, value) in buf.chunks(std::mem::size_of::<f16>()).enumerate() {
+                    for (i, value) in data_bytes.chunks(std::mem::size_of::<f16>()).enumerate() {
                         data[i] =
                             f16::from_le_bytes(value.try_into().expect("Could not read le f16"))
                                 .to_f32();
@@ -81,17 +81,14 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                 }
             }
             ChannelData::Int24(data) => {
-                let mut buf = vec![0u8; cycle_count * n_bytes];
-                rdr.read_exact(&mut buf).expect("Could not read i24 array");
-                *data = Array1::<i32>::zeros((cycle_count,)); // initialisation
                 if cn.endian {
-                    for (i, mut value) in buf.chunks(n_bytes).enumerate() {
+                    for (i, mut value) in data_bytes.chunks(n_bytes).enumerate() {
                         data[i] = value
                             .read_i24::<BigEndian>()
                             .expect("Could not read be i24");
                     }
                 } else {
-                    for (i, mut value) in buf.chunks(n_bytes).enumerate() {
+                    for (i, mut value) in data_bytes.chunks(n_bytes).enumerate() {
                         data[i] = value
                             .read_i24::<LittleEndian>()
                             .expect("Could not read le i24");
@@ -99,17 +96,14 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                 }
             }
             ChannelData::UInt24(data) => {
-                let mut buf = vec![0u8; cycle_count * n_bytes];
-                rdr.read_exact(&mut buf).expect("Could not read u24 array");
-                *data = Array1::<u32>::zeros((cycle_count,)); // initialisation
                 if cn.endian {
-                    for (i, mut value) in buf.chunks(n_bytes).enumerate() {
+                    for (i, mut value) in data_bytes.chunks(n_bytes).enumerate() {
                         data[i] = value
                             .read_u24::<BigEndian>()
                             .expect("Could not read be u24");
                     }
                 } else {
-                    for (i, mut value) in buf.chunks(n_bytes).enumerate() {
+                    for (i, mut value) in data_bytes.chunks(n_bytes).enumerate() {
                         data[i] = value
                             .read_u24::<LittleEndian>()
                             .expect("Could not read le u24");
@@ -119,10 +113,12 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
             ChannelData::Int32(data) => {
                 let mut buf = vec![0; cycle_count];
                 if cn.endian {
-                    rdr.read_i32_into::<BigEndian>(&mut buf)
+                    Cursor::new(data_bytes)
+                        .read_i32_into::<BigEndian>(&mut buf)
                         .expect("Could not read be i32 array");
                 } else {
-                    rdr.read_i32_into::<LittleEndian>(&mut buf)
+                    Cursor::new(data_bytes)
+                        .read_i32_into::<LittleEndian>(&mut buf)
                         .expect("Could not read le i32 array");
                 }
                 *data = Array::from_vec(buf);
@@ -130,10 +126,12 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
             ChannelData::UInt32(data) => {
                 let mut buf = vec![0; cycle_count];
                 if cn.endian {
-                    rdr.read_u32_into::<BigEndian>(&mut buf)
+                    Cursor::new(data_bytes)
+                        .read_u32_into::<BigEndian>(&mut buf)
                         .expect("Could not read be u32 array");
                 } else {
-                    rdr.read_u32_into::<LittleEndian>(&mut buf)
+                    Cursor::new(data_bytes)
+                        .read_u32_into::<LittleEndian>(&mut buf)
                         .expect("Could not read le u32 array");
                 }
                 *data = Array::from_vec(buf);
@@ -141,26 +139,25 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
             ChannelData::Float32(data) => {
                 let mut buf = vec![0f32; cycle_count];
                 if cn.endian {
-                    rdr.read_f32_into::<BigEndian>(&mut buf)
+                    Cursor::new(data_bytes)
+                        .read_f32_into::<BigEndian>(&mut buf)
                         .expect("Could not read be f32 array");
                 } else {
-                    rdr.read_f32_into::<LittleEndian>(&mut buf)
+                    Cursor::new(data_bytes)
+                        .read_f32_into::<LittleEndian>(&mut buf)
                         .expect("Could not read le f32 array");
                 }
                 *data = Array::from_vec(buf);
             }
             ChannelData::Int48(data) => {
-                let mut buf = vec![0u8; cycle_count * n_bytes];
-                rdr.read_exact(&mut buf).expect("Could not read i48 array");
-                *data = Array1::<i64>::zeros((cycle_count,)); // initialisation
                 if cn.endian {
-                    for (i, mut value) in buf.chunks(n_bytes).enumerate() {
+                    for (i, mut value) in data_bytes.chunks(n_bytes).enumerate() {
                         data[i] = value
                             .read_i48::<BigEndian>()
                             .expect("Could not read be i48");
                     }
                 } else {
-                    for (i, mut value) in buf.chunks(n_bytes).enumerate() {
+                    for (i, mut value) in data_bytes.chunks(n_bytes).enumerate() {
                         data[i] = value
                             .read_i48::<LittleEndian>()
                             .expect("Could not read le i48");
@@ -168,13 +165,10 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                 }
             }
             ChannelData::UInt48(data) => {
-                let mut buf = vec![0u8; cycle_count * n_bytes];
-                rdr.read_exact(&mut buf).expect("Could not read u48 array");
-                *data = Array1::<u64>::zeros((cycle_count,)); // initialisation
                 if cn.endian {
                     // big endian
                     if n_bytes == 6 {
-                        for (i, mut value) in buf.chunks(n_bytes).enumerate() {
+                        for (i, mut value) in data_bytes.chunks(n_bytes).enumerate() {
                             data[i] = value
                                 .read_u48::<BigEndian>()
                                 .expect("Could not read be u48");
@@ -182,7 +176,7 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                     } else {
                         // n_bytes = 5
                         let mut temp = [0u8; 6];
-                        for (i, value) in buf.chunks(n_bytes).enumerate() {
+                        for (i, value) in data_bytes.chunks(n_bytes).enumerate() {
                             temp[0..5].copy_from_slice(&value[0..n_bytes]);
                             data[i] = Box::new(&temp[..])
                                 .read_u48::<BigEndian>()
@@ -191,7 +185,7 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                     }
                 } else if n_bytes == 6 {
                     // little endian
-                    for (i, mut value) in buf.chunks(n_bytes).enumerate() {
+                    for (i, mut value) in data_bytes.chunks(n_bytes).enumerate() {
                         data[i] = value
                             .read_u48::<LittleEndian>()
                             .expect("Could not read le u48");
@@ -199,7 +193,7 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                 } else {
                     // n_bytes = 5
                     let mut temp = [0u8; 6];
-                    for (i, value) in buf.chunks(n_bytes).enumerate() {
+                    for (i, value) in data_bytes.chunks(n_bytes).enumerate() {
                         temp[0..5].copy_from_slice(&value[0..n_bytes]);
                         data[i] = Box::new(&temp[..])
                             .read_u48::<LittleEndian>()
@@ -210,10 +204,12 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
             ChannelData::Int64(data) => {
                 let mut buf = vec![0; cycle_count];
                 if cn.endian {
-                    rdr.read_i64_into::<BigEndian>(&mut buf)
+                    Cursor::new(data_bytes)
+                        .read_i64_into::<BigEndian>(&mut buf)
                         .expect("Could not read be i64 array");
                 } else {
-                    rdr.read_i64_into::<LittleEndian>(&mut buf)
+                    Cursor::new(data_bytes)
+                        .read_i64_into::<LittleEndian>(&mut buf)
                         .expect("Could not read le i64 array");
                 }
                 *data = Array::from_vec(buf);
@@ -222,26 +218,25 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                 if n_bytes == 8 {
                     let mut buf = vec![0; cycle_count];
                     if cn.endian {
-                        rdr.read_u64_into::<BigEndian>(&mut buf)
+                        Cursor::new(data_bytes)
+                            .read_u64_into::<BigEndian>(&mut buf)
                             .expect("Could not read be u64 array");
                     } else {
-                        rdr.read_u64_into::<LittleEndian>(&mut buf)
+                        Cursor::new(data_bytes)
+                            .read_u64_into::<LittleEndian>(&mut buf)
                             .expect("Could not read le u64 array");
                     }
                     *data = Array::from_vec(buf);
                 } else {
                     // n_bytes = 7
-                    let mut buf = vec![0u8; cycle_count * n_bytes];
-                    rdr.read_exact(&mut buf).expect("Could not read u64 array");
-                    *data = Array1::<u64>::zeros((cycle_count,));
                     let mut temp = [0u8; std::mem::size_of::<u64>()];
                     if cn.endian {
-                        for (i, value) in buf.chunks(n_bytes).enumerate() {
+                        for (i, value) in data_bytes.chunks(n_bytes).enumerate() {
                             temp[0..7].copy_from_slice(&value[0..7]);
                             data[i] = u64::from_be_bytes(temp);
                         }
                     } else {
-                        for (i, value) in buf.chunks(n_bytes).enumerate() {
+                        for (i, value) in data_bytes.chunks(n_bytes).enumerate() {
                             temp[0..7].copy_from_slice(&value[0..7]);
                             data[i] = u64::from_le_bytes(temp);
                         }
@@ -251,25 +246,26 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
             ChannelData::Float64(data) => {
                 let mut buf = vec![0f64; cycle_count];
                 if cn.endian {
-                    rdr.read_f64_into::<BigEndian>(&mut buf)
+                    Cursor::new(data_bytes)
+                        .read_f64_into::<BigEndian>(&mut buf)
                         .expect("Could not read be f64 array");
                 } else {
-                    rdr.read_f64_into::<LittleEndian>(&mut buf)
+                    Cursor::new(data_bytes)
+                        .read_f64_into::<LittleEndian>(&mut buf)
                         .expect("Could not read le f64 array");
                 }
                 *data = Array::from_vec(buf);
             }
             ChannelData::Complex16(data) => {
-                let mut buf = vec![0u8; cycle_count * n_bytes];
-                rdr.read_exact(&mut buf)
-                    .expect("Could not read complex16 array");
                 let mut re: f32;
                 let mut im: f32;
                 let mut re_val: &[u8];
                 let mut im_val: &[u8];
-                *data = Array1::<Complex<f32>>::zeros((cycle_count,)); // initialisation
                 if cn.endian {
-                    for (i, value) in buf.chunks(std::mem::size_of::<f16>() * 2).enumerate() {
+                    for (i, value) in data_bytes
+                        .chunks(std::mem::size_of::<f16>() * 2)
+                        .enumerate()
+                    {
                         re_val = &value[0..std::mem::size_of::<f16>()];
                         im_val = &value[std::mem::size_of::<f16>()..2 * std::mem::size_of::<f16>()];
                         re = f16::from_be_bytes(
@@ -287,7 +283,10 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                         data[i] = Complex::new(re, im);
                     }
                 } else {
-                    for (i, value) in buf.chunks(std::mem::size_of::<f16>() * 2).enumerate() {
+                    for (i, value) in data_bytes
+                        .chunks(std::mem::size_of::<f16>() * 2)
+                        .enumerate()
+                    {
                         re_val = &value[0..std::mem::size_of::<f16>()];
                         im_val = &value[std::mem::size_of::<f16>()..2 * std::mem::size_of::<f16>()];
                         re = f16::from_le_bytes(
@@ -307,16 +306,15 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                 }
             }
             ChannelData::Complex32(data) => {
-                let mut buf = vec![0u8; cycle_count * n_bytes];
-                rdr.read_exact(&mut buf)
-                    .expect("Could not read complex32 array");
                 let mut re: f32;
                 let mut im: f32;
                 let mut re_val: &[u8];
                 let mut im_val: &[u8];
-                *data = Array1::<Complex<f32>>::zeros((cycle_count,)); // initialisation
                 if cn.endian {
-                    for (i, value) in buf.chunks(std::mem::size_of::<f32>() * 2).enumerate() {
+                    for (i, value) in data_bytes
+                        .chunks(std::mem::size_of::<f32>() * 2)
+                        .enumerate()
+                    {
                         re_val = &value[0..std::mem::size_of::<f32>()];
                         im_val = &value[std::mem::size_of::<f32>()..2 * std::mem::size_of::<f32>()];
                         re = f32::from_be_bytes(
@@ -332,7 +330,10 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                         data[i] = Complex::new(re, im);
                     }
                 } else {
-                    for (i, value) in buf.chunks(std::mem::size_of::<f32>() * 2).enumerate() {
+                    for (i, value) in data_bytes
+                        .chunks(std::mem::size_of::<f32>() * 2)
+                        .enumerate()
+                    {
                         re_val = &value[0..std::mem::size_of::<f32>()];
                         im_val = &value[std::mem::size_of::<f32>()..2 * std::mem::size_of::<f32>()];
                         re = f32::from_le_bytes(
@@ -350,16 +351,15 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                 }
             }
             ChannelData::Complex64(data) => {
-                let mut buf = vec![0u8; cycle_count * n_bytes];
-                rdr.read_exact(&mut buf)
-                    .expect("Could not read complex64 array");
                 let mut re: f64;
                 let mut im: f64;
                 let mut re_val: &[u8];
                 let mut im_val: &[u8];
-                *data = Array1::<Complex<f64>>::zeros((cycle_count,)); // initialisation
                 if cn.endian {
-                    for (i, value) in buf.chunks(std::mem::size_of::<f64>() * 2).enumerate() {
+                    for (i, value) in data_bytes
+                        .chunks(std::mem::size_of::<f64>() * 2)
+                        .enumerate()
+                    {
                         re_val = &value[0..std::mem::size_of::<f64>()];
                         im_val = &value[std::mem::size_of::<f64>()..2 * std::mem::size_of::<f64>()];
                         re = f64::from_be_bytes(re_val.try_into().expect("Could not array"));
@@ -367,7 +367,10 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                         data[i] = Complex::new(re, im);
                     }
                 } else {
-                    for (i, value) in buf.chunks(std::mem::size_of::<f64>() * 2).enumerate() {
+                    for (i, value) in data_bytes
+                        .chunks(std::mem::size_of::<f64>() * 2)
+                        .enumerate()
+                    {
                         re_val = &value[0..std::mem::size_of::<f64>()];
                         im_val = &value[std::mem::size_of::<f64>()..2 * std::mem::size_of::<f64>()];
                         re = f64::from_le_bytes(
@@ -385,22 +388,15 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                 }
             }
             ChannelData::StringSBC(data) => {
-                let mut buf = vec![0u8; cycle_count * n_bytes];
-                rdr.read_exact(&mut buf).expect("Could not read SBC String");
                 let mut decoder = WINDOWS_1252.new_decoder();
-                *data = vec![String::new(); cycle_count]; // initialisation
-                for (i, value) in buf.chunks(n_bytes).enumerate() {
+                for (i, value) in data_bytes.chunks(n_bytes).enumerate() {
                     let (_result, _size, _replacement) =
                         decoder.decode_to_string(value, &mut data[i], false);
                     data[i] = data[i].trim_end_matches('\0').to_string();
                 }
             }
             ChannelData::StringUTF8(data) => {
-                let mut buf = vec![0u8; cycle_count * n_bytes];
-                rdr.read_exact(&mut buf)
-                    .expect("Could not read String UTF8");
-                *data = vec![String::new(); cycle_count]; // initialisation
-                for (i, value) in buf.chunks(n_bytes).enumerate() {
+                for (i, value) in data_bytes.chunks(n_bytes).enumerate() {
                     data[i] = str::from_utf8(value)
                         .expect("Found invalid UTF-8")
                         .trim_end_matches('\0')
@@ -408,20 +404,16 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                 }
             }
             ChannelData::StringUTF16(data) => {
-                let mut buf = vec![0u8; cycle_count * n_bytes];
-                rdr.read_exact(&mut buf)
-                    .expect("Could not read String UTF16");
-                *data = vec![String::new(); cycle_count]; // initialisation
                 if cn.endian {
                     let mut decoder = UTF_16BE.new_decoder();
-                    for (i, value) in buf.chunks(n_bytes).enumerate() {
+                    for (i, value) in data_bytes.chunks(n_bytes).enumerate() {
                         let (_result, _size, _replacement) =
                             decoder.decode_to_string(value, &mut data[i], false);
                         data[i] = data[i].trim_end_matches('\0').to_string();
                     }
                 } else {
                     let mut decoder = UTF_16LE.new_decoder();
-                    for (i, value) in buf.chunks(n_bytes).enumerate() {
+                    for (i, value) in data_bytes.chunks(n_bytes).enumerate() {
                         let (_result, _size, _replacement) =
                             decoder.decode_to_string(value, &mut data[i], false);
                         data[i] = data[i].trim_end_matches('\0').to_string();
@@ -429,8 +421,8 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                 }
             }
             ChannelData::ByteArray(data) => {
-                for value in data.iter_mut() {
-                    rdr.read_exact(value).expect("Could not read byte array");
+                for (i, value) in data_bytes.chunks(n_bytes).enumerate() {
+                    data[i] = value.to_vec();
                 }
             }
             ChannelData::ArrayDInt8(data) => {
@@ -438,7 +430,9 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                     match &compo.block {
                         Compo::CA(ca) => {
                             let mut buf = vec![0; cycle_count * (ca.pnd as usize)];
-                            rdr.read_i8_into(&mut buf).expect("Could not read i8 array");
+                            Cursor::new(data_bytes)
+                                .read_i8_into(&mut buf)
+                                .expect("Could not read i8 array");
                             *data = Array::from_vec(buf)
                                 .to_shape(ca.shape.clone())
                                 .expect("conversion from vec<i8> to array dyn")
@@ -452,9 +446,7 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
-                            let mut buf = vec![0; cycle_count * (ca.pnd as usize)];
-                            rdr.read_exact(&mut buf).expect("Could not read u8 array");
-                            *data = Array::from_vec(buf)
+                            *data = Array::from_vec(data_bytes.to_vec())
                                 .to_shape(ca.shape.clone())
                                 .expect("conversion from vec<u8> to array dyn")
                                 .into_owned();
@@ -469,10 +461,12 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                         Compo::CA(ca) => {
                             let mut buf = vec![0; cycle_count * (ca.pnd as usize)];
                             if cn.endian {
-                                rdr.read_i16_into::<BigEndian>(&mut buf)
+                                Cursor::new(data_bytes)
+                                    .read_i16_into::<BigEndian>(&mut buf)
                                     .expect("Could not read be i16 array");
                             } else {
-                                rdr.read_i16_into::<LittleEndian>(&mut buf)
+                                Cursor::new(data_bytes)
+                                    .read_i16_into::<LittleEndian>(&mut buf)
                                     .expect("Could not read le i16 array");
                             }
                             *data = Array::from_vec(buf)
@@ -490,10 +484,12 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                         Compo::CA(ca) => {
                             let mut buf = vec![0; cycle_count * (ca.pnd as usize)];
                             if cn.endian {
-                                rdr.read_u16_into::<BigEndian>(&mut buf)
+                                Cursor::new(data_bytes)
+                                    .read_u16_into::<BigEndian>(&mut buf)
                                     .expect("Could not read be u16 array");
                             } else {
-                                rdr.read_u16_into::<LittleEndian>(&mut buf)
+                                Cursor::new(data_bytes)
+                                    .read_u16_into::<LittleEndian>(&mut buf)
                                     .expect("Could not read le 16 array");
                             }
                             *data = Array::from_vec(buf)
@@ -509,16 +505,11 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
-                            let mut buf =
-                                vec![
-                                    0u8;
-                                    cycle_count * (ca.pnd as usize) * std::mem::size_of::<f16>()
-                                ];
-                            rdr.read_exact(&mut buf).expect("Could not read f16 array");
                             let mut temp =
                                 ArrayD::<f32>::zeros(IxDyn(&[cycle_count * (ca.pnd as usize)])); // initialisation
                             if cn.endian {
-                                for (i, value) in buf.chunks(std::mem::size_of::<f16>()).enumerate()
+                                for (i, value) in
+                                    data_bytes.chunks(std::mem::size_of::<f16>()).enumerate()
                                 {
                                     temp[i] = f16::from_be_bytes(
                                         value.try_into().expect("Could not read be f16"),
@@ -526,7 +517,8 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                                     .to_f32();
                                 }
                             } else {
-                                for (i, value) in buf.chunks(std::mem::size_of::<f16>()).enumerate()
+                                for (i, value) in
+                                    data_bytes.chunks(std::mem::size_of::<f16>()).enumerate()
                                 {
                                     temp[i] = f16::from_le_bytes(
                                         value.try_into().expect("Could not read le f16"),
@@ -547,18 +539,16 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
-                            let mut buf = vec![0u8; cycle_count * (ca.pnd as usize) * n_bytes];
-                            rdr.read_exact(&mut buf).expect("Could not read i24 array");
                             let mut temp =
                                 ArrayD::<i32>::zeros(IxDyn(&[cycle_count * (ca.pnd as usize)])); // initialisation
                             if cn.endian {
-                                for (i, mut value) in buf.chunks(n_bytes).enumerate() {
+                                for (i, mut value) in data_bytes.chunks(n_bytes).enumerate() {
                                     temp[i] = value
                                         .read_i24::<BigEndian>()
                                         .expect("Could not read be i24");
                                 }
                             } else {
-                                for (i, mut value) in buf.chunks(n_bytes).enumerate() {
+                                for (i, mut value) in data_bytes.chunks(n_bytes).enumerate() {
                                     temp[i] = value
                                         .read_i24::<LittleEndian>()
                                         .expect("Could not read le i24");
@@ -577,18 +567,16 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
-                            let mut buf = vec![0u8; cycle_count * (ca.pnd as usize) * n_bytes];
-                            rdr.read_exact(&mut buf).expect("Could not read u24 array");
                             let mut temp =
                                 ArrayD::<u32>::zeros(IxDyn(&[cycle_count * (ca.pnd as usize)])); // initialisation
                             if cn.endian {
-                                for (i, mut value) in buf.chunks(n_bytes).enumerate() {
+                                for (i, mut value) in data_bytes.chunks(n_bytes).enumerate() {
                                     temp[i] = value
                                         .read_u24::<BigEndian>()
                                         .expect("Could not read be u24");
                                 }
                             } else {
-                                for (i, mut value) in buf.chunks(n_bytes).enumerate() {
+                                for (i, mut value) in data_bytes.chunks(n_bytes).enumerate() {
                                     temp[i] = value
                                         .read_u24::<LittleEndian>()
                                         .expect("Could not read le u24");
@@ -609,10 +597,12 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                         Compo::CA(ca) => {
                             let mut buf = vec![0; cycle_count * (ca.pnd as usize)];
                             if cn.endian {
-                                rdr.read_i32_into::<BigEndian>(&mut buf)
+                                Cursor::new(data_bytes)
+                                    .read_i32_into::<BigEndian>(&mut buf)
                                     .expect("Could not read be i32 array");
                             } else {
-                                rdr.read_i32_into::<LittleEndian>(&mut buf)
+                                Cursor::new(data_bytes)
+                                    .read_i32_into::<LittleEndian>(&mut buf)
                                     .expect("Could not read le i32 array");
                             }
                             *data = Array::from_vec(buf)
@@ -630,10 +620,12 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                         Compo::CA(ca) => {
                             let mut buf = vec![0; cycle_count * (ca.pnd as usize)];
                             if cn.endian {
-                                rdr.read_u32_into::<BigEndian>(&mut buf)
+                                Cursor::new(data_bytes)
+                                    .read_u32_into::<BigEndian>(&mut buf)
                                     .expect("Could not read be u32 array");
                             } else {
-                                rdr.read_u32_into::<LittleEndian>(&mut buf)
+                                Cursor::new(data_bytes)
+                                    .read_u32_into::<LittleEndian>(&mut buf)
                                     .expect("Could not read le u32 array");
                             }
                             *data = Array::from_vec(buf)
@@ -651,10 +643,12 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                         Compo::CA(ca) => {
                             let mut buf = vec![0f32; cycle_count * (ca.pnd as usize)];
                             if cn.endian {
-                                rdr.read_f32_into::<BigEndian>(&mut buf)
+                                Cursor::new(data_bytes)
+                                    .read_f32_into::<BigEndian>(&mut buf)
                                     .expect("Could not read be f32 array");
                             } else {
-                                rdr.read_f32_into::<LittleEndian>(&mut buf)
+                                Cursor::new(data_bytes)
+                                    .read_f32_into::<LittleEndian>(&mut buf)
                                     .expect("Could not read le f32 array");
                             }
                             *data = Array::from_vec(buf)
@@ -670,18 +664,16 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
-                            let mut buf = vec![0u8; cycle_count * (ca.pnd as usize) * n_bytes];
-                            rdr.read_exact(&mut buf).expect("Could not read i48 array");
                             let mut temp_data =
                                 ArrayD::<i64>::zeros(IxDyn(&[cycle_count * (ca.pnd as usize)])); // initialisation
                             if cn.endian {
-                                for (i, mut value) in buf.chunks(n_bytes).enumerate() {
+                                for (i, mut value) in data_bytes.chunks(n_bytes).enumerate() {
                                     temp_data[i] = value
                                         .read_i48::<BigEndian>()
                                         .expect("Could not read be i48");
                                 }
                             } else {
-                                for (i, mut value) in buf.chunks(n_bytes).enumerate() {
+                                for (i, mut value) in data_bytes.chunks(n_bytes).enumerate() {
                                     temp_data[i] = value
                                         .read_i48::<LittleEndian>()
                                         .expect("Could not read le i48");
@@ -700,14 +692,12 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
-                            let mut buf = vec![0u8; cycle_count * (ca.pnd as usize) * n_bytes];
-                            rdr.read_exact(&mut buf).expect("Could not read u48 array");
                             let mut temp_data =
                                 ArrayD::<u64>::zeros(IxDyn(&[cycle_count * (ca.pnd as usize)])); // initialisation
                             if cn.endian {
                                 // big endian
                                 if n_bytes == 6 {
-                                    for (i, mut value) in buf.chunks(n_bytes).enumerate() {
+                                    for (i, mut value) in data_bytes.chunks(n_bytes).enumerate() {
                                         temp_data[i] = value
                                             .read_u48::<BigEndian>()
                                             .expect("Could not read be u48");
@@ -715,7 +705,7 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                                 } else {
                                     // n_bytes = 5
                                     let mut temp = [0u8; 6];
-                                    for (i, value) in buf.chunks(n_bytes).enumerate() {
+                                    for (i, value) in data_bytes.chunks(n_bytes).enumerate() {
                                         temp[0..5].copy_from_slice(&value[0..n_bytes]);
                                         temp_data[i] = Box::new(&temp[..])
                                             .read_u48::<BigEndian>()
@@ -724,7 +714,7 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                                 }
                             } else if n_bytes == 6 {
                                 // little endian
-                                for (i, mut value) in buf.chunks(n_bytes).enumerate() {
+                                for (i, mut value) in data_bytes.chunks(n_bytes).enumerate() {
                                     temp_data[i] = value
                                         .read_u48::<LittleEndian>()
                                         .expect("Could not read le u48");
@@ -732,9 +722,9 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                             } else {
                                 // n_bytes = 5
                                 let mut temp = [0u8; 6];
-                                for (i, value) in buf.chunks(n_bytes).enumerate() {
+                                for (i, value) in data_bytes.chunks(n_bytes).enumerate() {
                                     temp[0..5].copy_from_slice(&value[0..n_bytes]);
-                                    temp_data[i] = Box::new(&buf[..])
+                                    temp_data[i] = Box::new(&temp[..])
                                         .read_u48::<LittleEndian>()
                                         .expect("Could not read le u48 from 5 bytes");
                                 }
@@ -754,10 +744,12 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                         Compo::CA(ca) => {
                             let mut buf = vec![0; cycle_count * (ca.pnd as usize)];
                             if cn.endian {
-                                rdr.read_i64_into::<BigEndian>(&mut buf)
+                                Cursor::new(data_bytes)
+                                    .read_i64_into::<BigEndian>(&mut buf)
                                     .expect("Could not read be i64 array");
                             } else {
-                                rdr.read_i64_into::<LittleEndian>(&mut buf)
+                                Cursor::new(data_bytes)
+                                    .read_i64_into::<LittleEndian>(&mut buf)
                                     .expect("Could not read le i64 array");
                             }
                             *data = Array::from_vec(buf)
@@ -776,10 +768,12 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                             if n_bytes == 8 {
                                 let mut buf = vec![0; cycle_count * (ca.pnd as usize)];
                                 if cn.endian {
-                                    rdr.read_u64_into::<BigEndian>(&mut buf)
+                                    Cursor::new(data_bytes)
+                                        .read_u64_into::<BigEndian>(&mut buf)
                                         .expect("Could not read be u64 array");
                                 } else {
-                                    rdr.read_u64_into::<LittleEndian>(&mut buf)
+                                    Cursor::new(data_bytes)
+                                        .read_u64_into::<LittleEndian>(&mut buf)
                                         .expect("Could not read le u64 array");
                                 }
                                 *data = Array::from_vec(buf)
@@ -788,18 +782,16 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                                     .into_owned();
                             } else {
                                 // n_bytes = 7
-                                let mut buf = vec![0u8; cycle_count * (ca.pnd as usize) * n_bytes];
-                                rdr.read_exact(&mut buf).expect("Could not read u64 array");
                                 let mut temp_data =
                                     ArrayD::<u64>::zeros(IxDyn(&[cycle_count * (ca.pnd as usize)]));
                                 let mut temp = [0u8; std::mem::size_of::<u64>()];
                                 if cn.endian {
-                                    for (i, value) in buf.chunks(n_bytes).enumerate() {
+                                    for (i, value) in data_bytes.chunks(n_bytes).enumerate() {
                                         temp[0..7].copy_from_slice(&value[0..7]);
                                         temp_data[i] = u64::from_be_bytes(temp);
                                     }
                                 } else {
-                                    for (i, value) in buf.chunks(n_bytes).enumerate() {
+                                    for (i, value) in data_bytes.chunks(n_bytes).enumerate() {
                                         temp[0..7].copy_from_slice(&value[0..7]);
                                         temp_data[i] = u64::from_le_bytes(temp);
                                     }
@@ -820,10 +812,12 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                         Compo::CA(ca) => {
                             let mut buf = vec![0f64; cycle_count * (ca.pnd as usize)];
                             if cn.endian {
-                                rdr.read_f64_into::<BigEndian>(&mut buf)
+                                Cursor::new(data_bytes)
+                                    .read_f64_into::<BigEndian>(&mut buf)
                                     .expect("Could not read be f64 array");
                             } else {
-                                rdr.read_f64_into::<LittleEndian>(&mut buf)
+                                Cursor::new(data_bytes)
+                                    .read_f64_into::<LittleEndian>(&mut buf)
                                     .expect("Could not read le f64 array");
                             }
                             *data = Array::from_vec(buf)
@@ -839,9 +833,6 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
-                            let mut buf = vec![0u8; cycle_count * (ca.pnd as usize) * n_bytes];
-                            rdr.read_exact(&mut buf)
-                                .expect("Could not read complex16 array");
                             let mut re: f32;
                             let mut im: f32;
                             let mut re_val: &[u8];
@@ -850,8 +841,9 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                                 cycle_count * (ca.pnd as usize),
                             ])); // initialisation
                             if cn.endian {
-                                for (i, value) in
-                                    buf.chunks(std::mem::size_of::<f16>() * 2).enumerate()
+                                for (i, value) in data_bytes
+                                    .chunks(std::mem::size_of::<f16>() * 2)
+                                    .enumerate()
                                 {
                                     re_val = &value[0..std::mem::size_of::<f16>()];
                                     im_val = &value[std::mem::size_of::<f16>()
@@ -871,8 +863,9 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                                     temp_data[i] = Complex::new(re, im);
                                 }
                             } else {
-                                for (i, value) in
-                                    buf.chunks(std::mem::size_of::<f16>() * 2).enumerate()
+                                for (i, value) in data_bytes
+                                    .chunks(std::mem::size_of::<f16>() * 2)
+                                    .enumerate()
                                 {
                                     re_val = &value[0..std::mem::size_of::<f16>()];
                                     im_val = &value[std::mem::size_of::<f16>()
@@ -905,9 +898,6 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
-                            let mut buf = vec![0u8; cycle_count * (ca.pnd as usize) * n_bytes];
-                            rdr.read_exact(&mut buf)
-                                .expect("Could not read complex32 array");
                             let mut re: f32;
                             let mut im: f32;
                             let mut re_val: &[u8];
@@ -916,8 +906,9 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                                 cycle_count * (ca.pnd as usize)
                             ])); // initialisation
                             if cn.endian {
-                                for (i, value) in
-                                    buf.chunks(std::mem::size_of::<f32>() * 2).enumerate()
+                                for (i, value) in data_bytes
+                                    .chunks(std::mem::size_of::<f32>() * 2)
+                                    .enumerate()
                                 {
                                     re_val = &value[0..std::mem::size_of::<f32>()];
                                     im_val = &value[std::mem::size_of::<f32>()
@@ -935,8 +926,9 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                                     temp[i] = Complex::new(re, im);
                                 }
                             } else {
-                                for (i, value) in
-                                    buf.chunks(std::mem::size_of::<f32>() * 2).enumerate()
+                                for (i, value) in data_bytes
+                                    .chunks(std::mem::size_of::<f32>() * 2)
+                                    .enumerate()
                                 {
                                     re_val = &value[0..std::mem::size_of::<f32>()];
                                     im_val = &value[std::mem::size_of::<f32>()
@@ -967,9 +959,6 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
-                            let mut buf = vec![0u8; cycle_count * (ca.pnd as usize) * n_bytes];
-                            rdr.read_exact(&mut buf)
-                                .expect("Could not read complex64 array");
                             let mut re: f64;
                             let mut im: f64;
                             let mut re_val: &[u8];
@@ -978,8 +967,9 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                                 cycle_count * (ca.pnd as usize)
                             ])); // initialisation
                             if cn.endian {
-                                for (i, value) in
-                                    buf.chunks(std::mem::size_of::<f64>() * 2).enumerate()
+                                for (i, value) in data_bytes
+                                    .chunks(std::mem::size_of::<f64>() * 2)
+                                    .enumerate()
                                 {
                                     re_val = &value[0..std::mem::size_of::<f64>()];
                                     im_val = &value[std::mem::size_of::<f64>()
@@ -993,8 +983,9 @@ pub fn read_one_channel_array(rdr: &mut BufReader<&File>, cn: &mut Cn4, cycle_co
                                     temp[i] = Complex::new(re, im);
                                 }
                             } else {
-                                for (i, value) in
-                                    buf.chunks(std::mem::size_of::<f64>() * 2).enumerate()
+                                for (i, value) in data_bytes
+                                    .chunks(std::mem::size_of::<f64>() * 2)
+                                    .enumerate()
                                 {
                                     re_val = &value[0..std::mem::size_of::<f64>()];
                                     im_val = &value[std::mem::size_of::<f64>()
@@ -1040,7 +1031,7 @@ pub fn read_channels_from_bytes(
     let vlsd_channels: Arc<Mutex<Vec<i32>>> = Arc::new(Mutex::new(Vec::new()));
     // iterates for each channel in parallel with rayon crate
     channels.par_iter_mut()
-        .filter(|(_cn_record_position, cn)| {channel_names_to_read_in_dg.contains(&cn.unique_name) && !cn.data.is_empty()})
+        .filter(|(_cn_record_position, cn)| {channel_names_to_read_in_dg.contains(&cn.unique_name) && !cn.data.is_empty() && !cn.channel_data_valid})
         .for_each(|(rec_pos, cn)| {
         if cn.block.cn_type == 0
             || cn.block.cn_type == 2
