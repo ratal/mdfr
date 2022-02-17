@@ -2873,24 +2873,14 @@ impl Ld4Block {
     }
     pub fn ld_data(&self) -> Vec<i64> {
         if (1u32 << 31) & self.ld_flags > 0 {
-            self.ld_links
-                .iter()
-                .skip(1)
-                .step_by(2)
-                .copied()
-                .collect()
+            self.ld_links.iter().skip(1).step_by(2).copied().collect()
         } else {
             self.ld_links[1..].to_vec()
         }
     }
     pub fn ld_invalid_data(&self) -> Vec<i64> {
         if (1u32 << 31) & self.ld_flags > 0 {
-            self.ld_links
-                .iter()
-                .skip(2)
-                .step_by(2)
-                .copied()
-                .collect()
+            self.ld_links.iter().skip(2).step_by(2).copied().collect()
         } else {
             Vec::<i64>::new()
         }
