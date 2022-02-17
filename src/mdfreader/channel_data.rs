@@ -740,9 +740,9 @@ impl ChannelData {
                 ChannelData::Complex16(_) => 16,
                 ChannelData::Complex32(_) => 16,
                 ChannelData::Complex64(_) => 16,
-                ChannelData::StringSBC(_) => 6,
+                ChannelData::StringSBC(_) => 7,
                 ChannelData::StringUTF8(_) => 7,
-                ChannelData::StringUTF16(_) => 9,
+                ChannelData::StringUTF16(_) => 7,
                 ChannelData::ByteArray(_) => 10,
                 ChannelData::ArrayDInt8(_) => 3,
                 ChannelData::ArrayDUInt8(_) => 1,
@@ -784,9 +784,9 @@ impl ChannelData {
                 ChannelData::Complex16(_) => 15,
                 ChannelData::Complex32(_) => 15,
                 ChannelData::Complex64(_) => 15,
-                ChannelData::StringSBC(_) => 6,
+                ChannelData::StringSBC(_) => 7,
                 ChannelData::StringUTF8(_) => 7,
-                ChannelData::StringUTF16(_) => 8,
+                ChannelData::StringUTF16(_) => 7,
                 ChannelData::ByteArray(_) => 10,
                 ChannelData::ArrayDInt8(_) => 2,
                 ChannelData::ArrayDUInt8(_) => 0,
@@ -1170,32 +1170,32 @@ impl ChannelData {
     }
     pub fn to_bytes(&self) -> Vec<u8> {
         match self {
-            ChannelData::Int8(a) => a.par_iter().flat_map(|x| x.to_le_bytes()).collect(),
+            ChannelData::Int8(a) => a.par_iter().flat_map(|x| x.to_ne_bytes()).collect(),
             ChannelData::UInt8(a) => a.to_vec(),
-            ChannelData::Int16(a) => a.par_iter().flat_map(|x| x.to_le_bytes()).collect(),
-            ChannelData::UInt16(a) => a.par_iter().flat_map(|x| x.to_le_bytes()).collect(),
-            ChannelData::Float16(a) => a.par_iter().flat_map(|x| x.to_le_bytes()).collect(),
-            ChannelData::Int24(a) => a.par_iter().flat_map(|x| x.to_le_bytes()).collect(),
-            ChannelData::UInt24(a) => a.par_iter().flat_map(|x| x.to_le_bytes()).collect(),
-            ChannelData::Int32(a) => a.par_iter().flat_map(|x| x.to_le_bytes()).collect(),
-            ChannelData::UInt32(a) => a.par_iter().flat_map(|x| x.to_le_bytes()).collect(),
-            ChannelData::Float32(a) => a.par_iter().flat_map(|x| x.to_le_bytes()).collect(),
-            ChannelData::Int48(a) => a.par_iter().flat_map(|x| x.to_le_bytes()).collect(),
-            ChannelData::UInt48(a) => a.par_iter().flat_map(|x| x.to_le_bytes()).collect(),
-            ChannelData::Int64(a) => a.par_iter().flat_map(|x| x.to_le_bytes()).collect(),
-            ChannelData::UInt64(a) => a.par_iter().flat_map(|x| x.to_le_bytes()).collect(),
-            ChannelData::Float64(a) => a.par_iter().flat_map(|x| x.to_le_bytes()).collect(),
+            ChannelData::Int16(a) => a.par_iter().flat_map(|x| x.to_ne_bytes()).collect(),
+            ChannelData::UInt16(a) => a.par_iter().flat_map(|x| x.to_ne_bytes()).collect(),
+            ChannelData::Float16(a) => a.par_iter().flat_map(|x| x.to_ne_bytes()).collect(),
+            ChannelData::Int24(a) => a.par_iter().flat_map(|x| x.to_ne_bytes()).collect(),
+            ChannelData::UInt24(a) => a.par_iter().flat_map(|x| x.to_ne_bytes()).collect(),
+            ChannelData::Int32(a) => a.par_iter().flat_map(|x| x.to_ne_bytes()).collect(),
+            ChannelData::UInt32(a) => a.par_iter().flat_map(|x| x.to_ne_bytes()).collect(),
+            ChannelData::Float32(a) => a.par_iter().flat_map(|x| x.to_ne_bytes()).collect(),
+            ChannelData::Int48(a) => a.par_iter().flat_map(|x| x.to_ne_bytes()).collect(),
+            ChannelData::UInt48(a) => a.par_iter().flat_map(|x| x.to_ne_bytes()).collect(),
+            ChannelData::Int64(a) => a.par_iter().flat_map(|x| x.to_ne_bytes()).collect(),
+            ChannelData::UInt64(a) => a.par_iter().flat_map(|x| x.to_ne_bytes()).collect(),
+            ChannelData::Float64(a) => a.par_iter().flat_map(|x| x.to_ne_bytes()).collect(),
             ChannelData::Complex16(a) => a
                 .par_iter()
-                .flat_map(|x| [x.re.to_le_bytes(), x.im.to_le_bytes()].concat())
+                .flat_map(|x| [x.re.to_ne_bytes(), x.im.to_ne_bytes()].concat())
                 .collect(),
             ChannelData::Complex32(a) => a
                 .par_iter()
-                .flat_map(|x| [x.re.to_le_bytes(), x.im.to_le_bytes()].concat())
+                .flat_map(|x| [x.re.to_ne_bytes(), x.im.to_ne_bytes()].concat())
                 .collect(),
             ChannelData::Complex64(a) => a
                 .par_iter()
-                .flat_map(|x| [x.re.to_le_bytes(), x.im.to_le_bytes()].concat())
+                .flat_map(|x| [x.re.to_ne_bytes(), x.im.to_ne_bytes()].concat())
                 .collect(),
             ChannelData::StringSBC(a) => {
                 let nbytes = self.byte_count() as usize;
@@ -1240,32 +1240,32 @@ impl ChannelData {
                     .collect()
             }
             ChannelData::ByteArray(a) => a.iter().flatten().cloned().collect::<Vec<u8>>(),
-            ChannelData::ArrayDInt8(a) => a.par_iter().flat_map(|x| x.to_le_bytes()).collect(),
-            ChannelData::ArrayDUInt8(a) => a.par_iter().flat_map(|x| x.to_le_bytes()).collect(),
-            ChannelData::ArrayDInt16(a) => a.par_iter().flat_map(|x| x.to_le_bytes()).collect(),
-            ChannelData::ArrayDUInt16(a) => a.par_iter().flat_map(|x| x.to_le_bytes()).collect(),
-            ChannelData::ArrayDFloat16(a) => a.par_iter().flat_map(|x| x.to_le_bytes()).collect(),
-            ChannelData::ArrayDInt24(a) => a.par_iter().flat_map(|x| x.to_le_bytes()).collect(),
-            ChannelData::ArrayDUInt24(a) => a.par_iter().flat_map(|x| x.to_le_bytes()).collect(),
-            ChannelData::ArrayDInt32(a) => a.par_iter().flat_map(|x| x.to_le_bytes()).collect(),
-            ChannelData::ArrayDUInt32(a) => a.par_iter().flat_map(|x| x.to_le_bytes()).collect(),
-            ChannelData::ArrayDFloat32(a) => a.par_iter().flat_map(|x| x.to_le_bytes()).collect(),
-            ChannelData::ArrayDInt48(a) => a.par_iter().flat_map(|x| x.to_le_bytes()).collect(),
-            ChannelData::ArrayDUInt48(a) => a.par_iter().flat_map(|x| x.to_le_bytes()).collect(),
-            ChannelData::ArrayDInt64(a) => a.par_iter().flat_map(|x| x.to_le_bytes()).collect(),
-            ChannelData::ArrayDUInt64(a) => a.par_iter().flat_map(|x| x.to_le_bytes()).collect(),
-            ChannelData::ArrayDFloat64(a) => a.par_iter().flat_map(|x| x.to_le_bytes()).collect(),
+            ChannelData::ArrayDInt8(a) => a.par_iter().flat_map(|x| x.to_ne_bytes()).collect(),
+            ChannelData::ArrayDUInt8(a) => a.par_iter().flat_map(|x| x.to_ne_bytes()).collect(),
+            ChannelData::ArrayDInt16(a) => a.par_iter().flat_map(|x| x.to_ne_bytes()).collect(),
+            ChannelData::ArrayDUInt16(a) => a.par_iter().flat_map(|x| x.to_ne_bytes()).collect(),
+            ChannelData::ArrayDFloat16(a) => a.par_iter().flat_map(|x| x.to_ne_bytes()).collect(),
+            ChannelData::ArrayDInt24(a) => a.par_iter().flat_map(|x| x.to_ne_bytes()).collect(),
+            ChannelData::ArrayDUInt24(a) => a.par_iter().flat_map(|x| x.to_ne_bytes()).collect(),
+            ChannelData::ArrayDInt32(a) => a.par_iter().flat_map(|x| x.to_ne_bytes()).collect(),
+            ChannelData::ArrayDUInt32(a) => a.par_iter().flat_map(|x| x.to_ne_bytes()).collect(),
+            ChannelData::ArrayDFloat32(a) => a.par_iter().flat_map(|x| x.to_ne_bytes()).collect(),
+            ChannelData::ArrayDInt48(a) => a.par_iter().flat_map(|x| x.to_ne_bytes()).collect(),
+            ChannelData::ArrayDUInt48(a) => a.par_iter().flat_map(|x| x.to_ne_bytes()).collect(),
+            ChannelData::ArrayDInt64(a) => a.par_iter().flat_map(|x| x.to_ne_bytes()).collect(),
+            ChannelData::ArrayDUInt64(a) => a.par_iter().flat_map(|x| x.to_ne_bytes()).collect(),
+            ChannelData::ArrayDFloat64(a) => a.par_iter().flat_map(|x| x.to_ne_bytes()).collect(),
             ChannelData::ArrayDComplex16(a) => a
                 .par_iter()
-                .flat_map(|x| [x.re.to_le_bytes(), x.im.to_le_bytes()].concat())
+                .flat_map(|x| [x.re.to_ne_bytes(), x.im.to_ne_bytes()].concat())
                 .collect(),
             ChannelData::ArrayDComplex32(a) => a
                 .par_iter()
-                .flat_map(|x| [x.re.to_le_bytes(), x.im.to_le_bytes()].concat())
+                .flat_map(|x| [x.re.to_ne_bytes(), x.im.to_ne_bytes()].concat())
                 .collect(),
             ChannelData::ArrayDComplex64(a) => a
                 .par_iter()
-                .flat_map(|x| [x.re.to_le_bytes(), x.im.to_le_bytes()].concat())
+                .flat_map(|x| [x.re.to_ne_bytes(), x.im.to_ne_bytes()].concat())
                 .collect(),
         }
     }

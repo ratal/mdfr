@@ -286,7 +286,14 @@ fn create_blocks(
             cn_block.cn_sync_type = 1; // Default is time
         }
     }
-    cn_block.cn_data_type = cn.data.data_type(cn.endian);
+
+    let machine_endian: bool = if cfg!(target_endian = "big") {
+        true
+    } else {
+        false
+    };
+    cn_block.cn_data_type = cn.data.data_type(machine_endian);
+
     cn_block.cn_bit_count = bit_count;
 
     pointer += cn_block.cn_len as i64;
@@ -373,7 +380,7 @@ fn create_blocks(
             data_ndim > 0,
         ),
         block: cn_block,
-        endian: cn.endian,
+        endian: machine_endian,
         block_position: cn_position,
         pos_byte_beg: 0,
         n_bytes: cg_block.cg_data_bytes,
