@@ -82,9 +82,7 @@ impl MdfInfo4 {
         if !self.all_data_in_memory || !self.get_channel_data_validity(channel_name) {
             self.load_channels_data_in_memory(channel_names); // will read data only if array is empty
         }
-        let (dt, mask) = self.get_channel_data_from_memory(channel_name);
-        let data: Option<&ChannelData> = dt;
-        (data, mask)
+        self.get_channel_data_from_memory(channel_name)
     }
     /// Returns the channel's data ndarray if present in memory, otherwise None.
     pub fn get_channel_data_from_memory(
