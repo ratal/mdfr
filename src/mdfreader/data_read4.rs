@@ -17,7 +17,7 @@ use std::{
 };
 
 /// reads file if data block contains only one channel in a single DV
-pub fn read_one_channel_array(data_bytes: &mut Vec<u8>, cn: &mut Cn4, cycle_count: usize) {
+pub fn read_one_channel_array(data_bytes: &Vec<u8>, cn: &mut Cn4, cycle_count: usize) {
     if cn.block.cn_type == 0
         || cn.block.cn_type == 2
         || cn.block.cn_type == 4

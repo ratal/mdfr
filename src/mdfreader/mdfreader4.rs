@@ -257,11 +257,9 @@ fn read_data(
                     let cycle_count = channel_group.block.cg_cycle_count;
                     // only one channel, can be optimised
                     for (_rec_pos, cn) in channel_group.cn.iter_mut() {
-                        let block_header: Dt4Block =
-                            rdr.read_le().expect("Could not read DV block header");
                         let mut buf = vec![0u8; block_header.len as usize - 24];
                         rdr.read_exact(&mut buf).expect("Could not read DV block");
-                        read_one_channel_array(&mut buf, cn, cycle_count as usize);
+                        read_one_channel_array(&buf, cn, cycle_count as usize);
                     }
                 }
                 _ => (),
@@ -581,9 +579,9 @@ fn parser_ld4(
             channel_names_to_read_in_dg,
         );
         if id == "##DZ".as_bytes() {
-            let (mut dt, block_header) = parse_dz(rdr);
+            let (dt, block_header) = parse_dz(rdr);
             for (_rec_pos, cn) in channel_group.cn.iter_mut() {
-                read_one_channel_array(&mut dt, cn, channel_group.block.cg_cycle_count as usize);
+                read_one_channel_array(&dt, cn, channel_group.block.cg_cycle_count as usize);
             }
             position = ld_data + block_header.len as i64;
         } else {
@@ -591,7 +589,7 @@ fn parser_ld4(
             let mut buf = vec![0u8; block_header.len as usize - 24];
             rdr.read_exact(&mut buf).expect("Could not read Dt4 block");
             for (_rec_pos, cn) in channel_group.cn.iter_mut() {
-                read_one_channel_array(&mut buf, cn, channel_group.block.cg_cycle_count as usize);
+                read_one_channel_array(&buf, cn, channel_group.block.cg_cycle_count as usize);
             }
             position = ld_data + block_header.len as i64;
         }
