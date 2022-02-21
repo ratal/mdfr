@@ -3,7 +3,6 @@ use binrw::{binrw, BinReaderExt, BinWriterExt};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::Local;
 use chrono::{naive::NaiveDateTime, DateTime, Utc};
-use dashmap::DashMap;
 use ndarray::{Array1, Order};
 use rayon::prelude::*;
 use roxmltree;
@@ -15,7 +14,6 @@ use std::io::{prelude::*, BufWriter};
 use std::{fmt, str};
 use std::{
     io::{BufReader, Cursor},
-    sync::Arc,
 };
 use transpose;
 use yazi::{decompress, Adler32, Format};
@@ -238,7 +236,7 @@ impl MdfInfo4 {
         }
         self.all_data_in_memory = false;
     }
-    pub fn write(&mut self, file_name: &str) -> MdfInfo4 {
+    pub fn write(&mut self, file_name: &str, compression: bool) -> MdfInfo4 {
         let f: File = OpenOptions::new()
             .read(true)
             .write(true)
@@ -246,7 +244,7 @@ impl MdfInfo4 {
             .open(file_name)
             .expect("Cannot create the file");
         let mut rdr = BufWriter::new(&f);
-        mdfwriter4(&mut rdr, self, file_name)
+        mdfwriter4(&mut rdr, self, file_name, compression)
     }
     pub fn new(file_name: &str, n_channels: usize) -> MdfInfo4 {
         MdfInfo4 {
@@ -409,7 +407,7 @@ fn parse_block_short(
 }
 
 /// metadata are either stored in TX (text) or MD (xml) blocks for mdf version 4
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum MetaDataBlockType {
     MdBlock,
     MdParsed,
@@ -505,18 +503,21 @@ impl MetaData {
         MetaData {
             block: header,
             raw_data: Vec::new(),
-            block_type: MetaDataBlockType::TX,
+            block_type,
             comments: HashMap::new(),
             parent_block_type,
         }
     }
     pub fn parse_xml(&mut self) {
-        if let MetaDataBlockType::MdBlock = self.block_type {
-            match self.parent_block_type {
-                BlockType::HD => self.parse_hd_xml(),
-                BlockType::FH => self.parse_fh_xml(),
-                _ => self.parse_generic_xml(),
-            }
+        match self.block_type {
+            MetaDataBlockType::MdBlock =>  {
+                match self.parent_block_type {
+                    BlockType::HD => self.parse_hd_xml(),
+                    BlockType::FH => self.parse_fh_xml(),
+                    _ => self.parse_generic_xml(),
+                }
+            },
+            _ => {},
         }
     }
     pub fn get_data_string(&self) -> String {
@@ -1194,7 +1195,7 @@ fn identify_vlsd_cg(cg: &mut HashMap<u64, Cg4>) {
 /// that are in sharable fields and holds CC, SI, TX and MD blocks
 #[derive(Debug, Default, Clone)]
 pub struct SharableBlocks {
-    pub(crate) md_tx: Arc<DashMap<i64, MetaData>>,
+    pub(crate) md_tx: HashMap<i64, MetaData>,
     pub(crate) cc: HashMap<i64, Cc4Block>,
     pub(crate) si: HashMap<i64, Si4Block>,
 }
@@ -1203,7 +1204,7 @@ pub struct SharableBlocks {
 impl fmt::Display for SharableBlocks {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "MD TX comments : \n")?;
-        for c in self.md_tx.iter() {
+        for (k, c) in self.md_tx.iter() {
             match c.block_type {
                 MetaDataBlockType::MdParsed => {
                     for (tag, text) in c.comments.iter() {
@@ -1257,17 +1258,18 @@ impl SharableBlocks {
         };
         comments
     }
-    pub fn extract_xml(&self) {
+    pub fn extract_xml(&mut self) {
         self.md_tx
             .par_iter_mut()
-            .for_each(|mut val| val.parse_xml());
+            .filter(|(_k, v)| v.block_type == MetaDataBlockType::MdBlock)
+            .for_each(|(_k, val)| val.parse_xml());
     }
     pub fn new(n_channels: usize) -> SharableBlocks {
-        let md_tx: DashMap<i64, MetaData> = DashMap::with_capacity(n_channels);
+        let md_tx: HashMap<i64, MetaData> = HashMap::with_capacity(n_channels);
         let cc: HashMap<i64, Cc4Block> = HashMap::new();
         let si: HashMap<i64, Si4Block> = HashMap::new();
         SharableBlocks {
-            md_tx: Arc::new(md_tx),
+            md_tx,
             cc,
             si,
         }

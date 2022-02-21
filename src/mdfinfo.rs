@@ -8,13 +8,12 @@ use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, Read};
 use std::str;
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap};
 
 pub mod mdfinfo3;
 pub mod mdfinfo4;
 
 use binrw::io::Cursor;
-use dashmap::DashMap;
 use mdfinfo3::{hd3_comment_parser, hd3_parser, parse_dg3, MdfInfo3, SharableBlocks3};
 use mdfinfo4::{
     build_channel_db, hd4_parser, parse_at4, parse_dg4, parse_ev4, parse_fh, MdfInfo4,
@@ -131,7 +130,7 @@ impl MdfInfo {
             }))
         } else {
             let mut sharable: SharableBlocks = SharableBlocks {
-                md_tx: Arc::new(DashMap::new()),
+                md_tx: HashMap::new(),
                 cc: HashMap::new(),
                 si: HashMap::new(),
             };
@@ -273,14 +272,14 @@ impl MdfInfo {
         }
     }
     /// Writes mdf4 file
-    pub fn write(&mut self, file_name: &str) -> MdfInfo {
+    pub fn write(&mut self, file_name: &str, compression: bool) -> MdfInfo {
         match self {
             MdfInfo::V3(_mdfinfo3) => {
                 // TODO convert mdf3 to mdf4
                 // write mdf4
                 todo!();
             }
-            MdfInfo::V4(mdfinfo4) => MdfInfo::V4(Box::new(mdfinfo4.write(file_name))),
+            MdfInfo::V4(mdfinfo4) => MdfInfo::V4(Box::new(mdfinfo4.write(file_name, compression))),
         }
     }
 }
