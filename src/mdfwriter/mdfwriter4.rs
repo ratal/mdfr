@@ -9,7 +9,7 @@ use crate::{
         Composition, Dg4, Dg4Block, Dz4Block, FhBlock, Ld4Block, MdfInfo4, MetaData,
         MetaDataBlockType,
     },
-    mdfreader::channel_data::data_type_init,
+    mdfreader::channel_data::{data_type_init, ChannelData},
 };
 use binrw::BinWriterExt;
 use std::fs::File;
@@ -100,83 +100,93 @@ pub fn mdfwriter4<'a>(
             for (_rec_pos, cn) in cg.cn.iter() {
                 let (dt, m) = info.get_channel_data(&cn.unique_name);
                 if let Some(data) = dt {
-                    let id_ld: [u8; 4] = [35, 35, 76, 68]; // ##LD
-                    let mut ld_block = Ld4Block::default();
-                    dg.block.dg_data = pointer;
-                    ld_block.ld_count = 1;
-                    ld_block.ld_sample_offset.push(0);
-                    if cn.invalid_mask.is_some() {
-                        ld_block.ld_n_links = (ld_block.ld_count * 2 + 1) as u64;
-                        ld_block.ld_flags = 1u32 << 31;
-                    } else {
-                        ld_block.ld_n_links = (ld_block.ld_count + 1) as u64;
-                        ld_block.ld_flags = 0b0;
-                    }
-                    ld_block.ld_len = 40 + (ld_block.ld_n_links * 8) as u64;
-                    pointer += ld_block.ld_len as i64;
-                    ld_block.ld_links.push(pointer);
-
-                    let id_dz: [u8; 4] = [35, 35, 68, 90]; // ##DZ
-                    let mut dz_block = Dz4Block::default();
-                    dz_block.dz_org_data_length =
-                        (data.len() * data.bit_count() as usize / 8) as u64;
-                    let compressed_data =
-                        compress(&data.to_bytes(), Format::Zlib, CompressionLevel::Default)
-                            .expect("Could not compress invalid data");
-                    dz_block.dz_data_length = compressed_data.len() as u64;
-                    let byte_aligned =
-                        ((dz_block.dz_data_length / 8 + 1) * 8 - dz_block.dz_data_length) as usize;
-                    dz_block.dz_data_length = compressed_data.len() as u64 + byte_aligned as u64;
-                    dz_block.len = dz_block.dz_data_length + 48;
-                    pointer += dz_block.len as i64;
-                    if cn.invalid_mask.is_some() {
+                    if cn.data.bit_count() > 0 { // empty strings are not written
+                        let id_ld: [u8; 4] = [35, 35, 76, 68]; // ##LD
+                        let mut ld_block = Ld4Block::default();
+                        dg.block.dg_data = pointer;
+                        ld_block.ld_count = 1;
+                        ld_block.ld_sample_offset.push(0);
+                        if cn.invalid_mask.is_some() {
+                            ld_block.ld_n_links = (ld_block.ld_count * 2 + 1) as u64;
+                            ld_block.ld_flags = 1u32 << 31;
+                        } else {
+                            ld_block.ld_n_links = (ld_block.ld_count + 1) as u64;
+                            ld_block.ld_flags = 0b0;
+                        }
+                        ld_block.ld_len = 40 + (ld_block.ld_n_links * 8) as u64;
+                        pointer += ld_block.ld_len as i64;
                         ld_block.ld_links.push(pointer);
-                    }
 
-                    // Writes blocks
-                    writer.write_le(&id_ld).expect("Could not write LDBlock id");
-                    writer.write_le(&ld_block).expect("Could not write LDBlock");
-                    writer.write_le(&id_dz).expect("Could not write DZBlock id");
-                    writer.write_le(&dz_block).expect("Could not write DZBlock");
-                    writer
-                        .write_all(&compressed_data)
-                        .expect("Could not write data");
-                    // 8 byte align
-                    writer
-                        .write_all(&vec![0; byte_aligned])
-                        .expect("Could not align written data to 8 bytes");
+                        if compression {
+                            let id_dz: [u8; 4] = [35, 35, 68, 90]; // ##DZ
+                            let mut dz_block = Dz4Block::default();
+                            dz_block.dz_org_data_length =
+                                (data.len() * data.bit_count() as usize / 8) as u64;
+                            let compressed_data =
+                                compress(&data.to_bytes(), Format::Zlib, CompressionLevel::Default)
+                                    .expect("Could not compress invalid data");
+                            dz_block.dz_data_length = compressed_data.len() as u64;
+                            if dz_block.dz_org_data_length < dz_block.dz_data_length {
+                                pointer = write_dv(data, writer, pointer, cn, ld_block);
+                            } else {
+                                let byte_aligned =
+                                    ((dz_block.dz_data_length / 8 + 1) * 8 - dz_block.dz_data_length) as usize;
+                                dz_block.dz_data_length = compressed_data.len() as u64 + byte_aligned as u64;
+                                dz_block.len = dz_block.dz_data_length + 48;
+                                pointer += dz_block.len as i64;
+                                if cn.invalid_mask.is_some() {
+                                    ld_block.ld_links.push(pointer);
+                                }
+                                // Writes blocks
+                                writer.write_le(&id_ld).expect("Could not write LDBlock id");
+                                writer.write_le(&ld_block).expect("Could not write LDBlock");
+                                writer.write_le(&id_dz).expect("Could not write DZBlock id");
+                                writer.write_le(&dz_block).expect("Could not write DZBlock");
+                                writer
+                                    .write_all(&compressed_data)
+                                    .expect("Could not write data in DZBlock");
+                                // 8 byte align
+                                writer
+                                    .write_all(&vec![0; byte_aligned])
+                                    .expect("Could not align written data to 8 bytes");
+                            }
+                        } else {
+                            pointer = write_dv(data, writer, pointer, cn, ld_block);
+                        }
 
-                    // invalid mask existing
-                    if let Some(mask) = m {
-                        cg.block.cg_inval_bytes = 1; // one byte invalid
-                        let mut dz_invalid_block = Dz4Block::default();
-                        dz_invalid_block.dz_org_data_length = mask.len() as u64;
-                        let mut invalid_compressed_data =
-                            compress(&mask.to_vec(), Format::Zlib, CompressionLevel::Default)
-                                .expect("Could not compress invalid data");
-                        dz_invalid_block.dz_data_length = invalid_compressed_data.len() as u64;
-                        invalid_compressed_data = [
-                            invalid_compressed_data,
-                            vec![
-                                0;
-                                ((dz_invalid_block.dz_data_length / 8 + 1) * 8
-                                    - dz_invalid_block.dz_data_length)
-                                    as usize
-                            ],
-                        ]
-                        .concat();
-                        dz_invalid_block.len = invalid_compressed_data.len() as u64 + 48;
-                        dz_invalid_block.dz_org_block_type = [68, 73]; // DI
-                        pointer += dz_invalid_block.len as i64;
-                        writer
-                            .write_le(&id_dz)
-                            .expect("Could not write invalid DZBlock id");
-                        writer
-                            .write_le(&dz_invalid_block)
-                            .expect("Could not write invalid DZBlock");
-                        writer
-                            .write_all(&invalid_compressed_data)
-                            .expect("Could not write invalid data");
+                        // invalid mask existing
+                        if let Some(mask) = m {
+                            cg.block.cg_inval_bytes = 1; // one byte invalid
+                            let id_dz: [u8; 4] = [35, 35, 68, 90]; // ##DZ
+                            let mut dz_invalid_block = Dz4Block::default();
+                            dz_invalid_block.dz_org_data_length = mask.len() as u64;
+                            let mut invalid_compressed_data =
+                                compress(&mask.to_vec(), Format::Zlib, CompressionLevel::Default)
+                                    .expect("Could not compress invalid data");
+                            dz_invalid_block.dz_data_length = invalid_compressed_data.len() as u64;
+                            invalid_compressed_data = [
+                                invalid_compressed_data,
+                                vec![
+                                    0;
+                                    ((dz_invalid_block.dz_data_length / 8 + 1) * 8
+                                        - dz_invalid_block.dz_data_length)
+                                        as usize
+                                ],
+                            ]
+                            .concat();
+                            dz_invalid_block.len = invalid_compressed_data.len() as u64 + 48;
+                            dz_invalid_block.dz_org_block_type = [68, 73]; // DI
+                            pointer += dz_invalid_block.len as i64;
+                            writer
+                                .write_le(&id_dz)
+                                .expect("Could not write invalid DZBlock id");
+                            writer
+                                .write_le(&dz_invalid_block)
+                                .expect("Could not write invalid DZBlock");
+                            writer
+                                .write_all(&invalid_compressed_data)
+                                .expect("Could not write invalid data");
+                        }
                     }
                 }
             }
@@ -246,6 +256,34 @@ pub fn mdfwriter4<'a>(
     new_info
 }
 
+fn write_dv(data: &ChannelData, writer: &mut BufWriter<&File>, mut pointer: i64, cn: &Cn4, mut ld_block: Ld4Block) -> i64{
+    let id_ld: [u8; 4] = [35, 35, 76, 68]; // ##LD
+    let mut dv_block = Blockheader4::default();
+    dv_block.hdr_id = [35, 35, 68, 86]; // ##DV
+    let data_bytes = data.to_bytes();
+    let data_bytes_len = data_bytes.len();
+    dv_block.hdr_len += data_bytes_len as u64;
+    let byte_aligned =
+        (data_bytes_len / 8 + 1) * 8 - data_bytes_len;
+
+    pointer += dv_block.hdr_len as i64  + byte_aligned as i64;
+    if cn.invalid_mask.is_some() {
+        ld_block.ld_links.push(pointer);
+    }
+    // Writes blocks
+    writer.write_le(&id_ld).expect("Could not write LDBlock id");
+    writer.write_le(&ld_block).expect("Could not write LDBlock");
+    writer.write_le(&dv_block).expect("Could not write DVBlock");
+    writer
+        .write_all(&data_bytes)
+        .expect("Could not write data in DVBlock");
+    // 8 byte align
+    writer
+        .write_all(&vec![0; byte_aligned])
+        .expect("Could not align written data to 8 bytes");
+    pointer
+}
+
 fn create_blocks(
     new_info: &mut MdfInfo4,
     info: &MdfInfo4,
@@ -255,164 +293,167 @@ fn create_blocks(
     cg_cg_master: &i64,
     master_flag: bool,
 ) -> i64 {
-    let mut dg_block = Dg4Block::default();
-    let mut cg_block = Cg4Block::default();
-    let mut cn_block = Cn4Block::default();
-    // DG Block
-    let dg_position = pointer;
-    pointer += dg_block.dg_len as i64;
-    dg_block.dg_cg_first = pointer;
-
-    // CG Block
-    let cg_position = pointer;
-    if *cg_cg_master != 0 && !master_flag {
-        cg_block.cg_links = 7; // with cg_cg_master
-        cg_block.cg_len = 112;
-        cg_block.cg_cg_master = Some(*cg_cg_master);
-        cg_block.cg_flags = 0b1000;
-    }
-    cg_block.cg_cycle_count = cg.block.cg_cycle_count;
     let bit_count = cn.data.bit_count();
-    cg_block.cg_data_bytes = cn.data.byte_count();
-    pointer += cg_block.cg_len as i64;
-    cg_block.cg_cn_first = pointer;
+    if bit_count > 0 { // no empty strings
+        let mut dg_block = Dg4Block::default();
+        let mut cg_block = Cg4Block::default();
+        let mut cn_block = Cn4Block::default();
+        // DG Block
+        let dg_position = pointer;
+        pointer += dg_block.dg_len as i64;
+        dg_block.dg_cg_first = pointer;
 
-    // CN Block
-    let cn_position = pointer;
-    if master_flag {
-        cn_block.cn_type = cn.block.cn_type; // master channel
-        if cn.block.cn_sync_type != 0 {
-            cn_block.cn_sync_type = cn.block.cn_sync_type;
-        } else {
-            cn_block.cn_sync_type = 1; // Default is time
+        // CG Block
+        let cg_position = pointer;
+        if *cg_cg_master != 0 && !master_flag {
+            cg_block.cg_links = 7; // with cg_cg_master
+            cg_block.cg_len = 112;
+            cg_block.cg_cg_master = Some(*cg_cg_master);
+            cg_block.cg_flags = 0b1000;
         }
-    }
+        cg_block.cg_cycle_count = cg.block.cg_cycle_count;
+        
+        cg_block.cg_data_bytes = cn.data.byte_count();
+        pointer += cg_block.cg_len as i64;
+        cg_block.cg_cn_first = pointer;
 
-    let machine_endian: bool = cfg!(target_endian = "big");
+        // CN Block
+        let cn_position = pointer;
+        if master_flag {
+            cn_block.cn_type = cn.block.cn_type; // master channel
+            if cn.block.cn_sync_type != 0 {
+                cn_block.cn_sync_type = cn.block.cn_sync_type;
+            } else {
+                cn_block.cn_sync_type = 1; // Default is time
+            }
+        }
 
-    cn_block.cn_data_type = cn.data.data_type(machine_endian);
+        let machine_endian: bool = cfg!(target_endian = "big");
 
-    cn_block.cn_bit_count = bit_count;
+        cn_block.cn_data_type = cn.data.data_type(machine_endian);
 
-    pointer += cn_block.cn_len as i64;
+        cn_block.cn_bit_count = bit_count;
 
-    // channel name TX
-    let mut tx_name_block = MetaData::new(MetaDataBlockType::TX, BlockType::CN);
-    tx_name_block.set_data_buffer(cn.unique_name.clone());
-    cn_block.cn_tx_name = pointer;
-    let tx_name_position = pointer;
-    pointer += tx_name_block.block.hdr_len as i64;
-    new_info
-        .sharable
-        .md_tx
-        .insert(tx_name_position, tx_name_block);
+        pointer += cn_block.cn_len as i64;
 
-    // channel unit
-    if let Some(str) = info.sharable.md_tx.get(&cn.block.cn_md_unit) {
-        let mut tx_unit_block = MetaData::new(MetaDataBlockType::TX, BlockType::CN);
-        cn_block.cn_md_unit = pointer;
-        tx_unit_block.raw_data = str.raw_data.clone();
-        tx_unit_block.block.hdr_len = tx_unit_block.raw_data.len() as u64 + 24;
-        pointer += tx_unit_block.block.hdr_len as i64;
+        // channel name TX
+        let mut tx_name_block = MetaData::new(MetaDataBlockType::TX, BlockType::CN);
+        tx_name_block.set_data_buffer(cn.unique_name.clone());
+        cn_block.cn_tx_name = pointer;
+        let tx_name_position = pointer;
+        pointer += tx_name_block.block.hdr_len as i64;
         new_info
             .sharable
             .md_tx
-            .insert(cn_block.cn_md_unit, tx_unit_block);
-    }
+            .insert(tx_name_position, tx_name_block);
 
-    // channel comment
-    if let Some(str) = info.sharable.md_tx.get(&cn.block.cn_md_comment) {
-        let mut tx_comment_block = MetaData::new(MetaDataBlockType::TX, BlockType::CN);
-        cn_block.cn_md_comment = pointer;
-        tx_comment_block.raw_data = str.raw_data.clone();
-        tx_comment_block.block.hdr_len = tx_comment_block.raw_data.len() as u64 + 24;
-        pointer += tx_comment_block.block.hdr_len as i64;
-        new_info
-            .sharable
-            .md_tx
-            .insert(cn_block.cn_md_comment, tx_comment_block);
-    }
-
-    // Channel array
-    let data_ndim = cn.data.ndim() - 1;
-    let mut composition: Option<Composition> = None;
-    if data_ndim > 0 {
-        let data_dim_size = cn
-            .data
-            .shape()
-            .iter()
-            .skip(1)
-            .map(|x| *x as u64)
-            .collect::<Vec<_>>();
-        // data_dim_size.remove(0);
-        let mut ca_block = Ca4Block::default();
-        for x in data_dim_size.clone() {
-            ca_block.snd += x as usize;
-            ca_block.pnd *= x as usize;
+        // channel unit
+        if let Some(str) = info.sharable.md_tx.get(&cn.block.cn_md_unit) {
+            let mut tx_unit_block = MetaData::new(MetaDataBlockType::TX, BlockType::CN);
+            cn_block.cn_md_unit = pointer;
+            tx_unit_block.raw_data = str.raw_data.clone();
+            tx_unit_block.block.hdr_len = tx_unit_block.raw_data.len() as u64 + 24;
+            pointer += tx_unit_block.block.hdr_len as i64;
+            new_info
+                .sharable
+                .md_tx
+                .insert(cn_block.cn_md_unit, tx_unit_block);
         }
-        cg_block.cg_data_bytes = ca_block.pnd as u32 * cn.data.byte_count();
 
-        cn_block.cn_composition = pointer;
-        ca_block.ca_ndim = data_ndim as u16;
-        ca_block.ca_dim_size = data_dim_size.clone();
-        ca_block.shape.0 = data_dim_size
-            .iter()
-            .map(|x| *x as usize)
-            .collect::<Vec<_>>();
-        ca_block.ca_len = 48 + 8 * data_ndim as u64;
-        pointer += ca_block.ca_len as i64;
-        composition = Some(Composition {
-            block: Compo::CA(Box::new(ca_block)),
-            compo: None,
-        });
+        // channel comment
+        if let Some(str) = info.sharable.md_tx.get(&cn.block.cn_md_comment) {
+            let mut tx_comment_block = MetaData::new(MetaDataBlockType::TX, BlockType::CN);
+            cn_block.cn_md_comment = pointer;
+            tx_comment_block.raw_data = str.raw_data.clone();
+            tx_comment_block.block.hdr_len = tx_comment_block.raw_data.len() as u64 + 24;
+            pointer += tx_comment_block.block.hdr_len as i64;
+            new_info
+                .sharable
+                .md_tx
+                .insert(cn_block.cn_md_comment, tx_comment_block);
+        }
+
+        // Channel array
+        let data_ndim = cn.data.ndim() - 1;
+        let mut composition: Option<Composition> = None;
+        if data_ndim > 0 {
+            let data_dim_size = cn
+                .data
+                .shape()
+                .iter()
+                .skip(1)
+                .map(|x| *x as u64)
+                .collect::<Vec<_>>();
+            // data_dim_size.remove(0);
+            let mut ca_block = Ca4Block::default();
+            for x in data_dim_size.clone() {
+                ca_block.snd += x as usize;
+                ca_block.pnd *= x as usize;
+            }
+            cg_block.cg_data_bytes = ca_block.pnd as u32 * cn.data.byte_count();
+
+            cn_block.cn_composition = pointer;
+            ca_block.ca_ndim = data_ndim as u16;
+            ca_block.ca_dim_size = data_dim_size.clone();
+            ca_block.shape.0 = data_dim_size
+                .iter()
+                .map(|x| *x as usize)
+                .collect::<Vec<_>>();
+            ca_block.ca_len = 48 + 8 * data_ndim as u64;
+            pointer += ca_block.ca_len as i64;
+            composition = Some(Composition {
+                block: Compo::CA(Box::new(ca_block)),
+                compo: None,
+            });
+        }
+
+        dg_block.dg_dg_next = pointer;
+        // saves the blocks in the mdfinfo4 structure
+        let new_cn = Cn4 {
+            unique_name: cn.unique_name.clone(),
+            data: data_type_init(
+                cn_block.cn_type,
+                cn_block.cn_data_type,
+                cg_block.cg_data_bytes,
+                data_ndim > 0,
+            ),
+            block: cn_block,
+            endian: machine_endian,
+            block_position: cn_position,
+            pos_byte_beg: 0,
+            n_bytes: cg_block.cg_data_bytes,
+            composition,
+            invalid_mask: None,
+            channel_data_valid: false,
+        };
+        let mut new_cg = Cg4 {
+            block: cg_block,
+            master_channel_name: cg.master_channel_name.clone(),
+            cn: HashMap::new(),
+            block_position: cg_position,
+            channel_names: HashSet::new(),
+            record_length: cg_block.cg_data_bytes,
+            vlsd_cg: None,
+            invalid_bytes: None,
+        };
+        new_cg.cn.insert(0, new_cn);
+        new_cg.channel_names.insert(cn.unique_name.clone());
+        let mut new_dg = Dg4 {
+            block: dg_block,
+            cg: HashMap::new(),
+        };
+        new_dg.cg.insert(0, new_cg);
+        new_info.dg.insert(dg_position, new_dg);
+        new_info.channel_names_set.insert(
+            cn.unique_name.clone(),
+            (
+                cg.master_channel_name.clone(), // computes at second step master channel because of cg_cg_master
+                dg_position,
+                (cg_position, 0),
+                (cn_position, 0),
+            ),
+        );
     }
-
-    dg_block.dg_dg_next = pointer;
-    // saves the blocks in the mdfinfo4 structure
-    let new_cn = Cn4 {
-        unique_name: cn.unique_name.clone(),
-        data: data_type_init(
-            cn_block.cn_type,
-            cn_block.cn_data_type,
-            cg_block.cg_data_bytes,
-            data_ndim > 0,
-        ),
-        block: cn_block,
-        endian: machine_endian,
-        block_position: cn_position,
-        pos_byte_beg: 0,
-        n_bytes: cg_block.cg_data_bytes,
-        composition,
-        invalid_mask: None,
-        channel_data_valid: false,
-    };
-    let mut new_cg = Cg4 {
-        block: cg_block,
-        master_channel_name: cg.master_channel_name.clone(),
-        cn: HashMap::new(),
-        block_position: cg_position,
-        channel_names: HashSet::new(),
-        record_length: cg_block.cg_data_bytes,
-        vlsd_cg: None,
-        invalid_bytes: None,
-    };
-    new_cg.cn.insert(0, new_cn);
-    new_cg.channel_names.insert(cn.unique_name.clone());
-    let mut new_dg = Dg4 {
-        block: dg_block,
-        cg: HashMap::new(),
-    };
-    new_dg.cg.insert(0, new_cg);
-    new_info.dg.insert(dg_position, new_dg);
-    new_info.channel_names_set.insert(
-        cn.unique_name.clone(),
-        (
-            cg.master_channel_name.clone(), // computes at second step master channel because of cg_cg_master
-            dg_position,
-            (cg_position, 0),
-            (cn_position, 0),
-        ),
-    );
 
     pointer
 }
