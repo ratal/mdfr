@@ -288,11 +288,8 @@ fn create_blocks(
         }
     }
 
-    let machine_endian: bool = if cfg!(target_endian = "big") {
-        true
-    } else {
-        false
-    };
+    let machine_endian: bool = cfg!(target_endian = "big");
+
     cn_block.cn_data_type = cn.data.data_type(machine_endian);
 
     cn_block.cn_bit_count = bit_count;

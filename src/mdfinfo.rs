@@ -3,12 +3,12 @@
 //! This module is reading the mdf file blocks (metadata)
 
 use binrw::{binrw, BinReaderExt};
+use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, Read};
 use std::str;
-use std::{collections::HashMap};
 
 pub mod mdfinfo3;
 pub mod mdfinfo4;

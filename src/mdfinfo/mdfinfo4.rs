@@ -11,10 +11,8 @@ use std::default::Default;
 use std::fmt::Debug;
 use std::fs::{File, OpenOptions};
 use std::io::{prelude::*, BufWriter};
+use std::io::{BufReader, Cursor};
 use std::{fmt, str};
-use std::{
-    io::{BufReader, Cursor},
-};
 use transpose;
 use yazi::{decompress, Adler32, Format};
 
@@ -509,15 +507,12 @@ impl MetaData {
         }
     }
     pub fn parse_xml(&mut self) {
-        match self.block_type {
-            MetaDataBlockType::MdBlock =>  {
-                match self.parent_block_type {
-                    BlockType::HD => self.parse_hd_xml(),
-                    BlockType::FH => self.parse_fh_xml(),
-                    _ => self.parse_generic_xml(),
-                }
-            },
-            _ => {},
+        if self.block_type == MetaDataBlockType::MdBlock {
+            match self.parent_block_type {
+                BlockType::HD => self.parse_hd_xml(),
+                BlockType::FH => self.parse_fh_xml(),
+                _ => self.parse_generic_xml(),
+            }
         }
     }
     pub fn get_data_string(&self) -> String {
@@ -1204,7 +1199,7 @@ pub struct SharableBlocks {
 impl fmt::Display for SharableBlocks {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "MD TX comments : \n")?;
-        for (k, c) in self.md_tx.iter() {
+        for (_k, c) in self.md_tx.iter() {
             match c.block_type {
                 MetaDataBlockType::MdParsed => {
                     for (tag, text) in c.comments.iter() {
@@ -1268,11 +1263,7 @@ impl SharableBlocks {
         let md_tx: HashMap<i64, MetaData> = HashMap::with_capacity(n_channels);
         let cc: HashMap<i64, Cc4Block> = HashMap::new();
         let si: HashMap<i64, Si4Block> = HashMap::new();
-        SharableBlocks {
-            md_tx,
-            cc,
-            si,
-        }
+        SharableBlocks { md_tx, cc, si }
     }
 }
 /// Cg4 Channel Group block struct
