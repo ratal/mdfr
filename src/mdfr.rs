@@ -119,9 +119,9 @@ impl Mdf {
         })
     }
     /// writes file
-    pub fn write(&mut self, file_name: &str) -> Mdf {
+    pub fn write(&mut self, file_name: &str, compression: bool) -> Mdf {
         let Mdf(mdf) = self;
-        pyo3::Python::with_gil(|_py| Mdf(mdf.write(file_name)))
+        pyo3::Python::with_gil(|_py| Mdf(mdf.write(file_name, compression)))
     }
     /// plot one channel
     pub fn plot(&mut self, channel_name: String) {

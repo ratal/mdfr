@@ -21,6 +21,7 @@ pub fn mdfwriter4<'a>(
     writer: &'a mut BufWriter<&File>,
     info: &'a mut MdfInfo4,
     file_name: &str,
+    compression: bool,
 ) -> MdfInfo4 {
     let n_channels = info.get_channel_names_set().len();
     let mut new_info = MdfInfo4::new(file_name, n_channels);

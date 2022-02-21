@@ -28,6 +28,14 @@ fn main() -> io::Result<()> {
                 .takes_value(true)
                 .help("write read content into mdf4.2 file"),
         )
+        .arg(
+            Arg::new("compress")
+                .long("compress")
+                .short('c')
+                .required(false)
+                .takes_value(false)
+                .help("write read content compressed into mdf4.2 file"),
+        )
         .get_matches();
 
     let file_name = matches.value_of("file").expect("File name missing");
@@ -35,8 +43,10 @@ fn main() -> io::Result<()> {
 
     let mut mdf_file = mdfreader::mdfreader(file_name);
 
+    let compression = matches.is_present("compress");
+
     if let Some(file_name) = mdf4_file_name {
-        mdf_file.write(&file_name);
+        mdf_file.write(&file_name, compression);
     }
 
     Ok(())
