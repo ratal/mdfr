@@ -18,7 +18,6 @@ encoding_rs = "0.8" # for endian management
 chrono = "0.4.19" # for time conversion
 ndarray = {version = "0.15", features = ["rayon"]} # for nd arrays
 rayon =  "1.5" # for general purpose parallel computations
-dashmap = {version = "5", features = ["rayon"]} # for parallel hashmap computations
 roxmltree = "0.14" # for xml parsing
 criterion = "0.3" # for benchmark
 yazi = "0.1" # for DZ block data deflate
@@ -42,7 +41,7 @@ harness = false
 
 [profile.release]
 opt-level = 3
-debug = 2
+debug = false
 lto = true
 
 [profile.bench]
