@@ -515,6 +515,25 @@ impl MetaData {
             }
         }
     }
+    pub fn get_tx(&self) -> Option<String> {
+        match self.block_type {
+            MetaDataBlockType::MdParsed => self.comments.get("TX").cloned(),
+            _ => {
+                let comment = match str::from_utf8(&self.raw_data) {
+                    Ok(v) => v,
+                    Err(e) => panic!("Invalid UTF-8 sequence in metadata: {}", e),
+                };
+                let c: String = comment.trim_end_matches(char::from(0)).into();
+                Some(c)
+            }
+        }
+    }
+    pub fn get_tx_bytes(&self) -> Option<&[u8]> {
+        match self.block_type {
+            MetaDataBlockType::MdParsed => self.comments.get("TX").map(|s| s.as_bytes()),
+            _ => Some(&self.raw_data),
+        }
+    }
     pub fn get_data_string(&self) -> String {
         match self.block_type {
             MetaDataBlockType::MdParsed => String::new(),
@@ -528,8 +547,8 @@ impl MetaData {
             }
         }
     }
-    pub fn set_data_buffer(&mut self, data: String) {
-        self.raw_data = format!("{:\0<width$}", data, width = (data.len() / 8 + 1) * 8).into();
+    pub fn set_data_buffer(&mut self, data: &[u8]) {
+        self.raw_data = [data, vec![0u8; 8 - data.len() % 8].as_slice()].concat();
         self.block.hdr_len = self.raw_data.len() as u64 + 24;
     }
     fn parse_hd_xml(&mut self) {
@@ -1115,7 +1134,6 @@ pub fn parse_dg4(
     sharable: &mut SharableBlocks,
 ) -> (BTreeMap<i64, Dg4>, i64, usize, usize) {
     let mut dg: BTreeMap<i64, Dg4> = BTreeMap::new();
-    // TODO Hash to BTree map performance investigation for only data block positions (DG but also DL/LD ?)
     let mut n_cn: usize = 0;
     let mut n_cg: usize = 0;
     if target > 0 {
@@ -1228,19 +1246,7 @@ impl SharableBlocks {
     pub fn get_tx(&self, position: i64) -> Option<String> {
         let mut txt: Option<String> = None;
         if let Some(md) = self.md_tx.get(&position) {
-            match md.block_type {
-                MetaDataBlockType::MdParsed => {
-                    if let Some(t) = md.comments.get("TX") {
-                        txt = Some(t.to_string());
-                    }
-                }
-                MetaDataBlockType::TX => {
-                    txt = Some(md.get_data_string());
-                }
-                MetaDataBlockType::MdBlock => {
-                    txt = Some(md.get_data_string());
-                }
-            }
+            txt = md.get_tx();
         };
         txt
     }
@@ -2679,7 +2685,7 @@ pub fn build_channel_db(
     channel_list
 }
 
-/// DT4 Data List block struct
+/// DT4 Data List block struct, without the Id
 #[derive(Debug, PartialEq, Default, Clone)]
 #[binrw]
 #[br(little)]
