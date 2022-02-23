@@ -4,13 +4,15 @@ use num::Complex;
 use numpy::{IntoPyArray, ToPyArray};
 use pyo3::prelude::*;
 use rayon::prelude::*;
+use serde::Serialize;
 use std::fmt;
+use zerocopy::AsBytes;
 
 /// channel data type enum.
 /// most common data type is 1D ndarray for timeseries with element types numeric.
 /// vector of string or bytes also exists.
 /// Dynamic dimension arrays ArrayD are also existing to cover CABlock arrays data.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum ChannelData {
     Int8(Array1<i8>),
     UInt8(Array1<u8>),
@@ -1169,6 +1171,7 @@ impl ChannelData {
         }
     }
     pub fn to_bytes(&self) -> Vec<u8> {
+        // TODO: too slow performance-wise, to consider zerocopy, serde or transmute
         match self {
             ChannelData::Int8(a) => a.iter().flat_map(|x| x.to_ne_bytes()).collect(),
             ChannelData::UInt8(a) => a.to_vec(),
