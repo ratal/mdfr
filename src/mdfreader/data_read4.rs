@@ -18,10 +18,11 @@ use std::{
 
 /// reads file if data block contains only one channel in a single DV
 pub fn read_one_channel_array(data_bytes: &Vec<u8>, cn: &mut Cn4, cycle_count: usize) {
-    if cn.block.cn_type == 0
+    if (cn.block.cn_type == 0
         || cn.block.cn_type == 2
         || cn.block.cn_type == 4
-        || cn.block.cn_type == 5
+        || cn.block.cn_type == 5)
+        && !cn.data.is_empty()
     {
         // cn_type == 5 : Maximum length data channel, removing no valid bytes done by another size channel pointed by cn_data
         // cn_type == 0 : fixed length data channel
