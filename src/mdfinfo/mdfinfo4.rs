@@ -1665,6 +1665,13 @@ pub struct Cn4 {
 /// hashmap's key is bit position in record, value Cn4
 pub(crate) type CnType = HashMap<i32, Cn4>;
 
+pub fn validate_channels_set(channels: &mut CnType, channel_names: &HashSet<String>) {
+    channels
+        .iter_mut()
+        .filter(|(_, cn)| channel_names.contains(&cn.unique_name))
+        .for_each(|(_, cn)| cn.channel_data_valid = true);
+}
+
 /// creates recursively in the channel group the CN blocks and all its other linked blocks (CC, MD, TX, CA, etc.)
 pub fn parse_cn4(
     rdr: &mut BufReader<&File>,

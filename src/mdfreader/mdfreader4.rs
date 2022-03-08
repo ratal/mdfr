@@ -1,7 +1,8 @@
 //! data read and load in memory based in MdfInfo4's metadata
 use crate::mdfinfo::mdfinfo4::{parse_block_header, Cg4, Cn4, Compo, Dg4, MdfInfo4};
 use crate::mdfinfo::mdfinfo4::{
-    parse_dz, parser_dl4_block, parser_ld4_block, Dl4Block, Dt4Block, Hl4Block, Ld4Block,
+    parse_dz, parser_dl4_block, parser_ld4_block, validate_channels_set, Dl4Block, Dt4Block,
+    Hl4Block, Ld4Block,
 };
 use crate::mdfreader::channel_data::ChannelData;
 use crate::mdfreader::conversions4::convert_all_channels;
@@ -96,7 +97,8 @@ fn read_data(
     // block header is already read
     let mut vlsd_channels: Vec<i32> = Vec::new();
     match id {
-        [35, 35, 68, 84]  => { // ##DT
+        [35, 35, 68, 84] => {
+            // ##DT
             let block_header: Dt4Block = rdr
                 .read_le()
                 .expect("could not read into Dt4Blcok structure");
@@ -136,8 +138,9 @@ fn read_data(
                 );
                 position += block_header.len as i64;
             }
-        },
-        [35, 35, 68, 90] => { // ##DZ
+        }
+        [35, 35, 68, 90] => {
+            // ##DZ
             let (mut data, block_header) = parse_dz(rdr);
             // compressed data
             if sorted {
@@ -193,14 +196,24 @@ fn read_data(
                 );
                 position += block_header.len as i64;
             }
-        },
-        [35, 35, 72, 76] => { // ##HL
+        }
+        [35, 35, 72, 76] => {
+            // ##HL
             let (pos, id) = read_hl(rdr, position);
             position = pos;
             // Read DL Blocks
-            position = read_data(rdr, id, dg, position, sorted, channel_names_to_read_in_dg, decoder);
-        },
-        [35, 35, 68, 76]  => { // ##DL
+            position = read_data(
+                rdr,
+                id,
+                dg,
+                position,
+                sorted,
+                channel_names_to_read_in_dg,
+                decoder,
+            );
+        }
+        [35, 35, 68, 76] => {
+            // ##DL
             // data list
             if sorted {
                 // sorted data group
@@ -242,15 +255,17 @@ fn read_data(
                 let pos = parser_dl4_unsorted(rdr, dg, dl_blocks, pos, channel_names_to_read_in_dg);
                 position = pos;
             }
-        },
-        [35, 35, 76, 68] => { // ##LD
+        }
+        [35, 35, 76, 68] => {
+            // ##LD
             // list data, cannot be used for unsorted data
             for channel_group in dg.cg.values_mut() {
                 let pos = parser_ld4(rdr, position, channel_group, channel_names_to_read_in_dg);
                 position = pos;
             }
-        },
-        [35, 35, 68, 86] => { // ##DV
+        }
+        [35, 35, 68, 86] => {
+            // ##DV
             // data values
             // sorted data group only, no record id, no invalid bytes
             let block_header: Dt4Block = rdr
@@ -274,7 +289,7 @@ fn read_data(
                 }
             }
             position += block_header.len as i64;
-        },
+        }
         _ => panic!("Unknown block type"), // should never happen
     }
     position
@@ -754,6 +769,7 @@ fn read_dv_di(
             invalid_data.clear();
         }
     }
+    validate_channels_set(&mut channel_group.cn, channel_names_to_read_in_dg);
     position
 }
 
@@ -864,6 +880,7 @@ fn parser_dl4_sorted(
             }
         }
     }
+    validate_channels_set(&mut channel_group.cn, channel_names_to_read_in_dg);
     (position, vlsd_channels)
 }
 
@@ -960,6 +977,7 @@ fn read_all_channels_sorted(
         );
         previous_index += n_record_chunk;
     }
+    validate_channels_set(&mut channel_group.cn, channel_names_to_read_in_dg);
     vlsd_channels
 }
 
@@ -982,6 +1000,7 @@ fn read_all_channels_sorted_from_bytes(
         0,
         channel_names_to_read_in_dg,
     );
+    validate_channels_set(&mut channel_group.cn, channel_names_to_read_in_dg);
     vlsd_channels
 }
 
@@ -1205,6 +1224,7 @@ fn read_all_channels_unsorted_from_bytes(
                 channel_names_to_read_in_dg,
             );
             record_data.clear(); // clears data for new block, keeping capacity
+            validate_channels_set(&mut channel_group.cn, channel_names_to_read_in_dg);
         }
     }
 }

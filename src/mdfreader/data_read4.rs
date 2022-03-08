@@ -2149,8 +2149,6 @@ pub fn read_channels_from_bytes(
                     }
                 }
             }
-            // channel was properly read
-            cn.channel_data_valid = true;
         } else if cn.block.cn_type == 1 {
             // SD Block attached as data block is sorted
             if cn.block.cn_data != 0 {
