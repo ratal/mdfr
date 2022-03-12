@@ -1,7 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
     io::{BufWriter, Seek, SeekFrom, Write},
-    sync::Arc,
 };
 
 use crate::{

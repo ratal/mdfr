@@ -198,6 +198,15 @@ mod tests {
                 *data
             );
         }
+        info.load_all_channels_data_in_memory();
+        let mut info2 = info.write("/home/ratal/workspace/mdfr/test.mf4", false);
+        info2.load_all_channels_data_in_memory();
+        if let Some(data) = info2.get_channel_data(&"Data channel".to_string()) {
+            assert_eq!(
+                ChannelData::StringUTF8(expected_string_result.clone()),
+                *data
+            );
+        }
         //UTF16
         let file_name = format!(
             "{}{}{}",
@@ -211,6 +220,14 @@ mod tests {
                 *data
             );
         }
+        let mut info2 = info.write("/home/ratal/workspace/mdfr/test.mf4", false);
+        info2.load_all_channels_data_in_memory();
+        if let Some(data) = info2.get_channel_data(&"Data channel".to_string()) {
+            assert_eq!(
+                ChannelData::StringUTF8(expected_string_result.clone()),
+                *data
+            );
+        }
         //SBC
         let file_name = format!(
             "{}{}{}",
@@ -219,21 +236,51 @@ mod tests {
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
         if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
-            assert_eq!(ChannelData::StringSBC(expected_string_result), *data);
+            assert_eq!(
+                ChannelData::StringSBC(expected_string_result.clone()),
+                *data
+            );
         }
-
+        let mut info2 = info.write("/home/ratal/workspace/mdfr/test.mf4", false);
+        info2.load_all_channels_data_in_memory();
+        if let Some(data) = info2.get_channel_data(&"Data channel".to_string()) {
+            assert_eq!(
+                ChannelData::StringUTF8(expected_string_result.clone()),
+                *data
+            );
+        }
         // byteArray testing
         let file_name = format!(
             "{}{}{}",
             base_path, list_of_paths[0], "Vector_ByteArrayFixedLength.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
+        let byte_array = ChannelData::ByteArray(vec![
+            vec![255, 255, 255, 255, 255],
+            vec![18, 35, 52, 69, 86],
+            vec![0, 1, 2, 3, 4],
+            vec![4, 3, 2, 1, 0],
+            vec![255, 254, 253, 252, 251],
+            vec![250, 249, 248, 247, 246],
+            vec![245, 244, 243, 242, 241],
+            vec![240, 239, 238, 237, 236],
+            vec![235, 234, 233, 232, 231],
+            vec![255, 255, 255, 255, 255],
+        ]);
         info.load_all_channels_data_in_memory();
         if let Some(data) = info.get_channel_data(&"Time channel".to_string()) {
             assert_eq!(
                 ChannelData::Float64(array![0., 1., 2., 3., 4., 5., 6., 7., 8., 9.]),
                 *data
             );
+        }
+        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+            assert_eq!(byte_array, *data);
+        }
+        let mut info2 = info.write("/home/ratal/workspace/mdfr/test.mf4", false);
+        info2.load_all_channels_data_in_memory();
+        if let Some(data) = info2.get_channel_data(&"Data channel".to_string()) {
+            assert_eq!(byte_array, *data);
         }
 
         // Integer testing
@@ -250,6 +297,14 @@ mod tests {
             counter += 1
         });
         if let Some(data) = info.get_channel_data(&"Counter_INT64_BE".to_string()) {
+            assert_eq!(
+                ChannelData::Int64(Array1::<i64>::from_vec(vect.clone())),
+                *data
+            );
+        }
+        let mut info2 = info.write("/home/ratal/workspace/mdfr/test.mf4", false);
+        info2.load_all_channels_data_in_memory();
+        if let Some(data) = info2.get_channel_data(&"Counter_INT64_BE".to_string()) {
             assert_eq!(ChannelData::Int64(Array1::<i64>::from_vec(vect)), *data);
         }
         let mut vect: Vec<i32> = vec![100; 201];
@@ -259,6 +314,12 @@ mod tests {
             counter += 1
         });
         if let Some(data) = info.get_channel_data(&"Counter_INT32_LE".to_string()) {
+            assert_eq!(
+                ChannelData::Int32(Array1::<i32>::from_vec(vect.clone())),
+                *data
+            );
+        }
+        if let Some(data) = info2.get_channel_data(&"Counter_INT32_LE".to_string()) {
             assert_eq!(ChannelData::Int32(Array1::<i32>::from_vec(vect)), *data);
         }
         let mut vect: Vec<i16> = vec![100; 201];
@@ -268,6 +329,12 @@ mod tests {
             counter += 1
         });
         if let Some(data) = info.get_channel_data(&"Counter_INT16_LE".to_string()) {
+            assert_eq!(
+                ChannelData::Int16(Array1::<i16>::from_vec(vect.clone())),
+                *data
+            );
+        }
+        if let Some(data) = info2.get_channel_data(&"Counter_INT16_LE".to_string()) {
             assert_eq!(ChannelData::Int16(Array1::<i16>::from_vec(vect)), *data);
         }
     }
@@ -438,6 +505,7 @@ mod tests {
         let file_name = format!("{}{}", base_path, "DataList/Vector_DataList_Deflate.mf4");
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
+        println!("{}", info);
         if let Some(data) = info.get_channel_data(&"Time channel".to_string()) {
             let mut vect: Vec<f64> = vec![0.; 10000];
             let mut counter: f64 = 0.;
@@ -446,6 +514,7 @@ mod tests {
                 counter += 0.1
             });
             let target = Array1::<f64>::from_vec(vect);
+            println!("{:?}\n {:?}", target, data);
             assert!(ChannelData::Float64(target).compare_f64(data, 1e-9f64));
         }
 

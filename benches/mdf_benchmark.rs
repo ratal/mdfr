@@ -22,7 +22,10 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let file_name_unsorted = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/UnsortedData/Vector_Unsorted_VLSD.MF4";
     group.sample_size(10);
     group.bench_function("mdfr_with_mdf4_sorted", |b| {
-        b.iter(|| mdfreader(&file_name_sorted))
+        b.iter(|| {
+            let mut mdf = mdfreader(&file_name_sorted);
+            mdf.write(&"/home/ratal/workspace/mdfr/test.mf4", false);
+        })
     });
     //group.bench_function("mdfr_with_mdf4_unsorted", |b| b.iter(|| mdfreader(&file_name_unsorted)));
     group.finish();

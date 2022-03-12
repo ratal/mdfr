@@ -3,10 +3,8 @@ use ndarray::{Array1, ArrayD, IxDyn};
 use num::Complex;
 use numpy::{IntoPyArray, ToPyArray};
 use pyo3::prelude::*;
-use rayon::prelude::*;
 use serde::Serialize;
 use std::fmt;
-use zerocopy::AsBytes;
 
 /// channel data type enum.
 /// most common data type is 1D ndarray for timeseries with element types numeric.
@@ -1267,7 +1265,7 @@ impl ChannelData {
                 .flat_map(|x| [x.re.to_ne_bytes(), x.im.to_ne_bytes()].concat())
                 .collect(),
             ChannelData::ArrayDComplex64(a) => a
-                .par_iter()
+                .iter()
                 .flat_map(|x| [x.re.to_ne_bytes(), x.im.to_ne_bytes()].concat())
                 .collect(),
         }
