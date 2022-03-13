@@ -9,6 +9,9 @@ mod tests {
     use std::path::Path;
     use std::vec::Vec;
 
+    static BASE_PATH: &str = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/";
+    static WRITING_FILE: &str = "/home/ratal/workspace/mdfr/test.mf4";
+
     #[test]
     fn info_test() -> io::Result<()> {
         let mut file_name = "test_files/test_basic.mf4";
@@ -78,7 +81,6 @@ mod tests {
 
     #[test]
     fn parse_all_folders4() -> io::Result<()> {
-        let base_path = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/");
         let list_of_paths = [
             "Simple".to_string(),
             "ChannelInfo".to_string(),
@@ -116,7 +118,7 @@ mod tests {
         ];
         for path in list_of_paths.iter() {
             println!("reading folder : {}", path);
-            parse_info_folder(&format!("{}{}", &base_path, &path)).unwrap();
+            parse_info_folder(&format!("{}{}", BASE_PATH, &path)).unwrap();
         }
         Ok(())
     }
@@ -130,34 +132,13 @@ mod tests {
 
     #[test]
     fn parse_file() {
-        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/error.mf4"); // DT, big many channels
-        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/Measure.mf4"); // DataList, big many channels
-        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/measure2.mf4");  // many cc_ref with value to text
-        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/ZED_1hz_7197.mf4"); // invalid bytes
-        let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/20161129_IN-x1234_Erprobungsort_0000032.mf4");
-        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/isse_107.mf4"); // DZ
-        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/Vector_MinimumFile.MF4");  // DT
-        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4");  // DT
-        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/UnsortedData/Vector_Unsorted_VLSD.MF4"); // unsorted with VLSD
-        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/test.mf4");
-        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/ASAP2_Demo_V171.mf4");
-        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/V447_20190514_164254_Gearshift_0m_20Grad.mf4"); // HL DL DZ
-        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/ChannelTypes/MLSD/Vector_MLSDStringUTF8.mf4");
-        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/RecordLayout/Vector_NotByteAligned.mf4");
-        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/DataList/Vector_DT_EqualLen.MF4");
-        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/ChannelTypes/VLSD/Vector_VLSDStringUTF16_LE.mf4");
-        // let file = String::from("/home/ratal/workspace/mdfreader/T3_121121_000_6NEDC_col.mf4");
-        let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/mdf3/ASCET.dat");
-        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/ZED_1hz_7197_col.mf4"); // invalid bytes
-        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Conversion/PartialConversion/Vector_StatusStringTableConversionAlgebraic.mf4"); // partial conversion
-        // let file = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/ChannelTypes/MasterChannels/Vector_VirtualTimeMasterChannel.mf4"); // virtual master
+        let file = format!("{}{}", BASE_PATH, &"Simple/test.mf4");
         let mut mdf = MdfInfo::new(&file);
         mdf.load_all_channels_data_in_memory();
     }
 
     #[test]
     fn data_types() {
-        let base_path = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/");
         let list_of_paths = [
             "DataTypes/ByteArray/".to_string(),
             "DataTypes/CANopenTypes/".to_string(),
@@ -182,7 +163,7 @@ mod tests {
         ];
         let file_name = format!(
             "{}{}{}",
-            base_path, list_of_paths[4], "Vector_FixedLengthStringUTF8.mf4"
+            BASE_PATH, list_of_paths[4], "Vector_FixedLengthStringUTF8.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -199,7 +180,7 @@ mod tests {
             );
         }
         info.load_all_channels_data_in_memory();
-        let mut info2 = info.write("/home/ratal/workspace/mdfr/test.mf4", false);
+        let mut info2 = info.write(WRITING_FILE, false);
         info2.load_all_channels_data_in_memory();
         if let Some(data) = info2.get_channel_data(&"Data channel".to_string()) {
             assert_eq!(
@@ -210,7 +191,7 @@ mod tests {
         //UTF16
         let file_name = format!(
             "{}{}{}",
-            base_path, list_of_paths[4], "Vector_FixedLengthStringUTF16_BE.mf4"
+            BASE_PATH, list_of_paths[4], "Vector_FixedLengthStringUTF16_BE.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -220,7 +201,7 @@ mod tests {
                 *data
             );
         }
-        let mut info2 = info.write("/home/ratal/workspace/mdfr/test.mf4", false);
+        let mut info2 = info.write(WRITING_FILE, false);
         info2.load_all_channels_data_in_memory();
         if let Some(data) = info2.get_channel_data(&"Data channel".to_string()) {
             assert_eq!(
@@ -231,7 +212,7 @@ mod tests {
         //SBC
         let file_name = format!(
             "{}{}{}",
-            base_path, list_of_paths[4], "Vector_FixedLengthStringSBC.mf4"
+            BASE_PATH, list_of_paths[4], "Vector_FixedLengthStringSBC.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -241,7 +222,7 @@ mod tests {
                 *data
             );
         }
-        let mut info2 = info.write("/home/ratal/workspace/mdfr/test.mf4", false);
+        let mut info2 = info.write(WRITING_FILE, false);
         info2.load_all_channels_data_in_memory();
         if let Some(data) = info2.get_channel_data(&"Data channel".to_string()) {
             assert_eq!(
@@ -252,7 +233,7 @@ mod tests {
         // byteArray testing
         let file_name = format!(
             "{}{}{}",
-            base_path, list_of_paths[0], "Vector_ByteArrayFixedLength.mf4"
+            BASE_PATH, list_of_paths[0], "Vector_ByteArrayFixedLength.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         let byte_array = ChannelData::ByteArray(vec![
@@ -277,7 +258,7 @@ mod tests {
         if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
             assert_eq!(byte_array, *data);
         }
-        let mut info2 = info.write("/home/ratal/workspace/mdfr/test.mf4", false);
+        let mut info2 = info.write(WRITING_FILE, false);
         info2.load_all_channels_data_in_memory();
         if let Some(data) = info2.get_channel_data(&"Data channel".to_string()) {
             assert_eq!(byte_array, *data);
@@ -286,7 +267,7 @@ mod tests {
         // Integer testing
         let file_name = format!(
             "{}{}{}",
-            base_path, list_of_paths[2], "Vector_IntegerTypes.MF4"
+            BASE_PATH, list_of_paths[2], "Vector_IntegerTypes.MF4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -302,7 +283,7 @@ mod tests {
                 *data
             );
         }
-        let mut info2 = info.write("/home/ratal/workspace/mdfr/test.mf4", false);
+        let mut info2 = info.write(WRITING_FILE, false);
         info2.load_all_channels_data_in_memory();
         if let Some(data) = info2.get_channel_data(&"Counter_INT64_BE".to_string()) {
             assert_eq!(ChannelData::Int64(Array1::<i64>::from_vec(vect)), *data);
@@ -341,7 +322,6 @@ mod tests {
 
     #[test]
     fn channel_types() {
-        let base_path = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/");
         let list_of_paths = [
             "ChannelTypes/MasterChannels/".to_string(),
             "ChannelTypes/MLSD/".to_string(),
@@ -353,7 +333,7 @@ mod tests {
         // MasterTypes testing
         let file_name = format!(
             "{}{}{}",
-            base_path, list_of_paths[0], "Vector_VirtualTimeMasterChannel.mf4"
+            BASE_PATH, list_of_paths[0], "Vector_VirtualTimeMasterChannel.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -370,7 +350,7 @@ mod tests {
         // MLSD testing
         let file_name = format!(
             "{}{}{}",
-            base_path, list_of_paths[1], "Vector_MLSDStringUTF8.mf4"
+            BASE_PATH, list_of_paths[1], "Vector_MLSDStringUTF8.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -392,7 +372,7 @@ mod tests {
         // Virtual data testing
         let file_name = format!(
             "{}{}{}",
-            base_path, list_of_paths[3], "Vector_VirtualDataChannelNoConversion.mf4"
+            BASE_PATH, list_of_paths[3], "Vector_VirtualDataChannelNoConversion.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -408,7 +388,7 @@ mod tests {
         // VLSD testing
         let file_name = format!(
             "{}{}{}",
-            base_path, list_of_paths[2], "Vector_VLSDStringUTF8.mf4"
+            BASE_PATH, list_of_paths[2], "Vector_VLSDStringUTF8.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -430,16 +410,15 @@ mod tests {
         // Synchronization
         let file_name = format!(
             "{}{}{}",
-            base_path, list_of_paths[4], "Vector_SyncStreamChannel.mf4"
+            BASE_PATH, list_of_paths[4], "Vector_SyncStreamChannel.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
     }
     #[test]
     fn record_layout() {
-        let base_path = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/RecordLayout/");
         // Overlapping signals
-        let file_name = format!("{}{}", base_path, "Vector_NotByteAligned.mf4");
+        let file_name = format!("{}{}", BASE_PATH, "RecordLayout/Vector_NotByteAligned.mf4");
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
         if let Some(data) = info.get_channel_data(&"Channel B".to_string()) {
@@ -453,22 +432,21 @@ mod tests {
         }
 
         // Overlapping signals
-        let file_name = format!("{}{}", base_path, "Vector_OverlappingSignals.mf4");
+        let file_name = format!("{}{}", BASE_PATH, "RecordLayout/Vector_OverlappingSignals.mf4");
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
     }
     #[test]
     fn data_list() {
-        let base_path = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/DataList/");
         // Equal length
-        let file_name = format!("{}{}", base_path, "Vector_DT_EqualLen.MF4");
+        let file_name = format!("{}{}", BASE_PATH, "DataList/Vector_DT_EqualLen.MF4");
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
         if let Some(data) = info.get_channel_data(&"channel1".to_string()) {
             assert_eq!(data.len(), 254552);
         }
         // Equal length
-        let file_name = format!("{}{}", base_path, "Vector_DL_Linked_List.MF4");
+        let file_name = format!("{}{}", BASE_PATH, "DataList/Vector_DL_Linked_List.MF4");
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
         if let Some(data) = info.get_channel_data(&"channel1".to_string()) {
@@ -476,33 +454,32 @@ mod tests {
         }
 
         // Empty data
-        let file_name = format!("{}{}", base_path, "ETAS_EmptyDL.mf4");
+        let file_name = format!("{}{}", BASE_PATH, "DataList/ETAS_EmptyDL.mf4");
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
 
         // SD List
-        let file_name = format!("{}{}", base_path, "Vector_SD_List.MF4");
+        let file_name = format!("{}{}", BASE_PATH, "DataList/Vector_SD_List.MF4");
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
     }
     #[test]
     fn compressed_data() {
-        let base_path = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/CompressedData/");
         // Single DZ deflate
-        let file_name = format!("{}{}", base_path, "Simple/Vector_SingleDZ_Deflate.mf4");
+        let file_name = format!("{}{}", BASE_PATH, "CompressedData/Simple/Vector_SingleDZ_Deflate.mf4");
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
 
         // Single DZ transpose deflate
         let file_name = format!(
             "{}{}",
-            base_path, "Simple/Vector_SingleDZ_TransposeDeflate.mf4"
+            BASE_PATH, "CompressedData/Simple/Vector_SingleDZ_TransposeDeflate.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
 
         // deflate data list
-        let file_name = format!("{}{}", base_path, "DataList/Vector_DataList_Deflate.mf4");
+        let file_name = format!("{}{}", BASE_PATH, "CompressedData/DataList/Vector_DataList_Deflate.mf4");
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
         println!("{}", info);
@@ -521,7 +498,7 @@ mod tests {
         // transpose deflate data list
         let file_name = format!(
             "{}{}",
-            base_path, "DataList/Vector_DataList_TransposeDeflate.mf4"
+            BASE_PATH, "CompressedData/DataList/Vector_DataList_TransposeDeflate.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -537,21 +514,19 @@ mod tests {
         }
 
         // Unsorted
-        let file_name = format!("{}{}", base_path, "Unsorted/Vector_SingleDZ_Unsorted.MF4");
+        let file_name = format!("{}{}", BASE_PATH, "CompressedData/Unsorted/Vector_SingleDZ_Unsorted.MF4");
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
     }
 
     #[test]
     fn unsorted_data() {
-        let base_path = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/UnsortedData/");
-        let file_name = format!("{}{}", base_path, "Vector_Unsorted_VLSD.MF4");
+        let file_name = format!("{}{}", BASE_PATH, "UnsortedData/Vector_Unsorted_VLSD.MF4");
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
     }
     #[test]
     fn conversion() {
-        let base_path = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/");
         let list_of_paths = [
             "Conversion/LinearConversion/".to_string(),
             "Conversion/LookUpConversion/".to_string(),
@@ -564,7 +539,7 @@ mod tests {
         // Lindear conversion testing
         let file_name = format!(
             "{}{}{}",
-            base_path, list_of_paths[0], "Vector_LinearConversion.mf4"
+            BASE_PATH, list_of_paths[0], "Vector_LinearConversion.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -580,7 +555,7 @@ mod tests {
         }
         let file_name = format!(
             "{}{}{}",
-            base_path, list_of_paths[0], "Vector_LinearConversionFactor0.mf4"
+            BASE_PATH, list_of_paths[0], "Vector_LinearConversionFactor0.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -592,7 +567,7 @@ mod tests {
         // Rational conversion
         let file_name = format!(
             "{}{}{}",
-            base_path, list_of_paths[3], "Vector_RationalConversionIntParams.mf4"
+            BASE_PATH, list_of_paths[3], "Vector_RationalConversionIntParams.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -600,7 +575,7 @@ mod tests {
         // Text conversion
         let file_name = format!(
             "{}{}{}",
-            base_path, list_of_paths[5], "Vector_AlgebraicConversionQuadratic.mf4"
+            BASE_PATH, list_of_paths[5], "Vector_AlgebraicConversionQuadratic.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -613,7 +588,7 @@ mod tests {
         // Lookup conversion : Value to Value Table With Interpolation
         let file_name = format!(
             "{}{}{}",
-            base_path, list_of_paths[1], "Vector_Value2ValueConversionInterpolation.mf4"
+            BASE_PATH, list_of_paths[1], "Vector_Value2ValueConversionInterpolation.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -657,7 +632,7 @@ mod tests {
         // Lookup conversion : Value to Value Table Without Interpolation
         let file_name = format!(
             "{}{}{}",
-            base_path, list_of_paths[1], "Vector_Value2ValueConversionNoInterpolation.mf4"
+            BASE_PATH, list_of_paths[1], "Vector_Value2ValueConversionNoInterpolation.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -673,7 +648,7 @@ mod tests {
         // Lookup conversion : Value Range to Value
         let file_name = format!(
             "{}{}{}",
-            base_path, list_of_paths[1], "Vector_ValueRange2ValueConversion.mf4"
+            BASE_PATH, list_of_paths[1], "Vector_ValueRange2ValueConversion.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -689,7 +664,7 @@ mod tests {
         // Lookup conversion : Value to Text
         let file_name = format!(
             "{}{}{}",
-            base_path, list_of_paths[1], "Vector_Value2TextConversion.mf4"
+            BASE_PATH, list_of_paths[1], "Vector_Value2TextConversion.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -713,7 +688,7 @@ mod tests {
         // Lookup conversion : Value range to Text
         let file_name = format!(
             "{}{}{}",
-            base_path, list_of_paths[1], "Vector_ValueRange2TextConversion.mf4"
+            BASE_PATH, list_of_paths[1], "Vector_ValueRange2TextConversion.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -737,7 +712,7 @@ mod tests {
         // Lookup conversion : Value range to Text,
         let file_name = format!(
             "{}{}{}",
-            base_path, list_of_paths[2], "Vector_StatusStringTableConversionAlgebraic.mf4"
+            BASE_PATH, list_of_paths[2], "Vector_StatusStringTableConversionAlgebraic.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -768,7 +743,7 @@ mod tests {
         // Text conversion : Text to Value
         let file_name = format!(
             "{}{}{}",
-            base_path, list_of_paths[4], "Vector_Text2ValueConversion.mf4"
+            BASE_PATH, list_of_paths[4], "Vector_Text2ValueConversion.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -781,7 +756,7 @@ mod tests {
         // Text conversion : Text to Text
         let file_name = format!(
             "{}{}{}",
-            base_path, list_of_paths[4], "Vector_Text2TextConversion.mf4"
+            BASE_PATH, list_of_paths[4], "Vector_Text2TextConversion.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -805,10 +780,8 @@ mod tests {
 
     #[test]
     fn bus_logging() {
-        let base_path = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/BusLogging/");
-
         // sort bus
-        let file_name = format!("{}{}", base_path, "Vector_CAN_DataFrame_Sort_ID.MF4");
+        let file_name = format!("{}{}", BASE_PATH, "BusLogging/Vector_CAN_DataFrame_Sort_ID.MF4");
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
         if let Some(data) = info.get_channel_data(
