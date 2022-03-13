@@ -14,7 +14,8 @@ obj = mdfr.Mdf('path/to/file.mdf')
 obj.load_all_channels_data_in_memory()
 # Returns the data, saves it also in obj
 obj.get_channel_data('channel_name')
-# Methods to retrieve channel description, unit, related master name, type and data, list of channels in file, or lists of channels grouped by master are available
+# Methods to retrieve channel description, unit, related master name, type and data,
+# list of channels in file, or lists of channels grouped by master are available
 ```
 
-mdfr on the other hand does not include much features to manipulate files comparitively to mdfreader. You can for now only write a mdf4.x to mdf4.2 (relatively slow, should be parallelised). Convertion from mdf3 to mdf4 is in the todo list along with resampling, cutting data and exporting to hdf5 and parquet.
+mdfr on the other hand does not include much features to manipulate files comparitively to mdfreader. You can for now only write a mdf4.x to mdf4.2 (relatively slow for now, should be parallelised). Convertion from mdf3 to mdf4 is in the todo list along with resampling, cutting data and exporting to hdf5 and parquet.
