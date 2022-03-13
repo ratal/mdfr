@@ -1,3 +1,4 @@
+//! Writer of data in memory into mdf4.2 file
 use std::{
     collections::{HashMap, HashSet},
     io::{BufWriter, Seek, SeekFrom, Write},
@@ -202,6 +203,7 @@ pub fn mdfwriter4<'a>(
     new_info
 }
 
+/// write a DV Block
 fn write_dv<'a>(
     data: &'a ChannelData,
     writer: &'a mut BufWriter<&File>,
@@ -235,6 +237,7 @@ fn write_dv<'a>(
     pointer
 }
 
+/// Writes a DZ Block of DV type
 fn write_dz_dv<'a>(
     data: &'a ChannelData,
     writer: &'a mut BufWriter<&File>,
@@ -275,6 +278,7 @@ fn write_dz_dv<'a>(
     pointer
 }
 
+/// Writes a DI Block
 fn write_di(mask: &Array1<u8>, writer: &mut BufWriter<&File>, mut pointer: i64) -> i64 {
     let mut dv_invalid_block = Blockheader4::default();
     dv_invalid_block.hdr_id = [35, 35, 68, 73]; // ##DI
@@ -292,6 +296,7 @@ fn write_di(mask: &Array1<u8>, writer: &mut BufWriter<&File>, mut pointer: i64) 
     pointer
 }
 
+/// Write a DZ Block of DI type
 fn write_dz_di(mask: &Array1<u8>, writer: &mut BufWriter<&File>, mut pointer: i64) -> i64 {
     let mut dz_invalid_block = Dz4Block::default();
     dz_invalid_block.dz_org_data_length = mask.len() as u64;
@@ -324,6 +329,7 @@ fn write_dz_di(mask: &Array1<u8>, writer: &mut BufWriter<&File>, mut pointer: i6
     pointer
 }
 
+/// Creates the dg and following data strutures in the new mdfinfo from the old one
 fn create_blocks(
     new_info: &mut MdfInfo4,
     info: &MdfInfo4,
@@ -501,6 +507,7 @@ fn create_blocks(
     pointer
 }
 
+/// supports only data and master channels
 fn cn_type_writer(cn_type: u8) -> u8 {
     // not all types are supported
     match cn_type {

@@ -215,7 +215,7 @@ impl MdfInfo4 {
         self.load_channels_data_in_memory(channel_set);
         self.all_data_in_memory = true;
     }
-    // empty the channels' ndarray
+    /// empty the channels' ndarray
     pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) {
         for channel_name in channel_names {
             if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
@@ -234,6 +234,8 @@ impl MdfInfo4 {
         }
         self.all_data_in_memory = false;
     }
+    /// writes to a mdf4.2 file the data contained in memory.
+    /// compression of data is optional.
     pub fn write(&mut self, file_name: &str, compression: bool) -> MdfInfo4 {
         let f: File = OpenOptions::new()
             .read(true)
@@ -244,6 +246,7 @@ impl MdfInfo4 {
         let mut rdr = BufWriter::new(&f);
         mdfwriter4(&mut rdr, self, file_name, compression)
     }
+    /// returns a new empty MdfInfo4 struct
     pub fn new(file_name: &str, n_channels: usize) -> MdfInfo4 {
         MdfInfo4 {
             file_name: file_name.to_string(),
@@ -260,7 +263,6 @@ impl MdfInfo4 {
     }
     // TODO cut data
     // TODO resample data
-    // TODO Write to mdf4 column
     // TODO Extract attachments
 }
 
@@ -418,6 +420,7 @@ impl Default for MetaDataBlockType {
     }
 }
 
+/// Blocks types that could link to MDBlock
 #[derive(Debug, Clone)]
 pub enum BlockType {
     HD,
@@ -440,13 +443,19 @@ impl Default for BlockType {
 /// struct linking MD or TX block with
 #[derive(Debug, Default, Clone)]
 pub struct MetaData {
+    /// Header of the block
     pub block: Blockheader4,
+    /// Raw bytes for the block's data
     pub raw_data: Vec<u8>,
+    /// Block type, TX, MD or MD not yet parsed
     pub block_type: MetaDataBlockType,
+    /// Metadata after parsing
     pub comments: HashMap<String, String>,
+    /// Parent block type
     pub parent_block_type: BlockType,
 }
 
+/// Parses the MD or TX block
 fn read_meta_data(
     rdr: &mut BufReader<&File>,
     sharable: &mut SharableBlocks,
@@ -482,6 +491,7 @@ fn read_meta_data(
 }
 
 impl MetaData {
+    /// Returns a new MetaData struct
     pub fn new(block_type: MetaDataBlockType, parent_block_type: BlockType) -> Self {
         let header = match block_type {
             MetaDataBlockType::MdBlock => Blockheader4 {
@@ -506,6 +516,7 @@ impl MetaData {
             parent_block_type,
         }
     }
+    /// Converts the metadata handling the parent block type's specificities
     pub fn parse_xml(&mut self) {
         if self.block_type == MetaDataBlockType::MdBlock {
             match self.parent_block_type {
@@ -515,6 +526,7 @@ impl MetaData {
             }
         }
     }
+    /// Returns the text from TX Block or TX's tag text from MD Block
     pub fn get_tx(&self) -> Option<String> {
         match self.block_type {
             MetaDataBlockType::MdParsed => self.comments.get("TX").cloned(),
@@ -528,12 +540,14 @@ impl MetaData {
             }
         }
     }
+    /// Returns the bytes of the text from TX Block or TX's tag text from MD Block
     pub fn get_tx_bytes(&self) -> Option<&[u8]> {
         match self.block_type {
             MetaDataBlockType::MdParsed => self.comments.get("TX").map(|s| s.as_bytes()),
             _ => Some(&self.raw_data),
         }
     }
+    /// Decode string from raw_data field
     pub fn get_data_string(&self) -> String {
         match self.block_type {
             MetaDataBlockType::MdParsed => String::new(),
@@ -547,10 +561,12 @@ impl MetaData {
             }
         }
     }
+    /// allocate bytes to raw_data field, adjusting header length
     pub fn set_data_buffer(&mut self, data: &[u8]) {
         self.raw_data = [data, vec![0u8; 8 - data.len() % 8].as_slice()].concat();
         self.block.hdr_len = self.raw_data.len() as u64 + 24;
     }
+    /// parses the xml bytes specifically for HD block expected schema
     fn parse_hd_xml(&mut self) {
         let mut comments: HashMap<String, String> = HashMap::new();
         // MD Block from HD Block, reading xml
@@ -574,6 +590,7 @@ impl MetaData {
         self.block_type = MetaDataBlockType::MdParsed;
         self.raw_data = vec![]; // empty the data from block as already parsed
     }
+    /// Creates File History MetaData
     pub fn create_fh(&mut self) {
         let user_name = whoami::username();
         let comments = format!(
@@ -595,6 +612,7 @@ impl MetaData {
         self.block.hdr_len = fh_comments.len() as u64 + 24;
         self.raw_data = fh_comments.to_vec();
     }
+    /// parses the xml bytes specifically for File History block expected schema
     fn parse_fh_xml(&mut self) {
         let mut comments: HashMap<String, String> = HashMap::new();
         // MD Block from FH Block, reading xml
@@ -620,6 +638,7 @@ impl MetaData {
         self.block_type = MetaDataBlockType::MdParsed;
         self.raw_data = vec![]; // empty the data from block as already parsed
     }
+    /// Generic xml parser without schema consideration
     fn parse_generic_xml(&mut self) {
         let mut comments: HashMap<String, String> = HashMap::new();
         let comment: String = self
@@ -649,6 +668,7 @@ impl MetaData {
         self.block_type = MetaDataBlockType::MdParsed;
         self.raw_data = vec![]; // empty the data from block as already parsed
     }
+    /// Writes the metadata to file
     pub fn write(&self, writer: &mut BufWriter<&File>) {
         writer
             .write_le(&self.block)
@@ -687,7 +707,7 @@ pub struct Hd4 {
     /// Pointer to the measurement file comment (TXBLOCK or MDBLOCK) (can be NIL) For MDBLOCK contents, see Table 14.
     pub hd_md_comment: i64,
     /// Data members
-    /// Time stamp in nanoseconds elapsed since 00:00:00 01.01.1970 (UTC time or local time, depending on "local time" flag, see [UTC]).
+    /// Time stamp in nanoseconds elapsed since 00:00:00 01.01.1970 (UTC time or local time, depending on "local time" flag)
     pub hd_start_time_ns: u64,
     /// Time zone offset in minutes. The value must be in range [-720,720], i.e. it can be negative! For example a value of 60 (min) means UTC+1 time zone = Central European Time (CET). Only valid if "time offsets valid" flag is set in time flags.
     pub hd_tz_offset_min: i16,
@@ -1176,6 +1196,7 @@ pub fn parse_dg4(
     (dg, position, n_cg, n_cn)
 }
 
+/// Try to link VLSD Channel Groups with matching channel in other groups
 fn identify_vlsd_cg(cg: &mut HashMap<u64, Cg4>) {
     // First find all VLSD Channel Groups
     let mut vlsd: HashMap<i64, u64> = HashMap::new();
@@ -1243,6 +1264,7 @@ impl fmt::Display for SharableBlocks {
 }
 
 impl SharableBlocks {
+    /// Returns the text from TX Block or TX tag's text from MD block
     pub fn get_tx(&self, position: i64) -> Option<String> {
         let mut txt: Option<String> = None;
         if let Some(md) = self.md_tx.get(&position) {
@@ -1250,6 +1272,8 @@ impl SharableBlocks {
         };
         txt
     }
+    /// Returns metadata from MD Block
+    /// keys are tag and related value text of tag
     pub fn get_comments(&self, position: i64) -> HashMap<String, String> {
         let mut comments: HashMap<String, String> = HashMap::new();
         if let Some(md) = self.md_tx.get(&position) {
@@ -1259,12 +1283,14 @@ impl SharableBlocks {
         };
         comments
     }
+    /// Parallely extract matadata from raw xml string
     pub fn extract_xml(&mut self) {
         self.md_tx
             .par_iter_mut()
             .filter(|(_k, v)| v.block_type == MetaDataBlockType::MdBlock)
             .for_each(|(_k, val)| val.parse_xml());
     }
+    /// Create new Shared Block
     pub fn new(n_channels: usize) -> SharableBlocks {
         let md_tx: HashMap<i64, MetaData> = HashMap::with_capacity(n_channels);
         let cc: HashMap<i64, Cc4Block> = HashMap::new();
@@ -1420,7 +1446,9 @@ pub struct Cg4 {
     pub block: Cg4Block,
     /// hashmap of channels
     pub cn: CnType,
+    /// Master channel name
     pub master_channel_name: Option<String>,
+    /// Set of channel names belonging to this channel group
     pub channel_names: HashSet<String>,
     /// as not stored in .block but can still be referenced by other blocks
     pub block_position: i64,
@@ -1434,9 +1462,11 @@ pub struct Cg4 {
 
 /// Cg4 implementations for extracting acquisition and source name and path
 impl Cg4 {
+    /// Channel group acquisition name
     fn get_cg_name(&self, sharable: &SharableBlocks) -> Option<String> {
         sharable.get_tx(self.block.cg_tx_acq_name)
     }
+    /// Channel group source name
     fn get_cg_source_name(&self, sharable: &SharableBlocks) -> Option<String> {
         let si = sharable.si.get(&self.block.cg_si_acq_source);
         match si {
@@ -1444,6 +1474,7 @@ impl Cg4 {
             None => None,
         }
     }
+    /// Channel group source path
     fn get_cg_source_path(&self, sharable: &SharableBlocks) -> Option<String> {
         let si = sharable.si.get(&self.block.cg_si_acq_source);
         match si {
@@ -1477,6 +1508,8 @@ impl Cg4 {
             None
         }
     }
+    /// Computes the validity mask for each channel in the group
+    /// clears out the common invalid bytes vector for the group at the end
     pub fn process_all_channel_invalid_bits(&mut self) {
         // get invalid bytes
         let cycle_count = self.block.cg_cycle_count as usize;
@@ -1665,6 +1698,7 @@ pub struct Cn4 {
 /// hashmap's key is bit position in record, value Cn4
 pub(crate) type CnType = HashMap<i32, Cn4>;
 
+/// Set flag for each channel in CnType indicating its owned data is valid
 pub fn validate_channels_set(channels: &mut CnType, channel_names: &HashSet<String>) {
     channels
         .iter_mut()
@@ -1952,6 +1986,7 @@ fn calc_n_bytes_not_aligned(bitcount: u32) -> u32 {
 }
 
 impl Cn4 {
+    /// Returns the channel source name
     fn get_cn_source_name(&self, sharable: &SharableBlocks) -> Option<String> {
         let si = sharable.si.get(&self.block.cn_si_source);
         match si {
@@ -1959,6 +1994,7 @@ impl Cn4 {
             None => None,
         }
     }
+    /// Returns the channel source path
     fn get_cn_source_path(&self, sharable: &SharableBlocks) -> Option<String> {
         let si = sharable.si.get(&self.block.cn_si_source);
         match si {
@@ -1968,6 +2004,7 @@ impl Cn4 {
     }
 }
 
+/// Channel block parser
 fn parse_cn4_block(
     rdr: &mut BufReader<&File>,
     target: i64,
@@ -2157,6 +2194,7 @@ pub struct Cc4Block {
     pub cc_val: CcVal,
 }
 
+/// Cc Values can be either a float or Uint64
 #[derive(Debug, Clone)]
 #[binrw]
 #[br(little, import(count: u16, cc_type: u8))]
@@ -2198,9 +2236,11 @@ pub struct Si4Block {
 }
 
 impl Si4Block {
+    /// returns the source name
     fn get_si_source_name(&self, sharable: &SharableBlocks) -> Option<String> {
         sharable.get_tx(self.si_tx_name)
     }
+    /// returns the source path
     fn get_si_path_name(&self, sharable: &SharableBlocks) -> Option<String> {
         sharable.get_tx(self.si_tx_path)
     }
@@ -2287,6 +2327,7 @@ impl Default for Ca4Block {
     }
 }
 
+/// Channel Array block structure, only members section, links section structure complex
 #[derive(Debug, Clone)]
 #[binrw]
 #[br(little)]
@@ -2321,6 +2362,7 @@ impl Default for Ca4BlockMembers {
     }
 }
 
+/// Channel Array block parser
 fn parse_ca_block(
     ca_block: &mut Cursor<Vec<u8>>,
     block_header: Blockheader4,
@@ -2726,6 +2768,7 @@ pub struct Dl4Block {
     #[br(if(dl_links > 1), little, count = dl_links - 1)]
     pub dl_data: Vec<i64>,
     // members
+    /// Flags
     dl_flags: u8,
     dl_reserved: [u8; 3],
     /// Number of data blocks
@@ -2791,8 +2834,9 @@ pub struct Dz4Block {
     //header
     // dz_id: [u8; 4],  // ##DZ
     reserved: [u8; 4], // reserved
-    pub len: u64,      // Length of block in bytes
-    dz_links: u64,     // # of links
+    /// Length of block in bytes
+    pub len: u64,
+    dz_links: u64, // # of links
     // links
     // members
     /// "DT", "SD", "RD" or "DV", "DI", "RV", "RI"
@@ -2801,6 +2845,7 @@ pub struct Dz4Block {
     dz_zip_type: u8,
     /// reserved
     dz_reserved: u8,
+    /// Zip algorithm parameter
     dz_zip_parameter: u32, //
     /// length of uncompressed data
     pub dz_org_data_length: u64,
@@ -2831,13 +2876,16 @@ impl Default for Dz4Block {
 pub struct Ld4Block {
     // header
     // ld_id: [u8; 4],  // ##LD
-    reserved: [u8; 4],   // reserved
-    pub ld_len: u64,     // Length of block in bytes
-    pub ld_n_links: u64, // # of links
-    // links
+    reserved: [u8; 4], // reserved
+    /// Length of block in bytes
+    pub ld_len: u64,
+    /// # of links
+    pub ld_n_links: u64,
+    /// links
     #[br(little, count = ld_n_links)]
     pub ld_links: Vec<i64>,
-    //members
+    // members
+    /// Flags
     pub ld_flags: u32,
     /// Number of data blocks
     pub ld_count: u32,
@@ -2875,6 +2923,7 @@ impl Ld4Block {
     pub fn ld_ld_next(&self) -> i64 {
         self.ld_links[0]
     }
+    /// Data block positions
     pub fn ld_data(&self) -> Vec<i64> {
         if (1u32 << 31) & self.ld_flags > 0 {
             self.ld_links.iter().skip(1).step_by(2).copied().collect()
@@ -2882,6 +2931,7 @@ impl Ld4Block {
             self.ld_links[1..].to_vec()
         }
     }
+    /// Invalid data block positions
     pub fn ld_invalid_data(&self) -> Vec<i64> {
         if (1u32 << 31) & self.ld_flags > 0 {
             self.ld_links.iter().skip(2).step_by(2).copied().collect()

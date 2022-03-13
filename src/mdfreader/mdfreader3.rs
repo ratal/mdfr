@@ -1,3 +1,4 @@
+//! data read and load in memory based in MdfInfo3's metadata
 use rayon::prelude::*;
 
 use crate::mdfinfo::mdfinfo3::{Cg3, Dg3, MdfInfo3};

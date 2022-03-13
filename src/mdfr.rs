@@ -6,6 +6,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use pyo3::PyObjectProtocol;
 
+/// This function is used to create a python dictionary from a MdfInfo object
 #[pyclass]
 struct Mdf(MdfInfo);
 

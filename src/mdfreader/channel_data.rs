@@ -717,7 +717,7 @@ impl ChannelData {
             ChannelData::ArrayDComplex64(_) => 16,
         }
     }
-    // returns mdf4 data type
+    /// returns mdf4 data type
     pub fn data_type(&self, endian: bool) -> u8 {
         if endian {
             // BE
@@ -809,7 +809,7 @@ impl ChannelData {
             }
         }
     }
-    // Compares floating point values
+    /// Compares f32 floating point values
     pub fn compare_f32(&self, other: &ChannelData, epsilon: f32) -> bool {
         match self {
             ChannelData::Int8(_) => false,
@@ -1034,6 +1034,7 @@ impl ChannelData {
             ChannelData::ArrayDComplex64(_) => todo!(),
         }
     }
+    /// Compares floating point f64 values
     pub fn compare_f64(&self, other: &ChannelData, epsilon: f64) -> bool {
         match self {
             ChannelData::Int8(_) => false,
@@ -1168,8 +1169,9 @@ impl ChannelData {
             ChannelData::ArrayDComplex64(_) => todo!(),
         }
     }
+    /// returns raw bytes vectors from ndarray
     pub fn to_bytes(&self) -> Vec<u8> {
-        // TODO: too slow performance-wise, to consider zerocopy, serde or transmute
+        // TODO: too slow performance-wise, to consider zerocopy, serde or unsafe like transmute
         match self {
             ChannelData::Int8(a) => a.iter().flat_map(|x| x.to_ne_bytes()).collect(),
             ChannelData::UInt8(a) => a.to_vec(),
@@ -1270,6 +1272,7 @@ impl ChannelData {
                 .collect(),
         }
     }
+    /// returns the number of dimensions of the channel
     pub fn ndim(&self) -> usize {
         match self {
             ChannelData::Int8(_) => 1,
@@ -1314,6 +1317,7 @@ impl ChannelData {
             ChannelData::ArrayDComplex64(a) => a.ndim(),
         }
     }
+    /// returns the shape of channel
     pub fn shape(&self) -> Vec<usize> {
         match self {
             ChannelData::Int8(a) => {

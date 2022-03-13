@@ -16,7 +16,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-/// reads file if data block contains only one channel in a single DV
+/// converts raw data block containing only one channel into a ndarray
 pub fn read_one_channel_array(data_bytes: &Vec<u8>, cn: &mut Cn4, cycle_count: usize) {
     if (cn.block.cn_type == 0
         || cn.block.cn_type == 2

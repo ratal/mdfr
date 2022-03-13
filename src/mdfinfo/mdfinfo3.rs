@@ -1,3 +1,4 @@
+//! Parsing of file metadata into MdfInfo3 struct
 use binrw::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::NaiveDate;
@@ -16,12 +17,16 @@ use crate::mdfinfo::IdBlock;
 use crate::mdfreader::channel_data::{data_type_init, ChannelData};
 use crate::mdfreader::mdfreader3::mdfreader3;
 
+/// Specific to version 3.x mdf metadata structure
 #[derive(Debug, Default)]
 pub struct MdfInfo3 {
     /// file name string
     pub file_name: String,
+    /// Identification block
     pub id_block: IdBlock,
+    /// Header block
     pub hd_block: Hd3,
+    /// Header comments
     pub hd_comment: String,
     /// data group block linking channel group/channel/conversion/..etc. and data block
     pub dg: BTreeMap<u32, Dg3>,
@@ -248,6 +253,7 @@ pub struct Blockheader3 {
     hdr_len: u16,    // block size
 }
 
+/// Generic block header parser
 pub fn parse_block_header(rdr: &mut BufReader<&File>) -> Blockheader3 {
     let header: Blockheader3 = rdr.read_le().expect("Could not read Blockheader3 struct");
     header
@@ -269,7 +275,7 @@ pub struct Hd3 {
     hd_pr: u32,
 
     // Data members
-    /// Time stamp in nanoseconds elapsed since 00:00:00 01.01.1970 (UTC time or local time, depending on "local time" flag, see [UTC]).
+    /// Time stamp in nanoseconds elapsed since 00:00:00 01.01.1970 (UTC time or local time, depending on "local time" flag).
     hd_n_datagroups: u16,
     /// Date at which the recording was started in "DD:MM:YYYY" format
     pub hd_date: (u32, u32, i32),
@@ -309,6 +315,8 @@ pub struct Hd3Block {
     hd_project: [u8; 32],      // project name
     hd_subject: [u8; 32],      // subject or measurement object
 }
+
+/// Specific from version 3.2 HD block extension
 #[derive(Debug, PartialEq, Default, BinRead)]
 pub struct Hd3Block32 {
     hd_start_time_ns: u64, // time stamp at which recording was started in nanosecond
@@ -317,6 +325,7 @@ pub struct Hd3Block32 {
     hd_time_identifier: [u8; 32], // timer identification or time source
 }
 
+/// Header block parser
 pub fn hd3_parser(rdr: &mut BufReader<&File>, ver: u16) -> (Hd3, i64) {
     let mut buf = [0u8; 164];
     rdr.read_exact(&mut buf).expect("Could not read hd3 buffer");
@@ -470,6 +479,7 @@ impl fmt::Display for Hd3 {
     }
 }
 
+/// Header comment parser
 pub fn hd3_comment_parser(
     rdr: &mut BufReader<&File>,
     hd3_block: &Hd3,
@@ -480,6 +490,7 @@ pub fn hd3_comment_parser(
     (comment, position)
 }
 
+/// TX text block parser, expecting ISO_8859_1 encoded text
 pub fn parse_tx(
     rdr: &mut BufReader<&File>,
     target: u32,
@@ -502,6 +513,7 @@ pub fn parse_tx(
     (block_header, comment, position)
 }
 
+/// Data Group Block structure
 #[derive(Debug, BinRead, Clone)]
 #[br(little)]
 #[allow(dead_code)]
@@ -525,6 +537,7 @@ pub struct Dg3Block {
     // reserved: u32, // reserved
 }
 
+/// Data Group block parser
 pub fn parse_dg3_block(rdr: &mut BufReader<&File>, target: u32, position: i64) -> (Dg3Block, i64) {
     rdr.seek_relative(target as i64 - position)
         .expect("Could not reach position of Dg3 block");
@@ -831,6 +844,7 @@ pub struct Cn3Block1 {
     /// Short signal name
     cn_short_name: [u8; 32],
 }
+
 /// Cn3 Channel block struct, second sub block
 #[derive(Debug, PartialEq, Default, Clone, BinRead)]
 #[br(little)]
@@ -850,6 +864,7 @@ pub struct Cn3Block2 {
     cn_byte_offset: u16,   //
 }
 
+/// CN3 Block parsing
 fn parse_cn3_block(
     rdr: &mut BufReader<&File>,
     target: u32,
@@ -969,6 +984,7 @@ fn parse_cn3_block(
     (cn_struct, position)
 }
 
+/// Converter of data type from 3.x to 4.x
 pub fn convert_data_type_3to4(mdf3_datatype: u16) -> u8 {
     match mdf3_datatype {
         0 => 0,
@@ -1191,6 +1207,7 @@ pub struct Cc3Block {
     cc_size: u16,
 }
 
+/// All kind of channel data conversions
 #[derive(Debug, Clone)]
 pub enum Conversion {
     Linear(Vec<f64>),
@@ -1206,6 +1223,7 @@ pub enum Conversion {
     Identity,
 }
 
+/// Parser for channel conversion blocks
 pub fn parse_cc3_block(
     rdr: &mut BufReader<&File>,
     target: u32,
