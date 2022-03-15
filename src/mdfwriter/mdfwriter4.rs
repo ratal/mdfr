@@ -14,6 +14,7 @@ use crate::{
 };
 use binrw::BinWriterExt;
 use ndarray::Array1;
+use rayon::iter::IntoParallelRefMutIterator;
 use std::fs::File;
 
 use yazi::{compress, CompressionLevel, Format};
@@ -46,7 +47,7 @@ pub fn mdfwriter4<'a>(
     let mut last_dg_pointer: i64 = pointer;
     new_info.hd_block.hd_dg_first = pointer;
 
-    // build meta data blocks for the written file
+    // builds meta data blocks for the new file
     for (_dg_position, dg) in info.dg.iter() {
         for (_record_id, cg) in dg.cg.iter() {
             let mut cg_cg_master: i64 = 0;
@@ -93,12 +94,12 @@ pub fn mdfwriter4<'a>(
         last_dg.block.dg_dg_next = 0;
     }
 
-    // writes the channels data first as block size is unknown due to compression
+    // writes the channels data first as block size can be unknown due to compression
     writer
         .seek(SeekFrom::Start(pointer as u64))
         .expect("Could not reach position to write data blocks");
     for (_position, dg) in new_info.dg.iter_mut() {
-        for (_rec_id, cg) in dg.cg.iter_mut() {
+        for (_rec_id, cg) in dg.cg.iter() {
             for (_rec_pos, cn) in cg.cn.iter() {
                 let (dt, m) = info.get_channel_data(&cn.unique_name);
                 if let Some(data) = dt {
@@ -119,21 +120,35 @@ pub fn mdfwriter4<'a>(
                         pointer += ld_block.ld_len as i64;
                         ld_block.ld_links.push(pointer);
 
+                        let data_block: DataBlock;
+                        let data_bytes: Vec<u8>;
+                        let byte_aligned: usize;
                         if compression {
-                            write_dz_dv(data, writer, &mut pointer, &mut ld_block, m.is_some());
+                            (data_block, byte_aligned, data_bytes) =
+                                create_dz_dv(data, &mut pointer, &mut ld_block, m.is_some());
                         } else {
-                            write_dv(data, writer, &mut pointer, &mut ld_block, m.is_some());
+                            (data_block, byte_aligned, data_bytes) =
+                                create_dv(data, &mut pointer, &mut ld_block, m.is_some());
                         }
 
                         // invalid mask existing
+                        let mut invalid_block: Option<(DataBlock, Vec<u8>)> = None;
                         if let Some(mask) = m {
-                            cg.block.cg_inval_bytes = 1; // one byte invalid
                             if compression {
-                                pointer = write_dz_di(mask, writer, pointer);
+                                invalid_block = create_dz_di(mask, &mut pointer);
                             } else {
-                                pointer = write_di(mask, writer, pointer);
+                                invalid_block = create_di(mask, &mut pointer);
                             }
                         }
+                        // write data block
+                        write_data_blocks(
+                            writer,
+                            ld_block,
+                            data_block,
+                            byte_aligned,
+                            data_bytes,
+                            invalid_block,
+                        );
                     }
                 }
             }
@@ -203,15 +218,70 @@ pub fn mdfwriter4<'a>(
     new_info
 }
 
-/// write a DV Block
-fn write_dv<'a>(
+// Writes the data blocks
+fn write_data_blocks(
+    writer: &mut BufWriter<&File>,
+    ld_block: Ld4Block,
+    data_block: DataBlock,
+    byte_aligned: usize,
+    data_bytes: Vec<u8>,
+    invalid_block: Option<(DataBlock, Vec<u8>)>,
+) {
+    // Writes blocks
+    let id_ld: [u8; 4] = [35, 35, 76, 68]; // ##LD
+    writer.write_le(&id_ld).expect("Could not write LDBlock id");
+    writer.write_le(&ld_block).expect("Could not write LDBlock");
+    match data_block {
+        DataBlock::DvDi(dv_block) => {
+            writer.write_le(&dv_block).expect("Could not write DVBlock");
+        }
+        DataBlock::DZ(dz_block) => {
+            let id_dz: [u8; 4] = [35, 35, 68, 90]; // ##DZ
+            writer
+                .write_le(&id_dz)
+                .expect("Could not write DZDVBlock id");
+            writer
+                .write_le(&dz_block)
+                .expect("Could not write DZDVBlock");
+        }
+    }
+    writer
+        .write_all(&data_bytes)
+        .expect("Could not write data in DVBlock or DZBlock");
+    // 8 byte align
+    writer
+        .write_all(&vec![0; byte_aligned])
+        .expect("Could not align written data to 8 bytes");
+
+    // invalid mask existing
+    if let Some((invalid_block, invalid_bytes)) = invalid_block {
+        match invalid_block {
+            DataBlock::DvDi(di_block) => {
+                writer.write_le(&di_block).expect("Could not write DIBlock");
+            }
+            DataBlock::DZ(dz_di_block) => {
+                let id_dz: [u8; 4] = [35, 35, 68, 90]; // ##DZ
+                writer
+                    .write_le(&id_dz)
+                    .expect("Could not write DZDIBlock id");
+                writer
+                    .write_le(&dz_di_block)
+                    .expect("Could not write DZDIBlock");
+            }
+        }
+        writer
+            .write_all(&invalid_bytes)
+            .expect("Could not write invalid data");
+    }
+}
+
+/// Create a DV Block
+fn create_dv<'a>(
     data: &'a ChannelData,
-    writer: &'a mut BufWriter<&File>,
     pointer: &'a mut i64,
     ld_block: &'a mut Ld4Block,
     invalid_mask: bool,
-) -> &'a mut i64 {
-    let id_ld: [u8; 4] = [35, 35, 76, 68]; // ##LD
+) -> (DataBlock, usize, Vec<u8>) {
     let mut dv_block = Blockheader4::default();
     dv_block.hdr_id = [35, 35, 68, 86]; // ##DV
     let data_bytes = data.to_bytes();
@@ -223,110 +293,77 @@ fn write_dv<'a>(
     if invalid_mask {
         ld_block.ld_links.push(*pointer);
     }
-    // Writes blocks
-    writer.write_le(&id_ld).expect("Could not write LDBlock id");
-    writer.write_le(ld_block).expect("Could not write LDBlock");
-    writer.write_le(&dv_block).expect("Could not write DVBlock");
-    writer
-        .write_all(&data_bytes)
-        .expect("Could not write data in DVBlock");
-    // 8 byte align
-    writer
-        .write_all(&vec![0; byte_aligned])
-        .expect("Could not align written data to 8 bytes");
-    pointer
+
+    (DataBlock::DvDi(dv_block), byte_aligned, data_bytes)
 }
 
-/// Writes a DZ Block of DV type
-fn write_dz_dv<'a>(
+/// Enumeration of data block types
+enum DataBlock {
+    DZ(Dz4Block),
+    DvDi(Blockheader4),
+}
+
+/// Create a DZ Block of DV type
+fn create_dz_dv<'a>(
     data: &'a ChannelData,
-    writer: &'a mut BufWriter<&File>,
-    mut pointer: &'a mut i64,
+    pointer: &'a mut i64,
     ld_block: &'a mut Ld4Block,
     invalid_mask: bool,
-) -> &'a mut i64 {
+) -> (DataBlock, usize, Vec<u8>) {
     let mut dz_block = Dz4Block::default();
-    let compressed_data = compress(&data.to_bytes(), Format::Zlib, CompressionLevel::Default)
+    let mut data_bytes = compress(&data.to_bytes(), Format::Zlib, CompressionLevel::Default)
         .expect("Could not compress invalid data");
-    dz_block.dz_data_length = compressed_data.len() as u64;
+    dz_block.dz_data_length = data_bytes.len() as u64;
+    let dv_dz_block: DataBlock;
+    let byte_aligned: usize;
     if dz_block.dz_org_data_length < dz_block.dz_data_length {
-        pointer = write_dv(data, writer, pointer, ld_block, invalid_mask);
+        (dv_dz_block, byte_aligned, data_bytes) = create_dv(data, pointer, ld_block, invalid_mask);
     } else {
-        let id_ld: [u8; 4] = [35, 35, 76, 68]; // ##LD
-        let id_dz: [u8; 4] = [35, 35, 68, 90]; // ##DZ
         dz_block.dz_org_data_length = (data.len() * data.bit_count() as usize / 8) as u64;
-        let byte_aligned = (8 - dz_block.dz_data_length % 8) as usize;
-        dz_block.dz_data_length = compressed_data.len() as u64;
+        byte_aligned = (8 - dz_block.dz_data_length % 8) as usize;
+        dz_block.dz_data_length = data_bytes.len() as u64;
         dz_block.len = dz_block.dz_data_length + 48 + byte_aligned as u64;
         *pointer += dz_block.len as i64;
         if invalid_mask {
             ld_block.ld_links.push(*pointer);
         }
-        // Writes blocks
-        writer.write_le(&id_ld).expect("Could not write LDBlock id");
-        writer.write_le(ld_block).expect("Could not write LDBlock");
-        writer.write_le(&id_dz).expect("Could not write DZBlock id");
-        writer.write_le(&dz_block).expect("Could not write DZBlock");
-        writer
-            .write_all(&compressed_data)
-            .expect("Could not write data in DZBlock");
-        // 8 byte align
-        writer
-            .write_all(&vec![0; byte_aligned])
-            .expect("Could not align written data to 8 bytes");
+        dv_dz_block = DataBlock::DZ(dz_block);
     };
-    pointer
+    (dv_dz_block, byte_aligned, data_bytes)
 }
 
-/// Writes a DI Block
-fn write_di(mask: &Array1<u8>, writer: &mut BufWriter<&File>, mut pointer: i64) -> i64 {
+/// Create a DI Block
+fn create_di(mask: &Array1<u8>, pointer: &mut i64) -> Option<(DataBlock, Vec<u8>)> {
     let mut dv_invalid_block = Blockheader4::default();
     dv_invalid_block.hdr_id = [35, 35, 68, 73]; // ##DI
     let mask_length = mask.len();
     dv_invalid_block.hdr_len += mask_length as u64;
     let byte_aligned = 8 - mask_length % 8;
     let invalid_data = [mask.to_vec(), vec![0; byte_aligned]].concat();
-    pointer += dv_invalid_block.hdr_len as i64 + byte_aligned as i64;
-    writer
-        .write_le(&dv_invalid_block)
-        .expect("Could not write invalid DZ-DIBlock");
-    writer
-        .write_all(&invalid_data)
-        .expect("Could not write invalid data");
-    pointer
+    *pointer += dv_invalid_block.hdr_len as i64 + byte_aligned as i64;
+    Some((DataBlock::DvDi(dv_invalid_block), invalid_data))
 }
 
-/// Write a DZ Block of DI type
-fn write_dz_di(mask: &Array1<u8>, writer: &mut BufWriter<&File>, mut pointer: i64) -> i64 {
+/// Create a DZ Block of DI type
+fn create_dz_di(mask: &Array1<u8>, pointer: &mut i64) -> Option<(DataBlock, Vec<u8>)> {
     let mut dz_invalid_block = Dz4Block::default();
     dz_invalid_block.dz_org_data_length = mask.len() as u64;
-    let mut invalid_compressed_data =
-        compress(&mask.to_vec(), Format::Zlib, CompressionLevel::Default)
-            .expect("Could not compress invalid data");
-    dz_invalid_block.dz_data_length = invalid_compressed_data.len() as u64;
+    let mut data_bytes = compress(&mask.to_vec(), Format::Zlib, CompressionLevel::Default)
+        .expect("Could not compress invalid data");
+    dz_invalid_block.dz_data_length = data_bytes.len() as u64;
     if dz_invalid_block.dz_org_data_length < dz_invalid_block.dz_data_length {
-        pointer = write_di(mask, writer, pointer);
+        create_di(mask, pointer)
     } else {
-        let id_dz: [u8; 4] = [35, 35, 68, 90]; // ##DZ
-        invalid_compressed_data = [
-            invalid_compressed_data,
+        data_bytes = [
+            data_bytes,
             vec![0; (8 - dz_invalid_block.dz_data_length % 8) as usize],
         ]
         .concat();
-        dz_invalid_block.len = invalid_compressed_data.len() as u64 + 48;
+        dz_invalid_block.len = data_bytes.len() as u64 + 48;
         dz_invalid_block.dz_org_block_type = [68, 73]; // DI
-        pointer += dz_invalid_block.len as i64;
-        writer
-            .write_le(&id_dz)
-            .expect("Could not write invalid DZ-DIBlock id");
-        writer
-            .write_le(&dz_invalid_block)
-            .expect("Could not write invalid DZ-DIBlock");
-        writer
-            .write_all(&invalid_compressed_data)
-            .expect("Could not write invalid data");
+        *pointer += dz_invalid_block.len as i64;
+        Some((DataBlock::DZ(dz_invalid_block), data_bytes))
     }
-    pointer
 }
 
 /// Creates the dg and following data strutures in the new mdfinfo from the old one
@@ -361,6 +398,10 @@ fn create_blocks(
         cg_block.cg_cycle_count = cg.block.cg_cycle_count;
 
         cg_block.cg_data_bytes = cn.data.byte_count();
+        if cg.invalid_bytes.is_some() {
+            // One byte for invalid data as only one channel per CG
+            cg_block.cg_inval_bytes = 1;
+        }
         pointer += cg_block.cg_len as i64;
         cg_block.cg_cn_first = pointer;
 
