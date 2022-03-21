@@ -1,14 +1,14 @@
 //! command line interface to load mdf file and manipulate it.
 extern crate clap;
 
-use clap::{App, Arg};
+use clap::{Command, Arg};
 use std::io;
 mod mdfinfo;
 mod mdfreader;
 mod mdfwriter;
 
 fn main() -> io::Result<()> {
-    let matches = App::new("mdfr")
+    let matches = Command::new("mdfr")
         .bin_name("mdfr")
         .version("0.1.0")
         .author("Aymeric Rateau <aymeric.rateau@gmail.com>")
