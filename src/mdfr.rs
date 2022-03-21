@@ -4,7 +4,6 @@ use std::collections::HashSet;
 use crate::mdfinfo::MdfInfo;
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
-use pyo3::PyObjectProtocol;
 
 /// This function is used to create a python dictionary from a MdfInfo object
 #[pyclass]
@@ -183,10 +182,6 @@ pyplot.show()
             .expect("plot python script failed");
         })
     }
-}
-
-#[pyproto]
-impl PyObjectProtocol for Mdf {
     fn __repr__(&self) -> PyResult<String> {
         let mut output: String;
         match &self.0 {
