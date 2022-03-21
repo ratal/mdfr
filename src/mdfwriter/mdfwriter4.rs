@@ -14,7 +14,6 @@ use crate::{
 };
 use binrw::BinWriterExt;
 use ndarray::Array1;
-use rayon::iter::IntoParallelRefMutIterator;
 use std::fs::File;
 
 use yazi::{compress, CompressionLevel, Format};
@@ -98,15 +97,14 @@ pub fn mdfwriter4<'a>(
     writer
         .seek(SeekFrom::Start(pointer as u64))
         .expect("Could not reach position to write data blocks");
-    for (_position, dg) in new_info.dg.iter_mut() {
+    new_info.dg.iter_mut().for_each(|(_position, dg)| {
         for (_rec_id, cg) in dg.cg.iter() {
             for (_rec_pos, cn) in cg.cn.iter() {
-                let (dt, m) = info.get_channel_data(&cn.unique_name);
+                let (dt, m) = info.get_channel_data_from_memory(&cn.unique_name);
                 if let Some(data) = dt {
                     if !data.is_empty() && data.bit_count() > 0 {
                         // empty strings are not written
                         let mut ld_block = Ld4Block::default();
-                        dg.block.dg_data = pointer;
                         ld_block.ld_count = 1;
                         ld_block.ld_sample_offset.push(0);
                         if m.is_some() {
@@ -117,44 +115,43 @@ pub fn mdfwriter4<'a>(
                             ld_block.ld_flags = 0b0;
                         }
                         ld_block.ld_len = 40 + (ld_block.ld_n_links * 8) as u64;
-                        pointer += ld_block.ld_len as i64;
-                        ld_block.ld_links.push(pointer);
+                        // Offset reference is beginning of LD Block
+                        let mut offset = ld_block.ld_len as i64;
+                        ld_block.ld_links.push(offset);
 
-                        let data_block: DataBlock;
-                        let data_bytes: Vec<u8>;
-                        let byte_aligned: usize;
+                        let data_block: (DataBlock, usize, Vec<u8>) = 
                         if compression {
-                            (data_block, byte_aligned, data_bytes) =
-                                create_dz_dv(data, &mut pointer, &mut ld_block, m.is_some());
+                            create_dz_dv(data, &mut offset)
                         } else {
-                            (data_block, byte_aligned, data_bytes) =
-                                create_dv(data, &mut pointer, &mut ld_block, m.is_some());
-                        }
+                            create_dv(data, &mut offset)
+                        };
 
                         // invalid mask existing
-                        let mut invalid_block: Option<(DataBlock, Vec<u8>)> = None;
+                        let mut invalid_block: Option<(DataBlock, Vec<u8>, usize)> = None;
                         if let Some(mask) = m {
+                            ld_block.ld_links.push(offset);
                             if compression {
-                                invalid_block = create_dz_di(mask, &mut pointer);
+                                invalid_block = create_dz_di(mask, &mut offset);
                             } else {
-                                invalid_block = create_di(mask, &mut pointer);
+                                invalid_block = create_di(mask, &mut offset);
                             }
                         }
-                        // write data block
+                        dg.block.dg_data = pointer;
                         write_data_blocks(
                             writer,
-                            ld_block,
+                            &mut pointer,
+                            &mut ld_block,
                             data_block,
-                            byte_aligned,
-                            data_bytes,
                             invalid_block,
                         );
                     }
                 }
             }
         }
-    }
+    });
 
+    // let c_writer = Arc::clone(&mutex_writer);
+    // let mut writer = c_writer.lock().expect("Could not get lock from writer");
     // position after IdBlock
     writer
         .seek(SeekFrom::Start(64))
@@ -218,22 +215,30 @@ pub fn mdfwriter4<'a>(
     new_info
 }
 
-// Writes the data blocks
+/// Writes the data blocks
 fn write_data_blocks(
     writer: &mut BufWriter<&File>,
-    ld_block: Ld4Block,
-    data_block: DataBlock,
-    byte_aligned: usize,
-    data_bytes: Vec<u8>,
-    invalid_block: Option<(DataBlock, Vec<u8>)>,
+    position: &mut i64,
+    ld_block: &mut Ld4Block,
+    data_block: (DataBlock, usize, Vec<u8>),
+    invalid_block: Option<(DataBlock, Vec<u8>, usize)>,
 ) {
-    // Writes blocks
+    // Writes LD block
     let id_ld: [u8; 4] = [35, 35, 76, 68]; // ##LD
     writer.write_le(&id_ld).expect("Could not write LDBlock id");
-    writer.write_le(&ld_block).expect("Could not write LDBlock");
-    match data_block {
+    ld_block
+        .ld_links
+        .iter_mut()
+        .skip(1) // spare ld_next for offset
+        .for_each(|x| *x += *position);
+    writer.write_le(ld_block).expect("Could not write LDBlock");
+    *position += ld_block.ld_len as i64;
+
+    // Writes DV or DZ block
+    match data_block.0 {
         DataBlock::DvDi(dv_block) => {
             writer.write_le(&dv_block).expect("Could not write DVBlock");
+            *position += dv_block.hdr_len as i64;
         }
         DataBlock::DZ(dz_block) => {
             let id_dz: [u8; 4] = [35, 35, 68, 90]; // ##DZ
@@ -243,21 +248,24 @@ fn write_data_blocks(
             writer
                 .write_le(&dz_block)
                 .expect("Could not write DZDVBlock");
+            *position += dz_block.len as i64;
         }
     }
     writer
-        .write_all(&data_bytes)
+        .write_all(&data_block.2)
         .expect("Could not write data in DVBlock or DZBlock");
     // 8 byte align
     writer
-        .write_all(&vec![0; byte_aligned])
+        .write_all(&vec![0; data_block.1])
         .expect("Could not align written data to 8 bytes");
+    *position += data_block.1 as i64;
 
     // invalid mask existing
-    if let Some((invalid_block, invalid_bytes)) = invalid_block {
+    if let Some((invalid_block, invalid_bytes, byte_aligned)) = invalid_block {
         match invalid_block {
             DataBlock::DvDi(di_block) => {
                 writer.write_le(&di_block).expect("Could not write DIBlock");
+                *position += di_block.hdr_len as i64;
             }
             DataBlock::DZ(dz_di_block) => {
                 let id_dz: [u8; 4] = [35, 35, 68, 90]; // ##DZ
@@ -267,20 +275,20 @@ fn write_data_blocks(
                 writer
                     .write_le(&dz_di_block)
                     .expect("Could not write DZDIBlock");
+                *position += dz_di_block.len as i64;
             }
         }
         writer
             .write_all(&invalid_bytes)
             .expect("Could not write invalid data");
+        *position += byte_aligned as i64;
     }
 }
 
 /// Create a DV Block
 fn create_dv<'a>(
     data: &'a ChannelData,
-    pointer: &'a mut i64,
-    ld_block: &'a mut Ld4Block,
-    invalid_mask: bool,
+    offset: &'a mut i64,
 ) -> (DataBlock, usize, Vec<u8>) {
     let mut dv_block = Blockheader4::default();
     dv_block.hdr_id = [35, 35, 68, 86]; // ##DV
@@ -289,10 +297,7 @@ fn create_dv<'a>(
     dv_block.hdr_len += data_bytes_len as u64;
     let byte_aligned = 8 - data_bytes_len % 8;
 
-    *pointer += dv_block.hdr_len as i64 + byte_aligned as i64;
-    if invalid_mask {
-        ld_block.ld_links.push(*pointer);
-    }
+    *offset += dv_block.hdr_len as i64 + byte_aligned as i64;
 
     (DataBlock::DvDi(dv_block), byte_aligned, data_bytes)
 }
@@ -306,9 +311,7 @@ enum DataBlock {
 /// Create a DZ Block of DV type
 fn create_dz_dv<'a>(
     data: &'a ChannelData,
-    pointer: &'a mut i64,
-    ld_block: &'a mut Ld4Block,
-    invalid_mask: bool,
+    offset: &'a mut i64,
 ) -> (DataBlock, usize, Vec<u8>) {
     let mut dz_block = Dz4Block::default();
     let mut data_bytes = compress(&data.to_bytes(), Format::Zlib, CompressionLevel::Default)
@@ -317,52 +320,50 @@ fn create_dz_dv<'a>(
     let dv_dz_block: DataBlock;
     let byte_aligned: usize;
     if dz_block.dz_org_data_length < dz_block.dz_data_length {
-        (dv_dz_block, byte_aligned, data_bytes) = create_dv(data, pointer, ld_block, invalid_mask);
+        (dv_dz_block, byte_aligned, data_bytes) = create_dv(data, offset);
     } else {
         dz_block.dz_org_data_length = (data.len() * data.bit_count() as usize / 8) as u64;
         byte_aligned = (8 - dz_block.dz_data_length % 8) as usize;
         dz_block.dz_data_length = data_bytes.len() as u64;
-        dz_block.len = dz_block.dz_data_length + 48 + byte_aligned as u64;
-        *pointer += dz_block.len as i64;
-        if invalid_mask {
-            ld_block.ld_links.push(*pointer);
-        }
+        dz_block.len = dz_block.dz_data_length + 48;
+        *offset += dz_block.len as i64 + byte_aligned as i64;
         dv_dz_block = DataBlock::DZ(dz_block);
     };
     (dv_dz_block, byte_aligned, data_bytes)
 }
 
 /// Create a DI Block
-fn create_di(mask: &Array1<u8>, pointer: &mut i64) -> Option<(DataBlock, Vec<u8>)> {
+fn create_di(mask: &Array1<u8>, offset: &mut i64) -> Option<(DataBlock, Vec<u8>, usize)> {
     let mut dv_invalid_block = Blockheader4::default();
     dv_invalid_block.hdr_id = [35, 35, 68, 73]; // ##DI
     let mask_length = mask.len();
     dv_invalid_block.hdr_len += mask_length as u64;
     let byte_aligned = 8 - mask_length % 8;
     let invalid_data = [mask.to_vec(), vec![0; byte_aligned]].concat();
-    *pointer += dv_invalid_block.hdr_len as i64 + byte_aligned as i64;
-    Some((DataBlock::DvDi(dv_invalid_block), invalid_data))
+    *offset += dv_invalid_block.hdr_len as i64 + byte_aligned as i64;
+    Some((
+        DataBlock::DvDi(dv_invalid_block),
+        invalid_data,
+        byte_aligned,
+    ))
 }
 
 /// Create a DZ Block of DI type
-fn create_dz_di(mask: &Array1<u8>, pointer: &mut i64) -> Option<(DataBlock, Vec<u8>)> {
+fn create_dz_di(mask: &Array1<u8>, offset: &mut i64) -> Option<(DataBlock, Vec<u8>, usize)> {
     let mut dz_invalid_block = Dz4Block::default();
     dz_invalid_block.dz_org_data_length = mask.len() as u64;
     let mut data_bytes = compress(&mask.to_vec(), Format::Zlib, CompressionLevel::Default)
         .expect("Could not compress invalid data");
     dz_invalid_block.dz_data_length = data_bytes.len() as u64;
     if dz_invalid_block.dz_org_data_length < dz_invalid_block.dz_data_length {
-        create_di(mask, pointer)
+        create_di(mask, offset)
     } else {
-        data_bytes = [
-            data_bytes,
-            vec![0; (8 - dz_invalid_block.dz_data_length % 8) as usize],
-        ]
-        .concat();
         dz_invalid_block.len = data_bytes.len() as u64 + 48;
+        let byte_aligned = 8 - data_bytes.len() % 8;
+        data_bytes = [data_bytes, vec![0; byte_aligned as usize]].concat();
         dz_invalid_block.dz_org_block_type = [68, 73]; // DI
-        *pointer += dz_invalid_block.len as i64;
-        Some((DataBlock::DZ(dz_invalid_block), data_bytes))
+        *offset += dz_invalid_block.len as i64 + byte_aligned as i64;
+        Some((DataBlock::DZ(dz_invalid_block), data_bytes, byte_aligned))
     }
 }
 
