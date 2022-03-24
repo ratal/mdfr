@@ -1,7 +1,10 @@
 //! Writer of data in memory into mdf4.2 file
 use std::{
     collections::{HashMap, HashSet},
+    fs::OpenOptions,
     io::{BufWriter, Seek, SeekFrom, Write},
+    sync::Arc,
+    thread,
 };
 
 use crate::{
@@ -13,18 +16,22 @@ use crate::{
     mdfreader::channel_data::{data_type_init, ChannelData},
 };
 use binrw::BinWriterExt;
+use crossbeam_channel::unbounded;
 use ndarray::Array1;
+use parking_lot::Mutex;
+use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 use std::fs::File;
-
 use yazi::{compress, CompressionLevel, Format};
 
 /// writes file on hard drive
-pub fn mdfwriter4<'a>(
-    writer: &'a mut BufWriter<&File>,
-    info: &'a mut MdfInfo4,
-    file_name: &str,
-    compression: bool,
-) -> MdfInfo4 {
+pub fn mdfwriter4(info: &MdfInfo4, file_name: &str, compression: bool) -> MdfInfo4 {
+    let f: File = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .open(file_name)
+        .expect("Cannot create the file");
+    let mut writer = BufWriter::new(f);
     let n_channels = info.get_channel_names_set().len();
     let mut new_info = MdfInfo4::new(file_name, n_channels);
     // IDBlock
@@ -94,65 +101,84 @@ pub fn mdfwriter4<'a>(
     }
 
     // writes the channels data first as block size can be unknown due to compression
+    let data_pointer = Arc::new(Mutex::new(pointer));
     writer
         .seek(SeekFrom::Start(pointer as u64))
         .expect("Could not reach position to write data blocks");
-    new_info.dg.iter_mut().for_each(|(_position, dg)| {
-        for (_rec_id, cg) in dg.cg.iter() {
-            for (_rec_pos, cn) in cg.cn.iter() {
-                let (dt, m) = info.get_channel_data_from_memory(&cn.unique_name);
-                if let Some(data) = dt {
-                    if !data.is_empty() && data.bit_count() > 0 {
-                        // empty strings are not written
-                        let mut ld_block = Ld4Block::default();
-                        ld_block.ld_count = 1;
-                        ld_block.ld_sample_offset.push(0);
-                        if m.is_some() {
-                            ld_block.ld_n_links = (ld_block.ld_count * 2 + 1) as u64;
-                            ld_block.ld_flags = 1u32 << 31;
-                        } else {
-                            ld_block.ld_n_links = (ld_block.ld_count + 1) as u64;
-                            ld_block.ld_flags = 0b0;
-                        }
-                        ld_block.ld_len = 40 + (ld_block.ld_n_links * 8) as u64;
-                        // Offset reference is beginning of LD Block
-                        let mut offset = ld_block.ld_len as i64;
-                        ld_block.ld_links.push(offset);
-
-                        let data_block: (DataBlock, usize, Vec<u8>) = 
-                        if compression {
-                            create_dz_dv(data, &mut offset)
-                        } else {
-                            create_dv(data, &mut offset)
-                        };
-
-                        // invalid mask existing
-                        let mut invalid_block: Option<(DataBlock, Vec<u8>, usize)> = None;
-                        if let Some(mask) = m {
-                            ld_block.ld_links.push(offset);
-                            if compression {
-                                invalid_block = create_dz_di(mask, &mut offset);
-                            } else {
-                                invalid_block = create_di(mask, &mut offset);
-                            }
-                        }
-                        dg.block.dg_data = pointer;
-                        write_data_blocks(
-                            writer,
-                            &mut pointer,
-                            &mut ld_block,
-                            data_block,
-                            invalid_block,
-                        );
-                    }
-                }
-            }
+    let mutex_writer = Arc::new(Mutex::new(writer));
+    let (tx, rx) = unbounded();
+    let second_mutext_writer = Arc::clone(&mutex_writer);
+    thread::spawn(move || {
+        let writer = Arc::clone(&second_mutext_writer);
+        let mut writer = writer.lock();
+        for (data_pointer, ld_block, data_block, invalid_block) in rx {
+            write_data_blocks(
+                &mut writer,
+                data_pointer,
+                ld_block,
+                data_block,
+                invalid_block,
+            );
         }
     });
 
-    // let c_writer = Arc::clone(&mutex_writer);
-    // let mut writer = c_writer.lock().expect("Could not get lock from writer");
+    new_info
+        .dg
+        .par_iter_mut()
+        .for_each(|(_dg_block_position, dg)| {
+            for (_rec_id, cg) in dg.cg.iter() {
+                for (_rec_pos, cn) in cg.cn.iter() {
+                    let (dt, m) = info.get_channel_data_from_memory(&cn.unique_name);
+                    if let Some(data) = dt {
+                        if !data.is_empty() && data.bit_count() > 0 {
+                            // empty strings are not written
+                            let mut ld_block = Ld4Block::default();
+                            ld_block.ld_count = 1;
+                            ld_block.ld_sample_offset.push(0);
+                            if m.is_some() {
+                                ld_block.ld_n_links = (ld_block.ld_count * 2 + 1) as u64;
+                                ld_block.ld_flags = 1u32 << 31;
+                            } else {
+                                ld_block.ld_n_links = (ld_block.ld_count + 1) as u64;
+                                ld_block.ld_flags = 0b0;
+                            }
+                            ld_block.ld_len = 40 + (ld_block.ld_n_links * 8) as u64;
+                            // Offset reference is beginning of LD Block
+                            let mut offset = ld_block.ld_len as i64;
+                            ld_block.ld_links.push(offset);
+
+                            let data_block: (DataBlock, usize, Vec<u8>) = if compression {
+                                create_dz_dv(data, &mut offset)
+                            } else {
+                                create_dv(data, &mut offset)
+                            };
+
+                            // invalid mask existing
+                            let mut invalid_block: Option<(DataBlock, Vec<u8>)> = None;
+                            if let Some(mask) = m {
+                                ld_block.ld_links.push(offset);
+                                if compression {
+                                    invalid_block = create_dz_di(mask, &mut offset);
+                                } else {
+                                    invalid_block = create_di(mask, &mut offset);
+                                }
+                            }
+                            let tx = tx.clone();
+                            let data_pointer = Arc::clone(&data_pointer);
+                            let mut dp = data_pointer.lock();
+                            dg.block.dg_data = *dp;
+                            tx.send((*dp, ld_block, data_block, invalid_block)).unwrap();
+                            *dp += offset;
+                        }
+                    }
+                }
+            }
+        });
+    drop(tx);
+
     // position after IdBlock
+    let writer = Arc::clone(&mutex_writer);
+    let mut writer = writer.lock();
     writer
         .seek(SeekFrom::Start(64))
         .expect("Could not reach position to write HD block");
@@ -162,7 +188,7 @@ pub fn mdfwriter4<'a>(
         .expect("Could not write HDBlock");
     // Writes FHBlock
     writer.write_le(&fh).expect("Could not write FHBlock");
-    fh_comments.write(writer); // FH comments
+    fh_comments.write(&mut writer); // FH comments
 
     // Writes DG+CG+CN blocks
     for (_position, dg) in new_info.dg.iter() {
@@ -173,15 +199,15 @@ pub fn mdfwriter4<'a>(
                 writer.write_le(&cn.block).expect("Could not write CNBlock");
                 // TX Block channel name
                 if let Some(tx_name_metadata) = new_info.sharable.md_tx.get(&cn.block.cn_tx_name) {
-                    tx_name_metadata.write(writer);
+                    tx_name_metadata.write(&mut writer);
                 }
                 if let Some(tx_unit_metadata) = new_info.sharable.md_tx.get(&cn.block.cn_md_unit) {
-                    tx_unit_metadata.write(writer);
+                    tx_unit_metadata.write(&mut writer);
                 }
                 if let Some(tx_comment_metadata) =
                     new_info.sharable.md_tx.get(&cn.block.cn_md_comment)
                 {
-                    tx_comment_metadata.write(writer);
+                    tx_comment_metadata.write(&mut writer);
                 }
                 // channel array
                 if let Some(compo) = &cn.composition {
@@ -217,11 +243,11 @@ pub fn mdfwriter4<'a>(
 
 /// Writes the data blocks
 fn write_data_blocks(
-    writer: &mut BufWriter<&File>,
-    position: &mut i64,
-    ld_block: &mut Ld4Block,
+    writer: &mut BufWriter<File>,
+    position: i64,
+    mut ld_block: Ld4Block,
     data_block: (DataBlock, usize, Vec<u8>),
-    invalid_block: Option<(DataBlock, Vec<u8>, usize)>,
+    invalid_block: Option<(DataBlock, Vec<u8>)>,
 ) {
     // Writes LD block
     let id_ld: [u8; 4] = [35, 35, 76, 68]; // ##LD
@@ -230,15 +256,13 @@ fn write_data_blocks(
         .ld_links
         .iter_mut()
         .skip(1) // spare ld_next for offset
-        .for_each(|x| *x += *position);
-    writer.write_le(ld_block).expect("Could not write LDBlock");
-    *position += ld_block.ld_len as i64;
+        .for_each(|x| *x += position);
+    writer.write_le(&ld_block).expect("Could not write LDBlock");
 
     // Writes DV or DZ block
     match data_block.0 {
         DataBlock::DvDi(dv_block) => {
             writer.write_le(&dv_block).expect("Could not write DVBlock");
-            *position += dv_block.hdr_len as i64;
         }
         DataBlock::DZ(dz_block) => {
             let id_dz: [u8; 4] = [35, 35, 68, 90]; // ##DZ
@@ -248,7 +272,6 @@ fn write_data_blocks(
             writer
                 .write_le(&dz_block)
                 .expect("Could not write DZDVBlock");
-            *position += dz_block.len as i64;
         }
     }
     writer
@@ -258,14 +281,12 @@ fn write_data_blocks(
     writer
         .write_all(&vec![0; data_block.1])
         .expect("Could not align written data to 8 bytes");
-    *position += data_block.1 as i64;
 
     // invalid mask existing
-    if let Some((invalid_block, invalid_bytes, byte_aligned)) = invalid_block {
+    if let Some((invalid_block, invalid_bytes)) = invalid_block {
         match invalid_block {
             DataBlock::DvDi(di_block) => {
                 writer.write_le(&di_block).expect("Could not write DIBlock");
-                *position += di_block.hdr_len as i64;
             }
             DataBlock::DZ(dz_di_block) => {
                 let id_dz: [u8; 4] = [35, 35, 68, 90]; // ##DZ
@@ -275,21 +296,16 @@ fn write_data_blocks(
                 writer
                     .write_le(&dz_di_block)
                     .expect("Could not write DZDIBlock");
-                *position += dz_di_block.len as i64;
             }
         }
         writer
             .write_all(&invalid_bytes)
             .expect("Could not write invalid data");
-        *position += byte_aligned as i64;
     }
 }
 
 /// Create a DV Block
-fn create_dv<'a>(
-    data: &'a ChannelData,
-    offset: &'a mut i64,
-) -> (DataBlock, usize, Vec<u8>) {
+fn create_dv<'a>(data: &'a ChannelData, offset: &'a mut i64) -> (DataBlock, usize, Vec<u8>) {
     let mut dv_block = Blockheader4::default();
     dv_block.hdr_id = [35, 35, 68, 86]; // ##DV
     let data_bytes = data.to_bytes();
@@ -303,16 +319,14 @@ fn create_dv<'a>(
 }
 
 /// Enumeration of data block types
+#[derive(Debug, Clone)]
 enum DataBlock {
     DZ(Dz4Block),
     DvDi(Blockheader4),
 }
 
 /// Create a DZ Block of DV type
-fn create_dz_dv<'a>(
-    data: &'a ChannelData,
-    offset: &'a mut i64,
-) -> (DataBlock, usize, Vec<u8>) {
+fn create_dz_dv<'a>(data: &'a ChannelData, offset: &'a mut i64) -> (DataBlock, usize, Vec<u8>) {
     let mut dz_block = Dz4Block::default();
     let mut data_bytes = compress(&data.to_bytes(), Format::Zlib, CompressionLevel::Default)
         .expect("Could not compress invalid data");
@@ -333,7 +347,7 @@ fn create_dz_dv<'a>(
 }
 
 /// Create a DI Block
-fn create_di(mask: &Array1<u8>, offset: &mut i64) -> Option<(DataBlock, Vec<u8>, usize)> {
+fn create_di(mask: &Array1<u8>, offset: &mut i64) -> Option<(DataBlock, Vec<u8>)> {
     let mut dv_invalid_block = Blockheader4::default();
     dv_invalid_block.hdr_id = [35, 35, 68, 73]; // ##DI
     let mask_length = mask.len();
@@ -341,15 +355,11 @@ fn create_di(mask: &Array1<u8>, offset: &mut i64) -> Option<(DataBlock, Vec<u8>,
     let byte_aligned = 8 - mask_length % 8;
     let invalid_data = [mask.to_vec(), vec![0; byte_aligned]].concat();
     *offset += dv_invalid_block.hdr_len as i64 + byte_aligned as i64;
-    Some((
-        DataBlock::DvDi(dv_invalid_block),
-        invalid_data,
-        byte_aligned,
-    ))
+    Some((DataBlock::DvDi(dv_invalid_block), invalid_data))
 }
 
 /// Create a DZ Block of DI type
-fn create_dz_di(mask: &Array1<u8>, offset: &mut i64) -> Option<(DataBlock, Vec<u8>, usize)> {
+fn create_dz_di(mask: &Array1<u8>, offset: &mut i64) -> Option<(DataBlock, Vec<u8>)> {
     let mut dz_invalid_block = Dz4Block::default();
     dz_invalid_block.dz_org_data_length = mask.len() as u64;
     let mut data_bytes = compress(&mask.to_vec(), Format::Zlib, CompressionLevel::Default)
@@ -363,7 +373,7 @@ fn create_dz_di(mask: &Array1<u8>, offset: &mut i64) -> Option<(DataBlock, Vec<u
         data_bytes = [data_bytes, vec![0; byte_aligned as usize]].concat();
         dz_invalid_block.dz_org_block_type = [68, 73]; // DI
         *offset += dz_invalid_block.len as i64 + byte_aligned as i64;
-        Some((DataBlock::DZ(dz_invalid_block), data_bytes, byte_aligned))
+        Some((DataBlock::DZ(dz_invalid_block), data_bytes))
     }
 }
 

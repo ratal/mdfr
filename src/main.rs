@@ -1,7 +1,7 @@
 //! command line interface to load mdf file and manipulate it.
 extern crate clap;
 
-use clap::{Command, Arg};
+use clap::{Arg, Command};
 use std::io;
 mod mdfinfo;
 mod mdfreader;

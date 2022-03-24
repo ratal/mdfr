@@ -135,6 +135,7 @@ mod tests {
         let file = format!("{}{}", BASE_PATH, &"Simple/test.mf4");
         let mut mdf = MdfInfo::new(&file);
         mdf.load_all_channels_data_in_memory();
+        mdf.write(WRITING_FILE, false);
     }
 
     #[test]
@@ -179,7 +180,6 @@ mod tests {
                 *data
             );
         }
-        info.load_all_channels_data_in_memory();
         let mut info2 = info.write(WRITING_FILE, false);
         info2.load_all_channels_data_in_memory();
         if let Some(data) = info2.get_channel_data(&"Data channel".to_string()) {
@@ -432,7 +432,10 @@ mod tests {
         }
 
         // Overlapping signals
-        let file_name = format!("{}{}", BASE_PATH, "RecordLayout/Vector_OverlappingSignals.mf4");
+        let file_name = format!(
+            "{}{}",
+            BASE_PATH, "RecordLayout/Vector_OverlappingSignals.mf4"
+        );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
     }
@@ -466,7 +469,10 @@ mod tests {
     #[test]
     fn compressed_data() {
         // Single DZ deflate
-        let file_name = format!("{}{}", BASE_PATH, "CompressedData/Simple/Vector_SingleDZ_Deflate.mf4");
+        let file_name = format!(
+            "{}{}",
+            BASE_PATH, "CompressedData/Simple/Vector_SingleDZ_Deflate.mf4"
+        );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
 
@@ -479,7 +485,10 @@ mod tests {
         info.load_all_channels_data_in_memory();
 
         // deflate data list
-        let file_name = format!("{}{}", BASE_PATH, "CompressedData/DataList/Vector_DataList_Deflate.mf4");
+        let file_name = format!(
+            "{}{}",
+            BASE_PATH, "CompressedData/DataList/Vector_DataList_Deflate.mf4"
+        );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
         println!("{}", info);
@@ -514,7 +523,10 @@ mod tests {
         }
 
         // Unsorted
-        let file_name = format!("{}{}", BASE_PATH, "CompressedData/Unsorted/Vector_SingleDZ_Unsorted.MF4");
+        let file_name = format!(
+            "{}{}",
+            BASE_PATH, "CompressedData/Unsorted/Vector_SingleDZ_Unsorted.MF4"
+        );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
     }
@@ -781,7 +793,10 @@ mod tests {
     #[test]
     fn bus_logging() {
         // sort bus
-        let file_name = format!("{}{}", BASE_PATH, "BusLogging/Vector_CAN_DataFrame_Sort_ID.MF4");
+        let file_name = format!(
+            "{}{}",
+            BASE_PATH, "BusLogging/Vector_CAN_DataFrame_Sort_ID.MF4"
+        );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
         if let Some(data) = info.get_channel_data(

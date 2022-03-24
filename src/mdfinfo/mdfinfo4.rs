@@ -237,14 +237,7 @@ impl MdfInfo4 {
     /// writes to a mdf4.2 file the data contained in memory.
     /// compression of data is optional.
     pub fn write(&mut self, file_name: &str, compression: bool) -> MdfInfo4 {
-        let f: File = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open(file_name)
-            .expect("Cannot create the file");
-        let mut rdr = BufWriter::new(&f);
-        mdfwriter4(&mut rdr, self, file_name, compression)
+        mdfwriter4(self, file_name, compression)
     }
     /// returns a new empty MdfInfo4 struct
     pub fn new(file_name: &str, n_channels: usize) -> MdfInfo4 {
@@ -669,7 +662,7 @@ impl MetaData {
         self.raw_data = vec![]; // empty the data from block as already parsed
     }
     /// Writes the metadata to file
-    pub fn write(&self, writer: &mut BufWriter<&File>) {
+    pub fn write(&self, writer: &mut BufWriter<File>) {
         writer
             .write_le(&self.block)
             .expect("Could not write comment block header");
