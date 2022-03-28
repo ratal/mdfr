@@ -132,10 +132,10 @@ mod tests {
 
     #[test]
     fn parse_file() {
-        let file = format!("{}{}", BASE_PATH, &"Simple/test.mf4");
+        let file = format!("{}{}", BASE_PATH, &"Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4");
         let mut mdf = MdfInfo::new(&file);
         mdf.load_all_channels_data_in_memory();
-        mdf.write(WRITING_FILE, false);
+        mdf.write(WRITING_FILE, true);
     }
 
     #[test]
@@ -806,6 +806,52 @@ mod tests {
             let target = Array1::<f64>::from_vec(vect);
             // assert!(ChannelData::Float64(target).compare_f64(data, 1e-9f64));
             assert_eq!(ChannelData::Float64(target), *data);
+        }
+    }
+    #[test]
+    fn writing_mdf4() {
+        // write file with invalid channels
+        let file = format!("{}{}", BASE_PATH, &"Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4");
+        let ref_channel = r"recorder_time !P";
+        let mut info = MdfInfo::new(&file);
+        info.load_all_channels_data_in_memory();
+        // with compression
+        let mut info2 = info.write(WRITING_FILE, true);
+        info2.load_all_channels_data_in_memory();
+        if let Some(data) = info.get_channel_data(&ref_channel.to_string()) {
+            if let Some(data2) = info2.get_channel_data(&ref_channel.to_string()) {
+                assert_eq!(*data2, *data);
+            }
+        }
+        // without compression
+        let mut info2 = info.write(WRITING_FILE, false);
+        info2.load_all_channels_data_in_memory();
+        if let Some(data) = info.get_channel_data(&ref_channel.to_string()) {
+            if let Some(data2) = info2.get_channel_data(&ref_channel.to_string()) {
+                assert_eq!(*data2, *data);
+            }
+        }
+        
+        // write file with many channels
+        let file = format!("{}{}", BASE_PATH, &"Simple/test.mf4");
+        let ref_channel = r"C90 CG21 in error.mdf";
+        let mut info = MdfInfo::new(&file);
+        info.load_all_channels_data_in_memory();
+        // with compression
+        let mut info2 = info.write(WRITING_FILE, true);
+        info2.load_all_channels_data_in_memory();
+        if let Some(data) = info.get_channel_data(&ref_channel.to_string()) {
+            if let Some(data2) = info2.get_channel_data(&ref_channel.to_string()) {
+                assert_eq!(*data2, *data);
+            }
+        }
+        // without compression
+        let mut info2 = info.write(WRITING_FILE, false);
+        info2.load_all_channels_data_in_memory();
+        if let Some(data) = info.get_channel_data(&ref_channel.to_string()) {
+            if let Some(data2) = info2.get_channel_data(&ref_channel.to_string()) {
+                assert_eq!(*data2, *data);
+            }
         }
     }
 }
