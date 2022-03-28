@@ -10,8 +10,7 @@ use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::default::Default;
 use std::fmt::Debug;
 use std::fs::{File, OpenOptions};
-use std::io::{prelude::*, BufWriter};
-use std::io::{BufReader, Cursor};
+use std::io::{BufReader, Cursor, Read, Seek, Write};
 use std::{fmt, str};
 use transpose;
 use yazi::{decompress, Adler32, Format};
@@ -662,7 +661,10 @@ impl MetaData {
         self.raw_data = vec![]; // empty the data from block as already parsed
     }
     /// Writes the metadata to file
-    pub fn write(&self, writer: &mut BufWriter<File>) {
+    pub fn write<W>(&self, writer: &mut W)
+    where
+        W: Write + Seek,
+    {
         writer
             .write_le(&self.block)
             .expect("Could not write comment block header");
@@ -2677,7 +2679,7 @@ pub fn build_channel_db(
                         changed = true;
                     }
                     // No souce or path name to make channel unique
-                    if !changed {
+                    if !changed || channel_list.contains_key(&cn.unique_name) {
                         // extend name with channel block position, unique
                         cn.unique_name.push_str(&space_char);
                         cn.unique_name.push_str(&cn.block_position.to_string());
