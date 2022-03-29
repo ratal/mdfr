@@ -168,13 +168,13 @@ mod tests {
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
-        if let Some(data) = info.get_channel_data(&"Time channel".to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&"Time channel".to_string()) {
             assert_eq!(
                 ChannelData::Float64(array![0., 1., 2., 3., 4., 5., 6., 7., 8., 9.]),
                 *data
             );
         }
-        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&"Data channel".to_string()) {
             assert_eq!(
                 ChannelData::StringUTF8(expected_string_result.clone()),
                 *data
@@ -182,7 +182,7 @@ mod tests {
         }
         let mut info2 = info.write(WRITING_FILE, false);
         info2.load_all_channels_data_in_memory();
-        if let Some(data) = info2.get_channel_data(&"Data channel".to_string()) {
+        if let (Some(data), Some(_mask)) = info2.get_channel_data(&"Data channel".to_string()) {
             assert_eq!(
                 ChannelData::StringUTF8(expected_string_result.clone()),
                 *data
@@ -195,7 +195,7 @@ mod tests {
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
-        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&"Data channel".to_string()) {
             assert_eq!(
                 ChannelData::StringUTF16(expected_string_result.clone()),
                 *data
@@ -203,7 +203,7 @@ mod tests {
         }
         let mut info2 = info.write(WRITING_FILE, false);
         info2.load_all_channels_data_in_memory();
-        if let Some(data) = info2.get_channel_data(&"Data channel".to_string()) {
+        if let (Some(data), Some(_mask)) = info2.get_channel_data(&"Data channel".to_string()) {
             assert_eq!(
                 ChannelData::StringUTF8(expected_string_result.clone()),
                 *data
@@ -216,7 +216,7 @@ mod tests {
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
-        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&"Data channel".to_string()) {
             assert_eq!(
                 ChannelData::StringSBC(expected_string_result.clone()),
                 *data
@@ -224,7 +224,7 @@ mod tests {
         }
         let mut info2 = info.write(WRITING_FILE, false);
         info2.load_all_channels_data_in_memory();
-        if let Some(data) = info2.get_channel_data(&"Data channel".to_string()) {
+        if let (Some(data), Some(_mask)) = info2.get_channel_data(&"Data channel".to_string()) {
             assert_eq!(
                 ChannelData::StringUTF8(expected_string_result.clone()),
                 *data
@@ -249,18 +249,18 @@ mod tests {
             vec![255, 255, 255, 255, 255],
         ]);
         info.load_all_channels_data_in_memory();
-        if let Some(data) = info.get_channel_data(&"Time channel".to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&"Time channel".to_string()) {
             assert_eq!(
                 ChannelData::Float64(array![0., 1., 2., 3., 4., 5., 6., 7., 8., 9.]),
                 *data
             );
         }
-        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&"Data channel".to_string()) {
             assert_eq!(byte_array, *data);
         }
         let mut info2 = info.write(WRITING_FILE, false);
         info2.load_all_channels_data_in_memory();
-        if let Some(data) = info2.get_channel_data(&"Data channel".to_string()) {
+        if let (Some(data), Some(_mask)) = info2.get_channel_data(&"Data channel".to_string()) {
             assert_eq!(byte_array, *data);
         }
 
@@ -277,7 +277,7 @@ mod tests {
             *v -= counter;
             counter += 1
         });
-        if let Some(data) = info.get_channel_data(&"Counter_INT64_BE".to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&"Counter_INT64_BE".to_string()) {
             assert_eq!(
                 ChannelData::Int64(Array1::<i64>::from_vec(vect.clone())),
                 *data
@@ -285,7 +285,7 @@ mod tests {
         }
         let mut info2 = info.write(WRITING_FILE, false);
         info2.load_all_channels_data_in_memory();
-        if let Some(data) = info2.get_channel_data(&"Counter_INT64_BE".to_string()) {
+        if let (Some(data), Some(_mask)) = info2.get_channel_data(&"Counter_INT64_BE".to_string()) {
             assert_eq!(ChannelData::Int64(Array1::<i64>::from_vec(vect)), *data);
         }
         let mut vect: Vec<i32> = vec![100; 201];
@@ -294,13 +294,13 @@ mod tests {
             *v -= counter;
             counter += 1
         });
-        if let Some(data) = info.get_channel_data(&"Counter_INT32_LE".to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&"Counter_INT32_LE".to_string()) {
             assert_eq!(
                 ChannelData::Int32(Array1::<i32>::from_vec(vect.clone())),
                 *data
             );
         }
-        if let Some(data) = info2.get_channel_data(&"Counter_INT32_LE".to_string()) {
+        if let (Some(data), Some(_mask)) = info2.get_channel_data(&"Counter_INT32_LE".to_string()) {
             assert_eq!(ChannelData::Int32(Array1::<i32>::from_vec(vect)), *data);
         }
         let mut vect: Vec<i16> = vec![100; 201];
@@ -309,13 +309,13 @@ mod tests {
             *v -= counter;
             counter += 1
         });
-        if let Some(data) = info.get_channel_data(&"Counter_INT16_LE".to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&"Counter_INT16_LE".to_string()) {
             assert_eq!(
                 ChannelData::Int16(Array1::<i16>::from_vec(vect.clone())),
                 *data
             );
         }
-        if let Some(data) = info2.get_channel_data(&"Counter_INT16_LE".to_string()) {
+        if let (Some(data), Some(_mask)) = info2.get_channel_data(&"Counter_INT16_LE".to_string()) {
             assert_eq!(ChannelData::Int16(Array1::<i16>::from_vec(vect)), *data);
         }
     }
@@ -337,7 +337,7 @@ mod tests {
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
-        if let Some(data) = info.get_channel_data(&"Time channel".to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&"Time channel".to_string()) {
             let mut vect: Vec<f64> = vec![0.; 101];
             let mut counter: f64 = 0.;
             vect.iter_mut().for_each(|v| {
@@ -354,7 +354,7 @@ mod tests {
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
-        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&"Data channel".to_string()) {
             let expected_string_result: Vec<String> = vec![
                 "zero".to_string(),
                 "one".to_string(),
@@ -382,7 +382,7 @@ mod tests {
             *v += counter;
             counter += 1
         });
-        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&"Data channel".to_string()) {
             assert_eq!(ChannelData::UInt64(Array1::<u64>::from_vec(vect)), *data);
         }
         // VLSD testing
@@ -392,7 +392,7 @@ mod tests {
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
-        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&"Data channel".to_string()) {
             let expected_string_result: Vec<String> = vec![
                 "zero".to_string(),
                 "one".to_string(),
@@ -421,7 +421,7 @@ mod tests {
         let file_name = format!("{}{}", BASE_PATH, "RecordLayout/Vector_NotByteAligned.mf4");
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
-        if let Some(data) = info.get_channel_data(&"Channel B".to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&"Channel B".to_string()) {
             let mut vect: Vec<u64> = vec![0; 30];
             let mut counter: u64 = 0;
             vect.iter_mut().for_each(|v| {
@@ -445,14 +445,14 @@ mod tests {
         let file_name = format!("{}{}", BASE_PATH, "DataList/Vector_DT_EqualLen.MF4");
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
-        if let Some(data) = info.get_channel_data(&"channel1".to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&"channel1".to_string()) {
             assert_eq!(data.len(), 254552);
         }
         // Equal length
         let file_name = format!("{}{}", BASE_PATH, "DataList/Vector_DL_Linked_List.MF4");
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
-        if let Some(data) = info.get_channel_data(&"channel1".to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&"channel1".to_string()) {
             assert_eq!(data.len(), 254552);
         }
 
@@ -492,7 +492,7 @@ mod tests {
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
         println!("{}", info);
-        if let Some(data) = info.get_channel_data(&"Time channel".to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&"Time channel".to_string()) {
             let mut vect: Vec<f64> = vec![0.; 10000];
             let mut counter: f64 = 0.;
             vect.iter_mut().for_each(|v| {
@@ -511,7 +511,7 @@ mod tests {
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
-        if let Some(data) = info.get_channel_data(&"Time channel".to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&"Time channel".to_string()) {
             let mut vect: Vec<f64> = vec![0.; 10000];
             let mut counter: f64 = 0.;
             vect.iter_mut().for_each(|v| {
@@ -555,7 +555,7 @@ mod tests {
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
-        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&"Data channel".to_string()) {
             let mut vect: Vec<f64> = vec![0.; 10];
             let mut counter: f64 = 0.;
             vect.iter_mut().for_each(|v| {
@@ -571,7 +571,7 @@ mod tests {
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
-        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&"Data channel".to_string()) {
             let vect: Vec<f64> = vec![3.; 10];
             let target = Array1::<f64>::from_vec(vect);
             assert!(ChannelData::Float64(target).compare_f64(data, f64::EPSILON));
@@ -591,7 +591,7 @@ mod tests {
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
-        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&"Data channel".to_string()) {
             let vect: [f64; 10] = [1., 2., 5., 10., 17., 26., 37., 50., 65., 82.];
             let target = Array1::<f64>::from_vec(vect.to_vec());
             assert!(ChannelData::Float64(target).compare_f64(data, f64::EPSILON));
@@ -604,7 +604,7 @@ mod tests {
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
-        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&"Data channel".to_string()) {
             let vect: [f64; 30] = [
                 -5.,
                 -5.,
@@ -648,7 +648,7 @@ mod tests {
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
-        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&"Data channel".to_string()) {
             let vect: [f64; 30] = [
                 -5., -5., -5., -5., -5., -5., -5., -2., -2., -2., -2., 0., 0., 0., 1., 1., 1., 2.,
                 2., 0., 0., 3., 3., 6., 6., 3., 3., 0., 0., 0.,
@@ -664,7 +664,7 @@ mod tests {
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
-        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&"Data channel".to_string()) {
             let vect: [f64; 30] = [
                 -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 2.0, 2.0, 2.0, 2.0,
                 2.0, 3.0, 3.0, 5.0, 5.0, 5.0, 6.0, 7.0, 7.0, 8.0, 8.0, 9.0, 9.0, 9.0, 9.0,
@@ -680,7 +680,7 @@ mod tests {
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
-        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&"Data channel".to_string()) {
             let target: Vec<String> = [
                 "No match".to_string(),
                 "first gear".to_string(),
@@ -704,7 +704,7 @@ mod tests {
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
-        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&"Data channel".to_string()) {
             let target: Vec<String> = [
                 "Out of range".to_string(),
                 "very low".to_string(),
@@ -728,7 +728,7 @@ mod tests {
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
-        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&"Data channel".to_string()) {
             let mut vect: Vec<f64> = vec![0.; 300];
             let mut counter: f64 = 0.;
             vect.iter_mut().for_each(|v| {
@@ -759,7 +759,7 @@ mod tests {
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
-        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&"Data channel".to_string()) {
             let vect: [f64; 10] = [-50., 1., 2., 3., 4., 5., 6., 7., 8., 9.];
             let target = Array1::<f64>::from_vec(vect.to_vec());
             assert_eq!(ChannelData::Float64(target), *data);
@@ -772,7 +772,7 @@ mod tests {
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
-        if let Some(data) = info.get_channel_data(&"Data channel".to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&"Data channel".to_string()) {
             let target: Vec<String> = [
                 "No translation".to_string(),
                 "Eins".to_string(),
@@ -799,7 +799,7 @@ mod tests {
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
-        if let Some(data) = info.get_channel_data(
+        if let (Some(data), Some(_mask)) = info.get_channel_data(
             &"CAN_DataFrame.ID CAN_DataFrame_101 CANReplay_7_5 Message".to_string(),
         ) {
             let vect: Vec<f64> = vec![101.; 79];
@@ -818,20 +818,20 @@ mod tests {
         // with compression
         let mut info2 = info.write(WRITING_FILE, true);
         info2.load_all_channels_data_in_memory();
-        if let Some(data) = info.get_channel_data(&ref_channel.to_string()) {
-            if let Some(data2) = info2.get_channel_data(&ref_channel.to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&ref_channel.to_string()) {
+            if let (Some(data2), Some(_mask)) = info2.get_channel_data(&ref_channel.to_string()) {
                 assert_eq!(*data2, *data);
             }
         }
         // without compression
         let mut info2 = info.write(WRITING_FILE, false);
         info2.load_all_channels_data_in_memory();
-        if let Some(data) = info.get_channel_data(&ref_channel.to_string()) {
-            if let Some(data2) = info2.get_channel_data(&ref_channel.to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&ref_channel.to_string()) {
+            if let (Some(data2), Some(_mask)) = info2.get_channel_data(&ref_channel.to_string()) {
                 assert_eq!(*data2, *data);
             }
         }
-        
+
         // write file with many channels
         let file = format!("{}{}", BASE_PATH, &"Simple/test.mf4");
         let ref_channel = r"C90 CG21 in error.mdf";
@@ -840,16 +840,16 @@ mod tests {
         // with compression
         let mut info2 = info.write(WRITING_FILE, true);
         info2.load_all_channels_data_in_memory();
-        if let Some(data) = info.get_channel_data(&ref_channel.to_string()) {
-            if let Some(data2) = info2.get_channel_data(&ref_channel.to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&ref_channel.to_string()) {
+            if let (Some(data2), Some(_mask)) = info2.get_channel_data(&ref_channel.to_string()) {
                 assert_eq!(*data2, *data);
             }
         }
         // without compression
         let mut info2 = info.write(WRITING_FILE, false);
         info2.load_all_channels_data_in_memory();
-        if let Some(data) = info.get_channel_data(&ref_channel.to_string()) {
-            if let Some(data2) = info2.get_channel_data(&ref_channel.to_string()) {
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&ref_channel.to_string()) {
+            if let (Some(data2), Some(_mask)) = info2.get_channel_data(&ref_channel.to_string()) {
                 assert_eq!(*data2, *data);
             }
         }

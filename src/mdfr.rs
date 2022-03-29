@@ -2,8 +2,9 @@
 use std::collections::HashSet;
 
 use crate::mdfinfo::MdfInfo;
+use numpy::ToPyArray;
 use pyo3::prelude::*;
-use pyo3::types::PyDict;
+use pyo3::types::{IntoPyDict, PyDict};
 
 /// This function is used to create a python dictionary from a MdfInfo object
 #[pyclass]
@@ -15,7 +16,6 @@ pub(crate) fn register(_py: Python, m: &PyModule) -> PyResult<()> {
 }
 // TODO export to hdf5 and parquet using arrow, xlswriter
 // TODO resample and export to csv ?
-// TODO Masked array when invalid bits available for mdf4
 
 /// Implements Mdf class to provide API to python using pyo3
 #[pymethods]
@@ -30,7 +30,26 @@ impl Mdf {
         let Mdf(mdf) = self;
         // default py_array value is python None
         pyo3::Python::with_gil(|py| {
-            let py_array: Py<PyAny> = mdf.get_channel_data(&channel_name).to_object(py);
+            let mut py_array: Py<PyAny>;
+            let (data, mask) = mdf.get_channel_data(&channel_name);
+            if let Some(m) = mask {
+                py_array = data.to_object(py);
+                let mask: Py<PyAny> = m.to_pyarray(py).into_py(py);
+                let locals = [("numpy", py.import("numpy").expect("could not import numpy"))]
+                    .into_py_dict(py);
+                locals
+                    .set_item("py_array", &py_array)
+                    .expect("cannot set python data");
+                locals
+                    .set_item("mask", mask)
+                    .expect("cannot set python mask");
+                py_array = py
+                    .eval(r#"numpy.ma.array(py_array, mask=mask)"#, None, Some(locals))
+                    .expect("masked array creation failed")
+                    .into_py(py);
+            } else {
+                py_array = data.to_object(py);
+            }
             py_array
         })
     }
@@ -60,16 +79,9 @@ impl Mdf {
     }
     /// returns channel's master data, numpy array or list, depending if data type is numeric or string|bytes
     fn get_channel_master_data(&mut self, channel_name: String) -> Py<PyAny> {
-        let Mdf(mdf) = self;
         // default py_array value is python None
-        pyo3::Python::with_gil(|py| {
-            let py_array: Py<PyAny> = if let Some(master) = mdf.get_channel_master(&channel_name) {
-                mdf.get_channel_data(&master).to_object(py)
-            } else {
-                py.None()
-            };
-            py_array
-        })
+        let master = self.get_channel_master(channel_name);
+        self.get_channel_data(master.to_string())
     }
     /// returns channel's associated master channel type string
     /// 0 = None (normal data channels), 1 = Time (seconds), 2 = Angle (radians),
@@ -141,8 +153,9 @@ impl Mdf {
                 locals
                     .set_item("master_channel_unit", mdf.get_channel_unit(&master_name))
                     .expect("cannot set python master_channel_unit");
+                let (data, _mask) = mdf.get_channel_data(&master_name);
                 locals
-                    .set_item("master_data", mdf.get_channel_data(&master_name))
+                    .set_item("master_data", data)
                     .expect("cannot set python master_data");
             } else {
                 locals
@@ -155,8 +168,9 @@ impl Mdf {
                     .set_item("master_data", py.None())
                     .expect("cannot set python master_data");
             }
+            let (data, _mask) = mdf.get_channel_data(&channel_name);
             locals
-                .set_item("channel_data", mdf.get_channel_data(&channel_name))
+                .set_item("channel_data", data)
                 .expect("cannot set python channel_data");
             py.import("matplotlib")
                 .expect("Could not plot channel with matplotlib");

@@ -3,6 +3,7 @@
 //! This module is reading the mdf file blocks (metadata)
 
 use binrw::{binrw, BinReaderExt};
+use ndarray::Array1;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
@@ -250,15 +251,18 @@ impl MdfInfo {
         }
     }
     /// returns channel's data ndarray.
-    pub fn get_channel_data<'a>(&'a mut self, channel_name: &'a str) -> Option<&ChannelData> {
-        let data: Option<&ChannelData> = match self {
-            MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_data(channel_name),
-            MdfInfo::V4(mdfinfo4) => {
-                let (dt, _mask) = mdfinfo4.get_channel_data(channel_name);
-                dt
+    pub fn get_channel_data<'a>(
+        &'a mut self,
+        channel_name: &'a str,
+    ) -> (Option<&ChannelData>, &Option<Array1<u8>>) {
+        let (data, mask) = match self {
+            MdfInfo::V3(mdfinfo3) => {
+                let dt = mdfinfo3.get_channel_data(channel_name);
+                (dt, &None)
             }
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_data(channel_name),
         };
-        data
+        (data, mask)
     }
     /// Clears all data arrays
     pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) {
