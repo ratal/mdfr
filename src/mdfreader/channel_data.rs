@@ -1171,7 +1171,6 @@ impl ChannelData {
     }
     /// returns raw bytes vectors from ndarray
     pub fn to_bytes(&self) -> Vec<u8> {
-        // TODO: too slow performance-wise, to consider zerocopy, serde or unsafe like transmute
         match self {
             ChannelData::Int8(a) => a.iter().flat_map(|x| x.to_ne_bytes()).collect(),
             ChannelData::UInt8(a) => a.to_vec(),
