@@ -28,6 +28,7 @@ fasteval = "0.2" # for algebraic conversion
 itertools = "0.10"
 serde = { version = "1.0", features = ["derive"] } # for serialization
 whoami = "1.2" # to get user nam for writing file
+rand = "0.8" # for random numbers
 
 [lib]
 name = "mdfr"

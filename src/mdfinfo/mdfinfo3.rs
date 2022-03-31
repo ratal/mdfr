@@ -56,19 +56,24 @@ impl MdfInfo3 {
             if let Some(dg) = self.dg.get(dg_pos) {
                 if let Some(cg) = dg.cg.get(rec_id) {
                     if let Some(cn) = cg.cn.get(cn_pos) {
-                        if let Some(array) = self.sharable.cc.get(&cn.block1.cn_cc_conversion) {
-                            let txt = array.0.cc_unit;
-                            let mut u = String::new();
-                            ISO_8859_1
-                                .decode_to(&txt, DecoderTrap::Replace, &mut u)
-                                .expect("channel description is latin1 encoded");
-                            unit = Some(u.trim_end_matches(char::from(0)).to_string());
-                        }
+                        unit = self._get_unit(&cn.block1.cn_cc_conversion);
                     }
                 }
             }
         }
         unit
+    }
+    pub fn _get_unit(&self, cc_position: &u32) -> Option<String> {
+        if let Some(array) = self.sharable.cc.get(cc_position) {
+            let txt = array.0.cc_unit;
+            let mut u = String::new();
+            ISO_8859_1
+                .decode_to(&txt, DecoderTrap::Replace, &mut u)
+                .expect("channel description is latin1 encoded");
+            Some(u.trim_end_matches(char::from(0)).to_string())
+        } else {
+            None
+        }
     }
     /// Returns the channel's description. If it does not exist, it is an empty string
     pub fn get_channel_desc(&self, channel_name: &str) -> Option<String> {

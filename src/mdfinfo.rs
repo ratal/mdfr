@@ -22,6 +22,7 @@ use mdfinfo4::{
 };
 
 use crate::mdfreader::channel_data::ChannelData;
+use crate::mdfwriter::mdfwriter3::convert3to4;
 
 use self::mdfinfo3::build_channel_db3;
 
@@ -278,10 +279,9 @@ impl MdfInfo {
     /// Writes mdf4 file
     pub fn write(&mut self, file_name: &str, compression: bool) -> MdfInfo {
         match self {
-            MdfInfo::V3(_mdfinfo3) => {
+            MdfInfo::V3(mdfinfo3) => {
                 // TODO convert mdf3 to mdf4
-                // write mdf4
-                todo!();
+                MdfInfo::V4(Box::new(convert3to4(mdfinfo3, file_name)))
             }
             MdfInfo::V4(mdfinfo4) => MdfInfo::V4(Box::new(mdfinfo4.write(file_name, compression))),
         }

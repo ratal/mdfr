@@ -4,6 +4,7 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::Local;
 use chrono::{naive::NaiveDateTime, DateTime, Utc};
 use ndarray::{Array1, Order};
+use rand;
 use rayon::prelude::*;
 use roxmltree;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
@@ -253,9 +254,271 @@ impl MdfInfo4 {
             all_data_in_memory: false,
         }
     }
+    /// Adds a new channel in memory (no file modification)
+    pub fn add_channel(
+        &mut self,
+        channel_name: String,
+        data: ChannelData,
+        master_channel: Option<String>,
+        master_type: Option<u8>,
+        master_flag: bool,
+        unit: Option<String>,
+        description: Option<String>,
+    ) {
+        let mut cg_block = Cg4Block::default();
+        // Basic channel block
+        let mut cn_block = Cn4Block::default();
+        let machine_endian: bool = cfg!(target_endian = "big");
+        cn_block.cn_data_type = data.data_type(machine_endian);
+        cn_block.cn_bit_count = data.bit_count();
+        let cn_pos = position_generator();
+        cn_block.cn_sync_type = master_type.unwrap_or(0);
+
+        // channel name
+        let channel_name_position = position_generator();
+        cn_block.cn_tx_name = channel_name_position;
+        self.sharable
+            .create_tx(channel_name_position, channel_name.to_string());
+
+        // Channel array
+        let data_ndim = data.ndim() - 1;
+        let mut composition: Option<Composition> = None;
+        if data_ndim > 0 {
+            let data_dim_size = data
+                .shape()
+                .iter()
+                .skip(1)
+                .map(|x| *x as u64)
+                .collect::<Vec<_>>();
+            // data_dim_size.remove(0);
+            let mut ca_block = Ca4Block::default();
+            for x in data_dim_size.clone() {
+                ca_block.snd += x as usize;
+                ca_block.pnd *= x as usize;
+            }
+            cg_block.cg_data_bytes = ca_block.pnd as u32 * data.byte_count();
+
+            let composition_position = position_generator();
+            cn_block.cn_composition = composition_position;
+            ca_block.ca_ndim = data_ndim as u16;
+            ca_block.ca_dim_size = data_dim_size.clone();
+            ca_block.shape.0 = data_dim_size
+                .iter()
+                .map(|x| *x as usize)
+                .collect::<Vec<_>>();
+            ca_block.ca_len = 48 + 8 * data_ndim as u64;
+            composition = Some(Composition {
+                block: Compo::CA(Box::new(ca_block)),
+                compo: None,
+            });
+        }
+
+        // master channel
+        if master_flag {
+            cn_block.cn_type = 2; // master channel
+        } else {
+            cn_block.cn_type = 0; // data channel
+            if let Some(master_channel_name) = master_channel.clone() {
+                // looking for the master channel's cg position
+                if let Some((_master, _dg_pos, (cg_pos, _rec_id), (_cn_pos, _rec_pos))) =
+                    self.channel_names_set.get(&master_channel_name)
+                {
+                    cg_block.cg_cg_master = Some(*cg_pos);
+                    cg_block.cg_flags = 0b1000;
+                    cg_block.cg_links = 7; // with cg_cg_master
+                    cg_block.cg_len = 112;
+                }
+            }
+        }
+        if let Some(sync_type) = master_type {
+            cn_block.cn_sync_type = sync_type;
+        }
+
+        // unit
+        if let Some(u) = unit {
+            let unit_position = position_generator();
+            cn_block.cn_md_unit = unit_position;
+            self.sharable.create_tx(unit_position, u);
+        }
+
+        // description
+        if let Some(d) = description {
+            let unit_position = position_generator();
+            cn_block.cn_md_unit = unit_position;
+            self.sharable.create_tx(unit_position, d);
+        }
+
+        // CN
+        let cn = Cn4 {
+            unique_name: channel_name.to_string(),
+            data,
+            block: cn_block,
+            endian: machine_endian,
+            block_position: cn_pos,
+            pos_byte_beg: 0,
+            n_bytes: cg_block.cg_data_bytes,
+            composition,
+            invalid_mask: None,
+            channel_data_valid: false,
+        };
+
+        // CG
+        let cg_pos = position_generator();
+        let mut cg = Cg4 {
+            block: cg_block,
+            master_channel_name: master_channel.clone(),
+            cn: HashMap::new(),
+            block_position: cg_pos,
+            channel_names: HashSet::new(),
+            record_length: cg_block.cg_data_bytes,
+            vlsd_cg: None,
+            invalid_bytes: None,
+        };
+        cg.cn.insert(0, cn);
+        cg.channel_names.insert(channel_name.to_string());
+
+        // DG
+        let dg_pos = position_generator();
+        let dg_block = Dg4Block::default();
+        let mut dg = Dg4 {
+            block: dg_block,
+            cg: HashMap::new(),
+        };
+        dg.cg.insert(0, cg);
+        let dg_position = position_generator();
+        self.dg.insert(dg_position, dg);
+
+        self.channel_names_set.insert(
+            channel_name,
+            (master_channel, dg_pos, (cg_pos, 0), (cn_pos, 0)),
+        );
+    }
+    /// Removes a channel in memory (no file modification)
+    pub fn remove_channel(&mut self, channel_name: &str) {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.channel_names_set.get(channel_name)
+        {
+            if let Some(dg) = self.dg.get_mut(dg_pos) {
+                if let Some(cg) = dg.cg.get_mut(rec_id) {
+                    cg.cn.remove(rec_pos);
+                    cg.channel_names.remove(channel_name);
+                    self.channel_names_set.remove(channel_name);
+                }
+            }
+        }
+    }
+    /// Renames a channel's name in memory
+    pub fn rename_channel(&mut self, channel_name: &str, new_name: &str) {
+        if let Some((master, dg_pos, (cg_pos, rec_id), (cn_pos, rec_pos))) =
+            self.channel_names_set.remove(channel_name)
+        {
+            if let Some(dg) = self.dg.get_mut(&dg_pos) {
+                if let Some(cg) = dg.cg.get_mut(&rec_id) {
+                    if let Some(cn) = cg.cn.get_mut(&rec_pos) {
+                        cn.unique_name = new_name.to_string();
+                        cg.channel_names.remove(channel_name);
+                        cg.channel_names.insert(new_name.to_string());
+                        if let Some(master_name) = &master {
+                            if master_name == channel_name {
+                                cg.master_channel_name = Some(new_name.to_string());
+                                cg.channel_names.iter().for_each(|channel| {
+                                    if let Some(val) = self.channel_names_set.get_mut(channel) {
+                                        val.0 = Some(new_name.to_string());
+                                        val.1 = dg_pos;
+                                        val.2 = (cg_pos, rec_id);
+                                        val.3 = (cn_pos, rec_pos);
+                                    }
+                                });
+                            }
+                        }
+
+                        self.channel_names_set.insert(
+                            new_name.to_string(),
+                            (master, dg_pos, (cg_pos, rec_id), (cn_pos, rec_pos)),
+                        );
+                    }
+                }
+            }
+        }
+    }
+    /// Sets the channel unit in memory
+    pub fn set_channel_unit(&mut self, channel_name: &str, unit: &str) {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.channel_names_set.get(channel_name)
+        {
+            if let Some(dg) = self.dg.get_mut(dg_pos) {
+                if let Some(cg) = dg.cg.get_mut(rec_id) {
+                    if let Some(cn) = cg.cn.get_mut(rec_pos) {
+                        // hopefully never 2 times the same position
+                        let mut position = rand::random::<i64>();
+                        if position > 0 {
+                            // make sure position is negative to avoid interference with existing posistions in file
+                            position = -position;
+                        }
+                        self.sharable.create_tx(position, unit.to_string());
+                        cn.block.cn_md_unit = position;
+                    }
+                }
+            }
+        }
+    }
+    /// defines channel's data in memory
+    pub fn set_channel_data(&mut self, channel_name: &str, data: &ChannelData) {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.channel_names_set.get(channel_name)
+        {
+            if let Some(dg) = self.dg.get_mut(dg_pos) {
+                if let Some(cg) = dg.cg.get_mut(rec_id) {
+                    if let Some(cn) = cg.cn.get_mut(rec_pos) {
+                        cn.data = data.clone();
+                    }
+                }
+            }
+        }
+    }
+    /// Sets the channel description in memory
+    pub fn set_channel_desc(&mut self, channel_name: &str, desc: &str) {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.channel_names_set.get(channel_name)
+        {
+            if let Some(dg) = self.dg.get_mut(dg_pos) {
+                if let Some(cg) = dg.cg.get_mut(rec_id) {
+                    if let Some(cn) = cg.cn.get_mut(rec_pos) {
+                        let position = position_generator();
+                        self.sharable.create_tx(position, desc.to_string());
+                        cn.block.cn_md_comment = position;
+                    }
+                }
+            }
+        }
+    }
+    /// Sets the channel's related master channel type in memory
+    pub fn set_channel_master_type(&mut self, master_name: &str, master_type: u8) {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.channel_names_set.get(master_name)
+        {
+            if let Some(dg) = self.dg.get_mut(dg_pos) {
+                if let Some(cg) = dg.cg.get_mut(rec_id) {
+                    if let Some(cn) = cg.cn.get_mut(rec_pos) {
+                        cn.block.cn_sync_type = master_type;
+                    }
+                }
+            }
+        }
+    }
     // TODO cut data
     // TODO resample data
     // TODO Extract attachments
+}
+
+pub fn position_generator() -> i64 {
+    // hopefully never 2 times the same position
+    let mut position = rand::random::<i64>();
+    if position > 0 {
+        // make sure position is negative to avoid interference with existing posistions in file
+        position = -position;
+    }
+    position
 }
 
 /// MdfInfo4 display implementation
@@ -1266,6 +1529,14 @@ impl SharableBlocks {
             txt = md.get_tx();
         };
         txt
+    }
+    /// Creates a new SharableBlocks of type TX (not MD)
+    pub fn create_tx(&mut self, position: i64, text: String) {
+        let md = self
+            .md_tx
+            .entry(position)
+            .or_insert_with(|| MetaData::new(MetaDataBlockType::TX, BlockType::CN));
+        md.set_data_buffer(text.as_bytes());
     }
     /// Returns metadata from MD Block
     /// keys are tag and related value text of tag
