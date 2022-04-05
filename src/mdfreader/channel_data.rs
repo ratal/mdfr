@@ -1,7 +1,7 @@
 //! this module holds the channel data enum and related implementations
 use ndarray::{Array1, ArrayD, IxDyn};
 use num::Complex;
-use numpy::{IntoPyArray, ToPyArray};
+use numpy::{IntoPyArray, PyArray1, PyArrayDyn, ToPyArray};
 use pyo3::prelude::*;
 use serde::Serialize;
 use std::fmt;
@@ -1365,6 +1365,7 @@ impl ChannelData {
     }
 }
 
+/// IntoPy implementation to convert a ChannelData into a PyObject
 impl IntoPy<PyObject> for ChannelData {
     fn into_py(self, py: Python) -> PyObject {
         match self {
@@ -1412,6 +1413,7 @@ impl IntoPy<PyObject> for ChannelData {
     }
 }
 
+/// ToPyObject implementation to convert a ChannelData into a PyObject
 impl ToPyObject for ChannelData {
     fn to_object(&self, py: Python) -> PyObject {
         match self {
@@ -1457,6 +1459,116 @@ impl ToPyObject for ChannelData {
             ChannelData::ArrayDComplex64(array) => array.to_pyarray(py).into_py(py),
         }
     }
+}
+
+/// FromPyObject implementation to allow conversion from a Python object to a ChannelData
+impl FromPyObject<'_> for ChannelData {
+    fn extract(ob: &'_ PyAny) -> PyResult<Self> {
+        let truc: NumpyArray = ob.extract()?;
+        match truc {
+            NumpyArray::Int8(array) => {
+                Ok(ChannelData::Int8(array.readonly().as_array().to_owned()))
+            }
+            NumpyArray::UInt8(array) => {
+                Ok(ChannelData::UInt8(array.readonly().as_array().to_owned()))
+            }
+            NumpyArray::Int16(array) => {
+                Ok(ChannelData::Int16(array.readonly().as_array().to_owned()))
+            }
+            NumpyArray::UInt16(array) => {
+                Ok(ChannelData::UInt16(array.readonly().as_array().to_owned()))
+            }
+            NumpyArray::Int32(array) => {
+                Ok(ChannelData::Int32(array.readonly().as_array().to_owned()))
+            }
+            NumpyArray::UInt32(array) => {
+                Ok(ChannelData::UInt32(array.readonly().as_array().to_owned()))
+            }
+            NumpyArray::Float32(array) => {
+                Ok(ChannelData::Float32(array.readonly().as_array().to_owned()))
+            }
+            NumpyArray::Int64(array) => {
+                Ok(ChannelData::Int64(array.readonly().as_array().to_owned()))
+            }
+            NumpyArray::UInt64(array) => {
+                Ok(ChannelData::UInt64(array.readonly().as_array().to_owned()))
+            }
+            NumpyArray::Float64(array) => {
+                Ok(ChannelData::Float64(array.readonly().as_array().to_owned()))
+            }
+            NumpyArray::Complex32(array) => Ok(ChannelData::Complex32(
+                array.readonly().as_array().to_owned(),
+            )),
+            NumpyArray::Complex64(array) => Ok(ChannelData::Complex64(
+                array.readonly().as_array().to_owned(),
+            )),
+            NumpyArray::ArrayDInt8(array) => Ok(ChannelData::ArrayDInt8(
+                array.readonly().as_array().to_owned(),
+            )),
+            NumpyArray::ArrayDUInt8(array) => Ok(ChannelData::ArrayDUInt8(
+                array.readonly().as_array().to_owned(),
+            )),
+            NumpyArray::ArrayDInt16(array) => Ok(ChannelData::ArrayDInt16(
+                array.readonly().as_array().to_owned(),
+            )),
+            NumpyArray::ArrayDUInt16(array) => Ok(ChannelData::ArrayDUInt16(
+                array.readonly().as_array().to_owned(),
+            )),
+            NumpyArray::ArrayDInt32(array) => Ok(ChannelData::ArrayDInt32(
+                array.readonly().as_array().to_owned(),
+            )),
+            NumpyArray::ArrayDUInt32(array) => Ok(ChannelData::ArrayDUInt32(
+                array.readonly().as_array().to_owned(),
+            )),
+            NumpyArray::ArrayDFloat32(array) => Ok(ChannelData::ArrayDFloat32(
+                array.readonly().as_array().to_owned(),
+            )),
+            NumpyArray::ArrayDInt64(array) => Ok(ChannelData::ArrayDInt64(
+                array.readonly().as_array().to_owned(),
+            )),
+            NumpyArray::ArrayDUInt64(array) => Ok(ChannelData::ArrayDUInt64(
+                array.readonly().as_array().to_owned(),
+            )),
+            NumpyArray::ArrayDFloat64(array) => Ok(ChannelData::ArrayDFloat64(
+                array.readonly().as_array().to_owned(),
+            )),
+            NumpyArray::ArrayDComplex32(array) => Ok(ChannelData::ArrayDComplex32(
+                array.readonly().as_array().to_owned(),
+            )),
+            NumpyArray::ArrayDComplex64(array) => Ok(ChannelData::ArrayDComplex64(
+                array.readonly().as_array().to_owned(),
+            )),
+        }
+    }
+}
+
+/// Enum to identify the dtype of numpy array
+#[derive(Clone, FromPyObject)]
+enum NumpyArray<'a> {
+    Int8(&'a PyArray1<i8>),
+    UInt8(&'a PyArray1<u8>),
+    Int16(&'a PyArray1<i16>),
+    UInt16(&'a PyArray1<u16>),
+    Int32(&'a PyArray1<i32>),
+    UInt32(&'a PyArray1<u32>),
+    Float32(&'a PyArray1<f32>),
+    Int64(&'a PyArray1<i64>),
+    UInt64(&'a PyArray1<u64>),
+    Float64(&'a PyArray1<f64>),
+    Complex32(&'a PyArray1<Complex<f32>>),
+    Complex64(&'a PyArray1<Complex<f64>>),
+    ArrayDInt8(&'a PyArrayDyn<i8>),
+    ArrayDUInt8(&'a PyArrayDyn<u8>),
+    ArrayDInt16(&'a PyArrayDyn<i16>),
+    ArrayDUInt16(&'a PyArrayDyn<u16>),
+    ArrayDInt32(&'a PyArrayDyn<i32>),
+    ArrayDUInt32(&'a PyArrayDyn<u32>),
+    ArrayDFloat32(&'a PyArrayDyn<f32>),
+    ArrayDInt64(&'a PyArrayDyn<i64>),
+    ArrayDUInt64(&'a PyArrayDyn<u64>),
+    ArrayDFloat64(&'a PyArrayDyn<f64>),
+    ArrayDComplex32(&'a PyArrayDyn<Complex<f32>>),
+    ArrayDComplex64(&'a PyArrayDyn<Complex<f64>>),
 }
 
 impl Default for ChannelData {

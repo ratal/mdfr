@@ -9,6 +9,7 @@ use std::collections::HashSet;
 use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, Read};
+use std::path::PathBuf;
 use std::str;
 
 pub mod mdfinfo3;
@@ -279,11 +280,99 @@ impl MdfInfo {
     /// Writes mdf4 file
     pub fn write(&mut self, file_name: &str, compression: bool) -> MdfInfo {
         match self {
-            MdfInfo::V3(mdfinfo3) => {
-                // TODO convert mdf3 to mdf4
-                MdfInfo::V4(Box::new(convert3to4(mdfinfo3, file_name)))
-            }
+            MdfInfo::V3(mdfinfo3) => MdfInfo::V4(Box::new(convert3to4(mdfinfo3, file_name))),
             MdfInfo::V4(mdfinfo4) => MdfInfo::V4(Box::new(mdfinfo4.write(file_name, compression))),
+        }
+    }
+    /// Adds a new channel in memory (no file modification)
+    pub fn add_channel(
+        &mut self,
+        channel_name: String,
+        data: ChannelData,
+        master_channel: Option<String>,
+        master_type: Option<u8>,
+        master_flag: bool,
+        unit: Option<String>,
+        description: Option<String>,
+    ) {
+        match self {
+            MdfInfo::V3(mdfinfo3) => {
+                let mut file_name = PathBuf::from(mdfinfo3.file_name.as_str());
+                file_name.set_extension("mf4");
+                let mut mdf4 = convert3to4(mdfinfo3, &file_name.to_string_lossy());
+                mdf4.add_channel(
+                    channel_name,
+                    data,
+                    master_channel,
+                    master_type,
+                    master_flag,
+                    unit,
+                    description,
+                );
+            }
+            MdfInfo::V4(mdfinfo4) => {
+                mdfinfo4.add_channel(
+                    channel_name,
+                    data,
+                    master_channel,
+                    master_type,
+                    master_flag,
+                    unit,
+                    description,
+                );
+            }
+        }
+    }
+    /// defines channel's data in memory
+    pub fn set_channel_data(&mut self, channel_name: &str, data: &ChannelData) {
+        match self {
+            MdfInfo::V3(mdfinfo3) => {
+                let mut file_name = PathBuf::from(mdfinfo3.file_name.as_str());
+                file_name.set_extension("mf4");
+                let mut mdf4 = convert3to4(mdfinfo3, &file_name.to_string_lossy());
+                mdf4.set_channel_data(channel_name, data);
+            }
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.set_channel_data(channel_name, data),
+        }
+    }
+    /// Sets the channel's related master channel type in memory
+    pub fn set_channel_master_type(&mut self, master_name: &str, master_type: u8) {
+        match self {
+            MdfInfo::V3(mdfinfo3) => {
+                let mut file_name = PathBuf::from(mdfinfo3.file_name.as_str());
+                file_name.set_extension("mf4");
+                let mut mdf4 = convert3to4(mdfinfo3, &file_name.to_string_lossy());
+                mdf4.set_channel_master_type(master_name, master_type);
+            }
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.set_channel_master_type(master_name, master_type),
+        }
+    }
+    /// Removes a channel in memory (no file modification)
+    pub fn remove_channel(&mut self, channel_name: &str) {
+        match self {
+            MdfInfo::V3(mdfinfo3) => mdfinfo3.remove_channel(channel_name),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.remove_channel(channel_name),
+        }
+    }
+    /// Renames a channel's name in memory
+    pub fn rename_channel(&mut self, channel_name: &str, new_name: &str) {
+        match self {
+            MdfInfo::V3(mdfinfo3) => mdfinfo3.rename_channel(channel_name, new_name),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.rename_channel(channel_name, new_name),
+        }
+    }
+    /// Sets the channel unit in memory
+    pub fn set_channel_unit(&mut self, channel_name: &str, unit: &str) {
+        match self {
+            MdfInfo::V3(mdfinfo3) => mdfinfo3.set_channel_unit(channel_name, unit),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.set_channel_unit(channel_name, unit),
+        }
+    }
+    /// Sets the channel description in memory
+    pub fn set_channel_desc(&mut self, channel_name: &str, desc: &str) {
+        match self {
+            MdfInfo::V3(mdfinfo3) => mdfinfo3.set_channel_desc(channel_name, desc),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.set_channel_desc(channel_name, desc),
         }
     }
 }

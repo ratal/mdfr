@@ -3,8 +3,9 @@ use binrw::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::NaiveDate;
 use encoding::all::{ASCII, ISO_8859_1};
-use encoding::{DecoderTrap, Encoding};
+use encoding::{DecoderTrap, EncoderTrap, Encoding};
 use ndarray::Array1;
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::TryFrom;
 use std::default::Default;
@@ -214,6 +215,111 @@ impl MdfInfo3 {
             self.load_channels_data_in_memory(channel_names); // will read data only if array is empty
         }
         self.get_channel_data_from_memory(channel_name)
+    }
+    /// Removes a channel in memory (no file modification)
+    pub fn remove_channel(&mut self, channel_name: &str) {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
+            self.channel_names_set.get(channel_name)
+        {
+            if let Some(dg) = self.dg.get_mut(dg_pos) {
+                if let Some(cg) = dg.cg.get_mut(rec_id) {
+                    cg.cn.remove(cn_pos);
+                    cg.channel_names.remove(channel_name);
+                    self.channel_names_set.remove(channel_name);
+                }
+            }
+        }
+    }
+    /// Renames a channel's name in memory
+    pub fn rename_channel(&mut self, channel_name: &str, new_name: &str) {
+        if let Some((master, dg_pos, (cg_pos, rec_id), cn_pos)) =
+            self.channel_names_set.remove(channel_name)
+        {
+            if let Some(dg) = self.dg.get_mut(&dg_pos) {
+                if let Some(cg) = dg.cg.get_mut(&rec_id) {
+                    if let Some(cn) = cg.cn.get_mut(&cn_pos) {
+                        cn.unique_name = new_name.to_string();
+                        cg.channel_names.remove(channel_name);
+                        cg.channel_names.insert(new_name.to_string());
+                        if let Some(master_name) = &master {
+                            if master_name == channel_name {
+                                cg.master_channel_name = Some(new_name.to_string());
+                                cg.channel_names.iter().for_each(|channel| {
+                                    if let Some(val) = self.channel_names_set.get_mut(channel) {
+                                        val.0 = Some(new_name.to_string());
+                                        val.1 = dg_pos;
+                                        val.2 = (cg_pos, rec_id);
+                                        val.3 = cn_pos;
+                                    }
+                                });
+                            }
+                        }
+
+                        self.channel_names_set.insert(
+                            new_name.to_string(),
+                            (master, dg_pos, (cg_pos, rec_id), cn_pos),
+                        );
+                    }
+                }
+            }
+        }
+    }
+    /// Sets the channel unit in memory
+    pub fn set_channel_unit(&mut self, channel_name: &str, unit: &str) {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
+            self.channel_names_set.get(channel_name)
+        {
+            if let Some(dg) = self.dg.get_mut(dg_pos) {
+                if let Some(cg) = dg.cg.get_mut(rec_id) {
+                    if let Some(cn) = cg.cn.get_mut(cn_pos) {
+                        let unit_vector = ISO_8859_1
+                            .encode(unit, EncoderTrap::Replace)
+                            .expect("could not encode unit");
+                        let unit_array: [u8; 20] = match unit_vector.len().cmp(&20) {
+                            Ordering::Greater => unit_vector[0..20]
+                                .try_into()
+                                .expect("could not convert unit to array"),
+                            Ordering::Equal => unit_vector
+                                .try_into()
+                                .expect("could not convert unit to array"),
+                            Ordering::Less => {
+                                let mut unit_array = [0; 20];
+                                unit_array[0..unit_vector.len()].copy_from_slice(&unit_vector);
+                                unit_array
+                            }
+                        };
+                        if cn.block1.cn_cc_conversion != 0 {
+                            if let Some(array) =
+                                self.sharable.cc.get_mut(&cn.block1.cn_cc_conversion)
+                            {
+                                array.0.cc_unit = unit_array;
+                            }
+                        } else {
+                            let cc_position = rand::random::<u32>();
+                            cn.block1.cn_cc_conversion = cc_position;
+                            let cc_block = Cc3Block { cc_unit: unit_array, ..Default::default() };
+                            self.sharable
+                                .cc
+                                .insert(cc_position, (cc_block, Conversion::default()));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    /// Sets the channel description in memory
+    pub fn set_channel_desc(&mut self, channel_name: &str, desc: &str) {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
+            self.channel_names_set.get(channel_name)
+        {
+            if let Some(dg) = self.dg.get_mut(dg_pos) {
+                if let Some(cg) = dg.cg.get_mut(rec_id) {
+                    if let Some(cn) = cg.cn.get_mut(cn_pos) {
+                        cn.description = desc.to_string();
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -864,8 +970,8 @@ pub struct Cn3Block2 {
     cn_val_range_min: f64, // Minimum signal value that occurred for this signal (raw value) Only valid if "value range valid" flag (bit 3) is set.
     cn_val_range_max: f64, // Maximum signal value that occurred for this signal (raw value) Only valid if "value range valid" flag (bit 3) is set.
     cn_sampling_rate: f64, // Sampling rate of the signal in sec
-    cn_tx_long_name: u32,  // Short signal name
-    cn_tx_display_name: u32, // Short signal name
+    cn_tx_long_name: u32,  // Long signal name
+    cn_tx_display_name: u32, // Display signal name
     cn_byte_offset: u16,   //
 }
 
@@ -1212,6 +1318,21 @@ pub struct Cc3Block {
     cc_size: u16,
 }
 
+impl Default for Cc3Block {
+    fn default() -> Self {
+        Self {
+            cc_id: [0; 2],
+            cc_len: 48,
+            cc_valid_range_flags: 0,
+            cc_val_range_min: 0.0,
+            cc_val_range_max: 0.0,
+            cc_unit: [0; 20],
+            cc_type: 65535, // 1:1 conversion
+            cc_size: 0,
+        }
+    }
+}
+
 /// All kind of channel data conversions
 #[derive(Debug, Clone)]
 pub enum Conversion {
@@ -1226,6 +1347,12 @@ pub enum Conversion {
     TextTable(Vec<(f64, String)>),
     TextRangeTable((Vec<(f64, f64, String)>, String)),
     Identity,
+}
+
+impl Default for Conversion {
+    fn default() -> Self {
+        Self::Identity
+    }
 }
 
 /// Parser for channel conversion blocks

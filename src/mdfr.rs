@@ -135,6 +135,74 @@ impl Mdf {
         let Mdf(mdf) = self;
         pyo3::Python::with_gil(|_py| Mdf(mdf.write(file_name, compression)))
     }
+    /// Adds a new channel in memory (no file modification)
+    pub fn add_channel(
+        &mut self,
+        channel_name: String,
+        data: Py<PyAny>,
+        master_channel: Option<String>,
+        master_type: Option<u8>,
+        master_flag: bool,
+        unit: Option<String>,
+        description: Option<String>,
+    ) {
+        let Mdf(mdf) = self;
+        pyo3::Python::with_gil(|py| {
+            let array = data.extract(py).expect("channel addition failed, could not extract numpy array");
+            mdf.add_channel(
+                channel_name,
+                array,
+                master_channel,
+                master_type,
+                master_flag,
+                unit,
+                description,
+            );
+        })
+    }
+    /// defines channel's data in memory
+    pub fn set_channel_data(&mut self, channel_name: &str, data: Py<PyAny>) {
+        let Mdf(mdf) = self;
+        pyo3::Python::with_gil(|py| {
+            let array = data.extract(py).expect("data modification failed, could not extract numpy array");
+            mdf.set_channel_data(channel_name, &array);
+        })
+    }
+    /// Sets the channel's related master channel type in memory
+    pub fn set_channel_master_type(&mut self, master_name: &str, master_type: u8) {
+        let Mdf(mdf) = self;
+        pyo3::Python::with_gil(|_py| {
+            mdf.set_channel_master_type(master_name, master_type);
+        })
+    }
+    /// Removes a channel in memory (no file modification)
+    pub fn remove_channel(&mut self, channel_name: &str) {
+        let Mdf(mdf) = self;
+        pyo3::Python::with_gil(|_py| {
+            mdf.remove_channel(channel_name);
+        })
+    }
+    /// Renames a channel's name in memory
+    pub fn rename_channel(&mut self, channel_name: &str, new_name: &str) {
+        let Mdf(mdf) = self;
+        pyo3::Python::with_gil(|_py| {
+            mdf.rename_channel(channel_name, new_name);
+        })
+    }
+    /// Sets the channel unit in memory
+    pub fn set_channel_unit(&mut self, channel_name: &str, unit: &str) {
+        let Mdf(mdf) = self;
+        pyo3::Python::with_gil(|_py| {
+            mdf.set_channel_unit(channel_name, unit);
+        })
+    }
+    /// Sets the channel description in memory
+    pub fn set_channel_desc(&mut self, channel_name: &str, desc: &str) {
+        let Mdf(mdf) = self;
+        pyo3::Python::with_gil(|_py| {
+            mdf.set_channel_desc(channel_name, desc);
+        })
+    }
     /// plot one channel
     pub fn plot(&mut self, channel_name: String) {
         let Mdf(mdf) = self;

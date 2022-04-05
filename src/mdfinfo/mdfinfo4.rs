@@ -450,11 +450,7 @@ impl MdfInfo4 {
                 if let Some(cg) = dg.cg.get_mut(rec_id) {
                     if let Some(cn) = cg.cn.get_mut(rec_pos) {
                         // hopefully never 2 times the same position
-                        let mut position = rand::random::<i64>();
-                        if position > 0 {
-                            // make sure position is negative to avoid interference with existing posistions in file
-                            position = -position;
-                        }
+                        let position = position_generator();
                         self.sharable.create_tx(position, unit.to_string());
                         cn.block.cn_md_unit = position;
                     }
