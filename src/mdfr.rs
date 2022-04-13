@@ -148,7 +148,9 @@ impl Mdf {
     ) {
         let Mdf(mdf) = self;
         pyo3::Python::with_gil(|py| {
-            let array = data.extract(py).expect("channel addition failed, could not extract numpy array");
+            let array = data
+                .extract(py)
+                .expect("channel addition failed, could not extract numpy array");
             mdf.add_channel(
                 channel_name,
                 array,
@@ -164,7 +166,9 @@ impl Mdf {
     pub fn set_channel_data(&mut self, channel_name: &str, data: Py<PyAny>) {
         let Mdf(mdf) = self;
         pyo3::Python::with_gil(|py| {
-            let array = data.extract(py).expect("data modification failed, could not extract numpy array");
+            let array = data
+                .extract(py)
+                .expect("data modification failed, could not extract numpy array");
             mdf.set_channel_data(channel_name, &array);
         })
     }
