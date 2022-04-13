@@ -297,7 +297,10 @@ impl MdfInfo3 {
                         } else {
                             let cc_position = rand::random::<u32>();
                             cn.block1.cn_cc_conversion = cc_position;
-                            let cc_block = Cc3Block { cc_unit: unit_array, ..Default::default() };
+                            let cc_block = Cc3Block {
+                                cc_unit: unit_array,
+                                ..Default::default()
+                            };
                             self.sharable
                                 .cc
                                 .insert(cc_position, (cc_block, Conversion::default()));
