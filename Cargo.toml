@@ -16,6 +16,7 @@ half = "1" # for f16 handling
 encoding_rs = "0.8" # for endian management
 chrono = "0.4.19" # for time conversion
 ndarray = {version = "0.15", features = ["rayon", "serde", "approx"]} # for nd arrays
+ndarray-stats = "0.5" # for nd array stats
 rayon =  "1.5" # for general purpose parallel computations
 crossbeam-channel = "0.5" # for efficient channel between threads
 parking_lot = "0.12" # for efficient mutex
