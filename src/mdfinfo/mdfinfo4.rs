@@ -259,7 +259,7 @@ impl MdfInfo4 {
         &mut self,
         channel_name: String,
         data: ChannelData,
-        master_channel: Option<String>,
+        mut master_channel: Option<String>,
         master_type: Option<u8>,
         master_flag: bool,
         unit: Option<String>,
@@ -320,13 +320,14 @@ impl MdfInfo4 {
             cn_block.cn_type = 0; // data channel
             if let Some(master_channel_name) = master_channel.clone() {
                 // looking for the master channel's cg position
-                if let Some((_master, _dg_pos, (cg_pos, _rec_id), (_cn_pos, _rec_pos))) =
+                if let Some((master, _dg_pos, (cg_pos, _rec_id), (_cn_pos, _rec_pos))) =
                     self.channel_names_set.get(&master_channel_name)
                 {
                     cg_block.cg_cg_master = Some(*cg_pos);
                     cg_block.cg_flags = 0b1000;
                     cg_block.cg_links = 7; // with cg_cg_master
                     cg_block.cg_len = 112;
+                    master_channel = master.clone();
                 }
             }
         }
@@ -343,12 +344,13 @@ impl MdfInfo4 {
 
         // description
         if let Some(d) = description {
-            let unit_position = position_generator();
-            cn_block.cn_md_unit = unit_position;
-            self.sharable.create_tx(unit_position, d);
+            let md_comment = position_generator();
+            cn_block.cn_md_comment = md_comment;
+            self.sharable.create_tx(md_comment, d);
         }
 
         // CN
+        let n_bytes = data.byte_count();
         let cn = Cn4 {
             unique_name: channel_name.to_string(),
             data,
@@ -356,21 +358,22 @@ impl MdfInfo4 {
             endian: machine_endian,
             block_position: cn_pos,
             pos_byte_beg: 0,
-            n_bytes: cg_block.cg_data_bytes,
+            n_bytes,
             composition,
             invalid_mask: None,
-            channel_data_valid: false,
+            channel_data_valid: true,
         };
 
         // CG
         let cg_pos = position_generator();
+        cg_block.cg_data_bytes = n_bytes;
         let mut cg = Cg4 {
             block: cg_block,
             master_channel_name: master_channel.clone(),
             cn: HashMap::new(),
             block_position: cg_pos,
             channel_names: HashSet::new(),
-            record_length: cg_block.cg_data_bytes,
+            record_length: n_bytes,
             vlsd_cg: None,
             invalid_bytes: None,
         };
@@ -385,8 +388,7 @@ impl MdfInfo4 {
             cg: HashMap::new(),
         };
         dg.cg.insert(0, cg);
-        let dg_position = position_generator();
-        self.dg.insert(dg_position, dg);
+        self.dg.insert(dg_pos, dg);
 
         self.channel_names_set.insert(
             channel_name,
@@ -1743,9 +1745,6 @@ impl Cg4 {
             Some(block) => block.get_si_path_name(sharable),
             None => None,
         }
-    }
-    pub fn new_channel(&mut self, bit_position: i32, cn: Cn4) {
-        self.cn.insert(bit_position, cn);
     }
     pub fn process_channel_invalid_bits(&mut self, rec_pos: i32) -> Option<Array1<u8>> {
         // get invalid bytes
