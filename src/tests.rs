@@ -4,12 +4,14 @@ mod tests {
     use crate::mdfreader::channel_data::ChannelData;
     use ndarray::array;
     use ndarray::Array1;
+    use ndarray_stats::QuantileExt;
     use std::fs;
     use std::io;
     use std::path::Path;
     use std::vec::Vec;
 
-    static BASE_PATH: &str = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/";
+    static BASE_PATH_MDF4: &str = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/";
+    static BASE_PATH_MDF3: &str = "/home/ratal/workspace/mdfreader/mdfreader/tests/mdf3/";
     static WRITING_FILE: &str = "/home/ratal/workspace/mdfr/test.mf4";
 
     #[test]
@@ -118,7 +120,7 @@ mod tests {
         ];
         for path in list_of_paths.iter() {
             println!("reading folder : {}", path);
-            parse_info_folder(&format!("{}{}", BASE_PATH, &path)).unwrap();
+            parse_info_folder(&format!("{}{}", BASE_PATH_MDF4, &path)).unwrap();
         }
         Ok(())
     }
@@ -132,7 +134,10 @@ mod tests {
 
     #[test]
     fn parse_file() {
-        let file = format!("{}{}", BASE_PATH, &"Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4");
+        let file = format!(
+            "{}{}",
+            BASE_PATH_MDF4, &"Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
+        );
         let mut mdf = MdfInfo::new(&file);
         mdf.load_all_channels_data_in_memory();
         mdf.write(WRITING_FILE, true);
@@ -164,7 +169,7 @@ mod tests {
         ];
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH, list_of_paths[4], "Vector_FixedLengthStringUTF8.mf4"
+            BASE_PATH_MDF4, list_of_paths[4], "Vector_FixedLengthStringUTF8.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -191,7 +196,7 @@ mod tests {
         //UTF16
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH, list_of_paths[4], "Vector_FixedLengthStringUTF16_BE.mf4"
+            BASE_PATH_MDF4, list_of_paths[4], "Vector_FixedLengthStringUTF16_BE.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -212,7 +217,7 @@ mod tests {
         //SBC
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH, list_of_paths[4], "Vector_FixedLengthStringSBC.mf4"
+            BASE_PATH_MDF4, list_of_paths[4], "Vector_FixedLengthStringSBC.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -233,7 +238,7 @@ mod tests {
         // byteArray testing
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH, list_of_paths[0], "Vector_ByteArrayFixedLength.mf4"
+            BASE_PATH_MDF4, list_of_paths[0], "Vector_ByteArrayFixedLength.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         let byte_array = ChannelData::ByteArray(vec![
@@ -267,7 +272,7 @@ mod tests {
         // Integer testing
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH, list_of_paths[2], "Vector_IntegerTypes.MF4"
+            BASE_PATH_MDF4, list_of_paths[2], "Vector_IntegerTypes.MF4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -333,7 +338,7 @@ mod tests {
         // MasterTypes testing
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH, list_of_paths[0], "Vector_VirtualTimeMasterChannel.mf4"
+            BASE_PATH_MDF4, list_of_paths[0], "Vector_VirtualTimeMasterChannel.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -350,7 +355,7 @@ mod tests {
         // MLSD testing
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH, list_of_paths[1], "Vector_MLSDStringUTF8.mf4"
+            BASE_PATH_MDF4, list_of_paths[1], "Vector_MLSDStringUTF8.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -372,7 +377,7 @@ mod tests {
         // Virtual data testing
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH, list_of_paths[3], "Vector_VirtualDataChannelNoConversion.mf4"
+            BASE_PATH_MDF4, list_of_paths[3], "Vector_VirtualDataChannelNoConversion.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -388,7 +393,7 @@ mod tests {
         // VLSD testing
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH, list_of_paths[2], "Vector_VLSDStringUTF8.mf4"
+            BASE_PATH_MDF4, list_of_paths[2], "Vector_VLSDStringUTF8.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -410,7 +415,7 @@ mod tests {
         // Synchronization
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH, list_of_paths[4], "Vector_SyncStreamChannel.mf4"
+            BASE_PATH_MDF4, list_of_paths[4], "Vector_SyncStreamChannel.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -418,7 +423,10 @@ mod tests {
     #[test]
     fn record_layout() {
         // Overlapping signals
-        let file_name = format!("{}{}", BASE_PATH, "RecordLayout/Vector_NotByteAligned.mf4");
+        let file_name = format!(
+            "{}{}",
+            BASE_PATH_MDF4, "RecordLayout/Vector_NotByteAligned.mf4"
+        );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
         if let (Some(data), Some(_mask)) = info.get_channel_data(&"Channel B".to_string()) {
@@ -434,7 +442,7 @@ mod tests {
         // Overlapping signals
         let file_name = format!(
             "{}{}",
-            BASE_PATH, "RecordLayout/Vector_OverlappingSignals.mf4"
+            BASE_PATH_MDF4, "RecordLayout/Vector_OverlappingSignals.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -442,14 +450,14 @@ mod tests {
     #[test]
     fn data_list() {
         // Equal length
-        let file_name = format!("{}{}", BASE_PATH, "DataList/Vector_DT_EqualLen.MF4");
+        let file_name = format!("{}{}", BASE_PATH_MDF4, "DataList/Vector_DT_EqualLen.MF4");
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
         if let (Some(data), Some(_mask)) = info.get_channel_data(&"channel1".to_string()) {
             assert_eq!(data.len(), 254552);
         }
         // Equal length
-        let file_name = format!("{}{}", BASE_PATH, "DataList/Vector_DL_Linked_List.MF4");
+        let file_name = format!("{}{}", BASE_PATH_MDF4, "DataList/Vector_DL_Linked_List.MF4");
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
         if let (Some(data), Some(_mask)) = info.get_channel_data(&"channel1".to_string()) {
@@ -457,12 +465,12 @@ mod tests {
         }
 
         // Empty data
-        let file_name = format!("{}{}", BASE_PATH, "DataList/ETAS_EmptyDL.mf4");
+        let file_name = format!("{}{}", BASE_PATH_MDF4, "DataList/ETAS_EmptyDL.mf4");
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
 
         // SD List
-        let file_name = format!("{}{}", BASE_PATH, "DataList/Vector_SD_List.MF4");
+        let file_name = format!("{}{}", BASE_PATH_MDF4, "DataList/Vector_SD_List.MF4");
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
     }
@@ -471,7 +479,7 @@ mod tests {
         // Single DZ deflate
         let file_name = format!(
             "{}{}",
-            BASE_PATH, "CompressedData/Simple/Vector_SingleDZ_Deflate.mf4"
+            BASE_PATH_MDF4, "CompressedData/Simple/Vector_SingleDZ_Deflate.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -479,7 +487,7 @@ mod tests {
         // Single DZ transpose deflate
         let file_name = format!(
             "{}{}",
-            BASE_PATH, "CompressedData/Simple/Vector_SingleDZ_TransposeDeflate.mf4"
+            BASE_PATH_MDF4, "CompressedData/Simple/Vector_SingleDZ_TransposeDeflate.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -487,7 +495,7 @@ mod tests {
         // deflate data list
         let file_name = format!(
             "{}{}",
-            BASE_PATH, "CompressedData/DataList/Vector_DataList_Deflate.mf4"
+            BASE_PATH_MDF4, "CompressedData/DataList/Vector_DataList_Deflate.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -507,7 +515,7 @@ mod tests {
         // transpose deflate data list
         let file_name = format!(
             "{}{}",
-            BASE_PATH, "CompressedData/DataList/Vector_DataList_TransposeDeflate.mf4"
+            BASE_PATH_MDF4, "CompressedData/DataList/Vector_DataList_TransposeDeflate.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -525,7 +533,7 @@ mod tests {
         // Unsorted
         let file_name = format!(
             "{}{}",
-            BASE_PATH, "CompressedData/Unsorted/Vector_SingleDZ_Unsorted.MF4"
+            BASE_PATH_MDF4, "CompressedData/Unsorted/Vector_SingleDZ_Unsorted.MF4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -533,7 +541,10 @@ mod tests {
 
     #[test]
     fn unsorted_data() {
-        let file_name = format!("{}{}", BASE_PATH, "UnsortedData/Vector_Unsorted_VLSD.MF4");
+        let file_name = format!(
+            "{}{}",
+            BASE_PATH_MDF4, "UnsortedData/Vector_Unsorted_VLSD.MF4"
+        );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
     }
@@ -551,7 +562,7 @@ mod tests {
         // Lindear conversion testing
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH, list_of_paths[0], "Vector_LinearConversion.mf4"
+            BASE_PATH_MDF4, list_of_paths[0], "Vector_LinearConversion.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -567,7 +578,7 @@ mod tests {
         }
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH, list_of_paths[0], "Vector_LinearConversionFactor0.mf4"
+            BASE_PATH_MDF4, list_of_paths[0], "Vector_LinearConversionFactor0.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -579,7 +590,7 @@ mod tests {
         // Rational conversion
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH, list_of_paths[3], "Vector_RationalConversionIntParams.mf4"
+            BASE_PATH_MDF4, list_of_paths[3], "Vector_RationalConversionIntParams.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -587,7 +598,7 @@ mod tests {
         // Text conversion
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH, list_of_paths[5], "Vector_AlgebraicConversionQuadratic.mf4"
+            BASE_PATH_MDF4, list_of_paths[5], "Vector_AlgebraicConversionQuadratic.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -600,7 +611,7 @@ mod tests {
         // Lookup conversion : Value to Value Table With Interpolation
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH, list_of_paths[1], "Vector_Value2ValueConversionInterpolation.mf4"
+            BASE_PATH_MDF4, list_of_paths[1], "Vector_Value2ValueConversionInterpolation.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -644,7 +655,7 @@ mod tests {
         // Lookup conversion : Value to Value Table Without Interpolation
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH, list_of_paths[1], "Vector_Value2ValueConversionNoInterpolation.mf4"
+            BASE_PATH_MDF4, list_of_paths[1], "Vector_Value2ValueConversionNoInterpolation.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -660,7 +671,7 @@ mod tests {
         // Lookup conversion : Value Range to Value
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH, list_of_paths[1], "Vector_ValueRange2ValueConversion.mf4"
+            BASE_PATH_MDF4, list_of_paths[1], "Vector_ValueRange2ValueConversion.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -676,7 +687,7 @@ mod tests {
         // Lookup conversion : Value to Text
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH, list_of_paths[1], "Vector_Value2TextConversion.mf4"
+            BASE_PATH_MDF4, list_of_paths[1], "Vector_Value2TextConversion.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -700,7 +711,7 @@ mod tests {
         // Lookup conversion : Value range to Text
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH, list_of_paths[1], "Vector_ValueRange2TextConversion.mf4"
+            BASE_PATH_MDF4, list_of_paths[1], "Vector_ValueRange2TextConversion.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -724,7 +735,7 @@ mod tests {
         // Lookup conversion : Value range to Text,
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH, list_of_paths[2], "Vector_StatusStringTableConversionAlgebraic.mf4"
+            BASE_PATH_MDF4, list_of_paths[2], "Vector_StatusStringTableConversionAlgebraic.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -755,7 +766,7 @@ mod tests {
         // Text conversion : Text to Value
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH, list_of_paths[4], "Vector_Text2ValueConversion.mf4"
+            BASE_PATH_MDF4, list_of_paths[4], "Vector_Text2ValueConversion.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -768,7 +779,7 @@ mod tests {
         // Text conversion : Text to Text
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH, list_of_paths[4], "Vector_Text2TextConversion.mf4"
+            BASE_PATH_MDF4, list_of_paths[4], "Vector_Text2TextConversion.mf4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -795,7 +806,7 @@ mod tests {
         // sort bus
         let file_name = format!(
             "{}{}",
-            BASE_PATH, "BusLogging/Vector_CAN_DataFrame_Sort_ID.MF4"
+            BASE_PATH_MDF4, "BusLogging/Vector_CAN_DataFrame_Sort_ID.MF4"
         );
         let mut info = MdfInfo::new(&file_name);
         info.load_all_channels_data_in_memory();
@@ -811,7 +822,10 @@ mod tests {
     #[test]
     fn writing_mdf4() {
         // write file with invalid channels
-        let file = format!("{}{}", BASE_PATH, &"Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4");
+        let file = format!(
+            "{}{}",
+            BASE_PATH_MDF4, &"Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
+        );
         let ref_channel = r"recorder_time !P";
         let mut info = MdfInfo::new(&file);
         info.load_all_channels_data_in_memory();
@@ -833,7 +847,7 @@ mod tests {
         }
 
         // write file with many channels
-        let file = format!("{}{}", BASE_PATH, &"Simple/test.mf4");
+        let file = format!("{}{}", BASE_PATH_MDF4, &"Simple/test.mf4");
         let ref_channel = r"C90 CG21 in error.mdf";
         let mut info = MdfInfo::new(&file);
         info.load_all_channels_data_in_memory();
@@ -853,5 +867,123 @@ mod tests {
                 assert_eq!(*data2, *data);
             }
         }
+    }
+    #[test]
+    fn mdf_modifications() {
+        // write file with invalid channels
+        let file = format!(
+            "{}{}",
+            BASE_PATH_MDF4, &"Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
+        );
+        let ref_channel = r"PANS";
+        let ref_desc = r"tralala";
+        let ref_unit = r"Bar";
+        let mut info = MdfInfo::new(&file);
+        info.load_all_channels_data_in_memory();
+        // modify data
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&ref_channel.to_string()) {
+            if let ChannelData::Float32(mut new_data) = data.clone() {
+                new_data[0] = 0.0;
+                info.set_channel_data(&ref_channel.to_string(), &ChannelData::Float32(new_data));
+                info.set_channel_desc(&ref_channel.to_string(), ref_desc);
+                info.set_channel_unit(&ref_channel.to_string(), ref_unit);
+                info.set_channel_master_type(&ref_channel.to_string(), 1);
+            } else {
+                panic!("not correct data type");
+            }
+        } else {
+            panic!("channel not found");
+        }
+        if let (Some(data), Some(_mask)) = info.get_channel_data(&ref_channel.to_string()) {
+            if let ChannelData::Float32(data) = data.clone() {
+                assert!(data.min_skipnan() < &1000.0f32); // data was modified
+            } else {
+                panic!("not correct data type");
+            }
+        } else {
+            panic!("channel not found");
+        }
+        if let Some(desc) = info.get_channel_desc(&ref_channel.to_string()) {
+            assert_eq!(desc, ref_desc);
+        } else {
+            panic!("channel not found");
+        }
+        if let Some(unit) = info.get_channel_unit(&ref_channel.to_string()) {
+            assert_eq!(unit, ref_unit);
+        } else {
+            panic!("channel not found");
+        }
+        assert_eq!(info.get_channel_master_type(&ref_channel.to_string()), 1);
+
+        // add new channel
+        drop(info);
+        let mut info = MdfInfo::new(&file);
+        info.load_all_channels_data_in_memory();
+        let channel_name = r"Fake_name".to_string();
+        let new_channel_name = r"New fake_name".to_string();
+        let new_data = ChannelData::Float64(Array1::<f64>::zeros((3300,)));
+        let master_channel = info.get_channel_master(&ref_channel.to_string());
+        let master_type = Some(0);
+        let master_flag = false;
+        let unit = Some(ref_unit.to_string());
+        let desc = Some(ref_desc.to_string());
+        info.add_channel(
+            channel_name.clone(),
+            new_data,
+            master_channel,
+            master_type,
+            master_flag,
+            unit,
+            desc,
+        );
+
+        if let (Some(data), _mask) = info.get_channel_data(&channel_name.to_string()) {
+            if let ChannelData::Float64(data) = data.clone() {
+                assert!(data.min_skipnan() == &0.0f64); // data was modified
+            } else {
+                panic!("not correct data type");
+            }
+        } else {
+            panic!("channel not found");
+        }
+        if let Some(desc) = info.get_channel_desc(&channel_name.to_string()) {
+            assert_eq!(desc, ref_desc.to_string());
+        } else {
+            panic!("channel not found");
+        }
+        if let Some(unit) = info.get_channel_unit(&channel_name.to_string()) {
+            assert_eq!(unit, ref_unit);
+        } else {
+            panic!("channel not found");
+        }
+        assert_eq!(info.get_channel_master_type(&channel_name.to_string()), 0);
+
+        //rename
+        assert!(info.get_channel_data(&channel_name.to_string()).0.is_some());
+        info.rename_channel(&channel_name.to_string(), &new_channel_name);
+        assert!(info.get_channel_data(&channel_name.to_string()).0.is_none());
+
+        //remove
+        assert!(info
+            .get_channel_data(&new_channel_name.to_string())
+            .0
+            .is_some());
+        info.remove_channel(&new_channel_name);
+        assert!(info
+            .get_channel_data(&new_channel_name.to_string())
+            .0
+            .is_none());
+
+        //mdf3 conversion
+        drop(info);
+        let file = format!(
+            "{}{}",
+            BASE_PATH_MDF3, &"RJ_N16-12-363_BM-15C-0024_228_2_20170116094355_CAN.dat"
+        );
+        let mut info = MdfInfo::new(&file);
+        info.load_all_channels_data_in_memory();
+        let channel_name3 = r"TEMP_FUEL";
+        let mut info2 = info.convert3to4(WRITING_FILE);
+        assert_eq!(info2.get_channel_data(&channel_name3), info.get_channel_data(&channel_name3));
     }
 }
