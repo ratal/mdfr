@@ -323,6 +323,14 @@ impl MdfInfo {
             }
         }
     }
+    /// Convert mdf verion 3.x to 4.2
+    /// Require file name parameter but no file written
+    pub fn convert3to4(&self, file_name: &str) -> MdfInfo {
+        match self {
+            MdfInfo::V3(mdfinfo3) => MdfInfo::V4(Box::new(convert3to4(mdfinfo3, file_name))),
+            MdfInfo::V4(_) => panic!("file is already a mdf version 4.x"),
+        }
+    }
     /// defines channel's data in memory
     pub fn set_channel_data(&mut self, channel_name: &str, data: &ChannelData) {
         match self {
