@@ -3592,183 +3592,154 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
 
 /// Apply value to text or scale conversion to get physical data
 fn value_to_text(cn: &mut Cn3, cc_val_ref: &[(f64, String)], cycle_count: &u32) {
+    // identify max string length in cc_val_ref
     match &mut cn.data {
         ChannelData::Int8(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
+            let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
+            Zip::from(&mut new_array).and(a).for_each(|new_str, val| {
+                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *val as f64);
                 if let Some(key) = matched_key {
-                    *new_array = key.1.clone();
-                } else {
-                    *new_array = a.to_string();
+                    *new_str = key.1.clone();
                 }
             });
             cn.data = ChannelData::StringUTF8(new_array);
         }
         ChannelData::UInt8(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
+            let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
+            Zip::from(&mut new_array).and(a).for_each(|new_str, val| {
+                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *val as f64);
                 if let Some(key) = matched_key {
-                    *new_array = key.1.clone();
-                } else {
-                    *new_array = a.to_string();
+                    *new_str = key.1.clone();
                 }
             });
             cn.data = ChannelData::StringUTF8(new_array);
         }
         ChannelData::Int16(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
+            let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
                 if let Some(key) = matched_key {
                     *new_array = key.1.clone();
-                } else {
-                    *new_array = a.to_string();
                 }
             });
             cn.data = ChannelData::StringUTF8(new_array);
         }
         ChannelData::UInt16(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
+            let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
                 if let Some(key) = matched_key {
                     *new_array = key.1.clone();
-                } else {
-                    *new_array = a.to_string();
                 }
             });
             cn.data = ChannelData::StringUTF8(new_array);
         }
         ChannelData::Float16(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
+            let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
                 if let Some(key) = matched_key {
                     *new_array = key.1.clone();
-                } else {
-                    *new_array = a.to_string();
                 }
             });
             cn.data = ChannelData::StringUTF8(new_array);
         }
         ChannelData::Int24(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
+            let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
                 if let Some(key) = matched_key {
                     *new_array = key.1.clone();
-                } else {
-                    *new_array = a.to_string();
                 }
             });
             cn.data = ChannelData::StringUTF8(new_array);
         }
         ChannelData::UInt24(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
+            let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
                 if let Some(key) = matched_key {
                     *new_array = key.1.clone();
-                } else {
-                    *new_array = a.to_string();
                 }
             });
             cn.data = ChannelData::StringUTF8(new_array);
         }
         ChannelData::Int32(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
+            let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
                 if let Some(key) = matched_key {
                     *new_array = key.1.clone();
-                } else {
-                    *new_array = a.to_string();
                 }
             });
             cn.data = ChannelData::StringUTF8(new_array);
         }
         ChannelData::UInt32(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
+            let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
                 if let Some(key) = matched_key {
                     *new_array = key.1.clone();
-                } else {
-                    *new_array = a.to_string();
                 }
             });
             cn.data = ChannelData::StringUTF8(new_array);
         }
         ChannelData::Float32(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
+            let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
                 if let Some(key) = matched_key {
                     *new_array = key.1.clone();
-                } else {
-                    *new_array = a.to_string();
                 }
             });
             cn.data = ChannelData::StringUTF8(new_array);
         }
         ChannelData::Int48(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
+            let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
                 if let Some(key) = matched_key {
                     *new_array = key.1.clone();
-                } else {
-                    *new_array = a.to_string();
                 }
             });
             cn.data = ChannelData::StringUTF8(new_array);
         }
         ChannelData::UInt48(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
+            let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
                 if let Some(key) = matched_key {
                     *new_array = key.1.clone();
-                } else {
-                    *new_array = a.to_string();
                 }
             });
             cn.data = ChannelData::StringUTF8(new_array);
         }
         ChannelData::Int64(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
+            let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
                 if let Some(key) = matched_key {
                     *new_array = key.1.clone();
-                } else {
-                    *new_array = a.to_string();
                 }
             });
             cn.data = ChannelData::StringUTF8(new_array);
         }
         ChannelData::UInt64(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
+            let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
                 if let Some(key) = matched_key {
                     *new_array = key.1.clone();
-                } else {
-                    *new_array = a.to_string();
                 }
             });
             cn.data = ChannelData::StringUTF8(new_array);
         }
         ChannelData::Float64(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
+            let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a);
                 if let Some(key) = matched_key {
                     *new_array = key.1.clone();
-                } else {
-                    *new_array = a.to_string();
                 }
             });
             cn.data = ChannelData::StringUTF8(new_array);
