@@ -1446,8 +1446,8 @@ pub fn parse_cc3_block(
                 vec![(0.0f64, String::with_capacity(32)); cc_block.cc_size as usize];
             let mut val;
             let mut buf = vec![0u8; 32];
-            let mut text = String::with_capacity(32);
             for index in 0..cc_block.cc_size as usize {
+                let mut text = String::with_capacity(32);
                 val = rdr
                     .read_f64::<LittleEndian>()
                     .expect("Could not read text table conversion value parameters");
@@ -1458,7 +1458,7 @@ pub fn parse_cc3_block(
                     .decode_to(&buf, DecoderTrap::Replace, &mut text)
                     .expect("formula text is latin1 encoded");
                 text = text.trim_end_matches(char::from(0)).to_string();
-                pairs.insert(index, (val, text.clone()));
+                pairs[index] = (val, text);
             }
             conversion = Conversion::TextTable(pairs);
         }
