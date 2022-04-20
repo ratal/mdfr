@@ -3,6 +3,7 @@ use ndarray::{Array1, ArrayD, IxDyn};
 use num::Complex;
 use numpy::{IntoPyArray, PyArray1, PyArrayDyn, ToPyArray};
 use pyo3::prelude::*;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use serde::Serialize;
 use std::fmt;
 
@@ -639,16 +640,16 @@ impl ChannelData {
             ChannelData::Complex32(_) => 64,
             ChannelData::Complex64(_) => 128,
             ChannelData::StringSBC(data) => {
-                data.iter().map(|s| s.len() as u32).max().unwrap_or(0) * 8
+                data.par_iter().map(|s| s.len() as u32).max().unwrap_or(0) * 8
             }
             ChannelData::StringUTF8(data) => {
-                data.iter().map(|s| s.len() as u32).max().unwrap_or(0) * 8
+                data.par_iter().map(|s| s.len() as u32).max().unwrap_or(0) * 8
             }
             ChannelData::StringUTF16(data) => {
-                data.iter().map(|s| s.len() as u32).max().unwrap_or(0) * 8
+                data.par_iter().map(|s| s.len() as u32).max().unwrap_or(0) * 8
             }
             ChannelData::ByteArray(data) => {
-                data.iter().map(|s| s.len() as u32).max().unwrap_or(0) * 8
+                data.par_iter().map(|s| s.len() as u32).max().unwrap_or(0) * 8
             }
             ChannelData::ArrayDInt8(_) => 8,
             ChannelData::ArrayDUInt8(_) => 8,
@@ -691,12 +692,12 @@ impl ChannelData {
             ChannelData::Complex16(_) => 4,
             ChannelData::Complex32(_) => 8,
             ChannelData::Complex64(_) => 16,
-            ChannelData::StringSBC(data) => data.iter().map(|s| s.len() as u32).max().unwrap_or(0),
-            ChannelData::StringUTF8(data) => data.iter().map(|s| s.len() as u32).max().unwrap_or(0),
+            ChannelData::StringSBC(data) => data.par_iter().map(|s| s.len() as u32).max().unwrap_or(0),
+            ChannelData::StringUTF8(data) => data.par_iter().map(|s| s.len() as u32).max().unwrap_or(0),
             ChannelData::StringUTF16(data) => {
-                data.iter().map(|s| s.len() as u32).max().unwrap_or(0)
+                data.par_iter().map(|s| s.len() as u32).max().unwrap_or(0)
             }
-            ChannelData::ByteArray(data) => data.iter().map(|s| s.len() as u32).max().unwrap_or(0),
+            ChannelData::ByteArray(data) => data.par_iter().map(|s| s.len() as u32).max().unwrap_or(0),
             ChannelData::ArrayDInt8(_) => 1,
             ChannelData::ArrayDUInt8(_) => 1,
             ChannelData::ArrayDInt16(_) => 2,
