@@ -31,10 +31,18 @@ fn main() -> io::Result<()> {
         .arg(
             Arg::new("compress")
                 .long("compress")
-                .short('c')
+                .short('z')
                 .required(false)
                 .takes_value(false)
                 .help("write read content compressed into mdf4.2 file"),
+        )
+        .arg(
+            Arg::new("convert3to4")
+                .long("convert3to4")
+                .short('c')
+                .required(false)
+                .takes_value(true)
+                .help("Converts mdf version 3.x to 4.2"),
         )
         .get_matches();
 
@@ -47,6 +55,11 @@ fn main() -> io::Result<()> {
 
     if let Some(file_name) = mdf4_file_name {
         mdf_file.write(&file_name, compression);
+    }
+
+    let convert3to4_file_name = matches.value_of("convert3to4");
+    if let Some(file_name) = convert3to4_file_name {
+        mdf_file.convert3to4(file_name);
     }
 
     Ok(())
