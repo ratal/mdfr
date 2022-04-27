@@ -4,6 +4,7 @@
 
 use binrw::{binrw, BinReaderExt};
 use ndarray::Array1;
+use parquet2::compression::CompressionOptions;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
@@ -381,6 +382,16 @@ impl MdfInfo {
         match self {
             MdfInfo::V3(mdfinfo3) => mdfinfo3.set_channel_desc(channel_name, desc),
             MdfInfo::V4(mdfinfo4) => mdfinfo4.set_channel_desc(channel_name, desc),
+        }
+    }
+    // export to Parquet file
+    pub fn export_to_parquet(&self, file_name: &str, compression: CompressionOptions) {
+        match self {
+            MdfInfo::V3(mdfinfo3) => {
+                let mdf4 = convert3to4(mdfinfo3, &file_name);
+                mdf4.export_to_parquet(file_name, compression);
+            }
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.export_to_parquet(file_name, compression),
         }
     }
 }

@@ -21,7 +21,6 @@ rayon =  "1.5" # for general purpose parallel computations
 crossbeam-channel = "0.5" # for efficient channel between threads
 parking_lot = "0.12" # for efficient mutex
 roxmltree = "0.14" # for xml parsing
-criterion = "0.3" # for benchmark
 yazi = "0.1" # for DZ block data deflate
 transpose = "0.2" # for DZBlock transpose
 numpy = "0.16" # export rust ndarrays into numpy
@@ -30,6 +29,10 @@ itertools = "0.10"
 serde = { version = "1.0", features = ["derive"] } # for serialization
 whoami = "1.2" # to get user nam for writing file
 rand = "0.8" # for random numbers
+parquet2 = "0.12" # for export to parquet file format
+
+[dev-dependencies]
+criterion = "0.3" # for benchmark
 
 [lib]
 name = "mdfr"

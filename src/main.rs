@@ -3,6 +3,7 @@ extern crate clap;
 
 use clap::{Arg, Command};
 use std::io;
+mod export;
 mod mdfinfo;
 mod mdfreader;
 mod mdfwriter;
@@ -44,6 +45,14 @@ fn main() -> io::Result<()> {
                 .takes_value(true)
                 .help("Converts mdf version 3.x to 4.2"),
         )
+        .arg(
+            Arg::new("export_to_parquet")
+                .long("export_to_parquet")
+                .short('p')
+                .required(false)
+                .takes_value(true)
+                .help("Converts mdf into parquet file"),
+        )
         .get_matches();
 
     let file_name = matches.value_of("file").expect("File name missing");
@@ -60,6 +69,11 @@ fn main() -> io::Result<()> {
     let convert3to4_file_name = matches.value_of("convert3to4");
     if let Some(file_name) = convert3to4_file_name {
         mdf_file.convert3to4(file_name);
+    }
+
+    let parquet_file_name = matches.value_of("export_to_parquet");
+    if let Some(file_name) = parquet_file_name {
+        mdf_file.export_to_parquet(file_name, compression);
     }
 
     Ok(())

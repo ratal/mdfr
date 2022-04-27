@@ -3,6 +3,7 @@ use std::collections::HashSet;
 
 use crate::mdfinfo::MdfInfo;
 use numpy::ToPyArray;
+use parquet2::compression::CompressionOptions;
 use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyDict};
 
@@ -267,6 +268,29 @@ pyplot.show()
             )
             .expect("plot python script failed");
         })
+    }
+    /// export to Parquet file
+    pub fn export_to_parquet(&self, file_name: &str, compression_option: Option<String>) {
+        let Mdf(mdf) = self;
+        let compression: CompressionOptions = match compression_option {
+            Some(compression_option) => {
+                if compression_option == "snappy" {
+                    CompressionOptions::Snappy
+                } else if compression_option == "gzip" {
+                    CompressionOptions::Gzip
+                } else if compression_option == "lzo" {
+                    CompressionOptions::Lzo
+                } else if compression_option == "brotli" {
+                    CompressionOptions::Brotli
+                } else if compression_option == "lz4" {
+                    CompressionOptions::Lz4
+                } else {
+                    CompressionOptions::Uncompressed
+                }
+            }
+            None => CompressionOptions::Uncompressed,
+        };
+        mdf.export_to_parquet(file_name, compression);
     }
     fn __repr__(&self) -> PyResult<String> {
         let mut output: String;

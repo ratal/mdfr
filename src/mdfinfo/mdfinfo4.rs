@@ -4,6 +4,7 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::Local;
 use chrono::{naive::NaiveDateTime, DateTime, Utc};
 use ndarray::{Array1, Order};
+use parquet2::compression::CompressionOptions;
 use rand;
 use rayon::prelude::*;
 use roxmltree;
@@ -16,6 +17,7 @@ use std::{fmt, str};
 use transpose;
 use yazi::{decompress, Adler32, Format};
 
+use crate::export::parquet::export_to_parquet;
 use crate::mdfinfo::IdBlock;
 use crate::mdfreader::channel_data::{data_type_init, ChannelData};
 use crate::mdfreader::mdfreader4::mdfreader4;
@@ -503,6 +505,10 @@ impl MdfInfo4 {
                 }
             }
         }
+    }
+    /// export to Parquet file
+    pub fn export_to_parquet(&self, file_name: &str, compression: CompressionOptions) {
+        export_to_parquet(self, file_name, compression);
     }
     // TODO cut data
     // TODO resample data
