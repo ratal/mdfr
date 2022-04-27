@@ -1370,6 +1370,207 @@ impl ChannelData {
             ChannelData::ArrayDComplex64(a) => a.shape().to_owned(),
         }
     }
+    /// returns optional tuple of minimum and maximum values contained in the channel
+    pub fn min_max(&self) -> (Option<f64>, Option<f64>) {
+        match self {
+            ChannelData::Int8(a) => {
+                let min = a.iter().min().map(|v| *v as f64);
+                let max = a.iter().max().map(|v| *v as f64);
+                (min, max)
+            }
+            ChannelData::UInt8(a) => {
+                let min = a.iter().min().map(|v| *v as f64);
+                let max = a.iter().max().map(|v| *v as f64);
+                (min, max)
+            }
+            ChannelData::Int16(a) => {
+                let min = a.iter().min().map(|v| *v as f64);
+                let max = a.iter().max().map(|v| *v as f64);
+                (min, max)
+            }
+            ChannelData::UInt16(a) => {
+                let min = a.iter().min().map(|v| *v as f64);
+                let max = a.iter().max().map(|v| *v as f64);
+                (min, max)
+            }
+            ChannelData::Float16(a) => {
+                let min = a
+                    .iter()
+                    .reduce(|accum, item| if accum >= item { accum } else { item })
+                    .map(|v| *v as f64);
+                let max = a
+                    .iter()
+                    .reduce(|accum, item| if accum <= item { accum } else { item })
+                    .map(|v| *v as f64);
+                (min, max)
+            }
+            ChannelData::Int24(a) => {
+                let min = a.iter().min().map(|v| *v as f64);
+                let max = a.iter().max().map(|v| *v as f64);
+                (min, max)
+            }
+            ChannelData::UInt24(a) => {
+                let min = a.iter().min().map(|v| *v as f64);
+                let max = a.iter().max().map(|v| *v as f64);
+                (min, max)
+            }
+            ChannelData::Int32(a) => {
+                let min = a.iter().min().map(|v| *v as f64);
+                let max = a.iter().max().map(|v| *v as f64);
+                (min, max)
+            }
+            ChannelData::UInt32(a) => {
+                let min = a.iter().min().map(|v| *v as f64);
+                let max = a.iter().max().map(|v| *v as f64);
+                (min, max)
+            }
+            ChannelData::Float32(a) => {
+                let min = a
+                    .iter()
+                    .reduce(|accum, item| if accum >= item { accum } else { item })
+                    .map(|v| *v as f64);
+                let max = a
+                    .iter()
+                    .reduce(|accum, item| if accum <= item { accum } else { item })
+                    .map(|v| *v as f64);
+                (min, max)
+            }
+            ChannelData::Int48(a) => {
+                let min = a.iter().min().map(|v| *v as f64);
+                let max = a.iter().max().map(|v| *v as f64);
+                (min, max)
+            }
+            ChannelData::UInt48(a) => {
+                let min = a.iter().min().map(|v| *v as f64);
+                let max = a.iter().max().map(|v| *v as f64);
+                (min, max)
+            }
+            ChannelData::Int64(a) => {
+                let min = a.iter().min().map(|v| *v as f64);
+                let max = a.iter().max().map(|v| *v as f64);
+                (min, max)
+            }
+            ChannelData::UInt64(a) => {
+                let min = a.iter().min().map(|v| *v as f64);
+                let max = a.iter().max().map(|v| *v as f64);
+                (min, max)
+            }
+            ChannelData::Float64(a) => {
+                let min = a
+                    .iter()
+                    .reduce(|accum, item| if accum >= item { accum } else { item })
+                    .cloned();
+                let max = a
+                    .iter()
+                    .reduce(|accum, item| if accum <= item { accum } else { item })
+                    .cloned();
+                (min, max)
+            }
+            ChannelData::Complex16(_) => (None, None),
+            ChannelData::Complex32(_) => (None, None),
+            ChannelData::Complex64(_) => (None, None),
+            ChannelData::StringSBC(_) => (None, None),
+            ChannelData::StringUTF8(_) => (None, None),
+            ChannelData::StringUTF16(_) => (None, None),
+            ChannelData::ByteArray(_) => (None, None),
+            ChannelData::ArrayDInt8(a) => {
+                let min = a.iter().min().map(|v| *v as f64);
+                let max = a.iter().max().map(|v| *v as f64);
+                (min, max)
+            }
+            ChannelData::ArrayDUInt8(a) => {
+                let min = a.iter().min().map(|v| *v as f64);
+                let max = a.iter().max().map(|v| *v as f64);
+                (min, max)
+            }
+            ChannelData::ArrayDInt16(a) => {
+                let min = a.iter().min().map(|v| *v as f64);
+                let max = a.iter().max().map(|v| *v as f64);
+                (min, max)
+            }
+            ChannelData::ArrayDUInt16(a) => {
+                let min = a.iter().min().map(|v| *v as f64);
+                let max = a.iter().max().map(|v| *v as f64);
+                (min, max)
+            }
+            ChannelData::ArrayDFloat16(a) => {
+                let min = a
+                    .iter()
+                    .reduce(|accum, item| if accum >= item { accum } else { item })
+                    .map(|v| *v as f64);
+                let max = a
+                    .iter()
+                    .reduce(|accum, item| if accum <= item { accum } else { item })
+                    .map(|v| *v as f64);
+                (min, max)
+            }
+            ChannelData::ArrayDInt24(a) => {
+                let min = a.iter().min().map(|v| *v as f64);
+                let max = a.iter().max().map(|v| *v as f64);
+                (min, max)
+            }
+            ChannelData::ArrayDUInt24(a) => {
+                let min = a.iter().min().map(|v| *v as f64);
+                let max = a.iter().max().map(|v| *v as f64);
+                (min, max)
+            }
+            ChannelData::ArrayDInt32(a) => {
+                let min = a.iter().min().map(|v| *v as f64);
+                let max = a.iter().max().map(|v| *v as f64);
+                (min, max)
+            }
+            ChannelData::ArrayDUInt32(a) => {
+                let min = a.iter().min().map(|v| *v as f64);
+                let max = a.iter().max().map(|v| *v as f64);
+                (min, max)
+            }
+            ChannelData::ArrayDFloat32(a) => {
+                let min = a
+                    .iter()
+                    .reduce(|accum, item| if accum >= item { accum } else { item })
+                    .map(|v| *v as f64);
+                let max = a
+                    .iter()
+                    .reduce(|accum, item| if accum <= item { accum } else { item })
+                    .map(|v| *v as f64);
+                (min, max)
+            }
+            ChannelData::ArrayDInt48(a) => {
+                let min = a.iter().min().map(|v| *v as f64);
+                let max = a.iter().max().map(|v| *v as f64);
+                (min, max)
+            }
+            ChannelData::ArrayDUInt48(a) => {
+                let min = a.iter().min().map(|v| *v as f64);
+                let max = a.iter().max().map(|v| *v as f64);
+                (min, max)
+            }
+            ChannelData::ArrayDInt64(a) => {
+                let min = a.iter().min().map(|v| *v as f64);
+                let max = a.iter().max().map(|v| *v as f64);
+                (min, max)
+            }
+            ChannelData::ArrayDUInt64(a) => {
+                let min = a.iter().min().map(|v| *v as f64);
+                let max = a.iter().max().map(|v| *v as f64);
+                (min, max)
+            }
+            ChannelData::ArrayDFloat64(a) => {
+                let min = a
+                    .iter()
+                    .reduce(|accum, item| if accum >= item { accum } else { item })
+                    .cloned();
+                let max = a
+                    .iter()
+                    .reduce(|accum, item| if accum <= item { accum } else { item })
+                    .cloned();
+                (min, max)
+            }
+            ChannelData::ArrayDComplex16(_) => (None, None),
+            ChannelData::ArrayDComplex32(_) => (None, None),
+            ChannelData::ArrayDComplex64(_) => (None, None),
+        }
+    }
 }
 
 /// IntoPy implementation to convert a ChannelData into a PyObject
