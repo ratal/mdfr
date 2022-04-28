@@ -270,27 +270,12 @@ pyplot.show()
         })
     }
     /// export to Parquet file
-    pub fn export_to_parquet(&self, file_name: &str, compression_option: Option<String>) {
+    pub fn export_to_parquet(&self, file_name: &str, compression_option: Option<&str>) {
         let Mdf(mdf) = self;
-        let compression: CompressionOptions = match compression_option {
-            Some(compression_option) => {
-                if compression_option == "snappy" {
-                    CompressionOptions::Snappy
-                } else if compression_option == "gzip" {
-                    CompressionOptions::Gzip
-                } else if compression_option == "lzo" {
-                    CompressionOptions::Lzo
-                } else if compression_option == "brotli" {
-                    CompressionOptions::Brotli
-                } else if compression_option == "lz4" {
-                    CompressionOptions::Lz4
-                } else {
-                    CompressionOptions::Uncompressed
-                }
-            }
-            None => CompressionOptions::Uncompressed,
-        };
-        mdf.export_to_parquet(file_name, compression);
+        mdf.export_to_parquet(
+            file_name,
+            parquet_compression_from_string(compression_option),
+        );
     }
     fn __repr__(&self) -> PyResult<String> {
         let mut output: String;
@@ -367,5 +352,20 @@ pyplot.show()
             }
         }
         Ok(output)
+    }
+}
+
+pub fn parquet_compression_from_string(compression_option: Option<&str>) -> CompressionOptions {
+    match compression_option {
+        Some(option) => match option {
+            "snappy" => CompressionOptions::Snappy,
+            "gzip" => CompressionOptions::Gzip,
+            "lzo" => CompressionOptions::Lzo,
+            "brotli" => CompressionOptions::Brotli,
+            "lz4" => CompressionOptions::Lz4,
+            "lz4raw" => CompressionOptions::Lz4Raw,
+            _ => CompressionOptions::Uncompressed,
+        },
+        None => CompressionOptions::Uncompressed,
     }
 }

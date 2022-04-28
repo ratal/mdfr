@@ -2,6 +2,7 @@
 extern crate clap;
 
 use clap::{Arg, Command};
+use mdfr::mdfr::parquet_compression_from_string;
 use std::io;
 mod export;
 mod mdfinfo;
@@ -53,6 +54,13 @@ fn main() -> io::Result<()> {
                 .takes_value(true)
                 .help("Converts mdf into parquet file"),
         )
+        .arg(
+            Arg::new("parquet_compression")
+                .long("parquet_compression")
+                .required(false)
+                .takes_value(true)
+                .help("Converts mdf into parquet file"),
+        )
         .get_matches();
 
     let file_name = matches.value_of("file").expect("File name missing");
@@ -71,9 +79,14 @@ fn main() -> io::Result<()> {
         mdf_file.convert3to4(file_name);
     }
 
+    let parquet_compression = matches.value_of("parquet_compression");
+
     let parquet_file_name = matches.value_of("export_to_parquet");
     if let Some(file_name) = parquet_file_name {
-        mdf_file.export_to_parquet(file_name, compression);
+        mdf_file.export_to_parquet(
+            file_name,
+            parquet_compression_from_string(parquet_compression),
+        );
     }
 
     Ok(())

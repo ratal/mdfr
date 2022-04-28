@@ -31,6 +31,7 @@ pub fn convert3to4(mdf3: &MdfInfo3, file_name: &str) -> MdfInfo4 {
                     }
                 }
             }
+            // then add other channels
             cg.cn
                 .iter()
                 .filter(|(_rec_pos, cn)| Some(cn.unique_name.clone()) != cg.master_channel_name)

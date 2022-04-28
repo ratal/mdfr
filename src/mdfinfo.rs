@@ -388,7 +388,7 @@ impl MdfInfo {
     pub fn export_to_parquet(&self, file_name: &str, compression: CompressionOptions) {
         match self {
             MdfInfo::V3(mdfinfo3) => {
-                let mdf4 = convert3to4(mdfinfo3, &file_name);
+                let mdf4 = convert3to4(mdfinfo3, file_name);
                 mdf4.export_to_parquet(file_name, compression);
             }
             MdfInfo::V4(mdfinfo4) => mdfinfo4.export_to_parquet(file_name, compression),
