@@ -1394,11 +1394,11 @@ impl ChannelData {
                 (min, max)
             }
             ChannelData::Float16(a) => {
-                let min = a
+                let max = a
                     .iter()
                     .reduce(|accum, item| if accum >= item { accum } else { item })
                     .map(|v| *v as f64);
-                let max = a
+                let min = a
                     .iter()
                     .reduce(|accum, item| if accum <= item { accum } else { item })
                     .map(|v| *v as f64);
@@ -1425,11 +1425,11 @@ impl ChannelData {
                 (min, max)
             }
             ChannelData::Float32(a) => {
-                let min = a
+                let max = a
                     .iter()
                     .reduce(|accum, item| if accum >= item { accum } else { item })
                     .map(|v| *v as f64);
-                let max = a
+                let min = a
                     .iter()
                     .reduce(|accum, item| if accum <= item { accum } else { item })
                     .map(|v| *v as f64);
@@ -1456,11 +1456,11 @@ impl ChannelData {
                 (min, max)
             }
             ChannelData::Float64(a) => {
-                let min = a
+                let max = a
                     .iter()
                     .reduce(|accum, item| if accum >= item { accum } else { item })
                     .cloned();
-                let max = a
+                let min = a
                     .iter()
                     .reduce(|accum, item| if accum <= item { accum } else { item })
                     .cloned();
@@ -1494,11 +1494,11 @@ impl ChannelData {
                 (min, max)
             }
             ChannelData::ArrayDFloat16(a) => {
-                let min = a
+                let max = a
                     .iter()
                     .reduce(|accum, item| if accum >= item { accum } else { item })
                     .map(|v| *v as f64);
-                let max = a
+                let min = a
                     .iter()
                     .reduce(|accum, item| if accum <= item { accum } else { item })
                     .map(|v| *v as f64);
@@ -1525,11 +1525,11 @@ impl ChannelData {
                 (min, max)
             }
             ChannelData::ArrayDFloat32(a) => {
-                let min = a
+                let max = a
                     .iter()
                     .reduce(|accum, item| if accum >= item { accum } else { item })
                     .map(|v| *v as f64);
-                let max = a
+                let min = a
                     .iter()
                     .reduce(|accum, item| if accum <= item { accum } else { item })
                     .map(|v| *v as f64);
@@ -1556,11 +1556,11 @@ impl ChannelData {
                 (min, max)
             }
             ChannelData::ArrayDFloat64(a) => {
-                let min = a
+                let max = a
                     .iter()
                     .reduce(|accum, item| if accum >= item { accum } else { item })
                     .cloned();
-                let max = a
+                let min = a
                     .iter()
                     .reduce(|accum, item| if accum <= item { accum } else { item })
                     .cloned();
