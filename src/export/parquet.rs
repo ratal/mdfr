@@ -14,7 +14,6 @@ use parquet2::{
         },
         Repetition,
     },
-    statistics::{serialize_statistics, PrimitiveStatistics, Statistics},
     write::{Compressor, DynIter, DynStreamingIterator, FileWriter, Version, WriteOptions},
 };
 use std::{fs, path::Path};
@@ -37,7 +36,7 @@ pub fn export_to_parquet(info: &MdfInfo4, file_name: &str, compression: Compress
     let path = Path::new(file_name);
     let schema = SchemaDescriptor::new(file_name.to_string(), fields);
     let options = WriteOptions {
-        write_statistics: true,
+        write_statistics: false,
         version: Version::V1,
     };
     let file = fs::File::create(&path).unwrap();
@@ -48,10 +47,6 @@ pub fn export_to_parquet(info: &MdfInfo4, file_name: &str, compression: Compress
     // write data in file
     info.dg.iter().for_each(|(_dg_block_position, dg)| {
         for (_rec_id, cg) in dg.cg.iter() {
-            let mut null_count: Option<i64> = None;
-            if let Some(invalid_bytes) = &cg.invalid_bytes {
-                null_count = Some(invalid_bytes.iter().filter(|x| *x > &0).count() as i64);
-            }
             let mut columns: Vec<Result<DynStreamingIterator<CompressedPage, Error>, Error>> =
                 Vec::new();
             for (_rec_pos, cn) in cg.cn.iter() {
@@ -62,7 +57,7 @@ pub fn export_to_parquet(info: &MdfInfo4, file_name: &str, compression: Compress
                 );
                 let pages = Ok(DynStreamingIterator::new(Compressor::new_from_vec(
                     DynIter::new(std::iter::once(
-                        cn.data.parquet_encoded_page(&options, field, null_count),
+                        cn.data.parquet_encoded_page(field),
                     )),
                     compression,
                     vec![],
@@ -233,32 +228,15 @@ impl ChannelData {
     }
     fn parquet_encoded_page(
         &self,
-        options: &WriteOptions,
         primitive_type: PrimitiveType,
-        null_count: Option<i64>,
     ) -> Result<EncodedPage, Error> {
         let data_length = self.len();
-        let statistics = if options.write_statistics {
-            let max_value: Option<f64>;
-            let min_value: Option<f64>;
-            (min_value, max_value) = self.min_max();
-            let statistics = &PrimitiveStatistics {
-                primitive_type: primitive_type.clone(),
-                null_count,
-                distinct_count: None,
-                max_value,
-                min_value,
-            } as &dyn Statistics;
-            Some(serialize_statistics(statistics))
-        } else {
-            None
-        };
         let header = DataPageHeaderV1 {
             num_values: data_length as i32,
             encoding: Encoding::Plain.into(),
             definition_level_encoding: Encoding::Rle.into(),
             repetition_level_encoding: Encoding::Rle.into(),
-            statistics,
+            statistics: None,
         };
         Ok(EncodedPage::Data(DataPage::new(
             DataPageHeader::V1(header),
