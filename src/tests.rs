@@ -61,6 +61,7 @@ mod tests {
                                     println!(" Reading file : {}", file_name);
                                     let mut info = MdfInfo::new(file_name);
                                     info.load_all_channels_data_in_memory();
+                                    
                                 }
                             }
                         }
@@ -984,6 +985,14 @@ mod tests {
         info.load_all_channels_data_in_memory();
         let channel_name3 = r"TEMP_FUEL";
         let mut info2 = info.convert3to4(WRITING_FILE);
-        assert_eq!(info2.get_channel_data(&channel_name3), info.get_channel_data(&channel_name3));
+        assert_eq!(
+            info2.get_channel_data(&channel_name3),
+            info.get_channel_data(&channel_name3)
+        );
+    }
+    #[test]
+    fn export_to_parquet() {
+        // Export to Parquet file
+
     }
 }
