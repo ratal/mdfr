@@ -59,7 +59,7 @@ fn main() -> io::Result<()> {
                 .long("parquet_compression")
                 .required(false)
                 .takes_value(true)
-                .help("Converts mdf into parquet file"),
+                .help("Compresses data in parquet file, valid values are snappy, gzip, lzo"),   
         )
         .get_matches();
 
