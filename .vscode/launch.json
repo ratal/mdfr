@@ -90,7 +90,13 @@
                 }
             },
             "program": "${workspaceFolder}/target/debug/mdfr",
-            "args": ["/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Conversion/RationalConversion/Vector_RationalConversionIntParams.mf4"],
+            "args": [
+                "/home/ratal/workspace/mdfreader/mdfreader/tests/mdf3/RJ_N16-12-363_BM-15C-0024_228_2_20170116094355_CAN.dat",
+                "--export_to_parquet",
+                "/home/ratal/workspace/mdfr/test.parquet",
+                "--parquet_compression",
+                "snappy",
+            ],
             "cwd": "${workspaceFolder}"
         },
     ]
