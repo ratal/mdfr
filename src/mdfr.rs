@@ -1,5 +1,6 @@
 //! This module provides python interface using pyo3s
 use std::collections::HashSet;
+use std::fmt::Write;
 
 use crate::mdfinfo::MdfInfo;
 use numpy::ToPyArray;
@@ -282,24 +283,32 @@ pyplot.show()
         match &self.0 {
             MdfInfo::V3(mdfinfo3) => {
                 output = format!("Version : {}\n", mdfinfo3.id_block.id_ver);
-                output.push_str(&format!(
-                    "Header :\n Author: {}  Organisation:{}\n",
+                writeln!(
+                    output,
+                    "Header :\n Author: {}  Organisation:{}",
                     mdfinfo3.hd_block.hd_author, mdfinfo3.hd_block.hd_organization
-                ));
-                output.push_str(&format!(
-                    "Project: {}  Subject:{}\n",
+                )
+                .expect("cannot print author and organisation");
+                writeln!(
+                    output,
+                    "Project: {}  Subject:{}",
                     mdfinfo3.hd_block.hd_project, mdfinfo3.hd_block.hd_subject
-                ));
-                output.push_str(&format!(
-                    "Date: {:?}  Time:{:?}\n",
+                )
+                .expect("cannot print project and subject");
+                writeln!(
+                    output,
+                    "Date: {:?}  Time:{:?}",
                     mdfinfo3.hd_block.hd_date, mdfinfo3.hd_block.hd_time
-                ));
-                output.push_str(&format!("Comments: {}", mdfinfo3.hd_comment));
+                )
+                .expect("cannot print date and time");
+                write!(output, "Comments: {}", mdfinfo3.hd_comment).expect("cannot print comments");
                 for (master, list) in mdfinfo3.get_master_channel_names_set().iter() {
                     if let Some(master_name) = master {
-                        output.push_str(&format!("\nMaster: {}\n", master_name));
+                        writeln!(output, "\nMaster: {}", master_name)
+                            .expect("cannot print master channel name");
                     } else {
-                        output.push_str("\nWithout Master channel\n");
+                        writeln!(output, "\nWithout Master channel")
+                            .expect("cannot print thre is no master channel");
                     }
                     for channel in list.iter() {
                         let unit = self.get_channel_unit(channel.to_string());
@@ -307,12 +316,14 @@ pyplot.show()
                         if let Some(data) = mdfinfo3.get_channel_data_from_memory(channel) {
                             let data_first_last = data.first_last();
 
-                            output.push_str(&format!(
-                                " {} {} {} {} \n",
+                            writeln!(
+                                output,
+                                " {} {} {} {}",
                                 channel, data_first_last, unit, desc
-                            ));
+                            ).expect("cannot print channel unit and description with first and last item");
                         } else {
-                            output.push_str(&format!(" {} {} {} \n", channel, unit, desc));
+                            writeln!(output, " {} {} {}", channel, unit, desc)
+                                .expect("cannot print channel unit and description");
                         }
                     }
                 }
@@ -320,18 +331,20 @@ pyplot.show()
             }
             MdfInfo::V4(mdfinfo4) => {
                 output = format!("Version : {}\n", mdfinfo4.id_block.id_ver);
-                output.push_str(&format!("{}\n", mdfinfo4.hd_block));
+                writeln!(output, "{}", mdfinfo4.hd_block).expect("cannot print header block");
                 let comments = &mdfinfo4
                     .sharable
                     .get_comments(mdfinfo4.hd_block.hd_md_comment);
                 for c in comments.iter() {
-                    output.push_str(&format!("{} {}\n", c.0, c.1));
+                    writeln!(output, "{} {}", c.0, c.1).expect("cannot print header comments");
                 }
                 for (master, list) in mdfinfo4.get_master_channel_names_set().iter() {
                     if let Some(master_name) = master {
-                        output.push_str(&format!("\nMaster: {}\n", master_name));
+                        writeln!(output, "\nMaster: {}", master_name)
+                            .expect("cannot print master channel name");
                     } else {
-                        output.push_str("\nWithout Master channel\n");
+                        writeln!(output, "\nWithout Master channel")
+                            .expect("cannot print thre is no master channel");
                     }
                     for channel in list.iter() {
                         let unit = self.get_channel_unit(channel.to_string());
@@ -339,12 +352,14 @@ pyplot.show()
                         let dtmsk = mdfinfo4.get_channel_data_from_memory(channel);
                         if let Some(data) = dtmsk.0 {
                             let data_first_last = data.first_last();
-                            output.push_str(&format!(
-                                " {} {} {} {} \n",
+                            writeln!(
+                                output,
+                                " {} {} {} {} ",
                                 channel, data_first_last, unit, desc
-                            ));
+                            ).expect("cannot print channel unit and description with first and last item");
                         } else {
-                            output.push_str(&format!(" {} {} {} \n", channel, unit, desc));
+                            writeln!(output, " {} {} {} ", channel, unit, desc)
+                                .expect("cannot print channel unit and description");
                         }
                     }
                 }
