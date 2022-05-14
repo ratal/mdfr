@@ -1,8 +1,12 @@
 [package]
 name = "mdfr"
 version = "0.1.0"
+description = "A package for reading and writing MDF files"
 authors = ["«ratal» <«ratal@ratal.org»>"]
 edition = "2021"
+repository = "https://github.com/ratal/mdfr/"
+categories = ["encoding", "filesystem"]
+license = "GPL-3.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -30,6 +34,7 @@ serde = { version = "1.0", features = ["derive"] } # for serialization
 whoami = "1.2" # to get user nam for writing file
 rand = "0.8" # for random numbers
 parquet2 = "0.12" # for export to parquet file format
+arrow2 = {version = "0.11", features= ["compute", "io_parquet", "io_parquet_compression"] } # for efficient data storing in memory
 
 [dev-dependencies]
 criterion = "0.3" # for benchmark
