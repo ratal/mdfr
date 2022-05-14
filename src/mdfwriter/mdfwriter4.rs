@@ -17,7 +17,6 @@ use crate::{
 };
 use binrw::BinWriterExt;
 use crossbeam_channel::bounded;
-use ndarray::Array1;
 use parking_lot::Mutex;
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 use std::fs::File;
@@ -314,7 +313,7 @@ fn write_data_blocks(
 }
 
 /// Create a LDBlock
-fn create_ld(m: &Option<Array1<u8>>, offset: &mut i64) -> Option<Ld4Block> {
+fn create_ld(m: &Option<Vec<u8>>, offset: &mut i64) -> Option<Ld4Block> {
     let mut ld_block = Ld4Block::default();
     ld_block.ld_count = 1;
     ld_block.ld_sample_offset.push(0);
@@ -374,7 +373,7 @@ fn create_dz_dv<'a>(data: &'a ChannelData, offset: &'a mut i64) -> (DataBlock, u
 }
 
 /// Create a DI Block
-fn create_di(mask: &Array1<u8>, offset: &mut i64) -> Option<(DataBlock, Vec<u8>)> {
+fn create_di(mask: &Vec<u8>, offset: &mut i64) -> Option<(DataBlock, Vec<u8>)> {
     let mut dv_invalid_block = Blockheader4::default();
     dv_invalid_block.hdr_id = [35, 35, 68, 73]; // ##DI
     let mask_length = mask.len();
@@ -386,10 +385,10 @@ fn create_di(mask: &Array1<u8>, offset: &mut i64) -> Option<(DataBlock, Vec<u8>)
 }
 
 /// Create a DZ Block of DI type
-fn create_dz_di(mask: &Array1<u8>, offset: &mut i64) -> Option<(DataBlock, Vec<u8>)> {
+fn create_dz_di(mask: &Vec<u8>, offset: &mut i64) -> Option<(DataBlock, Vec<u8>)> {
     let mut dz_invalid_block = Dz4Block::default();
     dz_invalid_block.dz_org_data_length = mask.len() as u64;
-    let mut data_bytes = compress(&mask.to_vec(), Format::Zlib, CompressionLevel::Default)
+    let mut data_bytes = compress(mask, Format::Zlib, CompressionLevel::Default)
         .expect("Could not compress invalid data");
     dz_invalid_block.dz_data_length = data_bytes.len() as u64;
     if dz_invalid_block.dz_org_data_length < dz_invalid_block.dz_data_length {

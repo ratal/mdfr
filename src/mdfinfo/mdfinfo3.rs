@@ -4,7 +4,6 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::NaiveDate;
 use encoding::all::{ASCII, ISO_8859_1};
 use encoding::{DecoderTrap, EncoderTrap, Encoding};
-use ndarray::Array1;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::TryFrom;
@@ -1141,7 +1140,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Milliseconds"),
         pos_byte_beg,
         n_bytes: 2,
-        data: ChannelData::UInt16(Array1::<u16>::zeros((0,))),
+        data: ChannelData::UInt16(Vec::<u16>::new()),
         endian: false,
         channel_data_valid: false,
     };
@@ -1160,7 +1159,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Minutes"),
         pos_byte_beg: pos_byte_beg + 2,
         n_bytes: 1,
-        data: ChannelData::UInt8(Array1::<u8>::zeros((0,))),
+        data: ChannelData::UInt8(Vec::<u8>::new()),
         endian: false,
         channel_data_valid: false,
     };
@@ -1179,7 +1178,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Hours"),
         pos_byte_beg: pos_byte_beg + 3,
         n_bytes: 1,
-        data: ChannelData::UInt8(Array1::<u8>::zeros((0,))),
+        data: ChannelData::UInt8(Vec::<u8>::new()),
         endian: false,
         channel_data_valid: false,
     };
@@ -1198,7 +1197,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Days"),
         pos_byte_beg: pos_byte_beg + 4,
         n_bytes: 1,
-        data: ChannelData::UInt8(Array1::<u8>::zeros((0,))),
+        data: ChannelData::UInt8(Vec::<u8>::new()),
         endian: false,
         channel_data_valid: false,
     };
@@ -1217,7 +1216,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Month"),
         pos_byte_beg: pos_byte_beg + 5,
         n_bytes: 1,
-        data: ChannelData::UInt8(Array1::<u8>::zeros((0,))),
+        data: ChannelData::UInt8(Vec::<u8>::new()),
         endian: false,
         channel_data_valid: false,
     };
@@ -1236,7 +1235,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Years"),
         pos_byte_beg: pos_byte_beg + 7,
         n_bytes: 1,
-        data: ChannelData::UInt8(Array1::<u8>::zeros((0,))),
+        data: ChannelData::UInt8(Vec::<u8>::new()),
         endian: false,
         channel_data_valid: false,
     };
@@ -1265,7 +1264,7 @@ fn can_open_time(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3) {
         description: String::from("Milliseconds"),
         pos_byte_beg,
         n_bytes: 4,
-        data: ChannelData::UInt32(Array1::<u32>::zeros((0,))),
+        data: ChannelData::UInt32(Vec::<u32>::new()),
         endian: false,
         channel_data_valid: false,
     };
@@ -1284,7 +1283,7 @@ fn can_open_time(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3) {
         description: String::from("Days"),
         pos_byte_beg: pos_byte_beg + 4,
         n_bytes: 2,
-        data: ChannelData::UInt16(Array1::<u16>::zeros((0,))),
+        data: ChannelData::UInt16(Vec::<u16>::new()),
         endian: false,
         channel_data_valid: false,
     };

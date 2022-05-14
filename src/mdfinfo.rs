@@ -3,7 +3,6 @@
 //! This module is reading the mdf file blocks (metadata)
 
 use binrw::{binrw, BinReaderExt};
-use ndarray::Array1;
 use parquet2::compression::CompressionOptions;
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -257,7 +256,7 @@ impl MdfInfo {
     pub fn get_channel_data<'a>(
         &'a mut self,
         channel_name: &'a str,
-    ) -> (Option<&ChannelData>, &Option<Array1<u8>>) {
+    ) -> (Option<&ChannelData>, &Option<Vec<u8>>) {
         let (data, mask) = match self {
             MdfInfo::V3(mdfinfo3) => {
                 let dt = mdfinfo3.get_channel_data(channel_name);

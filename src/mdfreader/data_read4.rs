@@ -31,40 +31,32 @@ pub fn read_one_channel_array(data_bytes: &Vec<u8>, cn: &mut Cn4, cycle_count: u
         let n_bytes = cn.n_bytes as usize;
         match &mut cn.data {
             ChannelData::Int8(data) => {
-                let mut buf = vec![0; cycle_count];
                 Cursor::new(data_bytes)
-                    .read_i8_into(&mut buf)
+                    .read_i8_into(data)
                     .expect("Could not read i8 array");
-                *data = Array::from_vec(buf);
             }
-            ChannelData::UInt8(data) => {
-                *data = Array::from_vec(data_bytes.to_vec());
-            }
+            ChannelData::UInt8(_) => {}
             ChannelData::Int16(data) => {
-                let mut buf = vec![0; cycle_count];
                 if cn.endian {
                     Cursor::new(data_bytes)
-                        .read_i16_into::<BigEndian>(&mut buf)
+                        .read_i16_into::<BigEndian>(data)
                         .expect("Could not read be i16 array");
                 } else {
                     Cursor::new(data_bytes)
-                        .read_i16_into::<LittleEndian>(&mut buf)
+                        .read_i16_into::<LittleEndian>(data)
                         .expect("Could not read le i16 array");
                 }
-                *data = Array::from_vec(buf);
             }
             ChannelData::UInt16(data) => {
-                let mut buf = vec![0; cycle_count];
                 if cn.endian {
                     Cursor::new(data_bytes)
-                        .read_u16_into::<BigEndian>(&mut buf)
+                        .read_u16_into::<BigEndian>(data)
                         .expect("Could not read be u16 array");
                 } else {
                     Cursor::new(data_bytes)
-                        .read_u16_into::<LittleEndian>(&mut buf)
+                        .read_u16_into::<LittleEndian>(data)
                         .expect("Could not read le 16 array");
                 }
-                *data = Array::from_vec(buf);
             }
             ChannelData::Float16(data) => {
                 if cn.endian {
@@ -112,43 +104,37 @@ pub fn read_one_channel_array(data_bytes: &Vec<u8>, cn: &mut Cn4, cycle_count: u
                 }
             }
             ChannelData::Int32(data) => {
-                let mut buf = vec![0; cycle_count];
                 if cn.endian {
                     Cursor::new(data_bytes)
-                        .read_i32_into::<BigEndian>(&mut buf)
+                        .read_i32_into::<BigEndian>(data)
                         .expect("Could not read be i32 array");
                 } else {
                     Cursor::new(data_bytes)
-                        .read_i32_into::<LittleEndian>(&mut buf)
+                        .read_i32_into::<LittleEndian>(data)
                         .expect("Could not read le i32 array");
                 }
-                *data = Array::from_vec(buf);
             }
             ChannelData::UInt32(data) => {
-                let mut buf = vec![0; cycle_count];
                 if cn.endian {
                     Cursor::new(data_bytes)
-                        .read_u32_into::<BigEndian>(&mut buf)
+                        .read_u32_into::<BigEndian>(data)
                         .expect("Could not read be u32 array");
                 } else {
                     Cursor::new(data_bytes)
-                        .read_u32_into::<LittleEndian>(&mut buf)
+                        .read_u32_into::<LittleEndian>(data)
                         .expect("Could not read le u32 array");
                 }
-                *data = Array::from_vec(buf);
             }
             ChannelData::Float32(data) => {
-                let mut buf = vec![0f32; cycle_count];
                 if cn.endian {
                     Cursor::new(data_bytes)
-                        .read_f32_into::<BigEndian>(&mut buf)
+                        .read_f32_into::<BigEndian>(data)
                         .expect("Could not read be f32 array");
                 } else {
                     Cursor::new(data_bytes)
-                        .read_f32_into::<LittleEndian>(&mut buf)
+                        .read_f32_into::<LittleEndian>(data)
                         .expect("Could not read le f32 array");
                 }
-                *data = Array::from_vec(buf);
             }
             ChannelData::Int48(data) => {
                 if cn.endian {
@@ -203,31 +189,27 @@ pub fn read_one_channel_array(data_bytes: &Vec<u8>, cn: &mut Cn4, cycle_count: u
                 }
             }
             ChannelData::Int64(data) => {
-                let mut buf = vec![0; cycle_count];
                 if cn.endian {
                     Cursor::new(data_bytes)
-                        .read_i64_into::<BigEndian>(&mut buf)
+                        .read_i64_into::<BigEndian>(data)
                         .expect("Could not read be i64 array");
                 } else {
                     Cursor::new(data_bytes)
-                        .read_i64_into::<LittleEndian>(&mut buf)
+                        .read_i64_into::<LittleEndian>(data)
                         .expect("Could not read le i64 array");
                 }
-                *data = Array::from_vec(buf);
             }
             ChannelData::UInt64(data) => {
                 if n_bytes == 8 {
-                    let mut buf = vec![0; cycle_count];
                     if cn.endian {
                         Cursor::new(data_bytes)
-                            .read_u64_into::<BigEndian>(&mut buf)
+                            .read_u64_into::<BigEndian>(data)
                             .expect("Could not read be u64 array");
                     } else {
                         Cursor::new(data_bytes)
-                            .read_u64_into::<LittleEndian>(&mut buf)
+                            .read_u64_into::<LittleEndian>(data)
                             .expect("Could not read le u64 array");
                     }
-                    *data = Array::from_vec(buf);
                 } else {
                     // n_bytes = 7
                     let mut temp = [0u8; std::mem::size_of::<u64>()];
@@ -245,17 +227,15 @@ pub fn read_one_channel_array(data_bytes: &Vec<u8>, cn: &mut Cn4, cycle_count: u
                 }
             }
             ChannelData::Float64(data) => {
-                let mut buf = vec![0f64; cycle_count];
                 if cn.endian {
                     Cursor::new(data_bytes)
-                        .read_f64_into::<BigEndian>(&mut buf)
+                        .read_f64_into::<BigEndian>(data)
                         .expect("Could not read be f64 array");
                 } else {
                     Cursor::new(data_bytes)
-                        .read_f64_into::<LittleEndian>(&mut buf)
+                        .read_f64_into::<LittleEndian>(data)
                         .expect("Could not read le f64 array");
                 }
-                *data = Array::from_vec(buf);
             }
             ChannelData::Complex16(data) => {
                 let mut re: f32;

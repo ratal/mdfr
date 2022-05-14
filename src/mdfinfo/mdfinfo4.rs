@@ -1,4 +1,5 @@
 //! Parsing of file metadata into MdfInfo4 struct
+use arrow2::datatypes::DataType;
 use binrw::{binrw, BinReaderExt, BinWriterExt};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::Local;
@@ -74,7 +75,7 @@ impl MdfInfo4 {
     pub fn get_channel_data<'a>(
         &'a mut self,
         channel_name: &'a str,
-    ) -> (Option<&'a ChannelData>, &Option<Array1<u8>>) {
+    ) -> (Option<&'a ChannelData>, &Option<Vec<u8>>) {
         let mut channel_names: HashSet<String> = HashSet::new();
         channel_names.insert(channel_name.to_string());
         if !self.all_data_in_memory || !self.get_channel_data_validity(channel_name) {
@@ -86,9 +87,9 @@ impl MdfInfo4 {
     pub fn get_channel_data_from_memory(
         &self,
         channel_name: &str,
-    ) -> (Option<&ChannelData>, &Option<Array1<u8>>) {
+    ) -> (Option<&ChannelData>, &Option<Vec<u8>>) {
         let mut data: Option<&ChannelData> = None;
-        let mut mask: &Option<Array1<u8>> = &None;
+        let mut mask: &Option<Vec<u8>> = &None;
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
             self.get_channel_id(channel_name)
         {
@@ -1786,7 +1787,7 @@ impl Cg4 {
                 .par_iter_mut()
                 .filter(|(_rec_pos, cn)| !cn.data.is_empty())
                 .for_each(|(_rec_pos, cn)| {
-                    let mut mask = Array1::<u8>::zeros((cycle_count,));
+                    let mut mask = vec![0u8; cycle_count];
                     let byte_offest = (cn.block.cn_inval_bit_pos >> 3) as usize;
                     let mut bit = 1;
                     bit <<= (cn.block.cn_inval_bit_pos & 0x07) as usize;
@@ -1957,7 +1958,7 @@ pub struct Cn4 {
     /// false = little endian
     pub endian: bool,
     /// optional invalid mask array
-    pub invalid_mask: Option<Array1<u8>>,
+    pub invalid_mask: Option<Vec<u8>>,
     /// True if channel is valid = contains data converted
     pub channel_data_valid: bool,
 }
@@ -2104,7 +2105,7 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 2,
         composition: None,
-        data: ChannelData::UInt16(Array1::<u16>::zeros((0,))),
+        data: ChannelData::UInt16(Vec::<u16>::new()),
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
@@ -2122,7 +2123,7 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 1,
         composition: None,
-        data: ChannelData::UInt8(Array1::<u8>::zeros((0,))),
+        data: ChannelData::UInt8(Vec::<u8>::new()),
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
@@ -2140,7 +2141,7 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 1,
         composition: None,
-        data: ChannelData::UInt8(Array1::<u8>::zeros((0,))),
+        data: ChannelData::UInt8(Vec::<u8>::new()),
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
@@ -2158,7 +2159,7 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 1,
         composition: None,
-        data: ChannelData::UInt8(Array1::<u8>::zeros((0,))),
+        data: ChannelData::UInt8(Vec::<u8>::new()),
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
@@ -2176,7 +2177,7 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 1,
         composition: None,
-        data: ChannelData::UInt8(Array1::<u8>::zeros((0,))),
+        data: ChannelData::UInt8(Vec::<u8>::new()),
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
@@ -2194,7 +2195,7 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 1,
         composition: None,
-        data: ChannelData::UInt8(Array1::<u8>::zeros((0,))),
+        data: ChannelData::UInt8(Vec::<u8>::new()),
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
@@ -2217,7 +2218,7 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         pos_byte_beg,
         n_bytes: 4,
         composition: None,
-        data: ChannelData::UInt32(Array1::<u32>::zeros((0,))),
+        data: ChannelData::UInt32(Vec::<u32>::new()),
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
@@ -2235,7 +2236,7 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         pos_byte_beg,
         n_bytes: 2,
         composition: None,
-        data: ChannelData::UInt16(Array1::<u16>::zeros((0,))),
+        data: ChannelData::UInt16(Vec::<u16>::new()),
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
@@ -2267,6 +2268,55 @@ impl Cn4 {
         match si {
             Some(block) => block.get_si_path_name(sharable),
             None => None,
+        }
+    }
+    pub fn arrow_data_type(&self) -> DataType {
+        if self.block.cn_type != 3 || self.block.cn_type != 6 {
+            match self.block.cn_data_type {
+                0 | 1 => {
+                    // unsigned int
+                    match self.n_bytes {
+                        1 => DataType::UInt8,
+                        2 => DataType::UInt16,
+                        3 => DataType::UInt32, // UInt24
+                        4 => DataType::UInt32,
+                        6 => DataType::UInt64, // UInt48
+                        _ => DataType::UInt64,
+                    }
+                }
+                2 | 3 => {
+                    // signed int
+                    match self.n_bytes {
+                        1 => DataType::Int8,
+                        2 => DataType::Int16,
+                        3 => DataType::Int32, // Int24
+                        4 => DataType::Int32,
+                        6 => DataType::Int64, // Int48
+                        _ => DataType::Int64,
+                    }
+                }
+                4 | 5 => {
+                    // float
+                    match self.n_bytes {
+                        2 => DataType::Float32, // Float 16
+                        4 => DataType::Float32,
+                        _ => DataType::Float64,
+                    }
+                }
+                15 | 16 => {
+                    // complex
+                    match self.n_bytes {
+                        2 => DataType::Float32, // Float 16
+                        4 => DataType::Float32,
+                        _ => DataType::Float64,
+                    }
+                }
+                6 | 7 | 8 | 9 => DataType::Utf8,
+                _ => DataType::UInt64,
+            }
+        } else {
+            // virtual channels, cn_bit_count = 0 -> n_bytes = 0, must be LE unsigned int
+            DataType::UInt64
         }
     }
 }

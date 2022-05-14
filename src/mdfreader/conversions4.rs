@@ -104,105 +104,105 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
     if !(p1 == 0.0 && num::abs(p2 - 1.0) < 1e-12) {
         match &mut cn.data {
             ChannelData::UInt8(a) => {
-                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+                let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
                 cn.data = ChannelData::Float64(new_array);
             }
             ChannelData::Int8(a) => {
-                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+                let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
                 cn.data = ChannelData::Float64(new_array);
             }
             ChannelData::Int16(a) => {
-                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+                let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
                 cn.data = ChannelData::Float64(new_array);
             }
             ChannelData::UInt16(a) => {
-                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+                let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
                 cn.data = ChannelData::Float64(new_array);
             }
             ChannelData::Float16(a) => {
-                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+                let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
                 cn.data = ChannelData::Float64(new_array);
             }
             ChannelData::Int24(a) => {
-                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+                let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
                 cn.data = ChannelData::Float64(new_array);
             }
             ChannelData::UInt24(a) => {
-                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+                let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
                 cn.data = ChannelData::Float64(new_array);
             }
             ChannelData::Int32(a) => {
-                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+                let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
                 cn.data = ChannelData::Float64(new_array);
             }
             ChannelData::UInt32(a) => {
-                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+                let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
                 cn.data = ChannelData::Float64(new_array);
             }
             ChannelData::Float32(a) => {
-                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+                let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
                 cn.data = ChannelData::Float64(new_array);
             }
             ChannelData::Int48(a) => {
-                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+                let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
                 cn.data = ChannelData::Float64(new_array);
             }
             ChannelData::UInt48(a) => {
-                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+                let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
                 cn.data = ChannelData::Float64(new_array);
             }
             ChannelData::Int64(a) => {
-                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+                let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
                 cn.data = ChannelData::Float64(new_array);
             }
             ChannelData::UInt64(a) => {
-                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+                let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
                 cn.data = ChannelData::Float64(new_array);
             }
             ChannelData::Float64(a) => {
-                let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+                let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = *a * p2 + p1);
@@ -374,7 +374,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
 
     match &mut cn.data {
         ChannelData::UInt8(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
                 let m_2 = f64::powi(m, 2);
@@ -383,7 +383,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int8(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
                 let m_2 = f64::powi(m, 2);
@@ -392,7 +392,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int16(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
                 let m_2 = f64::powi(m, 2);
@@ -401,7 +401,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt16(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
                 let m_2 = f64::powi(m, 2);
@@ -410,7 +410,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Float16(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
                 let m_2 = f64::powi(m, 2);
@@ -419,7 +419,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int24(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
                 let m_2 = f64::powi(m, 2);
@@ -428,7 +428,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt24(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
                 let m_2 = f64::powi(m, 2);
@@ -437,7 +437,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int32(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
                 let m_2 = f64::powi(m, 2);
@@ -446,7 +446,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt32(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
                 let m_2 = f64::powi(m, 2);
@@ -455,7 +455,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Float32(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
                 let m_2 = f64::powi(m, 2);
@@ -464,7 +464,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int48(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
                 let m_2 = f64::powi(m, 2);
@@ -473,7 +473,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt48(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
                 let m_2 = f64::powi(m, 2);
@@ -482,7 +482,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int64(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
                 let m_2 = f64::powi(m, 2);
@@ -491,7 +491,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt64(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m = *a as f64;
                 let m_2 = f64::powi(m, 2);
@@ -500,7 +500,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Float64(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let m_2 = f64::powi(*a, 2);
                 *new_array = (m_2 * p1 + *a * p2 + p1) / (m_2 * p4 + *a * p5 + p6)
@@ -666,7 +666,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
         .compile(&slab.ps, &mut slab.cs);
     match &mut cn.data {
         ChannelData::UInt8(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 map.insert("X".to_string(), *a as f64);
                 *new_array = compiled
@@ -676,7 +676,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int8(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 map.insert("X".to_string(), *a as f64);
                 *new_array = compiled
@@ -686,7 +686,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int16(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 map.insert("X".to_string(), *a as f64);
                 *new_array = compiled
@@ -696,7 +696,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt16(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 map.insert("X".to_string(), *a as f64);
                 *new_array = compiled
@@ -706,7 +706,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Float16(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 map.insert("X".to_string(), *a as f64);
                 *new_array = compiled
@@ -716,7 +716,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int24(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 map.insert("X".to_string(), *a as f64);
                 *new_array = compiled
@@ -726,7 +726,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt24(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 map.insert("X".to_string(), *a as f64);
                 *new_array = compiled
@@ -736,7 +736,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int32(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 map.insert("X".to_string(), *a as f64);
                 *new_array = compiled
@@ -746,7 +746,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt32(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 map.insert("X".to_string(), *a as f64);
                 *new_array = compiled
@@ -756,7 +756,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Float32(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 map.insert("X".to_string(), *a as f64);
                 *new_array = compiled
@@ -766,7 +766,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int48(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 map.insert("X".to_string(), *a as f64);
                 *new_array = compiled
@@ -776,7 +776,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt48(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 map.insert("X".to_string(), *a as f64);
                 *new_array = compiled
@@ -786,7 +786,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int64(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 map.insert("X".to_string(), *a as f64);
                 *new_array = compiled
@@ -796,7 +796,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt64(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 map.insert("X".to_string(), *a as f64);
                 *new_array = compiled
@@ -806,7 +806,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Float64(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 map.insert("X".to_string(), *a);
                 *new_array = compiled
@@ -983,7 +983,7 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
     let val: Vec<(&f64, &f64)> = cc_val.iter().tuples().collect();
     match &mut cn.data {
         ChannelData::Int8(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _)| {
@@ -1002,7 +1002,7 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt8(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _)| {
@@ -1021,7 +1021,7 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int16(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _)| {
@@ -1040,7 +1040,7 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt16(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _)| {
@@ -1059,7 +1059,7 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Float16(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _)| {
@@ -1078,7 +1078,7 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int24(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _)| {
@@ -1097,7 +1097,7 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt24(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _)| {
@@ -1116,7 +1116,7 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int32(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _)| {
@@ -1135,7 +1135,7 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt32(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _)| {
@@ -1154,7 +1154,7 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Float32(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _)| {
@@ -1173,7 +1173,7 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int48(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _)| {
@@ -1192,7 +1192,7 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt48(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _)| {
@@ -1211,7 +1211,7 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int64(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _)| {
@@ -1230,7 +1230,7 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt64(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _)| {
@@ -1249,7 +1249,7 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Float64(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 *new_array = match val.binary_search_by(|&(xi, _)| {
                     xi.partial_cmp(a).expect("Could not compare values")
@@ -1568,7 +1568,7 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
     let val: Vec<(&f64, &f64)> = cc_val.iter().tuples().collect();
     match &mut cn.data {
         ChannelData::Int8(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _)| {
@@ -1591,7 +1591,7 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt8(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _)| {
@@ -1614,7 +1614,7 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int16(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _)| {
@@ -1637,7 +1637,7 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt16(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _)| {
@@ -1660,7 +1660,7 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Float16(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _)| {
@@ -1683,7 +1683,7 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int24(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _)| {
@@ -1706,7 +1706,7 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt24(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _)| {
@@ -1729,7 +1729,7 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int32(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _)| {
@@ -1752,7 +1752,7 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt32(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _)| {
@@ -1775,7 +1775,7 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Float32(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _)| {
@@ -1798,7 +1798,7 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int48(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _)| {
@@ -1821,7 +1821,7 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt48(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _)| {
@@ -1844,7 +1844,7 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int64(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _)| {
@@ -1867,7 +1867,7 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt64(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _)| {
@@ -1890,7 +1890,7 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Float64(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 *new_array = match val.binary_search_by(|&(xi, _)| {
                     xi.partial_cmp(a).expect("Could not compare values")
@@ -2277,7 +2277,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
     let default_value = cc_val[cc_val.len() - 1];
     match &mut cn.data {
         ChannelData::Int8(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _, _)| {
@@ -2298,7 +2298,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt8(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _, _)| {
@@ -2319,7 +2319,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int16(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _, _)| {
@@ -2340,7 +2340,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt16(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _, _)| {
@@ -2361,7 +2361,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Float16(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _, _)| {
@@ -2382,7 +2382,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int24(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _, _)| {
@@ -2403,7 +2403,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt24(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _, _)| {
@@ -2424,7 +2424,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int32(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _, _)| {
@@ -2445,7 +2445,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt32(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _, _)| {
@@ -2466,7 +2466,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Float32(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _, _)| {
@@ -2487,7 +2487,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int48(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _, _)| {
@@ -2508,7 +2508,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt48(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _, _)| {
@@ -2529,7 +2529,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Int64(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _, _)| {
@@ -2550,7 +2550,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::UInt64(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 let a64 = *a as f64;
                 *new_array = match val.binary_search_by(|&(xi, _, _)| {
@@ -2571,7 +2571,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::Float64(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                 *new_array = match val.binary_search_by(|&(xi, _, _)| {
                     xi.partial_cmp(a).expect("Could not compare values")
@@ -4212,7 +4212,7 @@ fn text_to_value(
         ChannelData::Complex32(_) => {}
         ChannelData::Complex64(_) => {}
         ChannelData::StringSBC(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_a, a| {
                 if let Some(val) = table.get(a) {
                     *new_a = *val;
@@ -4223,7 +4223,7 @@ fn text_to_value(
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::StringUTF8(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_a, a| {
                 if let Some(val) = table.get(a) {
                     *new_a = *val;
@@ -4234,7 +4234,7 @@ fn text_to_value(
             cn.data = ChannelData::Float64(new_array);
         }
         ChannelData::StringUTF16(a) => {
-            let mut new_array = Array1::<f64>::zeros((*cycle_count as usize,));
+            let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_a, a| {
                 if let Some(val) = table.get(a) {
                     *new_a = *val;
