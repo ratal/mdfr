@@ -6,9 +6,11 @@ use crate::mdfinfo::mdfinfo4::{Cc4Block, CcVal, Cn4, Dg4, SharableBlocks};
 use crate::mdfreader::channel_data::ChannelData;
 use fasteval::Compiler;
 use fasteval::{Evaler, Instruction, Slab};
-use ndarray::{Array1, ArrayD, Zip};
+use ndarray::{ArrayD, Zip};
 use num::Complex;
 use rayon::prelude::*;
+
+use super::channel_data::ArrowComplex;
 
 /// convert all channel arrays into physical values as required by CCBlock content
 pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) {
@@ -103,6 +105,13 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
     let p2 = cc_val[1];
     if !(p1 == 0.0 && num::abs(p2 - 1.0) < 1e-12) {
         match &mut cn.data {
+            ChannelData::Boolean(a) => {
+                let mut new_array = vec![0f64; *cycle_count as usize];
+                Zip::from(&mut new_array)
+                    .and(a)
+                    .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
+                cn.data = ChannelData::Float64(new_array);
+            }
             ChannelData::UInt8(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
@@ -202,37 +211,30 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
                 cn.data = ChannelData::Float64(new_array);
             }
             ChannelData::Float64(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                Zip::from(&mut new_array)
-                    .and(a)
-                    .for_each(|new_array, a| *new_array = *a * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                a.iter_mut().for_each(|a| *a = *a * p2 + p1);
             }
             ChannelData::Complex16(a) => {
-                let mut new_array = Array1::<Complex<f64>>::zeros((*cycle_count as usize,));
-                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                    *new_array = Complex::<f64>::new(a.re as f64 * p2 + p1, a.im as f64 * p2 + p1)
+                let mut new_array = vec![0f64; *cycle_count as usize * 2];
+                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
+                    *new_array = *a as f64 * p2 + p1;
                 });
-                cn.data = ChannelData::Complex64(new_array);
+                cn.data = ChannelData::Complex64(ArrowComplex(new_array));
             }
             ChannelData::Complex32(a) => {
-                let mut new_array = Array1::<Complex<f64>>::zeros((*cycle_count as usize,));
-                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                    *new_array = Complex::<f64>::new(a.re as f64 * p2 + p1, a.im as f64 * p2 + p1)
+                let mut new_array = vec![0f64; *cycle_count as usize * 2];
+                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
+                    *new_array = *a as f64 * p2 + p1;
                 });
-                cn.data = ChannelData::Complex64(new_array);
+                cn.data = ChannelData::Complex64(ArrowComplex(new_array));
             }
             ChannelData::Complex64(a) => {
-                let mut new_array = Array1::<Complex<f64>>::zeros((*cycle_count as usize,));
-                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                    *new_array = Complex::<f64>::new(a.re * p2 + p1, a.im * p2 + p1)
-                });
-                cn.data = ChannelData::Complex64(new_array);
+                a.0.iter_mut().for_each(|a| *a = *a * p2 + p1);
             }
             ChannelData::StringSBC(_) => {}
             ChannelData::StringUTF8(_) => {}
             ChannelData::StringUTF16(_) => {}
-            ChannelData::ByteArray(_) => {}
+            ChannelData::VariableSizeByteArray(_) => {}
+            ChannelData::FixedSizeByteArray(_) => {}
             ChannelData::ArrayDUInt8(a) => {
                 let mut new_array = ArrayD::<f64>::zeros(a.shape());
                 Zip::from(&mut new_array)
@@ -373,6 +375,15 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
     let p6 = cc_val[5];
 
     match &mut cn.data {
+        ChannelData::Boolean(a) => {
+            let mut new_array = vec![0f64; *cycle_count as usize];
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let m = *a as f64;
+                let m_2 = f64::powi(m, 2);
+                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
+            });
+            cn.data = ChannelData::Float64(new_array);
+        }
         ChannelData::UInt8(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
@@ -513,7 +524,8 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
         ChannelData::StringSBC(_) => {}
         ChannelData::StringUTF8(_) => {}
         ChannelData::StringUTF16(_) => {}
-        ChannelData::ByteArray(_) => {}
+        ChannelData::VariableSizeByteArray(_) => {}
+        ChannelData::FixedSizeByteArray(_) => {}
         ChannelData::ArrayDUInt8(a) => {
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
@@ -665,6 +677,16 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
         .from(&slab.ps)
         .compile(&slab.ps, &mut slab.cs);
     match &mut cn.data {
+        ChannelData::Boolean(a) => {
+            let mut new_array = vec![0f64; *cycle_count as usize];
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                map.insert("X".to_string(), *a as f64);
+                *new_array = compiled
+                    .eval(&slab, &mut map)
+                    .expect("could not evaluate algebraic expression");
+            });
+            cn.data = ChannelData::Float64(new_array);
+        }
         ChannelData::UInt8(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
@@ -821,7 +843,8 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
         ChannelData::StringSBC(_) => (),
         ChannelData::StringUTF8(_) => (),
         ChannelData::StringUTF16(_) => (),
-        ChannelData::ByteArray(_) => (),
+        ChannelData::VariableSizeByteArray(_) => (),
+        ChannelData::FixedSizeByteArray(_) => (),
         ChannelData::ArrayDInt8(a) => {
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
@@ -982,6 +1005,25 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
 fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64) {
     let val: Vec<(&f64, &f64)> = cc_val.iter().tuples().collect();
     match &mut cn.data {
+        ChannelData::Boolean(a) => {
+            let mut new_array = vec![0f64; *cycle_count as usize];
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let a64 = *a as f64;
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
+                    Ok(idx) => *val[idx].1,
+                    Err(0) => *val[0].1,
+                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
+                    Err(idx) => {
+                        let (x0, y0) = val[idx - 1];
+                        let (x1, y1) = val[idx];
+                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
+                    }
+                };
+            });
+            cn.data = ChannelData::Float64(new_array);
+        }
         ChannelData::Int8(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
@@ -1272,7 +1314,8 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
         ChannelData::StringSBC(_) => {}
         ChannelData::StringUTF8(_) => {}
         ChannelData::StringUTF16(_) => {}
-        ChannelData::ByteArray(_) => {}
+        ChannelData::VariableSizeByteArray(_) => {}
+        ChannelData::FixedSizeByteArray(_) => {}
         ChannelData::ArrayDInt8(a) => {
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
@@ -1567,6 +1610,29 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
 fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64) {
     let val: Vec<(&f64, &f64)> = cc_val.iter().tuples().collect();
     match &mut cn.data {
+        ChannelData::Boolean(a) => {
+            let mut new_array = vec![0f64; *cycle_count as usize];
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let a64 = *a as f64;
+                *new_array = match val.binary_search_by(|&(xi, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
+                    Ok(idx) => *val[idx].1,
+                    Err(0) => *val[0].1,
+                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
+                    Err(idx) => {
+                        let (x0, y0) = val[idx - 1];
+                        let (x1, y1) = val[idx];
+                        if (a64 - x0) > (x1 - a64) {
+                            *y1
+                        } else {
+                            *y0
+                        }
+                    }
+                };
+            });
+            cn.data = ChannelData::Float64(new_array);
+        }
         ChannelData::Int8(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
@@ -1917,7 +1983,8 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
         ChannelData::StringSBC(_) => {}
         ChannelData::StringUTF8(_) => {}
         ChannelData::StringUTF16(_) => {}
-        ChannelData::ByteArray(_) => {}
+        ChannelData::VariableSizeByteArray(_) => {}
+        ChannelData::FixedSizeByteArray(_) => {}
         ChannelData::ArrayDInt8(a) => {
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
@@ -2276,6 +2343,27 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
     }
     let default_value = cc_val[cc_val.len() - 1];
     match &mut cn.data {
+        ChannelData::Boolean(a) => {
+            let mut new_array = vec![0f64; *cycle_count as usize];
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let a64 = *a as f64;
+                *new_array = match val.binary_search_by(|&(xi, _, _)| {
+                    xi.partial_cmp(&a64).expect("Could not compare values")
+                }) {
+                    Ok(idx) => val[idx].2,
+                    Err(0) => default_value,
+                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                    Err(idx) => {
+                        if a64 <= val[idx].1 {
+                            val[idx].2
+                        } else {
+                            default_value
+                        }
+                    }
+                };
+            });
+            cn.data = ChannelData::Float64(new_array);
+        }
         ChannelData::Int8(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
@@ -2596,7 +2684,8 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
         ChannelData::StringSBC(_) => {}
         ChannelData::StringUTF8(_) => {}
         ChannelData::StringUTF16(_) => {}
-        ChannelData::ByteArray(_) => {}
+        ChannelData::VariableSizeByteArray(_) => {}
+        ChannelData::FixedSizeByteArray(_) => {}
         ChannelData::ArrayDInt8(a) => {
             let mut new_array = ArrayD::<f64>::zeros(a.shape());
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
@@ -2965,6 +3054,38 @@ fn value_to_text(
     }
 
     match &mut cn.data {
+        ChannelData::Boolean(a) => {
+            let mut new_array = vec![String::new(); *cycle_count as usize];
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let ref_val = *a as i64;
+                if let Some(tosc) = table_int.get(&ref_val) {
+                    match tosc {
+                        TextOrScaleConversion::Txt(txt) => {
+                            *new_array = txt.clone();
+                        }
+                        TextOrScaleConversion::Scale(conv) => {
+                            *new_array = conv.eval_to_txt(*a as f64);
+                        }
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                } else {
+                    match &def {
+                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                            *new_array = txt.clone();
+                        }
+                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                            *new_array = conv.eval_to_txt(*a as f64);
+                        }
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                }
+            });
+            cn.data = ChannelData::StringUTF8(new_array);
+        }
         ChannelData::Int8(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
@@ -3492,7 +3613,8 @@ fn value_to_text(
         ChannelData::StringSBC(_) => (),
         ChannelData::StringUTF8(_) => (),
         ChannelData::StringUTF16(_) => (),
-        ChannelData::ByteArray(_) => (),
+        ChannelData::VariableSizeByteArray(_) => (),
+        ChannelData::FixedSizeByteArray(_) => (),
         ChannelData::ArrayDInt8(_) => (),
         ChannelData::ArrayDUInt8(_) => (),
         ChannelData::ArrayDInt16(_) => (),
@@ -3624,6 +3746,41 @@ fn value_range_to_text(
     }
 
     match &mut cn.data {
+        ChannelData::Boolean(a) => {
+            let mut new_array = vec![String::new(); *cycle_count as usize];
+            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
+                let matched_key = keys
+                    .iter()
+                    .enumerate()
+                    .find(|&x| x.1.min <= *a as f64 && *a as f64 <= x.1.max);
+                if let Some(key) = matched_key {
+                    match &txt[key.0] {
+                        TextOrScaleConversion::Txt(txt) => {
+                            *new_array = txt.clone();
+                        }
+                        TextOrScaleConversion::Scale(conv) => {
+                            *new_array = conv.eval_to_txt(*a as f64);
+                        }
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                } else {
+                    match &def {
+                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                            *new_array = txt.clone();
+                        }
+                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                            *new_array = conv.eval_to_txt(*a as f64);
+                        }
+                        _ => {
+                            *new_array = a.to_string();
+                        }
+                    }
+                }
+            });
+            cn.data = ChannelData::StringUTF8(new_array);
+        }
         ChannelData::Int8(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
@@ -4155,7 +4312,8 @@ fn value_range_to_text(
         ChannelData::StringSBC(_) => {}
         ChannelData::StringUTF8(_) => {}
         ChannelData::StringUTF16(_) => {}
-        ChannelData::ByteArray(_) => {}
+        ChannelData::VariableSizeByteArray(_) => {}
+        ChannelData::FixedSizeByteArray(_) => {}
         ChannelData::ArrayDInt8(_) => {}
         ChannelData::ArrayDUInt8(_) => {}
         ChannelData::ArrayDInt16(_) => {}
@@ -4193,6 +4351,7 @@ fn text_to_value(
     }
     let default = cc_val[cc_val.len() - 1];
     match &mut cn.data {
+        ChannelData::Boolean(_) => {}
         ChannelData::Int8(_) => {}
         ChannelData::UInt8(_) => {}
         ChannelData::Int16(_) => {}
@@ -4244,7 +4403,8 @@ fn text_to_value(
             });
             cn.data = ChannelData::Float64(new_array);
         }
-        ChannelData::ByteArray(_) => {}
+        ChannelData::VariableSizeByteArray(_) => {}
+        ChannelData::FixedSizeByteArray(_) => {}
         ChannelData::ArrayDInt8(_) => {}
         ChannelData::ArrayDUInt8(_) => {}
         ChannelData::ArrayDInt16(_) => {}
@@ -4284,6 +4444,7 @@ fn text_to_text(cn: &mut Cn4, cc_ref: &[i64], cycle_count: &u64, sharable: &Shar
         default = Some(txt);
     }
     match &mut cn.data {
+        ChannelData::Boolean(_) => {}
         ChannelData::Int8(_) => {}
         ChannelData::UInt8(_) => {}
         ChannelData::Int16(_) => {}
@@ -4353,7 +4514,8 @@ fn text_to_text(cn: &mut Cn4, cc_ref: &[i64], cycle_count: &u64, sharable: &Shar
             });
             cn.data = ChannelData::StringUTF8(new_array);
         }
-        ChannelData::ByteArray(_) => {}
+        ChannelData::VariableSizeByteArray(_) => {}
+        ChannelData::FixedSizeByteArray(_) => {}
         ChannelData::ArrayDInt8(_) => {}
         ChannelData::ArrayDUInt8(_) => {}
         ChannelData::ArrayDInt16(_) => {}
@@ -4481,6 +4643,7 @@ fn bitfield_text_table(
         }
     }
     match &mut cn.data {
+        ChannelData::Boolean(_) => (),
         ChannelData::UInt8(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             Zip::from(&mut new_array).and(a).for_each(|new_a, a| {
@@ -4982,7 +5145,8 @@ fn bitfield_text_table(
         ChannelData::StringSBC(_) => {}
         ChannelData::StringUTF8(_) => {}
         ChannelData::StringUTF16(_) => {}
-        ChannelData::ByteArray(_) => {}
+        ChannelData::VariableSizeByteArray(_) => {}
+        ChannelData::FixedSizeByteArray(_) => {}
         ChannelData::ArrayDInt8(_) => {}
         ChannelData::ArrayDUInt8(_) => {}
         ChannelData::ArrayDInt16(_) => {}

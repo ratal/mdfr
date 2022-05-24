@@ -29,6 +29,13 @@ pub fn read_channels_from_bytes(
             let pos_byte_beg = cn.pos_byte_beg as usize;
             let n_bytes = cn.n_bytes as usize;
             match &mut cn.data {
+                ChannelData::Boolean(data) => {
+                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                        value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u8>()];
+                        data[i + previous_index] =
+                            u8::from_le_bytes(value.try_into().expect("Could not read u8"));
+                    }
+                }
                 ChannelData::Int8(data) => {
                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
                         value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i8>()];
@@ -342,11 +349,18 @@ pub fn read_channels_from_bytes(
                     }
                 }
                 ChannelData::StringUTF16(_) => {}
-                ChannelData::ByteArray(data) => {
+                ChannelData::VariableSizeByteArray(data) => {
                     let n_bytes = cn.n_bytes as usize;
                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
                         data[i + previous_index] =
                             record[pos_byte_beg..pos_byte_beg + n_bytes].to_vec();
+                    }
+                }
+                ChannelData::FixedSizeByteArray(data) => {
+                    let n_bytes = cn.n_bytes as usize;
+                    for record in data_chunk.chunks(record_length) {
+                        data.0
+                            .extend_from_slice(&record[pos_byte_beg..pos_byte_beg + n_bytes]);
                     }
                 }
                 ChannelData::ArrayDInt8(_) => {}

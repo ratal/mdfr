@@ -30,6 +30,7 @@ pub fn read_one_channel_array(data_bytes: &Vec<u8>, cn: &mut Cn4, cycle_count: u
         // cn_type == 4 : synchronisation channel
         let n_bytes = cn.n_bytes as usize;
         match &mut cn.data {
+            ChannelData::Boolean(_) => {}
             ChannelData::Int8(data) => {
                 Cursor::new(data_bytes)
                     .read_i8_into(data)
@@ -238,8 +239,6 @@ pub fn read_one_channel_array(data_bytes: &Vec<u8>, cn: &mut Cn4, cycle_count: u
                 }
             }
             ChannelData::Complex16(data) => {
-                let mut re: f32;
-                let mut im: f32;
                 let mut re_val: &[u8];
                 let mut im_val: &[u8];
                 if cn.endian {
@@ -249,19 +248,18 @@ pub fn read_one_channel_array(data_bytes: &Vec<u8>, cn: &mut Cn4, cycle_count: u
                     {
                         re_val = &value[0..std::mem::size_of::<f16>()];
                         im_val = &value[std::mem::size_of::<f16>()..2 * std::mem::size_of::<f16>()];
-                        re = f16::from_be_bytes(
+                        data.0[i * 2] = f16::from_be_bytes(
                             re_val
                                 .try_into()
                                 .expect("Could not read be real f16 complex"),
                         )
                         .to_f32();
-                        im = f16::from_be_bytes(
+                        data.0[i * 2 + 1] = f16::from_be_bytes(
                             im_val
                                 .try_into()
                                 .expect("Could not read be img f16 complex"),
                         )
                         .to_f32();
-                        data[i] = Complex::new(re, im);
                     }
                 } else {
                     for (i, value) in data_bytes
@@ -270,25 +268,22 @@ pub fn read_one_channel_array(data_bytes: &Vec<u8>, cn: &mut Cn4, cycle_count: u
                     {
                         re_val = &value[0..std::mem::size_of::<f16>()];
                         im_val = &value[std::mem::size_of::<f16>()..2 * std::mem::size_of::<f16>()];
-                        re = f16::from_le_bytes(
+                        data.0[i * 2] = f16::from_le_bytes(
                             re_val
                                 .try_into()
                                 .expect("Could not read le real f16 complex"),
                         )
                         .to_f32();
-                        im = f16::from_le_bytes(
+                        data.0[i * 2 + 1] = f16::from_le_bytes(
                             im_val
                                 .try_into()
                                 .expect("Could not read le img f16 complex"),
                         )
                         .to_f32();
-                        data[i] = Complex::new(re, im);
                     }
                 }
             }
             ChannelData::Complex32(data) => {
-                let mut re: f32;
-                let mut im: f32;
                 let mut re_val: &[u8];
                 let mut im_val: &[u8];
                 if cn.endian {
@@ -298,17 +293,16 @@ pub fn read_one_channel_array(data_bytes: &Vec<u8>, cn: &mut Cn4, cycle_count: u
                     {
                         re_val = &value[0..std::mem::size_of::<f32>()];
                         im_val = &value[std::mem::size_of::<f32>()..2 * std::mem::size_of::<f32>()];
-                        re = f32::from_be_bytes(
+                        data.0[i * 2] = f32::from_be_bytes(
                             re_val
                                 .try_into()
                                 .expect("Could not read be real f32 complex"),
                         );
-                        im = f32::from_be_bytes(
+                        data.0[i * 2 + 1] = f32::from_be_bytes(
                             im_val
                                 .try_into()
                                 .expect("Could not read be img f32 complex"),
                         );
-                        data[i] = Complex::new(re, im);
                     }
                 } else {
                     for (i, value) in data_bytes
@@ -317,23 +311,20 @@ pub fn read_one_channel_array(data_bytes: &Vec<u8>, cn: &mut Cn4, cycle_count: u
                     {
                         re_val = &value[0..std::mem::size_of::<f32>()];
                         im_val = &value[std::mem::size_of::<f32>()..2 * std::mem::size_of::<f32>()];
-                        re = f32::from_le_bytes(
+                        data.0[i * 2] = f32::from_le_bytes(
                             re_val
                                 .try_into()
                                 .expect("Could not read le real f32 complex"),
                         );
-                        im = f32::from_le_bytes(
+                        data.0[i * 2 + 1] = f32::from_le_bytes(
                             im_val
                                 .try_into()
                                 .expect("Could not read le img f32 complex"),
                         );
-                        data[i] = Complex::new(re, im);
                     }
                 }
             }
             ChannelData::Complex64(data) => {
-                let mut re: f64;
-                let mut im: f64;
                 let mut re_val: &[u8];
                 let mut im_val: &[u8];
                 if cn.endian {
@@ -343,9 +334,10 @@ pub fn read_one_channel_array(data_bytes: &Vec<u8>, cn: &mut Cn4, cycle_count: u
                     {
                         re_val = &value[0..std::mem::size_of::<f64>()];
                         im_val = &value[std::mem::size_of::<f64>()..2 * std::mem::size_of::<f64>()];
-                        re = f64::from_be_bytes(re_val.try_into().expect("Could not array"));
-                        im = f64::from_be_bytes(im_val.try_into().expect("Could not array"));
-                        data[i] = Complex::new(re, im);
+                        data.0[i * 2] =
+                            f64::from_be_bytes(re_val.try_into().expect("Could not array"));
+                        data.0[i * 2 + 1] =
+                            f64::from_be_bytes(im_val.try_into().expect("Could not array"));
                     }
                 } else {
                     for (i, value) in data_bytes
@@ -354,17 +346,16 @@ pub fn read_one_channel_array(data_bytes: &Vec<u8>, cn: &mut Cn4, cycle_count: u
                     {
                         re_val = &value[0..std::mem::size_of::<f64>()];
                         im_val = &value[std::mem::size_of::<f64>()..2 * std::mem::size_of::<f64>()];
-                        re = f64::from_le_bytes(
+                        data.0[i * 2] = f64::from_le_bytes(
                             re_val
                                 .try_into()
                                 .expect("Could not read le real f64 complex"),
                         );
-                        im = f64::from_le_bytes(
+                        data.0[i * 2 + 1] = f64::from_le_bytes(
                             im_val
                                 .try_into()
                                 .expect("Could not read le img f64 complex"),
                         );
-                        data[i] = Complex::new(re, im);
                     }
                 }
             }
@@ -401,10 +392,13 @@ pub fn read_one_channel_array(data_bytes: &Vec<u8>, cn: &mut Cn4, cycle_count: u
                     }
                 }
             }
-            ChannelData::ByteArray(data) => {
+            ChannelData::VariableSizeByteArray(data) => {
                 for (i, value) in data_bytes.chunks(n_bytes).enumerate() {
                     data[i] = value.to_vec();
                 }
+            }
+            ChannelData::FixedSizeByteArray(data) => {
+                data.0 = data_bytes.to_vec();
             }
             ChannelData::ArrayDInt8(data) => {
                 if let Some(compo) = &cn.composition {
@@ -1027,6 +1021,13 @@ pub fn read_channels_from_bytes(
             let pos_byte_beg = cn.pos_byte_beg as usize;
             let n_bytes = cn.n_bytes as usize;
             match &mut cn.data {
+                ChannelData::Boolean(data) => {
+                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                        value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u8>()];
+                        data[i + previous_index] =
+                            u8::from_le_bytes(value.try_into().expect("Could not read u8"));
+                    }
+                }
                 ChannelData::Int8(data) => {
                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
                         value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i8>()];
@@ -1316,8 +1317,6 @@ pub fn read_channels_from_bytes(
                     }
                 }
                 ChannelData::Complex16(data) => {
-                    let mut re: f32;
-                    let mut im: f32;
                     let mut re_val: &[u8];
                     let mut im_val: &[u8];
                     if cn.endian {
@@ -1326,19 +1325,18 @@ pub fn read_channels_from_bytes(
                                 &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f16>()];
                             im_val = &record[pos_byte_beg + std::mem::size_of::<f16>()
                                 ..pos_byte_beg + 2 * std::mem::size_of::<f16>()];
-                            re = f16::from_be_bytes(
+                            data.0[i*2 + previous_index] = f16::from_be_bytes(
                                 re_val
                                     .try_into()
                                     .expect("Could not read be real f16 complex"),
                             )
                             .to_f32();
-                            im = f16::from_be_bytes(
+                            data.0[i*2 + 1 + previous_index] = f16::from_be_bytes(
                                 im_val
                                     .try_into()
                                     .expect("Could not read be img f16 complex"),
                             )
                             .to_f32();
-                            data[i + previous_index] = Complex::new(re, im);
                         }
                     } else {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -1346,25 +1344,22 @@ pub fn read_channels_from_bytes(
                                 &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f16>()];
                             im_val = &record[pos_byte_beg + std::mem::size_of::<f16>()
                                 ..pos_byte_beg + 2 * std::mem::size_of::<f16>()];
-                            re = f16::from_le_bytes(
+                            data.0[i*2 + previous_index] = f16::from_le_bytes(
                                 re_val
                                     .try_into()
                                     .expect("Could not read le real f16 complex"),
                             )
                             .to_f32();
-                            im = f16::from_le_bytes(
+                            data.0[i*2 + 1 + previous_index] = f16::from_le_bytes(
                                 im_val
                                     .try_into()
                                     .expect("Could not read le img f16 complex"),
                             )
                             .to_f32();
-                            data[i + previous_index] = Complex::new(re, im);
                         }
                     }
                 }
                 ChannelData::Complex32(data) => {
-                    let mut re: f32;
-                    let mut im: f32;
                     let mut re_val: &[u8];
                     let mut im_val: &[u8];
                     if cn.endian {
@@ -1373,17 +1368,16 @@ pub fn read_channels_from_bytes(
                                 &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f32>()];
                             im_val = &record[pos_byte_beg + std::mem::size_of::<f32>()
                                 ..pos_byte_beg + 2 * std::mem::size_of::<f32>()];
-                            re = f32::from_be_bytes(
+                            data.0[i*2 + previous_index] = f32::from_be_bytes(
                                 re_val
                                     .try_into()
                                     .expect("Could not read be real f32 complex"),
                             );
-                            im = f32::from_be_bytes(
+                            data.0[i*2 + 1 + previous_index] = f32::from_be_bytes(
                                 im_val
                                     .try_into()
                                     .expect("Could not read be img f32 complex"),
                             );
-                            data[i + previous_index] = Complex::new(re, im);
                         }
                     } else {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -1391,23 +1385,20 @@ pub fn read_channels_from_bytes(
                                 &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f32>()];
                             im_val = &record[pos_byte_beg + std::mem::size_of::<f32>()
                                 ..pos_byte_beg + 2 * std::mem::size_of::<f32>()];
-                            re = f32::from_le_bytes(
+                            data.0[i*2 + previous_index] = f32::from_le_bytes(
                                 re_val
                                     .try_into()
                                     .expect("Could not read le real f32 complex"),
                             );
-                            im = f32::from_le_bytes(
+                            data.0[i*2 + 1 + previous_index] = f32::from_le_bytes(
                                 im_val
                                     .try_into()
                                     .expect("Could not read le img f32 complex"),
                             );
-                            data[i + previous_index] = Complex::new(re, im);
                         }
                     }
                 }
                 ChannelData::Complex64(data) => {
-                    let mut re: f64;
-                    let mut im: f64;
                     let mut re_val: &[u8];
                     let mut im_val: &[u8];
                     if cn.endian {
@@ -1416,9 +1407,8 @@ pub fn read_channels_from_bytes(
                                 &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
                             im_val = &record[pos_byte_beg + std::mem::size_of::<f64>()
                                 ..pos_byte_beg + 2 * std::mem::size_of::<f64>()];
-                            re = f64::from_be_bytes(re_val.try_into().expect("Could not array"));
-                            im = f64::from_be_bytes(im_val.try_into().expect("Could not array"));
-                            data[i + previous_index] = Complex::new(re, im);
+                            data.0[i*2 + previous_index] = f64::from_be_bytes(re_val.try_into().expect("Could not array"));
+                            data.0[i*2 + 1 + previous_index] = f64::from_be_bytes(im_val.try_into().expect("Could not array"));
                         }
                     } else {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -1426,17 +1416,16 @@ pub fn read_channels_from_bytes(
                                 &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
                             im_val = &record[pos_byte_beg + std::mem::size_of::<f64>()
                                 ..pos_byte_beg + 2 * std::mem::size_of::<f64>()];
-                            re = f64::from_le_bytes(
+                            data.0[i*2 + previous_index] = f64::from_le_bytes(
                                 re_val
                                     .try_into()
                                     .expect("Could not read le real f64 complex"),
                             );
-                            im = f64::from_le_bytes(
+                            data.0[i*2 + 1 + previous_index] = f64::from_le_bytes(
                                 im_val
                                     .try_into()
                                     .expect("Could not read le img f64 complex"),
                             );
-                            data[i + previous_index] = Complex::new(re, im);
                         }
                     }
                 }
@@ -1489,10 +1478,16 @@ pub fn read_channels_from_bytes(
                         }
                     }
                 }
-                ChannelData::ByteArray(data) => {
+                ChannelData::VariableSizeByteArray(data) => {
                     let n_bytes = cn.n_bytes as usize;
                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
                         data[i + previous_index] = record[pos_byte_beg..pos_byte_beg + n_bytes].to_vec();
+                    }
+                }
+                ChannelData::FixedSizeByteArray(data) => {
+                    let n_bytes = cn.n_bytes as usize;
+                    for record in data_chunk.chunks(record_length) {
+                        data.0.extend_from_slice(&record[pos_byte_beg..pos_byte_beg + n_bytes]);
                     }
                 }
                 ChannelData::ArrayDInt8(data) => {

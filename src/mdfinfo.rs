@@ -2,8 +2,8 @@
 
 //! This module is reading the mdf file blocks (metadata)
 
+use arrow2::error::ArrowError;
 use binrw::{binrw, BinReaderExt};
-use parquet2::compression::CompressionOptions;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
@@ -35,7 +35,7 @@ pub enum MdfInfo {
 }
 
 /// Common Id block structure for both versions 2 and 3
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 #[binrw]
 #[allow(dead_code)]
 pub struct IdBlock {
@@ -384,14 +384,19 @@ impl MdfInfo {
         }
     }
     // export to Parquet file
-    pub fn export_to_parquet(&self, file_name: &str, compression: CompressionOptions) {
+    pub fn export_to_parquet(
+        &self,
+        file_name: &str,
+        compression: Option<&str>,
+    ) -> Result<(), ArrowError> {
         match self {
             MdfInfo::V3(mdfinfo3) => {
                 let mdf4 = convert3to4(mdfinfo3, file_name);
-                mdf4.export_to_parquet(file_name, compression);
+                mdf4.export_to_parquet(file_name, compression)?;
             }
-            MdfInfo::V4(mdfinfo4) => mdfinfo4.export_to_parquet(file_name, compression),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.export_to_parquet(file_name, compression)?,
         }
+        Ok(())
     }
 }
 

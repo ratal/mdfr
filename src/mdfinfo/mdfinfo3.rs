@@ -373,7 +373,7 @@ pub fn parse_block_header(rdr: &mut BufReader<&File>) -> Blockheader3 {
 }
 
 /// HD3 strucutre
-#[derive(Debug, PartialEq, Default)]
+#[derive(Debug, PartialEq, Eq, Default)]
 #[allow(dead_code)]
 pub struct Hd3 {
     /// HD
@@ -413,7 +413,7 @@ pub struct Hd3 {
 }
 
 /// HD3 block strucutre
-#[derive(Debug, PartialEq, Default, BinRead)]
+#[derive(Debug, PartialEq, Eq, Default, BinRead)]
 pub struct Hd3Block {
     hd_id: [u8; 2],            // HD
     hd_len: u16,               // Length of block in bytes
@@ -430,7 +430,7 @@ pub struct Hd3Block {
 }
 
 /// Specific from version 3.2 HD block extension
-#[derive(Debug, PartialEq, Default, BinRead)]
+#[derive(Debug, PartialEq, Eq, Default, BinRead)]
 pub struct Hd3Block32 {
     hd_start_time_ns: u64, // time stamp at which recording was started in nanosecond
     hd_time_offset: i16,   // UTC time offset
@@ -935,7 +935,7 @@ pub fn parse_cn3(
 }
 
 /// Cn3 Channel block struct, first sub block
-#[derive(Debug, PartialEq, Default, Clone, BinRead)]
+#[derive(Debug, PartialEq, Eq, Default, Clone, BinRead)]
 #[br(little)]
 pub struct Cn3Block1 {
     /// CN
@@ -1080,6 +1080,7 @@ fn parse_cn3_block(
         }
     }
     let data_type = convert_data_type_3to4(block2.cn_data_type);
+    let cn_bit_count = block2.cn_bit_count as u32;
 
     let cn_struct = Cn3 {
         block1,
@@ -1089,7 +1090,7 @@ fn parse_cn3_block(
         unique_name,
         pos_byte_beg,
         n_bytes,
-        data: data_type_init(0, data_type, n_bytes as u32, false),
+        data: data_type_init(0, data_type, n_bytes as u32, cn_bit_count, false),
         endian,
         channel_data_valid: false,
     };

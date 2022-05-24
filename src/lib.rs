@@ -1,4 +1,5 @@
 #![forbid(unsafe_code)]
+#![feature(generic_associated_types)]
 pub mod export;
 pub mod mdfinfo;
 pub mod mdfr;

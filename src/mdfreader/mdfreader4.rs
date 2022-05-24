@@ -393,6 +393,7 @@ fn read_vlsd_from_bytes(
     let mut remaining: usize = data_length - position;
     let mut nrecord: usize = 0;
     match &mut cn.data {
+        ChannelData::Boolean(_) => {}
         ChannelData::Int8(_) => {}
         ChannelData::UInt8(_) => {}
         ChannelData::Int16(_) => {}
@@ -524,7 +525,7 @@ fn read_vlsd_from_bytes(
                 data.clear()
             }
         }
-        ChannelData::ByteArray(array) => {
+        ChannelData::VariableSizeByteArray(array) => {
             while remaining > 0 {
                 let len = &data[position..position + std::mem::size_of::<u32>()];
                 let length: usize =
@@ -549,6 +550,7 @@ fn read_vlsd_from_bytes(
                 data.clear()
             }
         }
+        ChannelData::FixedSizeByteArray(_) => {}
         ChannelData::ArrayDInt8(_) => {}
         ChannelData::ArrayDUInt8(_) => {}
         ChannelData::ArrayDInt16(_) => {}
@@ -1063,6 +1065,7 @@ fn save_vlsd(
     endian: bool,
 ) {
     match data {
+        ChannelData::Boolean(_) => {}
         ChannelData::Int8(_) => {}
         ChannelData::UInt8(_) => {}
         ChannelData::Int16(_) => {}
@@ -1105,7 +1108,10 @@ fn save_vlsd(
                         .decode_to_string(record, &mut array[*nrecord], false);
             };
         }
-        ChannelData::ByteArray(_) => {}
+        ChannelData::VariableSizeByteArray(array) => {
+            array[*nrecord].extend_from_slice(record);
+        }
+        ChannelData::FixedSizeByteArray(_) => {}
         ChannelData::ArrayDInt8(_) => {}
         ChannelData::ArrayDUInt8(_) => {}
         ChannelData::ArrayDInt16(_) => {}
@@ -1286,6 +1292,14 @@ fn apply_bit_mask_offset(dg: &mut Dg4, channel_names_to_read_in_dg: &HashSet<Str
                     let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
                     if left_shift > 0 || right_shift > 0 {
                         match &mut cn.data {
+                            ChannelData::Boolean(a) => {
+                                if left_shift > 0 {
+                                    a.iter_mut().for_each(|x| *x <<= left_shift)
+                                };
+                                if right_shift > 0 {
+                                    a.iter_mut().for_each(|x| *x >>= right_shift)
+                                };
+                            }
                             ChannelData::Int8(a) => {
                                 if left_shift > 0 {
                                     a.iter_mut().for_each(|x| *x <<= left_shift)
@@ -1409,7 +1423,8 @@ fn apply_bit_mask_offset(dg: &mut Dg4, channel_names_to_read_in_dg: &HashSet<Str
                             ChannelData::StringSBC(_) => (),
                             ChannelData::StringUTF8(_) => (),
                             ChannelData::StringUTF16(_) => (),
-                            ChannelData::ByteArray(_) => (),
+                            ChannelData::VariableSizeByteArray(_) => (),
+                            ChannelData::FixedSizeByteArray(_) => (),
                             ChannelData::ArrayDInt8(a) => {
                                 if left_shift > 0 {
                                     a.map_inplace(|x| *x <<= left_shift)

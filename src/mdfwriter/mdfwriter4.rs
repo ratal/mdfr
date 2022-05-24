@@ -542,6 +542,7 @@ fn create_blocks(
                 cn_block.cn_type,
                 cn_block.cn_data_type,
                 cg_block.cg_data_bytes,
+                cn_block.cn_bit_count,
                 data_ndim > 0,
             ),
             block: cn_block,

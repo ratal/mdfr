@@ -4,7 +4,6 @@ use std::fmt::Write;
 
 use crate::mdfinfo::MdfInfo;
 use numpy::ToPyArray;
-use parquet2::compression::CompressionOptions;
 use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyDict};
 
@@ -271,12 +270,9 @@ pyplot.show()
         })
     }
     /// export to Parquet file
-    pub fn export_to_parquet(&self, file_name: &str, compression_option: Option<&str>) {
+    pub fn export_to_parquet(&self, file_name: &str, compression_option: Option<&str>){
         let Mdf(mdf) = self;
-        mdf.export_to_parquet(
-            file_name,
-            parquet_compression_from_string(compression_option),
-        );
+        mdf.export_to_parquet(file_name, compression_option).expect("could not export to parquet");
     }
     fn __repr__(&self) -> PyResult<String> {
         let mut output: String;
@@ -367,20 +363,5 @@ pyplot.show()
             }
         }
         Ok(output)
-    }
-}
-
-pub fn parquet_compression_from_string(compression_option: Option<&str>) -> CompressionOptions {
-    match compression_option {
-        Some(option) => match option {
-            "snappy" => CompressionOptions::Snappy,
-            "gzip" => CompressionOptions::Gzip,
-            "lzo" => CompressionOptions::Lzo,
-            "brotli" => CompressionOptions::Brotli,
-            "lz4" => CompressionOptions::Lz4,
-            "lz4raw" => CompressionOptions::Lz4Raw,
-            _ => CompressionOptions::Uncompressed,
-        },
-        None => CompressionOptions::Uncompressed,
     }
 }

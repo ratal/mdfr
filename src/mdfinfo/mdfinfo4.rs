@@ -1,11 +1,10 @@
 //! Parsing of file metadata into MdfInfo4 struct
-use arrow2::datatypes::DataType;
+use arrow2::error::ArrowError;
 use binrw::{binrw, BinReaderExt, BinWriterExt};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::Local;
 use chrono::{naive::NaiveDateTime, DateTime, Utc};
 use ndarray::{Array1, Order};
-use parquet2::compression::CompressionOptions;
 use rand;
 use rayon::prelude::*;
 use roxmltree;
@@ -508,8 +507,13 @@ impl MdfInfo4 {
         }
     }
     /// export to Parquet file
-    pub fn export_to_parquet(&self, file_name: &str, compression: CompressionOptions) {
-        export_to_parquet(self, file_name, compression);
+    pub fn export_to_parquet(
+        &self,
+        file_name: &str,
+        compression: Option<&str>,
+    ) -> Result<(), ArrowError> {
+        export_to_parquet(self, file_name, compression)?;
+        Ok(())
     }
     // TODO cut data
     // TODO resample data
@@ -667,7 +671,7 @@ fn parse_block_short(
 }
 
 /// metadata are either stored in TX (text) or MD (xml) blocks for mdf version 4
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MetaDataBlockType {
     MdBlock,
     MdParsed,
@@ -2270,55 +2274,6 @@ impl Cn4 {
             None => None,
         }
     }
-    pub fn arrow_data_type(&self) -> DataType {
-        if self.block.cn_type != 3 || self.block.cn_type != 6 {
-            match self.block.cn_data_type {
-                0 | 1 => {
-                    // unsigned int
-                    match self.n_bytes {
-                        1 => DataType::UInt8,
-                        2 => DataType::UInt16,
-                        3 => DataType::UInt32, // UInt24
-                        4 => DataType::UInt32,
-                        6 => DataType::UInt64, // UInt48
-                        _ => DataType::UInt64,
-                    }
-                }
-                2 | 3 => {
-                    // signed int
-                    match self.n_bytes {
-                        1 => DataType::Int8,
-                        2 => DataType::Int16,
-                        3 => DataType::Int32, // Int24
-                        4 => DataType::Int32,
-                        6 => DataType::Int64, // Int48
-                        _ => DataType::Int64,
-                    }
-                }
-                4 | 5 => {
-                    // float
-                    match self.n_bytes {
-                        2 => DataType::Float32, // Float 16
-                        4 => DataType::Float32,
-                        _ => DataType::Float64,
-                    }
-                }
-                15 | 16 => {
-                    // complex
-                    match self.n_bytes {
-                        2 => DataType::Float32, // Float 16
-                        4 => DataType::Float32,
-                        _ => DataType::Float64,
-                    }
-                }
-                6 | 7 | 8 | 9 => DataType::Utf8,
-                _ => DataType::UInt64,
-            }
-        } else {
-            // virtual channels, cn_bit_count = 0 -> n_bytes = 0, must be LE unsigned int
-            DataType::UInt64
-        }
-    }
 }
 
 /// Channel block parser
@@ -2417,6 +2372,7 @@ fn parse_cn4_block(
     }
     let data_type = block.cn_data_type;
     let cn_type = block.cn_type;
+    let cn_bit_count = block.cn_bit_count;
 
     let cn_struct = Cn4 {
         block,
@@ -2425,7 +2381,7 @@ fn parse_cn4_block(
         pos_byte_beg,
         n_bytes,
         composition: compo,
-        data: data_type_init(cn_type, data_type, n_bytes, is_array),
+        data: data_type_init(cn_type, data_type, n_bytes, cn_bit_count, is_array),
         endian,
         invalid_mask: None,
         channel_data_valid: false,
@@ -2524,7 +2480,7 @@ pub enum CcVal {
 }
 
 /// Si4 Source Information block struct
-#[derive(Debug, PartialEq, Default, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Default, Copy, Clone)]
 #[binrw]
 #[br(little)]
 pub struct Si4Block {
@@ -3052,7 +3008,7 @@ pub fn build_channel_db(
 }
 
 /// DT4 Data List block struct, without the Id
-#[derive(Debug, PartialEq, Default, Clone)]
+#[derive(Debug, PartialEq, Eq, Default, Clone)]
 #[binrw]
 #[br(little)]
 pub struct Dt4Block {
@@ -3067,7 +3023,7 @@ pub struct Dt4Block {
 }
 
 /// DL4 Data List block struct
-#[derive(Debug, PartialEq, Default, Clone)]
+#[derive(Debug, PartialEq, Eq, Default, Clone)]
 #[binrw]
 #[br(little)]
 pub struct Dl4Block {
@@ -3144,7 +3100,7 @@ pub fn parse_dz(rdr: &mut BufReader<&File>) -> (Vec<u8>, Dz4Block) {
 }
 
 /// DZ4 Data List block struct
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 #[binrw]
 #[br(little)]
 pub struct Dz4Block {
@@ -3187,7 +3143,7 @@ impl Default for Dz4Block {
 }
 
 /// DL4 Data List block struct
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 #[binrw]
 #[br(little)]
 pub struct Ld4Block {
@@ -3276,7 +3232,7 @@ pub fn parser_ld4_block(
 }
 
 /// HL4 Data List block struct
-#[derive(Debug, PartialEq, Default, Clone)]
+#[derive(Debug, PartialEq, Eq, Default, Clone)]
 #[binrw]
 #[br(little)]
 pub struct Hl4Block {
