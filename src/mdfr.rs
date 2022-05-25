@@ -270,9 +270,10 @@ pyplot.show()
         })
     }
     /// export to Parquet file
-    pub fn export_to_parquet(&self, file_name: &str, compression_option: Option<&str>){
+    pub fn export_to_parquet(&mut self, file_name: &str, compression_option: Option<&str>) {
         let Mdf(mdf) = self;
-        mdf.export_to_parquet(file_name, compression_option).expect("could not export to parquet");
+        mdf.export_to_parquet(file_name, compression_option)
+            .expect("could not export to parquet");
     }
     fn __repr__(&self) -> PyResult<String> {
         let mut output: String;

@@ -1,4 +1,7 @@
 //! Parsing of file metadata into MdfInfo4 struct
+use arrow2::array::Array;
+use arrow2::chunk::Chunk;
+use arrow2::datatypes::Schema;
 use arrow2::error::ArrowError;
 use binrw::{binrw, BinReaderExt, BinWriterExt};
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -13,6 +16,7 @@ use std::default::Default;
 use std::fmt::Debug;
 use std::fs::{File, OpenOptions};
 use std::io::{BufReader, Cursor, Read, Seek, Write};
+use std::sync::Arc;
 use std::{fmt, str};
 use transpose;
 use yazi::{decompress, Adler32, Format};
@@ -57,6 +61,10 @@ pub struct MdfInfo4 {
     pub channel_names_set: ChannelNamesSet, // set of channel names
     /// flag for all data loaded in memory
     pub all_data_in_memory: bool,
+    /// contains the file data according to Arrow memory layout
+    pub arrow_data: Vec<Chunk<Arc<dyn Array>>>,
+    /// arrow schema and metadata for the data
+    pub arrow_schema: Schema,
 }
 
 /// MdfInfo4's implementation
@@ -254,6 +262,8 @@ impl MdfInfo4 {
             ev: HashMap::new(),
             hd_block: Hd4::default(),
             all_data_in_memory: false,
+            arrow_data: Vec::new(),
+            arrow_schema: Schema::default(),
         }
     }
     /// Adds a new channel in memory (no file modification)
@@ -508,7 +518,7 @@ impl MdfInfo4 {
     }
     /// export to Parquet file
     pub fn export_to_parquet(
-        &self,
+        &mut self,
         file_name: &str,
         compression: Option<&str>,
     ) -> Result<(), ArrowError> {

@@ -1,6 +1,6 @@
 //! Exporting mdf to Parquet files.
 use arrow2::{
-    datatypes::{PhysicalType, PrimitiveType},
+    datatypes::PhysicalType,
     error::{ArrowError, Result},
     io::parquet::write::{
         array_to_pages, compress, to_parquet_schema, CompressedPage, CompressionOptions, DynIter,
@@ -48,7 +48,7 @@ impl FallibleStreamingIterator for Bla {
 }
 
 pub fn export_to_parquet(
-    info: &MdfInfo4,
+    info: &mut MdfInfo4,
     file_name: &str,
     compression: Option<&str>,
 ) -> Result<()> {
@@ -72,12 +72,6 @@ pub fn export_to_parquet(
             | PhysicalType::FixedSizeBinary
             | PhysicalType::Utf8
             | PhysicalType::LargeUtf8 => Encoding::DeltaLengthByteArray,
-            PhysicalType::Primitive(PrimitiveType::Float32)
-            | PhysicalType::Primitive(PrimitiveType::Float64) => Encoding::ByteStreamSplit,
-            PhysicalType::Primitive(PrimitiveType::UInt32)
-            | PhysicalType::Primitive(PrimitiveType::Int32)
-            | PhysicalType::Primitive(PrimitiveType::Int64)
-            | PhysicalType::Primitive(PrimitiveType::UInt64) => Encoding::Rle,
             // remaining is plain
             _ => Encoding::Plain,
         }

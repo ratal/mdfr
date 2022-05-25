@@ -2,6 +2,7 @@
 
 //! This module is reading the mdf file blocks (metadata)
 
+use arrow2::datatypes::Schema;
 use arrow2::error::ArrowError;
 use binrw::{binrw, BinReaderExt};
 use std::collections::HashMap;
@@ -169,6 +170,8 @@ impl MdfInfo {
                 sharable,
                 channel_names_set,
                 all_data_in_memory: false,
+                arrow_data: Vec::new(),
+                arrow_schema: Schema::default(),
             }))
         };
         mdf_info
@@ -385,13 +388,13 @@ impl MdfInfo {
     }
     // export to Parquet file
     pub fn export_to_parquet(
-        &self,
+        &mut self,
         file_name: &str,
         compression: Option<&str>,
     ) -> Result<(), ArrowError> {
         match self {
             MdfInfo::V3(mdfinfo3) => {
-                let mdf4 = convert3to4(mdfinfo3, file_name);
+                let mut mdf4 = convert3to4(mdfinfo3, file_name);
                 mdf4.export_to_parquet(file_name, compression)?;
             }
             MdfInfo::V4(mdfinfo4) => mdfinfo4.export_to_parquet(file_name, compression)?,
