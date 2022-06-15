@@ -1,5 +1,5 @@
-#![forbid(unsafe_code)]
 #![feature(generic_associated_types)]
+//#![forbid(unsafe_code)]
 pub mod export;
 pub mod mdfinfo;
 pub mod mdfr;
