@@ -8,13 +8,20 @@ use std::{
 };
 
 use crate::{
-    mdfinfo::mdfinfo4::{
-        BlockType, Blockheader4, Ca4Block, Ca4BlockMembers, Cg4, Cg4Block, Cn4, Cn4Block, Compo,
-        Composition, Dg4, Dg4Block, Dz4Block, FhBlock, Ld4Block, MdfInfo4, MetaData,
-        MetaDataBlockType,
+    mdfinfo::{
+        mdfinfo4::{
+            BlockType, Blockheader4, Ca4Block, Ca4BlockMembers, Cg4, Cg4Block, Cn4, Cn4Block,
+            Compo, Composition, Dg4, Dg4Block, Dz4Block, FhBlock, Ld4Block, MdfInfo4, MetaData,
+            MetaDataBlockType,
+        },
+        MdfInfo,
     },
-    mdfreader::channel_data::{data_type_init, ChannelData},
+    mdfreader::{
+        channel_data::{data_type_init, ChannelData},
+        Mdf,
+    },
 };
+use arrow2::datatypes::Schema;
 use binrw::BinWriterExt;
 use crossbeam_channel::bounded;
 use parking_lot::Mutex;
@@ -22,9 +29,16 @@ use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 use std::fs::File;
 use yazi::{compress, CompressionLevel, Format};
 
+use super::mdfwriter3::convert3to4;
+
 /// writes file on hard drive
-pub fn mdfwriter4(info: &MdfInfo4, file_name: &str, compression: bool) -> MdfInfo4 {
-    let n_channels = info.get_channel_names_set().len();
+pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Mdf {
+    let mut info: MdfInfo4;
+    match mdf.mdf_info {
+        MdfInfo::V3(mdfinfo3) => info = convert3to4(&mut mdfinfo3, file_name),
+        MdfInfo::V4(mdfinfo4) => info = *mdfinfo4,
+    }
+    let n_channels = mdf.mdf_info.get_channel_names_set().len();
     let mut new_info = MdfInfo4::new(file_name, n_channels);
     let mut pointer: i64 = 168; // after HD block
                                 // FH block
@@ -60,7 +74,7 @@ pub fn mdfwriter4(info: &MdfInfo4, file_name: &str, compression: bool) -> MdfInf
                         last_dg_pointer = pointer;
                         pointer = create_blocks(
                             &mut new_info,
-                            info,
+                            &info,
                             pointer,
                             cg,
                             cn_master,
@@ -77,7 +91,7 @@ pub fn mdfwriter4(info: &MdfInfo4, file_name: &str, compression: bool) -> MdfInf
                 if cn.block.cn_type != 2 && cn.block.cn_type != 3 {
                     last_dg_pointer = pointer;
                     pointer =
-                        create_blocks(&mut new_info, info, pointer, cg, cn, &cg_cg_master, false);
+                        create_blocks(&mut new_info, &info, pointer, cg, cn, &cg_cg_master, false);
                 }
             }
         }
@@ -119,8 +133,9 @@ pub fn mdfwriter4(info: &MdfInfo4, file_name: &str, compression: bool) -> MdfInf
         .for_each(|(_dg_block_position, dg)| {
             for (_rec_id, cg) in dg.cg.iter_mut() {
                 for (_rec_pos, cn) in cg.cn.iter() {
-                    let (dt, m) = info.get_channel_data_from_memory(&cn.unique_name);
+                    let dt = mdf.get_channel_data(&cn.unique_name);
                     if let Some(data) = dt {
+                        let m = data.validity();
                         if !data.is_empty() && data.bit_count() > 0 {
                             // empty strings are not written
                             let mut offset: i64 = 0;
@@ -243,7 +258,12 @@ pub fn mdfwriter4(info: &MdfInfo4, file_name: &str, compression: bool) -> MdfInf
         .write_all(&buffer.into_inner())
         .expect("Could not write DG+CG+CN blocks");
     writer.flush().expect("Could not flush file");
-    new_info
+    Mdf {
+        mdf_info: MdfInfo::V4(Box::new(new_info)),
+        arrow_data: Vec::new(),
+        arrow_schema: Schema::default(),
+        channel_indexes: HashMap::new(),
+    }
 }
 
 /// Writes the data blocks
@@ -553,6 +573,8 @@ fn create_blocks(
             composition,
             invalid_mask: None,
             channel_data_valid: false,
+            invalid_byte_position: 0,
+            invalid_byte_mask: None,
         };
         let mut new_cg = Cg4 {
             block: cg_block,

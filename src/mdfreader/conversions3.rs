@@ -1,4 +1,6 @@
 //! this modules implements functions to convert arrays into physical arrays using CCBlock
+use arrow2::array::MutablePrimitiveArray;
+use arrow2::datatypes::DataType;
 use itertools::Itertools;
 use std::collections::BTreeMap;
 
@@ -68,112 +70,176 @@ fn linear_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::UInt8(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::Int8(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::Int16(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::UInt16(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::Float16(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::Int24(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::UInt24(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::Int32(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::UInt32(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::Float32(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::Int48(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::UInt48(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::Int64(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::UInt64(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
-                    .and(a)
+                    .and(a.values())
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::Float64(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
-                    .and(a)
+                    .and(a.values())
                     .for_each(|new_array, a| *new_array = *a * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::Complex16(_) => {}
             ChannelData::Complex32(_) => {}
@@ -330,7 +396,11 @@ fn rational_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 let m_2 = f64::powi(m, 2);
                 *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt8(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -339,7 +409,11 @@ fn rational_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 let m_2 = f64::powi(m, 2);
                 *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int8(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -348,7 +422,11 @@ fn rational_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 let m_2 = f64::powi(m, 2);
                 *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int16(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -357,7 +435,11 @@ fn rational_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 let m_2 = f64::powi(m, 2);
                 *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt16(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -366,7 +448,11 @@ fn rational_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 let m_2 = f64::powi(m, 2);
                 *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Float16(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -375,7 +461,11 @@ fn rational_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 let m_2 = f64::powi(m, 2);
                 *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int24(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -384,7 +474,11 @@ fn rational_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 let m_2 = f64::powi(m, 2);
                 *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt24(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -393,7 +487,11 @@ fn rational_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 let m_2 = f64::powi(m, 2);
                 *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int32(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -402,7 +500,11 @@ fn rational_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 let m_2 = f64::powi(m, 2);
                 *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt32(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -411,7 +513,11 @@ fn rational_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 let m_2 = f64::powi(m, 2);
                 *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Float32(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -420,7 +526,11 @@ fn rational_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 let m_2 = f64::powi(m, 2);
                 *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int48(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -429,7 +539,11 @@ fn rational_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 let m_2 = f64::powi(m, 2);
                 *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt48(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -438,7 +552,11 @@ fn rational_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 let m_2 = f64::powi(m, 2);
                 *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int64(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -447,24 +565,40 @@ fn rational_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 let m_2 = f64::powi(m, 2);
                 *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt64(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            Zip::from(&mut new_array)
+                .and(a.values())
+                .for_each(|new_array, a| {
+                    let m = *a as f64;
+                    let m_2 = f64::powi(m, 2);
+                    *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
+                });
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Float64(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let m_2 = f64::powi(*a, 2);
-                *new_array = (m_2 * p1 + *a * p2 + p1) / (m_2 * p4 + *a * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            Zip::from(&mut new_array)
+                .and(a.values())
+                .for_each(|new_array, a| {
+                    let m_2 = f64::powi(*a, 2);
+                    *new_array = (m_2 * p1 + *a * p2 + p1) / (m_2 * p4 + *a * p5 + p6)
+                });
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Complex16(_) => todo!(),
         ChannelData::Complex32(_) => todo!(),
@@ -630,7 +764,11 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 let m = *a as f64;
                 *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt8(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -638,7 +776,11 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 let m = *a as f64;
                 *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int8(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -646,7 +788,11 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 let m = *a as f64;
                 *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int16(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -654,7 +800,11 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 let m = *a as f64;
                 *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt16(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -662,7 +812,11 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 let m = *a as f64;
                 *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Float16(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -670,7 +824,11 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 let m = *a as f64;
                 *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int24(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -678,7 +836,11 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 let m = *a as f64;
                 *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt24(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -686,7 +848,11 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 let m = *a as f64;
                 *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int32(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -694,7 +860,11 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 let m = *a as f64;
                 *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt32(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -702,7 +872,11 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 let m = *a as f64;
                 *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Float32(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -710,7 +884,11 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 let m = *a as f64;
                 *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int48(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -718,7 +896,11 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 let m = *a as f64;
                 *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt48(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -726,7 +908,11 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 let m = *a as f64;
                 *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int64(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -734,22 +920,38 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 let m = *a as f64;
                 *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt64(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            Zip::from(&mut new_array)
+                .and(a.values())
+                .for_each(|new_array, a| {
+                    let m = *a as f64;
+                    *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
+                });
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Float64(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                *new_array = (p2 - (p4 * (*a - p5 - p6))) / (p3 * (*a - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            Zip::from(&mut new_array)
+                .and(a.values())
+                .for_each(|new_array, a| {
+                    *new_array = (p2 - (p4 * (*a - p5 - p6))) / (p3 * (*a - p5 - p6) - p1)
+                });
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Complex16(_) => todo!(),
         ChannelData::Complex32(_) => todo!(),
@@ -902,13 +1104,21 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     let m = *a as f64;
                     *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::UInt8(a) => {
@@ -918,13 +1128,21 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     let m = *a as f64;
                     *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::Int8(a) => {
@@ -934,13 +1152,21 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     let m = *a as f64;
                     *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::Int16(a) => {
@@ -950,13 +1176,21 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     let m = *a as f64;
                     *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::UInt16(a) => {
@@ -966,13 +1200,21 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     let m = *a as f64;
                     *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::Float16(a) => {
@@ -982,13 +1224,21 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     let m = *a as f64;
                     *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::Int24(a) => {
@@ -998,13 +1248,21 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     let m = *a as f64;
                     *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::UInt24(a) => {
@@ -1014,13 +1272,21 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     let m = *a as f64;
                     *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::Int32(a) => {
@@ -1030,13 +1296,21 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     let m = *a as f64;
                     *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::UInt32(a) => {
@@ -1046,13 +1320,21 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     let m = *a as f64;
                     *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::Float32(a) => {
@@ -1062,13 +1344,21 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     let m = *a as f64;
                     *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::Int48(a) => {
@@ -1078,13 +1368,21 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     let m = *a as f64;
                     *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::UInt48(a) => {
@@ -1094,13 +1392,21 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     let m = *a as f64;
                     *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::Int64(a) => {
@@ -1110,43 +1416,75 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     let m = *a as f64;
                     *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::UInt64(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
             if p4 == 0.0 {
-                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                    let m = *a as f64;
-                    *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
+                Zip::from(&mut new_array)
+                    .and(a.values())
+                    .for_each(|new_array, a| {
+                        let m = *a as f64;
+                        *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
+                    });
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
-                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                    let m = *a as f64;
-                    *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
+                Zip::from(&mut new_array)
+                    .and(a.values())
+                    .for_each(|new_array, a| {
+                        let m = *a as f64;
+                        *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
+                    });
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::Float64(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
             if p4 == 0.0 {
-                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                    *new_array = (((*a - p7) * p6 - p3) / p1).ln() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
+                Zip::from(&mut new_array)
+                    .and(a.values())
+                    .for_each(|new_array, a| {
+                        *new_array = (((*a - p7) * p6 - p3) / p1).ln() / p2;
+                    });
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
-                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                    *new_array = ((p3 / (*a - p7) - p6) / p4).ln() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
+                Zip::from(&mut new_array)
+                    .and(a.values())
+                    .for_each(|new_array, a| {
+                        *new_array = ((p3 / (*a - p7) - p6) / p4).ln() / p5;
+                    });
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::Complex16(_) => todo!(),
@@ -1391,13 +1729,21 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     let m = *a as f64;
                     *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::UInt8(a) => {
@@ -1407,13 +1753,21 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     let m = *a as f64;
                     *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::Int8(a) => {
@@ -1423,13 +1777,21 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     let m = *a as f64;
                     *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::Int16(a) => {
@@ -1439,13 +1801,21 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     let m = *a as f64;
                     *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::UInt16(a) => {
@@ -1455,13 +1825,21 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     let m = *a as f64;
                     *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::Float16(a) => {
@@ -1471,13 +1849,21 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     let m = *a as f64;
                     *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::Int24(a) => {
@@ -1487,13 +1873,21 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     let m = *a as f64;
                     *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::UInt24(a) => {
@@ -1503,13 +1897,21 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     let m = *a as f64;
                     *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::Int32(a) => {
@@ -1519,13 +1921,21 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     let m = *a as f64;
                     *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::UInt32(a) => {
@@ -1535,13 +1945,21 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     let m = *a as f64;
                     *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::Float32(a) => {
@@ -1551,13 +1969,21 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     let m = *a as f64;
                     *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::Int48(a) => {
@@ -1567,13 +1993,21 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     let m = *a as f64;
                     *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::UInt48(a) => {
@@ -1583,13 +2017,21 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     let m = *a as f64;
                     *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::Int64(a) => {
@@ -1599,43 +2041,75 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     let m = *a as f64;
                     *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
                 Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
                     let m = *a as f64;
                     *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::UInt64(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
             if p4 == 0.0 {
-                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                    let m = *a as f64;
-                    *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
+                Zip::from(&mut new_array)
+                    .and(a.values())
+                    .for_each(|new_array, a| {
+                        let m = *a as f64;
+                        *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
+                    });
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
-                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                    let m = *a as f64;
-                    *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
+                Zip::from(&mut new_array)
+                    .and(a.values())
+                    .for_each(|new_array, a| {
+                        let m = *a as f64;
+                        *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
+                    });
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::Float64(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
             if p4 == 0.0 {
-                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                    *new_array = (((*a - p7) * p6 - p3) / p1).exp() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
+                Zip::from(&mut new_array)
+                    .and(a.values())
+                    .for_each(|new_array, a| {
+                        *new_array = (((*a - p7) * p6 - p3) / p1).exp() / p2;
+                    });
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             } else if p1 == 0.0 {
-                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                    *new_array = ((p3 / (*a - p7) - p6) / p4).exp() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
+                Zip::from(&mut new_array)
+                    .and(a.values())
+                    .for_each(|new_array, a| {
+                        *new_array = ((p3 / (*a - p7) - p6) / p4).exp() / p5;
+                    });
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
         }
         ChannelData::Complex16(_) => todo!(),
@@ -1891,7 +2365,11 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
                         }
                     }
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::UInt8(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
@@ -1911,7 +2389,11 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
                         }
                     }
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::Int8(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
@@ -1931,7 +2413,11 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
                         }
                     }
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::Int16(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
@@ -1951,7 +2437,11 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
                         }
                     }
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::UInt16(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
@@ -1971,7 +2461,11 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
                         }
                     }
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::Float16(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
@@ -1991,7 +2485,11 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
                         }
                     }
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::Int24(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2011,7 +2509,11 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
                         }
                     }
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::UInt24(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2031,7 +2533,11 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
                         }
                     }
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::Int32(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2051,7 +2557,11 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
                         }
                     }
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::UInt32(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2071,7 +2581,11 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
                         }
                     }
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::Float32(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2091,7 +2605,11 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
                         }
                     }
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::Int48(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2111,7 +2629,11 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
                         }
                     }
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::UInt48(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2131,7 +2653,11 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
                         }
                     }
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::Int64(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2151,47 +2677,63 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
                         }
                     }
                 });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::UInt64(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 let mut error_flag = true;
-                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                    map.insert("X".to_string(), *a as f64);
-                    let result = compiled.eval(&slab, &mut map);
-                    if let Ok(res) = result {
-                        *new_array = res;
-                    } else if let Err(error_message) = result {
-                        if error_flag {
-                            println!(
+                Zip::from(&mut new_array)
+                    .and(a.values())
+                    .for_each(|new_array, a| {
+                        map.insert("X".to_string(), *a as f64);
+                        let result = compiled.eval(&slab, &mut map);
+                        if let Ok(res) = result {
+                            *new_array = res;
+                        } else if let Err(error_message) = result {
+                            if error_flag {
+                                println!(
                                 "{}\n Could not compute formulae {} for channel {} and value {}",
                                 error_message, formulae, cn.unique_name, a
                             );
-                            error_flag = false;
+                                error_flag = false;
+                            }
                         }
-                    }
-                });
-                cn.data = ChannelData::Float64(new_array);
+                    });
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::Float64(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 let mut error_flag = true;
-                Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                    map.insert("X".to_string(), *a);
-                    let result = compiled.eval(&slab, &mut map);
-                    if let Ok(res) = result {
-                        *new_array = res;
-                    } else if let Err(error_message) = result {
-                        if error_flag {
-                            println!(
+                Zip::from(&mut new_array)
+                    .and(a.values())
+                    .for_each(|new_array, a| {
+                        map.insert("X".to_string(), *a);
+                        let result = compiled.eval(&slab, &mut map);
+                        if let Ok(res) = result {
+                            *new_array = res;
+                        } else if let Err(error_message) = result {
+                            if error_flag {
+                                println!(
                                 "{}\n Could not compute formulae {} for channel {} and value {}",
                                 error_message, formulae, cn.unique_name, a
                             );
-                            error_flag = false;
+                                error_flag = false;
+                            }
                         }
-                    }
-                });
-                cn.data = ChannelData::Float64(new_array);
+                    });
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::Complex16(_) => todo!(),
             ChannelData::Complex32(_) => todo!(),
@@ -2385,7 +2927,11 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int8(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2404,7 +2950,11 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt8(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2423,7 +2973,11 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int16(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2442,7 +2996,11 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt16(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2461,7 +3019,11 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Float16(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2480,7 +3042,11 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int24(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2499,7 +3065,11 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt24(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2518,7 +3088,11 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int32(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2537,7 +3111,11 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt32(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2556,7 +3134,11 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Float32(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2575,7 +3157,11 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int48(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2594,7 +3180,11 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt48(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2613,7 +3203,11 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int64(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2632,44 +3226,60 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt64(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            Zip::from(&mut new_array)
+                .and(a.values())
+                .for_each(|new_array, a| {
+                    let a64 = *a as f64;
+                    *new_array = match val.binary_search_by(|&(xi, _)| {
+                        xi.partial_cmp(&a64).expect("Could not compare values")
+                    }) {
+                        Ok(idx) => *val[idx].1,
+                        Err(0) => *val[0].1,
+                        Err(idx) if idx >= val.len() => *val[idx - 1].1,
+                        Err(idx) => {
+                            let (x0, y0) = val[idx - 1];
+                            let (x1, y1) = val[idx];
+                            (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
+                        }
+                    };
+                });
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Float64(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(a).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - *a) + y1 * (*a - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            Zip::from(&mut new_array)
+                .and(a.values())
+                .for_each(|new_array, a| {
+                    *new_array = match val.binary_search_by(|&(xi, _)| {
+                        xi.partial_cmp(a).expect("Could not compare values")
+                    }) {
+                        Ok(idx) => *val[idx].1,
+                        Err(0) => *val[0].1,
+                        Err(idx) if idx >= val.len() => *val[idx - 1].1,
+                        Err(idx) => {
+                            let (x0, y0) = val[idx - 1];
+                            let (x1, y1) = val[idx];
+                            (y0 * (x1 - *a) + y1 * (*a - x0)) / (x1 - x0)
+                        }
+                    };
+                });
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Complex16(_) => {}
         ChannelData::Complex32(_) => {}
@@ -2994,7 +3604,11 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int8(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -3017,7 +3631,11 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt8(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -3040,7 +3658,11 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int16(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -3063,7 +3685,11 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt16(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -3086,7 +3712,11 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Float16(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -3109,7 +3739,11 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int24(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -3132,7 +3766,11 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt24(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -3155,7 +3793,11 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int32(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -3178,7 +3820,11 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt32(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -3201,7 +3847,11 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Float32(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -3224,7 +3874,11 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int48(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -3247,7 +3901,11 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt48(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -3270,7 +3928,11 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int64(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -3293,52 +3955,68 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt64(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
+            Zip::from(&mut new_array)
+                .and(a.values())
+                .for_each(|new_array, a| {
+                    let a64 = *a as f64;
+                    *new_array = match val.binary_search_by(|&(xi, _)| {
+                        xi.partial_cmp(&a64).expect("Could not compare values")
+                    }) {
+                        Ok(idx) => *val[idx].1,
+                        Err(0) => *val[0].1,
+                        Err(idx) if idx >= val.len() => *val[idx - 1].1,
+                        Err(idx) => {
+                            let (x0, y0) = val[idx - 1];
+                            let (x1, y1) = val[idx];
+                            if (a64 - x0) > (x1 - a64) {
+                                *y1
+                            } else {
+                                *y0
+                            }
                         }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+                    };
+                });
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Float64(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(a).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (*a - x0) > (x1 - *a) {
-                            *y1
-                        } else {
-                            *y0
+            Zip::from(&mut new_array)
+                .and(a.values())
+                .for_each(|new_array, a| {
+                    *new_array = match val.binary_search_by(|&(xi, _)| {
+                        xi.partial_cmp(a).expect("Could not compare values")
+                    }) {
+                        Ok(idx) => *val[idx].1,
+                        Err(0) => *val[0].1,
+                        Err(idx) if idx >= val.len() => *val[idx - 1].1,
+                        Err(idx) => {
+                            let (x0, y0) = val[idx - 1];
+                            let (x1, y1) = val[idx];
+                            if (*a - x0) > (x1 - *a) {
+                                *y1
+                            } else {
+                                *y0
+                            }
                         }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+                    };
+                });
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Complex16(_) => {}
         ChannelData::Complex32(_) => {}
@@ -3844,22 +4522,26 @@ fn value_to_text(cn: &mut Cn3, cc_val_ref: &[(f64, String)], cycle_count: &u32) 
         }
         ChannelData::UInt64(a) => {
             let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
-                if let Some(key) = matched_key {
-                    *new_array = key.1.clone();
-                }
-            });
+            Zip::from(&mut new_array)
+                .and(a.values())
+                .for_each(|new_array, a| {
+                    let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
+                    if let Some(key) = matched_key {
+                        *new_array = key.1.clone();
+                    }
+                });
             cn.data = ChannelData::StringUTF8(new_array);
         }
         ChannelData::Float64(a) => {
             let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a);
-                if let Some(key) = matched_key {
-                    *new_array = key.1.clone();
-                }
-            });
+            Zip::from(&mut new_array)
+                .and(a.values())
+                .for_each(|new_array, a| {
+                    let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a);
+                    if let Some(key) = matched_key {
+                        *new_array = key.1.clone();
+                    }
+                });
             cn.data = ChannelData::StringUTF8(new_array);
         }
         ChannelData::Complex16(_) => (),
@@ -4124,34 +4806,38 @@ fn value_range_to_text(
         }
         ChannelData::UInt64(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref
-                    .0
-                    .iter()
-                    .enumerate()
-                    .find(|&x| (x.1 .0 <= (*a as f64)) && ((*a as f64) < x.1 .1));
-                if let Some(key) = matched_key {
-                    *new_array = key.1 .2.clone();
-                } else {
-                    *new_array = cc_val_ref.1.clone();
-                }
-            });
+            Zip::from(&mut new_array)
+                .and(a.values())
+                .for_each(|new_array, a| {
+                    let matched_key = cc_val_ref
+                        .0
+                        .iter()
+                        .enumerate()
+                        .find(|&x| (x.1 .0 <= (*a as f64)) && ((*a as f64) < x.1 .1));
+                    if let Some(key) = matched_key {
+                        *new_array = key.1 .2.clone();
+                    } else {
+                        *new_array = cc_val_ref.1.clone();
+                    }
+                });
             cn.data = ChannelData::StringUTF8(new_array);
         }
         ChannelData::Float64(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = cc_val_ref
-                    .0
-                    .iter()
-                    .enumerate()
-                    .find(|&x| (x.1 .0 <= *a) && (*a < x.1 .1));
-                if let Some(key) = matched_key {
-                    *new_array = key.1 .2.clone();
-                } else {
-                    *new_array = cc_val_ref.1.clone();
-                }
-            });
+            Zip::from(&mut new_array)
+                .and(a.values())
+                .for_each(|new_array, a| {
+                    let matched_key = cc_val_ref
+                        .0
+                        .iter()
+                        .enumerate()
+                        .find(|&x| (x.1 .0 <= *a) && (*a < x.1 .1));
+                    if let Some(key) = matched_key {
+                        *new_array = key.1 .2.clone();
+                    } else {
+                        *new_array = cc_val_ref.1.clone();
+                    }
+                });
             cn.data = ChannelData::StringUTF8(new_array);
         }
         ChannelData::Complex16(_) => {}

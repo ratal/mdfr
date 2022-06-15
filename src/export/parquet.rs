@@ -1,23 +1,20 @@
 //! Exporting mdf to Parquet files.
 use arrow2::{
-    datatypes::PhysicalType,
-    error::{ArrowError, Result},
+    datatypes::{DataType, PhysicalType},
+    error::{Error, Result},
     io::parquet::write::{
-        array_to_pages, compress, to_parquet_schema, CompressedPage, CompressionOptions, DynIter,
+        array_to_columns, compress, to_parquet_schema, CompressedPage, CompressionOptions, DynIter,
         DynStreamingIterator, Encoding, FallibleStreamingIterator, FileWriter, Version,
         WriteOptions,
     },
+    io::parquet::{read::ParquetError, write::transverse},
 };
-use rayon::iter::{
-    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator, ParallelIterator,
-};
+use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIterator};
 
-use crate::mdfinfo::mdfinfo4::MdfInfo4;
+use crate::mdfreader::Mdf;
 
 use std::collections::VecDeque;
 use std::{fs, path::Path};
-
-use super::arrow::mdf4_data_to_arrow;
 
 struct Bla {
     columns: VecDeque<CompressedPage>,
@@ -35,7 +32,7 @@ impl Bla {
 
 impl FallibleStreamingIterator for Bla {
     type Item = CompressedPage;
-    type Error = ArrowError;
+    type Error = Error;
 
     fn advance(&mut self) -> Result<()> {
         self.current = self.columns.pop_front();
@@ -47,13 +44,7 @@ impl FallibleStreamingIterator for Bla {
     }
 }
 
-pub fn export_to_parquet(
-    info: &mut MdfInfo4,
-    file_name: &str,
-    compression: Option<&str>,
-) -> Result<()> {
-    // create arrowchunks and schema
-    let (batches, schema) = mdf4_data_to_arrow(info);
+pub fn export_to_parquet(mdf: &mut Mdf, file_name: &str, compression: Option<&str>) -> Result<()> {
     // Create file
     let path = Path::new(file_name);
 
@@ -63,55 +54,68 @@ pub fn export_to_parquet(
         compression: parquet_compression_from_string(compression),
     };
 
-    // declare encodings
-    let encodings = schema.fields.par_iter().map(|field| {
-        match field.data_type().to_physical_type() {
+    let encoding_map = |data_type: &DataType| {
+        match data_type.to_physical_type() {
             // let's be fancy and use delta-encoding for binary fields
             PhysicalType::Binary
             | PhysicalType::LargeBinary
-            | PhysicalType::FixedSizeBinary
             | PhysicalType::Utf8
             | PhysicalType::LargeUtf8 => Encoding::DeltaLengthByteArray,
             // remaining is plain
             _ => Encoding::Plain,
         }
-    });
+    };
+
+    // declare encodings
+    let encodings = (&mdf.arrow_schema.fields)
+        .par_iter()
+        .map(|f| transverse(&f.data_type, encoding_map))
+        .collect::<Vec<_>>();
 
     // derive the parquet schema (physical types) from arrow's schema.
-    let parquet_schema = to_parquet_schema(&schema)?;
+    let parquet_schema = to_parquet_schema(&mdf.arrow_schema)?;
 
-    let row_groups = batches.iter().map(|batch| {
+    let row_groups = mdf.arrow_data.iter().map(|batch| {
         // write batch to pages; parallelized by rayon
         let columns = batch
             .columns()
             .par_iter()
-            .zip(parquet_schema.columns().to_vec().into_par_iter())
+            .zip(parquet_schema.fields().to_vec())
             .zip(encodings.clone())
-            .map(|((array, col_descriptor), encoding)| {
-                // create encoded and compressed pages this column
-                let encoded_pages =
-                    array_to_pages(array.as_ref(), col_descriptor.descriptor, options, encoding)
-                        .expect("could not convert array to pages");
-                encoded_pages
-                    .map(|page| compress(page?, vec![], options.compression).map_err(|x| x.into()))
-                    .collect::<Result<VecDeque<_>>>()
+            .flat_map(move |((array, type_), encoding)| {
+                let encoded_columns = array_to_columns(array, type_, options, encoding).unwrap();
+                encoded_columns
+                    .into_iter()
+                    .map(|encoded_pages| {
+                        let encoded_pages = DynIter::new(
+                            encoded_pages
+                                .into_iter()
+                                .map(|x| x.map_err(|e| ParquetError::General(e.to_string()))),
+                        );
+                        encoded_pages
+                            .map(|page| {
+                                compress(page?, vec![], options.compression).map_err(|x| x.into())
+                            })
+                            .collect::<Result<VecDeque<_>>>()
+                    })
+                    .collect::<Vec<_>>()
             })
-            .collect::<Result<Vec<VecDeque<CompressedPage>>>>()
-            .expect("could not collect compressed pages");
+            .collect::<Result<Vec<VecDeque<CompressedPage>>>>()?;
 
-        DynIter::new(
+        let row_group = DynIter::new(
             columns
                 .into_iter()
                 .map(|column| Ok(DynStreamingIterator::new(Bla::new(column)))),
-        )
+        );
+        Result::Ok(row_group)
     });
 
     let file = fs::File::create(&path)?;
-    let mut writer = FileWriter::try_new(file, schema.clone(), options)?;
-    writer.start()?;
+    let mut writer = FileWriter::try_new(file, mdf.arrow_schema.clone(), options)?;
+
     // write data in file
     for group in row_groups {
-        writer.write(group)?;
+        writer.write(group?)?;
     }
     writer.end(None)?;
     Ok(())
@@ -121,9 +125,9 @@ pub fn parquet_compression_from_string(compression_option: Option<&str>) -> Comp
     match compression_option {
         Some(option) => match option {
             "snappy" => CompressionOptions::Snappy,
-            "gzip" => CompressionOptions::Gzip,
+            "gzip" => CompressionOptions::Gzip(None),
             "lzo" => CompressionOptions::Lzo,
-            "brotli" => CompressionOptions::Brotli,
+            "brotli" => CompressionOptions::Brotli(None),
             "lz4" => CompressionOptions::Lz4,
             "lz4raw" => CompressionOptions::Lz4Raw,
             _ => CompressionOptions::Uncompressed,

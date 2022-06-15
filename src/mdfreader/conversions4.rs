@@ -1,16 +1,17 @@
 //! this modules implements functions to convert arrays into physical arrays using CCBlock
+use arrow2::array::{MutableFixedSizeListArray, MutablePrimitiveArray};
+use arrow2::datatypes::DataType;
 use itertools::Itertools;
 use std::collections::{BTreeMap, HashMap};
 
 use crate::mdfinfo::mdfinfo4::{Cc4Block, CcVal, Cn4, Dg4, SharableBlocks};
 use crate::mdfreader::channel_data::ChannelData;
+use arrow2::compute::arithmetics::{add_scalar, mul_scalar};
 use fasteval::Compiler;
 use fasteval::{Evaler, Instruction, Slab};
 use ndarray::{ArrayD, Zip};
 use num::Complex;
 use rayon::prelude::*;
-
-use super::channel_data::ArrowComplex;
 
 /// convert all channel arrays into physical values as required by CCBlock content
 pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) {
@@ -110,126 +111,198 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::UInt8(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::Int8(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::Int16(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::UInt16(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::Float16(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::Int24(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::UInt24(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::Int32(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::UInt32(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::Float32(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::Int48(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::UInt48(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::Int64(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
                     .and(a)
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::UInt64(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize];
                 Zip::from(&mut new_array)
-                    .and(a)
+                    .and(a.values())
                     .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::Float64(a) => {
-                a.iter_mut().for_each(|a| *a = *a * p2 + p1);
+                let mut new_array = vec![0f64; *cycle_count as usize];
+                Zip::from(&mut new_array)
+                    .and(a.values())
+                    .for_each(|new_array, a| *new_array = (*a as f64) * p2 + p1);
+                cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                    DataType::Float64,
+                    new_array,
+                    None,
+                ));
             }
             ChannelData::Complex16(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize * 2];
                 new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
                     *new_array = *a as f64 * p2 + p1;
                 });
-                cn.data = ChannelData::Complex64(ArrowComplex(new_array));
+                cn.data = ChannelData::Complex64(MutableFixedSizeListArray::new(
+                    MutablePrimitiveArray::from_data(DataType::Float64, new_array, None),
+                    2,
+                ));
             }
             ChannelData::Complex32(a) => {
                 let mut new_array = vec![0f64; *cycle_count as usize * 2];
                 new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
                     *new_array = *a as f64 * p2 + p1;
                 });
-                cn.data = ChannelData::Complex64(ArrowComplex(new_array));
+                cn.data = ChannelData::Complex64(MutableFixedSizeListArray::new(
+                    MutablePrimitiveArray::from_data(DataType::Float64, new_array, None),
+                    2,
+                ));
             }
-            ChannelData::Complex64(a) => {
-                a.0.iter_mut().for_each(|a| *a = *a * p2 + p1);
-            }
+            ChannelData::Complex64(a) => {}
             ChannelData::StringSBC(_) => {}
             ChannelData::StringUTF8(_) => {}
             ChannelData::StringUTF16(_) => {}
@@ -382,7 +455,11 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
                 let m_2 = f64::powi(m, 2);
                 *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt8(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -391,7 +468,11 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
                 let m_2 = f64::powi(m, 2);
                 *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int8(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -400,7 +481,11 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
                 let m_2 = f64::powi(m, 2);
                 *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int16(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -409,7 +494,11 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
                 let m_2 = f64::powi(m, 2);
                 *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt16(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -418,7 +507,11 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
                 let m_2 = f64::powi(m, 2);
                 *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Float16(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -427,7 +520,11 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
                 let m_2 = f64::powi(m, 2);
                 *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int24(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -436,7 +533,11 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
                 let m_2 = f64::powi(m, 2);
                 *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt24(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -445,7 +546,11 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
                 let m_2 = f64::powi(m, 2);
                 *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int32(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -454,7 +559,11 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
                 let m_2 = f64::powi(m, 2);
                 *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt32(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -463,7 +572,11 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
                 let m_2 = f64::powi(m, 2);
                 *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Float32(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -472,7 +585,11 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
                 let m_2 = f64::powi(m, 2);
                 *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int48(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -481,7 +598,11 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
                 let m_2 = f64::powi(m, 2);
                 *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt48(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -490,7 +611,11 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
                 let m_2 = f64::powi(m, 2);
                 *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int64(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -499,24 +624,40 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
                 let m_2 = f64::powi(m, 2);
                 *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt64(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            Zip::from(&mut new_array)
+                .and(a.values())
+                .for_each(|new_array, a| {
+                    let m = *a as f64;
+                    let m_2 = f64::powi(m, 2);
+                    *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
+                });
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Float64(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let m_2 = f64::powi(*a, 2);
-                *new_array = (m_2 * p1 + *a * p2 + p1) / (m_2 * p4 + *a * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            Zip::from(&mut new_array)
+                .and(a.values())
+                .for_each(|new_array, a| {
+                    let m_2 = f64::powi(*a, 2);
+                    *new_array = (m_2 * p1 + *a * p2 + p1) / (m_2 * p4 + *a * p5 + p6)
+                });
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Complex16(_) => todo!(),
         ChannelData::Complex32(_) => todo!(),
@@ -685,7 +826,11 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                     .eval(&slab, &mut map)
                     .expect("could not evaluate algebraic expression");
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt8(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -695,7 +840,11 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                     .eval(&slab, &mut map)
                     .expect("could not evaluate algebraic expression");
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int8(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -705,7 +854,11 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                     .eval(&slab, &mut map)
                     .expect("could not evaluate algebraic expression");
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int16(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -715,7 +868,11 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                     .eval(&slab, &mut map)
                     .expect("could not evaluate algebraic expression");
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt16(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -725,7 +882,11 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                     .eval(&slab, &mut map)
                     .expect("could not evaluate algebraic expression");
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Float16(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -735,7 +896,11 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                     .eval(&slab, &mut map)
                     .expect("could not evaluate algebraic expression");
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int24(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -745,7 +910,11 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                     .eval(&slab, &mut map)
                     .expect("could not evaluate algebraic expression");
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt24(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -755,7 +924,11 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                     .eval(&slab, &mut map)
                     .expect("could not evaluate algebraic expression");
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int32(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -765,7 +938,11 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                     .eval(&slab, &mut map)
                     .expect("could not evaluate algebraic expression");
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt32(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -775,7 +952,11 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                     .eval(&slab, &mut map)
                     .expect("could not evaluate algebraic expression");
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Float32(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -785,7 +966,11 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                     .eval(&slab, &mut map)
                     .expect("could not evaluate algebraic expression");
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int48(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -795,7 +980,11 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                     .eval(&slab, &mut map)
                     .expect("could not evaluate algebraic expression");
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt48(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -805,7 +994,11 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                     .eval(&slab, &mut map)
                     .expect("could not evaluate algebraic expression");
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int64(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -815,27 +1008,43 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                     .eval(&slab, &mut map)
                     .expect("could not evaluate algebraic expression");
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt64(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
+            Zip::from(&mut new_array)
+                .and(a.values())
+                .for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a as f64);
+                    *new_array = compiled
+                        .eval(&slab, &mut map)
+                        .expect("could not evaluate algebraic expression");
+                });
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Float64(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                map.insert("X".to_string(), *a);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
+            Zip::from(&mut new_array)
+                .and(a.values())
+                .for_each(|new_array, a| {
+                    map.insert("X".to_string(), *a);
+                    *new_array = compiled
+                        .eval(&slab, &mut map)
+                        .expect("could not evaluate algebraic expression");
+                });
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Complex16(_) => todo!(),
         ChannelData::Complex32(_) => todo!(),
@@ -1022,7 +1231,11 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int8(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -1041,7 +1254,11 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt8(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -1060,7 +1277,11 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int16(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -1079,7 +1300,11 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt16(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -1098,7 +1323,11 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Float16(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -1117,7 +1346,11 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int24(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -1136,7 +1369,11 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt24(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -1155,7 +1392,11 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int32(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -1174,7 +1415,11 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt32(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -1193,7 +1438,11 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Float32(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -1212,7 +1461,11 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int48(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -1231,7 +1484,11 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt48(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -1250,7 +1507,11 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int64(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -1269,44 +1530,60 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt64(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            Zip::from(&mut new_array)
+                .and(a.values())
+                .for_each(|new_array, a| {
+                    let a64 = *a as f64;
+                    *new_array = match val.binary_search_by(|&(xi, _)| {
+                        xi.partial_cmp(&a64).expect("Could not compare values")
+                    }) {
+                        Ok(idx) => *val[idx].1,
+                        Err(0) => *val[0].1,
+                        Err(idx) if idx >= val.len() => *val[idx - 1].1,
+                        Err(idx) => {
+                            let (x0, y0) = val[idx - 1];
+                            let (x1, y1) = val[idx];
+                            (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
+                        }
+                    };
+                });
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Float64(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(a).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - *a) + y1 * (*a - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            Zip::from(&mut new_array)
+                .and(a.values())
+                .for_each(|new_array, a| {
+                    *new_array = match val.binary_search_by(|&(xi, _)| {
+                        xi.partial_cmp(a).expect("Could not compare values")
+                    }) {
+                        Ok(idx) => *val[idx].1,
+                        Err(0) => *val[0].1,
+                        Err(idx) if idx >= val.len() => *val[idx - 1].1,
+                        Err(idx) => {
+                            let (x0, y0) = val[idx - 1];
+                            let (x1, y1) = val[idx];
+                            (y0 * (x1 - *a) + y1 * (*a - x0)) / (x1 - x0)
+                        }
+                    };
+                });
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Complex16(_) => {}
         ChannelData::Complex32(_) => {}
@@ -1631,7 +1908,11 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int8(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -1654,7 +1935,11 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt8(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -1677,7 +1962,11 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int16(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -1700,7 +1989,11 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt16(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -1723,7 +2016,11 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Float16(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -1746,7 +2043,11 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int24(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -1769,7 +2070,11 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt24(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -1792,7 +2097,11 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int32(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -1815,7 +2124,11 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt32(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -1838,7 +2151,11 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Float32(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -1861,7 +2178,11 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int48(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -1884,7 +2205,11 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt48(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -1907,7 +2232,11 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int64(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -1930,52 +2259,68 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt64(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
+            Zip::from(&mut new_array)
+                .and(a.values())
+                .for_each(|new_array, a| {
+                    let a64 = *a as f64;
+                    *new_array = match val.binary_search_by(|&(xi, _)| {
+                        xi.partial_cmp(&a64).expect("Could not compare values")
+                    }) {
+                        Ok(idx) => *val[idx].1,
+                        Err(0) => *val[0].1,
+                        Err(idx) if idx >= val.len() => *val[idx - 1].1,
+                        Err(idx) => {
+                            let (x0, y0) = val[idx - 1];
+                            let (x1, y1) = val[idx];
+                            if (a64 - x0) > (x1 - a64) {
+                                *y1
+                            } else {
+                                *y0
+                            }
                         }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+                    };
+                });
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Float64(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(a).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (*a - x0) > (x1 - *a) {
-                            *y1
-                        } else {
-                            *y0
+            Zip::from(&mut new_array)
+                .and(a.values())
+                .for_each(|new_array, a| {
+                    *new_array = match val.binary_search_by(|&(xi, _)| {
+                        xi.partial_cmp(a).expect("Could not compare values")
+                    }) {
+                        Ok(idx) => *val[idx].1,
+                        Err(0) => *val[0].1,
+                        Err(idx) if idx >= val.len() => *val[idx - 1].1,
+                        Err(idx) => {
+                            let (x0, y0) = val[idx - 1];
+                            let (x1, y1) = val[idx];
+                            if (*a - x0) > (x1 - *a) {
+                                *y1
+                            } else {
+                                *y0
+                            }
                         }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+                    };
+                });
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Complex16(_) => {}
         ChannelData::Complex32(_) => {}
@@ -2362,7 +2707,11 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int8(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2383,7 +2732,11 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt8(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2404,7 +2757,11 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int16(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2425,7 +2782,11 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt16(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2446,7 +2807,11 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Float16(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2467,7 +2832,11 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int24(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2488,7 +2857,11 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt24(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2509,7 +2882,11 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int32(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2530,7 +2907,11 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt32(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2551,7 +2932,11 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Float32(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2572,7 +2957,11 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int48(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2593,7 +2982,11 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt48(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2614,7 +3007,11 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Int64(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -2635,48 +3032,64 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
                     }
                 };
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::UInt64(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if a64 <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
+            Zip::from(&mut new_array)
+                .and(a.values())
+                .for_each(|new_array, a| {
+                    let a64 = *a as f64;
+                    *new_array = match val.binary_search_by(|&(xi, _, _)| {
+                        xi.partial_cmp(&a64).expect("Could not compare values")
+                    }) {
+                        Ok(idx) => val[idx].2,
+                        Err(0) => default_value,
+                        Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                        Err(idx) => {
+                            if a64 <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
                         }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+                    };
+                });
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Float64(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(a).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && *a <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if *a <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
+            Zip::from(&mut new_array)
+                .and(a.values())
+                .for_each(|new_array, a| {
+                    *new_array = match val.binary_search_by(|&(xi, _, _)| {
+                        xi.partial_cmp(a).expect("Could not compare values")
+                    }) {
+                        Ok(idx) => val[idx].2,
+                        Err(0) => default_value,
+                        Err(idx) if (idx >= val.len() && *a <= val[idx - 1].1) => val[idx - 1].2,
+                        Err(idx) => {
+                            if *a <= val[idx].1 {
+                                val[idx].2
+                            } else {
+                                default_value
+                            }
                         }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+                    };
+                });
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::Complex16(_) => {}
         ChannelData::Complex32(_) => {}
@@ -3531,34 +3944,36 @@ fn value_to_text(
         }
         ChannelData::UInt64(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let ref_val = *a as i64;
-                if let Some(tosc) = table_int.get(&ref_val) {
-                    match tosc {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
+            Zip::from(&mut new_array)
+                .and(a.values())
+                .for_each(|new_array, a| {
+                    let ref_val = *a as i64;
+                    if let Some(tosc) = table_int.get(&ref_val) {
+                        match tosc {
+                            TextOrScaleConversion::Txt(txt) => {
+                                *new_array = txt.clone();
+                            }
+                            TextOrScaleConversion::Scale(conv) => {
+                                *new_array = conv.eval_to_txt(*a as f64);
+                            }
+                            _ => {
+                                *new_array = a.to_string();
+                            }
                         }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
+                    } else {
+                        match &def {
+                            DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                                *new_array = txt.clone();
+                            }
+                            DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                                *new_array = conv.eval_to_txt(*a as f64);
+                            }
+                            _ => {
+                                *new_array = a.to_string();
+                            }
                         }
                     }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
+                });
             cn.data = ChannelData::StringUTF8(new_array);
         }
         ChannelData::Float64(a) => {
@@ -3577,34 +3992,36 @@ fn value_to_text(
                 }
             }
             let mut new_array = vec![String::new(); *cycle_count as usize];
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let ref_val = (*a * 1024.0 * 1024.0).round() as i64;
-                if let Some(tosc) = table_float.get(&ref_val) {
-                    match tosc {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
+            Zip::from(&mut new_array)
+                .and(a.values())
+                .for_each(|new_array, a| {
+                    let ref_val = (*a * 1024.0 * 1024.0).round() as i64;
+                    if let Some(tosc) = table_float.get(&ref_val) {
+                        match tosc {
+                            TextOrScaleConversion::Txt(txt) => {
+                                *new_array = txt.clone();
+                            }
+                            TextOrScaleConversion::Scale(conv) => {
+                                *new_array = conv.eval_to_txt(*a);
+                            }
+                            _ => {
+                                *new_array = a.to_string();
+                            }
                         }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
+                    } else {
+                        match &def {
+                            DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                                *new_array = txt.clone();
+                            }
+                            DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                                *new_array = conv.eval_to_txt(*a);
+                            }
+                            _ => {
+                                *new_array = a.to_string();
+                            }
                         }
                     }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
+                });
             cn.data = ChannelData::StringUTF8(new_array);
         }
         ChannelData::Complex16(_) => (),
@@ -4238,72 +4655,76 @@ fn value_range_to_text(
         }
         ChannelData::UInt64(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = keys
-                    .iter()
-                    .enumerate()
-                    .find(|&x| x.1.min <= *a as f64 && *a as f64 <= x.1.max);
-                if let Some(key) = matched_key {
-                    match &txt[key.0] {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
+            Zip::from(&mut new_array)
+                .and(a.values())
+                .for_each(|new_array, a| {
+                    let matched_key = keys
+                        .iter()
+                        .enumerate()
+                        .find(|&x| x.1.min <= *a as f64 && *a as f64 <= x.1.max);
+                    if let Some(key) = matched_key {
+                        match &txt[key.0] {
+                            TextOrScaleConversion::Txt(txt) => {
+                                *new_array = txt.clone();
+                            }
+                            TextOrScaleConversion::Scale(conv) => {
+                                *new_array = conv.eval_to_txt(*a as f64);
+                            }
+                            _ => {
+                                *new_array = a.to_string();
+                            }
                         }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
+                    } else {
+                        match &def {
+                            DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                                *new_array = txt.clone();
+                            }
+                            DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                                *new_array = conv.eval_to_txt(*a as f64);
+                            }
+                            _ => {
+                                *new_array = a.to_string();
+                            }
                         }
                     }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
+                });
             cn.data = ChannelData::StringUTF8(new_array);
         }
         ChannelData::Float64(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
-            Zip::from(&mut new_array).and(a).for_each(|new_array, a| {
-                let matched_key = keys
-                    .iter()
-                    .enumerate()
-                    .find(|&x| x.1.min <= *a && *a <= x.1.max);
-                if let Some(key) = matched_key {
-                    match &txt[key.0] {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
+            Zip::from(&mut new_array)
+                .and(a.values())
+                .for_each(|new_array, a| {
+                    let matched_key = keys
+                        .iter()
+                        .enumerate()
+                        .find(|&x| x.1.min <= *a && *a <= x.1.max);
+                    if let Some(key) = matched_key {
+                        match &txt[key.0] {
+                            TextOrScaleConversion::Txt(txt) => {
+                                *new_array = txt.clone();
+                            }
+                            TextOrScaleConversion::Scale(conv) => {
+                                *new_array = conv.eval_to_txt(*a);
+                            }
+                            _ => {
+                                *new_array = a.to_string();
+                            }
                         }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
+                    } else {
+                        match &def {
+                            DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                                *new_array = txt.clone();
+                            }
+                            DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                                *new_array = conv.eval_to_txt(*a as f64);
+                            }
+                            _ => {
+                                *new_array = a.to_string();
+                            }
                         }
                     }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
+                });
             cn.data = ChannelData::StringUTF8(new_array);
         }
         ChannelData::Complex16(_) => {}
@@ -4379,7 +4800,11 @@ fn text_to_value(
                     *new_a = default;
                 }
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::StringUTF8(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -4390,7 +4815,11 @@ fn text_to_value(
                     *new_a = default;
                 }
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::StringUTF16(a) => {
             let mut new_array = vec![0f64; *cycle_count as usize];
@@ -4401,7 +4830,11 @@ fn text_to_value(
                     *new_a = default;
                 }
             });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(MutablePrimitiveArray::from_data(
+                DataType::Float64,
+                new_array,
+                None,
+            ));
         }
         ChannelData::VariableSizeByteArray(_) => {}
         ChannelData::FixedSizeByteArray(_) => {}
@@ -5019,123 +5452,128 @@ fn bitfield_text_table(
         ChannelData::Int64(_) => (),
         ChannelData::UInt64(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
-            Zip::from(&mut new_array).and(a).for_each(|new_a, a| {
-                for (ind, val) in cc_val.iter().enumerate() {
-                    let masked_val = *a & val;
-                    match &table[ind] {
-                        (ValueOrValueRangeToText::ValueToText(table_int, def), name) => {
-                            let ref_val = masked_val as i64;
-                            if let Some(tosc) = table_int.get(&ref_val) {
-                                match tosc {
-                                    TextOrScaleConversion::Txt(txt) => {
-                                        if let Some(n) = name {
-                                            *new_a = format!("{} | {} = {}", new_a, n, txt.clone());
-                                        } else {
-                                            *new_a = format!("{} | {}", new_a, txt.clone());
+            Zip::from(&mut new_array)
+                .and(a.values())
+                .for_each(|new_a, a| {
+                    for (ind, val) in cc_val.iter().enumerate() {
+                        let masked_val = *a & val;
+                        match &table[ind] {
+                            (ValueOrValueRangeToText::ValueToText(table_int, def), name) => {
+                                let ref_val = masked_val as i64;
+                                if let Some(tosc) = table_int.get(&ref_val) {
+                                    match tosc {
+                                        TextOrScaleConversion::Txt(txt) => {
+                                            if let Some(n) = name {
+                                                *new_a =
+                                                    format!("{} | {} = {}", new_a, n, txt.clone());
+                                            } else {
+                                                *new_a = format!("{} | {}", new_a, txt.clone());
+                                            }
+                                        }
+                                        TextOrScaleConversion::Scale(conv) => {
+                                            if let Some(n) = name {
+                                                *new_a = format!(
+                                                    "{} | {} = {}",
+                                                    new_a,
+                                                    n,
+                                                    conv.eval_to_txt(*a as f64)
+                                                );
+                                            } else {
+                                                *new_a = format!(
+                                                    "{} | {}",
+                                                    new_a,
+                                                    conv.eval_to_txt(*a as f64)
+                                                );
+                                            }
+                                        }
+                                        _ => {
+                                            *new_a = format!("{} | {}", new_a, "nothing");
                                         }
                                     }
-                                    TextOrScaleConversion::Scale(conv) => {
-                                        if let Some(n) = name {
-                                            *new_a = format!(
-                                                "{} | {} = {}",
-                                                new_a,
-                                                n,
-                                                conv.eval_to_txt(*a as f64)
-                                            );
-                                        } else {
-                                            *new_a = format!(
-                                                "{} | {}",
-                                                new_a,
-                                                conv.eval_to_txt(*a as f64)
-                                            );
+                                } else {
+                                    match &def {
+                                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                                            *new_a = txt.clone();
                                         }
-                                    }
-                                    _ => {
-                                        *new_a = format!("{} | {}", new_a, "nothing");
-                                    }
-                                }
-                            } else {
-                                match &def {
-                                    DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                                        *new_a = txt.clone();
-                                    }
-                                    DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                                        *new_a = conv.eval_to_txt(*a as f64);
-                                    }
-                                    _ => {
-                                        *new_a = format!("{} | {}", new_a, "nothing");
+                                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                                            *new_a = conv.eval_to_txt(*a as f64);
+                                        }
+                                        _ => {
+                                            *new_a = format!("{} | {}", new_a, "nothing");
+                                        }
                                     }
                                 }
                             }
-                        }
-                        (ValueOrValueRangeToText::ValueRangeToText(txt, def, keys), name) => {
-                            let matched_key = keys
-                                .iter()
-                                .enumerate()
-                                .find(|&x| x.1.min <= *a as f64 && *a as f64 <= x.1.max);
-                            if let Some(key) = matched_key {
-                                match &txt[key.0] {
-                                    TextOrScaleConversion::Txt(txt) => {
-                                        if let Some(n) = name {
-                                            *new_a = format!("{} | {} = {}", new_a, n, txt.clone());
-                                        } else {
-                                            *new_a = format!("{} | {}", new_a, txt.clone());
+                            (ValueOrValueRangeToText::ValueRangeToText(txt, def, keys), name) => {
+                                let matched_key = keys
+                                    .iter()
+                                    .enumerate()
+                                    .find(|&x| x.1.min <= *a as f64 && *a as f64 <= x.1.max);
+                                if let Some(key) = matched_key {
+                                    match &txt[key.0] {
+                                        TextOrScaleConversion::Txt(txt) => {
+                                            if let Some(n) = name {
+                                                *new_a =
+                                                    format!("{} | {} = {}", new_a, n, txt.clone());
+                                            } else {
+                                                *new_a = format!("{} | {}", new_a, txt.clone());
+                                            }
+                                        }
+                                        TextOrScaleConversion::Scale(conv) => {
+                                            if let Some(n) = name {
+                                                *new_a = format!(
+                                                    "{} | {} = {}",
+                                                    new_a,
+                                                    n,
+                                                    conv.eval_to_txt(*a as f64)
+                                                );
+                                            } else {
+                                                *new_a = format!(
+                                                    "{} | {}",
+                                                    new_a,
+                                                    conv.eval_to_txt(*a as f64)
+                                                );
+                                            }
+                                        }
+                                        _ => {
+                                            *new_a = format!("{} | {}", new_a, "nothing");
                                         }
                                     }
-                                    TextOrScaleConversion::Scale(conv) => {
-                                        if let Some(n) = name {
-                                            *new_a = format!(
-                                                "{} | {} = {}",
-                                                new_a,
-                                                n,
-                                                conv.eval_to_txt(*a as f64)
-                                            );
-                                        } else {
-                                            *new_a = format!(
-                                                "{} | {}",
-                                                new_a,
-                                                conv.eval_to_txt(*a as f64)
-                                            );
+                                } else {
+                                    match &def {
+                                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                                            if let Some(n) = name {
+                                                *new_a =
+                                                    format!("{} | {} = {}", new_a, n, txt.clone());
+                                            } else {
+                                                *new_a = format!("{} | {}", new_a, txt.clone());
+                                            }
                                         }
-                                    }
-                                    _ => {
-                                        *new_a = format!("{} | {}", new_a, "nothing");
-                                    }
-                                }
-                            } else {
-                                match &def {
-                                    DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                                        if let Some(n) = name {
-                                            *new_a = format!("{} | {} = {}", new_a, n, txt.clone());
-                                        } else {
-                                            *new_a = format!("{} | {}", new_a, txt.clone());
+                                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                                            if let Some(n) = name {
+                                                *new_a = format!(
+                                                    "{} | {} = {}",
+                                                    new_a,
+                                                    n,
+                                                    conv.eval_to_txt(*a as f64)
+                                                );
+                                            } else {
+                                                *new_a = format!(
+                                                    "{} | {}",
+                                                    new_a,
+                                                    conv.eval_to_txt(*a as f64)
+                                                );
+                                            }
                                         }
-                                    }
-                                    DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                                        if let Some(n) = name {
-                                            *new_a = format!(
-                                                "{} | {} = {}",
-                                                new_a,
-                                                n,
-                                                conv.eval_to_txt(*a as f64)
-                                            );
-                                        } else {
-                                            *new_a = format!(
-                                                "{} | {}",
-                                                new_a,
-                                                conv.eval_to_txt(*a as f64)
-                                            );
+                                        _ => {
+                                            *new_a = format!("{} | {}", new_a, "nothing");
                                         }
-                                    }
-                                    _ => {
-                                        *new_a = format!("{} | {}", new_a, "nothing");
                                     }
                                 }
                             }
                         }
                     }
-                }
-            });
+                });
             cn.data = ChannelData::StringUTF8(new_array);
         }
         ChannelData::Float64(_) => {}

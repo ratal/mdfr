@@ -1,6 +1,7 @@
 //! data read and load in memory based in MdfInfo3's metadata
 use rayon::prelude::*;
 
+use crate::export::arrow::mdf3_data_to_arrow;
 use crate::mdfinfo::mdfinfo3::{Cg3, Dg3, MdfInfo3};
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
@@ -9,6 +10,8 @@ use std::io::{BufReader, Read};
 use crate::mdfreader::conversions3::convert_all_channels;
 use crate::mdfreader::data_read3::read_channels_from_bytes;
 
+use super::Mdf;
+
 // The following constant represents the size of data chunk to be read and processed.
 // a big chunk will improve performance but consume more memory
 // a small chunk will not consume too much memory but will cause many read calls, penalising performance
@@ -16,6 +19,7 @@ const CHUNK_SIZE_READING: usize = 524288; // can be tuned according to architect
 
 pub fn mdfreader3<'a>(
     rdr: &'a mut BufReader<&File>,
+    mdf: &'a mut Mdf,
     info: &'a mut MdfInfo3,
     channel_names: HashSet<String>,
 ) {
@@ -61,8 +65,12 @@ pub fn mdfreader3<'a>(
                 position = *data_position as i64 + block_length;
                 read_all_channels_unsorted(rdr, dg, block_length, &channel_names_to_read_in_dg);
             }
+
+            // move the data from the MdfInfo3 structure into vect of chunks
+            mdf3_data_to_arrow(mdf, info, channel_names);
+
             // conversion of all channels to physical values
-            convert_all_channels(dg, &info.sharable);
+            // convert_all_channels(dg, &info.sharable);
         }
     }
 }

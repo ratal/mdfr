@@ -9,13 +9,12 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::TryFrom;
 use std::default::Default;
 use std::fmt;
-use std::fs::{File, OpenOptions};
+use std::fs::File;
 use std::io::BufReader;
 use std::io::{prelude::*, Cursor};
 
 use crate::mdfinfo::IdBlock;
 use crate::mdfreader::channel_data::{data_type_init, ChannelData};
-use crate::mdfreader::mdfreader3::mdfreader3;
 
 /// Specific to version 3.x mdf metadata structure
 #[derive(Debug, Default)]
@@ -34,8 +33,6 @@ pub struct MdfInfo3 {
     pub sharable: SharableBlocks3,
     /// set of all channel names
     pub channel_names_set: ChannelNamesSet3,
-    /// flag for all data loaded in memory
-    pub all_data_in_memory: bool,
 }
 
 pub(crate) type ChannelId3 = (Option<String>, u32, (u32, u16), u32);
@@ -154,7 +151,6 @@ impl MdfInfo3 {
                 }
             }
         }
-        self.all_data_in_memory = false;
     }
     /// Returns the channel's data ndarray if present in memory, otherwise None.
     pub fn get_channel_data_from_memory(&self, channel_name: &str) -> Option<&ChannelData> {
@@ -173,47 +169,6 @@ impl MdfInfo3 {
             }
         }
         data
-    }
-    /// load in memory the ndarray data of a set of channels
-    pub fn load_channels_data_in_memory(&mut self, channel_names: HashSet<String>) {
-        let f: File = OpenOptions::new()
-            .read(true)
-            .write(false)
-            .open(self.file_name.clone())
-            .expect("Cannot find the file");
-        let mut rdr = BufReader::new(&f);
-        mdfreader3(&mut rdr, self, channel_names);
-    }
-    /// load all channels data in memory
-    pub fn load_all_channels_data_in_memory(&mut self) {
-        let channel_set = self.get_channel_names_set();
-        self.load_channels_data_in_memory(channel_set);
-        self.all_data_in_memory = true;
-    }
-    /// True if channel contains data
-    pub fn get_channel_data_validity(&self, channel_name: &str) -> bool {
-        let mut state: bool = false;
-        if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
-            self.get_channel_id(channel_name)
-        {
-            if let Some(dg) = self.dg.get(dg_pos) {
-                if let Some(cg) = dg.cg.get(rec_id) {
-                    if let Some(cn) = cg.cn.get(cn_pos) {
-                        state = cn.channel_data_valid
-                    }
-                }
-            }
-        }
-        state
-    }
-    /// returns channel's data ndarray.
-    pub fn get_channel_data<'a>(&'a mut self, channel_name: &'a str) -> Option<&'a ChannelData> {
-        let mut channel_names: HashSet<String> = HashSet::new();
-        channel_names.insert(channel_name.to_string());
-        if !self.all_data_in_memory || !self.get_channel_data_validity(channel_name) {
-            self.load_channels_data_in_memory(channel_names); // will read data only if array is empty
-        }
-        self.get_channel_data_from_memory(channel_name)
     }
     /// Removes a channel in memory (no file modification)
     pub fn remove_channel(&mut self, channel_name: &str) {
@@ -340,17 +295,7 @@ impl fmt::Display for MdfInfo3 {
             for channel in list.iter() {
                 let unit = self.get_channel_unit(channel);
                 let desc = self.get_channel_desc(channel);
-                let dtmsk = self.get_channel_data_from_memory(channel);
-                if let Some(data) = dtmsk {
-                    let data_first_last = data.first_last();
-                    writeln!(
-                        f,
-                        " {} {} {:?} {:?} \n",
-                        channel, data_first_last, unit, desc
-                    )?;
-                } else {
-                    writeln!(f, " {} {:?} {:?} \n", channel, unit, desc)?;
-                }
+                writeln!(f, " {} {:?} {:?} \n", channel, unit, desc)?;
             }
         }
         writeln!(f, "\n")
@@ -665,7 +610,7 @@ pub fn parse_dg3_block(rdr: &mut BufReader<&File>, target: u32, position: i64) -
 }
 
 /// Dg3 struct wrapping block, comments and linked CG
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Dg3 {
     /// DG Block
     pub block: Dg3Block,
@@ -809,7 +754,7 @@ fn parse_cg3_block(
 
 /// Channel Group struct
 /// it contains the related channels structure, a set of channel names, the dedicated master channel name and other helper data.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Cg3 {
     pub block: Cg3Block,
     pub cn: HashMap<u32, Cn3>, // hashmap of channels
@@ -866,7 +811,7 @@ pub fn parse_cg3(
 
 /// Cn3 structure containing block but also unique_name, ndarray data
 /// and other attributes frequently needed and computed
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default)]
 pub struct Cn3 {
     pub block1: Cn3Block1,
     pub block2: Cn3Block2,

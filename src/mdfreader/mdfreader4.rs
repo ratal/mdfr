@@ -1,12 +1,12 @@
 //! data read and load in memory based in MdfInfo4's metadata
+use crate::export::arrow::mdf4_data_to_arrow;
 use crate::mdfinfo::mdfinfo4::{parse_block_header, Cg4, Cn4, Compo, Dg4, MdfInfo4};
 use crate::mdfinfo::mdfinfo4::{
     parse_dz, parser_dl4_block, parser_ld4_block, validate_channels_set, Dl4Block, Dt4Block,
     Hl4Block, Ld4Block,
 };
 use crate::mdfreader::channel_data::ChannelData;
-use crate::mdfreader::conversions4::convert_all_channels;
-use crate::mdfreader::data_read4::{read_channels_from_bytes, read_one_channel_array};
+use crate::mdfreader::data_read4::read_channels_from_bytes;
 use binrw::BinReaderExt;
 use encoding_rs::{Decoder, UTF_16BE, UTF_16LE, WINDOWS_1252};
 use rayon::prelude::*;
@@ -20,6 +20,8 @@ use std::{
     usize,
 };
 
+use super::Mdf;
+
 // The following constant represents the size of data chunk to be read and processed.
 // a big chunk will improve performance but consume more memory
 // a small chunk will not consume too much memory but will cause many read calls, penalising performance
@@ -29,6 +31,7 @@ const CHUNK_SIZE_READING: usize = 524288; // can be tuned according to architect
 /// Hashset of channel names parameter allows to filter which channels to read
 pub fn mdfreader4<'a>(
     rdr: &'a mut BufReader<&File>,
+    mdf: &'a mut Mdf,
     info: &'a mut MdfInfo4,
     channel_names: HashSet<String>,
 ) {
@@ -72,13 +75,12 @@ pub fn mdfreader4<'a>(
                 &channel_names_to_read_in_dg,
                 &mut decoder,
             );
-            apply_bit_mask_offset(dg, &channel_names_to_read_in_dg);
-            // channel_group invalid bits calculation
-            for channel_group in dg.cg.values_mut() {
-                channel_group.process_all_channel_invalid_bits();
-            }
+
+            // move the data from the MdfInfo3 structure into vect of chunks
+            mdf4_data_to_arrow(mdf, info, channel_names);
+
             // conversion of all channels to physical values
-            convert_all_channels(dg, &info.sharable);
+            // convert_all_channels(dg, &info.sharable);
         }
     }
 }
@@ -277,21 +279,7 @@ fn read_data(
                     &channel_group.block.cg_cycle_count.clone(),
                     channel_names_to_read_in_dg,
                 );
-                match channel_group.cn.len() {
-                    l if l > 1 => {
-                        read_all_channels_sorted(rdr, channel_group, channel_names_to_read_in_dg);
-                    }
-                    l if l == 1 => {
-                        let cycle_count = channel_group.block.cg_cycle_count;
-                        // only one channel, can be optimised
-                        for (_rec_pos, cn) in channel_group.cn.iter_mut() {
-                            let mut buf = vec![0u8; block_header.len as usize - 24];
-                            rdr.read_exact(&mut buf).expect("Could not read DV block");
-                            read_one_channel_array(&buf, cn, cycle_count as usize);
-                        }
-                    }
-                    _ => (),
-                }
+                read_all_channels_sorted(rdr, channel_group, channel_names_to_read_in_dg);
             }
             position += block_header.len as i64;
         }
@@ -612,17 +600,25 @@ fn parser_ld4(
         );
         if id == "##DZ".as_bytes() {
             let (dt, block_header) = parse_dz(rdr);
-            for (_rec_pos, cn) in channel_group.cn.iter_mut() {
-                read_one_channel_array(&dt, cn, channel_group.block.cg_cycle_count as usize);
-            }
+            read_channels_from_bytes(
+                &dt,
+                &mut channel_group.cn,
+                channel_group.record_length as usize,
+                0,
+                channel_names_to_read_in_dg,
+            );
             position = ld_data + block_header.len as i64;
         } else {
             let block_header: Dt4Block = rdr.read_le().expect("Could not read DV block header");
             let mut buf = vec![0u8; block_header.len as usize - 24];
             rdr.read_exact(&mut buf).expect("Could not read Dt4 block");
-            for (_rec_pos, cn) in channel_group.cn.iter_mut() {
-                read_one_channel_array(&buf, cn, channel_group.block.cg_cycle_count as usize);
-            }
+            read_channels_from_bytes(
+                &buf,
+                &mut channel_group.cn,
+                channel_group.record_length as usize,
+                0,
+                channel_names_to_read_in_dg,
+            );
             position = ld_data + block_header.len as i64;
         }
         if channel_group.block.cg_inval_bytes > 0 {
@@ -1273,281 +1269,4 @@ fn initialise_arrays(
                 .zeros(cn.block.cn_type, *cg_cycle_count, cn.n_bytes, n_elements);
             cn.channel_data_valid = false;
         })
-}
-
-/// applies bit mask if required in channel block
-fn apply_bit_mask_offset(dg: &mut Dg4, channel_names_to_read_in_dg: &HashSet<String>) {
-    // apply bit shift and masking
-    for channel_group in dg.cg.values_mut() {
-        channel_group
-            .cn
-            .par_iter_mut()
-            .filter(|(_cn_record_position, cn)| {
-                channel_names_to_read_in_dg.contains(&cn.unique_name)
-            })
-            .for_each(|(_rec_pos, cn)| {
-                if cn.block.cn_data_type <= 3 {
-                    let left_shift =
-                        cn.n_bytes * 8 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
-                    let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
-                    if left_shift > 0 || right_shift > 0 {
-                        match &mut cn.data {
-                            ChannelData::Boolean(a) => {
-                                if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::Int8(a) => {
-                                if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::UInt8(a) => {
-                                if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::Int16(a) => {
-                                if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::UInt16(a) => {
-                                if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::Float16(_) => (),
-                            ChannelData::Int24(a) => {
-                                let left_shift =
-                                    32 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
-                                let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
-                                if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::UInt24(a) => {
-                                let left_shift =
-                                    32 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
-                                let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
-                                if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::Int32(a) => {
-                                if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::UInt32(a) => {
-                                if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::Float32(_) => (),
-                            ChannelData::Int48(a) => {
-                                let left_shift =
-                                    64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
-                                let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
-                                if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::UInt48(a) => {
-                                let left_shift =
-                                    64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
-                                let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
-                                if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::Int64(a) => {
-                                let left_shift =
-                                    64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
-                                let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
-                                if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::UInt64(a) => {
-                                let left_shift =
-                                    64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
-                                let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
-                                if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::Float64(_) => (),
-                            ChannelData::Complex16(_) => (),
-                            ChannelData::Complex32(_) => (),
-                            ChannelData::Complex64(_) => (),
-                            ChannelData::StringSBC(_) => (),
-                            ChannelData::StringUTF8(_) => (),
-                            ChannelData::StringUTF16(_) => (),
-                            ChannelData::VariableSizeByteArray(_) => (),
-                            ChannelData::FixedSizeByteArray(_) => (),
-                            ChannelData::ArrayDInt8(a) => {
-                                if left_shift > 0 {
-                                    a.map_inplace(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.map_inplace(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::ArrayDUInt8(a) => {
-                                if left_shift > 0 {
-                                    a.map_inplace(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.map_inplace(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::ArrayDInt16(a) => {
-                                if left_shift > 0 {
-                                    a.map_inplace(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.map_inplace(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::ArrayDUInt16(a) => {
-                                if left_shift > 0 {
-                                    a.map_inplace(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.map_inplace(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::ArrayDFloat16(_) => (),
-                            ChannelData::ArrayDInt24(a) => {
-                                let left_shift =
-                                    32 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
-                                let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
-                                if left_shift > 0 {
-                                    a.map_inplace(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.map_inplace(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::ArrayDUInt24(a) => {
-                                let left_shift =
-                                    32 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
-                                let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
-                                if left_shift > 0 {
-                                    a.map_inplace(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.map_inplace(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::ArrayDInt32(a) => {
-                                if left_shift > 0 {
-                                    a.map_inplace(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.map_inplace(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::ArrayDUInt32(a) => {
-                                if left_shift > 0 {
-                                    a.map_inplace(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.map_inplace(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::ArrayDFloat32(_) => (),
-                            ChannelData::ArrayDInt48(a) => {
-                                let left_shift =
-                                    64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
-                                let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
-                                if left_shift > 0 {
-                                    a.map_inplace(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.map_inplace(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::ArrayDUInt48(a) => {
-                                let left_shift =
-                                    64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
-                                let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
-                                if left_shift > 0 {
-                                    a.map_inplace(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.map_inplace(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::ArrayDInt64(a) => {
-                                let left_shift =
-                                    64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
-                                let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
-                                if left_shift > 0 {
-                                    a.map_inplace(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.map_inplace(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::ArrayDUInt64(a) => {
-                                let left_shift =
-                                    64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
-                                let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
-                                if left_shift > 0 {
-                                    a.map_inplace(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.map_inplace(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::ArrayDFloat64(_) => (),
-                            ChannelData::ArrayDComplex16(_) => (),
-                            ChannelData::ArrayDComplex32(_) => (),
-                            ChannelData::ArrayDComplex64(_) => (),
-                        }
-                    }
-                }
-            })
-    }
 }

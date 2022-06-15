@@ -70,22 +70,19 @@ fn main() -> Result<(), ArrowError> {
     let compression = matches.is_present("compress");
 
     if let Some(file_name) = mdf4_file_name {
-        mdf_file.write(&file_name, compression);
+        mdf_file.mdf_info.write(&file_name, compression);
     }
 
     let convert3to4_file_name = matches.value_of("convert3to4");
     if let Some(file_name) = convert3to4_file_name {
-        mdf_file.convert3to4(file_name);
+        mdf_file.mdf_info.convert3to4(file_name);
     }
 
     let parquet_compression = matches.value_of("parquet_compression");
 
     let parquet_file_name = matches.value_of("export_to_parquet");
     if let Some(file_name) = parquet_file_name {
-        mdf_file.export_to_parquet(
-            file_name,
-            parquet_compression,
-        )?;
+        mdf_file.export_to_parquet(file_name, parquet_compression)?;
     }
 
     Ok(())
