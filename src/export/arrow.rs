@@ -10,7 +10,8 @@ use arrow2::array::{
 use arrow2::bitmap::Bitmap;
 use arrow2::buffer::Buffer;
 use arrow2::chunk::Chunk;
-use arrow2::datatypes::{DataType, Field, Metadata};
+use arrow2::datatypes::{DataType, Field, Metadata, PhysicalType, PrimitiveType};
+use arrow2::types::NativeType;
 use arrow2::{array::ArrayRef, ffi};
 
 use pyo3::prelude::*;
@@ -306,4 +307,336 @@ pub(crate) fn to_py_array(
     };
 
     Ok(array.to_object(py))
+}
+
+pub fn bit_count(array: Arc<dyn Array>) -> u32 {
+    match array.data_type() {
+        DataType::Null => 0,
+        DataType::Boolean => 8,
+        DataType::Int8 => 8,
+        DataType::Int16 => 16,
+        DataType::Int32 => 32,
+        DataType::Int64 => 64,
+        DataType::UInt8 => 8,
+        DataType::UInt16 => 16,
+        DataType::UInt32 => 32,
+        DataType::UInt64 => 64,
+        DataType::Float16 => 16,
+        DataType::Float32 => 32,
+        DataType::Float64 => 64,
+        DataType::Timestamp(_, _) => 64,
+        DataType::Date32 => 32,
+        DataType::Date64 => 64,
+        DataType::Time32(_) => 32,
+        DataType::Time64(_) => 64,
+        DataType::Binary => {
+            let array = array
+                .as_any()
+                .downcast_ref::<BinaryArray<i32>>()
+                .expect("could not downcast to utf8 array");
+            array
+                .values_iter()
+                .map(|s| s.len() as u32)
+                .max()
+                .unwrap_or(0)
+                * 8
+        }
+        DataType::FixedSizeBinary(size) => 8 * *size as u32,
+        DataType::LargeBinary => {
+            let array = array
+                .as_any()
+                .downcast_ref::<BinaryArray<i64>>()
+                .expect("could not downcast to utf8 array");
+            array
+                .values_iter()
+                .map(|s| s.len() as u32)
+                .max()
+                .unwrap_or(0)
+                * 8
+        }
+        DataType::Utf8 => {
+            let array = array
+                .as_any()
+                .downcast_ref::<Utf8Array<i32>>()
+                .expect("could not downcast to utf8 array");
+            array
+                .values_iter()
+                .map(|s| s.len() as u32)
+                .max()
+                .unwrap_or(0)
+                * 8
+        }
+        DataType::LargeUtf8 => {
+            let array = array
+                .as_any()
+                .downcast_ref::<Utf8Array<i64>>()
+                .expect("could not downcast to long utf8 array");
+            array
+                .values_iter()
+                .map(|s| s.len() as u32)
+                .max()
+                .unwrap_or(0)
+                * 8
+        }
+        DataType::FixedSizeList(field, size) => match field.data_type.to_physical_type() {
+            PhysicalType::Primitive(PrimitiveType::Float32) => 32 * *size as u32,
+            PhysicalType::Primitive(PrimitiveType::Float64) => 64 * *size as u32,
+            _ => todo!(),
+        },
+        _ => panic!("unsupported type"),
+    }
+}
+
+pub fn to_bytes(array: Arc<dyn Array>) -> Vec<u8> {
+    match array.data_type() {
+        DataType::Null => Vec::new(),
+        DataType::Boolean => {
+            let array = array
+                .as_any()
+                .downcast_ref::<Bitmap>()
+                .expect("could not downcast to Bitmap");
+            array.iter().map(|v| v as u8).collect()
+        }
+        DataType::Int8 => {
+            let array = array
+                .as_any()
+                .downcast_ref::<PrimitiveArray<i8>>()
+                .expect("could not downcast to i8 array");
+            array
+                .values()
+                .iter()
+                .flat_map(|v| v.to_ne_bytes())
+                .collect()
+        }
+        DataType::Int16 => {
+            let array = array
+                .as_any()
+                .downcast_ref::<PrimitiveArray<i16>>()
+                .expect("could not downcast to i16 array");
+            array
+                .values()
+                .iter()
+                .flat_map(|v| v.to_ne_bytes())
+                .collect()
+        }
+        DataType::Int32 => {
+            let array = array
+                .as_any()
+                .downcast_ref::<PrimitiveArray<i32>>()
+                .expect("could not downcast to i32 array");
+            array
+                .values()
+                .iter()
+                .flat_map(|v| v.to_ne_bytes())
+                .collect()
+        }
+        DataType::Int64 => {
+            let array = array
+                .as_any()
+                .downcast_ref::<PrimitiveArray<i64>>()
+                .expect("could not downcast to i64 array");
+            array
+                .values()
+                .iter()
+                .flat_map(|v| v.to_ne_bytes())
+                .collect()
+        }
+        DataType::UInt8 => {
+            let array = array
+                .as_any()
+                .downcast_ref::<PrimitiveArray<u8>>()
+                .expect("could not downcast to u8 array");
+            array
+                .values()
+                .iter()
+                .flat_map(|v| v.to_ne_bytes())
+                .collect()
+        }
+        DataType::UInt16 => {
+            let array = array
+                .as_any()
+                .downcast_ref::<PrimitiveArray<u16>>()
+                .expect("could not downcast to u16 array");
+            array
+                .values()
+                .iter()
+                .flat_map(|v| v.to_ne_bytes())
+                .collect()
+        }
+        DataType::UInt32 => {
+            let array = array
+                .as_any()
+                .downcast_ref::<PrimitiveArray<u32>>()
+                .expect("could not downcast to u32 array");
+            array
+                .values()
+                .iter()
+                .flat_map(|v| v.to_ne_bytes())
+                .collect()
+        }
+        DataType::UInt64 => {
+            let array = array
+                .as_any()
+                .downcast_ref::<PrimitiveArray<u64>>()
+                .expect("could not downcast to u64 array");
+            array
+                .values()
+                .iter()
+                .flat_map(|v| v.to_ne_bytes())
+                .collect()
+        }
+        DataType::Float16 => {
+            let array = array
+                .as_any()
+                .downcast_ref::<PrimitiveArray<f32>>()
+                .expect("could not downcast f16 to f32 array");
+            array
+                .values()
+                .iter()
+                .flat_map(|v| v.to_ne_bytes())
+                .collect()
+        }
+        DataType::Float32 => {
+            let array = array
+                .as_any()
+                .downcast_ref::<PrimitiveArray<f32>>()
+                .expect("could not downcast to f32 array");
+            array
+                .values()
+                .iter()
+                .flat_map(|v| v.to_ne_bytes())
+                .collect()
+        }
+        DataType::Float64 => {
+            let array = array
+                .as_any()
+                .downcast_ref::<PrimitiveArray<f64>>()
+                .expect("could not downcast to f64 array");
+            array
+                .values()
+                .iter()
+                .flat_map(|v| v.to_ne_bytes())
+                .collect()
+        }
+        DataType::Timestamp(_, _) => {
+            let array = array
+                .as_any()
+                .downcast_ref::<PrimitiveArray<i64>>()
+                .expect("could not downcast timestamp to i64 array");
+            array
+                .values()
+                .iter()
+                .flat_map(|v| v.to_ne_bytes())
+                .collect()
+        }
+        DataType::Date32 => {
+            let array = array
+                .as_any()
+                .downcast_ref::<PrimitiveArray<i32>>()
+                .expect("could not downcast date32 to i32 array");
+            array
+                .values()
+                .iter()
+                .flat_map(|v| v.to_ne_bytes())
+                .collect()
+        }
+        DataType::Date64 => {
+            let array = array
+                .as_any()
+                .downcast_ref::<PrimitiveArray<i64>>()
+                .expect("could not downcast date64 to i64 array");
+            array
+                .values()
+                .iter()
+                .flat_map(|v| v.to_ne_bytes())
+                .collect()
+        }
+        DataType::Time32(_) => {
+            let array = array
+                .as_any()
+                .downcast_ref::<PrimitiveArray<i32>>()
+                .expect("could not downcast time32 to i32 array");
+            array
+                .values()
+                .iter()
+                .flat_map(|v| v.to_ne_bytes())
+                .collect()
+        }
+        DataType::Time64(_) => {
+            let array = array
+                .as_any()
+                .downcast_ref::<PrimitiveArray<i64>>()
+                .expect("could not downcast time64 to i64 array");
+            array
+                .values()
+                .iter()
+                .flat_map(|v| v.to_ne_bytes())
+                .collect()
+        }
+        DataType::Binary => {
+            let array = array
+                .as_any()
+                .downcast_ref::<BinaryArray<i32>>()
+                .expect("could not downcast binary array to i32 array");
+            array.values_iter().collect()
+        }
+        DataType::FixedSizeBinary(size) => 8 * *size as u32,
+        DataType::LargeBinary => {
+            let array = array
+                .as_any()
+                .downcast_ref::<BinaryArray<i64>>()
+                .expect("could not downcast large binary to i64 array");
+            array.values_iter().collect()
+        }
+        DataType::Utf8 => {
+            let array = array
+                .as_any()
+                .downcast_ref::<Utf8Array<i32>>()
+                .expect("could not downcast to utf8 array");
+            let nbytes = self.byte_count() as usize;
+            array
+                .values_iter()
+                .flat_map(|x| {
+                    let str_bytes = x.to_string().into_bytes();
+                    let n_str_bytes = str_bytes.len();
+                    if nbytes > n_str_bytes {
+                        [str_bytes, vec![0u8; nbytes - n_str_bytes]].concat()
+                    } else {
+                        str_bytes
+                    }
+                })
+                .collect()
+        }
+        DataType::LargeUtf8 => {
+            let array = array
+                .as_any()
+                .downcast_ref::<Utf8Array<i64>>()
+                .expect("could not downcast to long utf8 array");
+            let nbytes = self.byte_count() as usize;
+            array
+                .values_iter()
+                .flat_map(|x| {
+                    let str_bytes = x.to_string().into_bytes();
+                    let n_str_bytes = str_bytes.len();
+                    if nbytes > n_str_bytes {
+                        [str_bytes, vec![0u8; nbytes - n_str_bytes]].concat()
+                    } else {
+                        str_bytes
+                    }
+                })
+                .collect()
+        }
+        DataType::FixedSizeList(field, size) => match field.data_type.to_physical_type() {
+            PhysicalType::Primitive(PrimitiveType::Float32) => {
+                let array = array
+                    .as_any()
+                    .downcast_ref::<PrimitiveArray<f32>>()
+                    .expect("could not downcast to f32 array");
+                array.values_iter().flat_map(|x| x.to_ne_bytes()).collect()
+            }
+            PhysicalType::Primitive(PrimitiveType::Float64) => 64 * *size as u32,
+            _ => todo!(),
+        },
+        _ => panic!("unsupported type"),
+    }
 }

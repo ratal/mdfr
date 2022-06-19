@@ -8,6 +8,7 @@ use std::{
 };
 
 use crate::{
+    export::arrow::{bit_count, to_bytes},
     mdfinfo::{
         mdfinfo4::{
             BlockType, Blockheader4, Ca4Block, Ca4BlockMembers, Cg4, Cg4Block, Cn4, Cn4Block,
@@ -16,12 +17,9 @@ use crate::{
         },
         MdfInfo,
     },
-    mdfreader::{
-        channel_data::{data_type_init, ChannelData},
-        Mdf,
-    },
+    mdfreader::{channel_data::data_type_init, Mdf},
 };
-use arrow2::datatypes::Schema;
+use arrow2::{array::Array, bitmap::Bitmap, datatypes::Schema};
 use binrw::BinWriterExt;
 use crossbeam_channel::bounded;
 use parking_lot::Mutex;
@@ -136,7 +134,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Mdf {
                     let dt = mdf.get_channel_data(&cn.unique_name);
                     if let Some(data) = dt {
                         let m = data.validity();
-                        if !data.is_empty() && data.bit_count() > 0 {
+                        if !data.is_empty() && bit_count(data) > 0 {
                             // empty strings are not written
                             let mut offset: i64 = 0;
                             let mut ld_block: Option<Ld4Block> = None;
@@ -333,7 +331,7 @@ fn write_data_blocks(
 }
 
 /// Create a LDBlock
-fn create_ld(m: &Option<Vec<u8>>, offset: &mut i64) -> Option<Ld4Block> {
+fn create_ld(m: Option<&Bitmap>, offset: &mut i64) -> Option<Ld4Block> {
     let mut ld_block = Ld4Block::default();
     ld_block.ld_count = 1;
     ld_block.ld_sample_offset.push(0);
@@ -351,10 +349,10 @@ fn create_ld(m: &Option<Vec<u8>>, offset: &mut i64) -> Option<Ld4Block> {
 }
 
 /// Create a DV Block
-fn create_dv<'a>(data: &'a ChannelData, offset: &'a mut i64) -> (DataBlock, usize, Vec<u8>) {
+fn create_dv<'a>(data: Arc<dyn Array>, offset: &'a mut i64) -> (DataBlock, usize, Vec<u8>) {
     let mut dv_block = Blockheader4::default();
     dv_block.hdr_id = [35, 35, 68, 86]; // ##DV
-    let data_bytes = data.to_bytes();
+    let data_bytes: Vec<u8> = to_bytes(data);
     let data_bytes_len = data_bytes.len();
     dv_block.hdr_len += data_bytes_len as u64;
     let byte_aligned = 8 - data_bytes_len % 8;
@@ -372,14 +370,14 @@ enum DataBlock {
 }
 
 /// Create a DZ Block of DV type
-fn create_dz_dv<'a>(data: &'a ChannelData, offset: &'a mut i64) -> (DataBlock, usize, Vec<u8>) {
+fn create_dz_dv<'a>(data: Arc<dyn Array>, offset: &'a mut i64) -> (DataBlock, usize, Vec<u8>) {
     let mut dz_block = Dz4Block::default();
-    let mut data_bytes = compress(&data.to_bytes(), Format::Zlib, CompressionLevel::Default)
+    let mut data_bytes = compress(&to_bytes(data), Format::Zlib, CompressionLevel::Default)
         .expect("Could not compress invalid data");
     dz_block.dz_data_length = data_bytes.len() as u64;
     let dv_dz_block: DataBlock;
     let byte_aligned: usize;
-    dz_block.dz_org_data_length = (data.len() * data.bit_count() as usize / 8) as u64;
+    dz_block.dz_org_data_length = (data.len() * bit_count(data) as usize / 8) as u64;
     if dz_block.dz_org_data_length < dz_block.dz_data_length {
         (dv_dz_block, byte_aligned, data_bytes) = create_dv(data, offset);
     } else {
@@ -393,23 +391,31 @@ fn create_dz_dv<'a>(data: &'a ChannelData, offset: &'a mut i64) -> (DataBlock, u
 }
 
 /// Create a DI Block
-fn create_di(mask: &Vec<u8>, offset: &mut i64) -> Option<(DataBlock, Vec<u8>)> {
+fn create_di(mask: &Bitmap, offset: &mut i64) -> Option<(DataBlock, Vec<u8>)> {
     let mut dv_invalid_block = Blockheader4::default();
     dv_invalid_block.hdr_id = [35, 35, 68, 73]; // ##DI
     let mask_length = mask.len();
     dv_invalid_block.hdr_len += mask_length as u64;
     let byte_aligned = 8 - mask_length % 8;
-    let invalid_data = [mask.to_vec(), vec![0; byte_aligned]].concat();
+    let invalid_data: Vec<u8> = [
+        mask.iter().map(|v| v as u8).collect::<Vec<u8>>(),
+        vec![0; byte_aligned],
+    ]
+    .concat();
     *offset += dv_invalid_block.hdr_len as i64 + byte_aligned as i64;
     Some((DataBlock::DvDi(dv_invalid_block), invalid_data))
 }
 
 /// Create a DZ Block of DI type
-fn create_dz_di(mask: &Vec<u8>, offset: &mut i64) -> Option<(DataBlock, Vec<u8>)> {
+fn create_dz_di(mask: &Bitmap, offset: &mut i64) -> Option<(DataBlock, Vec<u8>)> {
     let mut dz_invalid_block = Dz4Block::default();
     dz_invalid_block.dz_org_data_length = mask.len() as u64;
-    let mut data_bytes = compress(mask, Format::Zlib, CompressionLevel::Default)
-        .expect("Could not compress invalid data");
+    let mut data_bytes = compress(
+        mask.iter().map(|v| v as u8).collect::<Vec<u8>>().as_slice(),
+        Format::Zlib,
+        CompressionLevel::Default,
+    )
+    .expect("Could not compress invalid data");
     dz_invalid_block.dz_data_length = data_bytes.len() as u64;
     if dz_invalid_block.dz_org_data_length < dz_invalid_block.dz_data_length {
         create_di(mask, offset)
