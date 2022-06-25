@@ -1,10 +1,10 @@
 //! data read and load in memory based in MdfInfo4's metadata
-use crate::export::arrow::mdf4_data_to_arrow;
-use crate::mdfinfo::mdfinfo4::{parse_block_header, Cg4, Cn4, Compo, Dg4, MdfInfo4};
+use crate::mdfinfo::mdfinfo4::{parse_block_header, Cg4, Cn4, Compo, Dg4};
 use crate::mdfinfo::mdfinfo4::{
     parse_dz, parser_dl4_block, parser_ld4_block, validate_channels_set, Dl4Block, Dt4Block,
     Hl4Block, Ld4Block,
 };
+use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::channel_data::ChannelData;
 use crate::mdfreader::data_read4::read_channels_from_bytes;
 use binrw::BinReaderExt;
@@ -32,57 +32,55 @@ const CHUNK_SIZE_READING: usize = 524288; // can be tuned according to architect
 pub fn mdfreader4<'a>(
     rdr: &'a mut BufReader<&File>,
     mdf: &'a mut Mdf,
-    info: &'a mut MdfInfo4,
-    channel_names: HashSet<String>,
+    channel_names: &HashSet<String>,
 ) {
-    let mut position: i64 = 0;
-    let mut sorted: bool;
-    let mut channel_names_present_in_dg: HashSet<String>;
-    let mut decoder: Dec = Dec {
-        windows_1252: WINDOWS_1252.new_decoder(),
-        utf_16_be: UTF_16BE.new_decoder(),
-        utf_16_le: UTF_16LE.new_decoder(),
-    };
-    // read file data
-    for (_dg_position, dg) in info.dg.iter_mut() {
-        // Let's find channel names
-        channel_names_present_in_dg = HashSet::new();
-        for channel_group in dg.cg.values() {
-            let cn = channel_group.channel_names.clone();
-            channel_names_present_in_dg.par_extend(cn);
-        }
-        let channel_names_to_read_in_dg: HashSet<_> = channel_names_present_in_dg
-            .into_par_iter()
-            .filter(|v| channel_names.contains(v))
-            .collect();
-        if dg.block.dg_data != 0 && !channel_names_to_read_in_dg.is_empty() {
-            // header block
-            rdr.seek_relative(dg.block.dg_data - position)
-                .expect("Could not position buffer"); // change buffer position
-            let mut id = [0u8; 4];
-            rdr.read_exact(&mut id).expect("could not read block id");
-            if dg.cg.len() == 1 {
-                sorted = true;
-            } else {
-                sorted = false
+    match &mut mdf.mdf_info {
+        MdfInfo::V4(info) => {
+            let mut position: i64 = 0;
+            let mut sorted: bool;
+            let mut channel_names_present_in_dg: HashSet<String>;
+            let mut decoder: Dec = Dec {
+                windows_1252: WINDOWS_1252.new_decoder(),
+                utf_16_be: UTF_16BE.new_decoder(),
+                utf_16_le: UTF_16LE.new_decoder(),
+            };
+            // read file data
+            for (_dg_position, dg) in info.dg.iter_mut() {
+                // Let's find channel names
+                channel_names_present_in_dg = HashSet::new();
+                for channel_group in dg.cg.values() {
+                    let cn = channel_group.channel_names.clone();
+                    channel_names_present_in_dg.par_extend(cn);
+                }
+                let channel_names_to_read_in_dg: HashSet<_> = channel_names_present_in_dg
+                    .into_par_iter()
+                    .filter(|v| channel_names.contains(v))
+                    .collect();
+                if dg.block.dg_data != 0 && !channel_names_to_read_in_dg.is_empty() {
+                    // header block
+                    rdr.seek_relative(dg.block.dg_data - position)
+                        .expect("Could not position buffer"); // change buffer position
+                    let mut id = [0u8; 4];
+                    rdr.read_exact(&mut id).expect("could not read block id");
+                    if dg.cg.len() == 1 {
+                        sorted = true;
+                    } else {
+                        sorted = false
+                    }
+                    position = read_data(
+                        rdr,
+                        id,
+                        dg,
+                        dg.block.dg_data,
+                        sorted,
+                        &channel_names_to_read_in_dg,
+                        &mut decoder,
+                    );
+                }
             }
-            position = read_data(
-                rdr,
-                id,
-                dg,
-                dg.block.dg_data,
-                sorted,
-                &channel_names_to_read_in_dg,
-                &mut decoder,
-            );
-
-            // move the data from the MdfInfo3 structure into vect of chunks
-            mdf4_data_to_arrow(mdf, info, channel_names);
-
-            // conversion of all channels to physical values
-            // convert_all_channels(dg, &info.sharable);
         }
-    }
+        MdfInfo::V3(_) => {}
+    };
 }
 
 /// Reads all kind of data layout : simple DT or DV, sorted or unsorted, Data List,

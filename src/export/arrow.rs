@@ -1,6 +1,5 @@
 //! Converts ndarray data in into arrow.
-use crate::mdfinfo::mdfinfo3::MdfInfo3;
-use crate::mdfinfo::mdfinfo4::MdfInfo4;
+use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::channel_data::ChannelData;
 use crate::mdfreader::{ChannelIndexes, Mdf};
 use arrow2::array::{
@@ -113,7 +112,7 @@ impl ChannelData {
             }
             ChannelData::FixedSizeByteArray(a) => Arc::new(FixedSizeBinaryArray::new(
                 DataType::FixedSizeBinary(a.1),
-                Buffer::<u8>::from(a.0),
+                Buffer::<u8>::from(mem::take(a).0),
                 bitmap,
             )),
             ChannelData::ArrayDInt8(_) => todo!(),
@@ -139,118 +138,124 @@ impl ChannelData {
 }
 
 /// takes data of channel set from MdfInfo structure and stores in arrow_data
-pub fn mdf4_data_to_arrow(mdf: &mut Mdf, mdfinfo4: &mut MdfInfo4, channel_names: HashSet<String>) {
+pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
     let mut chunk_index: usize = 0;
     let mut array_index: usize = 0;
     let mut field_index: usize = 0;
-    mdf.arrow_data = Vec::<Chunk<Arc<dyn Array>>>::with_capacity(mdfinfo4.dg.len());
-    mdf.arrow_schema.fields = Vec::<Field>::with_capacity(mdfinfo4.channel_names_set.len());
-    mdfinfo4.dg.iter_mut().for_each(|(_dg_block_position, dg)| {
-        let channel_names_present_in_dg = HashSet::new();
-        for channel_group in dg.cg.values() {
-            let cn = channel_group.channel_names.clone();
-            channel_names_present_in_dg.par_extend(cn);
-        }
-        let channel_names_to_read_in_dg: HashSet<_> = channel_names_present_in_dg
-            .into_par_iter()
-            .filter(|v| channel_names.contains(v))
-            .collect();
-        if !channel_names_to_read_in_dg.is_empty() {
-            dg.cg.iter_mut().for_each(|(_rec_id, cg)| {
-                let is_nullable: bool = cg.invalid_bytes.is_some();
-                let mut columns = Vec::<Arc<dyn Array>>::with_capacity(cg.channel_names.len());
-                for (_rec_pos, cn) in cg.cn.iter_mut() {
-                    if !cn.data.is_empty() {
-                        let data = cn.data.to_arrow_array(None);
-                        let field = Field::new(
-                            cn.unique_name.clone(),
-                            data.data_type().clone(),
-                            is_nullable,
-                        );
-                        columns.push(data);
-                        let mut metadata = Metadata::new();
-                        if let Some(unit) = mdfinfo4.sharable.get_tx(cn.block.cn_md_unit) {
-                            metadata.insert("unit".to_string(), unit);
-                        };
-                        if let Some(desc) = mdfinfo4.sharable.get_tx(cn.block.cn_md_comment) {
-                            metadata.insert("description".to_string(), desc);
-                        };
-                        if let Some(master_channel_name) =
-                            mdfinfo4.get_channel_master(&cn.unique_name)
-                        {
-                            metadata.insert("master_channel".to_string(), master_channel_name);
-                        }
-                        if cn.block.cn_type == 4 {
-                            metadata.insert(
-                                "sync_channel".to_string(),
-                                cn.block.cn_sync_type.to_string(),
-                            );
-                        }
-                        let field = field.with_metadata(metadata);
-                        mdf.arrow_schema.fields.push(field);
-                        mdf.channel_indexes.insert(
-                            cn.unique_name,
-                            ChannelIndexes {
-                                chunk_index,
-                                array_index,
-                                field_index,
-                            },
-                        );
-                        array_index += 1;
-                        field_index += 1;
-                    }
+    match &mut mdf.mdf_info {
+        MdfInfo::V4(mdfinfo4) => {
+            mdf.arrow_data = Vec::<Chunk<Arc<dyn Array>>>::with_capacity(mdfinfo4.dg.len());
+            mdf.arrow_schema.fields = Vec::<Field>::with_capacity(mdfinfo4.channel_names_set.len());
+            for (_dg_block_position, dg) in mdfinfo4.dg.iter() {
+                let mut channel_names_present_in_dg = HashSet::new();
+                for channel_group in dg.cg.values() {
+                    let cn = channel_group.channel_names.clone();
+                    channel_names_present_in_dg.par_extend(cn);
                 }
-                mdf.arrow_data.push(Chunk::new(columns));
-                chunk_index += 1;
-                array_index = 0;
-            });
-        }
-    });
-}
-
-/// takes data of channel set from MdfInfo structure and stores in arrow_data
-pub fn mdf3_data_to_arrow(mdf: &mut Mdf, mdfinfo3: &mut MdfInfo3, channel_names: HashSet<String>) {
-    let mut chunk_index: usize = 0;
-    let mut array_index: usize = 0;
-    let mut field_index: usize = 0;
-    mdf.arrow_data = Vec::<Chunk<Arc<dyn Array>>>::with_capacity(mdfinfo3.dg.len());
-    mdf.arrow_schema.fields = Vec::<Field>::with_capacity(mdfinfo3.channel_names_set.len());
-    mdfinfo3.dg.iter_mut().for_each(|(_dg_block_position, dg)| {
-        dg.cg.iter_mut().for_each(|(_rec_id, cg)| {
-            let mut columns = Vec::<Arc<dyn Array>>::with_capacity(cg.channel_names.len());
-            for (_rec_pos, cn) in cg.cn.iter_mut() {
-                if !cn.data.is_empty() {
-                    let data = cn.data.to_arrow_array(None);
-                    let field = Field::new(cn.unique_name.clone(), data.data_type().clone(), false);
-                    columns.push(data);
-                    let mut metadata = Metadata::new();
-                    if let Some(unit) = mdfinfo3._get_unit(&cn.block1.cn_cc_conversion) {
-                        metadata.insert("unit".to_string(), unit);
-                    };
-                    metadata.insert("description".to_string(), cn.description);
-                    if let Some(master_channel_name) = mdfinfo3.get_channel_master(&cn.unique_name)
-                    {
-                        metadata.insert("master_channel".to_string(), master_channel_name);
+                let channel_names_to_read_in_dg: HashSet<_> = channel_names_present_in_dg
+                    .into_par_iter()
+                    .filter(|v| channel_names.contains(v))
+                    .collect();
+                if !channel_names_to_read_in_dg.is_empty() {
+                    for (_rec_id, cg) in dg.cg.iter() {
+                        let is_nullable: bool = cg.invalid_bytes.is_some();
+                        let mut columns =
+                            Vec::<Arc<dyn Array>>::with_capacity(cg.channel_names.len());
+                        for (_rec_pos, cn) in cg.cn.iter() {
+                            if !cn.data.is_empty() {
+                                let data = cn.data.to_arrow_array(None);
+                                let field = Field::new(
+                                    cn.unique_name.clone(),
+                                    data.data_type().clone(),
+                                    is_nullable,
+                                );
+                                columns.push(data);
+                                let mut metadata = Metadata::new();
+                                if let Some(unit) = mdfinfo4.sharable.get_tx(cn.block.cn_md_unit) {
+                                    metadata.insert("unit".to_string(), unit);
+                                };
+                                if let Some(desc) = mdfinfo4.sharable.get_tx(cn.block.cn_md_comment)
+                                {
+                                    metadata.insert("description".to_string(), desc);
+                                };
+                                if let Some(master_channel_name) =
+                                    mdfinfo4.get_channel_master(&cn.unique_name)
+                                {
+                                    metadata.insert(
+                                        "master_channel".to_string(),
+                                        master_channel_name.to_string(),
+                                    );
+                                }
+                                if cn.block.cn_type == 4 {
+                                    metadata.insert(
+                                        "sync_channel".to_string(),
+                                        cn.block.cn_sync_type.to_string(),
+                                    );
+                                }
+                                let field = field.with_metadata(metadata);
+                                mdf.arrow_schema.fields.push(field);
+                                mdf.channel_indexes.insert(
+                                    cn.unique_name.clone(),
+                                    ChannelIndexes {
+                                        chunk_index,
+                                        array_index,
+                                        field_index,
+                                    },
+                                );
+                                array_index += 1;
+                                field_index += 1;
+                            }
+                        }
+                        mdf.arrow_data.push(Chunk::new(columns));
+                        chunk_index += 1;
+                        array_index = 0;
                     }
-                    let field = field.with_metadata(metadata);
-                    mdf.arrow_schema.fields.push(field);
-                    mdf.channel_indexes.insert(
-                        cn.unique_name,
-                        ChannelIndexes {
-                            chunk_index,
-                            array_index,
-                            field_index,
-                        },
-                    );
-                    array_index += 1;
-                    field_index += 1;
                 }
             }
-            mdf.arrow_data.push(Chunk::new(columns));
-            chunk_index += 1;
-            array_index = 0;
-        });
-    });
+        }
+        MdfInfo::V3(mdfinfo3) => {
+            mdf.arrow_data = Vec::<Chunk<Arc<dyn Array>>>::with_capacity(mdfinfo3.dg.len());
+            mdf.arrow_schema.fields = Vec::<Field>::with_capacity(mdfinfo3.channel_names_set.len());
+            mdfinfo3.dg.iter_mut().for_each(|(_dg_block_position, dg)| {
+                dg.cg.iter_mut().for_each(|(_rec_id, cg)| {
+                    let mut columns = Vec::<Arc<dyn Array>>::with_capacity(cg.channel_names.len());
+                    for (_rec_pos, cn) in cg.cn.iter_mut() {
+                        if !cn.data.is_empty() {
+                            let data = cn.data.to_arrow_array(None);
+                            let field =
+                                Field::new(cn.unique_name.clone(), data.data_type().clone(), false);
+                            columns.push(data);
+                            let mut metadata = Metadata::new();
+                            if let Some(unit) = mdfinfo3._get_unit(&cn.block1.cn_cc_conversion) {
+                                metadata.insert("unit".to_string(), unit);
+                            };
+                            metadata.insert("description".to_string(), cn.description.clone());
+                            if let Some(master_channel_name) =
+                                mdfinfo3.get_channel_master(&cn.unique_name)
+                            {
+                                metadata.insert("master_channel".to_string(), master_channel_name);
+                            }
+                            let field = field.with_metadata(metadata);
+                            mdf.arrow_schema.fields.push(field);
+                            mdf.channel_indexes.insert(
+                                cn.unique_name.clone(),
+                                ChannelIndexes {
+                                    chunk_index,
+                                    array_index,
+                                    field_index,
+                                },
+                            );
+                            array_index += 1;
+                            field_index += 1;
+                        }
+                    }
+                    mdf.arrow_data.push(Chunk::new(columns));
+                    chunk_index += 1;
+                    array_index = 0;
+                });
+            });
+        }
+    }
 }
 
 /// Take an arrow array from python and convert it to a rust arrow array.
@@ -309,7 +314,7 @@ pub(crate) fn to_py_array(
     Ok(array.to_object(py))
 }
 
-pub fn bit_count(array: Arc<dyn Array>) -> u32 {
+pub fn bit_count(array: &Arc<dyn Array>) -> u32 {
     match array.data_type() {
         DataType::Null => 0,
         DataType::Boolean => 8,
@@ -387,7 +392,7 @@ pub fn bit_count(array: Arc<dyn Array>) -> u32 {
     }
 }
 
-pub fn to_bytes(array: Arc<dyn Array>) -> Vec<u8> {
+pub fn to_bytes(array: &Arc<dyn Array>) -> Vec<u8> {
     match array.data_type() {
         DataType::Null => Vec::new(),
         DataType::Boolean => {
@@ -577,23 +582,65 @@ pub fn to_bytes(array: Arc<dyn Array>) -> Vec<u8> {
             let array = array
                 .as_any()
                 .downcast_ref::<BinaryArray<i32>>()
-                .expect("could not downcast binary array to i32 array");
-            array.values_iter().collect()
+                .expect("could not downcast binary array to bytes vect");
+            let maxnbytes = array
+                .values_iter()
+                .map(|s| s.len() as u32)
+                .max()
+                .unwrap_or(0) as usize;
+            array
+                .values_iter()
+                .flat_map(|x| {
+                    let bytes = x.to_vec();
+                    let n_bytes = bytes.len();
+                    if maxnbytes > n_bytes {
+                        [bytes, vec![0u8; maxnbytes - n_bytes]].concat()
+                    } else {
+                        bytes
+                    }
+                })
+                .collect()
         }
-        DataType::FixedSizeBinary(size) => 8 * *size as u32,
+        DataType::FixedSizeBinary(_) => {
+            let array = array
+                .as_any()
+                .downcast_ref::<BinaryArray<i64>>()
+                .expect("could not downcast large binary to bytes vect");
+            array.values_iter().flat_map(|x| x.to_vec()).collect()
+        }
         DataType::LargeBinary => {
             let array = array
                 .as_any()
                 .downcast_ref::<BinaryArray<i64>>()
-                .expect("could not downcast large binary to i64 array");
-            array.values_iter().collect()
+                .expect("could not downcast large binary to bytes vect");
+            let maxnbytes = array
+                .values_iter()
+                .map(|s| s.len() as u32)
+                .max()
+                .unwrap_or(0) as usize;
+            array
+                .values_iter()
+                .flat_map(|x| {
+                    let bytes = x.to_vec();
+                    let n_bytes = bytes.len();
+                    if maxnbytes > n_bytes {
+                        [bytes, vec![0u8; maxnbytes - n_bytes]].concat()
+                    } else {
+                        bytes
+                    }
+                })
+                .collect()
         }
         DataType::Utf8 => {
             let array = array
                 .as_any()
                 .downcast_ref::<Utf8Array<i32>>()
                 .expect("could not downcast to utf8 array");
-            let nbytes = self.byte_count() as usize;
+            let nbytes = array
+                .values_iter()
+                .map(|s| s.len() as u32)
+                .max()
+                .unwrap_or(0) as usize;
             array
                 .values_iter()
                 .flat_map(|x| {
@@ -612,7 +659,11 @@ pub fn to_bytes(array: Arc<dyn Array>) -> Vec<u8> {
                 .as_any()
                 .downcast_ref::<Utf8Array<i64>>()
                 .expect("could not downcast to long utf8 array");
-            let nbytes = self.byte_count() as usize;
+            let nbytes = array
+                .values_iter()
+                .map(|s| s.len() as u32)
+                .max()
+                .unwrap_or(0) as usize;
             array
                 .values_iter()
                 .flat_map(|x| {
@@ -626,7 +677,7 @@ pub fn to_bytes(array: Arc<dyn Array>) -> Vec<u8> {
                 })
                 .collect()
         }
-        DataType::FixedSizeList(field, size) => match field.data_type.to_physical_type() {
+        DataType::FixedSizeList(field, _size) => match field.data_type.to_physical_type() {
             PhysicalType::Primitive(PrimitiveType::Float32) => {
                 let array = array
                     .as_any()
@@ -634,7 +685,13 @@ pub fn to_bytes(array: Arc<dyn Array>) -> Vec<u8> {
                     .expect("could not downcast to f32 array");
                 array.values_iter().flat_map(|x| x.to_ne_bytes()).collect()
             }
-            PhysicalType::Primitive(PrimitiveType::Float64) => 64 * *size as u32,
+            PhysicalType::Primitive(PrimitiveType::Float64) => {
+                let array = array
+                    .as_any()
+                    .downcast_ref::<PrimitiveArray<f64>>()
+                    .expect("could not downcast to f64 array");
+                array.values_iter().flat_map(|x| x.to_ne_bytes()).collect()
+            }
             _ => todo!(),
         },
         _ => panic!("unsupported type"),

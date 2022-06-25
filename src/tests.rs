@@ -1,14 +1,12 @@
 #[cfg(test)]
 mod tests {
     use arrow2::array::BinaryArray;
-    use arrow2::array::MutablePrimitiveArray;
     use arrow2::array::PrimitiveArray;
     use arrow2::array::Utf8Array;
     use arrow2::buffer::Buffer;
     use arrow2::datatypes::DataType;
     use arrow2::error::Error;
 
-    use crate::mdfreader::channel_data::ChannelData;
     use crate::mdfreader::Mdf;
     use std::fs;
     use std::io;
@@ -284,7 +282,8 @@ mod tests {
         });
         if let Some(data) = mdf.get_channel_data(&"Counter_INT64_BE".to_string()) {
             assert_eq!(
-                PrimitiveArray::from_data(DataType::Int64, Buffer::from(vect), None).arced(),
+                PrimitiveArray::from_data(DataType::Int64, Buffer::from(vect.clone()), None)
+                    .arced(),
                 data
             );
         }
@@ -304,7 +303,8 @@ mod tests {
         });
         if let Some(data) = mdf.get_channel_data(&"Counter_INT32_LE".to_string()) {
             assert_eq!(
-                PrimitiveArray::from_data(DataType::Int32, Buffer::from(vect), None).arced(),
+                PrimitiveArray::from_data(DataType::Int32, Buffer::from(vect.clone()), None)
+                    .arced(),
                 data
             );
         }
@@ -322,7 +322,8 @@ mod tests {
         });
         if let Some(data) = mdf.get_channel_data(&"Counter_INT16_LE".to_string()) {
             assert_eq!(
-                PrimitiveArray::from_data(DataType::Int16, Buffer::from(vect), None).arced(),
+                PrimitiveArray::from_data(DataType::Int16, Buffer::from(vect.clone()), None)
+                    .arced(),
                 data
             );
         }

@@ -31,7 +31,7 @@ pub(crate) type ChannelNamesSet = HashMap<String, ChannelId>;
 /// * channel_names_set is the complete set of channel names contained in file
 /// * in general the blocks are contained in HashMaps with key corresponding
 /// to their position in the file
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct MdfInfo4 {
     /// file name string
     pub file_name: String,
@@ -1314,7 +1314,7 @@ fn parse_dg4_block(
 }
 
 /// Dg4 struct wrapping block, comments and linked CG
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct Dg4 {
     /// DG Block
@@ -1627,7 +1627,7 @@ fn parse_cg4_block(
 
 /// Channel Group struct
 /// it contains the related channels structure, a set of channel names, the dedicated master channel name and other helper data.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Cg4 {
     pub block: Cg4Block,
     /// hashmap of channels

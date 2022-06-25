@@ -17,6 +17,7 @@ use arrow2::chunk::Chunk;
 use arrow2::datatypes::{Field, Schema};
 use arrow2::error::Result;
 
+use crate::export::arrow::mdf_data_to_arrow;
 use crate::export::parquet::export_to_parquet;
 use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::mdfreader3::mdfreader3;
@@ -67,6 +68,12 @@ impl Mdf {
             .insert("file_name".to_string(), file_name.to_string());
         mdf
     }
+    pub fn get_file_name(&self) -> String {
+        match &self.mdf_info {
+            MdfInfo::V3(mdfinfo3) => mdfinfo3.file_name.clone(),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.file_name.clone(),
+        }
+    }
     /// gets the version of mdf file
     pub fn get_version(&mut self) -> u16 {
         self.mdf_info.get_version()
@@ -115,17 +122,17 @@ impl Mdf {
         self.channel_indexes.get(channel_name)
     }
     /// returns channel's arrow2 Array.
-    pub fn get_channel_data<'a>(&'a mut self, channel_name: &'a str) -> Option<Arc<dyn Array>> {
+    pub fn get_channel_data(&self, channel_name: &str) -> Option<Arc<dyn Array>> {
         if let Some(index) = self.get_channel_index(channel_name) {
-            Some(self.arrow_data[index.chunk_index][index.array_index])
+            Some(self.arrow_data[index.chunk_index][index.array_index].clone())
         } else {
             None
         }
     }
     /// returns channel's arrow2 Field.
-    pub fn get_channel_field<'a>(&'a mut self, channel_name: &'a str) -> Option<Field> {
+    pub fn get_channel_field(&self, channel_name: &str) -> Option<&Field> {
         if let Some(index) = self.get_channel_index(channel_name) {
-            Some(self.arrow_schema.fields[index.field_index])
+            Some(&self.arrow_schema.fields[index.field_index])
         } else {
             None
         }
@@ -144,7 +151,7 @@ impl Mdf {
         &mut self,
         channel_name: String,
         data: Arc<dyn Array>,
-        mut master_channel: Option<String>,
+        master_channel: Option<String>,
         master_type: Option<u8>,
         master_flag: bool,
         unit: Option<String>,
@@ -159,53 +166,39 @@ impl Mdf {
     }
     /// load all channels data in memory
     pub fn load_all_channels_data_in_memory(&mut self) {
-        match &mut self.mdf_info {
-            MdfInfo::V3(mdfinfo3) => {
-                let f: File = OpenOptions::new()
-                    .read(true)
-                    .write(false)
-                    .open(mdfinfo3.file_name.clone())
-                    .expect("Cannot find the file");
-                let mut rdr = BufReader::new(&f);
-                let channel_names = mdfinfo3.get_channel_names_set();
-                mdfreader3(&mut rdr, self, mdfinfo3, channel_names);
-            }
-            MdfInfo::V4(mdfinfo4) => {
-                let f: File = OpenOptions::new()
-                    .read(true)
-                    .write(false)
-                    .open(mdfinfo4.file_name.clone())
-                    .expect("Cannot find the file");
-                let mut rdr = BufReader::new(&f);
-                let channel_names = mdfinfo4.get_channel_names_set();
-                mdfreader4(&mut rdr, self, mdfinfo4, channel_names);
-            }
-        };
+        let channel_names = self.get_channel_names_set();
+        self.load_channels_data_in_memory(channel_names);
     }
     /// load a set of channels data in memory
     pub fn load_channels_data_in_memory(&mut self, channel_names: HashSet<String>) {
+        let f: File = OpenOptions::new()
+            .read(true)
+            .write(false)
+            .open(self.get_file_name())
+            .expect("Cannot find the file");
+        let mut rdr = BufReader::new(&f);
         match &mut self.mdf_info {
-            MdfInfo::V3(mdfinfo3) => {
-                let f: File = OpenOptions::new()
-                    .read(true)
-                    .write(false)
-                    .open(mdfinfo3.file_name.clone())
-                    .expect("Cannot find the file");
-                let mut rdr = BufReader::new(&f);
-                mdfreader3(&mut rdr, self, mdfinfo3, channel_names);
+            MdfInfo::V3(_mdfinfo3) => {
+                mdfreader3(&mut rdr, self, &channel_names);
             }
-            MdfInfo::V4(mdfinfo4) => {
-                let f: File = OpenOptions::new()
-                    .read(true)
-                    .write(false)
-                    .open(mdfinfo4.file_name.clone())
-                    .expect("Cannot find the file");
-                let mut rdr = BufReader::new(&f);
-                mdfreader4(&mut rdr, self, mdfinfo4, channel_names);
+            MdfInfo::V4(_mdfinfo4) => {
+                mdfreader4(&mut rdr, self, &channel_names);
             }
         };
+        // move the data from the MdfInfo3 structure into vect of chunks
+        mdf_data_to_arrow(self, &channel_names);
+
+        // conversion of all channels to physical values
+        // convert_all_channels(dg, &info.sharable);
     }
     /// Clears all data arrays
+    pub fn clear_all_channel_data_from_memory(&mut self) {
+        self.arrow_data = Vec::new();
+        self.arrow_schema = Schema::default();
+        self.channel_indexes = HashMap::new();
+    }
+
+    /// Clears data arrays
     pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) {
         self.arrow_data = Vec::new();
         self.arrow_schema = Schema::default();
@@ -226,7 +219,7 @@ impl Mdf {
 
 impl fmt::Display for Mdf {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.mdf_info {
+        match &self.mdf_info {
             MdfInfo::V3(mdfinfo3) => {
                 writeln!(f, "Version : {}\n", mdfinfo3.id_block.id_ver)?;
                 writeln!(

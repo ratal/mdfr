@@ -29,7 +29,7 @@ impl Mdfr {
         Mdfr(Mdf::new(file_name))
     }
     /// returns channel's data, numpy array or list, depending if data type is numeric or string|bytes
-    fn get_channel_data(&mut self, channel_name: String) -> Py<PyAny> {
+    fn get_channel_data(&self, channel_name: String) -> Py<PyAny> {
         let Mdfr(mdf) = self;
         // default py_array value is python None
         pyo3::Python::with_gil(|py| {
@@ -41,7 +41,7 @@ impl Mdfr {
                     py_array = to_py_array(
                         py,
                         py.import("arrow2").expect("could not import arrow2"),
-                        data,
+                        data.clone(),
                         &field,
                     )
                     .expect("failed to convert data to py array");
@@ -61,7 +61,11 @@ impl Mdfr {
                             .expect("masked array creation failed")
                             .into_py(py);
                     }
+                } else {
+                    py_array = Python::None(py);
                 }
+            } else {
+                py_array = Python::None(py);
             }
             py_array
         })
@@ -224,7 +228,7 @@ impl Mdfr {
         })
     }
     /// plot one channel
-    pub fn plot(&mut self, channel_name: String) {
+    pub fn plot(&self, channel_name: String) {
         let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|py| {
             let locals = PyDict::new(py);
@@ -293,7 +297,7 @@ pyplot.show()
         mdf.export_to_parquet(file_name, compression_option)
             .expect("could not export to parquet")
     }
-    fn __repr__(&self) -> PyResult<String> {
+    fn __repr__(&mut self) -> PyResult<String> {
         let mut output: String;
         match &self.0.mdf_info {
             MdfInfo::V3(mdfinfo3) => {

@@ -3,6 +3,7 @@ use std::{
     collections::{HashMap, HashSet},
     fs::OpenOptions,
     io::{BufWriter, Cursor, Seek, SeekFrom, Write},
+    ops::Deref,
     sync::Arc,
     thread,
 };
@@ -31,10 +32,10 @@ use super::mdfwriter3::convert3to4;
 
 /// writes file on hard drive
 pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Mdf {
-    let mut info: MdfInfo4;
-    match mdf.mdf_info {
-        MdfInfo::V3(mdfinfo3) => info = convert3to4(&mut mdfinfo3, file_name),
-        MdfInfo::V4(mdfinfo4) => info = *mdfinfo4,
+    let info: MdfInfo4;
+    match &mdf.mdf_info {
+        MdfInfo::V3(mdfinfo3) => info = convert3to4(mdfinfo3, file_name),
+        MdfInfo::V4(mdfinfo4) => info = mdfinfo4.deref().clone(),
     }
     let n_channels = mdf.mdf_info.get_channel_names_set().len();
     let mut new_info = MdfInfo4::new(file_name, n_channels);
@@ -134,7 +135,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Mdf {
                     let dt = mdf.get_channel_data(&cn.unique_name);
                     if let Some(data) = dt {
                         let m = data.validity();
-                        if !data.is_empty() && bit_count(data) > 0 {
+                        if !data.is_empty() && bit_count(&data) > 0 {
                             // empty strings are not written
                             let mut offset: i64 = 0;
                             let mut ld_block: Option<Ld4Block> = None;
@@ -143,9 +144,9 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Mdf {
                             }
 
                             let data_block: (DataBlock, usize, Vec<u8>) = if compression {
-                                create_dz_dv(data, &mut offset)
+                                create_dz_dv(data.clone(), &mut offset)
                             } else {
-                                create_dv(data, &mut offset)
+                                create_dv(data.clone(), &mut offset)
                             };
 
                             // invalid mask existing
@@ -352,7 +353,7 @@ fn create_ld(m: Option<&Bitmap>, offset: &mut i64) -> Option<Ld4Block> {
 fn create_dv<'a>(data: Arc<dyn Array>, offset: &'a mut i64) -> (DataBlock, usize, Vec<u8>) {
     let mut dv_block = Blockheader4::default();
     dv_block.hdr_id = [35, 35, 68, 86]; // ##DV
-    let data_bytes: Vec<u8> = to_bytes(data);
+    let data_bytes: Vec<u8> = to_bytes(&data);
     let data_bytes_len = data_bytes.len();
     dv_block.hdr_len += data_bytes_len as u64;
     let byte_aligned = 8 - data_bytes_len % 8;
@@ -372,12 +373,12 @@ enum DataBlock {
 /// Create a DZ Block of DV type
 fn create_dz_dv<'a>(data: Arc<dyn Array>, offset: &'a mut i64) -> (DataBlock, usize, Vec<u8>) {
     let mut dz_block = Dz4Block::default();
-    let mut data_bytes = compress(&to_bytes(data), Format::Zlib, CompressionLevel::Default)
+    let mut data_bytes = compress(&to_bytes(&data), Format::Zlib, CompressionLevel::Default)
         .expect("Could not compress invalid data");
     dz_block.dz_data_length = data_bytes.len() as u64;
     let dv_dz_block: DataBlock;
     let byte_aligned: usize;
-    dz_block.dz_org_data_length = (data.len() * bit_count(data) as usize / 8) as u64;
+    dz_block.dz_org_data_length = (data.len() * bit_count(&data) as usize / 8) as u64;
     if dz_block.dz_org_data_length < dz_block.dz_data_length {
         (dv_dz_block, byte_aligned, data_bytes) = create_dv(data, offset);
     } else {
