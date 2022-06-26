@@ -252,7 +252,7 @@ impl fmt::Display for Mdf {
                             if !data.is_empty() {
                                 let displayer = get_display(data.as_ref(), "null");
                                 displayer(f, 0).expect("cannot channel data");
-                                writeln!(f, " ");
+                                writeln!(f, " ").expect("cannot print simple space character");
                                 displayer(f, data.len() - 1).expect("cannot channel data");
                             }
                         }
@@ -289,7 +289,7 @@ impl fmt::Display for Mdf {
                             if !data.is_empty() {
                                 let displayer = get_display(data.as_ref(), "null");
                                 displayer(f, 0).expect("cannot channel data");
-                                writeln!(f, " ");
+                                writeln!(f, " ").expect("cannot print simple space character");
                                 displayer(f, data.len() - 1).expect("cannot channel data");
                             }
                         }

@@ -1259,7 +1259,7 @@ pub struct Cc3Block {
     /// Maximum physical signal value that occurred for this signal. Only valid if "physical value range valid" flag is set.
     cc_val_range_max: f64,
     /// physical unit of the signal
-    cc_unit: [u8; 20],
+    pub cc_unit: [u8; 20],
     /// Conversion type
     cc_type: u16,
     /// Size information, meaning depends of conversion type

@@ -1864,15 +1864,15 @@ impl Clone for Cn4 {
             block: self.block.clone(),
             unique_name: self.unique_name.clone(),
             block_position: self.block_position.clone(),
-            pos_byte_beg: self.pos_byte_beg.clone(),
-            n_bytes: self.n_bytes.clone(),
+            pos_byte_beg: self.pos_byte_beg,
+            n_bytes: self.n_bytes,
             composition: self.composition.clone(),
             data: ChannelData::default(),
-            endian: self.endian.clone(),
+            endian: self.endian,
             invalid_mask: self.invalid_mask.clone(),
-            invalid_byte_position: self.invalid_byte_position.clone(),
-            invalid_byte_mask: self.invalid_byte_mask.clone(),
-            channel_data_valid: self.channel_data_valid.clone(),
+            invalid_byte_position: self.invalid_byte_position,
+            invalid_byte_mask: self.invalid_byte_mask,
+            channel_data_valid: self.channel_data_valid,
         }
     }
 }

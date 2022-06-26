@@ -61,7 +61,7 @@ pub enum ChannelData {
     ArrayDComplex64(ArrayD<Complex<f64>>),
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArrowComplex<T>(pub Vec<T>);
 
 #[derive(Debug, Clone, PartialEq)]

@@ -1,14 +1,14 @@
 //! command line interface to load mdf file and manipulate it.
 extern crate clap;
 
-use arrow2::error::ArrowError;
+use arrow2::error::Error;
 use clap::{Arg, Command};
 mod export;
 mod mdfinfo;
 mod mdfreader;
 mod mdfwriter;
 
-fn main() -> Result<(), ArrowError> {
+fn main() -> Result<(), Error> {
     let matches = Command::new("mdfr")
         .bin_name("mdfr")
         .version("0.1.0")
@@ -70,7 +70,7 @@ fn main() -> Result<(), ArrowError> {
     let compression = matches.is_present("compress");
 
     if let Some(file_name) = mdf4_file_name {
-        mdf_file.mdf_info.write(&file_name, compression);
+        mdf_file.write(&file_name, compression);
     }
 
     let convert3to4_file_name = matches.value_of("convert3to4");

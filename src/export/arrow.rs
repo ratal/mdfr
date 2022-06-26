@@ -13,6 +13,8 @@ use arrow2::datatypes::{DataType, Field, Metadata, PhysicalType, PrimitiveType};
 use arrow2::types::NativeType;
 use arrow2::{array::ArrayRef, ffi};
 
+use encoding::all::ISO_8859_1;
+use encoding::{DecoderTrap, Encoding};
 use pyo3::prelude::*;
 use pyo3::{ffi::Py_uintptr_t, PyAny, PyObject, PyResult};
 use rayon::iter::{IntoParallelIterator, ParallelExtend, ParallelIterator};
@@ -146,7 +148,7 @@ pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
         MdfInfo::V4(mdfinfo4) => {
             mdf.arrow_data = Vec::<Chunk<Arc<dyn Array>>>::with_capacity(mdfinfo4.dg.len());
             mdf.arrow_schema.fields = Vec::<Field>::with_capacity(mdfinfo4.channel_names_set.len());
-            for (_dg_block_position, dg) in mdfinfo4.dg.iter() {
+            for (_dg_block_position, dg) in mdfinfo4.dg.iter_mut() {
                 let mut channel_names_present_in_dg = HashSet::new();
                 for channel_group in dg.cg.values() {
                     let cn = channel_group.channel_names.clone();
@@ -157,11 +159,11 @@ pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
                     .filter(|v| channel_names.contains(v))
                     .collect();
                 if !channel_names_to_read_in_dg.is_empty() {
-                    for (_rec_id, cg) in dg.cg.iter() {
+                    for (_rec_id, cg) in dg.cg.iter_mut() {
                         let is_nullable: bool = cg.invalid_bytes.is_some();
                         let mut columns =
                             Vec::<Arc<dyn Array>>::with_capacity(cg.channel_names.len());
-                        for (_rec_pos, cn) in cg.cn.iter() {
+                        for (_rec_pos, cn) in cg.cn.iter_mut() {
                             if !cn.data.is_empty() {
                                 let data = cn.data.to_arrow_array(None);
                                 let field = Field::new(
@@ -178,13 +180,19 @@ pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
                                 {
                                     metadata.insert("description".to_string(), desc);
                                 };
-                                if let Some(master_channel_name) =
-                                    mdfinfo4.get_channel_master(&cn.unique_name)
+                                if let Some((
+                                    master_channel_name,
+                                    _dg_pos,
+                                    (_cg_pos, _rec_idd),
+                                    (_cn_pos, _rec_pos),
+                                )) = mdfinfo4.channel_names_set.get(&cn.unique_name)
                                 {
-                                    metadata.insert(
-                                        "master_channel".to_string(),
-                                        master_channel_name.to_string(),
-                                    );
+                                    if let Some(master_channel_name) = master_channel_name {
+                                        metadata.insert(
+                                            "master_channel".to_string(),
+                                            master_channel_name.to_string(),
+                                        );
+                                    }
                                 }
                                 if cn.block.cn_type == 4 {
                                     metadata.insert(
@@ -216,8 +224,8 @@ pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
         MdfInfo::V3(mdfinfo3) => {
             mdf.arrow_data = Vec::<Chunk<Arc<dyn Array>>>::with_capacity(mdfinfo3.dg.len());
             mdf.arrow_schema.fields = Vec::<Field>::with_capacity(mdfinfo3.channel_names_set.len());
-            mdfinfo3.dg.iter_mut().for_each(|(_dg_block_position, dg)| {
-                dg.cg.iter_mut().for_each(|(_rec_id, cg)| {
+            for (_dg_block_position, dg) in mdfinfo3.dg.iter_mut() {
+                for (_rec_id, cg) in dg.cg.iter_mut() {
                     let mut columns = Vec::<Arc<dyn Array>>::with_capacity(cg.channel_names.len());
                     for (_rec_pos, cn) in cg.cn.iter_mut() {
                         if !cn.data.is_empty() {
@@ -226,14 +234,33 @@ pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
                                 Field::new(cn.unique_name.clone(), data.data_type().clone(), false);
                             columns.push(data);
                             let mut metadata = Metadata::new();
-                            if let Some(unit) = mdfinfo3._get_unit(&cn.block1.cn_cc_conversion) {
-                                metadata.insert("unit".to_string(), unit);
+                            if let Some(array) =
+                                mdfinfo3.sharable.cc.get(&cn.block1.cn_cc_conversion)
+                            {
+                                let txt = array.0.cc_unit;
+                                let mut u = String::new();
+                                ISO_8859_1
+                                    .decode_to(&txt, DecoderTrap::Replace, &mut u)
+                                    .expect("channel description is latin1 encoded");
+                                metadata.insert(
+                                    "unit".to_string(),
+                                    u.trim_end_matches(char::from(0)).to_string(),
+                                );
                             };
                             metadata.insert("description".to_string(), cn.description.clone());
-                            if let Some(master_channel_name) =
-                                mdfinfo3.get_channel_master(&cn.unique_name)
+                            if let Some((
+                                master_channel_name,
+                                _dg_pos,
+                                (_cg_pos, _rec_idd),
+                                _cn_pos,
+                            )) = mdfinfo3.channel_names_set.get(&cn.unique_name)
                             {
-                                metadata.insert("master_channel".to_string(), master_channel_name);
+                                if let Some(master_channel_name) = master_channel_name {
+                                    metadata.insert(
+                                        "master_channel".to_string(),
+                                        master_channel_name.to_string(),
+                                    );
+                                }
                             }
                             let field = field.with_metadata(metadata);
                             mdf.arrow_schema.fields.push(field);
@@ -252,8 +279,8 @@ pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
                     mdf.arrow_data.push(Chunk::new(columns));
                     chunk_index += 1;
                     array_index = 0;
-                });
-            });
+                }
+            }
         }
     }
 }

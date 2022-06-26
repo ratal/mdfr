@@ -32,11 +32,10 @@ use super::mdfwriter3::convert3to4;
 
 /// writes file on hard drive
 pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Mdf {
-    let info: MdfInfo4;
-    match &mdf.mdf_info {
-        MdfInfo::V3(mdfinfo3) => info = convert3to4(mdfinfo3, file_name),
-        MdfInfo::V4(mdfinfo4) => info = mdfinfo4.deref().clone(),
-    }
+    let info: MdfInfo4 = match &mdf.mdf_info {
+        MdfInfo::V3(mdfinfo3) => convert3to4(mdfinfo3, file_name),
+        MdfInfo::V4(mdfinfo4) => mdfinfo4.deref().clone(),
+    };
     let n_channels = mdf.mdf_info.get_channel_names_set().len();
     let mut new_info = MdfInfo4::new(file_name, n_channels);
     let mut pointer: i64 = 168; // after HD block
@@ -350,7 +349,7 @@ fn create_ld(m: Option<&Bitmap>, offset: &mut i64) -> Option<Ld4Block> {
 }
 
 /// Create a DV Block
-fn create_dv<'a>(data: Arc<dyn Array>, offset: &'a mut i64) -> (DataBlock, usize, Vec<u8>) {
+fn create_dv(data: Arc<dyn Array>, offset: &mut i64) -> (DataBlock, usize, Vec<u8>) {
     let mut dv_block = Blockheader4::default();
     dv_block.hdr_id = [35, 35, 68, 86]; // ##DV
     let data_bytes: Vec<u8> = to_bytes(&data);
@@ -371,7 +370,7 @@ enum DataBlock {
 }
 
 /// Create a DZ Block of DV type
-fn create_dz_dv<'a>(data: Arc<dyn Array>, offset: &'a mut i64) -> (DataBlock, usize, Vec<u8>) {
+fn create_dz_dv(data: Arc<dyn Array>, offset: &mut i64) -> (DataBlock, usize, Vec<u8>) {
     let mut dz_block = Dz4Block::default();
     let mut data_bytes = compress(&to_bytes(&data), Format::Zlib, CompressionLevel::Default)
         .expect("Could not compress invalid data");

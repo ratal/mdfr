@@ -1,6 +1,5 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use mdfr::mdfreader::mdfreader;
-use parquet2::compression::CompressionOptions;
 use std::process::Command;
 static BASE_PATH_MDF4: &str = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/";
 static BASE_PATH_MDF3: &str = "/home/ratal/workspace/mdfreader/mdfreader/tests/mdf3/";
@@ -21,13 +20,15 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("ExtremeInfo");
     let file = format!(
         "{}{}",
-        BASE_PATH_MDF3, &"RJ_N16-12-363_BM-15C-0024_228_2_20170116094355_CAN.dat"
+        // BASE_PATH_MDF3, &"RJ_N16-12-363_BM-15C-0024_228_2_20170116094355_CAN.dat"
+        BASE_PATH_MDF4,
+        &"Simple/error.mf4"
     );
     group.sample_size(10);
     group.bench_function("mdfr_with_mdf4_sorted", |b| {
         b.iter(|| {
-            let mdf = mdfreader(&file);
-            mdf.export_to_parquet(&PARQUET_FILE, CompressionOptions::Snappy);
+            let mut mdf = mdfreader(&file);
+            // mdf.export_to_parquet(&PARQUET_FILE, "snappy");
         })
     });
     group.finish();

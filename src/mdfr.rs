@@ -42,7 +42,7 @@ impl Mdfr {
                         py,
                         py.import("arrow2").expect("could not import arrow2"),
                         data.clone(),
-                        &field,
+                        field,
                     )
                     .expect("failed to convert data to py array");
                     if let Some(m) = data.validity() {
@@ -337,7 +337,7 @@ pyplot.show()
                             if !data.is_empty() {
                                 let displayer = get_display(data.as_ref(), "null");
                                 displayer(&mut output, 0).expect("cannot channel data");
-                                writeln!(output, " ");
+                                writeln!(output, " ").expect("cannot print simple space character");
                                 displayer(&mut output, data.len() - 1)
                                     .expect("cannot channel data");
                             }
@@ -378,7 +378,7 @@ pyplot.show()
                             if !data.is_empty() {
                                 let displayer = get_display(data.as_ref(), "null");
                                 displayer(&mut output, 0).expect("cannot channel data");
-                                writeln!(output, " ");
+                                writeln!(output, " ").expect("cannot print simple space character");
                                 displayer(&mut output, data.len() - 1)
                                     .expect("cannot channel data");
                             }
