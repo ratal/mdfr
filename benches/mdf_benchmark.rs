@@ -19,15 +19,12 @@ fn python_launch() {
 
 pub fn criterion_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("ExtremeInfo");
-    let file = format!(
-        "{}{}",
-        BASE_PATH_MDF3, &"RJ_N16-12-363_BM-15C-0024_228_2_20170116094355_CAN.dat"
-    );
+    let file = format!("{}{}", BASE_PATH_MDF4, &"Simple/error.mf4");
     group.sample_size(10);
     group.bench_function("mdfr_with_mdf4_sorted", |b| {
         b.iter(|| {
             let mdf = mdfreader(&file);
-            mdf.export_to_parquet(&PARQUET_FILE, CompressionOptions::Snappy);
+            //mdf.export_to_parquet(&PARQUET_FILE, CompressionOptions::Snappy);
         })
     });
     group.finish();
