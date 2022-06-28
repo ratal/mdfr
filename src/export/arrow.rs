@@ -3,8 +3,7 @@ use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::channel_data::ChannelData;
 use crate::mdfreader::{ChannelIndexes, Mdf};
 use arrow2::array::{
-    Array, BinaryArray, BooleanArray, FixedSizeBinaryArray, FixedSizeListArray, MutableArray,
-    MutableFixedSizeListArray, MutablePrimitiveArray, PrimitiveArray, Utf8Array,
+    Array, BinaryArray, FixedSizeBinaryArray, FixedSizeListArray, PrimitiveArray, Utf8Array,
 };
 use arrow2::bitmap::Bitmap;
 use arrow2::buffer::Buffer;
@@ -25,56 +24,85 @@ use std::sync::Arc;
 impl ChannelData {
     pub fn to_arrow_array(&mut self, bitmap: Option<Bitmap>) -> Arc<dyn Array> {
         match self {
-            ChannelData::Boolean(a) => {
-                let length = a.len();
-                let bitmap_bools = Bitmap::from_u8_slice(a, length);
-                Arc::new(BooleanArray::new(DataType::Boolean, bitmap_bools, bitmap))
-            }
-            ChannelData::Int8(a) => {
-                Arc::new(PrimitiveArray::from_vec(mem::take(a)).with_validity(bitmap))
-            }
-            ChannelData::UInt8(a) => {
-                Arc::new(PrimitiveArray::from_vec(mem::take(a)).with_validity(bitmap))
-            }
-            ChannelData::Int16(a) => {
-                Arc::new(PrimitiveArray::from_vec(mem::take(a)).with_validity(bitmap))
-            }
-            ChannelData::UInt16(a) => {
-                Arc::new(PrimitiveArray::from_vec(mem::take(a)).with_validity(bitmap))
-            }
-            ChannelData::Float16(a) => {
-                Arc::new(PrimitiveArray::from_vec(mem::take(a)).with_validity(bitmap))
-            }
-            ChannelData::Int24(a) => {
-                Arc::new(PrimitiveArray::from_vec(mem::take(a)).with_validity(bitmap))
-            }
-            ChannelData::UInt24(a) => {
-                Arc::new(PrimitiveArray::from_vec(mem::take(a)).with_validity(bitmap))
-            }
-            ChannelData::Int32(a) => {
-                Arc::new(PrimitiveArray::from_vec(mem::take(a)).with_validity(bitmap))
-            }
-            ChannelData::UInt32(a) => {
-                Arc::new(PrimitiveArray::from_vec(mem::take(a)).with_validity(bitmap))
-            }
-            ChannelData::Float32(a) => {
-                Arc::new(PrimitiveArray::from_vec(mem::take(a)).with_validity(bitmap))
-            }
-            ChannelData::Int48(a) => {
-                Arc::new(PrimitiveArray::from_vec(mem::take(a)).with_validity(bitmap))
-            }
-            ChannelData::UInt48(a) => {
-                Arc::new(PrimitiveArray::from_vec(mem::take(a)).with_validity(bitmap))
-            }
-            ChannelData::Int64(a) => {
-                Arc::new(PrimitiveArray::from_vec(mem::take(a)).with_validity(bitmap))
-            }
-            ChannelData::UInt64(a) => mem::take(a).into_arc(),
-            ChannelData::Float64(a) => mem::take(a).into_arc(),
+            ChannelData::Int8(a) => Arc::new(PrimitiveArray::new(
+                DataType::Int8,
+                mem::take(a).into(),
+                bitmap,
+            )),
+            ChannelData::UInt8(a) => Arc::new(PrimitiveArray::new(
+                DataType::UInt8,
+                mem::take(a).into(),
+                bitmap,
+            )),
+            ChannelData::Int16(a) => Arc::new(PrimitiveArray::new(
+                DataType::Int16,
+                mem::take(a).into(),
+                bitmap,
+            )),
+            ChannelData::UInt16(a) => Arc::new(PrimitiveArray::new(
+                DataType::UInt16,
+                mem::take(a).into(),
+                bitmap,
+            )),
+            ChannelData::Float16(a) => Arc::new(PrimitiveArray::new(
+                DataType::Float32,
+                mem::take(a).into(),
+                bitmap,
+            )),
+            ChannelData::Int24(a) => Arc::new(PrimitiveArray::new(
+                DataType::Int32,
+                mem::take(a).into(),
+                bitmap,
+            )),
+            ChannelData::UInt24(a) => Arc::new(PrimitiveArray::new(
+                DataType::UInt32,
+                mem::take(a).into(),
+                bitmap,
+            )),
+            ChannelData::Int32(a) => Arc::new(PrimitiveArray::new(
+                DataType::Int32,
+                mem::take(a).into(),
+                bitmap,
+            )),
+            ChannelData::UInt32(a) => Arc::new(PrimitiveArray::new(
+                DataType::UInt32,
+                mem::take(a).into(),
+                bitmap,
+            )),
+            ChannelData::Float32(a) => Arc::new(PrimitiveArray::new(
+                DataType::Float32,
+                mem::take(a).into(),
+                bitmap,
+            )),
+            ChannelData::Int48(a) => Arc::new(PrimitiveArray::new(
+                DataType::Int64,
+                mem::take(a).into(),
+                bitmap,
+            )),
+            ChannelData::UInt48(a) => Arc::new(PrimitiveArray::new(
+                DataType::UInt64,
+                mem::take(a).into(),
+                bitmap,
+            )),
+            ChannelData::Int64(a) => Arc::new(PrimitiveArray::new(
+                DataType::Int64,
+                mem::take(a).into(),
+                bitmap,
+            )),
+            ChannelData::UInt64(a) => Arc::new(PrimitiveArray::new(
+                DataType::UInt64,
+                mem::take(a).into(),
+                bitmap,
+            )),
+            ChannelData::Float64(a) => Arc::new(PrimitiveArray::new(
+                DataType::Float64,
+                mem::take(a).into(),
+                bitmap,
+            )),
             ChannelData::Complex16(a) => {
                 let is_nullable = bitmap.is_some();
                 let array = Arc::new(PrimitiveArray::from_vec(mem::take(&mut a.0)));
-                let field = Field::new("complex64", DataType::Float32, is_nullable);
+                let field = Field::new("complex32", DataType::Float32, is_nullable);
                 Arc::new(FixedSizeListArray::new(
                     DataType::FixedSizeList(Box::new(field), 2),
                     array as Arc<dyn Array>,
@@ -84,18 +112,23 @@ impl ChannelData {
             ChannelData::Complex32(a) => {
                 let is_nullable = bitmap.is_some();
                 let array = Arc::new(PrimitiveArray::from_vec(mem::take(&mut a.0)));
-                let field = Field::new("complex64", DataType::Float32, is_nullable);
+                let field = Field::new("complex32", DataType::Float32, is_nullable);
                 Arc::new(FixedSizeListArray::new(
                     DataType::FixedSizeList(Box::new(field), 2),
                     array as Arc<dyn Array>,
                     bitmap,
                 ))
             }
-            ChannelData::Complex64(a) => mem::replace(
-                a,
-                MutableFixedSizeListArray::new(MutablePrimitiveArray::<f64>::new(), 2),
-            )
-            .as_arc(),
+            ChannelData::Complex64(a) => {
+                let is_nullable = bitmap.is_some();
+                let array = Arc::new(PrimitiveArray::from_vec(mem::take(&mut a.0)));
+                let field = Field::new("complex64", DataType::Float64, is_nullable);
+                Arc::new(FixedSizeListArray::new(
+                    DataType::FixedSizeList(Box::new(field), 2),
+                    array as Arc<dyn Array>,
+                    bitmap,
+                ))
+            }
             ChannelData::StringSBC(a) => {
                 let array = Utf8Array::<i64>::from_slice(a.as_slice());
                 Arc::new(array.with_validity(bitmap))
@@ -160,12 +193,17 @@ pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
                     .collect();
                 if !channel_names_to_read_in_dg.is_empty() {
                     for (_rec_id, cg) in dg.cg.iter_mut() {
-                        let is_nullable: bool = cg.invalid_bytes.is_some();
+                        let is_nullable: bool = cg.block.cg_inval_bytes > 0;
                         let mut columns =
                             Vec::<Arc<dyn Array>>::with_capacity(cg.channel_names.len());
                         for (_rec_pos, cn) in cg.cn.iter_mut() {
                             if !cn.data.is_empty() {
-                                let data = cn.data.to_arrow_array(None);
+                                let data: Arc<dyn Array>;
+                                if let Some(bitmap) = mem::take(&mut cn.invalid_mask) {
+                                    data = cn.data.to_arrow_array(Some(Bitmap::from(bitmap.0)));
+                                } else {
+                                    data = cn.data.to_arrow_array(None);
+                                }
                                 let field = Field::new(
                                     cn.unique_name.clone(),
                                     data.data_type().clone(),

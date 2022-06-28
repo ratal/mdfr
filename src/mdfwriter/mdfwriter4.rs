@@ -461,7 +461,7 @@ fn create_blocks(
         cg_block.cg_cycle_count = cg.block.cg_cycle_count;
 
         cg_block.cg_data_bytes = cn.data.byte_count();
-        if cg.invalid_bytes.is_some() {
+        if cg.block.cg_inval_bytes > 0 {
             // One byte for invalid data as only one channel per CG
             cg_block.cg_inval_bytes = 1;
         }
@@ -568,7 +568,6 @@ fn create_blocks(
                 cn_block.cn_type,
                 cn_block.cn_data_type,
                 cg_block.cg_data_bytes,
-                cn_block.cn_bit_count,
                 data_ndim > 0,
             ),
             block: cn_block,
@@ -579,8 +578,6 @@ fn create_blocks(
             composition,
             invalid_mask: None,
             channel_data_valid: false,
-            invalid_byte_position: 0,
-            invalid_byte_mask: None,
         };
         let mut new_cg = Cg4 {
             block: cg_block,

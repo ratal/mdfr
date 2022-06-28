@@ -188,6 +188,8 @@ impl Mdf {
         // move the data from the MdfInfo3 structure into vect of chunks
         mdf_data_to_arrow(self, &channel_names);
 
+        // bit masking of the data
+
         // conversion of all channels to physical values
         // convert_all_channels(dg, &info.sharable);
     }

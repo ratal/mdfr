@@ -1,9 +1,10 @@
 //! Parsing of file metadata into MdfInfo4 struct
+use arrow2::bitmap::MutableBitmap;
 use binrw::{binrw, BinReaderExt, BinWriterExt};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::Local;
 use chrono::{naive::NaiveDateTime, DateTime, Utc};
-use ndarray::{Array1, Order};
+use ndarray::Order;
 use rand;
 use rayon::prelude::*;
 use roxmltree;
@@ -64,13 +65,13 @@ impl MdfInfo4 {
     pub fn get_channel_id(&self, channel_name: &str) -> Option<&ChannelId> {
         self.channel_names_set.get(channel_name)
     }
-    /// Returns the channel's data ndarray if present in memory, otherwise None.
-    pub fn get_channel_data_from_memory(
+    /// Returns the channel's vector data if present in memory, otherwise None.
+    pub fn get_channel_data(
         &self,
         channel_name: &str,
-    ) -> (Option<&ChannelData>, &Option<Vec<u8>>) {
+    ) -> (Option<&ChannelData>, Option<&MutableBitmap>) {
         let mut data: Option<&ChannelData> = None;
-        let mut mask: &Option<Vec<u8>> = &None;
+        let mut bitmap: Option<&MutableBitmap> = None;
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
             self.get_channel_id(channel_name)
         {
@@ -80,12 +81,16 @@ impl MdfInfo4 {
                         if !cn.data.is_empty() {
                             data = Some(&cn.data);
                         }
-                        mask = &cn.invalid_mask;
+                        if let Some((bm, _invalid_byte_offset, _invalid_bit_position)) =
+                            &cn.invalid_mask
+                        {
+                            bitmap = Some(bm);
+                        }
                     }
                 }
             }
         }
-        (data, mask)
+        (data, bitmap)
     }
     /// Returns the channel's unit string. If it does not exist, it is an empty string.
     pub fn get_channel_unit(&self, channel_name: &str) -> Option<String> {
@@ -307,8 +312,6 @@ impl MdfInfo4 {
             composition,
             invalid_mask: None,
             channel_data_valid: true,
-            invalid_byte_position: 0,
-            invalid_byte_mask: None,
         };
 
         // CG
@@ -1600,17 +1603,6 @@ fn parse_cg4_block(
 
     let record_length = cg.cg_data_bytes;
 
-    // Invalid bytes
-    let invalid_bytes: Option<Vec<u8>> = if cg.cg_inval_bytes > 0 {
-        // invalid bytes exist, adding byte array channel
-        Some(vec![
-            0u8;
-            (cg.cg_inval_bytes as u64 * cg.cg_cycle_count) as usize
-        ])
-    } else {
-        None
-    };
-
     let cg_struct = Cg4 {
         block: cg,
         cn,
@@ -1619,7 +1611,7 @@ fn parse_cg4_block(
         record_length,
         block_position: target,
         vlsd_cg: None,
-        invalid_bytes,
+        invalid_bytes: None,
     };
 
     (cg_struct, position, n_cn)
@@ -1668,27 +1660,37 @@ impl Cg4 {
             None => None,
         }
     }
-    pub fn process_channel_invalid_bits(&mut self, rec_pos: i32) -> Option<Array1<u8>> {
-        // get invalid bytes
-        if let Some(invalid_bytes) = &self.invalid_bytes {
-            if let Some(cn) = self.cn.get_mut(&rec_pos) {
-                let mut mask = Array1::<u8>::zeros((self.block.cg_cycle_count as usize,));
-                let byte_offest = (cn.block.cn_inval_bit_pos >> 3) as usize;
-                let mut bit = 1;
-                bit <<= (cn.block.cn_inval_bit_pos & 0x07) as usize;
-                for (index, record) in invalid_bytes
-                    .chunks(self.block.cg_inval_bytes as usize)
-                    .enumerate()
-                {
-                    let byte = record[byte_offest];
-                    mask[index] = byte & bit;
-                }
-                Some(mask)
-            } else {
-                None
+    /// Computes the validity mask for each channel in the group
+    /// clears out the common invalid bytes vector for the group at the end
+    pub fn process_all_channel_invalid_bits(
+        &mut self,
+        record_id_size: usize,
+        cg_data_bytes: usize,
+    ) {
+        if self.invalid_bytes.is_some() {
+            // get invalid bytes
+            let cycle_count = self.block.cg_cycle_count as usize;
+            let cg_inval_bytes = self.block.cg_inval_bytes as usize;
+            if let Some(invalid_bytes) = &self.invalid_bytes {
+                self.cn
+                    .par_iter_mut()
+                    .filter(|(_rec_pos, cn)| !cn.data.is_empty())
+                    .for_each(|(_rec_pos, cn)| {
+                        let mut mask = MutableBitmap::with_capacity(cycle_count);
+                        let invalid_byte_position = (cn.block.cn_inval_bit_pos >> 3) as usize
+                            + record_id_size
+                            + cg_data_bytes;
+                        let invalid_byte_mask = 1 << (cn.block.cn_inval_bit_pos & 0x07);
+                        let mut bit = 1;
+                        bit <<= (cn.block.cn_inval_bit_pos & 0x07) as usize;
+                        for (index, record) in invalid_bytes.chunks(cg_inval_bytes).enumerate() {
+                            let byte = record[invalid_byte_position];
+                            mask.set(index, (byte & bit) != 0);
+                        }
+                        cn.invalid_mask = Some((mask, invalid_byte_position, invalid_byte_mask));
+                    });
+                self.invalid_bytes = None; // Clears out invalid bytes channel
             }
-        } else {
-            None
         }
     }
 }
@@ -1848,12 +1850,8 @@ pub struct Cn4 {
     pub data: ChannelData,
     /// false = little endian
     pub endian: bool,
-    /// optional invalid mask array
-    pub invalid_mask: Option<Vec<u8>>,
-    /// invalid byte position in record
-    pub invalid_byte_position: usize,
-    /// invalid byte mask
-    pub invalid_byte_mask: Option<u8>,
+    /// optional invalid mask array, invalid byte position in record, invalid byte mask
+    pub invalid_mask: Option<(MutableBitmap, usize, u8)>,
     /// True if channel is valid = contains data converted
     pub channel_data_valid: bool,
 }
@@ -1863,15 +1861,13 @@ impl Clone for Cn4 {
         Self {
             block: self.block.clone(),
             unique_name: self.unique_name.clone(),
-            block_position: self.block_position.clone(),
+            block_position: self.block_position,
             pos_byte_beg: self.pos_byte_beg,
             n_bytes: self.n_bytes,
             composition: self.composition.clone(),
             data: ChannelData::default(),
             endian: self.endian,
             invalid_mask: self.invalid_mask.clone(),
-            invalid_byte_position: self.invalid_byte_position,
-            invalid_byte_mask: self.invalid_byte_mask,
             channel_data_valid: self.channel_data_valid,
         }
     }
@@ -1903,7 +1899,7 @@ pub fn parse_cn4(
     let mut cn: CnType = HashMap::new();
     let mut n_cn: usize = 0;
     let mut first_rec_pos: i32 = 0;
-    let (record_id_size, _cg_data_bytes, _cg_inval_bytess) = record_layout;
+    let (record_id_size, _cg_data_bytes, _cg_inval_bytes) = record_layout;
     if target != 0 {
         let (cn_struct, pos, n_cns, cns) = parse_cn4_block(
             rdr,
@@ -2027,8 +2023,6 @@ fn can_open_date(
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
-        invalid_byte_position: 0,
-        invalid_byte_mask: None,
     };
     let block = Cn4Block {
         cn_links: 8,
@@ -2047,8 +2041,6 @@ fn can_open_date(
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
-        invalid_byte_position: 0,
-        invalid_byte_mask: None,
     };
     let block = Cn4Block {
         cn_links: 8,
@@ -2067,8 +2059,6 @@ fn can_open_date(
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
-        invalid_byte_position: 0,
-        invalid_byte_mask: None,
     };
     let block = Cn4Block {
         cn_links: 8,
@@ -2087,8 +2077,6 @@ fn can_open_date(
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
-        invalid_byte_position: 0,
-        invalid_byte_mask: None,
     };
     let block = Cn4Block {
         cn_links: 8,
@@ -2107,8 +2095,6 @@ fn can_open_date(
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
-        invalid_byte_position: 0,
-        invalid_byte_mask: None,
     };
     let block = Cn4Block {
         cn_links: 8,
@@ -2127,8 +2113,6 @@ fn can_open_date(
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
-        invalid_byte_position: 0,
-        invalid_byte_mask: None,
     };
     (date_ms, min, hour, day, month, year)
 }
@@ -2152,8 +2136,6 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
-        invalid_byte_position: 0,
-        invalid_byte_mask: None,
     };
     let block = Cn4Block {
         cn_links: 8,
@@ -2172,8 +2154,6 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
-        invalid_byte_position: 0,
-        invalid_byte_mask: None,
     };
     (ms, days)
 }
@@ -2227,17 +2207,19 @@ fn parse_cn4_block(
 
     let pos_byte_beg = block.cn_byte_offset + record_id_size as u32;
     let n_bytes = calc_n_bytes_not_aligned(block.cn_bit_count + (block.cn_bit_offset as u32));
-    let invalid_byte_position: usize;
-    let invalid_byte_mask: Option<u8>;
-    if cg_inval_bytes != 0 {
-        invalid_byte_position = (block.cn_inval_bit_pos >> 3) as usize
+    let invalid_mask: Option<(MutableBitmap, usize, u8)> = if cg_inval_bytes != 0 {
+        let invalid_byte_position = (block.cn_inval_bit_pos >> 3) as usize
             + record_id_size as usize
             + cg_data_bytes as usize;
-        invalid_byte_mask = Some(1 << (block.cn_inval_bit_pos & 0x07));
+        let invalid_byte_mask = 1 << (block.cn_inval_bit_pos & 0x07);
+        Some((
+            MutableBitmap::with_capacity(cg_cycle_count as usize),
+            invalid_byte_position,
+            invalid_byte_mask,
+        ))
     } else {
-        invalid_byte_position = 0;
-        invalid_byte_mask = None;
-    }
+        None
+    };
 
     // Reads TX name
     position = read_meta_data(rdr, sharable, block.cn_tx_name, position, BlockType::CN);
@@ -2314,7 +2296,6 @@ fn parse_cn4_block(
     }
     let data_type = block.cn_data_type;
     let cn_type = block.cn_type;
-    let cn_bit_count = block.cn_bit_count;
 
     let cn_struct = Cn4 {
         block,
@@ -2323,12 +2304,10 @@ fn parse_cn4_block(
         pos_byte_beg,
         n_bytes,
         composition: compo,
-        data: data_type_init(cn_type, data_type, n_bytes, cn_bit_count, is_array),
+        data: data_type_init(cn_type, data_type, n_bytes, is_array),
         endian,
-        invalid_mask: None,
+        invalid_mask,
         channel_data_valid: false,
-        invalid_byte_position,
-        invalid_byte_mask,
     };
 
     (cn_struct, position, n_cn, cns)

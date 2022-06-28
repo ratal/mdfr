@@ -1,6 +1,7 @@
 //! This module is reading the mdf file blocks (metadata)
 //! mdfinfo module
 
+use arrow2::bitmap::MutableBitmap;
 use binrw::{binrw, BinReaderExt};
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -236,6 +237,20 @@ impl MdfInfo {
                 mdfinfo4.clear_channel_data_from_memory(channel_names);
             }
         }
+    }
+    /// returns channel's data ndarray.
+    pub fn get_channel_data<'a>(
+        &'a mut self,
+        channel_name: &'a str,
+    ) -> (Option<&ChannelData>, Option<&MutableBitmap>) {
+        let (data, mask) = match self {
+            MdfInfo::V3(mdfinfo3) => {
+                let dt = mdfinfo3.get_channel_data(channel_name);
+                (dt, None)
+            }
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_data(channel_name),
+        };
+        (data, mask)
     }
     /// Adds a new channel in memory (no file modification)
     pub fn add_channel(

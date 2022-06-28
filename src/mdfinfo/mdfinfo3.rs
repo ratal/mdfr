@@ -184,6 +184,28 @@ impl MdfInfo3 {
             }
         }
     }
+    /// True if channel contains data
+    pub fn get_channel_data_validity(&self, channel_name: &str) -> bool {
+        let mut state: bool = false;
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
+            self.get_channel_id(channel_name)
+        {
+            if let Some(dg) = self.dg.get(dg_pos) {
+                if let Some(cg) = dg.cg.get(rec_id) {
+                    if let Some(cn) = cg.cn.get(cn_pos) {
+                        state = cn.channel_data_valid
+                    }
+                }
+            }
+        }
+        state
+    }
+    /// returns channel's data ndarray.
+    pub fn get_channel_data<'a>(&'a mut self, channel_name: &'a str) -> Option<&'a ChannelData> {
+        let mut channel_names: HashSet<String> = HashSet::new();
+        channel_names.insert(channel_name.to_string());
+        self.get_channel_data_from_memory(channel_name)
+    }
     /// Renames a channel's name in memory
     pub fn rename_channel(&mut self, channel_name: &str, new_name: &str) {
         if let Some((master, dg_pos, (cg_pos, rec_id), cn_pos)) =
@@ -1025,7 +1047,6 @@ fn parse_cn3_block(
         }
     }
     let data_type = convert_data_type_3to4(block2.cn_data_type);
-    let cn_bit_count = block2.cn_bit_count as u32;
 
     let cn_struct = Cn3 {
         block1,
@@ -1035,7 +1056,7 @@ fn parse_cn3_block(
         unique_name,
         pos_byte_beg,
         n_bytes,
-        data: data_type_init(0, data_type, n_bytes as u32, cn_bit_count, false),
+        data: data_type_init(0, data_type, n_bytes as u32, false),
         endian,
         channel_data_valid: false,
     };

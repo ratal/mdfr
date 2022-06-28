@@ -1,7 +1,4 @@
 //! this module holds the channel data enum and related implementations
-
-use arrow2::array::{MutableArray, MutableFixedSizeListArray, MutablePrimitiveArray};
-use arrow2::datatypes::DataType;
 use arrow2::types::NativeType;
 use ndarray::{Array1, ArrayD, IxDyn};
 use num::Complex;
@@ -17,7 +14,6 @@ use std::iter::IntoIterator;
 /// Dynamic dimension arrays ArrayD are also existing to cover CABlock arrays data.
 #[derive(Debug)]
 pub enum ChannelData {
-    Boolean(Vec<u8>),
     Int8(Vec<i8>),
     UInt8(Vec<u8>),
     Int16(Vec<i16>),
@@ -31,11 +27,11 @@ pub enum ChannelData {
     Int48(Vec<i64>),
     UInt48(Vec<u64>),
     Int64(Vec<i64>),
-    UInt64(MutablePrimitiveArray<u64>),
-    Float64(MutablePrimitiveArray<f64>),
+    UInt64(Vec<u64>),
+    Float64(Vec<f64>),
     Complex16(ArrowComplex<f32>),
     Complex32(ArrowComplex<f32>),
-    Complex64(MutableFixedSizeListArray<MutablePrimitiveArray<f64>>),
+    Complex64(ArrowComplex<f64>),
     StringSBC(Vec<String>),
     StringUTF8(Vec<String>),
     StringUTF16(Vec<String>),
@@ -64,7 +60,7 @@ pub enum ChannelData {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArrowComplex<T>(pub Vec<T>);
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArrowComplexIter<T> {
     values: ArrowComplex<T>,
     index: usize,
@@ -182,12 +178,9 @@ impl ChannelData {
     ) -> ChannelData {
         if cn_type == 3 || cn_type == 6 {
             // virtual channel
-            ChannelData::UInt64(MutablePrimitiveArray::<u64>::with_capacity(
-                cycle_count as usize,
-            ))
+            ChannelData::UInt64(Vec::<u64>::with_capacity(cycle_count as usize))
         } else {
             match self {
-                ChannelData::Boolean(_) => ChannelData::Boolean(vec![0u8; cycle_count as usize]),
                 ChannelData::Int8(_) => ChannelData::Int8(vec![0i8; cycle_count as usize]),
                 ChannelData::UInt8(_) => ChannelData::UInt8(vec![0u8; cycle_count as usize]),
                 ChannelData::Int16(_) => ChannelData::Int16(vec![0i16; cycle_count as usize]),
@@ -201,12 +194,12 @@ impl ChannelData {
                 ChannelData::Int48(_) => ChannelData::Int48(vec![0i64; cycle_count as usize]),
                 ChannelData::UInt48(_) => ChannelData::UInt48(vec![0u64; cycle_count as usize]),
                 ChannelData::Int64(_) => ChannelData::Int64(vec![0i64; cycle_count as usize]),
-                ChannelData::UInt64(_) => ChannelData::UInt64(
-                    MutablePrimitiveArray::<u64>::with_capacity(cycle_count as usize),
-                ),
-                ChannelData::Float64(_) => ChannelData::Float64(
-                    MutablePrimitiveArray::<f64>::with_capacity(cycle_count as usize),
-                ),
+                ChannelData::UInt64(_) => {
+                    ChannelData::UInt64(Vec::<u64>::with_capacity(cycle_count as usize))
+                }
+                ChannelData::Float64(_) => {
+                    ChannelData::Float64(Vec::<f64>::with_capacity(cycle_count as usize))
+                }
                 ChannelData::Complex16(_) => {
                     ChannelData::Complex16(ArrowComplex(vec![0f32; cycle_count as usize * 2]))
                 }
@@ -214,10 +207,7 @@ impl ChannelData {
                     ChannelData::Complex32(ArrowComplex(vec![0f32; cycle_count as usize * 2]))
                 }
                 ChannelData::Complex64(_) => {
-                    ChannelData::Complex64(MutableFixedSizeListArray::new(
-                        MutablePrimitiveArray::<f64>::with_capacity(cycle_count as usize * 2),
-                        2,
-                    ))
+                    ChannelData::Complex64(ArrowComplex(vec![0f64; cycle_count as usize * 2]))
                 }
                 ChannelData::StringSBC(_) => {
                     let mut target_vect: Vec<String> = vec![String::new(); cycle_count as usize];
@@ -344,13 +334,6 @@ impl ChannelData {
     pub fn first_last(&self) -> String {
         let output: String;
         match self {
-            ChannelData::Boolean(array) => {
-                if array.len() > 1 {
-                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
-                } else {
-                    output = String::new();
-                }
-            }
             ChannelData::Int8(array) => {
                 if array.len() > 1 {
                     output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
@@ -443,10 +426,18 @@ impl ChannelData {
                 }
             }
             ChannelData::UInt64(array) => {
-                todo!()
+                if array.len() > 1 {
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
             }
             ChannelData::Float64(array) => {
-                todo!()
+                if array.len() > 1 {
+                    output = format!("[{}, .., {}]", array[0], array[array.len() - 1]);
+                } else {
+                    output = String::new();
+                }
             }
             ChannelData::Complex16(array) => {
                 if array.len() > 1 {
@@ -475,7 +466,17 @@ impl ChannelData {
                 }
             }
             ChannelData::Complex64(array) => {
-                todo!()
+                if array.len() > 1 {
+                    output = format!(
+                        "[{} + i{}, .., {} + i{}]",
+                        array.0[0],
+                        array.0[0],
+                        array.0[array.len() - 2],
+                        array.0[array.len() - 1]
+                    );
+                } else {
+                    output = String::new();
+                }
             }
             ChannelData::StringSBC(array) => {
                 if array.len() > 1 {
@@ -644,7 +645,6 @@ impl ChannelData {
     /// checks is if ndarray is empty
     pub fn is_empty(&self) -> bool {
         match self {
-            ChannelData::Boolean(data) => data.is_empty(),
             ChannelData::Int8(data) => data.is_empty(),
             ChannelData::UInt8(data) => data.is_empty(),
             ChannelData::Int16(data) => data.is_empty(),
@@ -691,7 +691,6 @@ impl ChannelData {
     /// checks is if ndarray is empty
     pub fn len(&self) -> usize {
         match self {
-            ChannelData::Boolean(data) => data.len(),
             ChannelData::Int8(data) => data.len(),
             ChannelData::UInt8(data) => data.len(),
             ChannelData::Int16(data) => data.len(),
@@ -738,7 +737,6 @@ impl ChannelData {
     /// returns the max bit count of each values in array
     pub fn bit_count(&self) -> u32 {
         match self {
-            ChannelData::Boolean(_) => 8,
             ChannelData::Int8(_) => 8,
             ChannelData::UInt8(_) => 8,
             ChannelData::Int16(_) => 16,
@@ -793,7 +791,6 @@ impl ChannelData {
     /// returns the max byte count of each values in array
     pub fn byte_count(&self) -> u32 {
         match self {
-            ChannelData::Boolean(_) => 1,
             ChannelData::Int8(_) => 1,
             ChannelData::UInt8(_) => 1,
             ChannelData::Int16(_) => 2,
@@ -850,7 +847,6 @@ impl ChannelData {
         if endian {
             // BE
             match self {
-                ChannelData::Boolean(_) => 1,
                 ChannelData::Int8(_) => 3,
                 ChannelData::UInt8(_) => 1,
                 ChannelData::Int16(_) => 3,
@@ -896,7 +892,6 @@ impl ChannelData {
         } else {
             // LE
             match self {
-                ChannelData::Boolean(_) => 0,
                 ChannelData::Int8(_) => 2,
                 ChannelData::UInt8(_) => 0,
                 ChannelData::Int16(_) => 2,
@@ -944,13 +939,11 @@ impl ChannelData {
     /// Compares f32 floating point values
     pub fn compare_f32(&self, other: &ChannelData, epsilon: f32) -> bool {
         match self {
-            ChannelData::Boolean(_) => false,
             ChannelData::Int8(_) => false,
             ChannelData::UInt8(_) => false,
             ChannelData::Int16(_) => false,
             ChannelData::UInt16(_) => false,
             ChannelData::Float16(a) => match other {
-                ChannelData::Boolean(_) => false,
                 ChannelData::Int8(_) => false,
                 ChannelData::UInt8(_) => false,
                 ChannelData::Int16(_) => false,
@@ -1001,7 +994,6 @@ impl ChannelData {
             ChannelData::Int32(_) => false,
             ChannelData::UInt32(_) => false,
             ChannelData::Float32(a) => match other {
-                ChannelData::Boolean(_) => false,
                 ChannelData::Int8(_) => false,
                 ChannelData::UInt8(_) => false,
                 ChannelData::Int16(_) => false,
@@ -1053,7 +1045,6 @@ impl ChannelData {
             ChannelData::UInt64(_) => false,
             ChannelData::Float64(_) => false,
             ChannelData::Complex16(a) => match other {
-                ChannelData::Boolean(_) => false,
                 ChannelData::Int8(_) => false,
                 ChannelData::UInt8(_) => false,
                 ChannelData::Int16(_) => false,
@@ -1105,7 +1096,6 @@ impl ChannelData {
                 ChannelData::ArrayDComplex64(_) => false,
             },
             ChannelData::Complex32(a) => match other {
-                ChannelData::Boolean(_) => false,
                 ChannelData::Int8(_) => false,
                 ChannelData::UInt8(_) => false,
                 ChannelData::Int16(_) => false,
@@ -1185,7 +1175,6 @@ impl ChannelData {
     /// Compares floating point f64 values
     pub fn compare_f64(&self, other: &ChannelData, epsilon: f64) -> bool {
         match self {
-            ChannelData::Boolean(_) => false,
             ChannelData::Int8(_) => false,
             ChannelData::UInt8(_) => false,
             ChannelData::Int16(_) => false,
@@ -1201,7 +1190,6 @@ impl ChannelData {
             ChannelData::Int64(_) => false,
             ChannelData::UInt64(_) => false,
             ChannelData::Float64(a) => match other {
-                ChannelData::Boolean(_) => false,
                 ChannelData::Int8(_) => false,
                 ChannelData::UInt8(_) => false,
                 ChannelData::Int16(_) => false,
@@ -1218,9 +1206,7 @@ impl ChannelData {
                 ChannelData::UInt64(_) => false,
                 ChannelData::Float64(b) => {
                     a.len() == b.len()
-                        && a.iter()
-                            .zip(b.iter())
-                            .all(|(a, b)| (a.unwrap_or(&0.0) - b.unwrap_or(&0.0)).abs() < epsilon)
+                        && a.iter().zip(b.iter()).all(|(a, b)| (a - b).abs() < epsilon)
                 }
                 ChannelData::Complex16(_) => false,
                 ChannelData::Complex32(_) => false,
@@ -1252,7 +1238,6 @@ impl ChannelData {
             ChannelData::Complex16(_) => false,
             ChannelData::Complex32(_) => false,
             ChannelData::Complex64(a) => match other {
-                ChannelData::Boolean(_) => false,
                 ChannelData::Int8(_) => false,
                 ChannelData::UInt8(_) => false,
                 ChannelData::Int16(_) => false,
@@ -1271,7 +1256,13 @@ impl ChannelData {
                 ChannelData::Complex16(_) => false,
                 ChannelData::Complex32(_) => false,
                 ChannelData::Complex64(b) => {
-                    todo!()
+                    a.len() == b.len()
+                        && a.clone()
+                            .into_iter()
+                            .zip(b.clone().into_iter())
+                            .all(|(a, b)| {
+                                ((a.re - b.re).abs() < epsilon) && ((a.im - b.im).abs() < epsilon)
+                            })
                 }
                 ChannelData::StringSBC(_) => false,
                 ChannelData::StringUTF8(_) => false,
@@ -1325,7 +1316,6 @@ impl ChannelData {
     /// returns raw bytes vectors from ndarray
     pub fn to_bytes(&self) -> Vec<u8> {
         match self {
-            ChannelData::Boolean(a) => a.to_vec(),
             ChannelData::Int8(a) => a.iter().flat_map(|x| x.to_ne_bytes()).collect(),
             ChannelData::UInt8(a) => a.to_vec(),
             ChannelData::Int16(a) => a.iter().flat_map(|x| x.to_ne_bytes()).collect(),
@@ -1339,11 +1329,11 @@ impl ChannelData {
             ChannelData::Int48(a) => a.iter().flat_map(|x| x.to_ne_bytes()).collect(),
             ChannelData::UInt48(a) => a.iter().flat_map(|x| x.to_ne_bytes()).collect(),
             ChannelData::Int64(a) => a.iter().flat_map(|x| x.to_ne_bytes()).collect(),
-            ChannelData::UInt64(a) => a.values().iter().flat_map(|x| x.to_ne_bytes()).collect(),
-            ChannelData::Float64(a) => a.values().iter().flat_map(|x| x.to_ne_bytes()).collect(),
+            ChannelData::UInt64(a) => a.iter().flat_map(|x| x.to_ne_bytes()).collect(),
+            ChannelData::Float64(a) => a.iter().flat_map(|x| x.to_ne_bytes()).collect(),
             ChannelData::Complex16(a) => a.0.iter().flat_map(|x| x.to_ne_bytes()).collect(),
             ChannelData::Complex32(a) => a.0.iter().flat_map(|x| x.to_ne_bytes()).collect(),
-            ChannelData::Complex64(a) => todo!(),
+            ChannelData::Complex64(a) => a.0.iter().flat_map(|x| x.to_ne_bytes()).collect(),
             ChannelData::StringSBC(a) => {
                 let nbytes = self.byte_count() as usize;
                 a.iter()
@@ -1422,7 +1412,6 @@ impl ChannelData {
     /// returns the number of dimensions of the channel
     pub fn ndim(&self) -> usize {
         match self {
-            ChannelData::Boolean(_) => 1,
             ChannelData::Int8(_) => 1,
             ChannelData::UInt8(_) => 1,
             ChannelData::Int16(_) => 1,
@@ -1469,7 +1458,6 @@ impl ChannelData {
     /// returns the shape of channel
     pub fn shape(&self) -> Vec<usize> {
         match self {
-            ChannelData::Boolean(a) => vec![a.len(); 1],
             ChannelData::Int8(a) => {
                 vec![a.len(); 1]
             }
@@ -1518,7 +1506,6 @@ impl ChannelData {
     /// returns optional tuple of minimum and maximum values contained in the channel
     pub fn min_max(&self) -> (Option<f64>, Option<f64>) {
         match self {
-            ChannelData::Boolean(_) => (None, None),
             ChannelData::Int8(a) => {
                 let min = a.iter().min().map(|v| *v as f64);
                 let max = a.iter().max().map(|v| *v as f64);
@@ -1597,17 +1584,15 @@ impl ChannelData {
                 (min, max)
             }
             ChannelData::UInt64(a) => {
-                let min = a.values().iter().min().map(|v| *v as f64);
-                let max = a.values().iter().max().map(|v| *v as f64);
+                let min = a.iter().min().map(|v| *v as f64);
+                let max = a.iter().max().map(|v| *v as f64);
                 (min, max)
             }
             ChannelData::Float64(a) => {
                 let max = a
-                    .values()
                     .iter()
                     .reduce(|accum, item| if accum >= item { accum } else { item });
                 let min = a
-                    .values()
                     .iter()
                     .reduce(|accum, item| if accum <= item { accum } else { item });
                 (min.cloned(), max.cloned())
@@ -1724,7 +1709,6 @@ impl ChannelData {
 impl IntoPy<PyObject> for ChannelData {
     fn into_py(self, py: Python) -> PyObject {
         match self {
-            ChannelData::Boolean(array) => array.into_pyarray(py).into_py(py),
             ChannelData::Int8(array) => array.into_pyarray(py).into_py(py),
             ChannelData::UInt8(array) => array.into_pyarray(py).into_py(py),
             ChannelData::Int16(array) => array.into_pyarray(py).into_py(py),
@@ -1738,11 +1722,11 @@ impl IntoPy<PyObject> for ChannelData {
             ChannelData::Int48(array) => array.into_pyarray(py).into_py(py),
             ChannelData::UInt48(array) => array.into_pyarray(py).into_py(py),
             ChannelData::Int64(array) => array.into_pyarray(py).into_py(py),
-            ChannelData::UInt64(array) => array.values().clone().into_pyarray(py).into_py(py),
-            ChannelData::Float64(array) => array.values().clone().into_pyarray(py).into_py(py),
+            ChannelData::UInt64(array) => array.into_pyarray(py).into_py(py),
+            ChannelData::Float64(array) => array.into_pyarray(py).into_py(py),
             ChannelData::Complex16(array) => array.to_ndarray().into_pyarray(py).into_py(py),
             ChannelData::Complex32(array) => array.to_ndarray().into_pyarray(py).into_py(py),
-            ChannelData::Complex64(array) => todo!(),
+            ChannelData::Complex64(array) => array.to_ndarray().into_pyarray(py).into_py(py),
             ChannelData::StringSBC(array) => array.into_py(py),
             ChannelData::StringUTF8(array) => array.into_py(py),
             ChannelData::StringUTF16(array) => array.into_py(py),
@@ -1777,7 +1761,6 @@ impl IntoPy<PyObject> for ChannelData {
 impl ToPyObject for ChannelData {
     fn to_object(&self, py: Python) -> PyObject {
         match self {
-            ChannelData::Boolean(array) => array.to_pyarray(py).into_py(py),
             ChannelData::Int8(array) => array.to_pyarray(py).into_py(py),
             ChannelData::UInt8(array) => array.to_pyarray(py).into_py(py),
             ChannelData::Int16(array) => array.to_pyarray(py).into_py(py),
@@ -1791,11 +1774,11 @@ impl ToPyObject for ChannelData {
             ChannelData::Int48(array) => array.to_pyarray(py).into_py(py),
             ChannelData::UInt48(array) => array.to_pyarray(py).into_py(py),
             ChannelData::Int64(array) => array.to_pyarray(py).into_py(py),
-            ChannelData::UInt64(array) => array.values().to_pyarray(py).into_py(py),
-            ChannelData::Float64(array) => array.values().to_pyarray(py).into_py(py),
+            ChannelData::UInt64(array) => array.to_pyarray(py).into_py(py),
+            ChannelData::Float64(array) => array.to_pyarray(py).into_py(py),
             ChannelData::Complex16(array) => array.to_ndarray().to_pyarray(py).into_py(py),
             ChannelData::Complex32(array) => array.to_ndarray().to_pyarray(py).into_py(py),
-            ChannelData::Complex64(array) => todo!(),
+            ChannelData::Complex64(array) => array.to_ndarray().into_pyarray(py).into_py(py),
             ChannelData::StringSBC(array) => array.to_object(py),
             ChannelData::StringUTF8(array) => array.to_object(py),
             ChannelData::StringUTF16(array) => array.to_object(py),
@@ -1858,24 +1841,18 @@ impl FromPyObject<'_> for ChannelData {
             NumpyArray::Int64(array) => Ok(ChannelData::Int64(
                 array.readonly().as_array().to_owned().to_vec(),
             )),
-            NumpyArray::UInt64(array) => Ok(ChannelData::UInt64(MutablePrimitiveArray::from_data(
-                DataType::UInt64,
+            NumpyArray::UInt64(array) => Ok(ChannelData::UInt64(
                 array.readonly().as_array().to_owned().to_vec(),
-                None,
-            ))),
-            NumpyArray::Float64(array) => {
-                Ok(ChannelData::Float64(MutablePrimitiveArray::from_data(
-                    DataType::Float64,
-                    array.readonly().as_array().to_owned().to_vec(),
-                    None,
-                )))
-            }
+            )),
+            NumpyArray::Float64(array) => Ok(ChannelData::Float64(
+                array.readonly().as_array().to_owned().to_vec(),
+            )),
             NumpyArray::Complex32(array) => Ok(ChannelData::Complex32(
                 ArrowComplex::<f32>::from_ndarray(array.readonly().as_array().to_owned()),
             )),
-            NumpyArray::Complex64(array) => {
-                todo!()
-            }
+            NumpyArray::Complex64(array) => Ok(ChannelData::Complex64(
+                ArrowComplex::<f64>::from_ndarray(array.readonly().as_array().to_owned()),
+            )),
             NumpyArray::ArrayDInt8(array) => Ok(ChannelData::ArrayDInt8(
                 array.readonly().as_array().to_owned(),
             )),
@@ -1953,13 +1930,7 @@ impl Default for ChannelData {
 }
 
 /// Initialises a channel array type depending of cn_type, cn_data_type and if array
-pub fn data_type_init(
-    cn_type: u8,
-    cn_data_type: u8,
-    n_bytes: u32,
-    bit_count: u32,
-    is_array: bool,
-) -> ChannelData {
+pub fn data_type_init(cn_type: u8, cn_data_type: u8, n_bytes: u32, is_array: bool) -> ChannelData {
     if !is_array {
         // Not an array
         if cn_type == 0 || cn_type == 2 || cn_type == 4 || cn_type == 5 {
@@ -1967,9 +1938,7 @@ pub fn data_type_init(
             match cn_data_type {
                 0 | 1 => {
                     // unsigned int
-                    if bit_count == 1 {
-                        ChannelData::Boolean(Vec::<u8>::new())
-                    } else if n_bytes <= 1 {
+                    if n_bytes <= 1 {
                         ChannelData::UInt8(Vec::<u8>::new())
                     } else if n_bytes == 2 {
                         ChannelData::UInt16(Vec::<u16>::new())
@@ -1980,7 +1949,7 @@ pub fn data_type_init(
                     } else if n_bytes <= 6 {
                         ChannelData::UInt48(Vec::<u64>::new())
                     } else {
-                        ChannelData::UInt64(MutablePrimitiveArray::<u64>::new())
+                        ChannelData::UInt64(Vec::<u64>::new())
                     }
                 }
                 2 | 3 => {
@@ -2006,7 +1975,7 @@ pub fn data_type_init(
                     } else if n_bytes <= 4 {
                         ChannelData::Float32(Vec::<f32>::new())
                     } else {
-                        ChannelData::Float64(MutablePrimitiveArray::<f64>::new())
+                        ChannelData::Float64(Vec::<f64>::new())
                     }
                 }
                 15 | 16 => {
@@ -2016,10 +1985,7 @@ pub fn data_type_init(
                     } else if n_bytes <= 4 {
                         ChannelData::Complex32(ArrowComplex::<f32>::zeros(0))
                     } else {
-                        ChannelData::Complex64(MutableFixedSizeListArray::new(
-                            MutablePrimitiveArray::<f64>::new(),
-                            2,
-                        ))
+                        ChannelData::Complex64(ArrowComplex::<f64>::zeros(0))
                     }
                 }
                 6 => {
@@ -2044,7 +2010,7 @@ pub fn data_type_init(
             ChannelData::VariableSizeByteArray(vec![vec![0u8; 0]; 0])
         } else {
             // virtual channels, cn_bit_count = 0 -> n_bytes = 0, must be LE unsigned int
-            ChannelData::UInt64(MutablePrimitiveArray::<u64>::new())
+            ChannelData::UInt64(Vec::<u64>::new())
         }
     } else if cn_type != 3 && cn_type != 6 {
         // Array not virtual
@@ -2115,9 +2081,6 @@ pub fn data_type_init(
 impl fmt::Display for ChannelData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ChannelData::Boolean(array) => {
-                writeln!(f, "{:?}", array)
-            }
             ChannelData::Int8(array) => {
                 writeln!(f, "{:?}", array)
             }

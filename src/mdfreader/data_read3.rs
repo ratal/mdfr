@@ -29,13 +29,6 @@ pub fn read_channels_from_bytes(
             let pos_byte_beg = cn.pos_byte_beg as usize;
             let n_bytes = cn.n_bytes as usize;
             match &mut cn.data {
-                ChannelData::Boolean(data) => {
-                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                        value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u8>()];
-                        data[i + previous_index] =
-                            u8::from_le_bytes(value.try_into().expect("Could not read u8"));
-                    }
-                }
                 ChannelData::Int8(data) => {
                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
                         value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i8>()];
@@ -275,52 +268,52 @@ pub fn read_channels_from_bytes(
                 ChannelData::UInt64(data) => {
                     if cn.endian {
                         if n_bytes == 8 {
-                            for record in data_chunk.chunks(record_length) {
+                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                data.push(Some(u64::from_be_bytes(
+                                data[i + previous_index] = u64::from_be_bytes(
                                     value.try_into().expect("Could not read be u64"),
-                                )));
+                                );
                             }
                         } else {
                             // n_bytes = 7
                             let mut buf = [0u8; std::mem::size_of::<u64>()];
-                            for record in data_chunk.chunks(record_length) {
+                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 buf[0..7].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + 7]);
-                                data.push(Some(u64::from_be_bytes(buf)));
+                                data[i + previous_index] = u64::from_be_bytes(buf);
                             }
                         }
                     } else if n_bytes == 8 {
-                        for record in data_chunk.chunks(record_length) {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                            data.push(Some(u64::from_le_bytes(
+                            data[i + previous_index] = u64::from_le_bytes(
                                 value.try_into().expect("Could not read le u64"),
-                            )));
+                            );
                         }
                     } else {
                         // n_bytes = 7, little endian
                         let mut buf = [0u8; std::mem::size_of::<u64>()];
-                        for record in data_chunk.chunks(record_length) {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             buf[0..7].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + 7]);
-                            data.push(Some(u64::from_le_bytes(buf)));
+                            data[i + previous_index] = u64::from_le_bytes(buf);
                         }
                     }
                 }
                 ChannelData::Float64(data) => {
                     if cn.endian {
-                        for record in data_chunk.chunks(record_length) {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             value =
                                 &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
-                            data.push(Some(f64::from_be_bytes(
+                            data[i + previous_index] = f64::from_be_bytes(
                                 value.try_into().expect("Could not read be f64"),
-                            )));
+                            );
                         }
                     } else {
-                        for record in data_chunk.chunks(record_length) {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             value =
                                 &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
-                            data.push(Some(f64::from_le_bytes(
+                            data[i + previous_index] = f64::from_le_bytes(
                                 value.try_into().expect("Could not read le f64"),
-                            )));
+                            );
                         }
                     }
                 }

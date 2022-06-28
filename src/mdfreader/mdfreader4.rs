@@ -7,6 +7,7 @@ use crate::mdfinfo::mdfinfo4::{
 use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::channel_data::ChannelData;
 use crate::mdfreader::data_read4::read_channels_from_bytes;
+use crate::mdfreader::data_read4::read_one_channel_array;
 use binrw::BinReaderExt;
 use encoding_rs::{Decoder, UTF_16BE, UTF_16LE, WINDOWS_1252};
 use rayon::prelude::*;
@@ -76,6 +77,13 @@ pub fn mdfreader4<'a>(
                         &channel_names_to_read_in_dg,
                         &mut decoder,
                     );
+                    // channel_group invalid bits calculation
+                    for channel_group in dg.cg.values_mut() {
+                        channel_group.process_all_channel_invalid_bits(
+                            dg.block.dg_rec_id_size as usize,
+                            channel_group.block.cg_data_bytes as usize,
+                        );
+                    }
                 }
             }
         }
@@ -379,7 +387,6 @@ fn read_vlsd_from_bytes(
     let mut remaining: usize = data_length - position;
     let mut nrecord: usize = 0;
     match &mut cn.data {
-        ChannelData::Boolean(_) => {}
         ChannelData::Int8(_) => {}
         ChannelData::UInt8(_) => {}
         ChannelData::Int16(_) => {}
@@ -597,26 +604,18 @@ fn parser_ld4(
             channel_names_to_read_in_dg,
         );
         if id == "##DZ".as_bytes() {
-            let (dt, block_header) = parse_dz(rdr);
-            read_channels_from_bytes(
-                &dt,
-                &mut channel_group.cn,
-                channel_group.record_length as usize,
-                0,
-                channel_names_to_read_in_dg,
-            );
+            let (mut dt, block_header) = parse_dz(rdr);
+            for (_rec_pos, cn) in channel_group.cn.iter_mut() {
+                read_one_channel_array(&mut dt, cn, channel_group.block.cg_cycle_count as usize);
+            }
             position = ld_data + block_header.len as i64;
         } else {
             let block_header: Dt4Block = rdr.read_le().expect("Could not read DV block header");
             let mut buf = vec![0u8; block_header.len as usize - 24];
             rdr.read_exact(&mut buf).expect("Could not read Dt4 block");
-            read_channels_from_bytes(
-                &buf,
-                &mut channel_group.cn,
-                channel_group.record_length as usize,
-                0,
-                channel_names_to_read_in_dg,
-            );
+            for (_rec_pos, cn) in channel_group.cn.iter_mut() {
+                read_one_channel_array(&mut buf, cn, channel_group.block.cg_cycle_count as usize);
+            }
             position = ld_data + block_header.len as i64;
         }
         if channel_group.block.cg_inval_bytes > 0 {
@@ -714,6 +713,7 @@ fn read_dv_di(
                     record_length,
                     previous_index,
                     channel_names_to_read_in_dg,
+                    false,
                 );
             } else {
                 // Some implementation are pre allocating equal length blocks
@@ -723,6 +723,7 @@ fn read_dv_di(
                     record_length,
                     previous_index,
                     channel_names_to_read_in_dg,
+                    false,
                 );
             }
             // drop what has ben copied and keep remaining to be extended
@@ -856,6 +857,7 @@ fn parser_dl4_sorted(
                         record_length,
                         previous_index,
                         channel_names_to_read_in_dg,
+                        true,
                     );
                 } else {
                     // Some implementation are pre allocating equal length blocks
@@ -865,6 +867,7 @@ fn parser_dl4_sorted(
                         record_length,
                         previous_index,
                         channel_names_to_read_in_dg,
+                        true,
                     );
                 }
                 // drop what has ben copied and keep remaining to be extended
@@ -975,6 +978,7 @@ fn read_all_channels_sorted(
             channel_group.record_length as usize,
             previous_index,
             channel_names_to_read_in_dg,
+            true,
         );
         previous_index += n_record_chunk;
     }
@@ -1000,6 +1004,7 @@ fn read_all_channels_sorted_from_bytes(
         channel_group.record_length as usize,
         0,
         channel_names_to_read_in_dg,
+        true,
     );
     validate_channels_set(&mut channel_group.cn, channel_names_to_read_in_dg);
     vlsd_channels
@@ -1059,7 +1064,6 @@ fn save_vlsd(
     endian: bool,
 ) {
     match data {
-        ChannelData::Boolean(_) => {}
         ChannelData::Int8(_) => {}
         ChannelData::UInt8(_) => {}
         ChannelData::Int16(_) => {}
@@ -1227,6 +1231,7 @@ fn read_all_channels_unsorted_from_bytes(
                 channel_group.record_length as usize,
                 *index,
                 channel_names_to_read_in_dg,
+                true,
             );
             record_data.clear(); // clears data for new block, keeping capacity
             validate_channels_set(&mut channel_group.cn, channel_names_to_read_in_dg);
