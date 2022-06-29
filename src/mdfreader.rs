@@ -189,6 +189,7 @@ impl Mdf {
         mdf_data_to_arrow(self, &channel_names);
 
         // bit masking of the data
+        //self.apply_bit_mask_offset(&channel_names);
 
         // conversion of all channels to physical values
         // convert_all_channels(dg, &info.sharable);

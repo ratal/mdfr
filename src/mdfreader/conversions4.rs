@@ -4,7 +4,6 @@ use std::collections::{BTreeMap, HashMap};
 
 use crate::mdfinfo::mdfinfo4::{Cc4Block, CcVal, Cn4, Dg4, SharableBlocks};
 use crate::mdfreader::channel_data::ChannelData;
-use arrow2::compute::arithmetics::{add_scalar, mul_scalar};
 use fasteval::Compiler;
 use fasteval::{Evaler, Instruction, Slab};
 use ndarray::{ArrayD, Zip};
