@@ -130,19 +130,19 @@ impl ChannelData {
                 ))
             }
             ChannelData::StringSBC(a) => {
-                let array = Utf8Array::<i64>::from_slice(a.as_slice());
+                let array = Utf8Array::<i64>::from_slice(mem::take(a).as_slice());
                 Arc::new(array.with_validity(bitmap))
             }
             ChannelData::StringUTF8(a) => {
-                let array = Utf8Array::<i64>::from_slice(a.as_slice());
+                let array = Utf8Array::<i64>::from_slice(mem::take(a).as_slice());
                 Arc::new(array.with_validity(bitmap))
             }
             ChannelData::StringUTF16(a) => {
-                let array = Utf8Array::<i64>::from_slice(a.as_slice());
+                let array = Utf8Array::<i64>::from_slice(mem::take(a).as_slice());
                 Arc::new(array.with_validity(bitmap))
             }
             ChannelData::VariableSizeByteArray(a) => {
-                let array = BinaryArray::<i64>::from_slice(a.as_slice());
+                let array = BinaryArray::<i64>::from_slice(mem::take(a).as_slice());
                 Arc::new(array.with_validity(bitmap))
             }
             ChannelData::FixedSizeByteArray(a) => Arc::new(FixedSizeBinaryArray::new(
