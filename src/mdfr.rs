@@ -343,12 +343,13 @@ pyplot.show()
                             }
                             writeln!(
                                 output,
-                                "{} {} ",
+                                " {} {} ",
                                 unit, desc
                             ).expect("cannot print channel unit and description with first and last item");
+                        } else {
+                            writeln!(output, " {} {} ", unit, desc)
+                                .expect("cannot print channel unit and description");
                         }
-                        writeln!(output, " {} {} ", unit, desc)
-                            .expect("cannot print channel unit and description");
                     }
                 }
                 output.push_str("\n ");
@@ -377,19 +378,21 @@ pyplot.show()
                         if let Some(data) = self.0.get_channel_data(channel) {
                             if !data.is_empty() {
                                 let displayer = get_display(data.as_ref(), "null");
-                                displayer(&mut output, 0).expect("cannot channel data");
-                                writeln!(output, " ").expect("cannot print simple space character");
+                                displayer(&mut output, 0).expect("cannot print channel data");
+                                writeln!(output, " .. ")
+                                    .expect("cannot print simple space character");
                                 displayer(&mut output, data.len() - 1)
                                     .expect("cannot channel data");
                             }
                             writeln!(
                                 output,
-                                "{} {} ",
+                                " {} {} ",
                                 unit, desc
                             ).expect("cannot print channel unit and description with first and last item");
+                        } else {
+                            writeln!(output, " {} {} ", unit, desc)
+                                .expect("cannot print channel unit and description");
                         }
-                        writeln!(output, " {} {} ", unit, desc)
-                            .expect("cannot print channel unit and description");
                     }
                 }
                 output.push_str("\n ");
