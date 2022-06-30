@@ -1933,7 +1933,7 @@ impl Default for ChannelData {
 pub fn data_type_init(cn_type: u8, cn_data_type: u8, n_bytes: u32, is_array: bool) -> ChannelData {
     if !is_array {
         // Not an array
-        if cn_type == 0 || cn_type == 2 || cn_type == 4 || cn_type == 5 {
+        if cn_type != 3 || cn_type != 6 {
             // not virtual channel or vlsd
             match cn_data_type {
                 0 | 1 => {
@@ -2002,12 +2002,14 @@ pub fn data_type_init(cn_type: u8, cn_data_type: u8, n_bytes: u32, is_array: boo
                 }
                 _ => {
                     // bytearray
-                    ChannelData::FixedSizeByteArray((vec![0u8; 0], 0))
+                    if cn_type == 1 {
+                        // VLSD
+                        ChannelData::VariableSizeByteArray(vec![vec![0u8; 0]; 0])
+                    } else {
+                        ChannelData::FixedSizeByteArray((vec![0u8; 0], 0))
+                    }
                 }
             }
-        } else if cn_type == 1 {
-            // VLSD
-            ChannelData::VariableSizeByteArray(vec![vec![0u8; 0]; 0])
         } else {
             // virtual channels, cn_bit_count = 0 -> n_bytes = 0, must be LE unsigned int
             ChannelData::UInt64(Vec::<u64>::new())
