@@ -1278,126 +1278,52 @@ pub fn read_channels_from_bytes(
                 ChannelData::UInt64(data) => {
                     if cn.endian {
                         if n_bytes == 8 {
-                            match &mut cn.invalid_mask {
-                                Some((mask, invalid_byte_position, invalid_byte_mask)) if record_with_invalid_data => {
-                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                        value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                        data[i + previous_index] = u64::from_be_bytes(
-                                            value.try_into().expect("Could not read be u64"),
-                                        );
-                                        mask.set(i + previous_index, (*invalid_byte_mask & record[*invalid_byte_position]) != 0);
-                                    }
-                                }
-                                _ => {
-                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                        value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                        data[i + previous_index] = u64::from_be_bytes(
-                                            value.try_into().expect("Could not read be u64"),
-                                        );
-                                        }
-                                    },
+                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                                data[i + previous_index] = u64::from_be_bytes(
+                                    value.try_into().expect("Could not read be u64"),
+                                );
                             }
                         } else {
                             // n_bytes = 7
                             let mut buf = [0u8; std::mem::size_of::<u64>()];
-                            match &mut cn.invalid_mask {
-                                Some((mask, invalid_byte_position, invalid_byte_mask)) if record_with_invalid_data => {
-                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                        buf[0..7].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + 7]);
-                                        data[i + previous_index] = u64::from_be_bytes(buf);
-                                        mask.set(i + previous_index, (*invalid_byte_mask & record[*invalid_byte_position]) != 0);
-                                    }
-                                }
-                                _ => {
-                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                        buf[0..7].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + 7]);
-                                        data[i + previous_index] = u64::from_be_bytes(buf);
-                                    }},
+                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                buf[0..7].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + 7]);
+                                data[i + previous_index] = u64::from_be_bytes(buf);
                             }
-                        };
+                        }
                     } else if n_bytes == 8 {
-                        match &mut cn.invalid_mask {
-                            Some((mask, invalid_byte_position, invalid_byte_mask)) if record_with_invalid_data => {
-                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                    value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                    data[i + previous_index] = u64::from_le_bytes(
-                                        value.try_into().expect("Could not read le u64"),
-                                    );
-                                    mask.set(i + previous_index, (*invalid_byte_mask & record[*invalid_byte_position]) != 0);
-                                }
-                            }
-                            _ => {
-                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                    value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                    data[i + previous_index] = u64::from_le_bytes(
-                                        value.try_into().expect("Could not read le u64"),
-                                    );
-                                    }
-                                },
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                            data[i + previous_index] = u64::from_le_bytes(
+                                value.try_into().expect("Could not read le u64"),
+                            );
                         }
                     } else {
                         // n_bytes = 7, little endian
                         let mut buf = [0u8; std::mem::size_of::<u64>()];
-                            match &mut cn.invalid_mask {
-                                Some((mask, invalid_byte_position, invalid_byte_mask)) if record_with_invalid_data => {
-                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                        buf[0..7].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + 7]);
-                                        data[i + previous_index] = u64::from_le_bytes(buf);
-                                        mask.set(i + previous_index, (*invalid_byte_mask & record[*invalid_byte_position]) != 0);
-                                    }
-                                }
-                                _ => {
-                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                        buf[0..7].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + 7]);
-                                        data[i + previous_index] = u64::from_le_bytes(buf);
-                                    }},
-                            }
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            buf[0..7].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + 7]);
+                            data[i + previous_index] = u64::from_le_bytes(buf);
+                        }
                     }
                 }
                 ChannelData::Float64(data) => {
                     if cn.endian {
-                        match &mut cn.invalid_mask {
-                            Some((mask, invalid_byte_position, invalid_byte_mask)) if record_with_invalid_data => {
-                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                    value =
-                                        &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
-                                    data[i + previous_index] = f64::from_be_bytes(
-                                            value.try_into().expect("Could not read be f64"),
-                                        );
-                                    mask.set(i + previous_index, (*invalid_byte_mask & record[*invalid_byte_position]) != 0);
-                                }
-                            }
-                            _ => {
-                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                    value =
-                                        &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
-                                    data[i + previous_index] = f64::from_be_bytes(
-                                            value.try_into().expect("Could not read be f64"),
-                                        );
-                                }
-                            },
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            value =
+                                &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
+                            data[i + previous_index] = f64::from_be_bytes(
+                                    value.try_into().expect("Could not read be f64"),
+                                );
                         }
                     } else {
-                        match &mut cn.invalid_mask {
-                            Some((mask, invalid_byte_position, invalid_byte_mask)) if record_with_invalid_data => {
-                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                    value =
-                                        &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
-                                    data[i + previous_index] = f64::from_le_bytes(
-                                            value.try_into().expect("Could not read le f64"),
-                                        );
-                                    mask.set(i + previous_index, (*invalid_byte_mask & record[*invalid_byte_position]) != 0);
-                                }
-                            }
-                            _ => {
-                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                    value =
-                                        &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
-                                    data[i + previous_index] = f64::from_le_bytes(
-                                            value.try_into().expect("Could not read le f64"),
-                                        );
-                                }
-                            },
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            value =
+                                &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
+                            data[i + previous_index] = f64::from_le_bytes(
+                                    value.try_into().expect("Could not read le f64"),
+                                );
                         }
                     }
                 }
@@ -1487,85 +1413,38 @@ pub fn read_channels_from_bytes(
                     let mut re_val: &[u8];
                     let mut im_val: &[u8];
                     if cn.endian {
-                        match &mut cn.invalid_mask {
-                            Some((mask, invalid_byte_position, invalid_byte_mask)) if record_with_invalid_data => {
-                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                    re_val =
-                                        &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
-                                    im_val = &record[pos_byte_beg + std::mem::size_of::<f64>()
-                                        ..pos_byte_beg + 2 * std::mem::size_of::<f64>()];
-                                    data.0[i*2 + previous_index] = f64::from_be_bytes(
-                                        re_val
-                                            .try_into()
-                                            .expect("Could not read be real f64 complex"),
-                                    );
-                                    data.0[i*2 + 1 + previous_index] = f64::from_be_bytes(
-                                        im_val
-                                            .try_into()
-                                            .expect("Could not read be img f64 complex"),
-                                    );
-                                    mask.set(i*2 + previous_index, (*invalid_byte_mask & record[*invalid_byte_position]) != 0);
-                                }
-                            }
-                            _  => {
-                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                    re_val =
-                                        &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
-                                    im_val = &record[pos_byte_beg + std::mem::size_of::<f64>()
-                                        ..pos_byte_beg + 2 * std::mem::size_of::<f64>()];
-                                    data.0[i*2 + previous_index] = f64::from_be_bytes(
-                                        re_val
-                                            .try_into()
-                                            .expect("Could not read be real f64 complex"),
-                                    );
-                                    data.0[i*2 + 1 + previous_index] = f64::from_be_bytes(
-                                        im_val
-                                            .try_into()
-                                            .expect("Could not read be img f64 complex"),
-                                    );
-                                }
-                            },
-                        }
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            re_val =
+                                &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
+                            im_val = &record[pos_byte_beg + std::mem::size_of::<f64>()
+                                ..pos_byte_beg + 2 * std::mem::size_of::<f64>()];
+                            data.0[i*2 + previous_index] = f64::from_be_bytes(
+                                re_val
+                                    .try_into()
+                                    .expect("Could not read be real f64 complex"),
+                            );
+                            data.0[i*2 + 1 + previous_index] = f64::from_be_bytes(
+                                im_val
+                                    .try_into()
+                                    .expect("Could not read be img f64 complex"),
+                            );
+                        }  
                     } else {
-                        match &mut cn.invalid_mask {
-                            Some((mask, invalid_byte_position, invalid_byte_mask)) if record_with_invalid_data => {
-                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                    re_val =
-                                        &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
-                                    im_val = &record[pos_byte_beg + std::mem::size_of::<f64>()
-                                        ..pos_byte_beg + 2 * std::mem::size_of::<f64>()];
-                                    data.0[i*2 + previous_index] = f64::from_le_bytes(
-                                        re_val
-                                            .try_into()
-                                            .expect("Could not read le real f32 complex"),
-                                    );
-                                    data.0[i*2 + 1 + previous_index] = f64::from_le_bytes(
-                                        im_val
-                                            .try_into()
-                                            .expect("Could not read le img f32 complex"),
-                                    );
-                                    mask.set(i*2 + previous_index, (*invalid_byte_mask & record[*invalid_byte_position]) != 0);
-                                }
-                            }
-                            _ => {
-                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                    re_val =
-                                        &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
-                                    im_val = &record[pos_byte_beg + std::mem::size_of::<f64>()
-                                        ..pos_byte_beg + 2 * std::mem::size_of::<f64>()];
-                                    data.0[i*2 + previous_index] = f64::from_le_bytes(
-                                        re_val
-                                            .try_into()
-                                            .expect("Could not read le real f32 complex"),
-                                    );
-                                    data.0[i*2 + 1 + previous_index] = f64::from_le_bytes(
-                                        im_val
-                                            .try_into()
-                                            .expect("Could not read le img f32 complex"),
-                                    );
-                                }
-                            },
-                            
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            re_val =
+                                &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
+                            im_val = &record[pos_byte_beg + std::mem::size_of::<f64>()
+                                ..pos_byte_beg + 2 * std::mem::size_of::<f64>()];
+                            data.0[i*2 + previous_index] = f64::from_le_bytes(
+                                re_val
+                                    .try_into()
+                                    .expect("Could not read le real f32 complex"),
+                            );
+                            data.0[i*2 + 1 + previous_index] = f64::from_le_bytes(
+                                im_val
+                                    .try_into()
+                                    .expect("Could not read le img f32 complex"),
+                            );
                         }
                     }
                 }
@@ -2277,6 +2156,31 @@ pub fn read_channels_from_bytes(
         }
         // Other channel types : virtual channels cn_type 3 & 6 are handled at initialisation
     });
+    if record_with_invalid_data {
+        // invalidation bits to store in bitmap.
+        channels.par_iter_mut()
+            .filter(|(_cn_record_position, cn)| {channel_names_to_read_in_dg.contains(&cn.unique_name) && !cn.data.is_empty() && !cn.channel_data_valid})
+            .for_each(|(_rec_pos, cn)| {
+            if cn.block.cn_type == 0
+                || cn.block.cn_type == 2
+                || cn.block.cn_type == 4
+                || cn.block.cn_type == 5
+            {
+                // cn_type == 5 : Maximum length data channel, removing no valid bytes done by another size channel pointed by cn_data
+                // cn_type == 0 : fixed length data channel
+                // cn_type == 2 : master channel
+                // cn_type == 4 : synchronisation channel
+                match &mut cn.invalid_mask {
+                    Some((mask, invalid_byte_position, invalid_byte_mask)) => {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            mask.set(i + previous_index, (*invalid_byte_mask & record[*invalid_byte_position]) == 0);
+                        }
+                    }
+                    _ => {}
+                };
+            }
+        });
+    }
     let lock = vlsd_channels
         .lock()
         .expect("Could not get lock from vlsd channel arc vec");

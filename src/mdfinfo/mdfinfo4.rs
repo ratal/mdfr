@@ -2213,7 +2213,7 @@ fn parse_cn4_block(
             + cg_data_bytes as usize;
         let invalid_byte_mask = 1 << (block.cn_inval_bit_pos & 0x07);
         Some((
-            MutableBitmap::with_capacity(cg_cycle_count as usize),
+            MutableBitmap::from_len_set(cg_cycle_count as usize),
             invalid_byte_position,
             invalid_byte_mask,
         ))
