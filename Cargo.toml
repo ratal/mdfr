@@ -16,7 +16,7 @@ byteorder = "1.4" # for bytes conversions
 encoding = "0.2" # for bytes to text conversion (utf8, SBC, UTF16)
 binrw = "0" # to efficiently read blocks
 num = {version = "0.4", features = ["serde"] } # for complex numbers
-half = "1" # for f16 handling
+half = "2" # for f16 handling
 encoding_rs = "0.8" # for endian management
 chrono = "0.4.19" # for time conversion
 ndarray = {version = "0.15", features = ["rayon", "serde", "approx"]} # for nd arrays
@@ -33,7 +33,7 @@ itertools = "0.10"
 serde = { version = "1.0", features = ["derive"] } # for serialization
 whoami = "1.2" # to get user nam for writing file
 rand = "0.8" # for random numbers
-parquet2 = "0.13" # for export to parquet file format
+parquet2 = "0.14" # for export to parquet file format
 arrow2 = {version = "0.12", features= ["compute", "io_parquet", "io_parquet_compression"] } # for efficient data storing in memory
 polars = "0.22" # for python dataframe
 
