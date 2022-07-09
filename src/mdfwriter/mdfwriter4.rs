@@ -9,7 +9,6 @@ use std::{
 };
 
 use crate::{
-    export::arrow::{bit_count, to_bytes},
     mdfinfo::{
         mdfinfo4::{
             BlockType, Blockheader4, Ca4Block, Ca4BlockMembers, Cg4, Cg4Block, Cn4, Cn4Block,
@@ -18,7 +17,11 @@ use crate::{
         },
         MdfInfo,
     },
-    mdfreader::{channel_data::data_type_init, Mdf},
+    mdfreader::{
+        arrow::{bit_count, to_bytes},
+        channel_data::data_type_init,
+        Mdf,
+    },
 };
 use arrow2::{array::Array, bitmap::Bitmap, datatypes::Schema};
 use binrw::BinWriterExt;

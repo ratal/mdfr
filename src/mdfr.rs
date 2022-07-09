@@ -2,8 +2,8 @@
 use std::collections::HashSet;
 use std::fmt::Write;
 
-use crate::export::arrow::{array_to_rust, to_py_array};
 use crate::mdfinfo::MdfInfo;
+use crate::mdfreader::arrow::{array_to_rust, to_py_array};
 use crate::mdfreader::Mdf;
 use arrow2::array::get_display;
 use pyo3::prelude::*;

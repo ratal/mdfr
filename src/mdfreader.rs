@@ -1,4 +1,5 @@
 //! This module contains the data reading features
+pub mod arrow;
 pub mod channel_data;
 pub mod conversions3;
 pub mod conversions4;
@@ -17,9 +18,9 @@ use arrow2::chunk::Chunk;
 use arrow2::datatypes::{Field, Schema};
 use arrow2::error::Result;
 
-use crate::export::arrow::mdf_data_to_arrow;
 use crate::export::parquet::export_to_parquet;
 use crate::mdfinfo::MdfInfo;
+use crate::mdfreader::arrow::mdf_data_to_arrow;
 use crate::mdfreader::mdfreader3::mdfreader3;
 use crate::mdfreader::mdfreader4::mdfreader4;
 use crate::mdfwriter::mdfwriter4::mdfwriter4;
@@ -187,12 +188,6 @@ impl Mdf {
         };
         // move the data from the MdfInfo3 structure into vect of chunks
         mdf_data_to_arrow(self, &channel_names);
-
-        // bit masking of the data
-        //self.apply_bit_mask_offset(&channel_names);
-
-        // conversion of all channels to physical values
-        // convert_all_channels(dg, &info.sharable);
     }
     /// Clears all data arrays
     pub fn clear_all_channel_data_from_memory(&mut self) {
