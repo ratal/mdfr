@@ -192,11 +192,11 @@ pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
                     .filter(|v| channel_names.contains(v))
                     .collect();
                 if !channel_names_to_read_in_dg.is_empty() {
-                    for (_rec_id, cg) in dg.cg.iter_mut() {
+                    dg.cg.iter_mut().for_each(|(_rec_id, cg)| {
                         let is_nullable: bool = cg.block.cg_inval_bytes > 0;
                         let mut columns =
                             Vec::<Arc<dyn Array>>::with_capacity(cg.channel_names.len());
-                        for (_rec_pos, cn) in cg.cn.iter_mut() {
+                        cg.cn.iter_mut().for_each(|(_rec_pos, cn)| {
                             if !cn.data.is_empty() {
                                 let data: Arc<dyn Array>;
                                 if let Some(bitmap) = mem::take(&mut cn.invalid_mask) {
@@ -251,11 +251,11 @@ pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
                                 array_index += 1;
                                 field_index += 1;
                             }
-                        }
+                        });
                         mdf.arrow_data.push(Chunk::new(columns));
                         chunk_index += 1;
                         array_index = 0;
-                    }
+                    });
                 }
             }
         }
