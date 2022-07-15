@@ -536,6 +536,7 @@ fn create_blocks(
             let data_dim_size = cn
                 .data
                 .shape()
+                .0
                 .iter()
                 .skip(1)
                 .map(|x| *x as u64)

@@ -1,5 +1,4 @@
 //! data read and load in memory based in MdfInfo3's metadata
-use crate::mdfreader::channel_data::ChannelData;
 use rayon::prelude::*;
 
 use crate::mdfinfo::mdfinfo3::{Cg3, Dg3};
@@ -11,6 +10,7 @@ use std::io::{BufReader, Read};
 use crate::mdfreader::data_read3::read_channels_from_bytes;
 
 use super::Mdf;
+use crate::mdfreader::channel_data::Order;
 use crate::mdfreader::conversions3::convert_all_channels;
 
 // The following constant represents the size of data chunk to be read and processed.
@@ -98,9 +98,12 @@ fn initialise_arrays(
         .par_iter_mut()
         .filter(|(_cn_position, cn)| channel_names_to_read_in_dg.contains(&cn.unique_name))
         .for_each(|(_cn_position, cn)| {
-            cn.data = cn
-                .data
-                .zeros(0, *cg_cycle_count as u64, cn.n_bytes as u32, 0);
+            cn.data = cn.data.zeros(
+                0,
+                *cg_cycle_count as u64,
+                cn.n_bytes as u32,
+                (Vec::new(), Order::RowMajor),
+            );
         })
 }
 

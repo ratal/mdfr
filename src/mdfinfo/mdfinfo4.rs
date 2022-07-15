@@ -1,10 +1,10 @@
 //! Parsing of file metadata into MdfInfo4 struct
+use crate::mdfreader::channel_data::Order;
 use arrow2::bitmap::MutableBitmap;
 use binrw::{binrw, BinReaderExt, BinWriterExt};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::Local;
 use chrono::{naive::NaiveDateTime, DateTime, Utc};
-use ndarray::Order;
 use rand;
 use rayon::prelude::*;
 use roxmltree;
@@ -182,7 +182,12 @@ impl MdfInfo4 {
                     if let Some(cg) = dg.cg.get_mut(rec_id) {
                         if let Some(cn) = cg.cn.get_mut(rec_pos) {
                             if !cn.data.is_empty() {
-                                cn.data = cn.data.zeros(cn.block.cn_data_type, 0, 0, 0);
+                                cn.data = cn.data.zeros(
+                                    cn.block.cn_data_type,
+                                    0,
+                                    0,
+                                    (Vec::new(), Order::RowMajor),
+                                );
                             }
                         }
                     }
@@ -236,6 +241,7 @@ impl MdfInfo4 {
         if data_ndim > 0 {
             let data_dim_size = data
                 .shape()
+                .0
                 .iter()
                 .skip(1)
                 .map(|x| *x as u64)

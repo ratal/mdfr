@@ -6,6 +6,7 @@ use crate::mdfinfo::mdfinfo4::{
 };
 use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::channel_data::ChannelData;
+use crate::mdfreader::channel_data::Order;
 use crate::mdfreader::conversions4::convert_all_channels;
 use crate::mdfreader::data_read4::read_channels_from_bytes;
 use crate::mdfreader::data_read4::read_one_channel_array;
@@ -1264,16 +1265,16 @@ fn initialise_arrays(
             channel_names_to_read_in_dg.contains(&cn.unique_name) && !cn.channel_data_valid
         })
         .for_each(|(_cn_record_position, cn)| {
-            let mut n_elements: usize = 0;
+            let mut shape = (Vec::new(), Order::RowMajor);
             if let Some(compo) = &cn.composition {
                 match &compo.block {
-                    Compo::CA(ca) => n_elements = ca.pnd,
+                    Compo::CA(ca) => shape = ca.shape.clone(),
                     Compo::CN(_) => (),
                 }
             }
             cn.data = cn
                 .data
-                .zeros(cn.block.cn_type, *cg_cycle_count, cn.n_bytes, n_elements);
+                .zeros(cn.block.cn_type, *cg_cycle_count, cn.n_bytes, shape);
             cn.channel_data_valid = false;
         })
 }
@@ -1422,34 +1423,34 @@ fn apply_bit_mask_offset(dg: &mut Dg4, channel_names_to_read_in_dg: &HashSet<Str
                             ChannelData::FixedSizeByteArray(_) => (),
                             ChannelData::ArrayDInt8(a) => {
                                 if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
+                                    a.0.iter_mut().for_each(|x| *x <<= left_shift)
                                 };
                                 if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
+                                    a.0.iter_mut().for_each(|x| *x >>= right_shift)
                                 };
                             }
                             ChannelData::ArrayDUInt8(a) => {
                                 if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
+                                    a.0.iter_mut().for_each(|x| *x <<= left_shift)
                                 };
                                 if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
+                                    a.0.iter_mut().for_each(|x| *x >>= right_shift)
                                 };
                             }
                             ChannelData::ArrayDInt16(a) => {
                                 if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
+                                    a.0.iter_mut().for_each(|x| *x <<= left_shift)
                                 };
                                 if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
+                                    a.0.iter_mut().for_each(|x| *x >>= right_shift)
                                 };
                             }
                             ChannelData::ArrayDUInt16(a) => {
                                 if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
+                                    a.0.iter_mut().for_each(|x| *x <<= left_shift)
                                 };
                                 if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
+                                    a.0.iter_mut().for_each(|x| *x >>= right_shift)
                                 };
                             }
                             ChannelData::ArrayDFloat16(_) => (),
@@ -1458,10 +1459,10 @@ fn apply_bit_mask_offset(dg: &mut Dg4, channel_names_to_read_in_dg: &HashSet<Str
                                     32 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
                                 let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
                                 if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
+                                    a.0.iter_mut().for_each(|x| *x <<= left_shift)
                                 };
                                 if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
+                                    a.0.iter_mut().for_each(|x| *x >>= right_shift)
                                 };
                             }
                             ChannelData::ArrayDUInt24(a) => {
@@ -1469,26 +1470,26 @@ fn apply_bit_mask_offset(dg: &mut Dg4, channel_names_to_read_in_dg: &HashSet<Str
                                     32 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
                                 let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
                                 if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
+                                    a.0.iter_mut().for_each(|x| *x <<= left_shift)
                                 };
                                 if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
+                                    a.0.iter_mut().for_each(|x| *x >>= right_shift)
                                 };
                             }
                             ChannelData::ArrayDInt32(a) => {
                                 if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
+                                    a.0.iter_mut().for_each(|x| *x <<= left_shift)
                                 };
                                 if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
+                                    a.0.iter_mut().for_each(|x| *x >>= right_shift)
                                 };
                             }
                             ChannelData::ArrayDUInt32(a) => {
                                 if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
+                                    a.0.iter_mut().for_each(|x| *x <<= left_shift)
                                 };
                                 if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
+                                    a.0.iter_mut().for_each(|x| *x >>= right_shift)
                                 };
                             }
                             ChannelData::ArrayDFloat32(_) => (),
@@ -1497,10 +1498,10 @@ fn apply_bit_mask_offset(dg: &mut Dg4, channel_names_to_read_in_dg: &HashSet<Str
                                     64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
                                 let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
                                 if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
+                                    a.0.iter_mut().for_each(|x| *x <<= left_shift)
                                 };
                                 if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
+                                    a.0.iter_mut().for_each(|x| *x >>= right_shift)
                                 };
                             }
                             ChannelData::ArrayDUInt48(a) => {
@@ -1508,10 +1509,10 @@ fn apply_bit_mask_offset(dg: &mut Dg4, channel_names_to_read_in_dg: &HashSet<Str
                                     64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
                                 let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
                                 if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
+                                    a.0.iter_mut().for_each(|x| *x <<= left_shift)
                                 };
                                 if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
+                                    a.0.iter_mut().for_each(|x| *x >>= right_shift)
                                 };
                             }
                             ChannelData::ArrayDInt64(a) => {
@@ -1519,10 +1520,10 @@ fn apply_bit_mask_offset(dg: &mut Dg4, channel_names_to_read_in_dg: &HashSet<Str
                                     64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
                                 let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
                                 if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
+                                    a.0.iter_mut().for_each(|x| *x <<= left_shift)
                                 };
                                 if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
+                                    a.0.iter_mut().for_each(|x| *x >>= right_shift)
                                 };
                             }
                             ChannelData::ArrayDUInt64(a) => {
@@ -1530,10 +1531,10 @@ fn apply_bit_mask_offset(dg: &mut Dg4, channel_names_to_read_in_dg: &HashSet<Str
                                     64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
                                 let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
                                 if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
+                                    a.0.iter_mut().for_each(|x| *x <<= left_shift)
                                 };
                                 if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
+                                    a.0.iter_mut().for_each(|x| *x >>= right_shift)
                                 };
                             }
                             ChannelData::ArrayDFloat64(_) => (),

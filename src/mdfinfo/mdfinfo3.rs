@@ -1,4 +1,5 @@
 //! Parsing of file metadata into MdfInfo3 struct
+use crate::mdfreader::channel_data::Order;
 use binrw::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::NaiveDate;
@@ -144,7 +145,7 @@ impl MdfInfo3 {
                     if let Some(cg) = dg.cg.get_mut(rec_id) {
                         if let Some(cn) = cg.cn.get_mut(cn_pos) {
                             if !cn.data.is_empty() {
-                                cn.data = cn.data.zeros(0, 0, 0, 0);
+                                cn.data = cn.data.zeros(0, 0, 0, (Vec::new(), Order::RowMajor));
                             }
                         }
                     }
