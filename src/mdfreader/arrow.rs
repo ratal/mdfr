@@ -3,14 +3,15 @@ use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::channel_data::ChannelData;
 use crate::mdfreader::{ChannelIndexes, Mdf};
 use arrow2::array::{
-    Array, BinaryArray, FixedSizeBinaryArray, FixedSizeListArray, PrimitiveArray, Utf8Array,
+    Array, ArrayRef, BinaryArray, FixedSizeBinaryArray, FixedSizeListArray, PrimitiveArray,
+    Utf8Array,
 };
 use arrow2::bitmap::Bitmap;
 use arrow2::buffer::Buffer;
 use arrow2::chunk::Chunk;
 use arrow2::datatypes::{DataType, Field, Metadata, PhysicalType, PrimitiveType};
+use arrow2::ffi;
 use arrow2::types::NativeType;
-use arrow2::{array::ArrayRef, ffi};
 
 use encoding::all::ISO_8859_1;
 use encoding::{DecoderTrap, Encoding};

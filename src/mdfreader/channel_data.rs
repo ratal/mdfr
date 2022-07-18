@@ -1,6 +1,6 @@
 //! this module holds the channel data enum and related implementations
 use arrow2::types::NativeType;
-use ndarray::Array1;
+
 use num::Complex;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::fmt;
@@ -10,7 +10,7 @@ use std::iter::IntoIterator;
 /// most common data type is 1D ndarray for timeseries with element types numeric.
 /// vector of string or bytes also exists.
 /// Dynamic dimension arrays ArrayD are also existing to cover CABlock arrays data.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ChannelData {
     Int8(Vec<i8>),
     UInt8(Vec<u8>),
@@ -137,36 +137,14 @@ impl IntoIterator for ArrowComplex<f32> {
 }
 
 impl ArrowComplex<f64> {
-    pub fn to_ndarray(&self) -> Array1<Complex<f64>> {
-        Array1::<Complex<f64>>::from_iter(self.clone().into_iter())
-    }
     pub fn zeros(length: usize) -> Self {
         ArrowComplex(vec![0.0; 2 * length])
-    }
-    pub fn from_ndarray(array: Array1<Complex<f64>>) -> Self {
-        let mut output = Vec::with_capacity(array.len() * 2);
-        array.iter().for_each(|v| {
-            output.push(v.re);
-            output.push(v.im);
-        });
-        ArrowComplex::<f64>(output)
     }
 }
 
 impl ArrowComplex<f32> {
-    pub fn to_ndarray(&self) -> Array1<Complex<f32>> {
-        Array1::<Complex<f32>>::from_iter(self.clone().into_iter())
-    }
     pub fn zeros(length: usize) -> Self {
         ArrowComplex(vec![0.0; 2 * length])
-    }
-    pub fn from_ndarray(array: Array1<Complex<f32>>) -> Self {
-        let mut output = Vec::with_capacity(array.len() * 2);
-        array.iter().for_each(|v| {
-            output.push(v.re);
-            output.push(v.im);
-        });
-        ArrowComplex::<f32>(output)
     }
 }
 

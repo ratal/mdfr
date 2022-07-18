@@ -299,6 +299,18 @@ impl MdfInfo {
             MdfInfo::V4(_) => panic!("file is already a mdf version 4.x"),
         }
     }
+    /// defines channel's data in memory
+    pub fn set_channel_data(&mut self, channel_name: &str, data: &ChannelData) {
+        match self {
+            MdfInfo::V3(mdfinfo3) => {
+                let mut file_name = PathBuf::from(mdfinfo3.file_name.as_str());
+                file_name.set_extension("mf4");
+                let mut mdf4 = convert3to4(mdfinfo3, &file_name.to_string_lossy());
+                mdf4.set_channel_data(channel_name, data);
+            }
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.set_channel_data(channel_name, data),
+        }
+    }
     /// Sets the channel's related master channel type in memory
     pub fn set_channel_master_type(&mut self, master_name: &str, master_type: u8) {
         match self {

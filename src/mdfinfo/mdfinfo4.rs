@@ -399,6 +399,20 @@ impl MdfInfo4 {
             }
         }
     }
+    /// defines channel's data in memory
+    pub fn set_channel_data(&mut self, channel_name: &str, data: &ChannelData) {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.channel_names_set.get(channel_name)
+        {
+            if let Some(dg) = self.dg.get_mut(dg_pos) {
+                if let Some(cg) = dg.cg.get_mut(rec_id) {
+                    if let Some(cn) = cg.cn.get_mut(rec_pos) {
+                        cn.data = data.clone();
+                    }
+                }
+            }
+        }
+    }
     /// Sets the channel unit in memory
     pub fn set_channel_unit(&mut self, channel_name: &str, unit: &str) {
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =

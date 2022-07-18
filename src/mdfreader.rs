@@ -191,9 +191,11 @@ impl Mdf {
     }
     /// Clears all data arrays
     pub fn clear_all_channel_data_from_memory(&mut self) {
+        let channel_names = self.get_channel_names_set();
         self.arrow_data = Vec::new();
         self.arrow_schema = Schema::default();
         self.channel_indexes = HashMap::new();
+        self.mdf_info.clear_channel_data_from_memory(channel_names);
     }
 
     /// Clears data arrays
@@ -201,6 +203,7 @@ impl Mdf {
         self.arrow_data = Vec::new();
         self.arrow_schema = Schema::default();
         self.channel_indexes = HashMap::new();
+        self.mdf_info.clear_channel_data_from_memory(channel_names);
     }
 
     /// export to Parquet file
@@ -211,8 +214,6 @@ impl Mdf {
     pub fn write(&mut self, file_name: &str, compression: bool) -> Mdf {
         mdfwriter4(self, file_name, compression)
     }
-    // TODO cut data
-    // TODO resample data
 }
 
 impl fmt::Display for Mdf {

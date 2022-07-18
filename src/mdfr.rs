@@ -2,8 +2,9 @@
 use std::collections::HashSet;
 use std::fmt::Write;
 
+use crate::export::numpy::arrow_to_numpy;
 use crate::mdfinfo::MdfInfo;
-use crate::mdfreader::arrow::{array_to_rust, to_py_array};
+use crate::mdfreader::arrow::array_to_rust;
 use crate::mdfreader::Mdf;
 use arrow2::array::get_display;
 use pyo3::prelude::*;
@@ -28,6 +29,11 @@ impl Mdfr {
     fn new(file_name: &str) -> Self {
         Mdfr(Mdf::new(file_name))
     }
+    /// gets the version of mdf file
+    pub fn get_version(&mut self) -> u16 {
+        let Mdfr(mdf) = self;
+        mdf.get_version()
+    }
     /// returns channel's data, numpy array or list, depending if data type is numeric or string|bytes
     fn get_channel_data(&self, channel_name: String) -> Py<PyAny> {
         let Mdfr(mdf) = self;
@@ -35,34 +41,22 @@ impl Mdfr {
         pyo3::Python::with_gil(|py| {
             let mut py_array: Py<PyAny>;
             let dt = mdf.get_channel_data(&channel_name);
-            let field = mdf.get_channel_field(&channel_name);
             if let Some(data) = dt {
-                if let Some(field) = field {
-                    py_array = to_py_array(
-                        py,
-                        py.import("arrow2").expect("could not import arrow2"),
-                        data.clone(),
-                        field,
-                    )
-                    .expect("failed to convert data to py array");
-                    if let Some(m) = data.validity() {
-                        let mask: Py<PyAny> = m.iter().collect::<Vec<bool>>().into_py(py);
-                        let locals =
-                            [("numpy", py.import("numpy").expect("could not import numpy"))]
-                                .into_py_dict(py);
-                        locals
-                            .set_item("py_array", &py_array)
-                            .expect("cannot set python data");
-                        locals
-                            .set_item("mask", mask)
-                            .expect("cannot set python mask");
-                        py_array = py
-                            .eval(r#"numpy.ma.array(py_array, mask=mask)"#, None, Some(locals))
-                            .expect("masked array creation failed")
-                            .into_py(py);
-                    }
-                } else {
-                    py_array = Python::None(py);
+                py_array = arrow_to_numpy(py, &data);
+                if let Some(m) = data.validity() {
+                    let mask: Py<PyAny> = m.iter().collect::<Vec<bool>>().into_py(py);
+                    let locals = [("numpy", py.import("numpy").expect("could not import numpy"))]
+                        .into_py_dict(py);
+                    locals
+                        .set_item("py_array", &py_array)
+                        .expect("cannot set python data");
+                    locals
+                        .set_item("mask", mask)
+                        .expect("cannot set python mask");
+                    py_array = py
+                        .eval(r#"numpy.ma.array(py_array, mask=mask)"#, None, Some(locals))
+                        .expect("masked array creation failed")
+                        .into_py(py);
                 }
             } else {
                 py_array = Python::None(py);
