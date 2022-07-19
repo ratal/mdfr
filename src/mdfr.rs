@@ -326,12 +326,12 @@ pyplot.show()
                     for channel in list.iter() {
                         let unit = self.get_channel_unit(channel.to_string());
                         let desc = self.get_channel_desc(channel.to_string());
-                        writeln!(output, " {} ", channel).expect("cannot print channel name");
+                        write!(output, " {} ", channel).expect("cannot print channel name");
                         if let Some(data) = self.0.get_channel_data(channel) {
                             if !data.is_empty() {
                                 let displayer = get_display(data.as_ref(), "null");
                                 displayer(&mut output, 0).expect("cannot channel data");
-                                writeln!(output, " ").expect("cannot print simple space character");
+                                write!(output, " ").expect("cannot print simple space character");
                                 displayer(&mut output, data.len() - 1)
                                     .expect("cannot channel data");
                             }
@@ -368,12 +368,12 @@ pyplot.show()
                     for channel in list.iter() {
                         let unit = self.get_channel_unit(channel.to_string());
                         let desc = self.get_channel_desc(channel.to_string());
-                        writeln!(output, " {} ", channel).expect("cannot print channel name");
+                        write!(output, " {} ", channel).expect("cannot print channel name");
                         if let Some(data) = self.0.get_channel_data(channel) {
                             if !data.is_empty() {
                                 let displayer = get_display(data.as_ref(), "null");
                                 displayer(&mut output, 0).expect("cannot print channel data");
-                                writeln!(output, " .. ")
+                                write!(output, " .. ")
                                     .expect("cannot print simple space character");
                                 displayer(&mut output, data.len() - 1)
                                     .expect("cannot channel data");
