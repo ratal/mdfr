@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
-use arrow2::array::{Array, PrimitiveArray};
+use arrow2::array::{Array, BinaryArray, PrimitiveArray, Utf8Array};
 use arrow2::bitmap::Bitmap;
+use arrow2::datatypes::{DataType, PhysicalType, PrimitiveType};
 //_ this module provides methods to get directly channelData into python
 use num::Complex;
 use numpy::npyffi::types::NPY_ORDER;
@@ -13,112 +14,182 @@ use crate::mdfreader::channel_data::{ArrowComplex, ChannelData, Order};
 
 pub fn arrow_to_numpy(py: Python, array: &Arc<dyn Array>) -> PyObject {
     match array.data_type() {
-        arrow2::datatypes::DataType::Null => todo!(),
-        arrow2::datatypes::DataType::Boolean => {
+        DataType::Null => Python::None(py),
+        DataType::Boolean => {
             let array = array
                 .as_any()
                 .downcast_ref::<Bitmap>()
                 .expect("could not downcast to Bitmap");
             array.iter().collect::<Vec<_>>().to_pyarray(py).into_py(py)
         }
-        arrow2::datatypes::DataType::Int8 => {
+        DataType::Int8 => {
             let array = array
                 .as_any()
                 .downcast_ref::<PrimitiveArray<i8>>()
                 .expect("could not downcast to i8 array");
             array.values().to_pyarray(py).into_py(py)
         }
-        arrow2::datatypes::DataType::Int16 => {
+        DataType::Int16 => {
             let array = array
                 .as_any()
                 .downcast_ref::<PrimitiveArray<i16>>()
                 .expect("could not downcast to i16 array");
             array.values().to_pyarray(py).into_py(py)
         }
-        arrow2::datatypes::DataType::Int32 => {
+        DataType::Int32 => {
             let array = array
                 .as_any()
                 .downcast_ref::<PrimitiveArray<i32>>()
                 .expect("could not downcast to i32 array");
             array.values().to_pyarray(py).into_py(py)
         }
-        arrow2::datatypes::DataType::Int64 => {
+        DataType::Int64 => {
             let array = array
                 .as_any()
                 .downcast_ref::<PrimitiveArray<i64>>()
                 .expect("could not downcast to i64 array");
             array.values().to_pyarray(py).into_py(py)
         }
-        arrow2::datatypes::DataType::UInt8 => {
+        DataType::UInt8 => {
             let array = array
                 .as_any()
                 .downcast_ref::<PrimitiveArray<u8>>()
                 .expect("could not downcast to u8 array");
             array.values().to_pyarray(py).into_py(py)
         }
-        arrow2::datatypes::DataType::UInt16 => {
+        DataType::UInt16 => {
             let array = array
                 .as_any()
                 .downcast_ref::<PrimitiveArray<u16>>()
                 .expect("could not downcast to u16 array");
             array.values().to_pyarray(py).into_py(py)
         }
-        arrow2::datatypes::DataType::UInt32 => {
+        DataType::UInt32 => {
             let array = array
                 .as_any()
                 .downcast_ref::<PrimitiveArray<u32>>()
                 .expect("could not downcast to u32 array");
             array.values().to_pyarray(py).into_py(py)
         }
-        arrow2::datatypes::DataType::UInt64 => {
+        DataType::UInt64 => {
             let array = array
                 .as_any()
                 .downcast_ref::<PrimitiveArray<u64>>()
                 .expect("could not downcast to u64 array");
             array.values().to_pyarray(py).into_py(py)
         }
-        arrow2::datatypes::DataType::Float16 => {
+        DataType::Float16 => {
             let array = array
                 .as_any()
                 .downcast_ref::<PrimitiveArray<f32>>()
                 .expect("could not downcast to f16 array");
             array.values().to_pyarray(py).into_py(py)
         }
-        arrow2::datatypes::DataType::Float32 => {
+        DataType::Float32 => {
             let array = array
                 .as_any()
                 .downcast_ref::<PrimitiveArray<f32>>()
                 .expect("could not downcast to f32 array");
             array.values().to_pyarray(py).into_py(py)
         }
-        arrow2::datatypes::DataType::Float64 => {
+        DataType::Float64 => {
             let array = array
                 .as_any()
                 .downcast_ref::<PrimitiveArray<f64>>()
                 .expect("could not downcast to f64 array");
             array.values().to_pyarray(py).into_py(py)
         }
-        arrow2::datatypes::DataType::Timestamp(_, _) => todo!(),
-        arrow2::datatypes::DataType::Date32 => todo!(),
-        arrow2::datatypes::DataType::Date64 => todo!(),
-        arrow2::datatypes::DataType::Time32(_) => todo!(),
-        arrow2::datatypes::DataType::Time64(_) => todo!(),
-        arrow2::datatypes::DataType::Duration(_) => todo!(),
-        arrow2::datatypes::DataType::Interval(_) => todo!(),
-        arrow2::datatypes::DataType::Binary => todo!(),
-        arrow2::datatypes::DataType::FixedSizeBinary(_) => todo!(),
-        arrow2::datatypes::DataType::LargeBinary => todo!(),
-        arrow2::datatypes::DataType::Utf8 => todo!(),
-        arrow2::datatypes::DataType::LargeUtf8 => todo!(),
-        arrow2::datatypes::DataType::List(_) => todo!(),
-        arrow2::datatypes::DataType::FixedSizeList(_, _) => todo!(),
-        arrow2::datatypes::DataType::LargeList(_) => todo!(),
-        arrow2::datatypes::DataType::Struct(_) => todo!(),
-        arrow2::datatypes::DataType::Union(_, _, _) => todo!(),
-        arrow2::datatypes::DataType::Map(_, _) => todo!(),
-        arrow2::datatypes::DataType::Dictionary(_, _, _) => todo!(),
-        arrow2::datatypes::DataType::Decimal(_, _) => todo!(),
-        arrow2::datatypes::DataType::Extension(_, _, _) => todo!(),
+        DataType::Timestamp(_, _) => {
+            let array = array
+                .as_any()
+                .downcast_ref::<PrimitiveArray<i64>>()
+                .expect("could not downcast timestamp to i64 array");
+            array.values().to_pyarray(py).into_py(py)
+        }
+        DataType::Date32 => {
+            let array = array
+                .as_any()
+                .downcast_ref::<PrimitiveArray<i32>>()
+                .expect("could not downcast date32 to i32 array");
+            array.values().to_pyarray(py).into_py(py)
+        }
+        DataType::Date64 => {
+            let array = array
+                .as_any()
+                .downcast_ref::<PrimitiveArray<i64>>()
+                .expect("could not downcast date64 to i64 array");
+            array.values().to_pyarray(py).into_py(py)
+        }
+        DataType::Time32(_) => {
+            let array = array
+                .as_any()
+                .downcast_ref::<PrimitiveArray<i32>>()
+                .expect("could not downcast time32 to i32 array");
+            array.values().to_pyarray(py).into_py(py)
+        }
+        DataType::Time64(_) => {
+            let array = array
+                .as_any()
+                .downcast_ref::<PrimitiveArray<i64>>()
+                .expect("could not downcast time64 to i64 array");
+            array.values().to_pyarray(py).into_py(py)
+        }
+        DataType::Duration(_) => todo!(),
+        DataType::Interval(_) => todo!(),
+        DataType::Binary => {
+            let array = array
+                .as_any()
+                .downcast_ref::<BinaryArray<i32>>()
+                .expect("could not downcast binary array to bytes vect");
+            array.values().to_pyarray(py).into_py(py)
+        }
+        DataType::FixedSizeBinary(_) => {
+            let array = array
+                .as_any()
+                .downcast_ref::<BinaryArray<i64>>()
+                .expect("could not downcast large binary to bytes vect");
+            array.values().to_pyarray(py).into_py(py)
+        }
+        DataType::LargeBinary => {
+            let array = array
+                .as_any()
+                .downcast_ref::<BinaryArray<i64>>()
+                .expect("could not downcast large binary to bytes vect");
+            array.values().to_pyarray(py).into_py(py)
+        }
+        DataType::Utf8 => {
+            let array = array
+                .as_any()
+                .downcast_ref::<Utf8Array<i32>>()
+                .expect("could not downcast to utf8 array");
+            array.values().to_pyarray(py).into_py(py)
+        }
+        DataType::LargeUtf8 => {
+            let array = array
+                .as_any()
+                .downcast_ref::<Utf8Array<i64>>()
+                .expect("could not downcast to long utf8 array");
+            array.values().to_pyarray(py).into_py(py)
+        }
+        DataType::FixedSizeList(field, _size) => match field.data_type.to_physical_type() {
+            PhysicalType::Primitive(PrimitiveType::Float32) => {
+                let array = array
+                    .as_any()
+                    .downcast_ref::<PrimitiveArray<f32>>()
+                    .expect("could not downcast to f32 array");
+                array.values().to_pyarray(py).into_py(py)
+            }
+            PhysicalType::Primitive(PrimitiveType::Float64) => {
+                let array = array
+                    .as_any()
+                    .downcast_ref::<PrimitiveArray<f64>>()
+                    .expect("could not downcast to f64 array");
+                array.values().to_pyarray(py).into_py(py)
+            }
+            _ => Python::None(py),
+        },
+        DataType::Extension(_, _, _) => todo!(),
+        _ => Python::None(py),
     }
 }
 

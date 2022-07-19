@@ -1,5 +1,4 @@
 //! this module holds the channel data enum and related implementations
-use arrow2::types::NativeType;
 
 use num::Complex;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
