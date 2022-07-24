@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use std::fmt::Write;
 
 use crate::export::numpy::arrow_to_numpy;
+use crate::export::polars::rust_arrow_to_py_series;
 use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::arrow::array_to_rust;
 use crate::mdfreader::Mdf;
@@ -63,6 +64,20 @@ impl Mdfr {
             }
             py_array
         })
+    }
+    fn get_polars_series(&self, channel_name: &str) -> PyResult<PyObject> {
+        let Mdfr(mdf) = self;
+        pyo3::Python::with_gil(|py| {
+            let mut py_serie = Ok(Python::None(py));
+            if let Some(array) = mdf.get_channel_data(channel_name) {
+                py_serie = rust_arrow_to_py_series(array);
+            };
+            py_serie
+        })
+    }
+    fn get_polars_dataframe(&self, channel_master_name: String) {
+        let Mdfr(mdf) = self;
+        //DataFrame::new()
     }
     /// returns channel's unit string
     fn get_channel_unit(&self, channel_name: String) -> Py<PyAny> {
@@ -163,7 +178,7 @@ impl Mdfr {
     ) {
         let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|py| {
-            let array = array_to_rust(py, &data)
+            let array = array_to_rust(data.as_ref(py))
                 .expect("data modification failed, could not extract numpy array");
             mdf.add_channel(
                 channel_name,
@@ -180,7 +195,7 @@ impl Mdfr {
     pub fn set_channel_data(&mut self, channel_name: &str, data: Py<PyAny>) {
         let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|py| {
-            let array = array_to_rust(py, &data)
+            let array = array_to_rust(data.as_ref(py))
                 .expect("data modification failed, could not extract numpy array");
             mdf.set_channel_data(channel_name, array);
         })

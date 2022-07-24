@@ -34,8 +34,8 @@ serde = { version = "1.0", features = ["derive"] } # for serialization
 whoami = "1.2" # to get user nam for writing file
 rand = "0.8" # for random numbers
 parquet2 = "0.14" # for export to parquet file format
-arrow2 = {version = "0.12", features= ["compute", "io_parquet", "io_parquet_compression"] } # for efficient data storing in memory
-polars = "0.22" # for python dataframe
+arrow2 = {version = "0.12", features = ["compute", "io_parquet", "io_parquet_compression"] } # for efficient data storing in memory
+polars = {version = "0.22", features = ["dtype-full", "object", "fmt"]} # for python dataframe
 
 [dev-dependencies]
 criterion = "0.3" # for benchmark

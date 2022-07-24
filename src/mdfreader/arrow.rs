@@ -326,7 +326,7 @@ pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
 
 /// Take an arrow array from python and convert it to a rust arrow array.
 /// This operation does not copy data.
-pub(crate) fn array_to_rust(py: Python, arrow_array: &Py<PyAny>) -> PyResult<ArrayRef> {
+pub fn array_to_rust(arrow_array: &PyAny) -> PyResult<ArrayRef> {
     // prepare a pointer to receive the Array struct
     let array = Box::new(ffi::ArrowArray::empty());
     let schema = Box::new(ffi::ArrowSchema::empty());
@@ -337,25 +337,19 @@ pub(crate) fn array_to_rust(py: Python, arrow_array: &Py<PyAny>) -> PyResult<Arr
     // make the conversion through PyArrow's private API
     // this changes the pointer's memory and is thus unsafe. In particular, `_export_to_c` can go out of bounds
     arrow_array.call_method1(
-        py,
         "_export_to_c",
         (array_ptr as Py_uintptr_t, schema_ptr as Py_uintptr_t),
     )?;
 
     unsafe {
         let field = ffi::import_field_from_c(schema.as_ref()).unwrap();
-        let array = ffi::import_array_from_c(array, field.data_type).unwrap();
+        let array = ffi::import_array_from_c(Box::new(*array), field.data_type).unwrap();
         Ok(array.into())
     }
 }
 
 /// Arrow array to Python.
-pub(crate) fn to_py_array(
-    py: Python,
-    pyarrow: &PyModule,
-    array: ArrayRef,
-    field: &Field,
-) -> PyResult<PyObject> {
+pub(crate) fn to_py_array(py: Python, pyarrow: &PyModule, array: ArrayRef) -> PyResult<PyObject> {
     let array_ptr = Box::new(ffi::ArrowArray::empty());
     let schema_ptr = Box::new(ffi::ArrowSchema::empty());
 
@@ -363,7 +357,7 @@ pub(crate) fn to_py_array(
     let schema_ptr = Box::into_raw(schema_ptr);
 
     unsafe {
-        ffi::export_field_to_c(field, schema_ptr);
+        ffi::export_field_to_c(&Field::new("", array.data_type().clone(), true), schema_ptr);
         ffi::export_array_to_c(array, array_ptr);
     };
 
