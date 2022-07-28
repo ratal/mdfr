@@ -18,7 +18,7 @@ binrw = "0" # to efficiently read blocks
 num = {version = "0.4", features = ["serde"] } # for complex numbers
 half = "2" # for f16 handling
 encoding_rs = "0.8" # for endian management
-chrono = "0.4.19" # for time conversion
+chrono = "0.4" # for time conversion
 ndarray = {version = "0.15", features = ["rayon", "serde", "approx"]} # for nd arrays
 ndarray-stats = "0.5" # for nd array stats
 rayon =  "1.5" # for general purpose parallel computations
