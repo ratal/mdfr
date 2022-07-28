@@ -1,4 +1,5 @@
 //! Converts ndarray data in into arrow.
+use crate::export::tensor::Tensor;
 use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::channel_data::ChannelData;
 use crate::mdfreader::{ChannelIndexes, Mdf};
@@ -21,6 +22,8 @@ use rayon::iter::{IntoParallelIterator, ParallelExtend, ParallelIterator};
 use std::collections::HashSet;
 use std::mem;
 use std::sync::Arc;
+
+use super::channel_data::Order;
 
 impl ChannelData {
     pub fn to_arrow_array(&mut self, bitmap: Option<Bitmap>) -> Arc<dyn Array> {
@@ -151,21 +154,171 @@ impl ChannelData {
                 Buffer::<u8>::from(mem::take(a).0),
                 bitmap,
             )),
-            ChannelData::ArrayDInt8(_) => todo!(),
-            ChannelData::ArrayDUInt8(_) => todo!(),
-            ChannelData::ArrayDInt16(_) => todo!(),
-            ChannelData::ArrayDUInt16(_) => todo!(),
-            ChannelData::ArrayDFloat16(_) => todo!(),
-            ChannelData::ArrayDInt24(_) => todo!(),
-            ChannelData::ArrayDUInt24(_) => todo!(),
-            ChannelData::ArrayDInt32(_) => todo!(),
-            ChannelData::ArrayDUInt32(_) => todo!(),
-            ChannelData::ArrayDFloat32(_) => todo!(),
-            ChannelData::ArrayDInt48(_) => todo!(),
-            ChannelData::ArrayDUInt48(_) => todo!(),
-            ChannelData::ArrayDInt64(_) => todo!(),
-            ChannelData::ArrayDUInt64(_) => todo!(),
-            ChannelData::ArrayDFloat64(_) => todo!(),
+            ChannelData::ArrayDInt8(a) => {
+                let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
+                Arc::new(Tensor::new(
+                    DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int8), None),
+                    Buffer::<i8>::from(a.0),
+                    Some(a.1 .0),
+                    Some(a.1 .1.into()),
+                    None,
+                    None,
+                ))
+            }
+            ChannelData::ArrayDUInt8(a) => {
+                let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
+                Arc::new(Tensor::new(
+                    DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt8), None),
+                    Buffer::<u8>::from(a.0),
+                    Some(a.1 .0),
+                    Some(a.1 .1.into()),
+                    None,
+                    None,
+                ))
+            }
+            ChannelData::ArrayDInt16(a) => {
+                let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
+                Arc::new(Tensor::new(
+                    DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int16), None),
+                    Buffer::<i16>::from(a.0),
+                    Some(a.1 .0),
+                    Some(a.1 .1.into()),
+                    None,
+                    None,
+                ))
+            }
+            ChannelData::ArrayDUInt16(a) => {
+                let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
+                Arc::new(Tensor::new(
+                    DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt16), None),
+                    Buffer::<u16>::from(a.0),
+                    Some(a.1 .0),
+                    Some(a.1 .1.into()),
+                    None,
+                    None,
+                ))
+            }
+            ChannelData::ArrayDFloat16(a) => {
+                let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
+                Arc::new(Tensor::new(
+                    DataType::Extension("Tensor".to_owned(), Box::new(DataType::Float32), None),
+                    Buffer::<f32>::from(a.0),
+                    Some(a.1 .0),
+                    Some(a.1 .1.into()),
+                    None,
+                    None,
+                ))
+            }
+            ChannelData::ArrayDInt24(a) => {
+                let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
+                Arc::new(Tensor::new(
+                    DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int32), None),
+                    Buffer::<i32>::from(a.0),
+                    Some(a.1 .0),
+                    Some(a.1 .1.into()),
+                    None,
+                    None,
+                ))
+            }
+            ChannelData::ArrayDUInt24(a) => {
+                let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
+                Arc::new(Tensor::new(
+                    DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt32), None),
+                    Buffer::<u32>::from(a.0),
+                    Some(a.1 .0),
+                    Some(a.1 .1.into()),
+                    None,
+                    None,
+                ))
+            }
+            ChannelData::ArrayDInt32(a) => {
+                let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
+                Arc::new(Tensor::new(
+                    DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int32), None),
+                    Buffer::<i32>::from(a.0),
+                    Some(a.1 .0),
+                    Some(a.1 .1.into()),
+                    None,
+                    None,
+                ))
+            }
+            ChannelData::ArrayDUInt32(a) => {
+                let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
+                Arc::new(Tensor::new(
+                    DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt32), None),
+                    Buffer::<u32>::from(a.0),
+                    Some(a.1 .0),
+                    Some(a.1 .1.into()),
+                    None,
+                    None,
+                ))
+            }
+            ChannelData::ArrayDFloat32(a) => {
+                let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
+                Arc::new(Tensor::new(
+                    DataType::Extension("Tensor".to_owned(), Box::new(DataType::Float32), None),
+                    Buffer::<f32>::from(a.0),
+                    Some(a.1 .0),
+                    Some(a.1 .1.into()),
+                    None,
+                    None,
+                ))
+            }
+            ChannelData::ArrayDInt48(a) => {
+                let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
+                Arc::new(Tensor::new(
+                    DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int64), None),
+                    Buffer::<i64>::from(a.0),
+                    Some(a.1 .0),
+                    Some(a.1 .1.into()),
+                    None,
+                    None,
+                ))
+            }
+            ChannelData::ArrayDUInt48(a) => {
+                let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
+                Arc::new(Tensor::new(
+                    DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt64), None),
+                    Buffer::<u64>::from(a.0),
+                    Some(a.1 .0),
+                    Some(a.1 .1.into()),
+                    None,
+                    None,
+                ))
+            }
+            ChannelData::ArrayDInt64(a) => {
+                let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
+                Arc::new(Tensor::new(
+                    DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int64), None),
+                    Buffer::<i64>::from(a.0),
+                    Some(a.1 .0),
+                    Some(a.1 .1.into()),
+                    None,
+                    None,
+                ))
+            }
+            ChannelData::ArrayDUInt64(a) => {
+                let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
+                Arc::new(Tensor::new(
+                    DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt64), None),
+                    Buffer::<u64>::from(a.0),
+                    Some(a.1 .0),
+                    Some(a.1 .1.into()),
+                    None,
+                    None,
+                ))
+            }
+            ChannelData::ArrayDFloat64(a) => {
+                let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
+                Arc::new(Tensor::new(
+                    DataType::Extension("Tensor".to_owned(), Box::new(DataType::Float64), None),
+                    Buffer::<f64>::from(a.0),
+                    Some(a.1 .0),
+                    Some(a.1 .1.into()),
+                    None,
+                    None,
+                ))
+            }
             ChannelData::ArrayDComplex16(_) => todo!(),
             ChannelData::ArrayDComplex32(_) => todo!(),
             ChannelData::ArrayDComplex64(_) => todo!(),

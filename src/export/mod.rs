@@ -2,3 +2,4 @@
 pub mod numpy;
 pub mod parquet;
 pub mod polars;
+pub mod tensor;

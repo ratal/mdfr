@@ -1,0 +1,654 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+//! Arrow Tensor Type, defined in
+//! [`format/Tensor.fbs`](https://github.com/apache/arrow/blob/master/format/Tensor.fbs).
+
+use std::marker::PhantomData;
+use std::mem;
+
+use arrow2::array::Array;
+use arrow2::bitmap::Bitmap;
+use arrow2::buffer::Buffer;
+use arrow2::datatypes::*;
+
+use arrow2::error::{Error, Result};
+use arrow2::types::NativeType;
+
+/// Computes the strides required assuming a row major memory layout
+fn compute_row_major_strides<T>(shape: &[usize]) -> Result<Vec<usize>> {
+    let mut remaining_bytes = mem::size_of::<T>();
+
+    for i in shape {
+        if let Some(val) = remaining_bytes.checked_mul(*i) {
+            remaining_bytes = val;
+        } else {
+            return Err(Error::Overflow);
+        }
+    }
+
+    let mut strides = Vec::<usize>::new();
+    for i in shape {
+        remaining_bytes /= *i;
+        strides.push(remaining_bytes);
+    }
+
+    Ok(strides)
+}
+
+/// Computes the strides required assuming a column major memory layout
+fn compute_column_major_strides<T>(shape: &[usize]) -> Result<Vec<usize>> {
+    let mut remaining_bytes = mem::size_of::<T>();
+    let mut strides = Vec::<usize>::new();
+
+    for i in shape {
+        strides.push(remaining_bytes);
+
+        if let Some(val) = remaining_bytes.checked_mul(*i) {
+            remaining_bytes = val;
+        } else {
+            return Err(Error::Overflow);
+        }
+    }
+
+    Ok(strides)
+}
+
+/// Tensor of primitive types
+#[derive(Debug, Clone, PartialEq)]
+pub struct Tensor<T: NativeType> {
+    data_type: DataType,
+    values: Buffer<T>,
+    shape: Option<Vec<usize>>,
+    strides: Option<Vec<usize>>,
+    names: Option<Vec<String>>,
+    _marker: PhantomData<T>,
+}
+
+pub type BooleanTensor = Tensor<bool>;
+pub type Int8Tensor = Tensor<i8>;
+pub type Int16Tensor = Tensor<i16>;
+pub type Int32Tensor = Tensor<i32>;
+pub type Int64Tensor = Tensor<i64>;
+pub type UInt8Tensor = Tensor<u8>;
+pub type UInt16Tensor = Tensor<u16>;
+pub type UInt32Tensor = Tensor<u32>;
+pub type UInt64Tensor = Tensor<u64>;
+pub type Float32Tensor = Tensor<f32>;
+pub type Float64Tensor = Tensor<f64>;
+
+/// Order of the array, Row or Column Major (first)
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Order {
+    RowMajor,
+    ColumnMajor,
+}
+
+impl<T: NativeType> Tensor<T> {
+    /// Creates a new `Tensor`
+    pub fn try_new(
+        data_type: DataType,
+        values: Buffer<T>,
+        shape: Option<Vec<usize>>,
+        order: Option<Order>,
+        strides: Option<Vec<usize>>,
+        names: Option<Vec<String>>,
+    ) -> Result<Self> {
+        match shape {
+            None => {
+                if values.len() != mem::size_of::<T>() {
+                    return Err(Error::InvalidArgumentError(
+                        "underlying buffer should only contain a single tensor element".to_string(),
+                    ));
+                }
+
+                if strides != None {
+                    return Err(Error::InvalidArgumentError(
+                        "expected None strides for tensor with no shape".to_string(),
+                    ));
+                }
+
+                if names != None {
+                    return Err(Error::InvalidArgumentError(
+                        "expected None names for tensor with no shape".to_string(),
+                    ));
+                }
+            }
+
+            Some(ref s) => {
+                if let Some(ref st) = strides {
+                    if st.len() != s.len() {
+                        return Err(Error::InvalidArgumentError(
+                            "shape and stride dimensions differ".to_string(),
+                        ));
+                    }
+                }
+
+                if let Some(ref n) = names {
+                    if n.len() != s.len() {
+                        return Err(Error::InvalidArgumentError(
+                            "number of dimensions and number of dimension names differ".to_string(),
+                        ));
+                    }
+                }
+
+                let total_elements: usize = s.iter().product();
+                if total_elements != (values.len() / mem::size_of::<T>()) {
+                    return Err(Error::InvalidArgumentError(
+                        "number of elements in buffer does not match dimensions".to_string(),
+                    ));
+                }
+            }
+        };
+
+        // Checking that the tensor strides used for construction are correct
+        // otherwise a row major stride is calculated and used as value for the tensor
+        let tensor_strides = {
+            if let Some(st) = strides {
+                if let Some(ref s) = shape {
+                    if compute_row_major_strides::<T>(s)? == st
+                        || compute_column_major_strides::<T>(s)? == st
+                    {
+                        Some(st)
+                    } else {
+                        return Err(Error::InvalidArgumentError(
+                            "the input stride does not match the selected shape".to_string(),
+                        ));
+                    }
+                } else {
+                    Some(st)
+                }
+            } else if let Some(ref s) = shape {
+                match order {
+                    Some(Order::RowMajor) => Some(compute_row_major_strides::<T>(s)?),
+                    Some(Order::ColumnMajor) => Some(compute_column_major_strides::<T>(s)?),
+                    None => Some(compute_row_major_strides::<T>(s)?),
+                }
+            } else {
+                None
+            }
+        };
+
+        Ok(Self {
+            data_type,
+            values,
+            shape,
+            strides: tensor_strides,
+            names,
+            _marker: PhantomData,
+        })
+    }
+
+    /// Creates a new Tensor using row major memory layout
+    pub fn new_row_major(
+        data_type: DataType,
+        values: Buffer<T>,
+        shape: Option<Vec<usize>>,
+        names: Option<Vec<String>>,
+    ) -> Result<Self> {
+        if let Some(ref s) = shape {
+            let strides = Some(compute_row_major_strides::<T>(s)?);
+
+            Self::try_new(
+                data_type,
+                values,
+                shape,
+                Some(Order::RowMajor),
+                strides,
+                names,
+            )
+        } else {
+            Err(Error::InvalidArgumentError(
+                "shape required to create row major tensor".to_string(),
+            ))
+        }
+    }
+
+    /// Creates a new Tensor using column major memory layout
+    pub fn new_column_major(
+        data_type: DataType,
+        values: Buffer<T>,
+        shape: Option<Vec<usize>>,
+        names: Option<Vec<String>>,
+    ) -> Result<Self> {
+        if let Some(ref s) = shape {
+            let strides = Some(compute_column_major_strides::<T>(s)?);
+
+            Self::try_new(
+                data_type,
+                values,
+                shape,
+                Some(Order::ColumnMajor),
+                strides,
+                names,
+            )
+        } else {
+            Err(Error::InvalidArgumentError(
+                "shape required to create column major tensor".to_string(),
+            ))
+        }
+    }
+
+    /// Returns a clone of this [`PrimitiveArray`] sliced by an offset and length.
+    /// # Implementation
+    /// This operation is `O(1)` as it amounts to increase two ref counts.
+    /// # Examples
+    /// ```
+    /// use arrow2::array::PrimitiveArray;
+    ///
+    /// let array = PrimitiveArray::from_vec(vec![1, 2, 3]);
+    /// assert_eq!(format!("{:?}", array), "Int32[1, 2, 3]");
+    /// let sliced = array.slice(1, 1);
+    /// assert_eq!(format!("{:?}", sliced), "Int32[2]");
+    /// // note: `sliced` and `array` share the same memory region.
+    /// ```
+    /// # Panic
+    /// This function panics iff `offset + length > self.len()`.
+    #[inline]
+    #[must_use]
+    pub fn slice(&self, offset: usize, length: usize) -> Self {
+        assert!(
+            offset + length <= self.len(),
+            "offset + length may not exceed length of array"
+        );
+        unsafe { self.slice_unchecked(offset, length) }
+    }
+
+    /// Returns a clone of this [`PrimitiveArray`] sliced by an offset and length.
+    /// # Implementation
+    /// This operation is `O(1)` as it amounts to increase two ref counts.
+    /// # Safety
+    /// The caller must ensure that `offset + length <= self.len()`.
+    #[inline]
+    #[must_use]
+    pub unsafe fn slice_unchecked(&self, offset: usize, length: usize) -> Self {
+        Self {
+            data_type: self.data_type.clone(),
+            values: self.values.clone().slice_unchecked(offset, length),
+            shape: self.shape.clone(),
+            names: self.names.clone(),
+            strides: self.strides.clone(),
+            _marker: PhantomData,
+        }
+    }
+
+    #[must_use]
+    pub fn with_validity(&self, validity: Option<Bitmap>) -> Self {
+        self.clone()
+    }
+
+    /// The sizes of the dimensions
+    pub fn shape(&self) -> Option<&Vec<usize>> {
+        self.shape.as_ref()
+    }
+
+    /// Returns the arrays' [`DataType`].
+    #[inline]
+    pub fn data_type(&self) -> &DataType {
+        &self.data_type
+    }
+
+    /// Returns a reference to the underlying `Buffer`
+    #[inline]
+    pub fn values(&self) -> &Buffer<T> {
+        &self.values
+    }
+
+    /// Returns the value at slot `i`.
+    #[inline]
+    pub fn value(&self, i: usize) -> T {
+        self.values()[i]
+    }
+
+    /// The number of bytes between elements in each dimension
+    pub fn strides(&self) -> Option<&Vec<usize>> {
+        self.strides.as_ref()
+    }
+
+    /// The names of the dimensions
+    pub fn names(&self) -> Option<&Vec<String>> {
+        self.names.as_ref()
+    }
+
+    /// The number of dimensions
+    pub fn ndim(&self) -> usize {
+        match &self.shape {
+            None => 0,
+            Some(v) => v.len(),
+        }
+    }
+
+    /// The name of dimension i
+    pub fn dim_name(&self, i: usize) -> Option<String> {
+        self.names.as_ref().map(|names| names[i].clone())
+    }
+
+    /// The total number of elements in the `Tensor`
+    pub fn size(&self) -> usize {
+        match self.shape {
+            None => 0,
+            Some(ref s) => s.iter().product(),
+        }
+    }
+
+    /// Boxes self into a [`Box<dyn Array>`].
+    pub fn boxed(self) -> Box<dyn Array> {
+        Box::new(self)
+    }
+
+    /// Boxes self into a [`std::sync::Arc<dyn Array>`].
+    pub fn arced(self) -> std::sync::Arc<dyn Array> {
+        std::sync::Arc::new(self)
+    }
+
+    /// Indicates if the data is laid out contiguously in memory
+    pub fn is_contiguous(&self) -> Result<bool> {
+        Ok(self.is_row_major()? || self.is_column_major()?)
+    }
+
+    /// Indicates if the memory layout row major
+    pub fn is_row_major(&self) -> Result<bool> {
+        match self.shape {
+            None => Ok(false),
+            Some(ref s) => Ok(Some(compute_row_major_strides::<T>(s)?) == self.strides),
+        }
+    }
+
+    /// Indicates if the memory layout column major
+    pub fn is_column_major(&self) -> Result<bool> {
+        match self.shape {
+            None => Ok(false),
+            Some(ref s) => Ok(Some(compute_column_major_strides::<T>(s)?) == self.strides),
+        }
+    }
+
+    /// Alias for `Self::try_new(..).unwrap()`.
+    /// # Panics
+    /// This function errors iff:
+    /// * The validity is not `None` and its length is different from `values`'s length
+    /// * The `data_type`'s [`PhysicalType`] is not equal to [`PhysicalType::Primitive`].
+    pub fn new(
+        data_type: DataType,
+        values: Buffer<T>,
+        shape: Option<Vec<usize>>,
+        order: Option<Order>,
+        strides: Option<Vec<usize>>,
+        names: Option<Vec<String>>,
+    ) -> Self {
+        Self::try_new(data_type, values, shape, order, strides, names).unwrap()
+    }
+}
+
+impl<T: NativeType> Array for Tensor<T> {
+    #[inline]
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    #[inline]
+    fn len(&self) -> usize {
+        self.values.len()
+    }
+
+    #[inline]
+    fn data_type(&self) -> &DataType {
+        self.data_type()
+    }
+
+    fn validity(&self) -> Option<&Bitmap> {
+        None
+    }
+
+    fn slice(&self, offset: usize, length: usize) -> Box<dyn Array> {
+        Box::new(self.slice(offset, length))
+    }
+    unsafe fn slice_unchecked(&self, offset: usize, length: usize) -> Box<dyn Array> {
+        Box::new(self.slice_unchecked(offset, length))
+    }
+    fn with_validity(&self, validity: Option<Bitmap>) -> Box<dyn Array> {
+        Box::new(self.with_validity(validity))
+    }
+    fn to_boxed(&self) -> Box<dyn Array> {
+        Box::new(self.clone())
+    }
+
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    fn null_count(&self) -> usize {
+        if self.data_type() == &DataType::Null {
+            return self.len();
+        };
+        self.validity()
+            .as_ref()
+            .map(|x| x.null_count())
+            .unwrap_or(0)
+    }
+
+    fn is_null(&self, i: usize) -> bool {
+        self.validity()
+            .as_ref()
+            .map(|x| !x.get_bit(i))
+            .unwrap_or(false)
+    }
+
+    fn is_valid(&self, i: usize) -> bool {
+        !self.is_null(i)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use arrow2::buffer::Buffer;
+
+    #[test]
+    fn test_compute_row_major_strides() {
+        assert_eq!(
+            vec![48_usize, 8],
+            compute_row_major_strides::<i64>(&[4_usize, 6]).unwrap()
+        );
+        assert_eq!(
+            vec![24_usize, 4],
+            compute_row_major_strides::<i32>(&[4_usize, 6]).unwrap()
+        );
+        assert_eq!(
+            vec![6_usize, 1],
+            compute_row_major_strides::<i8>(&[4_usize, 6]).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_compute_column_major_strides() {
+        assert_eq!(
+            vec![8_usize, 32],
+            compute_column_major_strides::<i64>(&[4_usize, 6]).unwrap()
+        );
+        assert_eq!(
+            vec![4_usize, 16],
+            compute_column_major_strides::<i32>(&[4_usize, 6]).unwrap()
+        );
+        assert_eq!(
+            vec![1_usize, 4],
+            compute_column_major_strides::<i8>(&[4_usize, 6]).unwrap()
+        );
+    }
+
+    #[test]
+    fn test_zero_dim() {
+        let buf = Buffer::<u8>::from(vec![1]);
+        let tensor = UInt8Tensor::try_new(DataType::UInt8, buf, None, None, None, None).unwrap();
+        assert_eq!(0, tensor.size());
+        assert_eq!(None, tensor.shape());
+        assert_eq!(None, tensor.names());
+        assert_eq!(0, tensor.ndim());
+        assert!(!tensor.is_row_major().unwrap());
+        assert!(!tensor.is_column_major().unwrap());
+        assert!(!tensor.is_contiguous().unwrap());
+
+        let buf = Buffer::<i32>::from(vec![1, 2, 2, 2]);
+        let tensor = Int32Tensor::try_new(DataType::Int32, buf, None, None, None, None).unwrap();
+        assert_eq!(0, tensor.size());
+        assert_eq!(None, tensor.shape());
+        assert_eq!(None, tensor.names());
+        assert_eq!(0, tensor.ndim());
+        assert!(!tensor.is_row_major().unwrap());
+        assert!(!tensor.is_column_major().unwrap());
+        assert!(!tensor.is_contiguous().unwrap());
+    }
+
+    #[test]
+    fn test_tensor() {
+        let buf = Buffer::<i32>::from(vec![
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+        ]);
+        let tensor =
+            Int32Tensor::try_new(DataType::Int32, buf, Some(vec![2, 8]), None, None, None).unwrap();
+        assert_eq!(16, tensor.size());
+        assert_eq!(Some(vec![2_usize, 8]).as_ref(), tensor.shape());
+        assert_eq!(Some(vec![32_usize, 4]).as_ref(), tensor.strides());
+        assert_eq!(2, tensor.ndim());
+        assert_eq!(None, tensor.names());
+    }
+
+    #[test]
+    fn test_new_row_major() {
+        let buf = Buffer::<i32>::from(vec![
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+        ]);
+        let tensor =
+            Int32Tensor::new_row_major(DataType::Int32, buf, Some(vec![2, 8]), None).unwrap();
+        assert_eq!(16, tensor.size());
+        assert_eq!(Some(vec![2_usize, 8]).as_ref(), tensor.shape());
+        assert_eq!(Some(vec![32_usize, 4]).as_ref(), tensor.strides());
+        assert_eq!(None, tensor.names());
+        assert_eq!(2, tensor.ndim());
+        assert!(tensor.is_row_major().unwrap());
+        assert!(!tensor.is_column_major().unwrap());
+        assert!(tensor.is_contiguous().unwrap());
+    }
+
+    #[test]
+    fn test_new_column_major() {
+        let buf = Buffer::<i32>::from(vec![
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+        ]);
+        let tensor =
+            Int32Tensor::new_column_major(DataType::Int32, buf, Some(vec![2, 8]), None).unwrap();
+        assert_eq!(16, tensor.size());
+        assert_eq!(Some(vec![2_usize, 8]).as_ref(), tensor.shape());
+        assert_eq!(Some(vec![4_usize, 8]).as_ref(), tensor.strides());
+        assert_eq!(None, tensor.names());
+        assert_eq!(2, tensor.ndim());
+        assert!(!tensor.is_row_major().unwrap());
+        assert!(tensor.is_column_major().unwrap());
+        assert!(tensor.is_contiguous().unwrap());
+    }
+
+    #[test]
+    fn test_with_names() {
+        let buf = Buffer::<i64>::from(vec![0, 1, 2, 3, 4, 5, 6, 7, 8]);
+        let names = vec!["Dim 1".to_owned(), "Dim 2".to_owned()];
+        let tensor =
+            Int64Tensor::new_column_major(DataType::Int64, buf, Some(vec![2, 4]), Some(names))
+                .unwrap();
+        assert_eq!(8, tensor.size());
+        assert_eq!(Some(vec![2_usize, 4]).as_ref(), tensor.shape());
+        assert_eq!(Some(vec![8_usize, 16]).as_ref(), tensor.strides());
+        assert_eq!("Dim 1", tensor.dim_name(0).unwrap());
+        assert_eq!("Dim 2", tensor.dim_name(1).unwrap());
+        assert_eq!(2, tensor.ndim());
+        assert!(!tensor.is_row_major().unwrap());
+        assert!(tensor.is_column_major().unwrap());
+        assert!(tensor.is_contiguous().unwrap());
+    }
+
+    #[test]
+    fn test_inconsistent_strides() {
+        let buf = Buffer::<i32>::from(vec![
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+        ]);
+
+        let result = Int32Tensor::try_new(
+            DataType::Int32,
+            buf,
+            Some(vec![2, 8]),
+            None,
+            Some(vec![2, 8, 1]),
+            None,
+        );
+
+        if result.is_ok() {
+            panic!("shape and stride dimensions are different")
+        }
+    }
+
+    #[test]
+    fn test_inconsistent_names() {
+        let buf = Buffer::<i32>::from(vec![
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+        ]);
+
+        let result = Int32Tensor::try_new(
+            DataType::Int32,
+            buf,
+            Some(vec![2, 8]),
+            None,
+            Some(vec![4, 8]),
+            Some(vec!["1".to_owned(), "2".to_owned(), "3".to_owned()]),
+        );
+
+        if result.is_ok() {
+            panic!("dimensions and names have different shape")
+        }
+    }
+
+    #[test]
+    fn test_incorrect_shape() {
+        let buf = Buffer::<i32>::from(vec![
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+        ]);
+
+        let result = Int32Tensor::try_new(DataType::Int32, buf, Some(vec![2, 6]), None, None, None);
+
+        if result.is_ok() {
+            panic!("number of elements does not match for the shape")
+        }
+    }
+
+    #[test]
+    fn test_incorrect_stride() {
+        let buf = Buffer::<i32>::from(vec![
+            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+        ]);
+
+        let result = Int32Tensor::try_new(
+            DataType::Int32,
+            buf,
+            Some(vec![2, 8]),
+            None,
+            Some(vec![30, 4]),
+            None,
+        );
+
+        if result.is_ok() {
+            panic!("the input stride does not match the selected shape")
+        }
+    }
+}

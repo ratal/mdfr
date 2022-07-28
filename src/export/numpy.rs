@@ -172,6 +172,7 @@ pub fn arrow_to_numpy(py: Python, array: &Arc<dyn Array>) -> PyObject {
             array.values().to_pyarray(py).into_py(py)
         }
         DataType::FixedSizeList(field, _size) => match field.data_type.to_physical_type() {
+            // Complex types
             PhysicalType::Primitive(PrimitiveType::Float32) => {
                 let array = array
                     .as_any()
@@ -188,7 +189,24 @@ pub fn arrow_to_numpy(py: Python, array: &Arc<dyn Array>) -> PyObject {
             }
             _ => Python::None(py),
         },
-        DataType::Extension(_, _, _) => todo!(),
+        DataType::Extension(ext_str, dtype, _) => match ext_str.as_str() {
+            "Tensor" => match **dtype {
+                DataType::Int8 => todo!(),
+                DataType::Int16 => todo!(),
+                DataType::Int32 => todo!(),
+                DataType::Int64 => todo!(),
+                DataType::UInt8 => todo!(),
+                DataType::UInt16 => todo!(),
+                DataType::UInt32 => todo!(),
+                DataType::UInt64 => todo!(),
+                DataType::Float16 => todo!(),
+                DataType::Float32 => todo!(),
+                DataType::Float64 => todo!(),
+                DataType::FixedSizeList(_, _) => todo!(),
+                _ => Python::None(py),
+            },
+            _ => Python::None(py),
+        },
         _ => Python::None(py),
     }
 }

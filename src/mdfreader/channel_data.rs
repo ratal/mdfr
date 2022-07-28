@@ -5,6 +5,8 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::fmt;
 use std::iter::IntoIterator;
 
+use crate::export::tensor::Order as TensorOrder;
+
 /// channel data type enum.
 /// most common data type is 1D ndarray for timeseries with element types numeric.
 /// vector of string or bytes also exists.
@@ -59,6 +61,15 @@ pub enum ChannelData {
 pub enum Order {
     RowMajor,
     ColumnMajor,
+}
+
+impl From<Order> for TensorOrder {
+    fn from(order: Order) -> Self {
+        match order {
+            Order::RowMajor => TensorOrder::RowMajor,
+            Order::ColumnMajor => TensorOrder::ColumnMajor,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
