@@ -15,9 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//! Arrow Tensor Type, defined in
-//! [`format/Tensor.fbs`](https://github.com/apache/arrow/blob/master/format/Tensor.fbs).
-
 use std::marker::PhantomData;
 use std::mem;
 
@@ -73,29 +70,24 @@ fn compute_column_major_strides<T>(shape: &[usize]) -> Result<Vec<usize>> {
 pub struct Tensor<T: NativeType> {
     data_type: DataType,
     values: Buffer<T>,
-    shape: Option<Vec<usize>>,
+    shape: Vec<usize>,
+    order: Order,
     strides: Option<Vec<usize>>,
     names: Option<Vec<String>>,
     _marker: PhantomData<T>,
 }
-
-pub type BooleanTensor = Tensor<bool>;
-pub type Int8Tensor = Tensor<i8>;
-pub type Int16Tensor = Tensor<i16>;
-pub type Int32Tensor = Tensor<i32>;
-pub type Int64Tensor = Tensor<i64>;
-pub type UInt8Tensor = Tensor<u8>;
-pub type UInt16Tensor = Tensor<u16>;
-pub type UInt32Tensor = Tensor<u32>;
-pub type UInt64Tensor = Tensor<u64>;
-pub type Float32Tensor = Tensor<f32>;
-pub type Float64Tensor = Tensor<f64>;
 
 /// Order of the array, Row or Column Major (first)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Order {
     RowMajor,
     ColumnMajor,
+}
+
+impl Default for Order {
+    fn default() -> Self {
+        Order::RowMajor
+    }
 }
 
 impl<T: NativeType> Tensor<T> {
@@ -183,10 +175,15 @@ impl<T: NativeType> Tensor<T> {
             }
         };
 
+        let order = order.unwrap_or_default();
+
+        let shape = shape.unwrap_or_default();
+
         Ok(Self {
             data_type,
             values,
             shape,
+            order,
             strides: tensor_strides,
             names,
             _marker: PhantomData,
@@ -280,6 +277,7 @@ impl<T: NativeType> Tensor<T> {
             data_type: self.data_type.clone(),
             values: self.values.clone().slice_unchecked(offset, length),
             shape: self.shape.clone(),
+            order: self.order.clone(),
             names: self.names.clone(),
             strides: self.strides.clone(),
             _marker: PhantomData,
@@ -292,8 +290,12 @@ impl<T: NativeType> Tensor<T> {
     }
 
     /// The sizes of the dimensions
-    pub fn shape(&self) -> Option<&Vec<usize>> {
-        self.shape.as_ref()
+    pub fn shape(&self) -> &Vec<usize> {
+        &self.shape
+    }
+
+    pub fn order(&self) -> &Order {
+        &self.order
     }
 
     /// Returns the arrays' [`DataType`].
@@ -326,10 +328,7 @@ impl<T: NativeType> Tensor<T> {
 
     /// The number of dimensions
     pub fn ndim(&self) -> usize {
-        match &self.shape {
-            None => 0,
-            Some(v) => v.len(),
-        }
+        self.shape.len()
     }
 
     /// The name of dimension i
@@ -339,10 +338,7 @@ impl<T: NativeType> Tensor<T> {
 
     /// The total number of elements in the `Tensor`
     pub fn size(&self) -> usize {
-        match self.shape {
-            None => 0,
-            Some(ref s) => s.iter().product(),
-        }
+        self.shape.iter().product()
     }
 
     /// Boxes self into a [`Box<dyn Array>`].
@@ -356,23 +352,23 @@ impl<T: NativeType> Tensor<T> {
     }
 
     /// Indicates if the data is laid out contiguously in memory
-    pub fn is_contiguous(&self) -> Result<bool> {
-        Ok(self.is_row_major()? || self.is_column_major()?)
+    pub fn is_contiguous(&self) -> bool {
+        self.is_row_major() || self.is_column_major()
     }
 
     /// Indicates if the memory layout row major
-    pub fn is_row_major(&self) -> Result<bool> {
-        match self.shape {
-            None => Ok(false),
-            Some(ref s) => Ok(Some(compute_row_major_strides::<T>(s)?) == self.strides),
+    pub fn is_row_major(&self) -> bool {
+        match self.order {
+            Order::RowMajor => true,
+            Order::ColumnMajor => false,
         }
     }
 
     /// Indicates if the memory layout column major
-    pub fn is_column_major(&self) -> Result<bool> {
-        match self.shape {
-            None => Ok(false),
-            Some(ref s) => Ok(Some(compute_column_major_strides::<T>(s)?) == self.strides),
+    pub fn is_column_major(&self) -> bool {
+        match self.order {
+            Order::RowMajor => false,
+            Order::ColumnMajor => true,
         }
     }
 
@@ -493,24 +489,24 @@ mod tests {
     #[test]
     fn test_zero_dim() {
         let buf = Buffer::<u8>::from(vec![1]);
-        let tensor = UInt8Tensor::try_new(DataType::UInt8, buf, None, None, None, None).unwrap();
+        let tensor = Tensor::<u8>::try_new(DataType::UInt8, buf, None, None, None, None).unwrap();
         assert_eq!(0, tensor.size());
-        assert_eq!(None, tensor.shape());
+        assert_eq!(&Vec::<usize>::new(), tensor.shape());
         assert_eq!(None, tensor.names());
         assert_eq!(0, tensor.ndim());
-        assert!(!tensor.is_row_major().unwrap());
-        assert!(!tensor.is_column_major().unwrap());
-        assert!(!tensor.is_contiguous().unwrap());
+        assert!(!tensor.is_row_major());
+        assert!(!tensor.is_column_major());
+        assert!(!tensor.is_contiguous());
 
         let buf = Buffer::<i32>::from(vec![1, 2, 2, 2]);
-        let tensor = Int32Tensor::try_new(DataType::Int32, buf, None, None, None, None).unwrap();
+        let tensor = Tensor::<i32>::try_new(DataType::Int32, buf, None, None, None, None).unwrap();
         assert_eq!(0, tensor.size());
-        assert_eq!(None, tensor.shape());
+        assert_eq!(&Vec::<usize>::new(), tensor.shape());
         assert_eq!(None, tensor.names());
         assert_eq!(0, tensor.ndim());
-        assert!(!tensor.is_row_major().unwrap());
-        assert!(!tensor.is_column_major().unwrap());
-        assert!(!tensor.is_contiguous().unwrap());
+        assert!(!tensor.is_row_major());
+        assert!(!tensor.is_column_major());
+        assert!(!tensor.is_contiguous());
     }
 
     #[test]
@@ -519,9 +515,10 @@ mod tests {
             0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
         ]);
         let tensor =
-            Int32Tensor::try_new(DataType::Int32, buf, Some(vec![2, 8]), None, None, None).unwrap();
+            Tensor::<i32>::try_new(DataType::Int32, buf, Some(vec![2, 8]), None, None, None)
+                .unwrap();
         assert_eq!(16, tensor.size());
-        assert_eq!(Some(vec![2_usize, 8]).as_ref(), tensor.shape());
+        assert_eq!(&vec![2_usize, 8], tensor.shape());
         assert_eq!(Some(vec![32_usize, 4]).as_ref(), tensor.strides());
         assert_eq!(2, tensor.ndim());
         assert_eq!(None, tensor.names());
@@ -533,15 +530,15 @@ mod tests {
             0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
         ]);
         let tensor =
-            Int32Tensor::new_row_major(DataType::Int32, buf, Some(vec![2, 8]), None).unwrap();
+            Tensor::<i32>::new_row_major(DataType::Int32, buf, Some(vec![2, 8]), None).unwrap();
         assert_eq!(16, tensor.size());
-        assert_eq!(Some(vec![2_usize, 8]).as_ref(), tensor.shape());
+        assert_eq!(&vec![2_usize, 8], tensor.shape());
         assert_eq!(Some(vec![32_usize, 4]).as_ref(), tensor.strides());
         assert_eq!(None, tensor.names());
         assert_eq!(2, tensor.ndim());
-        assert!(tensor.is_row_major().unwrap());
-        assert!(!tensor.is_column_major().unwrap());
-        assert!(tensor.is_contiguous().unwrap());
+        assert!(tensor.is_row_major());
+        assert!(!tensor.is_column_major());
+        assert!(tensor.is_contiguous());
     }
 
     #[test]
@@ -550,15 +547,15 @@ mod tests {
             0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
         ]);
         let tensor =
-            Int32Tensor::new_column_major(DataType::Int32, buf, Some(vec![2, 8]), None).unwrap();
+            Tensor::<i32>::new_column_major(DataType::Int32, buf, Some(vec![2, 8]), None).unwrap();
         assert_eq!(16, tensor.size());
-        assert_eq!(Some(vec![2_usize, 8]).as_ref(), tensor.shape());
+        assert_eq!(&vec![2_usize, 8], tensor.shape());
         assert_eq!(Some(vec![4_usize, 8]).as_ref(), tensor.strides());
         assert_eq!(None, tensor.names());
         assert_eq!(2, tensor.ndim());
-        assert!(!tensor.is_row_major().unwrap());
-        assert!(tensor.is_column_major().unwrap());
-        assert!(tensor.is_contiguous().unwrap());
+        assert!(!tensor.is_row_major());
+        assert!(tensor.is_column_major());
+        assert!(tensor.is_contiguous());
     }
 
     #[test]
@@ -566,17 +563,17 @@ mod tests {
         let buf = Buffer::<i64>::from(vec![0, 1, 2, 3, 4, 5, 6, 7, 8]);
         let names = vec!["Dim 1".to_owned(), "Dim 2".to_owned()];
         let tensor =
-            Int64Tensor::new_column_major(DataType::Int64, buf, Some(vec![2, 4]), Some(names))
+            Tensor::<i64>::new_column_major(DataType::Int64, buf, Some(vec![2, 4]), Some(names))
                 .unwrap();
         assert_eq!(8, tensor.size());
-        assert_eq!(Some(vec![2_usize, 4]).as_ref(), tensor.shape());
+        assert_eq!(&vec![2_usize, 4], tensor.shape());
         assert_eq!(Some(vec![8_usize, 16]).as_ref(), tensor.strides());
         assert_eq!("Dim 1", tensor.dim_name(0).unwrap());
         assert_eq!("Dim 2", tensor.dim_name(1).unwrap());
         assert_eq!(2, tensor.ndim());
-        assert!(!tensor.is_row_major().unwrap());
-        assert!(tensor.is_column_major().unwrap());
-        assert!(tensor.is_contiguous().unwrap());
+        assert!(!tensor.is_row_major());
+        assert!(tensor.is_column_major());
+        assert!(tensor.is_contiguous());
     }
 
     #[test]
@@ -585,7 +582,7 @@ mod tests {
             0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
         ]);
 
-        let result = Int32Tensor::try_new(
+        let result = Tensor::<i32>::try_new(
             DataType::Int32,
             buf,
             Some(vec![2, 8]),
@@ -605,7 +602,7 @@ mod tests {
             0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
         ]);
 
-        let result = Int32Tensor::try_new(
+        let result = Tensor::<i32>::try_new(
             DataType::Int32,
             buf,
             Some(vec![2, 8]),
@@ -625,7 +622,8 @@ mod tests {
             0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
         ]);
 
-        let result = Int32Tensor::try_new(DataType::Int32, buf, Some(vec![2, 6]), None, None, None);
+        let result =
+            Tensor::<i32>::try_new(DataType::Int32, buf, Some(vec![2, 6]), None, None, None);
 
         if result.is_ok() {
             panic!("number of elements does not match for the shape")
@@ -638,7 +636,7 @@ mod tests {
             0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
         ]);
 
-        let result = Int32Tensor::try_new(
+        let result = Tensor::<i32>::try_new(
             DataType::Int32,
             buf,
             Some(vec![2, 8]),

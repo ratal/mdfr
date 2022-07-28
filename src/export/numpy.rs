@@ -1,9 +1,10 @@
+//! this module provides methods to get directly channelData into python
 use std::sync::Arc;
 
 use arrow2::array::{Array, BinaryArray, PrimitiveArray, Utf8Array};
 use arrow2::bitmap::Bitmap;
 use arrow2::datatypes::{DataType, PhysicalType, PrimitiveType};
-//_ this module provides methods to get directly channelData into python
+
 use num::Complex;
 use numpy::npyffi::types::NPY_ORDER;
 use numpy::{IntoPyArray, PyArray1, PyArrayDyn, ToPyArray};
@@ -11,6 +12,19 @@ use pyo3::prelude::*;
 use pyo3::{PyAny, PyObject, PyResult};
 
 use crate::mdfreader::channel_data::{ArrowComplex, ChannelData, Order};
+
+use crate::export::tensor::Order as TensorOrder;
+
+use super::tensor::Tensor;
+
+impl From<TensorOrder> for NPY_ORDER {
+    fn from(order: TensorOrder) -> Self {
+        match order {
+            TensorOrder::RowMajor => NPY_ORDER::NPY_CORDER,
+            TensorOrder::ColumnMajor => NPY_ORDER::NPY_FORTRANORDER,
+        }
+    }
+}
 
 pub fn arrow_to_numpy(py: Python, array: &Arc<dyn Array>) -> PyObject {
     match array.data_type() {
@@ -191,17 +205,149 @@ pub fn arrow_to_numpy(py: Python, array: &Arc<dyn Array>) -> PyObject {
         },
         DataType::Extension(ext_str, dtype, _) => match ext_str.as_str() {
             "Tensor" => match **dtype {
-                DataType::Int8 => todo!(),
-                DataType::Int16 => todo!(),
-                DataType::Int32 => todo!(),
-                DataType::Int64 => todo!(),
-                DataType::UInt8 => todo!(),
-                DataType::UInt16 => todo!(),
-                DataType::UInt32 => todo!(),
-                DataType::UInt64 => todo!(),
-                DataType::Float16 => todo!(),
-                DataType::Float32 => todo!(),
-                DataType::Float64 => todo!(),
+                DataType::Int8 => {
+                    let tensor = array
+                        .as_any()
+                        .downcast_ref::<Tensor<i8>>()
+                        .expect("could not downcast to i8 tensor");
+                    tensor
+                        .values()
+                        .to_vec()
+                        .into_pyarray(py)
+                        .reshape_with_order(tensor.shape().clone(), tensor.order().clone().into())
+                        .expect("could not reshape i8 tensor")
+                        .into_py(py)
+                }
+                DataType::Int16 => {
+                    let tensor = array
+                        .as_any()
+                        .downcast_ref::<Tensor<i16>>()
+                        .expect("could not downcast to i16 tensor");
+                    tensor
+                        .values()
+                        .to_vec()
+                        .into_pyarray(py)
+                        .reshape_with_order(tensor.shape().clone(), tensor.order().clone().into())
+                        .expect("could not reshape i16 tensor")
+                        .into_py(py)
+                }
+                DataType::Int32 => {
+                    let tensor = array
+                        .as_any()
+                        .downcast_ref::<Tensor<i32>>()
+                        .expect("could not downcast to i32 tensor");
+                    tensor
+                        .values()
+                        .to_vec()
+                        .into_pyarray(py)
+                        .reshape_with_order(tensor.shape().clone(), tensor.order().clone().into())
+                        .expect("could not reshape i32 tensor")
+                        .into_py(py)
+                }
+                DataType::Int64 => {
+                    let tensor = array
+                        .as_any()
+                        .downcast_ref::<Tensor<i64>>()
+                        .expect("could not downcast to i64 tensor");
+                    tensor
+                        .values()
+                        .to_vec()
+                        .into_pyarray(py)
+                        .reshape_with_order(tensor.shape().clone(), tensor.order().clone().into())
+                        .expect("could not reshape i64 tensor")
+                        .into_py(py)
+                }
+                DataType::UInt8 => {
+                    let tensor = array
+                        .as_any()
+                        .downcast_ref::<Tensor<u8>>()
+                        .expect("could not downcast to u8 tensor");
+                    tensor
+                        .values()
+                        .to_vec()
+                        .into_pyarray(py)
+                        .reshape_with_order(tensor.shape().clone(), tensor.order().clone().into())
+                        .expect("could not reshape u8 tensor")
+                        .into_py(py)
+                }
+                DataType::UInt16 => {
+                    let tensor = array
+                        .as_any()
+                        .downcast_ref::<Tensor<u16>>()
+                        .expect("could not downcast to u16 tensor");
+                    tensor
+                        .values()
+                        .to_vec()
+                        .into_pyarray(py)
+                        .reshape_with_order(tensor.shape().clone(), tensor.order().clone().into())
+                        .expect("could not reshape u16 tensor")
+                        .into_py(py)
+                }
+                DataType::UInt32 => {
+                    let tensor = array
+                        .as_any()
+                        .downcast_ref::<Tensor<u32>>()
+                        .expect("could not downcast to u32 tensor");
+                    tensor
+                        .values()
+                        .to_vec()
+                        .into_pyarray(py)
+                        .reshape_with_order(tensor.shape().clone(), tensor.order().clone().into())
+                        .expect("could not reshape u32 tensor")
+                        .into_py(py)
+                }
+                DataType::UInt64 => {
+                    let tensor = array
+                        .as_any()
+                        .downcast_ref::<Tensor<u64>>()
+                        .expect("could not downcast to u64 tensor");
+                    tensor
+                        .values()
+                        .to_vec()
+                        .into_pyarray(py)
+                        .reshape_with_order(tensor.shape().clone(), tensor.order().clone().into())
+                        .expect("could not reshape u64 tensor")
+                        .into_py(py)
+                }
+                DataType::Float16 => {
+                    let tensor = array
+                        .as_any()
+                        .downcast_ref::<Tensor<f32>>()
+                        .expect("could not downcast to f16 tensor");
+                    tensor
+                        .values()
+                        .to_vec()
+                        .into_pyarray(py)
+                        .reshape_with_order(tensor.shape().clone(), tensor.order().clone().into())
+                        .expect("could not reshape f16(f32) tensor")
+                        .into_py(py)
+                }
+                DataType::Float32 => {
+                    let tensor = array
+                        .as_any()
+                        .downcast_ref::<Tensor<f32>>()
+                        .expect("could not downcast to f32 tensor");
+                    tensor
+                        .values()
+                        .to_vec()
+                        .into_pyarray(py)
+                        .reshape_with_order(tensor.shape().clone(), tensor.order().clone().into())
+                        .expect("could not reshape f32 tensor")
+                        .into_py(py)
+                }
+                DataType::Float64 => {
+                    let tensor = array
+                        .as_any()
+                        .downcast_ref::<Tensor<f64>>()
+                        .expect("could not downcast to f64 tensor");
+                    tensor
+                        .values()
+                        .to_vec()
+                        .into_pyarray(py)
+                        .reshape_with_order(tensor.shape().clone(), tensor.order().clone().into())
+                        .expect("could not reshape f64 tensor")
+                        .into_py(py)
+                }
                 DataType::FixedSizeList(_, _) => todo!(),
                 _ => Python::None(py),
             },
@@ -239,6 +385,15 @@ impl ArrowComplex<f32> {
     }
 }
 
+impl From<Order> for NPY_ORDER {
+    fn from(order: Order) -> Self {
+        match order {
+            Order::RowMajor => NPY_ORDER::NPY_CORDER,
+            Order::ColumnMajor => NPY_ORDER::NPY_FORTRANORDER,
+        }
+    }
+}
+
 /// IntoPy implementation to convert a ChannelData into a PyObject
 impl IntoPy<PyObject> for ChannelData {
     fn into_py(self, py: Python) -> PyObject {
@@ -269,228 +424,120 @@ impl IntoPy<PyObject> for ChannelData {
                 let out: Vec<Vec<u8>> = array.0.chunks(array.1).map(|x| x.to_vec()).collect();
                 out.into_py(py)
             }
-            ChannelData::ArrayDInt8(array) => {
-                let order = match array.1 .1 {
-                    Order::RowMajor => NPY_ORDER::NPY_CORDER,
-                    Order::ColumnMajor => NPY_ORDER::NPY_FORTRANORDER,
-                };
-                array
-                    .0
-                    .into_pyarray(py)
-                    .reshape_with_order(array.1 .0, order)
-                    .expect("could not reshape i8")
-                    .into_py(py)
-            }
-            ChannelData::ArrayDUInt8(array) => {
-                let order = match array.1 .1 {
-                    Order::RowMajor => NPY_ORDER::NPY_CORDER,
-                    Order::ColumnMajor => NPY_ORDER::NPY_FORTRANORDER,
-                };
-                array
-                    .0
-                    .into_pyarray(py)
-                    .reshape_with_order(array.1 .0, order)
-                    .expect("could not reshape u8")
-                    .into_py(py)
-            }
-            ChannelData::ArrayDInt16(array) => {
-                let order = match array.1 .1 {
-                    Order::RowMajor => NPY_ORDER::NPY_CORDER,
-                    Order::ColumnMajor => NPY_ORDER::NPY_FORTRANORDER,
-                };
-                array
-                    .0
-                    .into_pyarray(py)
-                    .reshape_with_order(array.1 .0, order)
-                    .expect("could not reshape u16")
-                    .into_py(py)
-            }
-            ChannelData::ArrayDUInt16(array) => {
-                let order = match array.1 .1 {
-                    Order::RowMajor => NPY_ORDER::NPY_CORDER,
-                    Order::ColumnMajor => NPY_ORDER::NPY_FORTRANORDER,
-                };
-                array
-                    .0
-                    .into_pyarray(py)
-                    .reshape_with_order(array.1 .0, order)
-                    .expect("could not reshape i16")
-                    .into_py(py)
-            }
-            ChannelData::ArrayDFloat16(array) => {
-                let order = match array.1 .1 {
-                    Order::RowMajor => NPY_ORDER::NPY_CORDER,
-                    Order::ColumnMajor => NPY_ORDER::NPY_FORTRANORDER,
-                };
-                array
-                    .0
-                    .into_pyarray(py)
-                    .reshape_with_order(array.1 .0, order)
-                    .expect("could not reshape f16")
-                    .into_py(py)
-            }
-            ChannelData::ArrayDInt24(array) => {
-                let order = match array.1 .1 {
-                    Order::RowMajor => NPY_ORDER::NPY_CORDER,
-                    Order::ColumnMajor => NPY_ORDER::NPY_FORTRANORDER,
-                };
-                array
-                    .0
-                    .into_pyarray(py)
-                    .reshape_with_order(array.1 .0, order)
-                    .expect("could not reshape i24")
-                    .into_py(py)
-            }
-            ChannelData::ArrayDUInt24(array) => {
-                let order = match array.1 .1 {
-                    Order::RowMajor => NPY_ORDER::NPY_CORDER,
-                    Order::ColumnMajor => NPY_ORDER::NPY_FORTRANORDER,
-                };
-                array
-                    .0
-                    .into_pyarray(py)
-                    .reshape_with_order(array.1 .0, order)
-                    .expect("could not reshape u24")
-                    .into_py(py)
-            }
-            ChannelData::ArrayDInt32(array) => {
-                let order = match array.1 .1 {
-                    Order::RowMajor => NPY_ORDER::NPY_CORDER,
-                    Order::ColumnMajor => NPY_ORDER::NPY_FORTRANORDER,
-                };
-                array
-                    .0
-                    .into_pyarray(py)
-                    .reshape_with_order(array.1 .0, order)
-                    .expect("could not reshape i32")
-                    .into_py(py)
-            }
-            ChannelData::ArrayDUInt32(array) => {
-                let order = match array.1 .1 {
-                    Order::RowMajor => NPY_ORDER::NPY_CORDER,
-                    Order::ColumnMajor => NPY_ORDER::NPY_FORTRANORDER,
-                };
-                array
-                    .0
-                    .into_pyarray(py)
-                    .reshape_with_order(array.1 .0, order)
-                    .expect("could not reshape u32")
-                    .into_py(py)
-            }
-            ChannelData::ArrayDFloat32(array) => {
-                let order = match array.1 .1 {
-                    Order::RowMajor => NPY_ORDER::NPY_CORDER,
-                    Order::ColumnMajor => NPY_ORDER::NPY_FORTRANORDER,
-                };
-                array
-                    .0
-                    .into_pyarray(py)
-                    .reshape_with_order(array.1 .0, order)
-                    .expect("could not reshape f32")
-                    .into_py(py)
-            }
-            ChannelData::ArrayDInt48(array) => {
-                let order = match array.1 .1 {
-                    Order::RowMajor => NPY_ORDER::NPY_CORDER,
-                    Order::ColumnMajor => NPY_ORDER::NPY_FORTRANORDER,
-                };
-                array
-                    .0
-                    .into_pyarray(py)
-                    .reshape_with_order(array.1 .0, order)
-                    .expect("could not reshape i48")
-                    .into_py(py)
-            }
-            ChannelData::ArrayDUInt48(array) => {
-                let order = match array.1 .1 {
-                    Order::RowMajor => NPY_ORDER::NPY_CORDER,
-                    Order::ColumnMajor => NPY_ORDER::NPY_FORTRANORDER,
-                };
-                array
-                    .0
-                    .into_pyarray(py)
-                    .reshape_with_order(array.1 .0, order)
-                    .expect("could not reshape u48")
-                    .into_py(py)
-            }
-            ChannelData::ArrayDInt64(array) => {
-                let order = match array.1 .1 {
-                    Order::RowMajor => NPY_ORDER::NPY_CORDER,
-                    Order::ColumnMajor => NPY_ORDER::NPY_FORTRANORDER,
-                };
-                array
-                    .0
-                    .into_pyarray(py)
-                    .reshape_with_order(array.1 .0, order)
-                    .expect("could not reshape i64")
-                    .into_py(py)
-            }
-            ChannelData::ArrayDUInt64(array) => {
-                let order = match array.1 .1 {
-                    Order::RowMajor => NPY_ORDER::NPY_CORDER,
-                    Order::ColumnMajor => NPY_ORDER::NPY_FORTRANORDER,
-                };
-                array
-                    .0
-                    .into_pyarray(py)
-                    .reshape_with_order(array.1 .0, order)
-                    .expect("could not reshape u64")
-                    .into_py(py)
-            }
-            ChannelData::ArrayDFloat64(array) => {
-                let order = match array.1 .1 {
-                    Order::RowMajor => NPY_ORDER::NPY_CORDER,
-                    Order::ColumnMajor => NPY_ORDER::NPY_FORTRANORDER,
-                };
-                array
-                    .0
-                    .into_pyarray(py)
-                    .reshape_with_order(array.1 .0, order)
-                    .expect("could not reshape f64")
-                    .into_py(py)
-            }
-            ChannelData::ArrayDComplex16(array) => {
-                let order = match array.1 .1 {
-                    Order::RowMajor => NPY_ORDER::NPY_CORDER,
-                    Order::ColumnMajor => NPY_ORDER::NPY_FORTRANORDER,
-                };
-                array
-                    .0
-                    .into_iter()
-                    .collect::<Vec<Complex<f32>>>()
-                    .into_pyarray(py)
-                    .reshape_with_order(array.1 .0, order)
-                    .expect("could not reshape complex16")
-                    .into_py(py)
-            }
-            ChannelData::ArrayDComplex32(array) => {
-                let order = match array.1 .1 {
-                    Order::RowMajor => NPY_ORDER::NPY_CORDER,
-                    Order::ColumnMajor => NPY_ORDER::NPY_FORTRANORDER,
-                };
-                array
-                    .0
-                    .into_iter()
-                    .collect::<Vec<Complex<f32>>>()
-                    .into_pyarray(py)
-                    .reshape_with_order(array.1 .0, order)
-                    .expect("could not reshape complex32")
-                    .into_py(py)
-            }
-            ChannelData::ArrayDComplex64(array) => {
-                let order = match array.1 .1 {
-                    Order::RowMajor => NPY_ORDER::NPY_CORDER,
-                    Order::ColumnMajor => NPY_ORDER::NPY_FORTRANORDER,
-                };
-                array
-                    .0
-                    .into_iter()
-                    .collect::<Vec<Complex<f64>>>()
-                    .into_pyarray(py)
-                    .reshape_with_order(array.1 .0, order)
-                    .expect("could not reshape complex64")
-                    .into_py(py)
-            }
+            ChannelData::ArrayDInt8(array) => array
+                .0
+                .into_pyarray(py)
+                .reshape_with_order(array.1 .0, array.1 .1.into())
+                .expect("could not reshape i8")
+                .into_py(py),
+            ChannelData::ArrayDUInt8(array) => array
+                .0
+                .into_pyarray(py)
+                .reshape_with_order(array.1 .0, array.1 .1.into())
+                .expect("could not reshape u8")
+                .into_py(py),
+            ChannelData::ArrayDInt16(array) => array
+                .0
+                .into_pyarray(py)
+                .reshape_with_order(array.1 .0, array.1 .1.into())
+                .expect("could not reshape u16")
+                .into_py(py),
+            ChannelData::ArrayDUInt16(array) => array
+                .0
+                .into_pyarray(py)
+                .reshape_with_order(array.1 .0, array.1 .1.into())
+                .expect("could not reshape i16")
+                .into_py(py),
+            ChannelData::ArrayDFloat16(array) => array
+                .0
+                .into_pyarray(py)
+                .reshape_with_order(array.1 .0, array.1 .1.into())
+                .expect("could not reshape f16")
+                .into_py(py),
+            ChannelData::ArrayDInt24(array) => array
+                .0
+                .into_pyarray(py)
+                .reshape_with_order(array.1 .0, array.1 .1.into())
+                .expect("could not reshape i24")
+                .into_py(py),
+            ChannelData::ArrayDUInt24(array) => array
+                .0
+                .into_pyarray(py)
+                .reshape_with_order(array.1 .0, array.1 .1.into())
+                .expect("could not reshape u24")
+                .into_py(py),
+            ChannelData::ArrayDInt32(array) => array
+                .0
+                .into_pyarray(py)
+                .reshape_with_order(array.1 .0, array.1 .1.into())
+                .expect("could not reshape i32")
+                .into_py(py),
+            ChannelData::ArrayDUInt32(array) => array
+                .0
+                .into_pyarray(py)
+                .reshape_with_order(array.1 .0, array.1 .1.into())
+                .expect("could not reshape u32")
+                .into_py(py),
+            ChannelData::ArrayDFloat32(array) => array
+                .0
+                .into_pyarray(py)
+                .reshape_with_order(array.1 .0, array.1 .1.into())
+                .expect("could not reshape f32")
+                .into_py(py),
+            ChannelData::ArrayDInt48(array) => array
+                .0
+                .into_pyarray(py)
+                .reshape_with_order(array.1 .0, array.1 .1.into())
+                .expect("could not reshape i48")
+                .into_py(py),
+            ChannelData::ArrayDUInt48(array) => array
+                .0
+                .into_pyarray(py)
+                .reshape_with_order(array.1 .0, array.1 .1.into())
+                .expect("could not reshape u48")
+                .into_py(py),
+            ChannelData::ArrayDInt64(array) => array
+                .0
+                .into_pyarray(py)
+                .reshape_with_order(array.1 .0, array.1 .1.into())
+                .expect("could not reshape i64")
+                .into_py(py),
+            ChannelData::ArrayDUInt64(array) => array
+                .0
+                .into_pyarray(py)
+                .reshape_with_order(array.1 .0, array.1 .1.into())
+                .expect("could not reshape u64")
+                .into_py(py),
+            ChannelData::ArrayDFloat64(array) => array
+                .0
+                .into_pyarray(py)
+                .reshape_with_order(array.1 .0, array.1 .1.into())
+                .expect("could not reshape f64")
+                .into_py(py),
+            ChannelData::ArrayDComplex16(array) => array
+                .0
+                .into_iter()
+                .collect::<Vec<Complex<f32>>>()
+                .into_pyarray(py)
+                .reshape_with_order(array.1 .0, array.1 .1.into())
+                .expect("could not reshape complex16")
+                .into_py(py),
+            ChannelData::ArrayDComplex32(array) => array
+                .0
+                .into_iter()
+                .collect::<Vec<Complex<f32>>>()
+                .into_pyarray(py)
+                .reshape_with_order(array.1 .0, array.1 .1.into())
+                .expect("could not reshape complex32")
+                .into_py(py),
+            ChannelData::ArrayDComplex64(array) => array
+                .0
+                .into_iter()
+                .collect::<Vec<Complex<f64>>>()
+                .into_pyarray(py)
+                .reshape_with_order(array.1 .0, array.1 .1.into())
+                .expect("could not reshape complex64")
+                .into_py(py),
         }
     }
 }

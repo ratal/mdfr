@@ -1,3 +1,4 @@
+//! this module provides methods to get directly from arrow into polars (rust or python)
 use arrow2::array::{Array, ArrayRef};
 use arrow2::compute::cast;
 use arrow2::temporal_conversions::*;
@@ -137,7 +138,7 @@ impl Mdf {
                     Some(Ok(Utf8Chunked::from_chunks(name, chunks).into_series()))
                 }
                 ArrowDataType::FixedSizeList(_, _) => todo!(),
-                ArrowDataType::Extension(_, _, _) => todo!(),
+                ArrowDataType::Extension(ext_str, dtype, _) => todo!(),
                 _ => None,
             };
         }
