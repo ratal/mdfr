@@ -120,6 +120,22 @@ impl MdfInfo3 {
         let channel_list = self.channel_names_set.keys().cloned().collect();
         channel_list
     }
+    /// returns the set of channel names that are in same channel group as input channel name
+    pub fn get_channel_names_cg_set(&self, channel_name: &str) -> HashSet<String> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), _cn_pos)) =
+            self.get_channel_id(channel_name)
+        {
+            let mut channel_list = HashSet::new();
+            if let Some(dg) = self.dg.get(&dg_pos) {
+                if let Some(cg) = dg.cg.get(&rec_id) {
+                    let channel_list = cg.channel_names;
+                }
+            }
+            channel_list
+        } else {
+            HashSet::new()
+        }
+    }
     /// returns a hashmap for which master channel names are keys and values its corresponding set of channel names
     pub fn get_master_channel_names_set(&self) -> HashMap<Option<String>, HashSet<String>> {
         let mut channel_master_list: HashMap<Option<String>, HashSet<String>> = HashMap::new();

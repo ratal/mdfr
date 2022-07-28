@@ -219,6 +219,14 @@ impl MdfInfo {
         };
         channel_list
     }
+    /// returns the set of channel names that are in same channel group as input channel name
+    pub fn get_channel_names_cg_set(&self, channel_name: &str) -> HashSet<String> {
+        let channel_list: HashSet<String> = match self {
+            MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_names_cg_set(&channel_name),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_names_cg_set(&channel_name),
+        };
+        channel_list
+    }
     /// returns a dict of master names keys for which values are a set of associated channel names
     pub fn get_master_channel_names_set(&self) -> HashMap<Option<String>, HashSet<String>> {
         let channel_master_list: HashMap<Option<String>, HashSet<String>> = match self {
