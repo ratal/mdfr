@@ -9,7 +9,7 @@ use crate::mdfreader::arrow::array_to_rust;
 use crate::mdfreader::Mdf;
 use arrow2::array::get_display;
 use pyo3::prelude::*;
-use pyo3::types::{IntoPyDict, PyDict};
+use pyo3::types::{IntoPyDict, PyDict, PyList};
 
 /// This function is used to create a python dictionary from a MdfInfo object
 #[pyclass]
@@ -75,9 +75,40 @@ impl Mdfr {
             py_serie
         })
     }
-    fn get_polars_dataframe(&self, channel_master_name: String) {
+    fn get_polars_dataframe(&self, channel_name: String) -> Py<PyAny> {
         let Mdfr(mdf) = self;
-        //DataFrame::new()
+        pyo3::Python::with_gil(|py| {
+            let mut py_dataframe = Python::None(py);
+            let channel_names_set = mdf.mdf_info.get_channel_names_cg_set(&channel_name);
+            let mut series_vec: Vec<PyObject> = Vec::new();
+            for channel in channel_names_set {
+                series_vec.push(
+                    self.get_polars_series(&channel)
+                        .expect("could not convert to series"),
+                );
+            }
+            let series_list = PyList::new(py, series_vec);
+            if !series_list.is_empty() {
+                let locals = PyDict::new(py);
+                locals
+                    .set_item("series", &series_list)
+                    .expect("cannot set python series_list");
+                py.import("polars").expect("Could import polars");
+                py.run(
+                    r#"
+import polars
+df=polars.DataFrame(series)
+"#,
+                    None,
+                    Some(locals),
+                )
+                .expect("dataframe creation failed");
+                if let Some(df) = locals.get_item("df") {
+                    py_dataframe = df.into();
+                }
+            }
+            py_dataframe
+        })
     }
     /// returns channel's unit string
     fn get_channel_unit(&self, channel_name: String) -> Py<PyAny> {
@@ -204,36 +235,35 @@ impl Mdfr {
     pub fn set_channel_master_type(&mut self, master_name: &str, master_type: u8) {
         let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|_py| {
-            mdf.mdf_info
-                .set_channel_master_type(master_name, master_type);
+            mdf.set_channel_master_type(master_name, master_type);
         })
     }
     /// Removes a channel in memory (no file modification)
     pub fn remove_channel(&mut self, channel_name: &str) {
         let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|_py| {
-            mdf.mdf_info.remove_channel(channel_name);
+            mdf.remove_channel(channel_name);
         })
     }
     /// Renames a channel's name in memory
     pub fn rename_channel(&mut self, channel_name: &str, new_name: &str) {
         let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|_py| {
-            mdf.mdf_info.rename_channel(channel_name, new_name);
+            mdf.rename_channel(channel_name, new_name);
         })
     }
     /// Sets the channel unit in memory
     pub fn set_channel_unit(&mut self, channel_name: &str, unit: &str) {
         let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|_py| {
-            mdf.mdf_info.set_channel_unit(channel_name, unit);
+            mdf.set_channel_unit(channel_name, unit);
         })
     }
     /// Sets the channel description in memory
     pub fn set_channel_desc(&mut self, channel_name: &str, desc: &str) {
         let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|_py| {
-            mdf.mdf_info.set_channel_desc(channel_name, desc);
+            mdf.set_channel_desc(channel_name, desc);
         })
     }
     /// plot one channel
@@ -277,7 +307,7 @@ impl Mdfr {
                 .set_item("channel_data", data)
                 .expect("cannot set python channel_data");
             py.import("matplotlib")
-                .expect("Could not plot channel with matplotlib");
+                .expect("Could not import matplotlib");
             py.run(
                 r#"
 from matplotlib import pyplot
