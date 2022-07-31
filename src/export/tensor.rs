@@ -28,23 +28,15 @@ use arrow2::types::NativeType;
 
 /// Computes the strides required assuming a row major memory layout
 fn compute_row_major_strides<T>(shape: &[usize]) -> Result<Vec<usize>> {
-    let mut remaining_bytes = mem::size_of::<T>();
+    let mut total_locations = shape.iter().product();
 
-    for i in shape {
-        if let Some(val) = remaining_bytes.checked_mul(*i) {
-            remaining_bytes = val;
-        } else {
-            return Err(Error::Overflow);
-        }
-    }
-
-    let mut strides = Vec::<usize>::new();
-    for i in shape {
-        remaining_bytes /= *i;
-        strides.push(remaining_bytes);
-    }
-
-    Ok(strides)
+    Ok(shape
+        .iter()
+        .map(|val| {
+            total_locations /= *val;
+            total_locations
+        })
+        .collect())
 }
 
 /// Computes the strides required assuming a column major memory layout
@@ -139,7 +131,7 @@ impl<T: NativeType> Tensor<T> {
                 }
 
                 let total_elements: usize = s.iter().product();
-                if total_elements != (values.len() / mem::size_of::<T>()) {
+                if total_elements != values.len() {
                     return Err(Error::InvalidArgumentError(
                         "number of elements in buffer does not match dimensions".to_string(),
                     ));
@@ -285,7 +277,7 @@ impl<T: NativeType> Tensor<T> {
     }
 
     #[must_use]
-    pub fn with_validity(&self, validity: Option<Bitmap>) -> Self {
+    pub fn with_validity(&self, _validity: Option<Bitmap>) -> Self {
         self.clone()
     }
 
@@ -306,14 +298,53 @@ impl<T: NativeType> Tensor<T> {
 
     /// Returns a reference to the underlying `Buffer`
     #[inline]
-    pub fn values(&self) -> &Buffer<T> {
+    pub fn values_buffer(&self) -> &Buffer<T> {
         &self.values
     }
 
-    /// Returns the value at slot `i`.
+    /// Returns a reference to the underlying `Buffer`
     #[inline]
-    pub fn value(&self, i: usize) -> T {
-        self.values()[i]
+    pub fn values(&self) -> &[T] {
+        &self.values.as_slice()
+    }
+
+    /// Returns a reference to a value in the buffer
+    /// The value is accessed via an index of the same size
+    /// as the strides vector
+    ///
+    /// # Examples
+    /// Creating a 2x2 vector and accessing the (1,0) element in the tensor
+    /// ```
+    /// use arrow2::tensor::dense::Tensor;
+    /// use arrow2::buffer::Buffer;
+    /// let buffer: Buffer<i32> = vec![0i32, 1, 2, 3].into();
+    /// let shape = Some(vec![2, 2]);
+    /// let tensor = Tensor::try_new(buffer, shape, None, None).unwrap();
+    /// assert_eq!(tensor.value(&[1, 0]), Some(&2));
+    /// ```
+    pub fn value(&self, index: &[usize]) -> Option<&T> {
+        // Check if this tensor has strides. The 1x1 doesn't
+        // have strides that define the tensor
+        match self.strides.as_ref() {
+            None => Some(&self.values()[0]),
+            Some(strides) => {
+                // If the index doesn't have the same len as
+                // the strides vector then a None is returned
+                if index.len() != strides.len() {
+                    return None;
+                }
+
+                // The index in the buffer is calculated using the
+                // row strides.
+                // index = sum(index[i] * stride[i])
+                let buf_index = strides
+                    .iter()
+                    .zip(index)
+                    .fold(0usize, |acc, (s, i)| acc + (s * i));
+
+                Some(&self.values()[buf_index])
+            }
+        }
     }
 
     /// The number of bytes between elements in each dimension
@@ -338,6 +369,9 @@ impl<T: NativeType> Tensor<T> {
 
     /// The total number of elements in the `Tensor`
     pub fn size(&self) -> usize {
+        if self.shape.is_empty() {
+            return 0;
+        }
         self.shape.iter().product()
     }
 
@@ -457,11 +491,11 @@ mod tests {
     #[test]
     fn test_compute_row_major_strides() {
         assert_eq!(
-            vec![48_usize, 8],
+            vec![6_usize, 1],
             compute_row_major_strides::<i64>(&[4_usize, 6]).unwrap()
         );
         assert_eq!(
-            vec![24_usize, 4],
+            vec![6_usize, 1],
             compute_row_major_strides::<i32>(&[4_usize, 6]).unwrap()
         );
         assert_eq!(
@@ -494,9 +528,9 @@ mod tests {
         assert_eq!(&Vec::<usize>::new(), tensor.shape());
         assert_eq!(None, tensor.names());
         assert_eq!(0, tensor.ndim());
-        assert!(!tensor.is_row_major());
+        assert!(tensor.is_row_major());
         assert!(!tensor.is_column_major());
-        assert!(!tensor.is_contiguous());
+        assert!(tensor.is_contiguous());
 
         let buf = Buffer::<i32>::from(vec![1, 2, 2, 2]);
         let tensor = Tensor::<i32>::try_new(DataType::Int32, buf, None, None, None, None).unwrap();
@@ -504,36 +538,33 @@ mod tests {
         assert_eq!(&Vec::<usize>::new(), tensor.shape());
         assert_eq!(None, tensor.names());
         assert_eq!(0, tensor.ndim());
-        assert!(!tensor.is_row_major());
+        assert!(tensor.is_row_major());
         assert!(!tensor.is_column_major());
-        assert!(!tensor.is_contiguous());
+        assert!(tensor.is_contiguous());
     }
 
     #[test]
     fn test_tensor() {
-        let buf = Buffer::<i32>::from(vec![
-            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
-        ]);
+        let buf = Buffer::<i32>::from(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
         let tensor =
             Tensor::<i32>::try_new(DataType::Int32, buf, Some(vec![2, 8]), None, None, None)
                 .unwrap();
         assert_eq!(16, tensor.size());
         assert_eq!(&vec![2_usize, 8], tensor.shape());
-        assert_eq!(Some(vec![32_usize, 4]).as_ref(), tensor.strides());
+        assert_eq!(Some(vec![8_usize, 1]).as_ref(), tensor.strides());
         assert_eq!(2, tensor.ndim());
         assert_eq!(None, tensor.names());
     }
 
     #[test]
     fn test_new_row_major() {
-        let buf = Buffer::<i32>::from(vec![
-            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
-        ]);
+        let buf: Buffer<i32> =
+            Vec::<i32>::from([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]).into();
         let tensor =
             Tensor::<i32>::new_row_major(DataType::Int32, buf, Some(vec![2, 8]), None).unwrap();
         assert_eq!(16, tensor.size());
         assert_eq!(&vec![2_usize, 8], tensor.shape());
-        assert_eq!(Some(vec![32_usize, 4]).as_ref(), tensor.strides());
+        assert_eq!(Some(vec![8_usize, 1]).as_ref(), tensor.strides());
         assert_eq!(None, tensor.names());
         assert_eq!(2, tensor.ndim());
         assert!(tensor.is_row_major());
@@ -543,9 +574,7 @@ mod tests {
 
     #[test]
     fn test_new_column_major() {
-        let buf = Buffer::<i32>::from(vec![
-            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
-        ]);
+        let buf = Buffer::<i32>::from(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
         let tensor =
             Tensor::<i32>::new_column_major(DataType::Int32, buf, Some(vec![2, 8]), None).unwrap();
         assert_eq!(16, tensor.size());
@@ -560,7 +589,7 @@ mod tests {
 
     #[test]
     fn test_with_names() {
-        let buf = Buffer::<i64>::from(vec![0, 1, 2, 3, 4, 5, 6, 7, 8]);
+        let buf = Buffer::<i64>::from(vec![0, 1, 2, 3, 4, 5, 6, 7]);
         let names = vec!["Dim 1".to_owned(), "Dim 2".to_owned()];
         let tensor =
             Tensor::<i64>::new_column_major(DataType::Int64, buf, Some(vec![2, 4]), Some(names))
@@ -578,9 +607,7 @@ mod tests {
 
     #[test]
     fn test_inconsistent_strides() {
-        let buf = Buffer::<i32>::from(vec![
-            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
-        ]);
+        let buf = Buffer::<i32>::from(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
 
         let result = Tensor::<i32>::try_new(
             DataType::Int32,
@@ -598,9 +625,7 @@ mod tests {
 
     #[test]
     fn test_inconsistent_names() {
-        let buf = Buffer::<i32>::from(vec![
-            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
-        ]);
+        let buf = Buffer::<i32>::from(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
 
         let result = Tensor::<i32>::try_new(
             DataType::Int32,
@@ -618,9 +643,7 @@ mod tests {
 
     #[test]
     fn test_incorrect_shape() {
-        let buf = Buffer::<i32>::from(vec![
-            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
-        ]);
+        let buf = Buffer::<i32>::from(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
 
         let result =
             Tensor::<i32>::try_new(DataType::Int32, buf, Some(vec![2, 6]), None, None, None);
@@ -632,9 +655,7 @@ mod tests {
 
     #[test]
     fn test_incorrect_stride() {
-        let buf = Buffer::<i32>::from(vec![
-            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
-        ]);
+        let buf = Buffer::<i32>::from(vec![0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
 
         let result = Tensor::<i32>::try_new(
             DataType::Int32,
@@ -648,5 +669,30 @@ mod tests {
         if result.is_ok() {
             panic!("the input stride does not match the selected shape")
         }
+    }
+    #[test]
+    fn test_data() {
+        let buffer: Buffer<i32> = vec![0i32, 1, 2, 3].into();
+        let shape = Some(vec![2, 2]);
+
+        let tensor = Tensor::try_new(DataType::Int32, buffer, shape, None, None, None).unwrap();
+        let mut data = tensor.values().iter();
+
+        assert_eq!(data.next(), Some(&0));
+        assert_eq!(data.next(), Some(&1));
+        assert_eq!(data.next(), Some(&2));
+        assert_eq!(data.next(), Some(&3));
+    }
+
+    #[test]
+    fn test_access_data() {
+        let buffer: Buffer<i32> = vec![0i32, 1, 2, 3].into();
+        let shape = Some(vec![2, 2]);
+
+        let tensor = Tensor::try_new(DataType::Int32, buffer, shape, None, None, None).unwrap();
+        assert_eq!(tensor.value(&[0, 0]), Some(&0));
+        assert_eq!(tensor.value(&[0, 1]), Some(&1));
+        assert_eq!(tensor.value(&[1, 0]), Some(&2));
+        assert_eq!(tensor.value(&[1, 1]), Some(&3));
     }
 }
