@@ -187,12 +187,8 @@ impl ChannelData {
                 ChannelData::Int48(_) => ChannelData::Int48(vec![0i64; cycle_count as usize]),
                 ChannelData::UInt48(_) => ChannelData::UInt48(vec![0u64; cycle_count as usize]),
                 ChannelData::Int64(_) => ChannelData::Int64(vec![0i64; cycle_count as usize]),
-                ChannelData::UInt64(_) => {
-                    ChannelData::UInt64(Vec::<u64>::with_capacity(cycle_count as usize))
-                }
-                ChannelData::Float64(_) => {
-                    ChannelData::Float64(Vec::<f64>::with_capacity(cycle_count as usize))
-                }
+                ChannelData::UInt64(_) => ChannelData::UInt64(vec![0u64; cycle_count as usize]),
+                ChannelData::Float64(_) => ChannelData::Float64(vec![0f64; cycle_count as usize]),
                 ChannelData::Complex16(_) => {
                     ChannelData::Complex16(ArrowComplex(vec![0f32; cycle_count as usize * 2]))
                 }
