@@ -1,4 +1,3 @@
-#![feature(generic_associated_types)]
 //#![forbid(unsafe_code)]
 pub mod export;
 pub mod mdfinfo;
