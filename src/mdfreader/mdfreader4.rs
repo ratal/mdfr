@@ -285,11 +285,6 @@ fn read_data(
                 .read_le()
                 .expect("could not read into Dv4Block structure");
             for channel_group in dg.cg.values_mut() {
-                initialise_arrays(
-                    channel_group,
-                    &channel_group.block.cg_cycle_count.clone(),
-                    channel_names_to_read_in_dg,
-                );
                 read_all_channels_sorted(rdr, channel_group, channel_names_to_read_in_dg);
             }
             position += block_header.len as i64;
