@@ -65,6 +65,7 @@ impl Mdfr {
             py_array
         })
     }
+    /// returns polars serie of channel
     fn get_polars_series(&self, channel_name: &str) -> PyResult<PyObject> {
         let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|py| {
@@ -75,6 +76,7 @@ impl Mdfr {
             py_serie
         })
     }
+    /// returns polar dataframe including channel
     fn get_polars_dataframe(&self, channel_name: String) -> Py<PyAny> {
         let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|py| {
