@@ -82,10 +82,7 @@ pub fn mdfreader4<'a>(
                     apply_bit_mask_offset(dg, &channel_names_to_read_in_dg);
                     // channel_group invalid bits calculation (only for DIBlocks)
                     for channel_group in dg.cg.values_mut() {
-                        channel_group.process_all_channel_invalid_bits(
-                            dg.block.dg_rec_id_size as usize,
-                            channel_group.block.cg_data_bytes as usize,
-                        );
+                        channel_group.process_all_channel_invalid_bits();
                     }
                     // conversion of all channels to physical values
                     convert_all_channels(dg, &info.sharable);

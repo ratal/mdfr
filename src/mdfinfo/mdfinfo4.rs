@@ -1698,11 +1698,7 @@ impl Cg4 {
     }
     /// Computes the validity mask for each channel in the group
     /// clears out the common invalid bytes vector for the group at the end
-    pub fn process_all_channel_invalid_bits(
-        &mut self,
-        record_id_size: usize,
-        cg_data_bytes: usize,
-    ) {
+    pub fn process_all_channel_invalid_bits(&mut self) {
         if self.invalid_bytes.is_some() {
             // get invalid bytes
             let cycle_count = self.block.cg_cycle_count as usize;
@@ -1713,15 +1709,11 @@ impl Cg4 {
                     .filter(|(_rec_pos, cn)| !cn.data.is_empty())
                     .for_each(|(_rec_pos, cn)| {
                         let mut mask = MutableBitmap::with_capacity(cycle_count);
-                        let invalid_byte_position = (cn.block.cn_inval_bit_pos >> 3) as usize
-                            + record_id_size
-                            + cg_data_bytes;
+                        let invalid_byte_position = (cn.block.cn_inval_bit_pos >> 3) as usize;
                         let invalid_byte_mask = 1 << (cn.block.cn_inval_bit_pos & 0x07);
-                        let mut bit = 1;
-                        bit <<= (cn.block.cn_inval_bit_pos & 0x07) as usize;
-                        for (index, record) in invalid_bytes.chunks(cg_inval_bytes).enumerate() {
+                        for record in invalid_bytes.chunks(cg_inval_bytes) {
                             let byte = record[invalid_byte_position];
-                            mask.set(index, (byte & bit) != 0);
+                            mask.push((byte & invalid_byte_mask) != 0);
                         }
                         cn.invalid_mask = Some((mask, invalid_byte_position, invalid_byte_mask));
                     });
