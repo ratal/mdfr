@@ -1699,26 +1699,29 @@ impl Cg4 {
     /// Computes the validity mask for each channel in the group
     /// clears out the common invalid bytes vector for the group at the end
     pub fn process_all_channel_invalid_bits(&mut self) {
-        if self.invalid_bytes.is_some() {
+        if let Some(invalid_bytes) = &self.invalid_bytes {
             // get invalid bytes
-            let cycle_count = self.block.cg_cycle_count as usize;
             let cg_inval_bytes = self.block.cg_inval_bytes as usize;
-            if let Some(invalid_bytes) = &self.invalid_bytes {
-                self.cn
-                    .par_iter_mut()
-                    .filter(|(_rec_pos, cn)| !cn.data.is_empty())
-                    .for_each(|(_rec_pos, cn)| {
-                        let mut mask = MutableBitmap::with_capacity(cycle_count);
-                        let invalid_byte_position = (cn.block.cn_inval_bit_pos >> 3) as usize;
-                        let invalid_byte_mask = 1 << (cn.block.cn_inval_bit_pos & 0x07);
-                        for record in invalid_bytes.chunks(cg_inval_bytes) {
-                            let byte = record[invalid_byte_position];
-                            mask.push((byte & invalid_byte_mask) != 0);
-                        }
-                        cn.invalid_mask = Some((mask, invalid_byte_position, invalid_byte_mask));
-                    });
-                self.invalid_bytes = None; // Clears out invalid bytes channel
-            }
+            self.cn
+                .par_iter_mut()
+                .filter(|(_rec_pos, cn)| !cn.data.is_empty())
+                .for_each(|(_rec_pos, cn)| {
+                    if let Some((mask, invalid_byte_position, invalid_byte_mask)) =
+                        &mut cn.invalid_mask
+                    {
+                        // mask is already initialised to all valid values.
+                        invalid_bytes.chunks(cg_inval_bytes).enumerate().for_each(
+                            |(index, record)| {
+                                // arrow considers bit set as valid while mdf spec considers bit set as invalid
+                                mask.set(
+                                    index,
+                                    (record[*invalid_byte_position] & *invalid_byte_mask) == 0,
+                                );
+                            },
+                        );
+                    }
+                });
+            self.invalid_bytes = None; // Clears out invalid bytes channel
         }
     }
 }
@@ -2223,7 +2226,7 @@ fn parse_cn4_block(
     record_layout: RecordLayout,
     cg_cycle_count: u64,
 ) -> (Cn4, i64, usize, CnType) {
-    let (record_id_size, cg_data_bytes, cg_inval_bytes) = record_layout;
+    let (record_id_size, _cg_data_bytes, cg_inval_bytes) = record_layout;
     let mut n_cn: usize = 1;
     let mut cns: HashMap<i32, Cn4> = HashMap::new();
     rdr.seek_relative(target - position)
@@ -2236,9 +2239,7 @@ fn parse_cn4_block(
     let pos_byte_beg = block.cn_byte_offset + record_id_size as u32;
     let n_bytes = calc_n_bytes_not_aligned(block.cn_bit_count + (block.cn_bit_offset as u32));
     let invalid_mask: Option<(MutableBitmap, usize, u8)> = if cg_inval_bytes != 0 {
-        let invalid_byte_position = (block.cn_inval_bit_pos >> 3) as usize
-            + record_id_size as usize
-            + cg_data_bytes as usize;
+        let invalid_byte_position = (block.cn_inval_bit_pos >> 3) as usize;
         let invalid_byte_mask = 1 << (block.cn_inval_bit_pos & 0x07);
         Some((
             MutableBitmap::from_len_set(cg_cycle_count as usize),
