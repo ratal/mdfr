@@ -82,18 +82,20 @@ impl Mdfr {
         pyo3::Python::with_gil(|py| {
             let mut py_dataframe = Python::None(py);
             let channel_names_set = mdf.mdf_info.get_channel_names_cg_set(&channel_name);
-            let mut series_vec: Vec<PyObject> = Vec::new();
+            let series_dict = PyDict::new(py);
             for channel in channel_names_set {
-                series_vec.push(
-                    self.get_polars_series(&channel)
-                        .expect("could not convert to series"),
-                );
+                series_dict
+                    .set_item(
+                        channel.clone(),
+                        self.get_polars_series(&channel)
+                            .expect("could not convert to series"),
+                    )
+                    .expect("could not store the serie in dict");
             }
-            let series_list = PyList::new(py, series_vec);
-            if !series_list.is_empty() {
+            if !series_dict.is_empty() {
                 let locals = PyDict::new(py);
                 locals
-                    .set_item("series", &series_list)
+                    .set_item("series", &series_dict)
                     .expect("cannot set python series_list");
                 py.import("polars").expect("Could import polars");
                 py.run(
