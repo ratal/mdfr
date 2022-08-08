@@ -1,5 +1,5 @@
 //! this module provides methods to get directly from arrow into polars (rust or python)
-use arrow2::array::{Array, ArrayRef};
+use arrow2::array::Array;
 use arrow2::compute::cast;
 use arrow2::temporal_conversions::*;
 use polars::chunked_array::ChunkedArray;
@@ -127,7 +127,7 @@ impl Mdf {
                     Some(Utf8Chunked::from_chunks(name, chunks).into_series())
                 }
                 ArrowDataType::FixedSizeList(_, _) => todo!(),
-                ArrowDataType::Extension(ext_str, dtype, _) => todo!(),
+                ArrowDataType::Extension(_ext_str, _dtype, _) => todo!(),
                 _ => None,
             };
         }
@@ -179,7 +179,7 @@ pub fn rust_series_to_py_series(series: &Series) -> PyResult<PyObject> {
     Ok(out.to_object(py))
 }
 
-pub fn rust_arrow_to_py_series(array: Arc<dyn Array>) -> PyResult<PyObject> {
+pub fn rust_arrow_to_py_series(array: Box<dyn Array>) -> PyResult<PyObject> {
     // ensure we have a single chunk
 
     // acquire the gil

@@ -4,15 +4,13 @@ use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::channel_data::ChannelData;
 use crate::mdfreader::{ChannelIndexes, Mdf};
 use arrow2::array::{
-    Array, ArrayRef, BinaryArray, FixedSizeBinaryArray, FixedSizeListArray, PrimitiveArray,
-    Utf8Array,
+    Array, BinaryArray, FixedSizeBinaryArray, FixedSizeListArray, PrimitiveArray, Utf8Array,
 };
 use arrow2::bitmap::Bitmap;
 use arrow2::buffer::Buffer;
 use arrow2::chunk::Chunk;
 use arrow2::datatypes::{DataType, Field, Metadata, PhysicalType, PrimitiveType};
 use arrow2::ffi;
-use arrow2::types::NativeType;
 
 use encoding::all::ISO_8859_1;
 use encoding::{DecoderTrap, Encoding};
@@ -21,142 +19,141 @@ use pyo3::{ffi::Py_uintptr_t, PyAny, PyObject, PyResult};
 use rayon::iter::{IntoParallelIterator, ParallelExtend, ParallelIterator};
 use std::collections::HashSet;
 use std::mem;
-use std::sync::Arc;
 
 use super::channel_data::Order;
 
 impl ChannelData {
-    pub fn to_arrow_array(&mut self, bitmap: Option<Bitmap>) -> Arc<dyn Array> {
+    pub fn to_arrow_array(&mut self, bitmap: Option<Bitmap>) -> Box<dyn Array> {
         match self {
-            ChannelData::Int8(a) => Arc::new(PrimitiveArray::new(
+            ChannelData::Int8(a) => Box::new(PrimitiveArray::new(
                 DataType::Int8,
                 mem::take(a).into(),
                 bitmap,
             )),
-            ChannelData::UInt8(a) => Arc::new(PrimitiveArray::new(
+            ChannelData::UInt8(a) => Box::new(PrimitiveArray::new(
                 DataType::UInt8,
                 mem::take(a).into(),
                 bitmap,
             )),
-            ChannelData::Int16(a) => Arc::new(PrimitiveArray::new(
+            ChannelData::Int16(a) => Box::new(PrimitiveArray::new(
                 DataType::Int16,
                 mem::take(a).into(),
                 bitmap,
             )),
-            ChannelData::UInt16(a) => Arc::new(PrimitiveArray::new(
+            ChannelData::UInt16(a) => Box::new(PrimitiveArray::new(
                 DataType::UInt16,
                 mem::take(a).into(),
                 bitmap,
             )),
-            ChannelData::Float16(a) => Arc::new(PrimitiveArray::new(
+            ChannelData::Float16(a) => Box::new(PrimitiveArray::new(
                 DataType::Float32,
                 mem::take(a).into(),
                 bitmap,
             )),
-            ChannelData::Int24(a) => Arc::new(PrimitiveArray::new(
+            ChannelData::Int24(a) => Box::new(PrimitiveArray::new(
                 DataType::Int32,
                 mem::take(a).into(),
                 bitmap,
             )),
-            ChannelData::UInt24(a) => Arc::new(PrimitiveArray::new(
+            ChannelData::UInt24(a) => Box::new(PrimitiveArray::new(
                 DataType::UInt32,
                 mem::take(a).into(),
                 bitmap,
             )),
-            ChannelData::Int32(a) => Arc::new(PrimitiveArray::new(
+            ChannelData::Int32(a) => Box::new(PrimitiveArray::new(
                 DataType::Int32,
                 mem::take(a).into(),
                 bitmap,
             )),
-            ChannelData::UInt32(a) => Arc::new(PrimitiveArray::new(
+            ChannelData::UInt32(a) => Box::new(PrimitiveArray::new(
                 DataType::UInt32,
                 mem::take(a).into(),
                 bitmap,
             )),
-            ChannelData::Float32(a) => Arc::new(PrimitiveArray::new(
+            ChannelData::Float32(a) => Box::new(PrimitiveArray::new(
                 DataType::Float32,
                 mem::take(a).into(),
                 bitmap,
             )),
-            ChannelData::Int48(a) => Arc::new(PrimitiveArray::new(
+            ChannelData::Int48(a) => Box::new(PrimitiveArray::new(
                 DataType::Int64,
                 mem::take(a).into(),
                 bitmap,
             )),
-            ChannelData::UInt48(a) => Arc::new(PrimitiveArray::new(
+            ChannelData::UInt48(a) => Box::new(PrimitiveArray::new(
                 DataType::UInt64,
                 mem::take(a).into(),
                 bitmap,
             )),
-            ChannelData::Int64(a) => Arc::new(PrimitiveArray::new(
+            ChannelData::Int64(a) => Box::new(PrimitiveArray::new(
                 DataType::Int64,
                 mem::take(a).into(),
                 bitmap,
             )),
-            ChannelData::UInt64(a) => Arc::new(PrimitiveArray::new(
+            ChannelData::UInt64(a) => Box::new(PrimitiveArray::new(
                 DataType::UInt64,
                 mem::take(a).into(),
                 bitmap,
             )),
-            ChannelData::Float64(a) => Arc::new(PrimitiveArray::new(
+            ChannelData::Float64(a) => Box::new(PrimitiveArray::new(
                 DataType::Float64,
                 mem::take(a).into(),
                 bitmap,
             )),
             ChannelData::Complex16(a) => {
                 let is_nullable = bitmap.is_some();
-                let array = Arc::new(PrimitiveArray::from_vec(mem::take(&mut a.0)));
+                let array = Box::new(PrimitiveArray::from_vec(mem::take(&mut a.0)));
                 let field = Field::new("complex32", DataType::Float32, is_nullable);
-                Arc::new(FixedSizeListArray::new(
+                Box::new(FixedSizeListArray::new(
                     DataType::FixedSizeList(Box::new(field), 2),
-                    array as Arc<dyn Array>,
+                    array as Box<dyn Array>,
                     bitmap,
                 ))
             }
             ChannelData::Complex32(a) => {
                 let is_nullable = bitmap.is_some();
-                let array = Arc::new(PrimitiveArray::from_vec(mem::take(&mut a.0)));
+                let array = Box::new(PrimitiveArray::from_vec(mem::take(&mut a.0)));
                 let field = Field::new("complex32", DataType::Float32, is_nullable);
-                Arc::new(FixedSizeListArray::new(
+                Box::new(FixedSizeListArray::new(
                     DataType::FixedSizeList(Box::new(field), 2),
-                    array as Arc<dyn Array>,
+                    array as Box<dyn Array>,
                     bitmap,
                 ))
             }
             ChannelData::Complex64(a) => {
                 let is_nullable = bitmap.is_some();
-                let array = Arc::new(PrimitiveArray::from_vec(mem::take(&mut a.0)));
+                let array = Box::new(PrimitiveArray::from_vec(mem::take(&mut a.0)));
                 let field = Field::new("complex64", DataType::Float64, is_nullable);
-                Arc::new(FixedSizeListArray::new(
+                Box::new(FixedSizeListArray::new(
                     DataType::FixedSizeList(Box::new(field), 2),
-                    array as Arc<dyn Array>,
+                    array as Box<dyn Array>,
                     bitmap,
                 ))
             }
             ChannelData::StringSBC(a) => {
                 let array = Utf8Array::<i64>::from_slice(mem::take(a).as_slice());
-                Arc::new(array.with_validity(bitmap))
+                Box::new(array.with_validity(bitmap))
             }
             ChannelData::StringUTF8(a) => {
                 let array = Utf8Array::<i64>::from_slice(mem::take(a).as_slice());
-                Arc::new(array.with_validity(bitmap))
+                Box::new(array.with_validity(bitmap))
             }
             ChannelData::StringUTF16(a) => {
                 let array = Utf8Array::<i64>::from_slice(mem::take(a).as_slice());
-                Arc::new(array.with_validity(bitmap))
+                Box::new(array.with_validity(bitmap))
             }
             ChannelData::VariableSizeByteArray(a) => {
                 let array = BinaryArray::<i64>::from_slice(mem::take(a).as_slice());
-                Arc::new(array.with_validity(bitmap))
+                Box::new(array.with_validity(bitmap))
             }
-            ChannelData::FixedSizeByteArray(a) => Arc::new(FixedSizeBinaryArray::new(
+            ChannelData::FixedSizeByteArray(a) => Box::new(FixedSizeBinaryArray::new(
                 DataType::FixedSizeBinary(a.1),
                 Buffer::<u8>::from(mem::take(a).0),
                 bitmap,
             )),
             ChannelData::ArrayDInt8(a) => {
                 let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-                Arc::new(Tensor::new(
+                Box::new(Tensor::new(
                     DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int8), None),
                     Buffer::<i8>::from(a.0),
                     Some(a.1 .0),
@@ -167,7 +164,7 @@ impl ChannelData {
             }
             ChannelData::ArrayDUInt8(a) => {
                 let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-                Arc::new(Tensor::new(
+                Box::new(Tensor::new(
                     DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt8), None),
                     Buffer::<u8>::from(a.0),
                     Some(a.1 .0),
@@ -178,7 +175,7 @@ impl ChannelData {
             }
             ChannelData::ArrayDInt16(a) => {
                 let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-                Arc::new(Tensor::new(
+                Box::new(Tensor::new(
                     DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int16), None),
                     Buffer::<i16>::from(a.0),
                     Some(a.1 .0),
@@ -189,7 +186,7 @@ impl ChannelData {
             }
             ChannelData::ArrayDUInt16(a) => {
                 let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-                Arc::new(Tensor::new(
+                Box::new(Tensor::new(
                     DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt16), None),
                     Buffer::<u16>::from(a.0),
                     Some(a.1 .0),
@@ -200,7 +197,7 @@ impl ChannelData {
             }
             ChannelData::ArrayDFloat16(a) => {
                 let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-                Arc::new(Tensor::new(
+                Box::new(Tensor::new(
                     DataType::Extension("Tensor".to_owned(), Box::new(DataType::Float32), None),
                     Buffer::<f32>::from(a.0),
                     Some(a.1 .0),
@@ -211,7 +208,7 @@ impl ChannelData {
             }
             ChannelData::ArrayDInt24(a) => {
                 let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-                Arc::new(Tensor::new(
+                Box::new(Tensor::new(
                     DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int32), None),
                     Buffer::<i32>::from(a.0),
                     Some(a.1 .0),
@@ -222,7 +219,7 @@ impl ChannelData {
             }
             ChannelData::ArrayDUInt24(a) => {
                 let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-                Arc::new(Tensor::new(
+                Box::new(Tensor::new(
                     DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt32), None),
                     Buffer::<u32>::from(a.0),
                     Some(a.1 .0),
@@ -233,7 +230,7 @@ impl ChannelData {
             }
             ChannelData::ArrayDInt32(a) => {
                 let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-                Arc::new(Tensor::new(
+                Box::new(Tensor::new(
                     DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int32), None),
                     Buffer::<i32>::from(a.0),
                     Some(a.1 .0),
@@ -244,7 +241,7 @@ impl ChannelData {
             }
             ChannelData::ArrayDUInt32(a) => {
                 let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-                Arc::new(Tensor::new(
+                Box::new(Tensor::new(
                     DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt32), None),
                     Buffer::<u32>::from(a.0),
                     Some(a.1 .0),
@@ -255,7 +252,7 @@ impl ChannelData {
             }
             ChannelData::ArrayDFloat32(a) => {
                 let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-                Arc::new(Tensor::new(
+                Box::new(Tensor::new(
                     DataType::Extension("Tensor".to_owned(), Box::new(DataType::Float32), None),
                     Buffer::<f32>::from(a.0),
                     Some(a.1 .0),
@@ -266,7 +263,7 @@ impl ChannelData {
             }
             ChannelData::ArrayDInt48(a) => {
                 let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-                Arc::new(Tensor::new(
+                Box::new(Tensor::new(
                     DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int64), None),
                     Buffer::<i64>::from(a.0),
                     Some(a.1 .0),
@@ -277,7 +274,7 @@ impl ChannelData {
             }
             ChannelData::ArrayDUInt48(a) => {
                 let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-                Arc::new(Tensor::new(
+                Box::new(Tensor::new(
                     DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt64), None),
                     Buffer::<u64>::from(a.0),
                     Some(a.1 .0),
@@ -288,7 +285,7 @@ impl ChannelData {
             }
             ChannelData::ArrayDInt64(a) => {
                 let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-                Arc::new(Tensor::new(
+                Box::new(Tensor::new(
                     DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int64), None),
                     Buffer::<i64>::from(a.0),
                     Some(a.1 .0),
@@ -299,7 +296,7 @@ impl ChannelData {
             }
             ChannelData::ArrayDUInt64(a) => {
                 let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-                Arc::new(Tensor::new(
+                Box::new(Tensor::new(
                     DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt64), None),
                     Buffer::<u64>::from(a.0),
                     Some(a.1 .0),
@@ -310,7 +307,7 @@ impl ChannelData {
             }
             ChannelData::ArrayDFloat64(a) => {
                 let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-                Arc::new(Tensor::new(
+                Box::new(Tensor::new(
                     DataType::Extension("Tensor".to_owned(), Box::new(DataType::Float64), None),
                     Buffer::<f64>::from(a.0),
                     Some(a.1 .0),
@@ -333,7 +330,7 @@ pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
     let mut field_index: usize = 0;
     match &mut mdf.mdf_info {
         MdfInfo::V4(mdfinfo4) => {
-            mdf.arrow_data = Vec::<Chunk<Arc<dyn Array>>>::with_capacity(mdfinfo4.dg.len());
+            mdf.arrow_data = Vec::<Chunk<Box<dyn Array>>>::with_capacity(mdfinfo4.dg.len());
             mdf.arrow_schema.fields = Vec::<Field>::with_capacity(mdfinfo4.channel_names_set.len());
             for (_dg_block_position, dg) in mdfinfo4.dg.iter_mut() {
                 let mut channel_names_present_in_dg = HashSet::new();
@@ -349,10 +346,10 @@ pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
                     dg.cg.iter_mut().for_each(|(_rec_id, cg)| {
                         let is_nullable: bool = cg.block.cg_inval_bytes > 0;
                         let mut columns =
-                            Vec::<Arc<dyn Array>>::with_capacity(cg.channel_names.len());
+                            Vec::<Box<dyn Array>>::with_capacity(cg.channel_names.len());
                         cg.cn.iter_mut().for_each(|(_rec_pos, cn)| {
                             if !cn.data.is_empty() {
-                                let data: Arc<dyn Array>;
+                                let data: Box<dyn Array>;
                                 if let Some(bitmap) = mem::take(&mut cn.invalid_mask) {
                                     data = cn.data.to_arrow_array(Some(Bitmap::from(bitmap.0)));
                                 } else {
@@ -414,11 +411,11 @@ pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
             }
         }
         MdfInfo::V3(mdfinfo3) => {
-            mdf.arrow_data = Vec::<Chunk<Arc<dyn Array>>>::with_capacity(mdfinfo3.dg.len());
+            mdf.arrow_data = Vec::<Chunk<Box<dyn Array>>>::with_capacity(mdfinfo3.dg.len());
             mdf.arrow_schema.fields = Vec::<Field>::with_capacity(mdfinfo3.channel_names_set.len());
             for (_dg_block_position, dg) in mdfinfo3.dg.iter_mut() {
                 for (_rec_id, cg) in dg.cg.iter_mut() {
-                    let mut columns = Vec::<Arc<dyn Array>>::with_capacity(cg.channel_names.len());
+                    let mut columns = Vec::<Box<dyn Array>>::with_capacity(cg.channel_names.len());
                     for (_rec_pos, cn) in cg.cn.iter_mut() {
                         if !cn.data.is_empty() {
                             let data = cn.data.to_arrow_array(None);
@@ -479,7 +476,7 @@ pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
 
 /// Take an arrow array from python and convert it to a rust arrow array.
 /// This operation does not copy data.
-pub fn array_to_rust(arrow_array: &PyAny) -> PyResult<ArrayRef> {
+pub fn array_to_rust(arrow_array: &PyAny) -> PyResult<Box<dyn Array>> {
     // prepare a pointer to receive the Array struct
     let array = Box::new(ffi::ArrowArray::empty());
     let schema = Box::new(ffi::ArrowSchema::empty());
@@ -496,38 +493,36 @@ pub fn array_to_rust(arrow_array: &PyAny) -> PyResult<ArrayRef> {
 
     unsafe {
         let field = ffi::import_field_from_c(schema.as_ref()).unwrap();
-        let array = ffi::import_array_from_c(Box::new(*array), field.data_type).unwrap();
+        let array = ffi::import_array_from_c(*array, field.data_type).unwrap();
         Ok(array.into())
     }
 }
 
 /// Arrow array to Python.
-pub(crate) fn to_py_array(py: Python, pyarrow: &PyModule, array: ArrayRef) -> PyResult<PyObject> {
-    let array_ptr = Box::new(ffi::ArrowArray::empty());
-    let schema_ptr = Box::new(ffi::ArrowSchema::empty());
+pub(crate) fn to_py_array(
+    py: Python,
+    pyarrow: &PyModule,
+    array: Box<dyn Array>,
+) -> PyResult<PyObject> {
+    let schema = Box::new(ffi::export_field_to_c(&Field::new(
+        "",
+        array.data_type().clone(),
+        true,
+    )));
+    let array = Box::new(ffi::export_array_to_c(array));
 
-    let array_ptr = Box::into_raw(array_ptr);
-    let schema_ptr = Box::into_raw(schema_ptr);
-
-    unsafe {
-        ffi::export_field_to_c(&Field::new("", array.data_type().clone(), true), schema_ptr);
-        ffi::export_array_to_c(array, array_ptr);
-    };
+    let schema_ptr: *const ffi::ArrowSchema = &*schema;
+    let array_ptr: *const ffi::ArrowArray = &*array;
 
     let array = pyarrow.getattr("Array")?.call_method1(
         "_import_from_c",
         (array_ptr as Py_uintptr_t, schema_ptr as Py_uintptr_t),
     )?;
 
-    unsafe {
-        Box::from_raw(array_ptr);
-        Box::from_raw(schema_ptr);
-    };
-
     Ok(array.to_object(py))
 }
 
-pub fn bit_count(array: &Arc<dyn Array>) -> u32 {
+pub fn bit_count(array: &Box<dyn Array>) -> u32 {
     match array.data_type() {
         DataType::Null => 0,
         DataType::Boolean => 8,
@@ -605,7 +600,7 @@ pub fn bit_count(array: &Arc<dyn Array>) -> u32 {
     }
 }
 
-pub fn to_bytes(array: &Arc<dyn Array>) -> Vec<u8> {
+pub fn to_bytes(array: &Box<dyn Array>) -> Vec<u8> {
     match array.data_type() {
         DataType::Null => Vec::new(),
         DataType::Boolean => {

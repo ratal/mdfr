@@ -11,7 +11,6 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::BufReader;
-use std::sync::Arc;
 
 use arrow2::array::{get_display, Array};
 use arrow2::chunk::Chunk;
@@ -30,7 +29,7 @@ pub struct Mdf {
     /// MdfInfo enum
     pub mdf_info: MdfInfo,
     /// contains the file data according to Arrow memory layout
-    pub arrow_data: Vec<Chunk<Arc<dyn Array>>>,
+    pub arrow_data: Vec<Chunk<Box<dyn Array>>>,
     /// arrow schema and metadata for the data
     pub arrow_schema: Schema,
     /// tuple of chunk index, array index and field index
@@ -123,7 +122,7 @@ impl Mdf {
         self.channel_indexes.get(channel_name)
     }
     /// returns channel's arrow2 Array.
-    pub fn get_channel_data(&self, channel_name: &str) -> Option<Arc<dyn Array>> {
+    pub fn get_channel_data(&self, channel_name: &str) -> Option<Box<dyn Array>> {
         if let Some(index) = self.get_channel_index(channel_name) {
             Some(self.arrow_data[index.chunk_index][index.array_index].clone())
         } else {
@@ -139,7 +138,7 @@ impl Mdf {
         }
     }
     /// defines channel's data in memory
-    pub fn set_channel_data(&mut self, channel_name: &str, data: Arc<dyn Array>) {
+    pub fn set_channel_data(&mut self, channel_name: &str, data: Box<dyn Array>) {
         todo!()
     }
     /// Renames a channel's name in memory
@@ -151,7 +150,7 @@ impl Mdf {
     pub fn add_channel(
         &mut self,
         channel_name: String,
-        data: Arc<dyn Array>,
+        data: Box<dyn Array>,
         master_channel: Option<String>,
         master_type: Option<u8>,
         master_flag: bool,

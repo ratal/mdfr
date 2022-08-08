@@ -83,7 +83,7 @@ pub fn export_to_parquet(mdf: &mut Mdf, file_name: &str, compression: Option<&st
             .zip(parquet_schema.fields().to_vec())
             .zip(encodings.clone())
             .flat_map(move |((array, type_), encoding)| {
-                let encoded_columns = array_to_columns(array, type_, options, encoding).unwrap();
+                let encoded_columns = array_to_columns(array, type_, options, &encoding).unwrap();
                 encoded_columns
                     .into_iter()
                     .map(|encoded_pages| {

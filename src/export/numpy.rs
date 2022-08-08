@@ -1,5 +1,4 @@
 //! this module provides methods to get directly channelData into python
-use std::sync::Arc;
 
 use arrow2::array::{Array, BinaryArray, PrimitiveArray, Utf8Array};
 use arrow2::bitmap::Bitmap;
@@ -26,7 +25,7 @@ impl From<TensorOrder> for NPY_ORDER {
     }
 }
 
-pub fn arrow_to_numpy(py: Python, array: &Arc<dyn Array>) -> PyObject {
+pub fn arrow_to_numpy(py: Python, array: &Box<dyn Array>) -> PyObject {
     match array.data_type() {
         DataType::Null => Python::None(py),
         DataType::Boolean => {

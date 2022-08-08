@@ -430,6 +430,11 @@ impl<T: NativeType> Array for Tensor<T> {
     }
 
     #[inline]
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+
+    #[inline]
     fn len(&self) -> usize {
         self.values.len()
     }
@@ -466,7 +471,7 @@ impl<T: NativeType> Array for Tensor<T> {
         };
         self.validity()
             .as_ref()
-            .map(|x| x.null_count())
+            .map(|x| x.unset_bits())
             .unwrap_or(0)
     }
 
