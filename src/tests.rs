@@ -503,15 +503,13 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name);
         mdf.load_all_channels_data_in_memory();
-        println!("{}", mdf);
         if let Some(data) = mdf.get_channel_data(&"Time channel".to_string()) {
             let mut vect: Vec<f64> = vec![0.; 10000];
-            let mut counter: f64 = 0.;
+            let mut counter: u64 = 0;
             vect.iter_mut().for_each(|v| {
-                *v = counter.clone();
-                counter += 0.1
+                *v = (counter.clone() as f64) / 10.0;
+                counter += 1;
             });
-            println!("{:?}\n {:?}", vect, data);
             assert_eq!(
                 PrimitiveArray::from_data(DataType::Float64, Buffer::from(vect), None).arced(),
                 data
@@ -527,10 +525,10 @@ mod tests {
         mdf.load_all_channels_data_in_memory();
         if let Some(data) = mdf.get_channel_data(&"Time channel".to_string()) {
             let mut vect: Vec<f64> = vec![0.; 10000];
-            let mut counter: f64 = 0.;
+            let mut counter: u64 = 0;
             vect.iter_mut().for_each(|v| {
-                *v = counter.clone();
-                counter += 0.1
+                *v = (counter.clone() as f64) / 10.0;
+                counter += 1;
             });
             assert_eq!(
                 PrimitiveArray::from_data(DataType::Float64, Buffer::from(vect), None).arced(),
