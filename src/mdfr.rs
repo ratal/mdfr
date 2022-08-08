@@ -9,7 +9,7 @@ use crate::mdfreader::arrow::array_to_rust;
 use crate::mdfreader::Mdf;
 use arrow2::array::get_display;
 use pyo3::prelude::*;
-use pyo3::types::{IntoPyDict, PyDict, PyList};
+use pyo3::types::{IntoPyDict, PyDict};
 
 /// This function is used to create a python dictionary from a MdfInfo object
 #[pyclass]
@@ -19,8 +19,6 @@ pub(crate) fn register(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<Mdfr>()?;
     Ok(())
 }
-// TODO export to hdf5 and parquet using arrow, xlswriter
-// TODO resample and export to csv ?
 
 /// Imple&ments Mdf class to provide API to python using pyo3
 #[pymethods]
