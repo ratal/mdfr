@@ -8,7 +8,6 @@ use arrow2::array::{
 };
 use arrow2::bitmap::Bitmap;
 use arrow2::buffer::Buffer;
-use arrow2::chunk::Chunk;
 use arrow2::datatypes::{DataType, Field, Metadata, PhysicalType, PrimitiveType};
 use arrow2::ffi;
 
@@ -330,7 +329,7 @@ pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
     let mut field_index: usize = 0;
     match &mut mdf.mdf_info {
         MdfInfo::V4(mdfinfo4) => {
-            mdf.arrow_data = Vec::<Chunk<Box<dyn Array>>>::with_capacity(mdfinfo4.dg.len());
+            mdf.arrow_data = Vec::<Vec<Box<dyn Array>>>::with_capacity(mdfinfo4.dg.len());
             mdf.arrow_schema.fields = Vec::<Field>::with_capacity(mdfinfo4.channel_names_set.len());
             for (_dg_block_position, dg) in mdfinfo4.dg.iter_mut() {
                 let mut channel_names_present_in_dg = HashSet::new();
@@ -403,7 +402,7 @@ pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
                                 field_index += 1;
                             }
                         });
-                        mdf.arrow_data.push(Chunk::new(columns));
+                        mdf.arrow_data.push(columns);
                         chunk_index += 1;
                         array_index = 0;
                     });
@@ -411,7 +410,7 @@ pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
             }
         }
         MdfInfo::V3(mdfinfo3) => {
-            mdf.arrow_data = Vec::<Chunk<Box<dyn Array>>>::with_capacity(mdfinfo3.dg.len());
+            mdf.arrow_data = Vec::<Vec<Box<dyn Array>>>::with_capacity(mdfinfo3.dg.len());
             mdf.arrow_schema.fields = Vec::<Field>::with_capacity(mdfinfo3.channel_names_set.len());
             for (_dg_block_position, dg) in mdfinfo3.dg.iter_mut() {
                 for (_rec_id, cg) in dg.cg.iter_mut() {
@@ -465,7 +464,7 @@ pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
                             field_index += 1;
                         }
                     }
-                    mdf.arrow_data.push(Chunk::new(columns));
+                    mdf.arrow_data.push(columns);
                     chunk_index += 1;
                     array_index = 0;
                 }
@@ -502,14 +501,14 @@ pub fn array_to_rust(arrow_array: &PyAny) -> PyResult<Box<dyn Array>> {
 pub(crate) fn to_py_array(
     py: Python,
     pyarrow: &PyModule,
-    array: Box<dyn Array>,
+    array: &Box<dyn Array>,
 ) -> PyResult<PyObject> {
     let schema = Box::new(ffi::export_field_to_c(&Field::new(
         "",
         array.data_type().clone(),
         true,
     )));
-    let array = Box::new(ffi::export_array_to_c(array));
+    let array = Box::new(ffi::export_array_to_c(array.clone()));
 
     let schema_ptr: *const ffi::ArrowSchema = &*schema;
     let array_ptr: *const ffi::ArrowArray = &*array;

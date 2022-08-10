@@ -41,7 +41,7 @@ impl Mdfr {
             let mut py_array: Py<PyAny>;
             let dt = mdf.get_channel_data(&channel_name);
             if let Some(data) = dt {
-                py_array = arrow_to_numpy(py, &data);
+                py_array = arrow_to_numpy(py, data);
                 if let Some(m) = data.validity() {
                     let mask: Py<PyAny> = m.iter().collect::<Vec<bool>>().into_py(py);
                     let locals = [("numpy", py.import("numpy").expect("could not import numpy"))]
@@ -79,34 +79,35 @@ impl Mdfr {
         let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|py| {
             let mut py_dataframe = Python::None(py);
-            let channel_names_set = mdf.mdf_info.get_channel_names_cg_set(&channel_name);
-            let series_dict = PyDict::new(py);
-            for channel in channel_names_set {
-                series_dict
-                    .set_item(
-                        channel.clone(),
-                        self.get_polars_series(&channel)
-                            .expect("could not convert to series"),
-                    )
-                    .expect("could not store the serie in dict");
-            }
-            if !series_dict.is_empty() {
-                let locals = PyDict::new(py);
-                locals
-                    .set_item("series", &series_dict)
-                    .expect("cannot set python series_list");
-                py.import("polars").expect("Could import polars");
-                py.run(
-                    r#"
+            if let Some(index) = mdf.get_channel_index(&channel_name) {
+                let series_dict = PyDict::new(py);
+                for channel_data in mdf.arrow_data[index.chunk_index].iter() {
+                    series_dict
+                        .set_item(
+                            mdf.arrow_schema.fields[index.field_index].name.clone(),
+                            rust_arrow_to_py_series(channel_data)
+                                .expect("Could not convert to python series"),
+                        )
+                        .expect("could not store the serie in dict");
+                }
+                if !series_dict.is_empty() {
+                    let locals = PyDict::new(py);
+                    locals
+                        .set_item("series", &series_dict)
+                        .expect("cannot set python series_list");
+                    py.import("polars").expect("Could import polars");
+                    py.run(
+                        r#"
 import polars
 df=polars.DataFrame(series)
 "#,
-                    None,
-                    Some(locals),
-                )
-                .expect("dataframe creation failed");
-                if let Some(df) = locals.get_item("df") {
-                    py_dataframe = df.into();
+                        None,
+                        Some(locals),
+                    )
+                    .expect("dataframe creation failed");
+                    if let Some(df) = locals.get_item("df") {
+                        py_dataframe = df.into();
+                    }
                 }
             }
             py_dataframe
@@ -175,28 +176,22 @@ df=polars.DataFrame(series)
     /// load a set of channels in memory
     pub fn load_channels_data_in_memory(&mut self, channel_names: HashSet<String>) {
         let Mdfr(mdf) = self;
-        pyo3::Python::with_gil(|_py| {
-            mdf.load_channels_data_in_memory(channel_names);
-        })
+        mdf.load_channels_data_in_memory(channel_names);
     }
     /// clear channels from memory
     pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) {
         let Mdfr(mdf) = self;
-        pyo3::Python::with_gil(|_py| {
-            mdf.clear_channel_data_from_memory(channel_names);
-        })
+        mdf.clear_channel_data_from_memory(channel_names);
     }
     /// load all channels in memory
     pub fn load_all_channels_data_in_memory(&mut self) {
         let Mdfr(mdf) = self;
-        pyo3::Python::with_gil(|_py| {
-            mdf.load_all_channels_data_in_memory();
-        })
+        mdf.load_all_channels_data_in_memory();
     }
     /// writes file
     pub fn write(&mut self, file_name: &str, compression: bool) -> Mdfr {
         let Mdfr(mdf) = self;
-        pyo3::Python::with_gil(|_py| Mdfr(mdf.write(file_name, compression)))
+        Mdfr(mdf.write(file_name, compression))
     }
     /// Adds a new channel in memory (no file modification)
     pub fn add_channel(
@@ -236,37 +231,27 @@ df=polars.DataFrame(series)
     /// Sets the channel's related master channel type in memory
     pub fn set_channel_master_type(&mut self, master_name: &str, master_type: u8) {
         let Mdfr(mdf) = self;
-        pyo3::Python::with_gil(|_py| {
-            mdf.set_channel_master_type(master_name, master_type);
-        })
+        mdf.set_channel_master_type(master_name, master_type);
     }
     /// Removes a channel in memory (no file modification)
     pub fn remove_channel(&mut self, channel_name: &str) {
         let Mdfr(mdf) = self;
-        pyo3::Python::with_gil(|_py| {
-            mdf.remove_channel(channel_name);
-        })
+        mdf.remove_channel(channel_name);
     }
     /// Renames a channel's name in memory
     pub fn rename_channel(&mut self, channel_name: &str, new_name: &str) {
         let Mdfr(mdf) = self;
-        pyo3::Python::with_gil(|_py| {
-            mdf.rename_channel(channel_name, new_name);
-        })
+        mdf.rename_channel(channel_name, new_name);
     }
     /// Sets the channel unit in memory
     pub fn set_channel_unit(&mut self, channel_name: &str, unit: &str) {
         let Mdfr(mdf) = self;
-        pyo3::Python::with_gil(|_py| {
-            mdf.set_channel_unit(channel_name, unit);
-        })
+        mdf.set_channel_unit(channel_name, unit);
     }
     /// Sets the channel description in memory
     pub fn set_channel_desc(&mut self, channel_name: &str, desc: &str) {
         let Mdfr(mdf) = self;
-        pyo3::Python::with_gil(|_py| {
-            mdf.set_channel_desc(channel_name, desc);
-        })
+        mdf.set_channel_desc(channel_name, desc);
     }
     /// plot one channel
     pub fn plot(&self, channel_name: String) {

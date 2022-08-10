@@ -13,7 +13,6 @@ use std::fs::{File, OpenOptions};
 use std::io::BufReader;
 
 use arrow2::array::{get_display, Array};
-use arrow2::chunk::Chunk;
 use arrow2::datatypes::{Field, Schema};
 use arrow2::error::Result;
 
@@ -29,7 +28,7 @@ pub struct Mdf {
     /// MdfInfo enum
     pub mdf_info: MdfInfo,
     /// contains the file data according to Arrow memory layout
-    pub arrow_data: Vec<Chunk<Box<dyn Array>>>,
+    pub arrow_data: Vec<Vec<Box<dyn Array>>>,
     /// arrow schema and metadata for the data
     pub arrow_schema: Schema,
     /// tuple of chunk index, array index and field index
@@ -54,6 +53,7 @@ pub fn mdfreader(file_name: &str) -> Mdf {
     mdf
 }
 
+#[allow(dead_code)]
 impl Mdf {
     /// returns new empty Mdf
     pub fn new(file_name: &str) -> Mdf {
@@ -118,13 +118,13 @@ impl Mdf {
         self.mdf_info.get_master_channel_names_set()
     }
     /// return the tuple of chunk index and array index corresponding to the channel name
-    fn get_channel_index(&self, channel_name: &str) -> Option<&ChannelIndexes> {
+    pub(crate) fn get_channel_index(&self, channel_name: &str) -> Option<&ChannelIndexes> {
         self.channel_indexes.get(channel_name)
     }
     /// returns channel's arrow2 Array.
-    pub fn get_channel_data(&self, channel_name: &str) -> Option<Box<dyn Array>> {
+    pub fn get_channel_data(&self, channel_name: &str) -> Option<&Box<dyn Array>> {
         if let Some(index) = self.get_channel_index(channel_name) {
-            Some(self.arrow_data[index.chunk_index][index.array_index].clone())
+            Some(&self.arrow_data[index.chunk_index][index.array_index])
         } else {
             None
         }
@@ -139,12 +139,17 @@ impl Mdf {
     }
     /// defines channel's data in memory
     pub fn set_channel_data(&mut self, channel_name: &str, data: Box<dyn Array>) {
-        todo!()
+        if let Some(index) = self.channel_indexes.get(channel_name) {
+            let chunk = &mut self.arrow_data[index.chunk_index];
+            chunk[index.array_index] = data;
+        }
     }
     /// Renames a channel's name in memory
     pub fn rename_channel(&mut self, channel_name: &str, new_name: &str) {
-        self.mdf_info.rename_channel(channel_name, new_name);
-        todo!()
+        if let Some(value) = self.channel_indexes.remove(channel_name) {
+            self.mdf_info.rename_channel(channel_name, new_name);
+            self.channel_indexes.insert(new_name.to_string(), value);
+        }
     }
     /// Adds a new channel in memory (no file modification)
     pub fn add_channel(
@@ -161,8 +166,13 @@ impl Mdf {
     }
     /// Removes a channel in memory (no file modification)
     pub fn remove_channel(&mut self, channel_name: &str) {
-        self.mdf_info.remove_channel(channel_name);
-        todo!() // adapt to new structure
+        if let Some(index) = self.channel_indexes.remove(channel_name) {
+            self.mdf_info.remove_channel(channel_name);
+            // remove data
+            self.arrow_data[index.chunk_index].remove(index.array_index);
+            // removes field entry in Schema
+            self.arrow_schema.fields.remove(index.field_index);
+        }
     }
     /// load all channels data in memory
     pub fn load_all_channels_data_in_memory(&mut self) {

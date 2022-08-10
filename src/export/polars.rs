@@ -17,7 +17,7 @@ impl Mdf {
         let mut out: Option<Series> = None;
         if let Some(data) = data {
             let dtype = data.data_type().clone();
-            let chunks = vec![data];
+            let chunks = vec![data.clone()];
             out = match dtype {
                 ArrowDataType::Null => {
                     // we don't support null types yet so we use a small digit type filled with nulls
@@ -171,7 +171,7 @@ pub fn rust_series_to_py_series(series: &Series) -> PyResult<PyObject> {
     let pyarrow = py.import("pyarrow")?;
 
     // pyarrow array
-    let pyarrow_array = to_py_array(py, pyarrow, array)?;
+    let pyarrow_array = to_py_array(py, pyarrow, &array)?;
 
     // import polars
     let polars = py.import("polars")?;
@@ -179,7 +179,7 @@ pub fn rust_series_to_py_series(series: &Series) -> PyResult<PyObject> {
     Ok(out.to_object(py))
 }
 
-pub fn rust_arrow_to_py_series(array: Box<dyn Array>) -> PyResult<PyObject> {
+pub fn rust_arrow_to_py_series(array: &Box<dyn Array>) -> PyResult<PyObject> {
     // ensure we have a single chunk
 
     // acquire the gil
