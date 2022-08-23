@@ -1,9 +1,12 @@
 #[cfg(test)]
 mod tests {
     use arrow2::array::BinaryArray;
+    use arrow2::array::MutableArray;
+    use arrow2::array::MutableUtf8Array;
     use arrow2::array::PrimitiveArray;
     use arrow2::array::Utf8Array;
     use arrow2::buffer::Buffer;
+    use arrow2::compute::aggregate::{max_primitive, min_primitive};
     use arrow2::datatypes::DataType;
     use arrow2::error::Error;
 
@@ -764,21 +767,19 @@ mod tests {
                 *v = counter.clone();
                 counter += 0.1
             });
-            let target = vect
-                .iter()
-                .map(|v| {
-                    if 9.9999 <= *v && *v <= 10.1001 {
-                        "Illegal value".to_string()
-                    } else if 20.0 <= *v && *v <= 30.0 {
-                        "Out of range".to_string()
-                    } else {
-                        (10.0 / (v - 10.0)).to_string()
-                    }
-                })
-                .collect::<Vec<String>>();
+            let mut target = MutableUtf8Array::<i32>::with_capacity(vect.len());
+            vect.iter().for_each(|v| {
+                if 9.9999 <= *v && *v <= 10.1001 {
+                    target.push(Some("Illegal value".to_string()))
+                } else if 20.0 <= *v && *v <= 30.0 {
+                    target.push(Some("Out of range".to_string()))
+                } else {
+                    target.push(Some((10.0 / (v - 10.0)).to_string()))
+                }
+            });
             // println!("{:?} {}", target, target.len());
             // println!("{} {}", data, data.len());
-            // assert!(ChannelData::StringUTF8(target.clone()).compare_f64(data, 1e-6f64));
+            assert!(&target.as_box() == data);
         }
 
         // Text conversion : Text to Value
@@ -917,8 +918,14 @@ mod tests {
             panic!("channel not found");
         }
         if let Some(data) = mdf.get_channel_data(&ref_channel.to_string()) {
-            // assert!(data.max() < 1000.0f32);
-            todo!()
+            let array = data
+                .as_any()
+                .downcast_ref::<PrimitiveArray<f32>>()
+                .expect("could not downcast to f32 array");
+            let maximum = max_primitive(&array);
+            if let Some(max) = maximum {
+                assert!(max < 1000.0f32);
+            }
         } else {
             panic!("channel not found");
         }
@@ -959,8 +966,14 @@ mod tests {
         );
 
         if let Some(data) = mdf.get_channel_data(&channel_name.to_string()) {
-            // assert!(data.min() == 0.0f64);
-            todo!()
+            let array = data
+                .as_any()
+                .downcast_ref::<PrimitiveArray<f64>>()
+                .expect("could not downcast to f64 array");
+            let minimum = min_primitive(&array);
+            if let Some(max) = minimum {
+                assert!(max == 0.0f64);
+            }
         } else {
             panic!("channel not found");
         }
@@ -999,7 +1012,7 @@ mod tests {
         let mut mdf = Mdf::new(&file);
         mdf.load_all_channels_data_in_memory();
         let channel_name3 = r"TEMP_FUEL";
-        let mut mdf2 = mdf.write(WRITING_MDF_FILE, true);
+        let mdf2 = mdf.write(WRITING_MDF_FILE, true);
         assert_eq!(
             mdf2.get_channel_data(&channel_name3),
             mdf.get_channel_data(&channel_name3)
