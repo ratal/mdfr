@@ -23,6 +23,8 @@ use crate::mdfreader::mdfreader3::mdfreader3;
 use crate::mdfreader::mdfreader4::mdfreader4;
 use crate::mdfwriter::mdfwriter4::mdfwriter4;
 
+use self::channel_data::ChannelData;
+
 #[derive(Debug)]
 pub struct Mdf {
     /// MdfInfo enum
@@ -162,7 +164,31 @@ impl Mdf {
         unit: Option<String>,
         description: Option<String>,
     ) {
-        todo!()
+        // mldfinfo metadata but no data
+        self.mdf_info.add_channel(
+            channel_name.clone(),
+            ChannelData::UInt8(vec![]),
+            master_channel,
+            master_type,
+            master_flag,
+            unit,
+            description,
+        );
+        // add field
+        let is_nullable: bool = data.validity().is_some();
+        let new_field = Field::new(channel_name.clone(), data.data_type().clone(), is_nullable);
+        self.arrow_schema.fields.push(new_field);
+        let field_index = self.arrow_schema.fields.len();
+        // add data
+        self.arrow_data.push(vec![data]);
+        // add index
+        let chunk_index = self.arrow_data.len();
+        let index = ChannelIndexes {
+            chunk_index,
+            array_index: 0,
+            field_index,
+        };
+        self.channel_indexes.insert(channel_name, index);
     }
     /// Removes a channel in memory (no file modification)
     pub fn remove_channel(&mut self, channel_name: &str) {
