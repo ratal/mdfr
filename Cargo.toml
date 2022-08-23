@@ -24,7 +24,7 @@ ndarray-stats = "0.5" # for nd array stats
 rayon =  "1.5" # for general purpose parallel computations
 crossbeam-channel = "0.5" # for efficient channel between threads
 parking_lot = "0.12" # for efficient mutex
-roxmltree = "0.14" # for xml parsing
+roxmltree = "0.15" # for xml parsing
 yazi = "0.1" # for DZ block data deflate
 transpose = "0.2" # for DZBlock transpose
 numpy = "0.16" # export rust ndarrays into numpy
@@ -33,7 +33,7 @@ itertools = "0.10"
 serde = { version = "1.0", features = ["derive"] } # for serialization
 whoami = "1.2" # to get user nam for writing file
 rand = "0.8" # for random numbers
-parquet2 = "0.14" # for export to parquet file format
+parquet2 = "0.16" # for export to parquet file format
 arrow2 = {version = "0.13", features = ["compute", "io_parquet", "io_parquet_compression"] } # for efficient data storing in memory
 polars = {version = "0.23", features = ["dtype-full", "object", "fmt"]} # for python dataframe
 
