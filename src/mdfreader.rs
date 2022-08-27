@@ -168,7 +168,7 @@ impl Mdf {
         self.mdf_info.add_channel(
             channel_name.clone(),
             ChannelData::UInt8(vec![]),
-            master_channel,
+            master_channel.clone(),
             master_type,
             master_flag,
             unit,
@@ -177,12 +177,22 @@ impl Mdf {
         // add field
         let is_nullable: bool = data.validity().is_some();
         let new_field = Field::new(channel_name.clone(), data.data_type().clone(), is_nullable);
-        self.arrow_schema.fields.push(new_field);
         let field_index = self.arrow_schema.fields.len();
+        self.arrow_schema.fields.push(new_field);
         // add data
-        self.arrow_data.push(vec![data]);
+        let mut chunk_index: usize = self.arrow_data.len();
+        if let Some(master) = &master_channel {
+            if let Some(master_index) = self.get_channel_index(master) {
+                chunk_index = master_index.chunk_index;
+                self.arrow_data[chunk_index].push(data);
+            } else {
+                // master channel not found
+                self.arrow_data.push(vec![data]);
+            }
+        } else {
+            self.arrow_data.push(vec![data]);
+        }
         // add index
-        let chunk_index = self.arrow_data.len();
         let index = ChannelIndexes {
             chunk_index,
             array_index: 0,

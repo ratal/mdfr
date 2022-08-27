@@ -2,11 +2,12 @@
 mod tests {
     use arrow2::array::BinaryArray;
     use arrow2::array::MutableArray;
+    use arrow2::array::MutablePrimitiveArray;
     use arrow2::array::MutableUtf8Array;
     use arrow2::array::PrimitiveArray;
     use arrow2::array::Utf8Array;
     use arrow2::buffer::Buffer;
-    use arrow2::compute::aggregate::{max_primitive, min_primitive};
+    use arrow2::compute::aggregate::min_primitive;
     use arrow2::datatypes::DataType;
     use arrow2::error::Error;
 
@@ -777,8 +778,8 @@ mod tests {
                     target.push(Some((10.0 / (v - 10.0)).to_string()))
                 }
             });
-            // println!("{:?} {}", target, target.len());
-            // println!("{} {}", data, data.len());
+            println!("{:?} {}", target.as_box(), target.len());
+            println!("{:?} {}", data, data.len());
             assert!(&target.as_box() == data);
         }
 
@@ -905,15 +906,18 @@ mod tests {
         mdf.load_all_channels_data_in_memory();
         // modify data
         if let Some(data) = mdf.get_channel_data(&ref_channel.to_string()) {
-            //if let ChannelData::Float32(mut new_data) = data.clone() {
-            //    new_data[0] = 0.0;
-            //    info.set_channel_data(&ref_channel.to_string(), &ChannelData::Float32(new_data));
-            //    info.set_channel_desc(&ref_channel.to_string(), ref_desc);
-            //    info.set_channel_unit(&ref_channel.to_string(), ref_unit);
-            //    info.set_channel_master_type(&ref_channel.to_string(), 1);
-            //} else {
-            //    panic!("not correct data type");
-            //}
+            let array = data
+                .as_any()
+                .downcast_ref::<PrimitiveArray<f32>>()
+                .expect("could not downcast to f32 array");
+            let mut new_data = MutablePrimitiveArray::<f32>::from_trusted_len_values_iter(
+                array.values_iter().copied(),
+            );
+            new_data.set(0, Some(0.0f32));
+            mdf.set_channel_data(&ref_channel.to_string(), new_data.as_box());
+            mdf.set_channel_desc(&ref_channel.to_string(), ref_desc);
+            mdf.set_channel_unit(&ref_channel.to_string(), ref_unit);
+            mdf.set_channel_master_type(&ref_channel.to_string(), 1);
         } else {
             panic!("channel not found");
         }
@@ -922,9 +926,9 @@ mod tests {
                 .as_any()
                 .downcast_ref::<PrimitiveArray<f32>>()
                 .expect("could not downcast to f32 array");
-            let maximum = max_primitive(&array);
-            if let Some(max) = maximum {
-                assert!(max < 1000.0f32);
+            let minimum = min_primitive(&array);
+            if let Some(min) = minimum {
+                assert!(min < 1000.0f32);
             }
         } else {
             panic!("channel not found");
