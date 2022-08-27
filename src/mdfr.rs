@@ -11,6 +11,13 @@ use arrow2::array::get_display;
 use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyDict};
 
+#[pymodule]
+#[pyo3(name = "mdfr")]
+fn mdfr(py: Python, m: &PyModule) -> PyResult<()> {
+    register(py, m)?;
+    Ok(())
+}
+
 /// This function is used to create a python dictionary from a MdfInfo object
 #[pyclass]
 struct Mdfr(Mdf);

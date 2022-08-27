@@ -6,7 +6,7 @@ use polars::chunked_array::ChunkedArray;
 use polars::prelude::*;
 use polars::series::Series;
 use pyo3::exceptions::PyValueError;
-use pyo3::{PyAny, PyObject, PyResult, Python, ToPyObject};
+use pyo3::{PyAny, PyObject, PyResult, ToPyObject};
 
 use crate::mdfreader::arrow::{array_to_rust, to_py_array};
 use crate::mdfreader::Mdf;
@@ -165,37 +165,37 @@ pub fn rust_series_to_py_series(series: &Series) -> PyResult<PyObject> {
     let array = series.to_arrow(0);
 
     // acquire the gil
-    let gil = Python::acquire_gil();
-    let py = gil.python();
-    // import pyarrow
-    let pyarrow = py.import("pyarrow")?;
+    pyo3::Python::with_gil(|py| {
+        // import pyarrow
+        let pyarrow = py.import("pyarrow")?;
 
-    // pyarrow array
-    let pyarrow_array = to_py_array(py, pyarrow, &array)?;
+        // pyarrow array
+        let pyarrow_array = to_py_array(py, pyarrow, &array)?;
 
-    // import polars
-    let polars = py.import("polars")?;
-    let out = polars.call_method1("from_arrow", (pyarrow_array,))?;
-    Ok(out.to_object(py))
+        // import polars
+        let polars = py.import("polars")?;
+        let out = polars.call_method1("from_arrow", (pyarrow_array,))?;
+        Ok(out.to_object(py))
+    })
 }
 
 pub fn rust_arrow_to_py_series(array: &Box<dyn Array>) -> PyResult<PyObject> {
     // ensure we have a single chunk
 
     // acquire the gil
-    let gil = Python::acquire_gil();
-    let py = gil.python();
-    // import pyarrow
-    let pyarrow = py.import("pyarrow").expect("could not import pyarrow");
+    pyo3::Python::with_gil(|py| {
+        // import pyarrow
+        let pyarrow = py.import("pyarrow").expect("could not import pyarrow");
 
-    // pyarrow array
-    let pyarrow_array =
-        to_py_array(py, pyarrow, array).expect("failed to convert arrow array to pyarrow array");
+        // pyarrow array
+        let pyarrow_array = to_py_array(py, pyarrow, array)
+            .expect("failed to convert arrow array to pyarrow array");
 
-    // import polars
-    let polars = py.import("polars").expect("could not import polars");
-    let out = polars
-        .call_method1("from_arrow", (pyarrow_array,))
-        .expect("method from_arrow not existing");
-    Ok(out.to_object(py))
+        // import polars
+        let polars = py.import("polars").expect("could not import polars");
+        let out = polars
+            .call_method1("from_arrow", (pyarrow_array,))
+            .expect("method from_arrow not existing");
+        Ok(out.to_object(py))
+    })
 }
