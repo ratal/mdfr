@@ -33,7 +33,7 @@ use yazi::{compress, CompressionLevel, Format};
 
 use super::mdfwriter3::convert3to4;
 
-/// writes file on hard drive
+/// writes mdf4.2 file
 pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Mdf {
     let info: MdfInfo4 = match &mdf.mdf_info {
         MdfInfo::V3(mdfinfo3) => convert3to4(mdfinfo3, file_name),

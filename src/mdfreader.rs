@@ -25,6 +25,7 @@ use crate::mdfwriter::mdfwriter4::mdfwriter4;
 
 use self::channel_data::ChannelData;
 
+/// Main Mdf struct holding mdfinfo, arrow data and schema
 #[derive(Debug)]
 pub struct Mdf {
     /// MdfInfo enum
@@ -37,6 +38,7 @@ pub struct Mdf {
     pub channel_indexes: HashMap<String, ChannelIndexes>,
 }
 
+/// Struct channel indexes for chunk, array and field
 #[derive(Debug, Default)]
 pub struct ChannelIndexes {
     /// index of the chunk in the arrow_data vector

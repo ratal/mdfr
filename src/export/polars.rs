@@ -162,6 +162,7 @@ pub fn py_series_to_rust_series(series: &PyAny) -> PyResult<Series> {
     Series::try_from((name.as_str(), array)).map_err(|e| PyValueError::new_err(format!("{}", e)))
 }
 
+/// converts polars rust series into python ploars series
 pub fn rust_series_to_py_series(series: &Series) -> PyResult<PyObject> {
     // ensure we have a single chunk
     let series = series.rechunk();
@@ -182,6 +183,7 @@ pub fn rust_series_to_py_series(series: &Series) -> PyResult<PyObject> {
     })
 }
 
+/// converts rust arrow array into python polars series
 pub fn rust_arrow_to_py_series(array: &Box<dyn Array>) -> PyResult<PyObject> {
     // ensure we have a single chunk
 

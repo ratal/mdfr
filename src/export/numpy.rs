@@ -394,8 +394,8 @@ impl From<Order> for NPY_ORDER {
     }
 }
 
-/// IntoPy implementation to convert a ChannelData into a PyObject
 impl IntoPy<PyObject> for ChannelData {
+    /// IntoPy implementation to convert a ChannelData into a PyObject
     fn into_py(self, py: Python) -> PyObject {
         match self {
             ChannelData::Int8(array) => array.into_pyarray(py).into_py(py),
@@ -542,8 +542,8 @@ impl IntoPy<PyObject> for ChannelData {
     }
 }
 
-/// ToPyObject implementation to convert a ChannelData into a PyObject
 impl ToPyObject for ChannelData {
+    /// ToPyObject implementation to convert a ChannelData into a PyObject
     fn to_object(&self, py: Python) -> PyObject {
         match self {
             ChannelData::Int8(array) => array.to_pyarray(py).into_py(py),
@@ -594,8 +594,8 @@ impl ToPyObject for ChannelData {
     }
 }
 
-/// FromPyObject implementation to allow conversion from a Python object to a ChannelData
 impl FromPyObject<'_> for ChannelData {
+    /// FromPyObject implementation to allow conversion from a Python object to a ChannelData
     fn extract(ob: &'_ PyAny) -> PyResult<Self> {
         let truc: NumpyArray = ob.extract()?;
         match truc {

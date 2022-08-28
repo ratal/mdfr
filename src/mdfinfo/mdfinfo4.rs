@@ -479,6 +479,7 @@ impl MdfInfo4 {
     // TODO Extract attachments
 }
 
+/// creates random negative position
 pub fn position_generator() -> i64 {
     // hopefully never 2 times the same position
     let mut position = rand::random::<i64>();
