@@ -233,7 +233,7 @@ impl<T: NativeType> Tensor<T> {
         }
     }
 
-    /// Returns a clone of this [`PrimitiveArray`] sliced by an offset and length.
+    /// Returns a clone of this PrimitiveArray sliced by an offset and length.
     /// # Implementation
     /// This operation is `O(1)` as it amounts to increase two ref counts.
     /// # Examples
@@ -258,7 +258,7 @@ impl<T: NativeType> Tensor<T> {
         unsafe { self.slice_unchecked(offset, length) }
     }
 
-    /// Returns a clone of this [`PrimitiveArray`] sliced by an offset and length.
+    /// Returns a clone of this PrimitiveArray sliced by an offset and length.
     /// # Implementation
     /// This operation is `O(1)` as it amounts to increase two ref counts.
     /// # Safety
