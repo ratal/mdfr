@@ -762,6 +762,7 @@ mod tests {
         let mut mdf = Mdf::new(&file_name);
         mdf.load_all_channels_data_in_memory();
         if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+            let data = data.as_any().downcast_ref::<Utf8Array<i64>>().expect("");
             let mut vect: Vec<f64> = vec![0.; 300];
             let mut counter: f64 = 0.;
             vect.iter_mut().for_each(|v| {
@@ -778,12 +779,10 @@ mod tests {
                     target.push(Some((10.0 / (v - 10.0)).to_string()))
                 }
             });
-            let target = target.as_box();
-            println!("{:?}", target);
-            println!("{:?} {}", data, data.len());
-            assert_eq!(&target[0], data[0]);
-            assert_eq!(&target[299], data[299]);
-            assert_eq!(&target[101], data[101]);
+            let target: Utf8Array<i64> = target.into();
+            assert_eq!(target.value(0), data.value(0));
+            assert_eq!(target.value(299), data.value(299));
+            assert_eq!(target.value(101), data.value(101));
         }
 
         // Text conversion : Text to Value
