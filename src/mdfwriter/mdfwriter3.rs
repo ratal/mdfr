@@ -1,8 +1,10 @@
+//! Converter of mdf version 3.x into mdf version 4.2
 use crate::mdfinfo::mdfinfo4::FhBlock;
 
 use crate::mdfinfo::{mdfinfo3::MdfInfo3, mdfinfo4::MdfInfo4};
 use crate::mdfreader::channel_data::ChannelData;
 
+// Converts mdfinfo3 into mdfinfo4
 pub fn convert3to4(mdf3: &MdfInfo3, file_name: &str) -> MdfInfo4 {
     let n_channels = mdf3.get_channel_names_set().len();
     let mut mdf4 = MdfInfo4::new(file_name, n_channels);
