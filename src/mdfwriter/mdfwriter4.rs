@@ -23,7 +23,7 @@ use crate::{
         Mdf,
     },
 };
-use arrow2::{array::Array, bitmap::Bitmap, datatypes::Schema};
+use arrow2::{array::Array, bitmap::Bitmap};
 use binrw::BinWriterExt;
 use crossbeam_channel::bounded;
 use parking_lot::Mutex;
@@ -261,9 +261,9 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Mdf {
     writer.flush().expect("Could not flush file");
     Mdf {
         mdf_info: MdfInfo::V4(Box::new(new_info)),
-        arrow_data: Vec::new(),
-        arrow_schema: Schema::default(),
-        channel_indexes: HashMap::new(),
+        arrow_data: mdf.arrow_data.clone(),
+        arrow_schema: mdf.arrow_schema.clone(),
+        channel_indexes: mdf.channel_indexes.clone(),
     }
 }
 

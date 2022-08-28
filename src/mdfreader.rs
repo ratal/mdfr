@@ -47,6 +47,16 @@ pub struct ChannelIndexes {
     pub field_index: usize,
 }
 
+impl Clone for ChannelIndexes {
+    fn clone(&self) -> Self {
+        Self {
+            chunk_index: self.chunk_index.clone(),
+            array_index: self.array_index.clone(),
+            field_index: self.field_index.clone(),
+        }
+    }
+}
+
 /// reads files metadata and loads all channels data into memory
 pub fn mdfreader(file_name: &str) -> Mdf {
     // read file blocks

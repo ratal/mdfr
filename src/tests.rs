@@ -768,7 +768,7 @@ mod tests {
                 *v = counter.clone();
                 counter += 0.1
             });
-            let mut target = MutableUtf8Array::<i32>::with_capacity(vect.len());
+            let mut target = MutableUtf8Array::<i64>::with_capacity(vect.len());
             vect.iter().for_each(|v| {
                 if 9.9999 <= *v && *v <= 10.1001 {
                     target.push(Some("Illegal value".to_string()))
@@ -778,9 +778,10 @@ mod tests {
                     target.push(Some((10.0 / (v - 10.0)).to_string()))
                 }
             });
-            println!("{:?} {}", target.as_box(), target.len());
+            let target = target.as_box();
+            println!("{:?}", target);
             println!("{:?} {}", data, data.len());
-            assert!(&target.as_box() == data);
+            assert_eq!(&target, data);
         }
 
         // Text conversion : Text to Value
@@ -975,8 +976,8 @@ mod tests {
                 .downcast_ref::<PrimitiveArray<f64>>()
                 .expect("could not downcast to f64 array");
             let minimum = min_primitive(&array);
-            if let Some(max) = minimum {
-                assert!(max == 0.0f64);
+            if let Some(min) = minimum {
+                assert!(min == 0.0f64);
             }
         } else {
             panic!("channel not found");
@@ -1016,11 +1017,10 @@ mod tests {
         let mut mdf = Mdf::new(&file);
         mdf.load_all_channels_data_in_memory();
         let channel_name3 = r"TEMP_FUEL";
-        let mdf2 = mdf.write(WRITING_MDF_FILE, true);
-        assert_eq!(
-            mdf2.get_channel_data(&channel_name3),
-            mdf.get_channel_data(&channel_name3)
-        );
+        let mdf4 = mdf.write(WRITING_MDF_FILE, true);
+        let mdf3_data = mdf.get_channel_data(&channel_name3);
+        let mdf4_data = mdf4.get_channel_data(&channel_name3);
+        assert_eq!(mdf3_data, mdf4_data);
     }
     #[test]
     fn export_to_parquet() -> Result<(), Error> {
