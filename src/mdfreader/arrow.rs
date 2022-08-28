@@ -22,7 +22,8 @@ use std::mem;
 use super::channel_data::Order;
 
 impl ChannelData {
-    pub fn to_arrow_array(&mut self, bitmap: Option<Bitmap>) -> Box<dyn Array> {
+    /// takes (or replace by default) the ChannelData array and returns an arrow array
+    pub fn take_to_arrow_array(&mut self, bitmap: Option<Bitmap>) -> Box<dyn Array> {
         match self {
             ChannelData::Int8(a) => Box::new(PrimitiveArray::new(
                 DataType::Int8,
@@ -322,7 +323,7 @@ impl ChannelData {
     }
 }
 
-/// takes data of channel set from MdfInfo structure and stores in arrow_data
+/// takes data of channel set from MdfInfo structure and stores in mdf.arrow_data
 pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
     let mut chunk_index: usize = 0;
     let mut array_index: usize = 0;
@@ -350,9 +351,10 @@ pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
                             if !cn.data.is_empty() {
                                 let data: Box<dyn Array>;
                                 if let Some(bitmap) = mem::take(&mut cn.invalid_mask) {
-                                    data = cn.data.to_arrow_array(Some(Bitmap::from(bitmap.0)));
+                                    data =
+                                        cn.data.take_to_arrow_array(Some(Bitmap::from(bitmap.0)));
                                 } else {
-                                    data = cn.data.to_arrow_array(None);
+                                    data = cn.data.take_to_arrow_array(None);
                                 }
                                 let field = Field::new(
                                     cn.unique_name.clone(),
@@ -375,10 +377,10 @@ pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
                                     (_cn_pos, _rec_pos),
                                 )) = mdfinfo4.channel_names_set.get(&cn.unique_name)
                                 {
-                                    if let Some(master_channel_name) = master_channel_name {
+                                    if let Some(master) = master_channel_name {
                                         metadata.insert(
                                             "master_channel".to_string(),
-                                            master_channel_name.to_string(),
+                                            master.to_string(),
                                         );
                                     }
                                 }
@@ -417,7 +419,7 @@ pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
                     let mut columns = Vec::<Box<dyn Array>>::with_capacity(cg.channel_names.len());
                     for (_rec_pos, cn) in cg.cn.iter_mut() {
                         if !cn.data.is_empty() {
-                            let data = cn.data.to_arrow_array(None);
+                            let data = cn.data.take_to_arrow_array(None);
                             let field =
                                 Field::new(cn.unique_name.clone(), data.data_type().clone(), false);
                             columns.push(data);
@@ -493,7 +495,7 @@ pub fn array_to_rust(arrow_array: &PyAny) -> PyResult<Box<dyn Array>> {
     unsafe {
         let field = ffi::import_field_from_c(schema.as_ref()).unwrap();
         let array = ffi::import_array_from_c(*array, field.data_type).unwrap();
-        Ok(array.into())
+        Ok(array)
     }
 }
 
@@ -521,6 +523,7 @@ pub(crate) fn to_py_array(
     Ok(array.to_object(py))
 }
 
+/// returns the number of bits corresponding to the array's datatype
 pub fn bit_count(array: &Box<dyn Array>) -> u32 {
     match array.data_type() {
         DataType::Null => 0,
@@ -599,6 +602,7 @@ pub fn bit_count(array: &Box<dyn Array>) -> u32 {
     }
 }
 
+/// returns the number of bytes corresponding to the array's datatype
 pub fn to_bytes(array: &Box<dyn Array>) -> Vec<u8> {
     match array.data_type() {
         DataType::Null => Vec::new(),

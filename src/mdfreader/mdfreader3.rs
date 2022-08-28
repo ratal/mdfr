@@ -18,6 +18,8 @@ use crate::mdfreader::conversions3::convert_all_channels;
 // a small chunk will not consume too much memory but will cause many read calls, penalising performance
 const CHUNK_SIZE_READING: usize = 524288; // can be tuned according to architecture
 
+/// Reads the file data based on headers information contained in info parameter
+/// Hashset of channel names parameter allows to filter which channels to read
 pub fn mdfreader3<'a>(
     rdr: &'a mut BufReader<&File>,
     mdf: &'a mut Mdf,

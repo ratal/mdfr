@@ -25,6 +25,7 @@ impl From<TensorOrder> for NPY_ORDER {
     }
 }
 
+/// returns a numpy array from an arrow array
 pub fn arrow_to_numpy(py: Python, array: &Box<dyn Array>) -> PyObject {
     match array.data_type() {
         DataType::Null => Python::None(py),

@@ -44,6 +44,7 @@ impl FallibleStreamingIterator for Bla {
     }
 }
 
+/// writes mdf into parquet file
 pub fn export_to_parquet(mdf: &mut Mdf, file_name: &str, compression: Option<&str>) -> Result<()> {
     // Create file
     let path = Path::new(file_name);
@@ -62,7 +63,7 @@ pub fn export_to_parquet(mdf: &mut Mdf, file_name: &str, compression: Option<&st
     };
 
     // declare encodings
-    let encodings = (&mdf.arrow_schema.fields)
+    let encodings = (mdf.arrow_schema.fields)
         .par_iter()
         .map(|f| transverse(&f.data_type, encoding_map))
         .collect::<Vec<_>>();
@@ -118,6 +119,7 @@ pub fn export_to_parquet(mdf: &mut Mdf, file_name: &str, compression: Option<&st
     Ok(())
 }
 
+/// converts a clap compression string into a CompressionOptions enum
 pub fn parquet_compression_from_string(compression_option: Option<&str>) -> CompressionOptions {
     match compression_option {
         Some(option) => match option {

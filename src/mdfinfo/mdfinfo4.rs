@@ -163,8 +163,8 @@ impl MdfInfo4 {
             self.get_channel_id(channel_name)
         {
             let mut channel_list = HashSet::new();
-            if let Some(dg) = self.dg.get(&dg_pos) {
-                if let Some(cg) = dg.cg.get(&rec_id) {
+            if let Some(dg) = self.dg.get(dg_pos) {
+                if let Some(cg) = dg.cg.get(rec_id) {
                     channel_list = cg.channel_names.clone();
                 }
             }
@@ -483,7 +483,7 @@ pub fn position_generator() -> i64 {
     // hopefully never 2 times the same position
     let mut position = rand::random::<i64>();
     if position > 0 {
-        // make sure position is negative to avoid interference with existing posistions in file
+        // make sure position is negative to avoid interference with existing positions in file
         position = -position;
     }
     position

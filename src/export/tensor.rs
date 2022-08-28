@@ -82,6 +82,7 @@ impl Default for Order {
     }
 }
 
+#[allow(dead_code)]
 impl<T: NativeType> Tensor<T> {
     /// Creates a new `Tensor`
     pub fn try_new(
@@ -100,13 +101,13 @@ impl<T: NativeType> Tensor<T> {
                     ));
                 }
 
-                if strides != None {
+                if strides.is_some() {
                     return Err(Error::InvalidArgumentError(
                         "expected None strides for tensor with no shape".to_string(),
                     ));
                 }
 
-                if names != None {
+                if names.is_some() {
                     return Err(Error::InvalidArgumentError(
                         "expected None names for tensor with no shape".to_string(),
                     ));
@@ -305,7 +306,7 @@ impl<T: NativeType> Tensor<T> {
     /// Returns a reference to the underlying `Buffer`
     #[inline]
     pub fn values(&self) -> &[T] {
-        &self.values.as_slice()
+        self.values.as_slice()
     }
 
     /// Returns a reference to a value in the buffer

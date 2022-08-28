@@ -12,6 +12,7 @@ use crate::mdfreader::arrow::{array_to_rust, to_py_array};
 use crate::mdfreader::Mdf;
 
 impl Mdf {
+    /// returns the channel polars serie
     pub fn get_polars_series(&self, name: &str) -> Option<Series> {
         let data = self.get_channel_data(name);
         let mut out: Option<Series> = None;
@@ -62,14 +63,14 @@ impl Mdf {
                     Some(ChunkedArray::<Float64Type>::from_chunks(name, chunks).into_series())
                 }
                 ArrowDataType::Timestamp(tu, tz) => {
-                    let mut tz = tz.clone();
-                    if tz.as_deref() == Some("") {
-                        tz = None;
+                    let mut time_zone = tz.clone();
+                    if time_zone.as_deref() == Some("") {
+                        time_zone = None;
                     }
                     // we still drop timezone for now
                     let chunks = cast_chunks(&chunks, &DataType::Int64).unwrap();
                     let s = Int64Chunked::from_chunks(name, chunks)
-                        .into_datetime(TimeUnit::from(&tu), tz)
+                        .into_datetime(TimeUnit::from(&tu), time_zone)
                         .into_series();
                     Some(match tu {
                         ArrowTimeUnit::Second => &s * MILLISECONDS,
@@ -135,15 +136,17 @@ impl Mdf {
     }
 }
 
+/// converts an array to a new datatype
 fn cast_chunks(chunks: &[ArrayRef], dtype: &DataType) -> Result<Vec<ArrayRef>> {
     let chunks = chunks
         .iter()
         .map(|arr| cast::cast(arr.as_ref(), &dtype.to_arrow(), Default::default()))
-        .map(|arr| arr.map(|x| x.into()))
+        .map(|arr| arr.map(|x| x))
         .collect::<arrow2::error::Result<Vec<_>>>()?;
     Ok(chunks)
 }
 
+/// converts a python polars series into a polars rust series
 pub fn py_series_to_rust_series(series: &PyAny) -> PyResult<Series> {
     // rechunk series so that they have a single arrow array
     let series = series.call_method0("rechunk")?;

@@ -70,7 +70,7 @@ fn main() -> Result<(), Error> {
     let compression = matches.is_present("compress");
 
     if let Some(file_name) = mdf4_file_name {
-        mdf_file.write(&file_name, compression);
+        mdf_file.write(file_name, compression);
     }
 
     let convert3to4_file_name = matches.value_of("convert3to4");

@@ -50,9 +50,9 @@ pub struct ChannelIndexes {
 impl Clone for ChannelIndexes {
     fn clone(&self) -> Self {
         Self {
-            chunk_index: self.chunk_index.clone(),
-            array_index: self.array_index.clone(),
-            field_index: self.field_index.clone(),
+            chunk_index: self.chunk_index,
+            array_index: self.array_index,
+            field_index: self.field_index,
         }
     }
 }

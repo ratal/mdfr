@@ -126,8 +126,8 @@ impl MdfInfo3 {
             self.get_channel_id(channel_name)
         {
             let mut channel_list = HashSet::new();
-            if let Some(dg) = self.dg.get(&dg_pos) {
-                if let Some(cg) = dg.cg.get(&rec_id) {
+            if let Some(dg) = self.dg.get(dg_pos) {
+                if let Some(cg) = dg.cg.get(rec_id) {
                     channel_list = cg.channel_names.clone();
                 }
             }

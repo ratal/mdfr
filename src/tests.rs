@@ -781,7 +781,9 @@ mod tests {
             let target = target.as_box();
             println!("{:?}", target);
             println!("{:?} {}", data, data.len());
-            assert_eq!(&target, data);
+            assert_eq!(&target[0], data[0]);
+            assert_eq!(&target[299], data[299]);
+            assert_eq!(&target[101], data[101]);
         }
 
         // Text conversion : Text to Value
