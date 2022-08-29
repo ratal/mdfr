@@ -72,9 +72,11 @@ impl From<Order> for TensorOrder {
     }
 }
 
+/// structure to hold complex numbers according to arrow memory layout
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArrowComplex<T>(pub Vec<T>);
 
+/// complex number iterator of ArrowComplex
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArrowComplexIter<T> {
     values: ArrowComplex<T>,
