@@ -18,12 +18,12 @@ use crate::{
         MdfInfo,
     },
     mdfreader::{
-        arrow::{bit_count, to_bytes},
+        arrow::{arrow_bit_count, arrow_byte_count, arrow_to_bytes, arrow_to_mdf_data_type, ndim},
         channel_data::data_type_init,
         Mdf,
     },
 };
-use arrow2::{array::Array, bitmap::Bitmap};
+use arrow2::{array::Array, bitmap::Bitmap, datatypes::Schema};
 use binrw::BinWriterExt;
 use crossbeam_channel::bounded;
 use parking_lot::Mutex;
@@ -70,18 +70,21 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Mdf {
                 )) = info.get_channel_id(master_channel_name)
                 {
                     if let Some(cn_master) = cg.cn.get(cn_master_record_position) {
-                        // Writing master channel
-                        cg_cg_master = pointer + 64; // after DGBlock
-                        last_dg_pointer = pointer;
-                        pointer = create_blocks(
-                            &mut new_info,
-                            &info,
-                            pointer,
-                            cg,
-                            cn_master,
-                            &cg_cg_master,
-                            true,
-                        );
+                        if let Some(data) = mdf.get_channel_data(&cn_master.unique_name) {
+                            // Writing master channel
+                            cg_cg_master = pointer + 64; // after DGBlock
+                            last_dg_pointer = pointer;
+                            pointer = create_blocks(
+                                &mut new_info,
+                                &info,
+                                pointer,
+                                cg,
+                                cn_master,
+                                data,
+                                &cg_cg_master,
+                                true,
+                            );
+                        }
                     }
                 }
             }
@@ -90,9 +93,19 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Mdf {
             for (_cn_record_position, cn) in cg.cn.iter() {
                 // not master channel
                 if cn.block.cn_type != 2 && cn.block.cn_type != 3 {
-                    last_dg_pointer = pointer;
-                    pointer =
-                        create_blocks(&mut new_info, &info, pointer, cg, cn, &cg_cg_master, false);
+                    if let Some(data) = mdf.get_channel_data(&cn.unique_name) {
+                        last_dg_pointer = pointer;
+                        pointer = create_blocks(
+                            &mut new_info,
+                            &info,
+                            pointer,
+                            cg,
+                            cn,
+                            data,
+                            &cg_cg_master,
+                            false,
+                        );
+                    }
                 }
             }
         }
@@ -137,7 +150,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Mdf {
                     let dt = mdf.get_channel_data(&cn.unique_name);
                     if let Some(data) = dt {
                         let m = data.validity();
-                        if !data.is_empty() && bit_count(data) > 0 {
+                        if !data.is_empty() && arrow_bit_count(data) > 0 {
                             // empty strings are not written
                             let mut offset: i64 = 0;
                             let mut ld_block: Option<Ld4Block> = None;
@@ -261,9 +274,9 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Mdf {
     writer.flush().expect("Could not flush file");
     Mdf {
         mdf_info: MdfInfo::V4(Box::new(new_info)),
-        arrow_data: mdf.arrow_data.clone(),
-        arrow_schema: mdf.arrow_schema.clone(),
-        channel_indexes: mdf.channel_indexes.clone(),
+        arrow_data: Vec::new(),
+        arrow_schema: Schema::default(),
+        channel_indexes: HashMap::new(),
     }
 }
 
@@ -355,7 +368,7 @@ fn create_ld(m: Option<&Bitmap>, offset: &mut i64) -> Option<Ld4Block> {
 fn create_dv(data: Box<dyn Array>, offset: &mut i64) -> (DataBlock, usize, Vec<u8>) {
     let mut dv_block = Blockheader4::default();
     dv_block.hdr_id = [35, 35, 68, 86]; // ##DV
-    let data_bytes: Vec<u8> = to_bytes(&data);
+    let data_bytes: Vec<u8> = arrow_to_bytes(&data);
     let data_bytes_len = data_bytes.len();
     dv_block.hdr_len += data_bytes_len as u64;
     let byte_aligned = 8 - data_bytes_len % 8;
@@ -375,12 +388,16 @@ enum DataBlock {
 /// Create a DZ Block of DV type
 fn create_dz_dv(data: Box<dyn Array>, offset: &mut i64) -> (DataBlock, usize, Vec<u8>) {
     let mut dz_block = Dz4Block::default();
-    let mut data_bytes = compress(&to_bytes(&data), Format::Zlib, CompressionLevel::Default)
-        .expect("Could not compress invalid data");
+    let mut data_bytes = compress(
+        &arrow_to_bytes(&data),
+        Format::Zlib,
+        CompressionLevel::Default,
+    )
+    .expect("Could not compress invalid data");
     dz_block.dz_data_length = data_bytes.len() as u64;
     let dv_dz_block: DataBlock;
     let byte_aligned: usize;
-    dz_block.dz_org_data_length = (data.len() * bit_count(&data) as usize / 8) as u64;
+    dz_block.dz_org_data_length = (data.len() * arrow_bit_count(&data) as usize / 8) as u64;
     if dz_block.dz_org_data_length < dz_block.dz_data_length {
         (dv_dz_block, byte_aligned, data_bytes) = create_dv(data, offset);
     } else {
@@ -439,11 +456,13 @@ fn create_blocks(
     mut pointer: i64,
     cg: &Cg4,
     cn: &Cn4,
+    data: &Box<dyn Array>,
     cg_cg_master: &i64,
     master_flag: bool,
 ) -> i64 {
-    let bit_count = cn.data.bit_count();
-    if !cn.data.is_empty() && bit_count > 0 {
+    let bit_count = arrow_bit_count(data);
+    if !data.is_empty() && bit_count > 0 {
+        let byte_count = arrow_byte_count(data);
         // no empty strings
         let mut dg_block = Dg4Block::default();
         let mut cg_block = Cg4Block::default();
@@ -463,7 +482,7 @@ fn create_blocks(
         }
         cg_block.cg_cycle_count = cg.block.cg_cycle_count;
 
-        cg_block.cg_data_bytes = cn.data.byte_count();
+        cg_block.cg_data_bytes = byte_count;
         if cg.block.cg_inval_bytes > 0 {
             // One byte for invalid data as only one channel per CG
             cg_block.cg_inval_bytes = 1;
@@ -484,7 +503,7 @@ fn create_blocks(
 
         let machine_endian: bool = cfg!(target_endian = "big");
 
-        cn_block.cn_data_type = cn.data.data_type(machine_endian);
+        cn_block.cn_data_type = arrow_to_mdf_data_type(data, machine_endian);
 
         cn_block.cn_bit_count = bit_count;
 
@@ -530,7 +549,7 @@ fn create_blocks(
         }
 
         // Channel array
-        let data_ndim = cn.data.ndim() - 1;
+        let data_ndim = ndim(data) - 1;
         let mut composition: Option<Composition> = None;
         if data_ndim > 0 {
             let data_dim_size = cn
@@ -547,7 +566,7 @@ fn create_blocks(
                 ca_block.snd += x as usize;
                 ca_block.pnd *= x as usize;
             }
-            cg_block.cg_data_bytes = ca_block.pnd as u32 * cn.data.byte_count();
+            cg_block.cg_data_bytes = ca_block.pnd as u32 * byte_count;
 
             cn_block.cn_composition = pointer;
             ca_block.ca_ndim = data_ndim as u16;
@@ -611,7 +630,6 @@ fn create_blocks(
             ),
         );
     }
-
     pointer
 }
 

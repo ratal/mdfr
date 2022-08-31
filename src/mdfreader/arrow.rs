@@ -11,6 +11,7 @@ use arrow2::buffer::Buffer;
 use arrow2::datatypes::{DataType, Field, Metadata, PhysicalType, PrimitiveType};
 use arrow2::ffi;
 
+use arrow2::types::f16;
 use encoding::all::ISO_8859_1;
 use encoding::{DecoderTrap, Encoding};
 use pyo3::prelude::*;
@@ -524,8 +525,12 @@ pub(crate) fn to_py_array(
 }
 
 /// returns the number of bits corresponding to the array's datatype
-pub fn bit_count(array: &Box<dyn Array>) -> u32 {
-    match array.data_type() {
+pub fn arrow_bit_count(array: &Box<dyn Array>) -> u32 {
+    bit_count(array, array.data_type())
+}
+
+fn bit_count(array: &Box<dyn Array>, data_type: &DataType) -> u32 {
+    match data_type {
         DataType::Null => 0,
         DataType::Boolean => 8,
         DataType::Int8 => 8,
@@ -598,13 +603,291 @@ pub fn bit_count(array: &Box<dyn Array>) -> u32 {
             PhysicalType::Primitive(PrimitiveType::Float64) => 64 * *size as u32,
             _ => todo!(),
         },
+        DataType::Extension(ext_str, dtype, _) => match ext_str.as_str() {
+            "Tensor" => bit_count(array, dtype),
+            _ => panic!("unsupported type"),
+        },
         _ => panic!("unsupported type"),
     }
 }
 
 /// returns the number of bytes corresponding to the array's datatype
-pub fn to_bytes(array: &Box<dyn Array>) -> Vec<u8> {
+pub fn arrow_byte_count(array: &Box<dyn Array>) -> u32 {
+    byte_count(array, array.data_type())
+}
+fn byte_count(array: &Box<dyn Array>, data_type: &DataType) -> u32 {
+    match data_type {
+        DataType::Null => 0,
+        DataType::Boolean => 1,
+        DataType::Int8 => 1,
+        DataType::Int16 => 2,
+        DataType::Int32 => 4,
+        DataType::Int64 => 8,
+        DataType::UInt8 => 1,
+        DataType::UInt16 => 2,
+        DataType::UInt32 => 4,
+        DataType::UInt64 => 8,
+        DataType::Float16 => 2,
+        DataType::Float32 => 4,
+        DataType::Float64 => 8,
+        DataType::Timestamp(_, _) => 8,
+        DataType::Date32 => 4,
+        DataType::Date64 => 8,
+        DataType::Time32(_) => 4,
+        DataType::Time64(_) => 8,
+        DataType::Binary => {
+            let array = array
+                .as_any()
+                .downcast_ref::<BinaryArray<i32>>()
+                .expect("could not downcast to utf8 array");
+            array
+                .values_iter()
+                .map(|s| s.len() as u32)
+                .max()
+                .unwrap_or(0)
+        }
+        DataType::FixedSizeBinary(size) => 8 * *size as u32,
+        DataType::LargeBinary => {
+            let array = array
+                .as_any()
+                .downcast_ref::<BinaryArray<i64>>()
+                .expect("could not downcast to utf8 array");
+            array
+                .values_iter()
+                .map(|s| s.len() as u32)
+                .max()
+                .unwrap_or(0)
+        }
+        DataType::Utf8 => {
+            let array = array
+                .as_any()
+                .downcast_ref::<Utf8Array<i32>>()
+                .expect("could not downcast to utf8 array");
+            array
+                .values_iter()
+                .map(|s| s.len() as u32)
+                .max()
+                .unwrap_or(0)
+        }
+        DataType::LargeUtf8 => {
+            let array = array
+                .as_any()
+                .downcast_ref::<Utf8Array<i64>>()
+                .expect("could not downcast to long utf8 array");
+            array
+                .values_iter()
+                .map(|s| s.len() as u32)
+                .max()
+                .unwrap_or(0)
+        }
+        DataType::FixedSizeList(field, size) => match field.data_type.to_physical_type() {
+            PhysicalType::Primitive(PrimitiveType::Float32) => 4 * *size as u32,
+            PhysicalType::Primitive(PrimitiveType::Float64) => 8 * *size as u32,
+            _ => todo!(),
+        },
+        DataType::Extension(ext_str, dtype, _) => match ext_str.as_str() {
+            "Tensor" => byte_count(array, dtype),
+            _ => panic!("unsupported type"),
+        },
+        _ => panic!("unsupported type"),
+    }
+}
+
+/// returns mdf4 data type from arrow array
+pub fn arrow_to_mdf_data_type(array: &Box<dyn Array>, endian: bool) -> u8 {
+    mdf_data_type(array.data_type(), endian)
+}
+
+fn mdf_data_type(data_type: &DataType, endian: bool) -> u8 {
+    if endian {
+        // BE
+        match data_type {
+            DataType::Null => 1,
+            DataType::Boolean => 1,
+            DataType::Int8 => 3,
+            DataType::Int16 => 3,
+            DataType::Int32 => 3,
+            DataType::Int64 => 3,
+            DataType::UInt8 => 1,
+            DataType::UInt16 => 1,
+            DataType::UInt32 => 1,
+            DataType::UInt64 => 1,
+            DataType::Float16 => 5,
+            DataType::Float32 => 5,
+            DataType::Float64 => 5,
+            DataType::Timestamp(_, _) => 3,
+            DataType::Date32 => 3,
+            DataType::Date64 => 3,
+            DataType::Time32(_) => 3,
+            DataType::Time64(_) => 3,
+            DataType::Duration(_) => 3,
+            DataType::Interval(_) => 3,
+            DataType::Binary => 10,
+            DataType::FixedSizeBinary(_) => 10,
+            DataType::LargeBinary => 10,
+            DataType::Utf8 => 7,
+            DataType::LargeUtf8 => 7,
+            DataType::List(_) => 16,
+            DataType::FixedSizeList(_, _) => 16,
+            DataType::LargeList(_) => 16,
+            DataType::Extension(ext_str, dtype, _) => match ext_str.as_str() {
+                "Tensor" => mdf_data_type(&**dtype, endian),
+                _ => panic!("unsupported type"),
+            },
+            _ => panic!("unsupported type"),
+        }
+    } else {
+        // LE
+        match data_type {
+            DataType::Null => 0,
+            DataType::Boolean => 0,
+            DataType::Int8 => 2,
+            DataType::Int16 => 2,
+            DataType::Int32 => 2,
+            DataType::Int64 => 2,
+            DataType::UInt8 => 0,
+            DataType::UInt16 => 0,
+            DataType::UInt32 => 0,
+            DataType::UInt64 => 0,
+            DataType::Float16 => 4,
+            DataType::Float32 => 4,
+            DataType::Float64 => 4,
+            DataType::Timestamp(_, _) => 2,
+            DataType::Date32 => 2,
+            DataType::Date64 => 2,
+            DataType::Time32(_) => 2,
+            DataType::Time64(_) => 2,
+            DataType::Duration(_) => 2,
+            DataType::Interval(_) => 2,
+            DataType::Binary => 10,
+            DataType::FixedSizeBinary(_) => 10,
+            DataType::LargeBinary => 10,
+            DataType::Utf8 => 7,
+            DataType::LargeUtf8 => 7,
+            DataType::List(_) => 15,
+            DataType::FixedSizeList(_, _) => 15,
+            DataType::LargeList(_) => 15,
+            DataType::Extension(ext_str, dtype, _) => match ext_str.as_str() {
+                "Tensor" => mdf_data_type(&**dtype, endian),
+                _ => panic!("unsupported type"),
+            },
+            _ => panic!("unsupported type"),
+        }
+    }
+}
+
+/// returns the number of dimensions of the channel
+pub fn ndim(array: &Box<dyn Array>) -> usize {
     match array.data_type() {
+        DataType::Extension(ext_str, dtype, _) => match ext_str.as_str() {
+            "Tensor" => match &**dtype {
+                DataType::Int8 => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<i8>>()
+                        .expect("could not downcast to i8 array");
+                    array.ndim()
+                }
+                DataType::Int16 => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<i16>>()
+                        .expect("could not downcast to i16 array");
+                    array.ndim()
+                }
+                DataType::Int32 => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<i32>>()
+                        .expect("could not downcast to i32 array");
+                    array.ndim()
+                }
+                DataType::Int64 => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<i64>>()
+                        .expect("could not downcast to i64 array");
+                    array.ndim()
+                }
+                DataType::UInt8 => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<u8>>()
+                        .expect("could not downcast to u8 array");
+                    array.ndim()
+                }
+                DataType::UInt16 => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<u16>>()
+                        .expect("could not downcast to u16 array");
+                    array.ndim()
+                }
+                DataType::UInt32 => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<u32>>()
+                        .expect("could not downcast to u32 array");
+                    array.ndim()
+                }
+                DataType::UInt64 => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<u64>>()
+                        .expect("could not downcast to u64 array");
+                    array.ndim()
+                }
+                DataType::Float16 => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<f16>>()
+                        .expect("could not downcast to f16 array");
+                    array.ndim()
+                }
+                DataType::Float32 => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<f32>>()
+                        .expect("could not downcast to f32 array");
+                    array.ndim()
+                }
+                DataType::Float64 => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<f64>>()
+                        .expect("could not downcast to f64 array");
+                    array.ndim()
+                }
+                DataType::Timestamp(_, _) => todo!(),
+                DataType::Date32 => todo!(),
+                DataType::Date64 => todo!(),
+                DataType::Time32(_) => todo!(),
+                DataType::Time64(_) => todo!(),
+                DataType::Duration(_) => todo!(),
+                DataType::Interval(_) => todo!(),
+                DataType::Binary => todo!(),
+                DataType::FixedSizeBinary(_) => todo!(),
+                DataType::LargeBinary => todo!(),
+                DataType::Utf8 => todo!(),
+                DataType::LargeUtf8 => todo!(),
+                DataType::List(_) => todo!(),
+                DataType::FixedSizeList(_, _) => todo!(),
+                DataType::LargeList(_) => todo!(),
+                _ => panic!("unsupported type"),
+            },
+            _ => panic!("unsupported type"),
+        },
+        _ => 1,
+    }
+}
+
+/// returns the a vec<u8>, bytes vector of arrow array
+pub fn arrow_to_bytes(array: &Box<dyn Array>) -> Vec<u8> {
+    to_bytes(array, array.data_type())
+}
+
+fn to_bytes(array: &Box<dyn Array>, data_type: &DataType) -> Vec<u8> {
+    match data_type {
         DataType::Null => Vec::new(),
         DataType::Boolean => {
             let array = array
@@ -903,7 +1186,11 @@ pub fn to_bytes(array: &Box<dyn Array>) -> Vec<u8> {
                     .expect("could not downcast to f64 array");
                 array.values_iter().flat_map(|x| x.to_ne_bytes()).collect()
             }
-            _ => todo!(),
+            _ => panic!("unsupported FixedSizeList physical type"),
+        },
+        DataType::Extension(ext_str, dtype, _) => match ext_str.as_str() {
+            "Tensor" => to_bytes(array, &**dtype),
+            _ => panic!("unsupported type"),
         },
         _ => panic!("unsupported type"),
     }

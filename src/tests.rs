@@ -852,7 +852,7 @@ mod tests {
             "{}{}",
             BASE_PATH_MDF4, &"Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
         );
-        let ref_channel = r"recorder_time !P";
+        let ref_channel = r"NO";
         let mut mdf = Mdf::new(&file);
         mdf.load_all_channels_data_in_memory();
         // with compression
@@ -861,7 +861,11 @@ mod tests {
         if let Some(data) = mdf.get_channel_data(&ref_channel.to_string()) {
             if let Some(data2) = info2.get_channel_data(&ref_channel.to_string()) {
                 assert_eq!(*data2, *data);
+            } else {
+                panic!("Channel not found");
             }
+        } else {
+            panic!("Channel not found");
         }
         // without compression
         let mut info2 = mdf.write(WRITING_MDF_FILE, false);
@@ -869,7 +873,11 @@ mod tests {
         if let Some(data) = mdf.get_channel_data(&ref_channel.to_string()) {
             if let Some(data2) = info2.get_channel_data(&ref_channel.to_string()) {
                 assert_eq!(*data2, *data);
+            } else {
+                panic!("Channel not found");
             }
+        } else {
+            panic!("Channel not found");
         }
 
         // write file with many channels
@@ -883,7 +891,11 @@ mod tests {
         if let Some(data) = mdf.get_channel_data(&ref_channel.to_string()) {
             if let Some(data2) = info2.get_channel_data(&ref_channel.to_string()) {
                 assert_eq!(*data2, *data);
+            } else {
+                panic!("Channel not found");
             }
+        } else {
+            panic!("Channel not found");
         }
         // without compression
         let mut info2 = mdf.write(WRITING_MDF_FILE, false);
@@ -891,8 +903,26 @@ mod tests {
         if let Some(data) = mdf.get_channel_data(&ref_channel.to_string()) {
             if let Some(data2) = info2.get_channel_data(&ref_channel.to_string()) {
                 assert_eq!(*data2, *data);
+            } else {
+                panic!("Channel not found");
             }
+        } else {
+            panic!("Channel not found");
         }
+        //mdf3 conversion
+        drop(mdf);
+        let file = format!(
+            "{}{}",
+            BASE_PATH_MDF3, &"RJ_N16-12-363_BM-15C-0024_228_2_20170116094355_CAN.dat"
+        );
+        let mut mdf = Mdf::new(&file);
+        mdf.load_all_channels_data_in_memory();
+        let channel_name3 = r"TEMP_FUEL";
+        let mut mdf4 = mdf.write(WRITING_MDF_FILE, true);
+        mdf4.load_all_channels_data_in_memory();
+        let mdf3_data = mdf.get_channel_data(&channel_name3);
+        let mdf4_data = mdf4.get_channel_data(&channel_name3);
+        assert_eq!(mdf3_data, mdf4_data);
     }
     #[test]
     fn mdf_modifications() {
@@ -1008,20 +1038,6 @@ mod tests {
         assert!(mdf
             .get_channel_data(&new_channel_name.to_string())
             .is_none());
-
-        //mdf3 conversion
-        drop(mdf);
-        let file = format!(
-            "{}{}",
-            BASE_PATH_MDF3, &"RJ_N16-12-363_BM-15C-0024_228_2_20170116094355_CAN.dat"
-        );
-        let mut mdf = Mdf::new(&file);
-        mdf.load_all_channels_data_in_memory();
-        let channel_name3 = r"TEMP_FUEL";
-        let mdf4 = mdf.write(WRITING_MDF_FILE, true);
-        let mdf3_data = mdf.get_channel_data(&channel_name3);
-        let mdf4_data = mdf4.get_channel_data(&channel_name3);
-        assert_eq!(mdf3_data, mdf4_data);
     }
     #[test]
     fn export_to_parquet() -> Result<(), Error> {
