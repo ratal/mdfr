@@ -160,6 +160,7 @@ mod tests {
             "DataTypes/RealTypes/".to_string(),
             "DataTypes/StringTypes/".to_string(),
         ];
+        let writing_mdf_file = format!("{}{}", WRITING_MDF_FILE, "_test".to_owned()).to_owned();
 
         // StringTypes testing
         // UTF8
@@ -196,7 +197,7 @@ mod tests {
         if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
             assert_eq!(&expected_string_result, data);
         }
-        let mut mdf2 = mdf.write(WRITING_MDF_FILE, false);
+        let mut mdf2 = mdf.write(&writing_mdf_file, false);
         mdf2.load_all_channels_data_in_memory();
         if let Some(data) = mdf2.get_channel_data(&"Data channel".to_string()) {
             assert_eq!(&expected_string_result, data);
@@ -211,7 +212,7 @@ mod tests {
         if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
             assert_eq!(&expected_string_result, data);
         }
-        let mut mdf2 = mdf.write(WRITING_MDF_FILE, false);
+        let mut mdf2 = mdf.write(&writing_mdf_file, false);
         mdf2.load_all_channels_data_in_memory();
         if let Some(data) = mdf2.get_channel_data(&"Data channel".to_string()) {
             assert_eq!(&expected_string_result, data);
@@ -226,7 +227,7 @@ mod tests {
         if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
             assert_eq!(&expected_string_result, data);
         }
-        let mut mdf2 = mdf.write(WRITING_MDF_FILE, false);
+        let mut mdf2 = mdf.write(&writing_mdf_file, false);
         mdf2.load_all_channels_data_in_memory();
         if let Some(data) = mdf2.get_channel_data(&"Data channel".to_string()) {
             assert_eq!(&expected_string_result, data);
@@ -265,7 +266,7 @@ mod tests {
         if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
             assert_eq!(byte_array, *data);
         }
-        let mut mdf2 = mdf.write(WRITING_MDF_FILE, false);
+        let mut mdf2 = mdf.write(&writing_mdf_file, false);
         mdf2.load_all_channels_data_in_memory();
         if let Some(data) = mdf2.get_channel_data(&"Data channel".to_string()) {
             assert_eq!(byte_array, *data);
@@ -291,7 +292,7 @@ mod tests {
                 data
             );
         }
-        let mut mdf2 = mdf.write(WRITING_MDF_FILE, false);
+        let mut mdf2 = mdf.write(&writing_mdf_file, false);
         mdf2.load_all_channels_data_in_memory();
         if let Some(data) = mdf2.get_channel_data(&"Counter_INT64_BE".to_string()) {
             assert_eq!(
@@ -909,6 +910,9 @@ mod tests {
         } else {
             panic!("Channel not found");
         }
+        // write file with arrays
+        // TODO
+
         //mdf3 conversion
         drop(mdf);
         let file = format!(
