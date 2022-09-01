@@ -601,7 +601,7 @@ fn bit_count(array: &Box<dyn Array>, data_type: &DataType) -> u32 {
         DataType::FixedSizeList(field, size) => match field.data_type.to_physical_type() {
             PhysicalType::Primitive(PrimitiveType::Float32) => 32 * *size as u32,
             PhysicalType::Primitive(PrimitiveType::Float64) => 64 * *size as u32,
-            _ => todo!(),
+            _ => panic!("unsupported type"),
         },
         DataType::Extension(ext_str, dtype, _) => match ext_str.as_str() {
             "Tensor" => bit_count(array, dtype),
@@ -683,7 +683,7 @@ fn byte_count(array: &Box<dyn Array>, data_type: &DataType) -> u32 {
         DataType::FixedSizeList(field, size) => match field.data_type.to_physical_type() {
             PhysicalType::Primitive(PrimitiveType::Float32) => 4 * *size as u32,
             PhysicalType::Primitive(PrimitiveType::Float64) => 8 * *size as u32,
-            _ => todo!(),
+            _ => panic!("unsupported type"),
         },
         DataType::Extension(ext_str, dtype, _) => match ext_str.as_str() {
             "Tensor" => byte_count(array, dtype),
@@ -858,21 +858,56 @@ pub fn ndim(array: &Box<dyn Array>) -> usize {
                         .expect("could not downcast to f64 array");
                     array.ndim()
                 }
-                DataType::Timestamp(_, _) => todo!(),
-                DataType::Date32 => todo!(),
-                DataType::Date64 => todo!(),
-                DataType::Time32(_) => todo!(),
-                DataType::Time64(_) => todo!(),
-                DataType::Duration(_) => todo!(),
-                DataType::Interval(_) => todo!(),
-                DataType::Binary => todo!(),
-                DataType::FixedSizeBinary(_) => todo!(),
-                DataType::LargeBinary => todo!(),
-                DataType::Utf8 => todo!(),
-                DataType::LargeUtf8 => todo!(),
-                DataType::List(_) => todo!(),
+                DataType::Timestamp(_, _) => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<i64>>()
+                        .expect("could not downcast to i64 array");
+                    array.ndim()
+                }
+                DataType::Date32 => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<i32>>()
+                        .expect("could not downcast to i64 array");
+                    array.ndim()
+                }
+                DataType::Date64 => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<i64>>()
+                        .expect("could not downcast to i64 array");
+                    array.ndim()
+                }
+                DataType::Time32(_) => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<i32>>()
+                        .expect("could not downcast to i64 array");
+                    array.ndim()
+                }
+                DataType::Time64(_) => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<i64>>()
+                        .expect("could not downcast to i64 array");
+                    array.ndim()
+                }
+                DataType::Duration(_) => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<i64>>()
+                        .expect("could not downcast to i64 array");
+                    array.ndim()
+                }
+                DataType::Interval(_) => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<i64>>()
+                        .expect("could not downcast to i64 array");
+                    array.ndim()
+                }
                 DataType::FixedSizeList(_, _) => todo!(),
-                DataType::LargeList(_) => todo!(),
                 _ => panic!("unsupported type"),
             },
             _ => panic!("unsupported type"),
