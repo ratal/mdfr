@@ -86,35 +86,36 @@ impl Mdfr {
         let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|py| {
             let mut py_dataframe = Python::None(py);
-            if let Some(index) = mdf.get_channel_index(&channel_name) {
-                let series_dict = PyDict::new(py);
-                for channel_data in mdf.arrow_data[index.chunk_index].iter() {
+            let channel_list = mdf.mdf_info.get_channel_names_cg_set(&channel_name);
+            let series_dict = PyDict::new(py);
+            for channel in channel_list {
+                if let Some(channel_data) = mdf.get_channel_data(&channel) {
                     series_dict
                         .set_item(
-                            mdf.arrow_schema.fields[index.field_index].name.clone(),
+                            channel.clone(),
                             rust_arrow_to_py_series(channel_data)
                                 .expect("Could not convert to python series"),
                         )
                         .expect("could not store the serie in dict");
                 }
-                if !series_dict.is_empty() {
-                    let locals = PyDict::new(py);
-                    locals
-                        .set_item("series", &series_dict)
-                        .expect("cannot set python series_list");
-                    py.import("polars").expect("Could import polars");
-                    py.run(
-                        r#"
+            }
+            if !series_dict.is_empty() {
+                let locals = PyDict::new(py);
+                locals
+                    .set_item("series", &series_dict)
+                    .expect("cannot set python series_list");
+                py.import("polars").expect("Could import polars");
+                py.run(
+                    r#"
 import polars
 df=polars.DataFrame(series)
 "#,
-                        None,
-                        Some(locals),
-                    )
-                    .expect("dataframe creation failed");
-                    if let Some(df) = locals.get_item("df") {
-                        py_dataframe = df.into();
-                    }
+                    None,
+                    Some(locals),
+                )
+                .expect("dataframe creation failed");
+                if let Some(df) = locals.get_item("df") {
+                    py_dataframe = df.into();
                 }
             }
             py_dataframe
