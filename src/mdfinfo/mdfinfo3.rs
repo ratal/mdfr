@@ -1,22 +1,21 @@
 //! Parsing of file metadata into MdfInfo3 struct
+use crate::mdfreader::channel_data::Order;
 use binrw::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::NaiveDate;
 use encoding::all::{ASCII, ISO_8859_1};
 use encoding::{DecoderTrap, EncoderTrap, Encoding};
-use ndarray::Array1;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::TryFrom;
 use std::default::Default;
 use std::fmt;
-use std::fs::{File, OpenOptions};
+use std::fs::File;
 use std::io::BufReader;
 use std::io::{prelude::*, Cursor};
 
 use crate::mdfinfo::IdBlock;
 use crate::mdfreader::channel_data::{data_type_init, ChannelData};
-use crate::mdfreader::mdfreader3::mdfreader3;
 
 /// Specific to version 3.x mdf metadata structure
 #[derive(Debug, Default)]
@@ -35,8 +34,6 @@ pub struct MdfInfo3 {
     pub sharable: SharableBlocks3,
     /// set of all channel names
     pub channel_names_set: ChannelNamesSet3,
-    /// flag for all data loaded in memory
-    pub all_data_in_memory: bool,
 }
 
 pub(crate) type ChannelId3 = (Option<String>, u32, (u32, u16), u32);
@@ -123,6 +120,22 @@ impl MdfInfo3 {
         let channel_list = self.channel_names_set.keys().cloned().collect();
         channel_list
     }
+    /// returns the set of channel names that are in same channel group as input channel name
+    pub fn get_channel_names_cg_set(&self, channel_name: &str) -> HashSet<String> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), _cn_pos)) =
+            self.get_channel_id(channel_name)
+        {
+            let mut channel_list = HashSet::new();
+            if let Some(dg) = self.dg.get(dg_pos) {
+                if let Some(cg) = dg.cg.get(rec_id) {
+                    channel_list = cg.channel_names.clone();
+                }
+            }
+            channel_list
+        } else {
+            HashSet::new()
+        }
+    }
     /// returns a hashmap for which master channel names are keys and values its corresponding set of channel names
     pub fn get_master_channel_names_set(&self) -> HashMap<Option<String>, HashSet<String>> {
         let mut channel_master_list: HashMap<Option<String>, HashSet<String>> = HashMap::new();
@@ -148,14 +161,13 @@ impl MdfInfo3 {
                     if let Some(cg) = dg.cg.get_mut(rec_id) {
                         if let Some(cn) = cg.cn.get_mut(cn_pos) {
                             if !cn.data.is_empty() {
-                                cn.data = cn.data.zeros(0, 0, 0, 0);
+                                cn.data = cn.data.zeros(0, 0, 0, (Vec::new(), Order::RowMajor));
                             }
                         }
                     }
                 }
             }
         }
-        self.all_data_in_memory = false;
     }
     /// Returns the channel's data ndarray if present in memory, otherwise None.
     pub fn get_channel_data_from_memory(&self, channel_name: &str) -> Option<&ChannelData> {
@@ -175,21 +187,19 @@ impl MdfInfo3 {
         }
         data
     }
-    /// load in memory the ndarray data of a set of channels
-    pub fn load_channels_data_in_memory(&mut self, channel_names: HashSet<String>) {
-        let f: File = OpenOptions::new()
-            .read(true)
-            .write(false)
-            .open(self.file_name.clone())
-            .expect("Cannot find the file");
-        let mut rdr = BufReader::new(&f);
-        mdfreader3(&mut rdr, self, channel_names);
-    }
-    /// load all channels data in memory
-    pub fn load_all_channels_data_in_memory(&mut self) {
-        let channel_set = self.get_channel_names_set();
-        self.load_channels_data_in_memory(channel_set);
-        self.all_data_in_memory = true;
+    /// Removes a channel in memory (no file modification)
+    pub fn remove_channel(&mut self, channel_name: &str) {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
+            self.channel_names_set.get(channel_name)
+        {
+            if let Some(dg) = self.dg.get_mut(dg_pos) {
+                if let Some(cg) = dg.cg.get_mut(rec_id) {
+                    cg.cn.remove(cn_pos);
+                    cg.channel_names.remove(channel_name);
+                    self.channel_names_set.remove(channel_name);
+                }
+            }
+        }
     }
     /// True if channel contains data
     pub fn get_channel_data_validity(&self, channel_name: &str) -> bool {
@@ -211,24 +221,7 @@ impl MdfInfo3 {
     pub fn get_channel_data<'a>(&'a mut self, channel_name: &'a str) -> Option<&'a ChannelData> {
         let mut channel_names: HashSet<String> = HashSet::new();
         channel_names.insert(channel_name.to_string());
-        if !self.all_data_in_memory || !self.get_channel_data_validity(channel_name) {
-            self.load_channels_data_in_memory(channel_names); // will read data only if array is empty
-        }
         self.get_channel_data_from_memory(channel_name)
-    }
-    /// Removes a channel in memory (no file modification)
-    pub fn remove_channel(&mut self, channel_name: &str) {
-        if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
-            self.channel_names_set.get(channel_name)
-        {
-            if let Some(dg) = self.dg.get_mut(dg_pos) {
-                if let Some(cg) = dg.cg.get_mut(rec_id) {
-                    cg.cn.remove(cn_pos);
-                    cg.channel_names.remove(channel_name);
-                    self.channel_names_set.remove(channel_name);
-                }
-            }
-        }
     }
     /// Renames a channel's name in memory
     pub fn rename_channel(&mut self, channel_name: &str, new_name: &str) {
@@ -341,17 +334,7 @@ impl fmt::Display for MdfInfo3 {
             for channel in list.iter() {
                 let unit = self.get_channel_unit(channel);
                 let desc = self.get_channel_desc(channel);
-                let dtmsk = self.get_channel_data_from_memory(channel);
-                if let Some(data) = dtmsk {
-                    let data_first_last = data.first_last();
-                    writeln!(
-                        f,
-                        " {} {} {:?} {:?} \n",
-                        channel, data_first_last, unit, desc
-                    )?;
-                } else {
-                    writeln!(f, " {} {:?} {:?} \n", channel, unit, desc)?;
-                }
+                writeln!(f, " {} {:?} {:?} \n", channel, unit, desc)?;
             }
         }
         writeln!(f, "\n")
@@ -374,7 +357,7 @@ pub fn parse_block_header(rdr: &mut BufReader<&File>) -> Blockheader3 {
 }
 
 /// HD3 strucutre
-#[derive(Debug, PartialEq, Default)]
+#[derive(Debug, PartialEq, Eq, Default)]
 #[allow(dead_code)]
 pub struct Hd3 {
     /// HD
@@ -414,7 +397,7 @@ pub struct Hd3 {
 }
 
 /// HD3 block strucutre
-#[derive(Debug, PartialEq, Default, BinRead)]
+#[derive(Debug, PartialEq, Eq, Default, BinRead)]
 pub struct Hd3Block {
     hd_id: [u8; 2],            // HD
     hd_len: u16,               // Length of block in bytes
@@ -431,7 +414,7 @@ pub struct Hd3Block {
 }
 
 /// Specific from version 3.2 HD block extension
-#[derive(Debug, PartialEq, Default, BinRead)]
+#[derive(Debug, PartialEq, Eq, Default, BinRead)]
 pub struct Hd3Block32 {
     hd_start_time_ns: u64, // time stamp at which recording was started in nanosecond
     hd_time_offset: i16,   // UTC time offset
@@ -666,7 +649,7 @@ pub fn parse_dg3_block(rdr: &mut BufReader<&File>, target: u32, position: i64) -
 }
 
 /// Dg3 struct wrapping block, comments and linked CG
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Dg3 {
     /// DG Block
     pub block: Dg3Block,
@@ -810,7 +793,7 @@ fn parse_cg3_block(
 
 /// Channel Group struct
 /// it contains the related channels structure, a set of channel names, the dedicated master channel name and other helper data.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Cg3 {
     pub block: Cg3Block,
     pub cn: HashMap<u32, Cn3>, // hashmap of channels
@@ -867,7 +850,7 @@ pub fn parse_cg3(
 
 /// Cn3 structure containing block but also unique_name, ndarray data
 /// and other attributes frequently needed and computed
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default)]
 pub struct Cn3 {
     pub block1: Cn3Block1,
     pub block2: Cn3Block2,
@@ -936,7 +919,7 @@ pub fn parse_cn3(
 }
 
 /// Cn3 Channel block struct, first sub block
-#[derive(Debug, PartialEq, Default, Clone, BinRead)]
+#[derive(Debug, PartialEq, Eq, Default, Clone, BinRead)]
 #[br(little)]
 pub struct Cn3Block1 {
     /// CN
@@ -1141,7 +1124,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Milliseconds"),
         pos_byte_beg,
         n_bytes: 2,
-        data: ChannelData::UInt16(Array1::<u16>::zeros((0,))),
+        data: ChannelData::UInt16(Vec::<u16>::new()),
         endian: false,
         channel_data_valid: false,
     };
@@ -1160,7 +1143,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Minutes"),
         pos_byte_beg: pos_byte_beg + 2,
         n_bytes: 1,
-        data: ChannelData::UInt8(Array1::<u8>::zeros((0,))),
+        data: ChannelData::UInt8(Vec::<u8>::new()),
         endian: false,
         channel_data_valid: false,
     };
@@ -1179,7 +1162,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Hours"),
         pos_byte_beg: pos_byte_beg + 3,
         n_bytes: 1,
-        data: ChannelData::UInt8(Array1::<u8>::zeros((0,))),
+        data: ChannelData::UInt8(Vec::<u8>::new()),
         endian: false,
         channel_data_valid: false,
     };
@@ -1198,7 +1181,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Days"),
         pos_byte_beg: pos_byte_beg + 4,
         n_bytes: 1,
-        data: ChannelData::UInt8(Array1::<u8>::zeros((0,))),
+        data: ChannelData::UInt8(Vec::<u8>::new()),
         endian: false,
         channel_data_valid: false,
     };
@@ -1217,7 +1200,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Month"),
         pos_byte_beg: pos_byte_beg + 5,
         n_bytes: 1,
-        data: ChannelData::UInt8(Array1::<u8>::zeros((0,))),
+        data: ChannelData::UInt8(Vec::<u8>::new()),
         endian: false,
         channel_data_valid: false,
     };
@@ -1236,7 +1219,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Years"),
         pos_byte_beg: pos_byte_beg + 7,
         n_bytes: 1,
-        data: ChannelData::UInt8(Array1::<u8>::zeros((0,))),
+        data: ChannelData::UInt8(Vec::<u8>::new()),
         endian: false,
         channel_data_valid: false,
     };
@@ -1265,7 +1248,7 @@ fn can_open_time(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3) {
         description: String::from("Milliseconds"),
         pos_byte_beg,
         n_bytes: 4,
-        data: ChannelData::UInt32(Array1::<u32>::zeros((0,))),
+        data: ChannelData::UInt32(Vec::<u32>::new()),
         endian: false,
         channel_data_valid: false,
     };
@@ -1284,7 +1267,7 @@ fn can_open_time(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3) {
         description: String::from("Days"),
         pos_byte_beg: pos_byte_beg + 4,
         n_bytes: 2,
-        data: ChannelData::UInt16(Array1::<u16>::zeros((0,))),
+        data: ChannelData::UInt16(Vec::<u16>::new()),
         endian: false,
         channel_data_valid: false,
     };
@@ -1314,7 +1297,7 @@ pub struct Cc3Block {
     /// Maximum physical signal value that occurred for this signal. Only valid if "physical value range valid" flag is set.
     cc_val_range_max: f64,
     /// physical unit of the signal
-    cc_unit: [u8; 20],
+    pub cc_unit: [u8; 20],
     /// Conversion type
     cc_type: u16,
     /// Size information, meaning depends of conversion type

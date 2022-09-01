@@ -342,11 +342,18 @@ pub fn read_channels_from_bytes(
                     }
                 }
                 ChannelData::StringUTF16(_) => {}
-                ChannelData::ByteArray(data) => {
+                ChannelData::VariableSizeByteArray(data) => {
                     let n_bytes = cn.n_bytes as usize;
                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
                         data[i + previous_index] =
                             record[pos_byte_beg..pos_byte_beg + n_bytes].to_vec();
+                    }
+                }
+                ChannelData::FixedSizeByteArray(data) => {
+                    let n_bytes = cn.n_bytes as usize;
+                    for record in data_chunk.chunks(record_length) {
+                        data.0
+                            .extend_from_slice(&record[pos_byte_beg..pos_byte_beg + n_bytes]);
                     }
                 }
                 ChannelData::ArrayDInt8(_) => {}

@@ -1,0 +1,10 @@
+[build-system]
+requires = ["maturin>=0.13,<0.14"]
+build-backend = "maturin"
+
+[project]
+name = "mdfr"
+dependencies = [
+  "numpy>=1.23","polars>=0.13","matplotlib>=3.5"
+]
+requires-python = ">=3.7"
