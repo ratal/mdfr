@@ -1,70 +1,91 @@
 //! data read and load in memory based in MdfInfo3's metadata
 use rayon::prelude::*;
 
-use crate::mdfinfo::mdfinfo3::{Cg3, Dg3, MdfInfo3};
+use crate::mdfinfo::mdfinfo3::{Cg3, Dg3};
+use crate::mdfinfo::MdfInfo;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufReader, Read};
 
-use crate::mdfreader::conversions3::convert_all_channels;
 use crate::mdfreader::data_read3::read_channels_from_bytes;
+
+use super::Mdf;
+use crate::mdfreader::channel_data::Order;
+use crate::mdfreader::conversions3::convert_all_channels;
 
 // The following constant represents the size of data chunk to be read and processed.
 // a big chunk will improve performance but consume more memory
 // a small chunk will not consume too much memory but will cause many read calls, penalising performance
 const CHUNK_SIZE_READING: usize = 524288; // can be tuned according to architecture
 
+/// Reads the file data based on headers information contained in info parameter
+/// Hashset of channel names parameter allows to filter which channels to read
 pub fn mdfreader3<'a>(
     rdr: &'a mut BufReader<&File>,
-    info: &'a mut MdfInfo3,
-    channel_names: HashSet<String>,
+    mdf: &'a mut Mdf,
+    channel_names: &HashSet<String>,
 ) {
-    let mut position: i64 = 0;
-    let mut channel_names_present_in_dg: HashSet<String>;
-    // read file data
-    for (data_position, dg) in info.dg.iter_mut() {
-        // Let's find channel names
-        channel_names_present_in_dg = HashSet::new();
-        for channel_group in dg.cg.values() {
-            let cn = channel_group.channel_names.clone();
-            channel_names_present_in_dg.par_extend(cn);
-        }
-        let channel_names_to_read_in_dg: HashSet<String> = channel_names_present_in_dg
-            .into_par_iter()
-            .filter(|v| channel_names.contains(v))
-            .collect();
-        if dg.block.dg_data != 0 && !channel_names_to_read_in_dg.is_empty() {
-            // header block
-            rdr.seek_relative(*data_position as i64 - position)
-                .expect("Could not position buffer"); // change buffer position
-            if dg.cg.len() == 1 {
-                // sorted data group
-                for channel_group in dg.cg.values_mut() {
-                    read_all_channels_sorted(rdr, channel_group, &channel_names_to_read_in_dg);
-                    position = *data_position as i64
-                        + (channel_group.record_length as i64)
-                            * (channel_group.block.cg_cycle_count as i64);
+    match &mut mdf.mdf_info {
+        MdfInfo::V3(info) => {
+            let mut position: i64 = 0;
+            let mut channel_names_present_in_dg: HashSet<String>;
+            // read file data
+            for (data_position, dg) in info.dg.iter_mut() {
+                // Let's find channel names
+                channel_names_present_in_dg = HashSet::new();
+                for channel_group in dg.cg.values() {
+                    let cn = channel_group.channel_names.clone();
+                    channel_names_present_in_dg.par_extend(cn);
                 }
-            } else if !dg.cg.is_empty() {
-                // unsorted data
-                // initialises all arrays
-                let mut block_length: i64 = 0;
-                for channel_group in dg.cg.values_mut() {
-                    initialise_arrays(
-                        channel_group,
-                        &channel_group.block.cg_cycle_count.clone(),
-                        &channel_names_to_read_in_dg,
-                    );
-                    block_length += channel_group.record_length as i64
-                        * channel_group.block.cg_cycle_count as i64;
+                let channel_names_to_read_in_dg: HashSet<String> = channel_names_present_in_dg
+                    .into_par_iter()
+                    .filter(|v| channel_names.contains(v))
+                    .collect();
+                if dg.block.dg_data != 0 && !channel_names_to_read_in_dg.is_empty() {
+                    // header block
+                    rdr.seek_relative(*data_position as i64 - position)
+                        .expect("Could not position buffer"); // change buffer position
+                    if dg.cg.len() == 1 {
+                        // sorted data group
+                        for channel_group in dg.cg.values_mut() {
+                            read_all_channels_sorted(
+                                rdr,
+                                channel_group,
+                                &channel_names_to_read_in_dg,
+                            );
+                            position = *data_position as i64
+                                + (channel_group.record_length as i64)
+                                    * (channel_group.block.cg_cycle_count as i64);
+                        }
+                    } else if !dg.cg.is_empty() {
+                        // unsorted data
+                        // initialises all arrays
+                        let mut block_length: i64 = 0;
+                        for channel_group in dg.cg.values_mut() {
+                            initialise_arrays(
+                                channel_group,
+                                &channel_group.block.cg_cycle_count.clone(),
+                                &channel_names_to_read_in_dg,
+                            );
+                            block_length += channel_group.record_length as i64
+                                * channel_group.block.cg_cycle_count as i64;
+                        }
+                        position = *data_position as i64 + block_length;
+                        read_all_channels_unsorted(
+                            rdr,
+                            dg,
+                            block_length,
+                            &channel_names_to_read_in_dg,
+                        );
+                    }
+
+                    // conversion of all channels to physical values
+                    convert_all_channels(dg, &info.sharable);
                 }
-                position = *data_position as i64 + block_length;
-                read_all_channels_unsorted(rdr, dg, block_length, &channel_names_to_read_in_dg);
             }
-            // conversion of all channels to physical values
-            convert_all_channels(dg, &info.sharable);
         }
-    }
+        MdfInfo::V4(_) => {}
+    };
 }
 
 /// initialise ndarrays for the data group/block
@@ -79,9 +100,12 @@ fn initialise_arrays(
         .par_iter_mut()
         .filter(|(_cn_position, cn)| channel_names_to_read_in_dg.contains(&cn.unique_name))
         .for_each(|(_cn_position, cn)| {
-            cn.data = cn
-                .data
-                .zeros(0, *cg_cycle_count as u64, cn.n_bytes as u32, 0);
+            cn.data = cn.data.zeros(
+                0,
+                *cg_cycle_count as u64,
+                cn.n_bytes as u32,
+                (Vec::new(), Order::RowMajor),
+            );
         })
 }
 

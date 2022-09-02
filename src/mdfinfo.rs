@@ -1,10 +1,8 @@
-// mdfinfo module
-
 //! This module is reading the mdf file blocks (metadata)
+//! mdfinfo module
 
+use arrow2::bitmap::MutableBitmap;
 use binrw::{binrw, BinReaderExt};
-use ndarray::Array1;
-use parquet2::compression::CompressionOptions;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
@@ -36,7 +34,7 @@ pub enum MdfInfo {
 }
 
 /// Common Id block structure for both versions 2 and 3
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 #[binrw]
 #[allow(dead_code)]
 pub struct IdBlock {
@@ -130,7 +128,6 @@ impl MdfInfo {
                 dg,
                 sharable,
                 channel_names_set,
-                all_data_in_memory: false,
             }))
         } else {
             let mut sharable: SharableBlocks = SharableBlocks {
@@ -169,7 +166,6 @@ impl MdfInfo {
                 dg,
                 sharable,
                 channel_names_set,
-                all_data_in_memory: false,
             }))
         };
         mdf_info
@@ -223,6 +219,14 @@ impl MdfInfo {
         };
         channel_list
     }
+    /// returns the set of channel names that are in same channel group as input channel name
+    pub fn get_channel_names_cg_set(&self, channel_name: &str) -> HashSet<String> {
+        let channel_list: HashSet<String> = match self {
+            MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_names_cg_set(channel_name),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_names_cg_set(channel_name),
+        };
+        channel_list
+    }
     /// returns a dict of master names keys for which values are a set of associated channel names
     pub fn get_master_channel_names_set(&self) -> HashMap<Option<String>, HashSet<String>> {
         let channel_master_list: HashMap<Option<String>, HashSet<String>> = match self {
@@ -230,42 +234,6 @@ impl MdfInfo {
             MdfInfo::V4(mdfinfo4) => mdfinfo4.get_master_channel_names_set(),
         };
         channel_master_list
-    }
-    /// load a set of channels data in memory
-    pub fn load_channels_data_in_memory(&mut self, channel_names: HashSet<String>) {
-        match self {
-            MdfInfo::V3(mdfinfo3) => {
-                mdfinfo3.load_channels_data_in_memory(channel_names);
-            }
-            MdfInfo::V4(mdfinfo4) => {
-                mdfinfo4.load_channels_data_in_memory(channel_names);
-            }
-        }
-    }
-    /// load all channels data in memory
-    pub fn load_all_channels_data_in_memory(&mut self) {
-        match self {
-            MdfInfo::V3(mdfinfo3) => {
-                mdfinfo3.load_all_channels_data_in_memory();
-            }
-            MdfInfo::V4(mdfinfo4) => {
-                mdfinfo4.load_all_channels_data_in_memory();
-            }
-        }
-    }
-    /// returns channel's data ndarray.
-    pub fn get_channel_data<'a>(
-        &'a mut self,
-        channel_name: &'a str,
-    ) -> (Option<&ChannelData>, &Option<Array1<u8>>) {
-        let (data, mask) = match self {
-            MdfInfo::V3(mdfinfo3) => {
-                let dt = mdfinfo3.get_channel_data(channel_name);
-                (dt, &None)
-            }
-            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_data(channel_name),
-        };
-        (data, mask)
     }
     /// Clears all data arrays
     pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) {
@@ -278,12 +246,19 @@ impl MdfInfo {
             }
         }
     }
-    /// Writes mdf4 file
-    pub fn write(&mut self, file_name: &str, compression: bool) -> MdfInfo {
-        match self {
-            MdfInfo::V3(mdfinfo3) => MdfInfo::V4(Box::new(convert3to4(mdfinfo3, file_name))),
-            MdfInfo::V4(mdfinfo4) => MdfInfo::V4(Box::new(mdfinfo4.write(file_name, compression))),
-        }
+    /// returns channel's data ndarray.
+    pub fn get_channel_data<'a>(
+        &'a mut self,
+        channel_name: &'a str,
+    ) -> (Option<&ChannelData>, Option<&MutableBitmap>) {
+        let (data, mask) = match self {
+            MdfInfo::V3(mdfinfo3) => {
+                let dt = mdfinfo3.get_channel_data(channel_name);
+                (dt, None)
+            }
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_data(channel_name),
+        };
+        (data, mask)
     }
     /// Adds a new channel in memory (no file modification)
     pub fn add_channel(
@@ -326,7 +301,7 @@ impl MdfInfo {
     }
     /// Convert mdf verion 3.x to 4.2
     /// Require file name parameter but no file written
-    pub fn convert3to4(&self, file_name: &str) -> MdfInfo {
+    pub fn convert3to4(&mut self, file_name: &str) -> MdfInfo {
         match self {
             MdfInfo::V3(mdfinfo3) => MdfInfo::V4(Box::new(convert3to4(mdfinfo3, file_name))),
             MdfInfo::V4(_) => panic!("file is already a mdf version 4.x"),
@@ -382,16 +357,6 @@ impl MdfInfo {
         match self {
             MdfInfo::V3(mdfinfo3) => mdfinfo3.set_channel_desc(channel_name, desc),
             MdfInfo::V4(mdfinfo4) => mdfinfo4.set_channel_desc(channel_name, desc),
-        }
-    }
-    // export to Parquet file
-    pub fn export_to_parquet(&self, file_name: &str, compression: CompressionOptions) {
-        match self {
-            MdfInfo::V3(mdfinfo3) => {
-                let mdf4 = convert3to4(mdfinfo3, file_name);
-                mdf4.export_to_parquet(file_name, compression);
-            }
-            MdfInfo::V4(mdfinfo4) => mdfinfo4.export_to_parquet(file_name, compression),
         }
     }
 }

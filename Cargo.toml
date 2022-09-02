@@ -1,35 +1,41 @@
 [package]
 name = "mdfr"
-version = "0.1.0"
+version = "0.2.0"
+description = "A package for reading and writing MDF files"
 authors = ["«ratal» <«ratal@ratal.org»>"]
 edition = "2021"
+repository = "https://github.com/ratal/mdfr/"
+categories = ["encoding", "filesystem"]
+license = "GPL-3.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 clap = "3" # for input arguments 
 byteorder = "1.4" # for bytes conversions
-encoding = "0.2" # for bytes to texte conversion (utf8, SBC, UTF16)
-binrw = "0" # to be introduced when less buggy and needed to write mdf
+encoding = "0.2" # for bytes to text conversion (utf8, SBC, UTF16)
+binrw = "0" # to efficiently read blocks
 num = {version = "0.4", features = ["serde"] } # for complex numbers
-half = "1" # for f16 handling
+half = "2" # for f16 handling
 encoding_rs = "0.8" # for endian management
-chrono = "0.4.19" # for time conversion
+chrono = "0.4" # for time conversion
 ndarray = {version = "0.15", features = ["rayon", "serde", "approx"]} # for nd arrays
 ndarray-stats = "0.5" # for nd array stats
 rayon =  "1.5" # for general purpose parallel computations
 crossbeam-channel = "0.5" # for efficient channel between threads
 parking_lot = "0.12" # for efficient mutex
-roxmltree = "0.14" # for xml parsing
+roxmltree = "0.15" # for xml parsing
 yazi = "0.1" # for DZ block data deflate
 transpose = "0.2" # for DZBlock transpose
-numpy = "0.16" # export rust ndarrays into numpy
+numpy = "0.17" # export rust ndarrays into numpy
 fasteval = "0.2" # for algebraic conversion
 itertools = "0.10"
 serde = { version = "1.0", features = ["derive"] } # for serialization
 whoami = "1.2" # to get user nam for writing file
 rand = "0.8" # for random numbers
-parquet2 = "0.12" # for export to parquet file format
+parquet2 = "0.16" # for export to parquet file format
+arrow2 = {version = "0.13", features = ["compute", "io_parquet", "io_parquet_compression"] } # for efficient data storing in memory
+polars = {version = "0.23", features = ["dtype-full", "object", "fmt"]} # for python dataframe
 
 [dev-dependencies]
 criterion = "0.3" # for benchmark
@@ -39,7 +45,7 @@ name = "mdfr"
 crate-type = ["rlib", "cdylib"]
 
 [dependencies.pyo3]
-version = "0.16"
+version = "0.17"
 features = ["extension-module", "num-complex"]
 
 [[bench]]

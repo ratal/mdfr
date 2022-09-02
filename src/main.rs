@@ -1,15 +1,14 @@
 //! command line interface to load mdf file and manipulate it.
 extern crate clap;
 
+use arrow2::error::Error;
 use clap::{Arg, Command};
-use mdfr::mdfr::parquet_compression_from_string;
-use std::io;
 mod export;
 mod mdfinfo;
 mod mdfreader;
 mod mdfwriter;
 
-fn main() -> io::Result<()> {
+fn main() -> Result<(), Error> {
     let matches = Command::new("mdfr")
         .bin_name("mdfr")
         .version("0.1.0")
@@ -59,7 +58,7 @@ fn main() -> io::Result<()> {
                 .long("parquet_compression")
                 .required(false)
                 .takes_value(true)
-                .help("Compresses data in parquet file, valid values are snappy, gzip, lzo"),   
+                .help("Compresses data in parquet file, valid values are snappy, gzip, lzo"),
         )
         .get_matches();
 
@@ -71,22 +70,19 @@ fn main() -> io::Result<()> {
     let compression = matches.is_present("compress");
 
     if let Some(file_name) = mdf4_file_name {
-        mdf_file.write(&file_name, compression);
+        mdf_file.write(file_name, compression);
     }
 
     let convert3to4_file_name = matches.value_of("convert3to4");
     if let Some(file_name) = convert3to4_file_name {
-        mdf_file.convert3to4(file_name);
+        mdf_file.mdf_info.convert3to4(file_name);
     }
 
     let parquet_compression = matches.value_of("parquet_compression");
 
     let parquet_file_name = matches.value_of("export_to_parquet");
     if let Some(file_name) = parquet_file_name {
-        mdf_file.export_to_parquet(
-            file_name,
-            parquet_compression_from_string(parquet_compression),
-        );
+        mdf_file.export_to_parquet(file_name, parquet_compression)?;
     }
 
     Ok(())

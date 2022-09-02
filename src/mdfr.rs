@@ -1,80 +1,147 @@
 //! This module provides python interface using pyo3s
 use std::collections::HashSet;
+use std::fmt::Write;
 
+use crate::export::numpy::arrow_to_numpy;
+use crate::export::polars::rust_arrow_to_py_series;
 use crate::mdfinfo::MdfInfo;
-use numpy::ToPyArray;
-use parquet2::compression::CompressionOptions;
+use crate::mdfreader::arrow::array_to_rust;
+use crate::mdfreader::Mdf;
+use arrow2::array::get_display;
 use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyDict};
 
-/// This function is used to create a python dictionary from a MdfInfo object
-#[pyclass]
-struct Mdf(MdfInfo);
-
-pub(crate) fn register(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_class::<Mdf>()?;
+#[pymodule]
+#[pyo3(name = "mdfr")]
+fn mdfr(py: Python, m: &PyModule) -> PyResult<()> {
+    register(py, m)?;
     Ok(())
 }
-// TODO export to hdf5 and parquet using arrow, xlswriter
-// TODO resample and export to csv ?
 
-/// Implements Mdf class to provide API to python using pyo3
+/// This function is used to create a python dictionary from a MdfInfo object
+#[pyclass]
+struct Mdfr(Mdf);
+
+pub(crate) fn register(_py: Python, m: &PyModule) -> PyResult<()> {
+    m.add_class::<Mdfr>()?;
+    Ok(())
+}
+
+/// Imple&ments Mdf class to provide API to python using pyo3
 #[pymethods]
-impl Mdf {
+impl Mdfr {
     /// creates new object from file name
     #[new]
     fn new(file_name: &str) -> Self {
-        Mdf(MdfInfo::new(file_name))
+        Mdfr(Mdf::new(file_name))
+    }
+    /// gets the version of mdf file
+    pub fn get_version(&mut self) -> u16 {
+        let Mdfr(mdf) = self;
+        mdf.get_version()
     }
     /// returns channel's data, numpy array or list, depending if data type is numeric or string|bytes
-    fn get_channel_data(&mut self, channel_name: String) -> Py<PyAny> {
-        let Mdf(mdf) = self;
+    fn get_channel_data(&self, channel_name: String) -> Py<PyAny> {
+        let Mdfr(mdf) = self;
         // default py_array value is python None
         pyo3::Python::with_gil(|py| {
             let mut py_array: Py<PyAny>;
-            let (data, mask) = mdf.get_channel_data(&channel_name);
-            if let Some(m) = mask {
-                py_array = data.to_object(py);
-                let mask: Py<PyAny> = m.to_pyarray(py).into_py(py);
-                let locals = [("numpy", py.import("numpy").expect("could not import numpy"))]
-                    .into_py_dict(py);
-                locals
-                    .set_item("py_array", &py_array)
-                    .expect("cannot set python data");
-                locals
-                    .set_item("mask", mask)
-                    .expect("cannot set python mask");
-                py_array = py
-                    .eval(r#"numpy.ma.array(py_array, mask=mask)"#, None, Some(locals))
-                    .expect("masked array creation failed")
-                    .into_py(py);
+            let dt = mdf.get_channel_data(&channel_name);
+            if let Some(data) = dt {
+                py_array = arrow_to_numpy(py, data);
+                if let Some(m) = data.validity() {
+                    let mask: Py<PyAny> = m.iter().collect::<Vec<bool>>().into_py(py);
+                    let locals = [("numpy", py.import("numpy").expect("could not import numpy"))]
+                        .into_py_dict(py);
+                    locals
+                        .set_item("py_array", &py_array)
+                        .expect("cannot set python data");
+                    locals
+                        .set_item("mask", mask)
+                        .expect("cannot set python mask");
+                    py_array = py
+                        .eval(r#"numpy.ma.array(py_array, mask=mask)"#, None, Some(locals))
+                        .expect("masked array creation failed")
+                        .into_py(py);
+                }
             } else {
-                py_array = data.to_object(py);
+                py_array = Python::None(py);
             }
             py_array
         })
     }
+    /// returns polars serie of channel
+    fn get_polars_series(&self, channel_name: &str) -> PyResult<PyObject> {
+        let Mdfr(mdf) = self;
+        pyo3::Python::with_gil(|py| {
+            let mut py_serie = Ok(Python::None(py));
+            if let Some(array) = mdf.get_channel_data(channel_name) {
+                py_serie = rust_arrow_to_py_series(array);
+            };
+            py_serie
+        })
+    }
+    /// returns polar dataframe including channel
+    fn get_polars_dataframe(&self, channel_name: String) -> Py<PyAny> {
+        let Mdfr(mdf) = self;
+        pyo3::Python::with_gil(|py| {
+            let mut py_dataframe = Python::None(py);
+            let channel_list = mdf.mdf_info.get_channel_names_cg_set(&channel_name);
+            let series_dict = PyDict::new(py);
+            for channel in channel_list {
+                if let Some(channel_data) = mdf.get_channel_data(&channel) {
+                    series_dict
+                        .set_item(
+                            channel.clone(),
+                            rust_arrow_to_py_series(channel_data)
+                                .expect("Could not convert to python series"),
+                        )
+                        .expect("could not store the serie in dict");
+                }
+            }
+            if !series_dict.is_empty() {
+                let locals = PyDict::new(py);
+                locals
+                    .set_item("series", &series_dict)
+                    .expect("cannot set python series_list");
+                py.import("polars").expect("Could import polars");
+                py.run(
+                    r#"
+import polars
+df=polars.DataFrame(series)
+"#,
+                    None,
+                    Some(locals),
+                )
+                .expect("dataframe creation failed");
+                if let Some(df) = locals.get_item("df") {
+                    py_dataframe = df.into();
+                }
+            }
+            py_dataframe
+        })
+    }
     /// returns channel's unit string
     fn get_channel_unit(&self, channel_name: String) -> Py<PyAny> {
-        let Mdf(mdf) = self;
+        let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|py| {
-            let unit: Py<PyAny> = mdf.get_channel_unit(&channel_name).to_object(py);
+            let unit: Py<PyAny> = mdf.mdf_info.get_channel_unit(&channel_name).to_object(py);
             unit
         })
     }
     /// returns channel's description string
     fn get_channel_desc(&self, channel_name: String) -> Py<PyAny> {
-        let Mdf(mdf) = self;
+        let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|py| {
-            let desc: Py<PyAny> = mdf.get_channel_desc(&channel_name).to_object(py);
+            let desc: Py<PyAny> = mdf.mdf_info.get_channel_desc(&channel_name).to_object(py);
             desc
         })
     }
     /// returns channel's associated master channel name string
     pub fn get_channel_master(&self, channel_name: String) -> Py<PyAny> {
-        let Mdf(mdf) = self;
+        let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|py| {
-            let master: Py<PyAny> = mdf.get_channel_master(&channel_name).to_object(py);
+            let master: Py<PyAny> = mdf.mdf_info.get_channel_master(&channel_name).to_object(py);
             master
         })
     }
@@ -88,53 +155,51 @@ impl Mdf {
     /// 0 = None (normal data channels), 1 = Time (seconds), 2 = Angle (radians),
     /// 3 = Distance (meters), 4 = Index (zero-based index values)
     pub fn get_channel_master_type(&self, channel_name: String) -> Py<PyAny> {
-        let Mdf(mdf) = self;
+        let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|py| {
-            let master_type: Py<PyAny> = mdf.get_channel_master_type(&channel_name).to_object(py);
+            let master_type: Py<PyAny> = mdf
+                .mdf_info
+                .get_channel_master_type(&channel_name)
+                .to_object(py);
             master_type
         })
     }
     /// returns a set of all channel names contained in file
     pub fn get_channel_names_set(&self) -> Py<PyAny> {
-        let Mdf(mdf) = self;
+        let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|py| {
-            let channel_list: Py<PyAny> = mdf.get_channel_names_set().into_py(py);
+            let channel_list: Py<PyAny> = mdf.mdf_info.get_channel_names_set().into_py(py);
             channel_list
         })
     }
     /// returns a dict of master names keys for which values are a set of associated channel names
     pub fn get_master_channel_names_set(&self) -> Py<PyAny> {
-        let Mdf(mdf) = self;
+        let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|py| {
-            let master_channel_list: Py<PyAny> = mdf.get_master_channel_names_set().into_py(py);
+            let master_channel_list: Py<PyAny> =
+                mdf.mdf_info.get_master_channel_names_set().into_py(py);
             master_channel_list
         })
     }
     /// load a set of channels in memory
     pub fn load_channels_data_in_memory(&mut self, channel_names: HashSet<String>) {
-        let Mdf(mdf) = self;
-        pyo3::Python::with_gil(|_py| {
-            mdf.load_channels_data_in_memory(channel_names);
-        })
+        let Mdfr(mdf) = self;
+        mdf.load_channels_data_in_memory(channel_names);
     }
     /// clear channels from memory
     pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) {
-        let Mdf(mdf) = self;
-        pyo3::Python::with_gil(|_py| {
-            mdf.clear_channel_data_from_memory(channel_names);
-        })
+        let Mdfr(mdf) = self;
+        mdf.clear_channel_data_from_memory(channel_names);
     }
     /// load all channels in memory
     pub fn load_all_channels_data_in_memory(&mut self) {
-        let Mdf(mdf) = self;
-        pyo3::Python::with_gil(|_py| {
-            mdf.load_all_channels_data_in_memory();
-        })
+        let Mdfr(mdf) = self;
+        mdf.load_all_channels_data_in_memory();
     }
     /// writes file
-    pub fn write(&mut self, file_name: &str, compression: bool) -> Mdf {
-        let Mdf(mdf) = self;
-        pyo3::Python::with_gil(|_py| Mdf(mdf.write(file_name, compression)))
+    pub fn write(&mut self, file_name: &str, compression: bool) -> Mdfr {
+        let Mdfr(mdf) = self;
+        Mdfr(mdf.write(file_name, compression))
     }
     /// Adds a new channel in memory (no file modification)
     pub fn add_channel(
@@ -147,11 +212,10 @@ impl Mdf {
         unit: Option<String>,
         description: Option<String>,
     ) {
-        let Mdf(mdf) = self;
+        let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|py| {
-            let array = data
-                .extract(py)
-                .expect("channel addition failed, could not extract numpy array");
+            let array = array_to_rust(data.as_ref(py))
+                .expect("data modification failed, could not extract numpy array");
             mdf.add_channel(
                 channel_name,
                 array,
@@ -165,68 +229,60 @@ impl Mdf {
     }
     /// defines channel's data in memory
     pub fn set_channel_data(&mut self, channel_name: &str, data: Py<PyAny>) {
-        let Mdf(mdf) = self;
+        let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|py| {
-            let array = data
-                .extract(py)
+            let array = array_to_rust(data.as_ref(py))
                 .expect("data modification failed, could not extract numpy array");
-            mdf.set_channel_data(channel_name, &array);
+            mdf.set_channel_data(channel_name, array);
         })
     }
     /// Sets the channel's related master channel type in memory
     pub fn set_channel_master_type(&mut self, master_name: &str, master_type: u8) {
-        let Mdf(mdf) = self;
-        pyo3::Python::with_gil(|_py| {
-            mdf.set_channel_master_type(master_name, master_type);
-        })
+        let Mdfr(mdf) = self;
+        mdf.set_channel_master_type(master_name, master_type);
     }
     /// Removes a channel in memory (no file modification)
     pub fn remove_channel(&mut self, channel_name: &str) {
-        let Mdf(mdf) = self;
-        pyo3::Python::with_gil(|_py| {
-            mdf.remove_channel(channel_name);
-        })
+        let Mdfr(mdf) = self;
+        mdf.remove_channel(channel_name);
     }
     /// Renames a channel's name in memory
     pub fn rename_channel(&mut self, channel_name: &str, new_name: &str) {
-        let Mdf(mdf) = self;
-        pyo3::Python::with_gil(|_py| {
-            mdf.rename_channel(channel_name, new_name);
-        })
+        let Mdfr(mdf) = self;
+        mdf.rename_channel(channel_name, new_name);
     }
     /// Sets the channel unit in memory
     pub fn set_channel_unit(&mut self, channel_name: &str, unit: &str) {
-        let Mdf(mdf) = self;
-        pyo3::Python::with_gil(|_py| {
-            mdf.set_channel_unit(channel_name, unit);
-        })
+        let Mdfr(mdf) = self;
+        mdf.set_channel_unit(channel_name, unit);
     }
     /// Sets the channel description in memory
     pub fn set_channel_desc(&mut self, channel_name: &str, desc: &str) {
-        let Mdf(mdf) = self;
-        pyo3::Python::with_gil(|_py| {
-            mdf.set_channel_desc(channel_name, desc);
-        })
+        let Mdfr(mdf) = self;
+        mdf.set_channel_desc(channel_name, desc);
     }
     /// plot one channel
-    pub fn plot(&mut self, channel_name: String) {
-        let Mdf(mdf) = self;
+    pub fn plot(&self, channel_name: String) {
+        let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|py| {
             let locals = PyDict::new(py);
             locals
                 .set_item("channel_name", &channel_name)
                 .expect("cannot set python channel_name");
             locals
-                .set_item("channel_unit", mdf.get_channel_unit(&channel_name))
+                .set_item("channel_unit", mdf.mdf_info.get_channel_unit(&channel_name))
                 .expect("cannot set python channel_unit");
-            if let Some(master_name) = mdf.get_channel_master(&channel_name) {
+            if let Some(master_name) = mdf.mdf_info.get_channel_master(&channel_name) {
                 locals
                     .set_item("master_channel_name", &master_name)
                     .expect("cannot set python master_channel_name");
                 locals
-                    .set_item("master_channel_unit", mdf.get_channel_unit(&master_name))
+                    .set_item(
+                        "master_channel_unit",
+                        mdf.mdf_info.get_channel_unit(&master_name),
+                    )
                     .expect("cannot set python master_channel_unit");
-                let (data, _mask) = mdf.get_channel_data(&master_name);
+                let data = self.get_channel_data(master_name);
                 locals
                     .set_item("master_data", data)
                     .expect("cannot set python master_data");
@@ -241,12 +297,12 @@ impl Mdf {
                     .set_item("master_data", py.None())
                     .expect("cannot set python master_data");
             }
-            let (data, _mask) = mdf.get_channel_data(&channel_name);
+            let data = self.get_channel_data(channel_name);
             locals
                 .set_item("channel_data", data)
                 .expect("cannot set python channel_data");
             py.import("matplotlib")
-                .expect("Could not plot channel with matplotlib");
+                .expect("Could not import matplotlib");
             py.run(
                 r#"
 from matplotlib import pyplot
@@ -270,49 +326,63 @@ pyplot.show()
         })
     }
     /// export to Parquet file
-    pub fn export_to_parquet(&self, file_name: &str, compression_option: Option<&str>) {
-        let Mdf(mdf) = self;
-        mdf.export_to_parquet(
-            file_name,
-            parquet_compression_from_string(compression_option),
-        );
+    pub fn export_to_parquet(&mut self, file_name: &str, compression_option: Option<&str>) {
+        let Mdfr(mdf) = self;
+        mdf.export_to_parquet(file_name, compression_option)
+            .expect("could not export to parquet")
     }
-    fn __repr__(&self) -> PyResult<String> {
+    fn __repr__(&mut self) -> PyResult<String> {
         let mut output: String;
-        match &self.0 {
+        match &self.0.mdf_info {
             MdfInfo::V3(mdfinfo3) => {
                 output = format!("Version : {}\n", mdfinfo3.id_block.id_ver);
-                output.push_str(&format!(
-                    "Header :\n Author: {}  Organisation:{}\n",
+                writeln!(
+                    output,
+                    "Header :\n Author: {}  Organisation:{}",
                     mdfinfo3.hd_block.hd_author, mdfinfo3.hd_block.hd_organization
-                ));
-                output.push_str(&format!(
-                    "Project: {}  Subject:{}\n",
+                )
+                .expect("cannot print author and organisation");
+                writeln!(
+                    output,
+                    "Project: {}  Subject:{}",
                     mdfinfo3.hd_block.hd_project, mdfinfo3.hd_block.hd_subject
-                ));
-                output.push_str(&format!(
-                    "Date: {:?}  Time:{:?}\n",
+                )
+                .expect("cannot print project and subject");
+                writeln!(
+                    output,
+                    "Date: {:?}  Time:{:?}",
                     mdfinfo3.hd_block.hd_date, mdfinfo3.hd_block.hd_time
-                ));
-                output.push_str(&format!("Comments: {}", mdfinfo3.hd_comment));
+                )
+                .expect("cannot print date and time");
+                write!(output, "Comments: {}", mdfinfo3.hd_comment).expect("cannot print comments");
                 for (master, list) in mdfinfo3.get_master_channel_names_set().iter() {
                     if let Some(master_name) = master {
-                        output.push_str(&format!("\nMaster: {}\n", master_name));
+                        writeln!(output, "\nMaster: {}", master_name)
+                            .expect("cannot print master channel name");
                     } else {
-                        output.push_str("\nWithout Master channel\n");
+                        writeln!(output, "\nWithout Master channel")
+                            .expect("cannot print thre is no master channel");
                     }
                     for channel in list.iter() {
                         let unit = self.get_channel_unit(channel.to_string());
                         let desc = self.get_channel_desc(channel.to_string());
-                        if let Some(data) = mdfinfo3.get_channel_data_from_memory(channel) {
-                            let data_first_last = data.first_last();
-
-                            output.push_str(&format!(
-                                " {} {} {} {} \n",
-                                channel, data_first_last, unit, desc
-                            ));
+                        write!(output, " {} ", channel).expect("cannot print channel name");
+                        if let Some(data) = self.0.get_channel_data(channel) {
+                            if !data.is_empty() {
+                                let displayer = get_display(data.as_ref(), "null");
+                                displayer(&mut output, 0).expect("cannot channel data");
+                                write!(output, " ").expect("cannot print simple space character");
+                                displayer(&mut output, data.len() - 1)
+                                    .expect("cannot channel data");
+                            }
+                            writeln!(
+                                output,
+                                " {} {} ",
+                                unit, desc
+                            ).expect("cannot print channel unit and description with first and last item");
                         } else {
-                            output.push_str(&format!(" {} {} {} \n", channel, unit, desc));
+                            writeln!(output, " {} {} ", unit, desc)
+                                .expect("cannot print channel unit and description");
                         }
                     }
                 }
@@ -320,31 +390,42 @@ pyplot.show()
             }
             MdfInfo::V4(mdfinfo4) => {
                 output = format!("Version : {}\n", mdfinfo4.id_block.id_ver);
-                output.push_str(&format!("{}\n", mdfinfo4.hd_block));
+                writeln!(output, "{}", mdfinfo4.hd_block).expect("cannot print header block");
                 let comments = &mdfinfo4
                     .sharable
                     .get_comments(mdfinfo4.hd_block.hd_md_comment);
                 for c in comments.iter() {
-                    output.push_str(&format!("{} {}\n", c.0, c.1));
+                    writeln!(output, "{} {}", c.0, c.1).expect("cannot print header comments");
                 }
                 for (master, list) in mdfinfo4.get_master_channel_names_set().iter() {
                     if let Some(master_name) = master {
-                        output.push_str(&format!("\nMaster: {}\n", master_name));
+                        writeln!(output, "\nMaster: {}", master_name)
+                            .expect("cannot print master channel name");
                     } else {
-                        output.push_str("\nWithout Master channel\n");
+                        writeln!(output, "\nWithout Master channel")
+                            .expect("cannot print thre is no master channel");
                     }
                     for channel in list.iter() {
                         let unit = self.get_channel_unit(channel.to_string());
                         let desc = self.get_channel_desc(channel.to_string());
-                        let dtmsk = mdfinfo4.get_channel_data_from_memory(channel);
-                        if let Some(data) = dtmsk.0 {
-                            let data_first_last = data.first_last();
-                            output.push_str(&format!(
-                                " {} {} {} {} \n",
-                                channel, data_first_last, unit, desc
-                            ));
+                        write!(output, " {} ", channel).expect("cannot print channel name");
+                        if let Some(data) = self.0.get_channel_data(channel) {
+                            if !data.is_empty() {
+                                let displayer = get_display(data.as_ref(), "null");
+                                displayer(&mut output, 0).expect("cannot print channel data");
+                                write!(output, " .. ")
+                                    .expect("cannot print simple space character");
+                                displayer(&mut output, data.len() - 1)
+                                    .expect("cannot channel data");
+                            }
+                            writeln!(
+                                output,
+                                " {} {} ",
+                                unit, desc
+                            ).expect("cannot print channel unit and description with first and last item");
                         } else {
-                            output.push_str(&format!(" {} {} {} \n", channel, unit, desc));
+                            writeln!(output, " {} {} ", unit, desc)
+                                .expect("cannot print channel unit and description");
                         }
                     }
                 }
@@ -352,20 +433,5 @@ pyplot.show()
             }
         }
         Ok(output)
-    }
-}
-
-pub fn parquet_compression_from_string(compression_option: Option<&str>) -> CompressionOptions {
-    match compression_option {
-        Some(option) => match option {
-            "snappy" => CompressionOptions::Snappy,
-            "gzip" => CompressionOptions::Gzip,
-            "lzo" => CompressionOptions::Lzo,
-            "brotli" => CompressionOptions::Brotli,
-            "lz4" => CompressionOptions::Lz4,
-            "lz4raw" => CompressionOptions::Lz4Raw,
-            _ => CompressionOptions::Uncompressed,
-        },
-        None => CompressionOptions::Uncompressed,
     }
 }
