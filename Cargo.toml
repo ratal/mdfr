@@ -7,6 +7,7 @@ edition = "2021"
 repository = "https://github.com/ratal/mdfr/"
 categories = ["encoding", "filesystem"]
 license = "GPL-3.0"
+readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
