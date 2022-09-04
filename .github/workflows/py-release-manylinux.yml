@@ -7,46 +7,45 @@ on:
     branches: [ "main" ]
 
 jobs:
-  build:
-
+  build_manylinux:
+    name: Create Release manylinux
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v3
-    - uses: actions/setup-python@v2
-        with:
-          python-version: 3.7
-          architecture: x64
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v2
+          with:
+            python-version: 3.7
+            architecture: x64
 
-    - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly
-          profile: minimal
-          default: true
+      - name: Install Rust toolchain
+          uses: actions-rs/toolchain@v1
+          with:
+            toolchain: nightly
+            profile: minimal
+            default: true
 
-    - name: Run tests
-      run: cargo test tests::basic_test --verbose
+      - name: Run tests
+        run: cargo test tests::basic_test --verbose
 
-    - name: publish x64_64
-        uses: messense/maturin-action@v1
-        env:
-          MATURIN_PASSWORD: ${{ secrets.PYPI_PASS }}
-          RUSTFLAGS: '-C target-feature=+fxsr,+sse,+sse2,+sse3,+ssse3,+sse4.1,+sse4.2,+popcnt,+avx,+fma'
-        with:
-          rust-toolchain: nightly
-          maturin-version: latest
-          command: publish
-          args: --skip-existing -o wheels -u ratal
+      - name: publish x64_64
+          uses: messense/maturin-action@v1
+          env:
+            MATURIN_PASSWORD: ${{ secrets.PYPI_PASS }}
+            RUSTFLAGS: '-C target-feature=+fxsr,+sse,+sse2,+sse3,+ssse3,+sse4.1,+sse4.2,+popcnt,+avx,+fma'
+          with:
+            rust-toolchain: nightly
+            maturin-version: latest
+            command: publish
+            args: --skip-existing -o wheels -u ratal
 
-    - name: publish aarch64
-        uses: messense/maturin-action@v1
-        env:
-          MATURIN_PASSWORD: ${{ secrets.PYPI_PASS }}
-        with:
-          rust-toolchain: nightly
-          target: aarch64-unknown-linux-gnu
-          maturin-version: latest
-          command: publish
-          args: --skip-existing --no-sdist -o wheels -i python -u ratal
+      - name: publish aarch64
+          uses: messense/maturin-action@v1
+          env:
+            MATURIN_PASSWORD: ${{ secrets.PYPI_PASS }}
+          with:
+            rust-toolchain: nightly
+            target: aarch64-unknown-linux-gnu
+            maturin-version: latest
+            command: publish
+            args: --skip-existing --no-sdist -o wheels -i python -u ratal
 
