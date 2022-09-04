@@ -48,4 +48,3 @@ jobs:
           maturin-version: latest
           command: publish
           args: --skip-existing --no-sdist -o wheels -i python -u ratal
-
