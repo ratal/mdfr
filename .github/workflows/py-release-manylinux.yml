@@ -13,8 +13,21 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+    - uses: actions/setup-python@v2
+        with:
+          python-version: 3.7
+          architecture: x64
+
+    - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          profile: minimal
+          default: true
+
     - name: Run tests
       run: cargo test tests::basic_test --verbose
+
     - name: publish x64_64
         uses: messense/maturin-action@v1
         env:
@@ -25,6 +38,7 @@ jobs:
           maturin-version: latest
           command: publish
           args: --skip-existing -o wheels -u ratal
+
     - name: publish aarch64
         uses: messense/maturin-action@v1
         env:
