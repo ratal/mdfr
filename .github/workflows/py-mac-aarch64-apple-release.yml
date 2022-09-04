@@ -1,4 +1,4 @@
-name: Create Python release manylinux
+name: Create macOs universal2/aarch64-apple-darwin python release
 
 on:
   push:
