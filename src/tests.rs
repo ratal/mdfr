@@ -19,8 +19,8 @@ mod tests {
 
     static BASE_PATH_MDF4: &str = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/";
     static BASE_PATH_MDF3: &str = "/home/ratal/workspace/mdfreader/mdfreader/tests/mdf3/";
-    static WRITING_MDF_FILE: &str = "/home/ratal/workspace/mdfr/test.mf4";
-    static WRITING_PARQUET_FILE: &str = "/home/ratal/workspace/mdfr/test.parquet";
+    static WRITING_MDF_FILE: &str = "/home/ratal/workspace/mdfr/test_files/test.mf4";
+    static WRITING_PARQUET_FILE: &str = "/home/ratal/workspace/mdfr/test_files/test.parquet";
 
     #[test]
     fn info_test() -> io::Result<()> {
@@ -141,14 +141,11 @@ mod tests {
     }
 
     #[test]
-    fn parse_file() {
-        let file = format!(
-            "{}{}",
-            BASE_PATH_MDF4, &"Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
-        );
+    fn basic_test() {
+        let file = "test_files/test_basic.mf4";
         let mut mdf = Mdf::new(&file);
         mdf.load_all_channels_data_in_memory();
-        mdf.write(WRITING_MDF_FILE, true);
+        mdf.write("test_files/test.mf4", true);
     }
 
     #[test]
