@@ -13,8 +13,6 @@ jobs:
     strategy:
       matrix:
         python-version: [ '3.7', '3.9', '3.10' ]
-      exclude:
-        python-version: '3.6'
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-python@v4
