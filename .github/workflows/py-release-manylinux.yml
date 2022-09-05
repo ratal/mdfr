@@ -15,6 +15,7 @@ jobs:
       - uses: actions/setup-python@v4
         with:
           python-version: 3.9
+          architecture: x64
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
         with:
@@ -27,25 +28,20 @@ jobs:
       - name: build x64_64
         uses: messense/maturin-action@v1
         env:
-          MATURIN_PASSWORD: ${{ secrets.PYPI_PASS }}
+          MATURIN_PASSWORD: ${{ secrets.PYPI_TOKEN }}
           RUSTFLAGS: '-C target-feature=+fxsr,+sse,+sse2,+sse3,+ssse3,+sse4.1,+sse4.2,+popcnt,+avx,+fma'
         with:
           rust-toolchain: nightly
           maturin-version: latest
-          command: build
-          args: --out dist --release 
+          command: publish
+          args: --skip-existing -o wheels -u ratal
       - name: build aarch64
         uses: messense/maturin-action@v1
         env:
-          MATURIN_PASSWORD: ${{ secrets.PYPI_PASS }}
+          MATURIN_PASSWORD: ${{ secrets.PYPI_TOKEN }}
         with:
           rust-toolchain: nightly
           target: aarch64-unknown-linux-gnu
           maturin-version: latest
-          command: build
-          args: --out dist --release
-      - name: Upload wheels
-        uses: actions/upload-artifact@v2
-        with:
-          name: wheels
-          path: dist
+          command: publish
+          args: --skip-existing --no-sdist -o wheels -i python -u ratal

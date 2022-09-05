@@ -36,7 +36,7 @@ jobs:
       - name: maturin publish
         uses: messense/maturin-action@v1
         env:
-          MATURIN_PASSWORD: ${{ secrets.PYPI_PASS }}
+          MATURIN_PASSWORD: ${{ secrets.PYPI_TOKEN }}
         with:
           maturin-version: latest
           command: publish
