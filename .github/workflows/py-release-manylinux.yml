@@ -12,31 +12,22 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [ '3.7', '3.9', '3.10' ]
+        python-version: [ '3.8', '3.9', '3.10' ]
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-python@v4
         with:
           python-version: ${{ matrix.python-version }}
           architecture: x64
-      - name: Install Rust toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: nightly
-          profile: minimal
-          override: true
-          default: true
-      - name: Run tests
-        run: cargo test tests::basic_test --verbose
       - name: build x64_64
         uses: messense/maturin-action@v1
         env:
           MATURIN_PASSWORD: ${{ secrets.PYPI_TOKEN }}
           RUSTFLAGS: '-C target-feature=+fxsr,+sse,+sse2,+sse3,+ssse3,+sse4.1,+sse4.2,+popcnt,+avx,+fma'
         with:
-          python-version: ${{ matrix.python-version }}
           rust-toolchain: nightly
           maturin-version: latest
+          manylinux: auto
           command: publish
           args: --skip-existing -o wheels -u __token__
       - name: build aarch64
