@@ -40,4 +40,4 @@ jobs:
         with:
           maturin-version: latest
           command: publish
-          args: --target aarch64-apple-darwin --no-sdist -o wheels -i python -u ratal
+          args: --target aarch64-apple-darwin --no-sdist -o wheels -i python -u __token__

@@ -10,11 +10,16 @@ jobs:
   build_manylinux:
     name: Create Release manylinux
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [ '3.7', '3.9', '3.10' ]
+      exclude:
+        python-version: '3.6'
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-python@v4
         with:
-          python-version: 3.9
+          python-version: ${{ matrix.python-version }}
           architecture: x64
       - name: Install Rust toolchain
         uses: actions-rs/toolchain@v1
@@ -31,10 +36,11 @@ jobs:
           MATURIN_PASSWORD: ${{ secrets.PYPI_TOKEN }}
           RUSTFLAGS: '-C target-feature=+fxsr,+sse,+sse2,+sse3,+ssse3,+sse4.1,+sse4.2,+popcnt,+avx,+fma'
         with:
+          python-version: ${{ matrix.python-version }}
           rust-toolchain: nightly
           maturin-version: latest
           command: publish
-          args: --skip-existing -o wheels -u ratal
+          args: --skip-existing -o wheels -u __token__
       - name: build aarch64
         uses: messense/maturin-action@v1
         env:
@@ -44,4 +50,4 @@ jobs:
           target: aarch64-unknown-linux-gnu
           maturin-version: latest
           command: publish
-          args: --skip-existing --no-sdist -o wheels -i python -u ratal
+          args: --skip-existing --no-sdist -o wheels -i python -u __token__
