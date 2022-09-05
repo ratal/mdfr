@@ -29,7 +29,7 @@ jobs:
           maturin-version: latest
           manylinux: auto
           command: publish
-          args: --skip-existing -i python3.9 -o wheels -u __token__
+          args: --skip-existing --no-sdist -i python3.9 -o wheels -u __token__
       - name: build aarch64
         uses: messense/maturin-action@v1
         env:
