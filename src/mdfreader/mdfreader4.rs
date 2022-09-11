@@ -1,9 +1,9 @@
 //! data read and load in memory based in MdfInfo4's metadata
-use crate::mdfinfo::mdfinfo4::{parse_block_header, Cg4, Cn4, Compo, Dg4};
 use crate::mdfinfo::mdfinfo4::{
     parse_dz, parser_dl4_block, parser_ld4_block, validate_channels_set, Dl4Block, Dt4Block,
     Hl4Block, Ld4Block,
 };
+use crate::mdfinfo::mdfinfo4::{Blockheader4, Cg4, Cn4, Compo, Dg4};
 use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::channel_data::ChannelData;
 use crate::mdfreader::channel_data::Order;
@@ -14,6 +14,7 @@ use binrw::BinReaderExt;
 use encoding_rs::{Decoder, UTF_16BE, UTF_16LE, WINDOWS_1252};
 use rayon::prelude::*;
 use std::fs::File;
+use std::io::Cursor;
 use std::str;
 use std::string::String;
 use std::{
@@ -909,7 +910,11 @@ fn parser_dl4_unsorted(
         for data_pointer in dl.dl_data {
             rdr.seek_relative(data_pointer - position)
                 .expect("Could not reach DT or DZ position from DL");
-            let header = parse_block_header(rdr);
+            let mut buf = [0u8; 24];
+            rdr.read_exact(&mut buf)
+                .expect("could not read blockheader4 Id");
+            let mut block = Cursor::new(buf);
+            let header: Blockheader4 = block.read_le().expect("could not parse blockheader4");
             if header.hdr_id == "##DZ".as_bytes() {
                 let (dt, _block) = parse_dz(rdr);
                 data.extend(dt);

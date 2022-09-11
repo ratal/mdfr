@@ -11,11 +11,12 @@ use std::convert::TryFrom;
 use std::default::Default;
 use std::fmt;
 use std::fs::File;
-use std::io::BufReader;
 use std::io::{prelude::*, Cursor};
 
 use crate::mdfinfo::IdBlock;
 use crate::mdfreader::channel_data::{data_type_init, ChannelData};
+
+use super::sym_buf_reader::SymBufReader;
 
 /// Specific to version 3.x mdf metadata structure
 #[derive(Debug, Default)]
@@ -351,7 +352,7 @@ pub struct Blockheader3 {
 }
 
 /// Generic block header parser
-pub fn parse_block_header(rdr: &mut BufReader<&File>) -> Blockheader3 {
+pub fn parse_block_header(rdr: &mut SymBufReader<&File>) -> Blockheader3 {
     let header: Blockheader3 = rdr.read_le().expect("Could not read Blockheader3 struct");
     header
 }
@@ -423,7 +424,7 @@ pub struct Hd3Block32 {
 }
 
 /// Header block parser
-pub fn hd3_parser(rdr: &mut BufReader<&File>, ver: u16) -> (Hd3, i64) {
+pub fn hd3_parser(rdr: &mut SymBufReader<&File>, ver: u16) -> (Hd3, i64) {
     let mut buf = [0u8; 164];
     rdr.read_exact(&mut buf).expect("Could not read hd3 buffer");
     let mut block = Cursor::new(buf);
@@ -578,7 +579,7 @@ impl fmt::Display for Hd3 {
 
 /// Header comment parser
 pub fn hd3_comment_parser(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SymBufReader<&File>,
     hd3_block: &Hd3,
     mut position: i64,
 ) -> (String, i64) {
@@ -589,7 +590,7 @@ pub fn hd3_comment_parser(
 
 /// TX text block parser, expecting ISO_8859_1 encoded text
 pub fn parse_tx(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SymBufReader<&File>,
     target: u32,
     position: i64,
 ) -> (Blockheader3, String, i64) {
@@ -635,7 +636,11 @@ pub struct Dg3Block {
 }
 
 /// Data Group block parser
-pub fn parse_dg3_block(rdr: &mut BufReader<&File>, target: u32, position: i64) -> (Dg3Block, i64) {
+pub fn parse_dg3_block(
+    rdr: &mut SymBufReader<&File>,
+    target: u32,
+    position: i64,
+) -> (Dg3Block, i64) {
     rdr.seek_relative(target as i64 - position)
         .expect("Could not reach position of Dg3 block");
     let mut buf = [0u8; 24];
@@ -661,7 +666,7 @@ pub struct Dg3 {
 
 /// Parser for Dg3 and all linked blocks (cg, cn, cc)
 pub fn parse_dg3(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SymBufReader<&File>,
     target: u32,
     mut position: i64,
     sharable: &mut SharableBlocks3,
@@ -747,7 +752,7 @@ pub struct Cg3Block {
 
 /// Cg3 (Channel Group) block struct parser with linked comments Source Information in sharable blocks
 fn parse_cg3_block(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SymBufReader<&File>,
     target: u32,
     mut position: i64,
     sharable: &mut SharableBlocks3,
@@ -805,7 +810,7 @@ pub struct Cg3 {
 
 /// Cg3 blocks and linked blocks parsing
 pub fn parse_cg3(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SymBufReader<&File>,
     target: u32,
     mut position: i64,
     sharable: &mut SharableBlocks3,
@@ -874,7 +879,7 @@ pub struct Cn3 {
 
 /// creates recursively in the channel group the CN blocks and all its other linked blocks (CC, TX, CE, CD)
 pub fn parse_cn3(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SymBufReader<&File>,
     mut target: u32,
     mut position: i64,
     sharable: &mut SharableBlocks3,
@@ -963,7 +968,7 @@ pub struct Cn3Block2 {
 
 /// CN3 Block parsing
 fn parse_cn3_block(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SymBufReader<&File>,
     target: u32,
     mut position: i64,
     sharable: &mut SharableBlocks3,
@@ -1343,7 +1348,7 @@ impl Default for Conversion {
 
 /// Parser for channel conversion blocks
 pub fn parse_cc3_block(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SymBufReader<&File>,
     target: u32,
     mut position: i64,
     sharable: &mut SharableBlocks3,
@@ -1539,7 +1544,7 @@ pub struct CanBlock {
 
 /// parses Channel Extension block
 fn parse_ce(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SymBufReader<&File>,
     target: u32,
     mut position: i64,
     sharable: &mut SharableBlocks3,
