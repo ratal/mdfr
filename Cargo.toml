@@ -39,7 +39,7 @@ arrow2 = {version = "0.13", features = ["compute", "io_parquet", "io_parquet_com
 polars = {version = "0.23", features = ["dtype-full", "object", "fmt"]} # for python dataframe
 
 [dev-dependencies]
-criterion = "0.3" # for benchmark
+criterion = "0.4" # for benchmark
 
 [lib]
 name = "mdfr"
