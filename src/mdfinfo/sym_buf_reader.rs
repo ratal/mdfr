@@ -77,7 +77,7 @@ where
     }
     fn read_to_end(&mut self, buf: &mut Vec<u8>) -> io::Result<usize> {
         let nread = self.cap - self.pos;
-        buf.extend_from_slice(&self.buffer());
+        buf.extend_from_slice(self.buffer());
         self.discard_buffer();
         Ok(nread + self.reader.read_to_end(buf)?)
     }
@@ -111,25 +111,28 @@ where
 {
     fn seek(&mut self, pos: SeekFrom) -> Result<u64> {
         let result: u64;
-        if let SeekFrom::Current(n) = pos {
-            let remainder = (self.cap - self.pos) as i64;
-            // it should be safe to assume that remainder fits within an i64 as the alternative
-            // means we managed to allocate 8 exbibytes and that's absurd.
-            // But it's not out of the realm of possibility for some weird underlying reader to
-            // support seeking by i64::MIN so we need to handle underflow when subtracting
-            // remainder.
-            if let Some(offset) = n.checked_sub(remainder) {
-                result = self.reader.seek(SeekFrom::Current(offset))?;
-            } else {
-                // seek backwards by our remainder, and then by the offset
-                self.reader.seek(SeekFrom::Current(-remainder))?;
-                self.discard_buffer();
-                result = self.reader.seek(SeekFrom::Current(n))?;
+        match pos {
+            SeekFrom::Current(n) => {
+                let remainder = (self.cap - self.pos) as i64;
+                // it should be safe to assume that remainder fits within an i64 as the alternative
+                // means we managed to allocate 8 exbibytes and that's absurd.
+                // But it's not out of the realm of possibility for some weird underlying reader to
+                // support seeking by i64::MIN so we need to handle underflow when subtracting
+                // remainder.
+                if let Some(offset) = n.checked_sub(remainder) {
+                    result = self.reader.seek(SeekFrom::Current(offset))?;
+                } else {
+                    // seek backwards by our remainder, and then by the offset
+                    self.reader.seek(SeekFrom::Current(-remainder))?;
+                    self.discard_buffer();
+                    result = self.reader.seek(SeekFrom::Current(n))?;
+                }
             }
-        } else {
-            // Seeking with Start/End doesn't care about our buffer length.
-            result = self.reader.seek(pos)?;
-        }
+            _ => {
+                // Seeking with Start/End doesn't care about our buffer length.
+                result = self.reader.seek(pos)?;
+            }
+        };
         self.discard_buffer();
         Ok(result)
     }
@@ -182,29 +185,31 @@ where
         if self.pos >= self.cap {
             debug_assert!(self.pos == self.cap);
 
-            // reposition half buffer size before
-            let middle_of_buffer = -(DEFAULT_BUF_SIZE as i64) / 2;
-            let result = self.seek(SeekFrom::Current(middle_of_buffer));
+            let middle_of_buffer = (DEFAULT_BUF_SIZE as i64) / 2;
+            // checks if close to stream start
+            let stream_position = self.stream_position()? as i64;
+            if let Some(remaining) = stream_position.checked_sub(middle_of_buffer) {
+                if remaining <= 0 {
+                    self.seek(SeekFrom::Start(0))?;
+                    let n_read = self.reader.read(&mut self.buf)?;
+                    self.cap = n_read as usize;
+                    self.pos = 0;
+                    return Ok(self.buffer());
+                }
+            }
 
+            // reposition half buffer size before
+            let result = self.seek(SeekFrom::Current(-middle_of_buffer));
             match result {
                 Ok(_) => {
                     let n_read = self.reader.read(&mut self.buf)?;
-                    self.cap = n_read as usize;
-                    self.pos = n_read as usize / 2;
-                }
-                Err(ref e) if e.kind() == ErrorKind::InvalidInput => {
-                    // close to beginning of file
-                    self.seek(SeekFrom::Start(0))?;
-                    let n_read = self.reader.read(&mut self.buf)?;
-
-                    self.cap = n_read as usize;
-
-                    self.pos = 0;
+                    self.cap = n_read;
+                    self.pos = n_read / 2;
                 }
                 Err(e) => return Err(e),
             }
         }
-        Ok(&self.buffer())
+        Ok(self.buffer())
     }
 
     fn consume(&mut self, amt: usize) {
@@ -237,11 +242,22 @@ fn sym_buf_reader_test() -> io::Result<()> {
     let mut buffer = [0, 0];
     assert_eq!(reader.read(&mut buffer).ok(), Some(2));
     assert_eq!(buffer, [0, 1]);
+    let pos = reader.stream_position()?;
+    println!("position in stream {:?}", pos);
 
     reader.seek_relative(8192)?; // clears buffer
+    let pos = reader.stream_position()?;
+    println!("position in stream {:?}", pos);
     let mut buffer = [0, 0];
     reader.read_exact(&mut buffer).ok();
     assert_eq!(buffer, [2, 3]);
+
+    reader.seek_relative(9000)?; // clears buffer
+    let mut buffer = [0, 0];
+    reader.read_exact(&mut buffer).ok();
+    let pos = reader.stream_position()?;
+    println!("position in stream {:?}", pos);
+    assert_eq!(buffer, [44, 45]);
 
     Ok(())
 }
