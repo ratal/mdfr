@@ -107,7 +107,7 @@ pub fn export_to_parquet(mdf: &mut Mdf, file_name: &str, compression: Option<&st
         Result::Ok(row_group)
     });
 
-    let file = fs::File::create(&path).expect("Failed to create file");
+    let file = fs::File::create(path).expect("Failed to create file");
     let mut writer = FileWriter::try_new(file, mdf.arrow_schema.clone(), options)
         .expect("Failed to write parquet file");
 
