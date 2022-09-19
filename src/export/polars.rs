@@ -3,6 +3,7 @@ use arrow2::array::Array;
 use arrow2::compute::cast;
 use arrow2::temporal_conversions::*;
 use polars::chunked_array::ChunkedArray;
+use polars::error::PolarsError;
 use polars::prelude::*;
 use polars::series::Series;
 use pyo3::exceptions::PyValueError;
@@ -137,7 +138,7 @@ impl Mdf {
 }
 
 /// converts an array to a new datatype
-fn cast_chunks(chunks: &[ArrayRef], dtype: &DataType) -> Result<Vec<ArrayRef>> {
+fn cast_chunks(chunks: &[ArrayRef], dtype: &DataType) -> Result<Vec<ArrayRef>, PolarsError> {
     let chunks = chunks
         .iter()
         .map(|arr| cast::cast(arr.as_ref(), &dtype.to_arrow(), Default::default()))

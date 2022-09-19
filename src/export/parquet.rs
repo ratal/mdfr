@@ -77,18 +77,16 @@ pub fn export_to_parquet(mdf: &mut Mdf, file_name: &str, compression: Option<&st
         let columns = batch
             .par_iter()
             .zip(parquet_schema.fields().to_vec())
-            .zip(encodings.clone())
+            .zip(encodings.par_iter())
             .flat_map(move |((array, type_), encoding)| {
                 let encoded_columns = array_to_columns(array, type_, options, &encoding)
                     .expect("Could not convert arrow array to column");
                 encoded_columns
                     .into_iter()
                     .map(|encoded_pages| {
-                        let encoded_pages = DynIter::new(
-                            encoded_pages
-                                .into_iter()
-                                .map(|x| x.map_err(|e| ParquetError::General(e.to_string()))),
-                        );
+                        let encoded_pages = DynIter::new(encoded_pages.into_iter().map(|x| {
+                            x.map_err(|e| ParquetError::FeatureNotSupported(e.to_string()))
+                        }));
                         encoded_pages
                             .map(|page| {
                                 compress(page?, vec![], options.compression).map_err(|x| x.into())
