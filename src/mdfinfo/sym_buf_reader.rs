@@ -193,7 +193,7 @@ where
                     self.seek(SeekFrom::Start(0))?;
                     let n_read = self.reader.read(&mut self.buf)?;
                     self.cap = n_read as usize;
-                    self.pos = 0;
+                    self.pos = stream_position as usize;
                     return Ok(self.buffer());
                 }
             }
@@ -204,7 +204,7 @@ where
                 Ok(_) => {
                     let n_read = self.reader.read(&mut self.buf)?;
                     self.cap = n_read;
-                    self.pos = n_read / 2;
+                    self.pos = middle_of_buffer as usize;
                 }
                 Err(e) => return Err(e),
             }
@@ -242,12 +242,8 @@ fn sym_buf_reader_test() -> io::Result<()> {
     let mut buffer = [0, 0];
     assert_eq!(reader.read(&mut buffer).ok(), Some(2));
     assert_eq!(buffer, [0, 1]);
-    let pos = reader.stream_position()?;
-    println!("position in stream {:?}", pos);
 
     reader.seek_relative(8192)?; // clears buffer
-    let pos = reader.stream_position()?;
-    println!("position in stream {:?}", pos);
     let mut buffer = [0, 0];
     reader.read_exact(&mut buffer).ok();
     assert_eq!(buffer, [2, 3]);
@@ -255,8 +251,6 @@ fn sym_buf_reader_test() -> io::Result<()> {
     reader.seek_relative(9000)?; // clears buffer
     let mut buffer = [0, 0];
     reader.read_exact(&mut buffer).ok();
-    let pos = reader.stream_position()?;
-    println!("position in stream {:?}", pos);
     assert_eq!(buffer, [44, 45]);
 
     Ok(())

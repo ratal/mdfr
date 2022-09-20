@@ -137,7 +137,7 @@ impl Mdf {
 }
 
 /// converts an array to a new datatype
-fn cast_chunks(chunks: &[ArrayRef], dtype: &DataType) -> Result<Vec<ArrayRef>> {
+fn cast_chunks(chunks: &[ArrayRef], dtype: &DataType) -> Result<Vec<ArrayRef>, PolarsError> {
     let chunks = chunks
         .iter()
         .map(|arr| cast::cast(arr.as_ref(), &dtype.to_arrow(), Default::default()))

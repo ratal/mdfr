@@ -84,11 +84,9 @@ pub fn export_to_parquet(mdf: &mut Mdf, file_name: &str, compression: Option<&st
                 encoded_columns
                     .into_iter()
                     .map(|encoded_pages| {
-                        let encoded_pages = DynIter::new(
-                            encoded_pages
-                                .into_iter()
-                                .map(|x| x.map_err(|e| ParquetError::General(e.to_string()))),
-                        );
+                        let encoded_pages = DynIter::new(encoded_pages.into_iter().map(|x| {
+                            x.map_err(|e| ParquetError::FeatureNotSupported(e.to_string()))
+                        }));
                         encoded_pages
                             .map(|page| {
                                 compress(page?, vec![], options.compression).map_err(|x| x.into())

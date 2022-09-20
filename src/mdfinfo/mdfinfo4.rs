@@ -300,7 +300,7 @@ impl MdfInfo4 {
                     cg_block.cg_cg_master = Some(*cg_pos);
                     cg_block.cg_flags = 0b1000;
                     cg_block.cg_links = 7; // with cg_cg_master
-                    cg_block.cg_len = 112;
+                                           // cg_block.cg_len = 112;
                     master_channel = master.clone();
                 }
             }
@@ -326,6 +326,7 @@ impl MdfInfo4 {
         // CN
         let n_bytes = data.byte_count();
         let cn = Cn4 {
+            header: default_short_header(BlockType::CN),
             unique_name: channel_name.to_string(),
             data,
             block: cn_block,
@@ -342,6 +343,7 @@ impl MdfInfo4 {
         let cg_pos = position_generator();
         cg_block.cg_data_bytes = n_bytes;
         let mut cg = Cg4 {
+            header: default_short_header(BlockType::CG),
             block: cg_block,
             master_channel_name: master_channel.clone(),
             cn: HashMap::new(),
@@ -566,7 +568,37 @@ pub struct Blockheader4Short {
     /// reserved, must be 0
     hdr_gap: [u8; 4],
     /// Length of block in bytes
-    hdr_len: u64,
+    pub hdr_len: u64,
+}
+
+impl Default for Blockheader4Short {
+    fn default() -> Self {
+        Blockheader4Short {
+            hdr_id: [35, 35, 67, 78], // ##CN
+            hdr_gap: [0u8; 4],
+            hdr_len: 160,
+        }
+    }
+}
+
+pub fn default_short_header(variant: BlockType) -> Blockheader4Short {
+    match variant {
+        BlockType::CG => Blockheader4Short {
+            hdr_id: [35, 35, 67, 71], // ##CG
+            hdr_gap: [0u8; 4],
+            hdr_len: 104, // 112 with cg_cg_master, 104 without,
+        },
+        BlockType::CN => Blockheader4Short {
+            hdr_id: [35, 35, 67, 78], // ##CN
+            hdr_gap: [0u8; 4],
+            hdr_len: 160,
+        },
+        _ => Blockheader4Short {
+            hdr_id: [35, 35, 67, 78], // ##CN
+            hdr_gap: [0u8; 4],
+            hdr_len: 160,
+        },
+    }
 }
 
 /// parse the block header and its fields id, (reserved), length except the number of links
@@ -680,13 +712,8 @@ fn read_meta_data(
     parent_block_type: BlockType,
 ) -> i64 {
     if target != 0 && !sharable.md_tx.contains_key(&target) {
-        rdr.seek_relative(target - position)
-            .expect("Could not reach block short header position"); // change buffer position
-        let block: Blockheader4 = rdr.read_le().expect("Could not read MD or TX Block");
-        let mut raw_data = vec![0u8; (block.hdr_len - 24) as usize];
-        rdr.read_exact(&mut raw_data)
-            .expect("Could not read rest of block after header");
-        position = target + block.hdr_len as i64;
+        let (raw_data, block, pos) = parse_block(rdr, target, position);
+        position = pos;
         let block_type = match block.hdr_id {
             [35, 35, 77, 68] => MetaDataBlockType::MdBlock,
             [35, 35, 84, 88] => MetaDataBlockType::TX,
@@ -694,7 +721,7 @@ fn read_meta_data(
         };
         let md = MetaData {
             block,
-            raw_data,
+            raw_data: raw_data.into_inner(),
             block_type,
             comments: HashMap::new(),
             parent_block_type,
@@ -1536,11 +1563,11 @@ impl SharableBlocks {
 #[allow(dead_code)]
 pub struct Cg4Block {
     /// ##CG
-    cg_id: [u8; 4],
+    // cg_id: [u8; 4],
     /// reserved
-    reserved: [u8; 4],
+    // reserved: [u8; 4],
     /// Length of block in bytes
-    pub cg_len: u64,
+    // pub cg_len: u64,
     /// # of links
     pub cg_links: u64,
     /// Pointer to next channel group block (CGBLOCK) (can be NIL)
@@ -1576,9 +1603,9 @@ pub struct Cg4Block {
 impl Default for Cg4Block {
     fn default() -> Self {
         Cg4Block {
-            cg_id: [35, 35, 67, 71], // ##CG
-            reserved: [0u8; 4],
-            cg_len: 104, // 112 with cg_cg_master, 104 without
+            // cg_id: [35, 35, 67, 71], // ##CG
+            // reserved: [0u8; 4],
+            // cg_len: 104, // 112 with cg_cg_master, 104 without
             cg_links: 6, // 7 with cg_cg_master, 6 without
             cg_cg_next: 0,
             cg_cn_first: 0,
@@ -1606,12 +1633,11 @@ fn parse_cg4_block(
     sharable: &mut SharableBlocks,
     record_id_size: u8,
 ) -> (Cg4, i64, usize) {
-    rdr.seek_relative(target - position)
-        .expect("Could not reach CG block position"); // change buffer position
-    let cg: Cg4Block = rdr
+    let (mut block, header, pos) = parse_block_short(rdr, target, position);
+    position = pos;
+    let cg: Cg4Block = block
         .read_le()
         .expect("Could not read buffer into Cg4Block struct");
-    position = target + cg.cg_len as i64;
 
     // Reads MD
     position = read_meta_data(rdr, sharable, cg.cg_md_comment, position, BlockType::CG);
@@ -1647,6 +1673,7 @@ fn parse_cg4_block(
     let record_length = cg.cg_data_bytes;
 
     let cg_struct = Cg4 {
+        header,
         block: cg,
         cn,
         master_channel_name: None,
@@ -1664,6 +1691,9 @@ fn parse_cg4_block(
 /// it contains the related channels structure, a set of channel names, the dedicated master channel name and other helper data.
 #[derive(Debug, Clone)]
 pub struct Cg4 {
+    /// short header
+    pub header: Blockheader4Short,
+    /// CG block without header
     pub block: Cg4Block,
     /// hashmap of channels
     pub cn: CnType,
@@ -1774,11 +1804,11 @@ pub fn parse_cg4(
 #[br(little)]
 pub struct Cn4Block {
     /// ##CN
-    cn_id: [u8; 4],
+    // cn_id: [u8; 4],
     /// reserved
-    reserved: [u8; 4],
+    // reserved: [u8; 4],
     /// Length of block in bytes
-    pub cn_len: u64,
+    // pub cn_len: u64,
     /// # of links
     cn_links: u64,
     /// Pointer to next channel block (CNBLOCK) (can be NIL)
@@ -1838,9 +1868,9 @@ pub struct Cn4Block {
 impl Default for Cn4Block {
     fn default() -> Self {
         Cn4Block {
-            cn_id: [35, 35, 67, 78], // ##CN
-            reserved: [0; 4],
-            cn_len: 160,
+            // cn_id: [35, 35, 67, 78], // ##CN
+            // reserved: [0; 4],
+            // cn_len: 160,
             cn_links: 8,
             cn_cn_next: 0,
             cn_composition: 0,
@@ -1875,6 +1905,9 @@ impl Default for Cn4Block {
 /// and other attributes frequently needed and computed
 #[derive(Debug, Default)]
 pub struct Cn4 {
+    /// short header
+    pub header: Blockheader4Short,
+    /// CN Block without short header
     pub block: Cn4Block,
     /// unique channel name string
     pub unique_name: String,
@@ -1897,6 +1930,7 @@ pub struct Cn4 {
 impl Clone for Cn4 {
     fn clone(&self) -> Self {
         Self {
+            header: self.header.clone(),
             block: self.block.clone(),
             unique_name: self.unique_name.clone(),
             block_position: self.block_position,
@@ -2051,6 +2085,7 @@ fn can_open_date(
         ..Default::default()
     };
     let date_ms = Cn4 {
+        header: default_short_header(BlockType::CN),
         block,
         unique_name: String::from("ms"),
         block_position,
@@ -2069,6 +2104,7 @@ fn can_open_date(
         ..Default::default()
     };
     let min = Cn4 {
+        header: default_short_header(BlockType::CN),
         block,
         unique_name: String::from("min"),
         block_position,
@@ -2087,6 +2123,7 @@ fn can_open_date(
         ..Default::default()
     };
     let hour = Cn4 {
+        header: default_short_header(BlockType::CN),
         block,
         unique_name: String::from("hour"),
         block_position,
@@ -2105,6 +2142,7 @@ fn can_open_date(
         ..Default::default()
     };
     let day = Cn4 {
+        header: default_short_header(BlockType::CN),
         block,
         unique_name: String::from("day"),
         block_position,
@@ -2123,6 +2161,7 @@ fn can_open_date(
         ..Default::default()
     };
     let month = Cn4 {
+        header: default_short_header(BlockType::CN),
         block,
         unique_name: String::from("month"),
         block_position,
@@ -2141,6 +2180,7 @@ fn can_open_date(
         ..Default::default()
     };
     let year = Cn4 {
+        header: default_short_header(BlockType::CN),
         block,
         unique_name: String::from("year"),
         block_position,
@@ -2164,6 +2204,7 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         ..Default::default()
     };
     let ms: Cn4 = Cn4 {
+        header: default_short_header(BlockType::CN),
         block,
         unique_name: String::from("ms"),
         block_position,
@@ -2182,6 +2223,7 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         ..Default::default()
     };
     let days: Cn4 = Cn4 {
+        header: default_short_header(BlockType::CN),
         block,
         unique_name: String::from("day"),
         block_position,
@@ -2236,12 +2278,11 @@ fn parse_cn4_block(
     let (record_id_size, _cg_data_bytes, cg_inval_bytes) = record_layout;
     let mut n_cn: usize = 1;
     let mut cns: HashMap<i32, Cn4> = HashMap::new();
-    rdr.seek_relative(target - position)
-        .expect("Could not reach CN block position"); // change buffer position
-    let block: Cn4Block = rdr
+    let (mut block, cnheader, pos) = parse_block_short(rdr, target, position);
+    position = pos;
+    let block: Cn4Block = block
         .read_le()
         .expect("Could not read buffer into Cn4Block struct");
-    position = target + block.cn_len as i64;
 
     let pos_byte_beg = block.cn_byte_offset + record_id_size as u32;
     let n_bytes = calc_n_bytes_not_aligned(block.cn_bit_count + (block.cn_bit_offset as u32));
@@ -2334,6 +2375,7 @@ fn parse_cn4_block(
     let cn_type = block.cn_type;
 
     let cn_struct = Cn4 {
+        header: cnheader,
         block,
         unique_name: name,
         block_position: target,
