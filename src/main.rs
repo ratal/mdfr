@@ -87,3 +87,7 @@ fn main() -> Result<(), Error> {
 
     Ok(())
 }
+
+// TODO Improve CLI features/interface and upgrade to clap 4
+// TODO better error handling with anyhow
+// TODO add C interface
