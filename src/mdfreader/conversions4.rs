@@ -346,7 +346,7 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             ChannelData::ArrayDFloat64(a) => {
                 let mut new_array = vec![0f64; a.0.len()];
                 new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a as f64 * p2 + p1;
+                    *new_array = *a * p2 + p1;
                 });
                 cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
             }
@@ -376,7 +376,7 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
                     .iter_mut()
                     .zip(&a.0 .0)
                     .for_each(|(new_array, a)| {
-                        *new_array = *a as f64 * p2 + p1;
+                        *new_array = *a * p2 + p1;
                     });
                 cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
             }
@@ -665,7 +665,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
         ChannelData::ArrayDFloat64(a) => {
             let mut new_array = vec![0f64; a.0.len()];
             new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
+                let m = *a;
                 let m_2 = f64::powi(m, 2);
                 *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
             });
@@ -989,7 +989,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
         ChannelData::ArrayDFloat64(a) => {
             let mut new_array = vec![0f64; a.0.len()];
             new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                map.insert("X".to_string(), *a as f64);
+                map.insert("X".to_string(), *a);
                 *new_array = compiled
                     .eval(&slab, &mut map)
                     .expect("could not evaluate algebraic expression");
@@ -3343,7 +3343,7 @@ fn value_to_text(
         ChannelData::Int48(a) => {
             let mut new_array = vec![String::new(); *cycle_count as usize];
             new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let ref_val = *a as i64;
+                let ref_val = *a;
                 if let Some(tosc) = table_int.get(&ref_val) {
                     match tosc {
                         TextOrScaleConversion::Txt(txt) => {
@@ -4167,7 +4167,7 @@ fn value_range_to_text(
                             *new_array = txt.clone();
                         }
                         DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
+                            *new_array = conv.eval_to_txt(*a);
                         }
                         _ => {
                             *new_array = a.to_string();
@@ -4310,7 +4310,7 @@ fn text_to_text(cn: &mut Cn4, cc_ref: &[i64], cycle_count: &u64, sharable: &Shar
         }
     }
     let mut default: Option<String> = None;
-    if let Some(txt) = sharable.get_tx(cc_ref[(cc_ref.len() - 1) as usize]) {
+    if let Some(txt) = sharable.get_tx(cc_ref[cc_ref.len() - 1]) {
         default = Some(txt);
     }
     match &mut cn.data {

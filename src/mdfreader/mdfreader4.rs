@@ -1163,8 +1163,7 @@ fn read_all_channels_unsorted_from_bytes(
                 u32::from_le_bytes(rec.try_into().expect("Could not convert record id u32")) as u64;
         } else if dg_rec_id_size == 8 && remaining >= 8 {
             let rec = &data[position..position + std::mem::size_of::<u64>()];
-            rec_id =
-                u64::from_le_bytes(rec.try_into().expect("Could not convert record id u64")) as u64;
+            rec_id = u64::from_le_bytes(rec.try_into().expect("Could not convert record id u64"));
         } else {
             break; // not enough data remaining
         }

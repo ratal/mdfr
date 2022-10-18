@@ -252,7 +252,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Mdf {
                         Compo::CA(c) => {
                             let mut header = Blockheader4::default();
                             header.hdr_id = [35, 35, 67, 65]; // ##CA
-                            header.hdr_len = c.ca_len as u64;
+                            header.hdr_len = c.ca_len;
                             header.hdr_links = 1;
                             buffer
                                 .write_le(&header)
@@ -364,7 +364,7 @@ fn create_ld(m: Option<&Bitmap>, offset: &mut i64) -> Option<Ld4Block> {
         ld_block.ld_n_links = (ld_block.ld_count + 1) as u64;
         ld_block.ld_flags = 0b0;
     }
-    ld_block.ld_len = 40 + (ld_block.ld_n_links * 8) as u64;
+    ld_block.ld_len = 40 + (ld_block.ld_n_links * 8);
     *offset = ld_block.ld_len as i64;
     ld_block.ld_links.push(*offset);
     Some(ld_block)
@@ -448,7 +448,7 @@ fn create_dz_di(mask: &Bitmap, offset: &mut i64) -> Option<(DataBlock, Vec<u8>)>
     } else {
         dz_invalid_block.len = data_bytes.len() as u64 + 48;
         let byte_aligned = 8 - data_bytes.len() % 8;
-        data_bytes = [data_bytes, vec![0; byte_aligned as usize]].concat();
+        data_bytes = [data_bytes, vec![0; byte_aligned]].concat();
         dz_invalid_block.dz_org_block_type = [68, 73]; // DI
         *offset += dz_invalid_block.len as i64 + byte_aligned as i64;
         Some((DataBlock::DZ(dz_invalid_block), data_bytes))

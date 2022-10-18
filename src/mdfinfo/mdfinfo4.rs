@@ -1940,7 +1940,7 @@ pub struct Cn4 {
 impl Clone for Cn4 {
     fn clone(&self) -> Self {
         Self {
-            header: self.header.clone(),
+            header: self.header,
             block: self.block.clone(),
             unique_name: self.unique_name.clone(),
             block_position: self.block_position,
@@ -2682,7 +2682,7 @@ fn parse_ca_block(
         (shape_dim.into(), Order::RowMajor)
     };
 
-    let mut val = vec![0.0f64; snd as usize];
+    let mut val = vec![0.0f64; snd];
     let ca_axis_value: Option<Vec<f64>> = if (ca_members.ca_flags & 0b100000) > 0 {
         ca_block
             .read_f64_into::<LittleEndian>(&mut val)

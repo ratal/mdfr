@@ -732,7 +732,7 @@ fn mdf_data_type(data_type: &DataType, endian: bool) -> u8 {
             DataType::FixedSizeList(_, _) => 16,
             DataType::LargeList(_) => 16,
             DataType::Extension(ext_str, dtype, _) => match ext_str.as_str() {
-                "Tensor" => mdf_data_type(&**dtype, endian),
+                "Tensor" => mdf_data_type(dtype, endian),
                 _ => panic!("unsupported type"),
             },
             _ => panic!("unsupported type"),
@@ -769,7 +769,7 @@ fn mdf_data_type(data_type: &DataType, endian: bool) -> u8 {
             DataType::FixedSizeList(_, _) => 15,
             DataType::LargeList(_) => 15,
             DataType::Extension(ext_str, dtype, _) => match ext_str.as_str() {
-                "Tensor" => mdf_data_type(&**dtype, endian),
+                "Tensor" => mdf_data_type(dtype, endian),
                 _ => panic!("unsupported type"),
             },
             _ => panic!("unsupported type"),
@@ -1372,7 +1372,7 @@ fn to_bytes(array: &Box<dyn Array>, data_type: &DataType) -> Vec<u8> {
             _ => panic!("unsupported FixedSizeList physical type"),
         },
         DataType::Extension(ext_str, dtype, _) => match ext_str.as_str() {
-            "Tensor" => to_bytes(array, &**dtype),
+            "Tensor" => to_bytes(array, dtype),
             _ => panic!("unsupported type"),
         },
         _ => panic!("unsupported type"),

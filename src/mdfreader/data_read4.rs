@@ -347,7 +347,7 @@ pub fn read_one_channel_array(data_bytes: &mut Vec<u8>, cn: &mut Cn4, cycle_coun
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
-                            let mut buf = vec![0; cycle_count * (ca.pnd as usize)];
+                            let mut buf = vec![0; cycle_count * ca.pnd];
                             Cursor::new(data_bytes)
                                 .read_i8_into(&mut buf)
                                 .expect("Could not read i8 array");
@@ -371,7 +371,7 @@ pub fn read_one_channel_array(data_bytes: &mut Vec<u8>, cn: &mut Cn4, cycle_coun
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
-                            let mut buf = vec![0; cycle_count * (ca.pnd as usize)];
+                            let mut buf = vec![0; cycle_count * ca.pnd];
                             if cn.endian {
                                 Cursor::new(data_bytes)
                                     .read_i16_into::<BigEndian>(&mut buf)
@@ -391,7 +391,7 @@ pub fn read_one_channel_array(data_bytes: &mut Vec<u8>, cn: &mut Cn4, cycle_coun
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
-                            let mut buf = vec![0; cycle_count * (ca.pnd as usize)];
+                            let mut buf = vec![0; cycle_count * ca.pnd];
                             if cn.endian {
                                 Cursor::new(data_bytes)
                                     .read_u16_into::<BigEndian>(&mut buf)
@@ -487,7 +487,7 @@ pub fn read_one_channel_array(data_bytes: &mut Vec<u8>, cn: &mut Cn4, cycle_coun
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
-                            let mut buf = vec![0; cycle_count * (ca.pnd as usize)];
+                            let mut buf = vec![0; cycle_count * ca.pnd];
                             if cn.endian {
                                 Cursor::new(data_bytes)
                                     .read_i32_into::<BigEndian>(&mut buf)
@@ -507,7 +507,7 @@ pub fn read_one_channel_array(data_bytes: &mut Vec<u8>, cn: &mut Cn4, cycle_coun
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
-                            let mut buf = vec![0; cycle_count * (ca.pnd as usize)];
+                            let mut buf = vec![0; cycle_count * ca.pnd];
                             if cn.endian {
                                 Cursor::new(data_bytes)
                                     .read_u32_into::<BigEndian>(&mut buf)
@@ -527,7 +527,7 @@ pub fn read_one_channel_array(data_bytes: &mut Vec<u8>, cn: &mut Cn4, cycle_coun
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
-                            let mut buf = vec![0f32; cycle_count * (ca.pnd as usize)];
+                            let mut buf = vec![0f32; cycle_count * ca.pnd];
                             if cn.endian {
                                 Cursor::new(data_bytes)
                                     .read_f32_into::<BigEndian>(&mut buf)
@@ -613,7 +613,7 @@ pub fn read_one_channel_array(data_bytes: &mut Vec<u8>, cn: &mut Cn4, cycle_coun
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
-                            let mut buf = vec![0; cycle_count * (ca.pnd as usize)];
+                            let mut buf = vec![0; cycle_count * ca.pnd];
                             if cn.endian {
                                 Cursor::new(data_bytes)
                                     .read_i64_into::<BigEndian>(&mut buf)
@@ -634,7 +634,7 @@ pub fn read_one_channel_array(data_bytes: &mut Vec<u8>, cn: &mut Cn4, cycle_coun
                     match &compo.block {
                         Compo::CA(ca) => {
                             if n_bytes == 8 {
-                                let mut buf = vec![0; cycle_count * (ca.pnd as usize)];
+                                let mut buf = vec![0; cycle_count * ca.pnd];
                                 if cn.endian {
                                     Cursor::new(data_bytes)
                                         .read_u64_into::<BigEndian>(&mut buf)
@@ -669,7 +669,7 @@ pub fn read_one_channel_array(data_bytes: &mut Vec<u8>, cn: &mut Cn4, cycle_coun
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
-                            let mut buf = vec![0f64; cycle_count * (ca.pnd as usize)];
+                            let mut buf = vec![0f64; cycle_count * (ca.pnd)];
                             if cn.endian {
                                 Cursor::new(data_bytes)
                                     .read_f64_into::<BigEndian>(&mut buf)

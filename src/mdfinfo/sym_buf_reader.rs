@@ -192,7 +192,7 @@ where
                 if remaining <= 0 {
                     self.seek(SeekFrom::Start(0))?;
                     let n_read = self.reader.read(&mut self.buf)?;
-                    self.cap = n_read as usize;
+                    self.cap = n_read;
                     self.pos = stream_position as usize;
                     return Ok(self.buffer());
                 }
