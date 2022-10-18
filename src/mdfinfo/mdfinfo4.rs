@@ -231,7 +231,7 @@ impl MdfInfo4 {
     pub fn add_channel(
         &mut self,
         channel_name: String,
-        data: ChannelData,
+        data: DataSignature,
         mut master_channel: Option<String>,
         master_type: Option<u8>,
         master_flag: bool,
@@ -239,11 +239,12 @@ impl MdfInfo4 {
         description: Option<String>,
     ) {
         let mut cg_block = Cg4Block::default();
+        cg_block.cg_cycle_count = data.len as u64;
         // Basic channel block
         let mut cn_block = Cn4Block::default();
         let machine_endian: bool = cfg!(target_endian = "big");
-        cn_block.cn_data_type = data.data_type(machine_endian);
-        cn_block.cn_bit_count = data.bit_count();
+        cn_block.cn_data_type = data.data_type;
+        cn_block.cn_bit_count = data.bit_count;
         let cn_pos = position_generator();
         cn_block.cn_sync_type = master_type.unwrap_or(0);
 
@@ -254,11 +255,11 @@ impl MdfInfo4 {
             .create_tx(channel_name_position, channel_name.to_string());
 
         // Channel array
-        let data_ndim = data.ndim() - 1;
+        let data_ndim = data.ndim - 1;
         let mut composition: Option<Composition> = None;
         if data_ndim > 0 {
             let data_dim_size = data
-                .shape()
+                .shape
                 .0
                 .iter()
                 .skip(1)
@@ -270,7 +271,7 @@ impl MdfInfo4 {
                 ca_block.snd += x as usize;
                 ca_block.pnd *= x as usize;
             }
-            cg_block.cg_data_bytes = ca_block.pnd as u32 * data.byte_count();
+            cg_block.cg_data_bytes = ca_block.pnd as u32 * data.byte_count;
 
             let composition_position = position_generator();
             cn_block.cn_composition = composition_position;
@@ -324,11 +325,11 @@ impl MdfInfo4 {
         }
 
         // CN
-        let n_bytes = data.byte_count();
+        let n_bytes = data.byte_count;
         let cn = Cn4 {
             header: default_short_header(BlockType::CN),
             unique_name: channel_name.to_string(),
-            data,
+            data: ChannelData::UInt8(vec![]),
             block: cn_block,
             endian: machine_endian,
             block_position: cn_pos,
@@ -481,6 +482,15 @@ impl MdfInfo4 {
         }
     }
     // TODO Extract attachments
+}
+
+pub struct DataSignature {
+    pub(crate) len: usize,
+    pub(crate) data_type: u8,
+    pub(crate) bit_count: u32,
+    pub(crate) byte_count: u32,
+    pub(crate) ndim: usize,
+    pub(crate) shape: (Vec<usize>, Order),
 }
 
 /// creates random negative position

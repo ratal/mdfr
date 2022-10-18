@@ -17,13 +17,14 @@ use arrow2::datatypes::{Field, Schema};
 use arrow2::error::Result;
 
 use crate::export::parquet::export_to_parquet;
+use crate::mdfinfo::mdfinfo4::DataSignature;
 use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::arrow::mdf_data_to_arrow;
 use crate::mdfreader::mdfreader3::mdfreader3;
 use crate::mdfreader::mdfreader4::mdfreader4;
 use crate::mdfwriter::mdfwriter4::mdfwriter4;
 
-use self::channel_data::ChannelData;
+use self::arrow::{arrow_bit_count, arrow_byte_count, arrow_to_mdf_data_type, ndim, shape};
 
 /// Main Mdf struct holding mdfinfo, arrow data and schema
 #[derive(Debug)]
@@ -176,10 +177,19 @@ impl Mdf {
         unit: Option<String>,
         description: Option<String>,
     ) {
-        // mldfinfo metadata but no data
+        // mdfinfo metadata but no data
+        let machine_endian: bool = cfg!(target_endian = "big");
+        let data_signature = DataSignature {
+            len: data.len(),
+            data_type: arrow_to_mdf_data_type(&data, machine_endian),
+            bit_count: arrow_bit_count(&data),
+            byte_count: arrow_byte_count(&data),
+            ndim: ndim(&data),
+            shape: shape(&data),
+        };
         self.mdf_info.add_channel(
             channel_name.clone(),
-            ChannelData::UInt8(vec![]),
+            data_signature,
             master_channel.clone(),
             master_type,
             master_flag,

@@ -403,7 +403,7 @@ fn create_dz_dv(data: Box<dyn Array>, offset: &mut i64) -> (DataBlock, usize, Ve
     dz_block.dz_data_length = data_bytes.len() as u64;
     let dv_dz_block: DataBlock;
     let byte_aligned: usize;
-    dz_block.dz_org_data_length = (data.len() * arrow_bit_count(&data) as usize / 8) as u64;
+    dz_block.dz_org_data_length = (data.len() * arrow_byte_count(&data) as usize) as u64;
     if dz_block.dz_org_data_length < dz_block.dz_data_length {
         (dv_dz_block, byte_aligned, data_bytes) = create_dv(data, offset);
     } else {

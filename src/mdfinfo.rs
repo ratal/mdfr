@@ -26,6 +26,7 @@ use crate::mdfreader::channel_data::ChannelData;
 use crate::mdfwriter::mdfwriter3::convert3to4;
 
 use self::mdfinfo3::build_channel_db3;
+use self::mdfinfo4::DataSignature;
 use self::sym_buf_reader::SymBufReader;
 
 /// joins mdf versions 3.x and 4.x
@@ -266,7 +267,7 @@ impl MdfInfo {
     pub fn add_channel(
         &mut self,
         channel_name: String,
-        data: ChannelData,
+        data: DataSignature,
         master_channel: Option<String>,
         master_type: Option<u8>,
         master_flag: bool,
