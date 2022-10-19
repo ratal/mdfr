@@ -1033,6 +1033,7 @@ fn read_all_channels_unsorted(
     }
 
     // reads the sorted data block into chunks
+    let mut data: Vec<u8> = Vec::new();
     let mut data_chunk: Vec<u8>;
     while position < data_block_length {
         if (data_block_length - position) > CHUNK_SIZE_READING {
@@ -1046,8 +1047,9 @@ fn read_all_channels_unsorted(
         }
         rdr.read_exact(&mut data_chunk)
             .expect("Could not read data chunk");
+        data.extend(data_chunk);
         read_all_channels_unsorted_from_bytes(
-            &mut data_chunk,
+            &mut data,
             dg,
             &mut record_counter,
             &mut decoder,
@@ -1193,9 +1195,17 @@ fn read_all_channels_unsorted_from_bytes(
                                             target_cn.endian,
                                         );
                                         *nrecord += 1;
+                                    } else {
+                                        panic!("could not find the record id");
                                     }
+                                } else {
+                                    panic!("could not find the target record position");
                                 }
+                            } else {
+                                panic!("could not find the target record id");
                             }
+                        } else {
+                            panic!("no vsld in CG, wrong cg_flags");
                         }
                         position += length;
                     } else {
@@ -1209,11 +1219,15 @@ fn read_all_channels_unsorted_from_bytes(
                 let record = &data[position..position + cg.record_length as usize];
                 if let Some((_nrecord, data)) = record_counter.get_mut(&rec_id) {
                     data.extend(record);
+                } else {
+                    panic!("could not find the record id");
                 }
                 position += record_length;
             } else {
                 break; // not enough data remaining
             }
+        } else {
+            panic!("could not find the record id");
         }
         remaining = data_length - position;
     }
