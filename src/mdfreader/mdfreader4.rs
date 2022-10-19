@@ -1174,14 +1174,15 @@ fn read_all_channels_unsorted_from_bytes(
             let record_length = cg.record_length as usize;
             if (cg.block.cg_flags & 0b1) != 0 {
                 // VLSD channel
-                if remaining >= 4 {
-                    position += dg_rec_id_size;
-                    let len = &data[position..position + std::mem::size_of::<u32>()];
+                if remaining >= 4 + dg_rec_id_size {
+                    let len = &data[position + dg_rec_id_size
+                        ..position + dg_rec_id_size + std::mem::size_of::<u32>()];
                     let length: usize =
                         u32::from_le_bytes(len.try_into().expect("Could not read length")) as usize;
-                    position += std::mem::size_of::<u32>();
-                    remaining = data_length - position;
+                    remaining =
+                        data_length - position - std::mem::size_of::<u32>() - dg_rec_id_size;
                     if remaining >= length {
+                        position += dg_rec_id_size + std::mem::size_of::<u32>();
                         let record = &data[position..position + length];
                         if let Some((target_rec_id, target_rec_pos)) = cg.vlsd_cg {
                             if let Some(target_cg) = dg.cg.get_mut(&target_rec_id) {
