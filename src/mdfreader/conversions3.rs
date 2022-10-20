@@ -319,7 +319,7 @@ fn linear_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 new_array
                     .iter_mut()
                     .zip(&a.0 .0)
-                    .for_each(|(new_array, a)| *new_array = *a as f64 * p2 + p1);
+                    .for_each(|(new_array, a)| *new_array = *a * p2 + p1);
                 cn.data =
                     ChannelData::ArrayDComplex64((ArrowComplex::<f64>(new_array), a.1.clone()));
             }

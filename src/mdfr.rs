@@ -102,7 +102,7 @@ impl Mdfr {
             if !series_dict.is_empty() {
                 let locals = PyDict::new(py);
                 locals
-                    .set_item("series", &series_dict)
+                    .set_item("series", series_dict)
                     .expect("cannot set python series_list");
                 py.import("polars").expect("Could import polars");
                 py.run(

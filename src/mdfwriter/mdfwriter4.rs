@@ -11,9 +11,9 @@ use std::{
 use crate::{
     mdfinfo::{
         mdfinfo4::{
-            BlockType, Blockheader4, Ca4Block, Ca4BlockMembers, Cg4, Cg4Block, Cn4, Cn4Block,
-            Compo, Composition, Dg4, Dg4Block, Dz4Block, FhBlock, Ld4Block, MdfInfo4, MetaData,
-            MetaDataBlockType,
+            default_short_header, BlockType, Blockheader4, Ca4Block, Ca4BlockMembers, Cg4,
+            Cg4Block, Cn4, Cn4Block, Compo, Composition, Dg4, Dg4Block, Dz4Block, FhBlock,
+            Ld4Block, MdfInfo4, MetaData, MetaDataBlockType,
         },
         MdfInfo,
     },
@@ -225,8 +225,14 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Mdf {
     for (_position, dg) in new_info.dg.iter() {
         buffer.write_le(&dg.block).expect("Could not write CGBlock");
         for (_red_id, cg) in dg.cg.iter() {
+            buffer
+                .write_le(&cg.header)
+                .expect("Could not write CGBlock header");
             buffer.write_le(&cg.block).expect("Could not write CGBlock");
             for (_rec_pos, cn) in cg.cn.iter() {
+                buffer
+                    .write_le(&cn.header)
+                    .expect("Could not write CNBlock header");
                 buffer.write_le(&cn.block).expect("Could not write CNBlock");
                 // TX Block channel name
                 if let Some(tx_name_metadata) = new_info.sharable.md_tx.get(&cn.block.cn_tx_name) {
@@ -246,7 +252,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Mdf {
                         Compo::CA(c) => {
                             let mut header = Blockheader4::default();
                             header.hdr_id = [35, 35, 67, 65]; // ##CA
-                            header.hdr_len = c.ca_len as u64;
+                            header.hdr_len = c.ca_len;
                             header.hdr_links = 1;
                             buffer
                                 .write_le(&header)
@@ -358,7 +364,7 @@ fn create_ld(m: Option<&Bitmap>, offset: &mut i64) -> Option<Ld4Block> {
         ld_block.ld_n_links = (ld_block.ld_count + 1) as u64;
         ld_block.ld_flags = 0b0;
     }
-    ld_block.ld_len = 40 + (ld_block.ld_n_links * 8) as u64;
+    ld_block.ld_len = 40 + (ld_block.ld_n_links * 8);
     *offset = ld_block.ld_len as i64;
     ld_block.ld_links.push(*offset);
     Some(ld_block)
@@ -397,7 +403,7 @@ fn create_dz_dv(data: Box<dyn Array>, offset: &mut i64) -> (DataBlock, usize, Ve
     dz_block.dz_data_length = data_bytes.len() as u64;
     let dv_dz_block: DataBlock;
     let byte_aligned: usize;
-    dz_block.dz_org_data_length = (data.len() * arrow_bit_count(&data) as usize / 8) as u64;
+    dz_block.dz_org_data_length = (data.len() * arrow_byte_count(&data) as usize) as u64;
     if dz_block.dz_org_data_length < dz_block.dz_data_length {
         (dv_dz_block, byte_aligned, data_bytes) = create_dv(data, offset);
     } else {
@@ -442,7 +448,7 @@ fn create_dz_di(mask: &Bitmap, offset: &mut i64) -> Option<(DataBlock, Vec<u8>)>
     } else {
         dz_invalid_block.len = data_bytes.len() as u64 + 48;
         let byte_aligned = 8 - data_bytes.len() % 8;
-        data_bytes = [data_bytes, vec![0; byte_aligned as usize]].concat();
+        data_bytes = [data_bytes, vec![0; byte_aligned]].concat();
         dz_invalid_block.dz_org_block_type = [68, 73]; // DI
         *offset += dz_invalid_block.len as i64 + byte_aligned as i64;
         Some((DataBlock::DZ(dz_invalid_block), data_bytes))
@@ -465,7 +471,9 @@ fn create_blocks(
         let byte_count = arrow_byte_count(data);
         // no empty strings
         let mut dg_block = Dg4Block::default();
+        let mut cg_block_header = default_short_header(BlockType::CG);
         let mut cg_block = Cg4Block::default();
+        let cn_block_header = default_short_header(BlockType::CN);
         let mut cn_block = Cn4Block::default();
         // DG Block
         let dg_position = pointer;
@@ -476,7 +484,7 @@ fn create_blocks(
         let cg_position = pointer;
         if *cg_cg_master != 0 && !master_flag {
             cg_block.cg_links = 7; // with cg_cg_master
-            cg_block.cg_len = 112;
+            cg_block_header.hdr_len = 112;
             cg_block.cg_cg_master = Some(*cg_cg_master);
             cg_block.cg_flags = 0b1000;
         }
@@ -487,7 +495,7 @@ fn create_blocks(
             // One byte for invalid data as only one channel per CG
             cg_block.cg_inval_bytes = 1;
         }
-        pointer += cg_block.cg_len as i64;
+        pointer += cg_block_header.hdr_len as i64;
         cg_block.cg_cn_first = pointer;
 
         // CN Block
@@ -507,7 +515,7 @@ fn create_blocks(
 
         cn_block.cn_bit_count = bit_count;
 
-        pointer += cn_block.cn_len as i64;
+        pointer += cn_block_header.hdr_len as i64;
 
         // channel name TX
         let mut tx_name_block = MetaData::new(MetaDataBlockType::TX, BlockType::CN);
@@ -586,6 +594,7 @@ fn create_blocks(
         dg_block.dg_dg_next = pointer;
         // saves the blocks in the mdfinfo4 structure
         let new_cn = Cn4 {
+            header: cn_block_header,
             unique_name: cn.unique_name.clone(),
             data: data_type_init(
                 cn_block.cn_type,
@@ -603,6 +612,7 @@ fn create_blocks(
             channel_data_valid: false,
         };
         let mut new_cg = Cg4 {
+            header: cg_block_header,
             block: cg_block,
             master_channel_name: cg.master_channel_name.clone(),
             cn: HashMap::new(),

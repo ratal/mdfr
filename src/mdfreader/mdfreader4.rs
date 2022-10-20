@@ -1,9 +1,9 @@
 //! data read and load in memory based in MdfInfo4's metadata
-use crate::mdfinfo::mdfinfo4::{parse_block_header, Cg4, Cn4, Compo, Dg4};
 use crate::mdfinfo::mdfinfo4::{
     parse_dz, parser_dl4_block, parser_ld4_block, validate_channels_set, Dl4Block, Dt4Block,
     Hl4Block, Ld4Block,
 };
+use crate::mdfinfo::mdfinfo4::{Blockheader4, Cg4, Cn4, Compo, Dg4};
 use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::channel_data::ChannelData;
 use crate::mdfreader::channel_data::Order;
@@ -14,6 +14,7 @@ use binrw::BinReaderExt;
 use encoding_rs::{Decoder, UTF_16BE, UTF_16LE, WINDOWS_1252};
 use rayon::prelude::*;
 use std::fs::File;
+use std::io::Cursor;
 use std::str;
 use std::string::String;
 use std::{
@@ -909,7 +910,11 @@ fn parser_dl4_unsorted(
         for data_pointer in dl.dl_data {
             rdr.seek_relative(data_pointer - position)
                 .expect("Could not reach DT or DZ position from DL");
-            let header = parse_block_header(rdr);
+            let mut buf = [0u8; 24];
+            rdr.read_exact(&mut buf)
+                .expect("could not read blockheader4 Id");
+            let mut block = Cursor::new(buf);
+            let header: Blockheader4 = block.read_le().expect("could not parse blockheader4");
             if header.hdr_id == "##DZ".as_bytes() {
                 let (dt, _block) = parse_dz(rdr);
                 data.extend(dt);
@@ -1028,6 +1033,7 @@ fn read_all_channels_unsorted(
     }
 
     // reads the sorted data block into chunks
+    let mut data: Vec<u8> = Vec::new();
     let mut data_chunk: Vec<u8>;
     while position < data_block_length {
         if (data_block_length - position) > CHUNK_SIZE_READING {
@@ -1041,8 +1047,9 @@ fn read_all_channels_unsorted(
         }
         rdr.read_exact(&mut data_chunk)
             .expect("Could not read data chunk");
+        data.extend(data_chunk);
         read_all_channels_unsorted_from_bytes(
-            &mut data_chunk,
+            &mut data,
             dg,
             &mut record_counter,
             &mut decoder,
@@ -1139,6 +1146,7 @@ fn read_all_channels_unsorted_from_bytes(
     let mut position: usize = 0;
     let data_length = data.len();
     let dg_rec_id_size = dg.block.dg_rec_id_size as usize;
+    let vlsd_data_start_offset = dg_rec_id_size + std::mem::size_of::<u32>();
     // unsort data into sorted data blocks, except for VLSD CG.
     let mut remaining: usize = data_length - position;
     while remaining > 0 {
@@ -1158,8 +1166,7 @@ fn read_all_channels_unsorted_from_bytes(
                 u32::from_le_bytes(rec.try_into().expect("Could not convert record id u32")) as u64;
         } else if dg_rec_id_size == 8 && remaining >= 8 {
             let rec = &data[position..position + std::mem::size_of::<u64>()];
-            rec_id =
-                u64::from_le_bytes(rec.try_into().expect("Could not convert record id u64")) as u64;
+            rec_id = u64::from_le_bytes(rec.try_into().expect("Could not convert record id u64"));
         } else {
             break; // not enough data remaining
         }
@@ -1168,14 +1175,13 @@ fn read_all_channels_unsorted_from_bytes(
             let record_length = cg.record_length as usize;
             if (cg.block.cg_flags & 0b1) != 0 {
                 // VLSD channel
-                if remaining >= 4 {
-                    position += dg_rec_id_size;
-                    let len = &data[position..position + std::mem::size_of::<u32>()];
+                if remaining >= 4 + dg_rec_id_size {
+                    let len = &data[position + dg_rec_id_size..position + vlsd_data_start_offset];
                     let length: usize =
                         u32::from_le_bytes(len.try_into().expect("Could not read length")) as usize;
-                    position += std::mem::size_of::<u32>();
-                    remaining = data_length - position;
+                    remaining = data_length - position - vlsd_data_start_offset;
                     if remaining >= length {
+                        position += vlsd_data_start_offset;
                         let record = &data[position..position + length];
                         if let Some((target_rec_id, target_rec_pos)) = cg.vlsd_cg {
                             if let Some(target_cg) = dg.cg.get_mut(&target_rec_id) {
@@ -1189,9 +1195,17 @@ fn read_all_channels_unsorted_from_bytes(
                                             target_cn.endian,
                                         );
                                         *nrecord += 1;
+                                    } else {
+                                        panic!("could not find the record id");
                                     }
+                                } else {
+                                    panic!("could not find the target record position");
                                 }
+                            } else {
+                                panic!("could not find the target record id");
                             }
+                        } else {
+                            panic!("no vsld in CG, wrong cg_flags");
                         }
                         position += length;
                     } else {
@@ -1205,11 +1219,15 @@ fn read_all_channels_unsorted_from_bytes(
                 let record = &data[position..position + cg.record_length as usize];
                 if let Some((_nrecord, data)) = record_counter.get_mut(&rec_id) {
                     data.extend(record);
+                } else {
+                    panic!("could not find the record id");
                 }
                 position += record_length;
             } else {
                 break; // not enough data remaining
             }
+        } else {
+            panic!("could not find the record id");
         }
         remaining = data_length - position;
     }

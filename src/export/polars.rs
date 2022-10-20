@@ -64,7 +64,7 @@ impl Mdf {
                     Some(ChunkedArray::<Float64Type>::from_chunks(name, chunks).into_series())
                 }
                 ArrowDataType::Timestamp(tu, tz) => {
-                    let mut time_zone = tz.clone();
+                    let mut time_zone = tz;
                     if time_zone.as_deref() == Some("") {
                         time_zone = None;
                     }
@@ -142,7 +142,6 @@ fn cast_chunks(chunks: &[ArrayRef], dtype: &DataType) -> Result<Vec<ArrayRef>, P
     let chunks = chunks
         .iter()
         .map(|arr| cast::cast(arr.as_ref(), &dtype.to_arrow(), Default::default()))
-        .map(|arr| arr.map(|x| x))
         .collect::<arrow2::error::Result<Vec<_>>>()?;
     Ok(chunks)
 }

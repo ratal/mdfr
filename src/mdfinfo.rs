@@ -7,12 +7,13 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
 use std::fs::{File, OpenOptions};
-use std::io::{BufReader, Read};
+use std::io::Read;
 use std::path::PathBuf;
 use std::str;
 
 pub mod mdfinfo3;
 pub mod mdfinfo4;
+pub mod sym_buf_reader;
 
 use binrw::io::Cursor;
 use mdfinfo3::{hd3_comment_parser, hd3_parser, parse_dg3, MdfInfo3, SharableBlocks3};
@@ -25,6 +26,8 @@ use crate::mdfreader::channel_data::ChannelData;
 use crate::mdfwriter::mdfwriter3::convert3to4;
 
 use self::mdfinfo3::build_channel_db3;
+use self::mdfinfo4::DataSignature;
+use self::sym_buf_reader::SymBufReader;
 
 /// joins mdf versions 3.x and 4.x
 #[derive(Debug)]
@@ -88,7 +91,7 @@ impl MdfInfo {
             .write(false)
             .open(file_name)
             .expect("Cannot find the file");
-        let mut rdr = BufReader::new(&f);
+        let mut rdr = SymBufReader::new(&f);
         // Read beginning of ID Block
         let mut buf = [0u8; 64]; // reserved
         rdr.read_exact(&mut buf)
@@ -264,7 +267,7 @@ impl MdfInfo {
     pub fn add_channel(
         &mut self,
         channel_name: String,
-        data: ChannelData,
+        data: DataSignature,
         master_channel: Option<String>,
         master_type: Option<u8>,
         master_flag: bool,

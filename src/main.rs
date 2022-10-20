@@ -18,7 +18,8 @@ fn main() -> Result<(), Error> {
             Arg::new("file")
                 .help("Sets the input file to use")
                 .required(true)
-                .takes_value(true)
+                .num_args(1)
+                .value_name("FILE_NAME")
                 .index(1),
         )
         .arg(
@@ -26,64 +27,71 @@ fn main() -> Result<(), Error> {
                 .long("write")
                 .short('w')
                 .required(false)
-                .takes_value(true)
-                .help("write read content into mdf4.2 file"),
+                .num_args(1)
+                .value_name("FILE_NAME")
+                .help("write the read content into a new mdf4.2 file"),
         )
         .arg(
             Arg::new("compress")
                 .long("compress")
                 .short('z')
-                .required(false)
-                .takes_value(false)
-                .help("write read content compressed into mdf4.2 file"),
-        )
-        .arg(
-            Arg::new("convert3to4")
-                .long("convert3to4")
-                .short('c')
-                .required(false)
-                .takes_value(true)
-                .help("Converts mdf version 3.x to 4.2"),
+                .action(clap::ArgAction::SetTrue)
+                .help("compress data when writing into a new mdf4.2 file"),
         )
         .arg(
             Arg::new("export_to_parquet")
                 .long("export_to_parquet")
                 .short('p')
                 .required(false)
-                .takes_value(true)
+                .num_args(1)
+                .value_name("FILE_NAME")
                 .help("Converts mdf into parquet file"),
         )
         .arg(
             Arg::new("parquet_compression")
                 .long("parquet_compression")
                 .required(false)
-                .takes_value(true)
-                .help("Compresses data in parquet file, valid values are snappy, gzip, lzo"),
+                .num_args(1)
+                .value_name("ALGORITHM")
+                .help("Compression algorithm for writing data in parquet file, valid values are snappy, gzip, lzo. Default is uncompressed"),
+        )
+        .arg(
+            Arg::new("info")
+                .short('i')
+                .long("file_info")
+                .action(clap::ArgAction::SetTrue)
+                .help("prints file information"),
         )
         .get_matches();
 
-    let file_name = matches.value_of("file").expect("File name missing");
-    let mdf4_file_name = matches.value_of("write");
+    let file_name = matches
+        .get_one::<String>("file")
+        .expect("File name missing");
 
-    let mut mdf_file = mdfreader::mdfreader(file_name);
+    let mut mdf_file = mdfreader::Mdf::new(file_name);
+    if matches.get_flag("info") {
+        println!("{:?}", mdf_file.get_master_channel_names_set());
+    }
 
-    let compression = matches.is_present("compress");
+    let mdf4_file_name = matches.get_one::<String>("write");
+    let parquet_file_name = matches.get_one::<String>("export_to_parquet");
 
+    if mdf4_file_name.is_some() || parquet_file_name.is_some() {
+        mdf_file.load_all_channels_data_in_memory();
+    }
+
+    let compression = matches.get_flag("compress");
     if let Some(file_name) = mdf4_file_name {
         mdf_file.write(file_name, compression);
     }
 
-    let convert3to4_file_name = matches.value_of("convert3to4");
-    if let Some(file_name) = convert3to4_file_name {
-        mdf_file.mdf_info.convert3to4(file_name);
-    }
-
-    let parquet_compression = matches.value_of("parquet_compression");
-
-    let parquet_file_name = matches.value_of("export_to_parquet");
+    let parquet_compression = matches.get_one::<String>("parquet_compression");
     if let Some(file_name) = parquet_file_name {
-        mdf_file.export_to_parquet(file_name, parquet_compression)?;
+        mdf_file.export_to_parquet(file_name, parquet_compression.map(|x| &**x))?;
     }
 
     Ok(())
 }
+
+// TODO better error handling with anyhow
+// TODO add C interface

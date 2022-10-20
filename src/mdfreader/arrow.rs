@@ -1,4 +1,5 @@
 //! Converts ndarray data in into arrow.
+use crate::export::tensor::Order as TensorOrder;
 use crate::export::tensor::Tensor;
 use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::channel_data::ChannelData;
@@ -731,7 +732,7 @@ fn mdf_data_type(data_type: &DataType, endian: bool) -> u8 {
             DataType::FixedSizeList(_, _) => 16,
             DataType::LargeList(_) => 16,
             DataType::Extension(ext_str, dtype, _) => match ext_str.as_str() {
-                "Tensor" => mdf_data_type(&**dtype, endian),
+                "Tensor" => mdf_data_type(dtype, endian),
                 _ => panic!("unsupported type"),
             },
             _ => panic!("unsupported type"),
@@ -768,7 +769,7 @@ fn mdf_data_type(data_type: &DataType, endian: bool) -> u8 {
             DataType::FixedSizeList(_, _) => 15,
             DataType::LargeList(_) => 15,
             DataType::Extension(ext_str, dtype, _) => match ext_str.as_str() {
-                "Tensor" => mdf_data_type(&**dtype, endian),
+                "Tensor" => mdf_data_type(dtype, endian),
                 _ => panic!("unsupported type"),
             },
             _ => panic!("unsupported type"),
@@ -913,6 +914,153 @@ pub fn ndim(array: &Box<dyn Array>) -> usize {
             _ => panic!("unsupported type"),
         },
         _ => 1,
+    }
+}
+
+fn order_convert(tensor_order: &TensorOrder) -> Order {
+    match tensor_order {
+        TensorOrder::RowMajor => Order::RowMajor,
+        TensorOrder::ColumnMajor => Order::ColumnMajor,
+    }
+}
+
+/// returns the number of dimensions of the channel
+pub fn shape(array: &Box<dyn Array>) -> (Vec<usize>, Order) {
+    match array.data_type() {
+        DataType::Extension(ext_str, dtype, _) => match ext_str.as_str() {
+            "Tensor" => match &**dtype {
+                DataType::Int8 => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<i8>>()
+                        .expect("could not downcast to i8 array");
+                    (array.shape().to_vec(), order_convert(array.order()))
+                }
+                DataType::Int16 => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<i16>>()
+                        .expect("could not downcast to i16 array");
+                    (array.shape().to_vec(), order_convert(array.order()))
+                }
+                DataType::Int32 => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<i32>>()
+                        .expect("could not downcast to i32 array");
+                    (array.shape().to_vec(), order_convert(array.order()))
+                }
+                DataType::Int64 => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<i64>>()
+                        .expect("could not downcast to i64 array");
+                    (array.shape().to_vec(), order_convert(array.order()))
+                }
+                DataType::UInt8 => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<u8>>()
+                        .expect("could not downcast to u8 array");
+                    (array.shape().to_vec(), order_convert(array.order()))
+                }
+                DataType::UInt16 => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<u16>>()
+                        .expect("could not downcast to u16 array");
+                    (array.shape().to_vec(), order_convert(array.order()))
+                }
+                DataType::UInt32 => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<u32>>()
+                        .expect("could not downcast to u32 array");
+                    (array.shape().to_vec(), order_convert(array.order()))
+                }
+                DataType::UInt64 => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<u64>>()
+                        .expect("could not downcast to u64 array");
+                    (array.shape().to_vec(), order_convert(array.order()))
+                }
+                DataType::Float16 => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<f16>>()
+                        .expect("could not downcast to f16 array");
+                    (array.shape().to_vec(), order_convert(array.order()))
+                }
+                DataType::Float32 => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<f32>>()
+                        .expect("could not downcast to f32 array");
+                    (array.shape().to_vec(), order_convert(array.order()))
+                }
+                DataType::Float64 => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<f64>>()
+                        .expect("could not downcast to f64 array");
+                    (array.shape().to_vec(), order_convert(array.order()))
+                }
+                DataType::Timestamp(_, _) => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<i64>>()
+                        .expect("could not downcast to i64 array");
+                    (array.shape().to_vec(), order_convert(array.order()))
+                }
+                DataType::Date32 => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<i32>>()
+                        .expect("could not downcast to i64 array");
+                    (array.shape().to_vec(), order_convert(array.order()))
+                }
+                DataType::Date64 => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<i64>>()
+                        .expect("could not downcast to i64 array");
+                    (array.shape().to_vec(), order_convert(array.order()))
+                }
+                DataType::Time32(_) => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<i32>>()
+                        .expect("could not downcast to i64 array");
+                    (array.shape().to_vec(), order_convert(array.order()))
+                }
+                DataType::Time64(_) => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<i64>>()
+                        .expect("could not downcast to i64 array");
+                    (array.shape().to_vec(), order_convert(array.order()))
+                }
+                DataType::Duration(_) => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<i64>>()
+                        .expect("could not downcast to i64 array");
+                    (array.shape().to_vec(), order_convert(array.order()))
+                }
+                DataType::Interval(_) => {
+                    let array = array
+                        .as_any()
+                        .downcast_ref::<Tensor<i64>>()
+                        .expect("could not downcast to i64 array");
+                    (array.shape().to_vec(), order_convert(array.order()))
+                }
+                DataType::FixedSizeList(_, _) => todo!(),
+                _ => panic!("unsupported type"),
+            },
+            _ => panic!("unsupported type"),
+        },
+        _ => (vec![array.len(); 1], Order::RowMajor),
     }
 }
 
@@ -1224,7 +1372,7 @@ fn to_bytes(array: &Box<dyn Array>, data_type: &DataType) -> Vec<u8> {
             _ => panic!("unsupported FixedSizeList physical type"),
         },
         DataType::Extension(ext_str, dtype, _) => match ext_str.as_str() {
-            "Tensor" => to_bytes(array, &**dtype),
+            "Tensor" => to_bytes(array, dtype),
             _ => panic!("unsupported type"),
         },
         _ => panic!("unsupported type"),

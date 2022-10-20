@@ -20,6 +20,8 @@ use yazi::{decompress, Adler32, Format};
 use crate::mdfinfo::IdBlock;
 use crate::mdfreader::channel_data::{data_type_init, ChannelData};
 
+use super::sym_buf_reader::SymBufReader;
+
 pub(crate) type ChannelId = (Option<String>, i64, (i64, u64), (i64, i32));
 pub(crate) type ChannelNamesSet = HashMap<String, ChannelId>;
 
@@ -229,7 +231,7 @@ impl MdfInfo4 {
     pub fn add_channel(
         &mut self,
         channel_name: String,
-        data: ChannelData,
+        data: DataSignature,
         mut master_channel: Option<String>,
         master_type: Option<u8>,
         master_flag: bool,
@@ -237,11 +239,12 @@ impl MdfInfo4 {
         description: Option<String>,
     ) {
         let mut cg_block = Cg4Block::default();
+        cg_block.cg_cycle_count = data.len as u64;
         // Basic channel block
         let mut cn_block = Cn4Block::default();
         let machine_endian: bool = cfg!(target_endian = "big");
-        cn_block.cn_data_type = data.data_type(machine_endian);
-        cn_block.cn_bit_count = data.bit_count();
+        cn_block.cn_data_type = data.data_type;
+        cn_block.cn_bit_count = data.bit_count;
         let cn_pos = position_generator();
         cn_block.cn_sync_type = master_type.unwrap_or(0);
 
@@ -252,11 +255,11 @@ impl MdfInfo4 {
             .create_tx(channel_name_position, channel_name.to_string());
 
         // Channel array
-        let data_ndim = data.ndim() - 1;
+        let data_ndim = data.ndim - 1;
         let mut composition: Option<Composition> = None;
         if data_ndim > 0 {
             let data_dim_size = data
-                .shape()
+                .shape
                 .0
                 .iter()
                 .skip(1)
@@ -268,7 +271,7 @@ impl MdfInfo4 {
                 ca_block.snd += x as usize;
                 ca_block.pnd *= x as usize;
             }
-            cg_block.cg_data_bytes = ca_block.pnd as u32 * data.byte_count();
+            cg_block.cg_data_bytes = ca_block.pnd as u32 * data.byte_count;
 
             let composition_position = position_generator();
             cn_block.cn_composition = composition_position;
@@ -298,7 +301,7 @@ impl MdfInfo4 {
                     cg_block.cg_cg_master = Some(*cg_pos);
                     cg_block.cg_flags = 0b1000;
                     cg_block.cg_links = 7; // with cg_cg_master
-                    cg_block.cg_len = 112;
+                                           // cg_block.cg_len = 112;
                     master_channel = master.clone();
                 }
             }
@@ -322,10 +325,11 @@ impl MdfInfo4 {
         }
 
         // CN
-        let n_bytes = data.byte_count();
+        let n_bytes = data.byte_count;
         let cn = Cn4 {
+            header: default_short_header(BlockType::CN),
             unique_name: channel_name.to_string(),
-            data,
+            data: ChannelData::UInt8(vec![]),
             block: cn_block,
             endian: machine_endian,
             block_position: cn_pos,
@@ -340,6 +344,7 @@ impl MdfInfo4 {
         let cg_pos = position_generator();
         cg_block.cg_data_bytes = n_bytes;
         let mut cg = Cg4 {
+            header: default_short_header(BlockType::CG),
             block: cg_block,
             master_channel_name: master_channel.clone(),
             cn: HashMap::new(),
@@ -479,6 +484,15 @@ impl MdfInfo4 {
     // TODO Extract attachments
 }
 
+pub struct DataSignature {
+    pub(crate) len: usize,
+    pub(crate) data_type: u8,
+    pub(crate) bit_count: u32,
+    pub(crate) byte_count: u32,
+    pub(crate) ndim: usize,
+    pub(crate) shape: (Vec<usize>, Order),
+}
+
 /// creates random negative position
 pub fn position_generator() -> i64 {
     // hopefully never 2 times the same position
@@ -544,7 +558,7 @@ impl Default for Blockheader4 {
 
 /// parse the block header and its fields id, (reserved), length and number of links
 #[inline]
-pub fn parse_block_header(rdr: &mut BufReader<&File>) -> Blockheader4 {
+pub fn parse_block_header(rdr: &mut SymBufReader<&File>) -> Blockheader4 {
     let mut buf = [0u8; 24];
     rdr.read_exact(&mut buf)
         .expect("could not read blockheader4 Id");
@@ -564,12 +578,42 @@ pub struct Blockheader4Short {
     /// reserved, must be 0
     hdr_gap: [u8; 4],
     /// Length of block in bytes
-    hdr_len: u64,
+    pub hdr_len: u64,
+}
+
+impl Default for Blockheader4Short {
+    fn default() -> Self {
+        Blockheader4Short {
+            hdr_id: [35, 35, 67, 78], // ##CN
+            hdr_gap: [0u8; 4],
+            hdr_len: 160,
+        }
+    }
+}
+
+pub fn default_short_header(variant: BlockType) -> Blockheader4Short {
+    match variant {
+        BlockType::CG => Blockheader4Short {
+            hdr_id: [35, 35, 67, 71], // ##CG
+            hdr_gap: [0u8; 4],
+            hdr_len: 104, // 112 with cg_cg_master, 104 without,
+        },
+        BlockType::CN => Blockheader4Short {
+            hdr_id: [35, 35, 67, 78], // ##CN
+            hdr_gap: [0u8; 4],
+            hdr_len: 160,
+        },
+        _ => Blockheader4Short {
+            hdr_id: [35, 35, 67, 78], // ##CN
+            hdr_gap: [0u8; 4],
+            hdr_len: 160,
+        },
+    }
 }
 
 /// parse the block header and its fields id, (reserved), length except the number of links
 #[inline]
-fn parse_block_header_short(rdr: &mut BufReader<&File>) -> Blockheader4Short {
+fn parse_block_header_short(rdr: &mut SymBufReader<&File>) -> Blockheader4Short {
     let mut buf = [0u8; 16];
     rdr.read_exact(&mut buf)
         .expect("could not read short blockheader4 Id");
@@ -581,7 +625,7 @@ fn parse_block_header_short(rdr: &mut BufReader<&File>) -> Blockheader4Short {
 /// reads generically a block header and return links and members section part into a Seek buffer for further processing
 #[inline]
 fn parse_block(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SymBufReader<&File>,
     target: i64,
     mut position: i64,
 ) -> (Cursor<Vec<u8>>, Blockheader4, i64) {
@@ -602,7 +646,7 @@ fn parse_block(
 /// reads generically a block header wihtout the number of links and returns links and members section part into a Seek buffer for further processing
 #[inline]
 fn parse_block_short(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SymBufReader<&File>,
     target: i64,
     mut position: i64,
 ) -> (Cursor<Vec<u8>>, Blockheader4Short, i64) {
@@ -671,20 +715,15 @@ pub struct MetaData {
 
 /// Parses the MD or TX block
 fn read_meta_data(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SymBufReader<&File>,
     sharable: &mut SharableBlocks,
     target: i64,
     mut position: i64,
     parent_block_type: BlockType,
 ) -> i64 {
     if target != 0 && !sharable.md_tx.contains_key(&target) {
-        rdr.seek_relative(target - position)
-            .expect("Could not reach block short header position"); // change buffer position
-        let block: Blockheader4 = rdr.read_le().expect("Could not read MD or TX Block");
-        let mut raw_data = vec![0u8; (block.hdr_len - 24) as usize];
-        rdr.read_exact(&mut raw_data)
-            .expect("Could not read rest of block after header");
-        position = target + block.hdr_len as i64;
+        let (raw_data, block, pos) = parse_block(rdr, target, position);
+        position = pos;
         let block_type = match block.hdr_id {
             [35, 35, 77, 68] => MetaDataBlockType::MdBlock,
             [35, 35, 84, 88] => MetaDataBlockType::TX,
@@ -692,7 +731,7 @@ fn read_meta_data(
         };
         let md = MetaData {
             block,
-            raw_data,
+            raw_data: raw_data.into_inner(),
             block_type,
             comments: HashMap::new(),
             parent_block_type,
@@ -985,7 +1024,7 @@ impl fmt::Display for Hd4 {
 }
 
 /// Hd4 block struct parser
-pub fn hd4_parser(rdr: &mut BufReader<&File>, sharable: &mut SharableBlocks) -> (Hd4, i64) {
+pub fn hd4_parser(rdr: &mut SymBufReader<&File>, sharable: &mut SharableBlocks) -> (Hd4, i64) {
     let mut buf = [0u8; 104];
     rdr.read_exact(&mut buf)
         .expect("could not read HB block buffer");
@@ -1046,7 +1085,7 @@ impl Default for FhBlock {
 }
 
 /// Fh4 (File History) block struct parser
-fn parse_fh_block(rdr: &mut BufReader<&File>, target: i64, position: i64) -> (FhBlock, i64) {
+fn parse_fh_block(rdr: &mut SymBufReader<&File>, target: i64, position: i64) -> (FhBlock, i64) {
     rdr.seek_relative(target - position)
         .expect("Could not reach FH Block position"); // change buffer position
     let mut buf = [0u8; 56];
@@ -1064,7 +1103,7 @@ type Fh = Vec<FhBlock>;
 
 /// parses File History blocks along with its linked comments returns a vect of Fh4 block with comments
 pub fn parse_fh(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SymBufReader<&File>,
     sharable: &mut SharableBlocks,
     target: i64,
     mut position: i64,
@@ -1123,7 +1162,7 @@ pub struct At4Block {
 
 /// At4 (Attachment) block struct parser
 fn parser_at4_block(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SymBufReader<&File>,
     target: i64,
     mut position: i64,
 ) -> (At4Block, Option<Vec<u8>>, i64) {
@@ -1155,7 +1194,7 @@ type At = HashMap<i64, (At4Block, Option<Vec<u8>>)>;
 
 /// parses Attachment blocks along with its linked comments, returns a hashmap of At4 block and attached data in a vect
 pub fn parse_at4(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SymBufReader<&File>,
     sharable: &mut SharableBlocks,
     target: i64,
     mut position: i64,
@@ -1240,7 +1279,11 @@ pub struct Ev4Block {
 }
 
 /// Ev4 (Event) block struct parser
-fn parse_ev4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -> (Ev4Block, i64) {
+fn parse_ev4_block(
+    rdr: &mut SymBufReader<&File>,
+    target: i64,
+    mut position: i64,
+) -> (Ev4Block, i64) {
     let (mut block, _header, pos) = parse_block_short(rdr, target, position);
     position = pos;
     let block: Ev4Block = match block.read_le() {
@@ -1253,7 +1296,7 @@ fn parse_ev4_block(rdr: &mut BufReader<&File>, target: i64, mut position: i64) -
 
 /// parses Event blocks along with its linked comments, returns a hashmap of Ev4 block with position as key
 pub fn parse_ev4(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SymBufReader<&File>,
     sharable: &mut SharableBlocks,
     target: i64,
     mut position: i64,
@@ -1331,7 +1374,7 @@ impl Default for Dg4Block {
 
 /// Dg4 (Data Group) block struct parser with comments
 fn parse_dg4_block(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SymBufReader<&File>,
     sharable: &mut SharableBlocks,
     target: i64,
     mut position: i64,
@@ -1365,7 +1408,7 @@ pub struct Dg4 {
 
 /// Parser for Dg4 and all linked blocks (cg, cn, cc, ca, si)
 pub fn parse_dg4(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SymBufReader<&File>,
     target: i64,
     mut position: i64,
     sharable: &mut SharableBlocks,
@@ -1530,11 +1573,11 @@ impl SharableBlocks {
 #[allow(dead_code)]
 pub struct Cg4Block {
     /// ##CG
-    cg_id: [u8; 4],
+    // cg_id: [u8; 4],
     /// reserved
-    reserved: [u8; 4],
+    // reserved: [u8; 4],
     /// Length of block in bytes
-    pub cg_len: u64,
+    // pub cg_len: u64,
     /// # of links
     pub cg_links: u64,
     /// Pointer to next channel group block (CGBLOCK) (can be NIL)
@@ -1570,9 +1613,9 @@ pub struct Cg4Block {
 impl Default for Cg4Block {
     fn default() -> Self {
         Cg4Block {
-            cg_id: [35, 35, 67, 71], // ##CG
-            reserved: [0u8; 4],
-            cg_len: 104, // 112 with cg_cg_master, 104 without
+            // cg_id: [35, 35, 67, 71], // ##CG
+            // reserved: [0u8; 4],
+            // cg_len: 104, // 112 with cg_cg_master, 104 without
             cg_links: 6, // 7 with cg_cg_master, 6 without
             cg_cg_next: 0,
             cg_cn_first: 0,
@@ -1594,18 +1637,17 @@ impl Default for Cg4Block {
 
 /// Cg4 (Channel Group) block struct parser with linked comments Source Information in sharable blocks
 fn parse_cg4_block(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SymBufReader<&File>,
     target: i64,
     mut position: i64,
     sharable: &mut SharableBlocks,
     record_id_size: u8,
 ) -> (Cg4, i64, usize) {
-    rdr.seek_relative(target - position)
-        .expect("Could not reach CG block position"); // change buffer position
-    let cg: Cg4Block = rdr
+    let (mut block, header, pos) = parse_block_short(rdr, target, position);
+    position = pos;
+    let cg: Cg4Block = block
         .read_le()
         .expect("Could not read buffer into Cg4Block struct");
-    position = target + cg.cg_len as i64;
 
     // Reads MD
     position = read_meta_data(rdr, sharable, cg.cg_md_comment, position, BlockType::CG);
@@ -1641,6 +1683,7 @@ fn parse_cg4_block(
     let record_length = cg.cg_data_bytes;
 
     let cg_struct = Cg4 {
+        header,
         block: cg,
         cn,
         master_channel_name: None,
@@ -1658,6 +1701,9 @@ fn parse_cg4_block(
 /// it contains the related channels structure, a set of channel names, the dedicated master channel name and other helper data.
 #[derive(Debug, Clone)]
 pub struct Cg4 {
+    /// short header
+    pub header: Blockheader4Short,
+    /// CG block without header
     pub block: Cg4Block,
     /// hashmap of channels
     pub cn: CnType,
@@ -1729,7 +1775,7 @@ impl Cg4 {
 
 /// Cg4 blocks and linked blocks parsing
 pub fn parse_cg4(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SymBufReader<&File>,
     target: i64,
     mut position: i64,
     sharable: &mut SharableBlocks,
@@ -1768,11 +1814,11 @@ pub fn parse_cg4(
 #[br(little)]
 pub struct Cn4Block {
     /// ##CN
-    cn_id: [u8; 4],
+    // cn_id: [u8; 4],
     /// reserved
-    reserved: [u8; 4],
+    // reserved: [u8; 4],
     /// Length of block in bytes
-    pub cn_len: u64,
+    // pub cn_len: u64,
     /// # of links
     cn_links: u64,
     /// Pointer to next channel block (CNBLOCK) (can be NIL)
@@ -1832,9 +1878,9 @@ pub struct Cn4Block {
 impl Default for Cn4Block {
     fn default() -> Self {
         Cn4Block {
-            cn_id: [35, 35, 67, 78], // ##CN
-            reserved: [0; 4],
-            cn_len: 160,
+            // cn_id: [35, 35, 67, 78], // ##CN
+            // reserved: [0; 4],
+            // cn_len: 160,
             cn_links: 8,
             cn_cn_next: 0,
             cn_composition: 0,
@@ -1869,6 +1915,9 @@ impl Default for Cn4Block {
 /// and other attributes frequently needed and computed
 #[derive(Debug, Default)]
 pub struct Cn4 {
+    /// short header
+    pub header: Blockheader4Short,
+    /// CN Block without short header
     pub block: Cn4Block,
     /// unique channel name string
     pub unique_name: String,
@@ -1891,6 +1940,7 @@ pub struct Cn4 {
 impl Clone for Cn4 {
     fn clone(&self) -> Self {
         Self {
+            header: self.header,
             block: self.block.clone(),
             unique_name: self.unique_name.clone(),
             block_position: self.block_position,
@@ -1921,7 +1971,7 @@ pub fn validate_channels_set(channels: &mut CnType, channel_names: &HashSet<Stri
 
 /// creates recursively in the channel group the CN blocks and all its other linked blocks (CC, MD, TX, CA, etc.)
 pub fn parse_cn4(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SymBufReader<&File>,
     target: i64,
     mut position: i64,
     sharable: &mut SharableBlocks,
@@ -2045,6 +2095,7 @@ fn can_open_date(
         ..Default::default()
     };
     let date_ms = Cn4 {
+        header: default_short_header(BlockType::CN),
         block,
         unique_name: String::from("ms"),
         block_position,
@@ -2063,6 +2114,7 @@ fn can_open_date(
         ..Default::default()
     };
     let min = Cn4 {
+        header: default_short_header(BlockType::CN),
         block,
         unique_name: String::from("min"),
         block_position,
@@ -2081,6 +2133,7 @@ fn can_open_date(
         ..Default::default()
     };
     let hour = Cn4 {
+        header: default_short_header(BlockType::CN),
         block,
         unique_name: String::from("hour"),
         block_position,
@@ -2099,6 +2152,7 @@ fn can_open_date(
         ..Default::default()
     };
     let day = Cn4 {
+        header: default_short_header(BlockType::CN),
         block,
         unique_name: String::from("day"),
         block_position,
@@ -2117,6 +2171,7 @@ fn can_open_date(
         ..Default::default()
     };
     let month = Cn4 {
+        header: default_short_header(BlockType::CN),
         block,
         unique_name: String::from("month"),
         block_position,
@@ -2135,6 +2190,7 @@ fn can_open_date(
         ..Default::default()
     };
     let year = Cn4 {
+        header: default_short_header(BlockType::CN),
         block,
         unique_name: String::from("year"),
         block_position,
@@ -2158,6 +2214,7 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         ..Default::default()
     };
     let ms: Cn4 = Cn4 {
+        header: default_short_header(BlockType::CN),
         block,
         unique_name: String::from("ms"),
         block_position,
@@ -2176,6 +2233,7 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         ..Default::default()
     };
     let days: Cn4 = Cn4 {
+        header: default_short_header(BlockType::CN),
         block,
         unique_name: String::from("day"),
         block_position,
@@ -2220,7 +2278,7 @@ impl Cn4 {
 
 /// Channel block parser
 fn parse_cn4_block(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SymBufReader<&File>,
     target: i64,
     mut position: i64,
     sharable: &mut SharableBlocks,
@@ -2230,12 +2288,11 @@ fn parse_cn4_block(
     let (record_id_size, _cg_data_bytes, cg_inval_bytes) = record_layout;
     let mut n_cn: usize = 1;
     let mut cns: HashMap<i32, Cn4> = HashMap::new();
-    rdr.seek_relative(target - position)
-        .expect("Could not reach CN block position"); // change buffer position
-    let block: Cn4Block = rdr
+    let (mut block, cnheader, pos) = parse_block_short(rdr, target, position);
+    position = pos;
+    let block: Cn4Block = block
         .read_le()
         .expect("Could not read buffer into Cn4Block struct");
-    position = target + block.cn_len as i64;
 
     let pos_byte_beg = block.cn_byte_offset + record_id_size as u32;
     let n_bytes = calc_n_bytes_not_aligned(block.cn_bit_count + (block.cn_bit_offset as u32));
@@ -2328,6 +2385,7 @@ fn parse_cn4_block(
     let cn_type = block.cn_type;
 
     let cn_struct = Cn4 {
+        header: cnheader,
         block,
         unique_name: name,
         block_position: target,
@@ -2345,7 +2403,7 @@ fn parse_cn4_block(
 
 /// reads pointed TX or CC Block(s) pointed by cc_ref in CCBlock
 fn read_cc(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SymBufReader<&File>,
     target: &i64,
     mut position: i64,
     mut block: Cursor<Vec<u8>>,
@@ -2624,7 +2682,7 @@ fn parse_ca_block(
         (shape_dim.into(), Order::RowMajor)
     };
 
-    let mut val = vec![0.0f64; snd as usize];
+    let mut val = vec![0.0f64; snd];
     let ca_axis_value: Option<Vec<f64>> = if (ca_members.ca_flags & 0b100000) > 0 {
         ca_block
             .read_f64_into::<LittleEndian>(&mut val)
@@ -2768,7 +2826,7 @@ pub enum Compo {
 /// parses CN (structure) of CA (Array) blocks
 /// CN (structures of composed channels )and CA (array of arrays) blocks can be nested or vene CA and CN nested and mixed: this is not supported, very complicated
 fn parse_composition(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SymBufReader<&File>,
     target: i64,
     mut position: i64,
     sharable: &mut SharableBlocks,
