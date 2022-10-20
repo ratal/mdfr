@@ -95,7 +95,7 @@
             },
             "program": "${workspaceFolder}/target/debug/mdfr",
             "args": [
-                "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/error.mf4",
+                "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/KRA_4010_2022_08_25_065833_log_23.mf4",
             ],
             "cwd": "${workspaceFolder}"
         },
