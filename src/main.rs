@@ -27,7 +27,7 @@ fn main() -> Result<(), Error> {
                 .short('w')
                 .required(false)
                 .num_args(1)
-                .help("write read content into mdf4.2 file"),
+                .help("write the read content into a new mdf4.2 file"),
         )
         .arg(
             Arg::new("compress")
@@ -35,7 +35,7 @@ fn main() -> Result<(), Error> {
                 .short('z')
                 .required(false)
                 .num_args(0)
-                .help("write read content compressed into mdf4.2 file"),
+                .help("compress data when writing into a new mdf4.2 file"),
         )
         .arg(
             Arg::new("convert3to4")
@@ -58,7 +58,7 @@ fn main() -> Result<(), Error> {
                 .long("parquet_compression")
                 .required(false)
                 .num_args(1)
-                .help("Compresses data in parquet file, valid values are snappy, gzip, lzo"),
+                .help("Compression algorithm for writing data in parquet file, valid values are snappy, gzip, lzo. Default is uncompressed"),
         )
         .get_matches();
 
