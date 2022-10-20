@@ -12,7 +12,7 @@ readme = "README.md"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap = "3" # for input arguments 
+clap = "4" # for input arguments 
 byteorder = "1.4" # for bytes conversions
 encoding = "0.2" # for bytes to text conversion (utf8, SBC, UTF16)
 binrw = "0.10" # to efficiently read blocks

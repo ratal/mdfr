@@ -18,7 +18,7 @@ fn main() -> Result<(), Error> {
             Arg::new("file")
                 .help("Sets the input file to use")
                 .required(true)
-                .takes_value(true)
+                .num_args(1)
                 .index(1),
         )
         .arg(
@@ -26,7 +26,7 @@ fn main() -> Result<(), Error> {
                 .long("write")
                 .short('w')
                 .required(false)
-                .takes_value(true)
+                .num_args(1)
                 .help("write read content into mdf4.2 file"),
         )
         .arg(
@@ -34,7 +34,7 @@ fn main() -> Result<(), Error> {
                 .long("compress")
                 .short('z')
                 .required(false)
-                .takes_value(false)
+                .num_args(0)
                 .help("write read content compressed into mdf4.2 file"),
         )
         .arg(
@@ -42,7 +42,7 @@ fn main() -> Result<(), Error> {
                 .long("convert3to4")
                 .short('c')
                 .required(false)
-                .takes_value(true)
+                .num_args(1)
                 .help("Converts mdf version 3.x to 4.2"),
         )
         .arg(
@@ -50,44 +50,46 @@ fn main() -> Result<(), Error> {
                 .long("export_to_parquet")
                 .short('p')
                 .required(false)
-                .takes_value(true)
+                .num_args(1)
                 .help("Converts mdf into parquet file"),
         )
         .arg(
             Arg::new("parquet_compression")
                 .long("parquet_compression")
                 .required(false)
-                .takes_value(true)
+                .num_args(1)
                 .help("Compresses data in parquet file, valid values are snappy, gzip, lzo"),
         )
         .get_matches();
 
-    let file_name = matches.value_of("file").expect("File name missing");
-    let mdf4_file_name = matches.value_of("write");
+    let file_name = matches
+        .get_one::<String>("file")
+        .expect("File name missing");
+    let mdf4_file_name = matches.get_one::<String>("write");
 
     let mut mdf_file = mdfreader::mdfreader(file_name);
 
-    let compression = matches.is_present("compress");
+    let compression = matches.get_flag("compress");
 
     if let Some(file_name) = mdf4_file_name {
         mdf_file.write(file_name, compression);
     }
 
-    let convert3to4_file_name = matches.value_of("convert3to4");
+    let convert3to4_file_name = matches.get_one::<String>("convert3to4");
     if let Some(file_name) = convert3to4_file_name {
         mdf_file.mdf_info.convert3to4(file_name);
     }
 
-    let parquet_compression = matches.value_of("parquet_compression");
+    let parquet_compression = matches.get_one::<String>("parquet_compression");
 
-    let parquet_file_name = matches.value_of("export_to_parquet");
+    let parquet_file_name = matches.get_one::<String>("export_to_parquet");
     if let Some(file_name) = parquet_file_name {
-        mdf_file.export_to_parquet(file_name, parquet_compression)?;
+        mdf_file.export_to_parquet(file_name, parquet_compression.map(|x| &**x))?;
     }
 
     Ok(())
 }
 
-// TODO Improve CLI features/interface and upgrade to clap 4
+// TODO Improve CLI features/interface
 // TODO better error handling with anyhow
 // TODO add C interface
