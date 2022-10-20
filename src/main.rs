@@ -93,6 +93,5 @@ fn main() -> Result<(), Error> {
     Ok(())
 }
 
-// TODO Improve CLI features/interface
 // TODO better error handling with anyhow
 // TODO add C interface
