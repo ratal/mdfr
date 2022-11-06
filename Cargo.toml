@@ -36,7 +36,7 @@ whoami = "1.2" # to get user nam for writing file
 rand = "0.8" # for random numbers
 parquet2 = "0.16" # for export to parquet file format
 arrow2 = {version = "0.14", features = ["compute", "io_parquet", "io_parquet_compression"] } # for efficient data storing in memory
-polars = {version = "0.24", features = ["dtype-full", "object", "fmt"]} # for python dataframe
+polars = {version = "0.25", features = ["dtype-full", "object", "fmt"]} # for python dataframe
 
 [dev-dependencies]
 criterion = "0.4" # for benchmark
