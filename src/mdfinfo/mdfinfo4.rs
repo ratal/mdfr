@@ -238,8 +238,10 @@ impl MdfInfo4 {
         unit: Option<String>,
         description: Option<String>,
     ) {
-        let mut cg_block = Cg4Block::default();
-        cg_block.cg_cycle_count = data.len as u64;
+        let mut cg_block = Cg4Block {
+            cg_cycle_count: data.len as u64,
+            ..Default::default()
+        };
         // Basic channel block
         let mut cn_block = Cn4Block::default();
         let machine_endian: bool = cfg!(target_endian = "big");
