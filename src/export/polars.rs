@@ -183,6 +183,7 @@ pub fn rust_series_to_py_series(series: &Series) -> PyResult<PyObject> {
 }
 
 /// converts rust arrow array into python polars series
+#[allow(dead_code)]
 pub fn rust_arrow_to_py_series(array: &Box<dyn Array>) -> PyResult<PyObject> {
     // ensure we have a single chunk
 

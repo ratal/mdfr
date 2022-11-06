@@ -479,6 +479,7 @@ pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
 
 /// Take an arrow array from python and convert it to a rust arrow array.
 /// This operation does not copy data.
+#[allow(dead_code)]
 pub fn array_to_rust(arrow_array: &PyAny) -> PyResult<Box<dyn Array>> {
     // prepare a pointer to receive the Array struct
     let array = Box::new(ffi::ArrowArray::empty());
