@@ -60,14 +60,6 @@ impl Clone for ChannelIndexes {
     }
 }
 
-/// reads files metadata and loads all channels data into memory
-pub fn mdfreader(file_name: &str) -> Mdf {
-    // read file blocks
-    let mut mdf = Mdf::new(file_name);
-    mdf.load_all_channels_data_in_memory();
-    mdf
-}
-
 #[allow(dead_code)]
 impl Mdf {
     /// returns new empty Mdf
