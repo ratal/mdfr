@@ -17,7 +17,7 @@ use arrow2::datatypes::{Field, Schema};
 use arrow2::error::Result;
 
 use crate::export::parquet::export_to_parquet;
-use crate::mdfinfo::mdfinfo4::DataSignature;
+use crate::mdfinfo::mdfinfo4::{DataSignature, MasterSignature};
 use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::arrow::mdf_data_to_arrow;
 use crate::mdfreader::mdfreader3::mdfreader3;
@@ -159,6 +159,7 @@ impl Mdf {
         }
     }
     /// Adds a new channel in memory (no file modification)
+    #[allow(clippy::too_many_arguments)]
     pub fn add_channel(
         &mut self,
         channel_name: String,
@@ -179,12 +180,15 @@ impl Mdf {
             ndim: ndim(&data),
             shape: shape(&data),
         };
+        let master_signature = MasterSignature {
+            master_channel: master_channel.clone(),
+            master_type,
+            master_flag,
+        };
         self.mdf_info.add_channel(
             channel_name.clone(),
             data_signature,
-            master_channel.clone(),
-            master_type,
-            master_flag,
+            master_signature,
             unit,
             description,
         );

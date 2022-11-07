@@ -232,9 +232,7 @@ impl MdfInfo4 {
         &mut self,
         channel_name: String,
         data: DataSignature,
-        mut master_channel: Option<String>,
-        master_type: Option<u8>,
-        master_flag: bool,
+        mut master: MasterSignature,
         unit: Option<String>,
         description: Option<String>,
     ) {
@@ -248,7 +246,7 @@ impl MdfInfo4 {
         cn_block.cn_data_type = data.data_type;
         cn_block.cn_bit_count = data.bit_count;
         let cn_pos = position_generator();
-        cn_block.cn_sync_type = master_type.unwrap_or(0);
+        cn_block.cn_sync_type = master.master_type.unwrap_or(0);
 
         // channel name
         let channel_name_position = position_generator();
@@ -291,24 +289,24 @@ impl MdfInfo4 {
         }
 
         // master channel
-        if master_flag {
+        if master.master_flag {
             cn_block.cn_type = 2; // master channel
         } else {
             cn_block.cn_type = 0; // data channel
-            if let Some(master_channel_name) = master_channel.clone() {
+            if let Some(master_channel_name) = master.master_channel.clone() {
                 // looking for the master channel's cg position
-                if let Some((master, _dg_pos, (cg_pos, _rec_id), (_cn_pos, _rec_pos))) =
+                if let Some((m, _dg_pos, (cg_pos, _rec_id), (_cn_pos, _rec_pos))) =
                     self.channel_names_set.get(&master_channel_name)
                 {
                     cg_block.cg_cg_master = Some(*cg_pos);
                     cg_block.cg_flags = 0b1000;
                     cg_block.cg_links = 7; // with cg_cg_master
                                            // cg_block.cg_len = 112;
-                    master_channel = master.clone();
+                    master.master_channel = m.clone();
                 }
             }
         }
-        if let Some(sync_type) = master_type {
+        if let Some(sync_type) = master.master_type {
             cn_block.cn_sync_type = sync_type;
         }
 
@@ -348,7 +346,7 @@ impl MdfInfo4 {
         let mut cg = Cg4 {
             header: default_short_header(BlockType::CG),
             block: cg_block,
-            master_channel_name: master_channel.clone(),
+            master_channel_name: master.master_channel.clone(),
             cn: HashMap::new(),
             block_position: cg_pos,
             channel_names: HashSet::new(),
@@ -371,7 +369,7 @@ impl MdfInfo4 {
 
         self.channel_names_set.insert(
             channel_name,
-            (master_channel, dg_pos, (cg_pos, 0), (cn_pos, 0)),
+            (master.master_channel, dg_pos, (cg_pos, 0), (cn_pos, 0)),
         );
     }
     /// Removes a channel in memory (no file modification)
@@ -486,6 +484,7 @@ impl MdfInfo4 {
     // TODO Extract attachments
 }
 
+/// data generic description
 pub struct DataSignature {
     pub(crate) len: usize,
     pub(crate) data_type: u8,
@@ -493,6 +492,13 @@ pub struct DataSignature {
     pub(crate) byte_count: u32,
     pub(crate) ndim: usize,
     pub(crate) shape: (Vec<usize>, Order),
+}
+
+/// master channel generic description
+pub struct MasterSignature {
+    pub(crate) master_channel: Option<String>,
+    pub(crate) master_type: Option<u8>,
+    pub(crate) master_flag: bool,
 }
 
 /// creates random negative position

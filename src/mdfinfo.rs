@@ -26,7 +26,7 @@ use crate::mdfreader::channel_data::ChannelData;
 use crate::mdfwriter::mdfwriter3::convert3to4;
 
 use self::mdfinfo3::build_channel_db3;
-use self::mdfinfo4::DataSignature;
+use self::mdfinfo4::{DataSignature, MasterSignature};
 use self::sym_buf_reader::SymBufReader;
 
 /// joins mdf versions 3.x and 4.x
@@ -268,9 +268,7 @@ impl MdfInfo {
         &mut self,
         channel_name: String,
         data: DataSignature,
-        master_channel: Option<String>,
-        master_type: Option<u8>,
-        master_flag: bool,
+        master: MasterSignature,
         unit: Option<String>,
         description: Option<String>,
     ) {
@@ -279,26 +277,10 @@ impl MdfInfo {
                 let mut file_name = PathBuf::from(mdfinfo3.file_name.as_str());
                 file_name.set_extension("mf4");
                 let mut mdf4 = convert3to4(mdfinfo3, &file_name.to_string_lossy());
-                mdf4.add_channel(
-                    channel_name,
-                    data,
-                    master_channel,
-                    master_type,
-                    master_flag,
-                    unit,
-                    description,
-                );
+                mdf4.add_channel(channel_name, data, master, unit, description);
             }
             MdfInfo::V4(mdfinfo4) => {
-                mdfinfo4.add_channel(
-                    channel_name,
-                    data,
-                    master_channel,
-                    master_type,
-                    master_flag,
-                    unit,
-                    description,
-                );
+                mdfinfo4.add_channel(channel_name, data, master, unit, description);
             }
         }
     }

@@ -1,5 +1,5 @@
 //! Converter of mdf version 3.x into mdf version 4.2
-use crate::mdfinfo::mdfinfo4::{DataSignature, FhBlock};
+use crate::mdfinfo::mdfinfo4::{DataSignature, FhBlock, MasterSignature};
 
 use crate::mdfinfo::{mdfinfo3::MdfInfo3, mdfinfo4::MdfInfo4};
 use crate::mdfreader::channel_data::Order;
@@ -33,12 +33,15 @@ pub fn convert3to4(mdf3: &MdfInfo3, file_name: &str) -> MdfInfo4 {
                             ndim: 1,
                             shape: (vec![cycle_count; 1], Order::RowMajor),
                         };
+                        let master_signature = MasterSignature {
+                            master_channel: cg.master_channel_name.clone(),
+                            master_type: Some(1),
+                            master_flag: true,
+                        };
                         mdf4.add_channel(
                             master_channel_name.clone(),
                             data_signature,
-                            cg.master_channel_name.clone(),
-                            Some(1),
-                            true,
+                            master_signature,
                             unit,
                             desc,
                         );
@@ -63,12 +66,15 @@ pub fn convert3to4(mdf3: &MdfInfo3, file_name: &str) -> MdfInfo4 {
                         ndim: 1,
                         shape: (vec![cycle_count; 1], Order::RowMajor),
                     };
+                    let master_signature = MasterSignature {
+                        master_channel: cg.master_channel_name.clone(),
+                        master_type: Some(0),
+                        master_flag: false,
+                    };
                     mdf4.add_channel(
                         cn.unique_name.clone(),
                         data_signature,
-                        cg.master_channel_name.clone(),
-                        Some(0),
-                        false,
+                        master_signature,
                         unit,
                         desc,
                     );
