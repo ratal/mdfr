@@ -1,14 +1,14 @@
 //! command line interface to load mdf file and manipulate it.
 extern crate clap;
 
-use arrow2::error::Error;
 use clap::{Arg, Command};
 mod export;
 mod mdfinfo;
 mod mdfreader;
 mod mdfwriter;
+use anyhow::Result;
 
-fn main() -> Result<(), Error> {
+fn main() -> Result<()> {
     let matches = Command::new("mdfr")
         .bin_name("mdfr")
         .version("0.1.0")
@@ -68,7 +68,7 @@ fn main() -> Result<(), Error> {
         .get_one::<String>("file")
         .expect("File name missing");
 
-    let mut mdf_file = mdfreader::Mdf::new(file_name);
+    let mut mdf_file = mdfreader::Mdf::new(file_name)?;
     if matches.get_flag("info") {
         println!("{:?}", mdf_file.get_master_channel_names_set());
     }
@@ -77,12 +77,12 @@ fn main() -> Result<(), Error> {
     let parquet_file_name = matches.get_one::<String>("export_to_parquet");
 
     if mdf4_file_name.is_some() || parquet_file_name.is_some() {
-        mdf_file.load_all_channels_data_in_memory();
+        mdf_file.load_all_channels_data_in_memory()?;
     }
 
     let compression = matches.get_flag("compress");
     if let Some(file_name) = mdf4_file_name {
-        mdf_file.write(file_name, compression);
+        mdf_file.write(file_name, compression)?;
     }
 
     let parquet_compression = matches.get_one::<String>("parquet_compression");

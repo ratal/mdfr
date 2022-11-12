@@ -12,7 +12,8 @@ readme = "README.md"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap = "4" # for input arguments 
+clap = "4" # for input arguments
+anyhow = "1.0" # error handling
 byteorder = "1.4" # for bytes conversions
 encoding = "0.2" # for bytes to text conversion (utf8, SBC, UTF16)
 binrw = "0.10" # to efficiently read blocks
@@ -47,7 +48,7 @@ crate-type = ["rlib", "cdylib"]
 
 [dependencies.pyo3]
 version = "0.17"
-features = ["extension-module", "num-complex"]
+features = ["extension-module", "num-complex", "anyhow"]
 
 [[bench]]
 name = "mdf_benchmark"

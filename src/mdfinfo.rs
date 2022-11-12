@@ -1,6 +1,7 @@
 //! This module is reading the mdf file blocks (metadata)
 //! mdfinfo module
 
+use anyhow::{Context, Result};
 use arrow2::bitmap::MutableBitmap;
 use binrw::{binrw, BinReaderExt};
 use std::collections::HashMap;
@@ -85,21 +86,21 @@ impl Default for IdBlock {
 #[allow(dead_code)]
 impl MdfInfo {
     /// creates new MdfInfo from file
-    pub fn new(file_name: &str) -> MdfInfo {
+    pub fn new(file_name: &str) -> Result<MdfInfo> {
         let f: File = OpenOptions::new()
             .read(true)
             .write(false)
             .open(file_name)
-            .expect("Cannot find the file");
+            .with_context(|| format!("Cannot find the file {}", file_name))?;
         let mut rdr = SymBufReader::new(&f);
         // Read beginning of ID Block
         let mut buf = [0u8; 64]; // reserved
         rdr.read_exact(&mut buf)
-            .expect("Could not read IdBlock buffer");
+            .context("Could not read IdBlock buffer")?;
         let mut block = Cursor::new(buf);
         let id: IdBlock = block
             .read_le()
-            .expect("Could not read buffer into IdBlock structure");
+            .context("Could not parse buffer into IdBlock structure")?;
 
         // Depending of version different blocks
         let mdf_info: MdfInfo = if id.id_ver < 400 {
@@ -139,21 +140,21 @@ impl MdfInfo {
                 si: HashMap::new(),
             };
             // Read HD block
-            let (hd, position) = hd4_parser(&mut rdr, &mut sharable);
+            let (hd, position) = hd4_parser(&mut rdr, &mut sharable)?;
 
             // FH block
-            let (fh, position) = parse_fh(&mut rdr, &mut sharable, hd.hd_fh_first, position);
+            let (fh, position) = parse_fh(&mut rdr, &mut sharable, hd.hd_fh_first, position)?;
 
             // AT Block read
-            let (at, position) = parse_at4(&mut rdr, &mut sharable, hd.hd_at_first, position);
+            let (at, position) = parse_at4(&mut rdr, &mut sharable, hd.hd_at_first, position)?;
 
             // EV Block read
-            let (ev, position) = parse_ev4(&mut rdr, &mut sharable, hd.hd_ev_first, position);
+            let (ev, position) = parse_ev4(&mut rdr, &mut sharable, hd.hd_ev_first, position)?;
 
             // Read DG Block
             let (mut dg, _, n_cg, n_cn) =
-                parse_dg4(&mut rdr, hd.hd_dg_first, position, &mut sharable);
-            sharable.extract_xml(); // extract TX xml tag from text
+                parse_dg4(&mut rdr, hd.hd_dg_first, position, &mut sharable)?;
+            sharable.extract_xml()?; // extract TX xml tag from text
 
             // make channel names unique, list channels and create master dictionnary
             let channel_names_set = build_channel_db(&mut dg, &sharable, n_cg, n_cn);
@@ -171,7 +172,7 @@ impl MdfInfo {
                 channel_names_set,
             }))
         };
-        mdf_info
+        Ok(mdf_info)
     }
     /// gets the version of mdf file
     pub fn get_version(&mut self) -> u16 {
@@ -181,20 +182,20 @@ impl MdfInfo {
         }
     }
     /// returns channel's unit string
-    pub fn get_channel_unit(&self, channel_name: &str) -> Option<String> {
+    pub fn get_channel_unit(&self, channel_name: &str) -> Result<Option<String>> {
         let unit: Option<String> = match self {
             MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_unit(channel_name),
-            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_unit(channel_name),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_unit(channel_name)?,
         };
-        unit
+        Ok(unit)
     }
     /// returns channel's description string
-    pub fn get_channel_desc(&self, channel_name: &str) -> Option<String> {
+    pub fn get_channel_desc(&self, channel_name: &str) -> Result<Option<String>> {
         let desc: Option<String> = match self {
             MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_desc(channel_name),
-            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_desc(channel_name),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_desc(channel_name)?,
         };
-        desc
+        Ok(desc)
     }
     /// returns channel's associated master channel name string
     pub fn get_channel_master(&self, channel_name: &str) -> Option<String> {

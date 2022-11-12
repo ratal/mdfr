@@ -1,5 +1,6 @@
 //! Parsing of file metadata into MdfInfo4 struct
 use crate::mdfreader::channel_data::Order;
+use anyhow::{anyhow, Context, Error, Result};
 use arrow2::bitmap::MutableBitmap;
 use binrw::{binrw, BinReaderExt, BinWriterExt};
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -95,7 +96,7 @@ impl MdfInfo4 {
         (data, bitmap)
     }
     /// Returns the channel's unit string. If it does not exist, it is an empty string.
-    pub fn get_channel_unit(&self, channel_name: &str) -> Option<String> {
+    pub fn get_channel_unit(&self, channel_name: &str) -> Result<Option<String>> {
         let mut unit: Option<String> = None;
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
             self.get_channel_id(channel_name)
@@ -103,15 +104,15 @@ impl MdfInfo4 {
             if let Some(dg) = self.dg.get(dg_pos) {
                 if let Some(cg) = dg.cg.get(rec_id) {
                     if let Some(cn) = cg.cn.get(rec_pos) {
-                        unit = self.sharable.get_tx(cn.block.cn_md_unit);
+                        unit = self.sharable.get_tx(cn.block.cn_md_unit)?;
                     }
                 }
             }
         }
-        unit
+        Ok(unit)
     }
     /// Returns the channel's description. If it does not exist, it is an empty string
-    pub fn get_channel_desc(&self, channel_name: &str) -> Option<String> {
+    pub fn get_channel_desc(&self, channel_name: &str) -> Result<Option<String>> {
         let mut desc: Option<String> = None;
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
             self.get_channel_id(channel_name)
@@ -119,12 +120,12 @@ impl MdfInfo4 {
             if let Some(dg) = self.dg.get(dg_pos) {
                 if let Some(cg) = dg.cg.get(rec_id) {
                     if let Some(cn) = cg.cn.get(rec_pos) {
-                        desc = self.sharable.get_tx(cn.block.cn_md_comment);
+                        desc = self.sharable.get_tx(cn.block.cn_md_comment)?;
                     }
                 }
             }
         }
-        desc
+        Ok(desc)
     }
     /// returns the master channel associated to the input channel name
     pub fn get_channel_master(&self, channel_name: &str) -> Option<String> {
@@ -566,13 +567,15 @@ impl Default for Blockheader4 {
 
 /// parse the block header and its fields id, (reserved), length and number of links
 #[inline]
-pub fn parse_block_header(rdr: &mut SymBufReader<&File>) -> Blockheader4 {
+pub fn parse_block_header(rdr: &mut SymBufReader<&File>) -> Result<Blockheader4> {
     let mut buf = [0u8; 24];
     rdr.read_exact(&mut buf)
-        .expect("could not read blockheader4 Id");
+        .context("could not read blockheader4 Id")?;
     let mut block = Cursor::new(buf);
-    let header: Blockheader4 = block.read_le().expect("could not parse blockheader4");
-    header
+    let header: Blockheader4 = block
+        .read_le()
+        .context("binread could not parse blockheader4")?;
+    Ok(header)
 }
 
 /// MDF4 - common block Header without the number of links
@@ -621,13 +624,15 @@ pub fn default_short_header(variant: BlockType) -> Blockheader4Short {
 
 /// parse the block header and its fields id, (reserved), length except the number of links
 #[inline]
-fn parse_block_header_short(rdr: &mut SymBufReader<&File>) -> Blockheader4Short {
+fn parse_block_header_short(rdr: &mut SymBufReader<&File>) -> Result<Blockheader4Short> {
     let mut buf = [0u8; 16];
     rdr.read_exact(&mut buf)
-        .expect("could not read short blockheader4 Id");
+        .context("could not read short blockheader4 Id")?;
     let mut block = Cursor::new(buf);
-    let header: Blockheader4Short = block.read_le().expect("could not parse short blockheader4");
-    header
+    let header: Blockheader4Short = block
+        .read_le()
+        .context("could not parse short blockheader4")?;
+    Ok(header)
 }
 
 /// reads generically a block header and return links and members section part into a Seek buffer for further processing
@@ -636,19 +641,19 @@ fn parse_block(
     rdr: &mut SymBufReader<&File>,
     target: i64,
     mut position: i64,
-) -> (Cursor<Vec<u8>>, Blockheader4, i64) {
+) -> Result<(Cursor<Vec<u8>>, Blockheader4, i64)> {
     // Reads block header
     rdr.seek_relative(target - position)
-        .expect("Could not reach block header position"); // change buffer position
-    let block_header: Blockheader4 = parse_block_header(rdr); // reads header
+        .context("Could not reach block header position")?; // change buffer position
+    let block_header = parse_block_header(rdr).context(" could not read header block")?; // reads header
 
     // Reads in buffer rest of block
     let mut buf = vec![0u8; (block_header.hdr_len - 24) as usize];
     rdr.read_exact(&mut buf)
-        .expect("Could not read rest of block after header");
+        .context("Could not read rest of block after header")?;
     position = target + block_header.hdr_len as i64;
     let block = Cursor::new(buf);
-    (block, block_header, position)
+    Ok((block, block_header, position))
 }
 
 /// reads generically a block header wihtout the number of links and returns links and members section part into a Seek buffer for further processing
@@ -657,19 +662,20 @@ fn parse_block_short(
     rdr: &mut SymBufReader<&File>,
     target: i64,
     mut position: i64,
-) -> (Cursor<Vec<u8>>, Blockheader4Short, i64) {
+) -> Result<(Cursor<Vec<u8>>, Blockheader4Short, i64)> {
     // Reads block header
     rdr.seek_relative(target - position)
-        .expect("Could not reach block short header position"); // change buffer position
-    let block_header: Blockheader4Short = parse_block_header_short(rdr); // reads header
+        .context("Could not reach block short header position")?; // change buffer position
+    let block_header: Blockheader4Short =
+        parse_block_header_short(rdr).context(" could not read short header block")?; // reads header
 
     // Reads in buffer rest of block
     let mut buf = vec![0u8; (block_header.hdr_len - 16) as usize];
     rdr.read_exact(&mut buf)
-        .expect("Could not read rest of block after short header");
+        .context("Could not read rest of block after short header")?;
     position = target + block_header.hdr_len as i64;
     let block = Cursor::new(buf);
-    (block, block_header, position)
+    Ok((block, block_header, position))
 }
 
 /// metadata are either stored in TX (text) or MD (xml) blocks for mdf version 4
@@ -728,9 +734,10 @@ fn read_meta_data(
     target: i64,
     mut position: i64,
     parent_block_type: BlockType,
-) -> i64 {
+) -> Result<i64> {
     if target != 0 && !sharable.md_tx.contains_key(&target) {
-        let (raw_data, block, pos) = parse_block(rdr, target, position);
+        let (raw_data, block, pos) =
+            parse_block(rdr, target, position).context("could not read metadata block")?;
         position = pos;
         let block_type = match block.hdr_id {
             [35, 35, 77, 68] => MetaDataBlockType::MdBlock,
@@ -745,9 +752,9 @@ fn read_meta_data(
             parent_block_type,
         };
         sharable.md_tx.insert(target, md);
-        position
+        Ok(position)
     } else {
-        position
+        Ok(position)
     }
 }
 
@@ -761,13 +768,12 @@ impl MetaData {
                 hdr_len: 24,
                 hdr_links: 0,
             },
-            MetaDataBlockType::TX => Blockheader4 {
+            MetaDataBlockType::TX | MetaDataBlockType::MdParsed => Blockheader4 {
                 hdr_id: [35, 35, 84, 88], // '##TX'
                 hdr_gap: [0u8; 4],
-                hdr_len: 0,
+                hdr_len: 24,
                 hdr_links: 0,
             },
-            MetaDataBlockType::MdParsed => panic!("MdParsed not implemented for read function"),
         };
         MetaData {
             block: header,
@@ -778,26 +784,26 @@ impl MetaData {
         }
     }
     /// Converts the metadata handling the parent block type's specificities
-    pub fn parse_xml(&mut self) {
+    pub fn parse_xml(&mut self) -> Result<()> {
         if self.block_type == MetaDataBlockType::MdBlock {
             match self.parent_block_type {
-                BlockType::HD => self.parse_hd_xml(),
-                BlockType::FH => self.parse_fh_xml(),
-                _ => self.parse_generic_xml(),
-            }
+                BlockType::HD => self.parse_hd_xml()?,
+                BlockType::FH => self.parse_fh_xml()?,
+                _ => self.parse_generic_xml()?,
+            };
         }
+        Ok(())
     }
     /// Returns the text from TX Block or TX's tag text from MD Block
-    pub fn get_tx(&self) -> Option<String> {
+    pub fn get_tx(&self) -> Result<Option<String>> {
         match self.block_type {
-            MetaDataBlockType::MdParsed => self.comments.get("TX").cloned(),
+            MetaDataBlockType::MdParsed => Ok(self.comments.get("TX").cloned()),
             _ => {
-                let comment = match str::from_utf8(&self.raw_data) {
-                    Ok(v) => v,
-                    Err(e) => panic!("Invalid UTF-8 sequence in metadata: {}", e),
-                };
+                let comment = str::from_utf8(&self.raw_data).with_context(|| {
+                    format!("Invalid UTF-8 sequence in metadata: {:?}", self.raw_data)
+                })?;
                 let c: String = comment.trim_end_matches(char::from(0)).into();
-                Some(c)
+                Ok(Some(c))
             }
         }
     }
@@ -809,16 +815,15 @@ impl MetaData {
         }
     }
     /// Decode string from raw_data field
-    pub fn get_data_string(&self) -> String {
+    pub fn get_data_string(&self) -> Result<String> {
         match self.block_type {
-            MetaDataBlockType::MdParsed => String::new(),
+            MetaDataBlockType::MdParsed => Ok(String::new()),
             _ => {
-                let comment = match str::from_utf8(&self.raw_data) {
-                    Ok(v) => v,
-                    Err(e) => panic!("Invalid UTF-8 sequence in metadata: {}", e),
-                };
+                let comment = str::from_utf8(&self.raw_data).with_context(|| {
+                    format!("Invalid UTF-8 sequence in metadata: {:?}", self.raw_data)
+                })?;
                 let comment: String = comment.trim_end_matches(char::from(0)).into();
-                comment
+                Ok(comment)
             }
         }
     }
@@ -827,12 +832,12 @@ impl MetaData {
         self.raw_data = [data, vec![0u8; 8 - data.len() % 8].as_slice()].concat();
         self.block.hdr_len = self.raw_data.len() as u64 + 24;
     }
-    /// parses the xml bytes specifically for HD block expected schema
-    fn parse_hd_xml(&mut self) {
+    /// parses the xml bytes specifically for HD block contexted schema
+    fn parse_hd_xml(&mut self) -> Result<()> {
         let mut comments: HashMap<String, String> = HashMap::new();
         // MD Block from HD Block, reading xml
         let comment: String = self
-            .get_data_string()
+            .get_data_string()?
             .trim_end_matches(|c| c == '\n' || c == '\r' || c == ' ')
             .into(); // removes ending spaces
         match roxmltree::Document::parse(&comment) {
@@ -844,12 +849,13 @@ impl MetaData {
                 }
             }
             Err(e) => {
-                println!("Error parsing HD MD comment : \n{}\n{}", comment, e);
+                println!("Could not parse HD MD comment : \n{}\n{}", comment, e);
             }
         };
         self.comments = comments;
         self.block_type = MetaDataBlockType::MdParsed;
         self.raw_data = vec![]; // empty the data from block as already parsed
+        Ok(())
     }
     /// Creates File History MetaData
     pub fn create_fh(&mut self) {
@@ -873,12 +879,12 @@ impl MetaData {
         self.block.hdr_len = fh_comments.len() as u64 + 24;
         self.raw_data = fh_comments.to_vec();
     }
-    /// parses the xml bytes specifically for File History block expected schema
-    fn parse_fh_xml(&mut self) {
+    /// parses the xml bytes specifically for File History block contexted schema
+    fn parse_fh_xml(&mut self) -> Result<()> {
         let mut comments: HashMap<String, String> = HashMap::new();
         // MD Block from FH Block, reading xml
         let comment: String = self
-            .get_data_string()
+            .get_data_string()?
             .trim_end_matches(|c| c == '\n' || c == '\r' || c == ' ')
             .into(); // removes ending spaces
         match roxmltree::Document::parse(&comment) {
@@ -892,18 +898,19 @@ impl MetaData {
                 }
             }
             Err(e) => {
-                println!("Error parsing FH comment : \n{}\n{}", comment, e);
+                println!("Could not parse FH comment : \n{}\n{}", comment, e);
             }
         };
         self.comments = comments;
         self.block_type = MetaDataBlockType::MdParsed;
         self.raw_data = vec![]; // empty the data from block as already parsed
+        Ok(())
     }
     /// Generic xml parser without schema consideration
-    fn parse_generic_xml(&mut self) {
+    fn parse_generic_xml(&mut self) -> Result<()> {
         let mut comments: HashMap<String, String> = HashMap::new();
         let comment: String = self
-            .get_data_string()
+            .get_data_string()?
             .trim_end_matches(|c| c == '\n' || c == '\r' || c == ' ')
             .into(); // removes ending spaces
         match roxmltree::Document::parse(&comment) {
@@ -928,18 +935,20 @@ impl MetaData {
         self.comments = comments;
         self.block_type = MetaDataBlockType::MdParsed;
         self.raw_data = vec![]; // empty the data from block as already parsed
+        Ok(())
     }
     /// Writes the metadata to file
-    pub fn write<W>(&self, writer: &mut W)
+    pub fn write<W>(&self, writer: &mut W) -> Result<()>
     where
         W: Write + Seek,
     {
         writer
             .write_le(&self.block)
-            .expect("Could not write comment block header");
+            .context("Could not write comment block header")?;
         writer
             .write_all(&self.raw_data)
-            .expect("Could not write comment block data");
+            .context("Could not write comment block data")?;
+        Ok(())
     }
 }
 
@@ -1032,16 +1041,19 @@ impl fmt::Display for Hd4 {
 }
 
 /// Hd4 block struct parser
-pub fn hd4_parser(rdr: &mut SymBufReader<&File>, sharable: &mut SharableBlocks) -> (Hd4, i64) {
+pub fn hd4_parser(
+    rdr: &mut SymBufReader<&File>,
+    sharable: &mut SharableBlocks,
+) -> Result<(Hd4, i64)> {
     let mut buf = [0u8; 104];
     rdr.read_exact(&mut buf)
-        .expect("could not read HB block buffer");
+        .context("could not read HD block buffer")?;
     let mut block = Cursor::new(buf);
     let hd: Hd4 = block
         .read_le()
-        .expect("Could not read HD block buffer into Hd4 struct");
-    let position = read_meta_data(rdr, sharable, hd.hd_md_comment, 168, BlockType::HD);
-    (hd, position)
+        .context("Could not parse HD block buffer into Hd4 struct")?;
+    let position = read_meta_data(rdr, sharable, hd.hd_md_comment, 168, BlockType::HD)?;
+    Ok((hd, position))
 }
 
 /// Fh4 (File History) block struct, including the header
@@ -1093,18 +1105,21 @@ impl Default for FhBlock {
 }
 
 /// Fh4 (File History) block struct parser
-fn parse_fh_block(rdr: &mut SymBufReader<&File>, target: i64, position: i64) -> (FhBlock, i64) {
+fn parse_fh_block(
+    rdr: &mut SymBufReader<&File>,
+    target: i64,
+    position: i64,
+) -> Result<(FhBlock, i64)> {
     rdr.seek_relative(target - position)
-        .expect("Could not reach FH Block position"); // change buffer position
+        .context("Could not reach FH Block position")?; // change buffer position
     let mut buf = [0u8; 56];
     rdr.read_exact(&mut buf)
-        .expect("Could not read FH block buffer");
+        .context("Could not read FH block buffer")?;
     let mut block = Cursor::new(buf);
-    let fh: FhBlock = match block.read_le() {
-        Ok(v) => v,
-        Err(e) => panic!("Error reading fh block into FhBlock struct \n{}", e),
-    }; // reads the fh block
-    (fh, target + 56)
+    let fh: FhBlock = block
+        .read_le()
+        .with_context(|| format!("Error parsing fh block into FhBlock struct \n{:?}", block))?; // reads the fh block
+    Ok((fh, target + 56))
 }
 
 type Fh = Vec<FhBlock>;
@@ -1115,21 +1130,21 @@ pub fn parse_fh(
     sharable: &mut SharableBlocks,
     target: i64,
     mut position: i64,
-) -> (Fh, i64) {
+) -> Result<(Fh, i64)> {
     let mut fh: Fh = Vec::new();
-    let (block, pos) = parse_fh_block(rdr, target, position);
+    let (block, pos) = parse_fh_block(rdr, target, position)?;
     position = pos;
-    position = read_meta_data(rdr, sharable, block.fh_md_comment, position, BlockType::FH);
+    position = read_meta_data(rdr, sharable, block.fh_md_comment, position, BlockType::FH)?;
     let mut next_pointer = block.fh_fh_next;
     fh.push(block);
     while next_pointer != 0 {
-        let (block, pos) = parse_fh_block(rdr, next_pointer, position);
+        let (block, pos) = parse_fh_block(rdr, next_pointer, position)?;
         position = pos;
         next_pointer = block.fh_fh_next;
-        position = read_meta_data(rdr, sharable, block.fh_md_comment, position, BlockType::FH);
+        position = read_meta_data(rdr, sharable, block.fh_md_comment, position, BlockType::FH)?;
         fh.push(block);
     }
-    (fh, position)
+    Ok((fh, position))
 }
 /// At4 Attachment block struct
 #[derive(Debug, Copy, Clone)]
@@ -1173,29 +1188,29 @@ fn parser_at4_block(
     rdr: &mut SymBufReader<&File>,
     target: i64,
     mut position: i64,
-) -> (At4Block, Option<Vec<u8>>, i64) {
+) -> Result<(At4Block, Option<Vec<u8>>, i64)> {
     rdr.seek_relative(target - position)
-        .expect("Could not reach At4 Block position");
+        .context("Could not reach At4 Block position")?;
     let mut buf = [0u8; 96];
     rdr.read_exact(&mut buf)
-        .expect("Could not read At4 Block buffer");
+        .context("Could not read At4 Block buffer")?;
     let mut block = Cursor::new(buf);
     let block: At4Block = block
         .read_le()
-        .expect("Could not read At4 Block buffer into At4Block struct");
+        .context("Could not parse At4 Block buffer into At4Block struct")?;
     position = target + 96;
 
     // reads embedded if exists
     let data: Option<Vec<u8>> = if (block.at_flags & 0b1) > 0 {
         let mut embedded_data = vec![0u8; block.at_embedded_size as usize];
         rdr.read_exact(&mut embedded_data)
-            .expect("Could not read At4Block embedded attachement");
+            .context("Could not parse At4Block embedded attachement")?;
         position += block.at_embedded_size as i64;
         Some(embedded_data)
     } else {
         None
     };
-    (block, data, position)
+    Ok((block, data, position))
 }
 
 type At = HashMap<i64, (At4Block, Option<Vec<u8>>)>;
@@ -1206,35 +1221,37 @@ pub fn parse_at4(
     sharable: &mut SharableBlocks,
     target: i64,
     mut position: i64,
-) -> (At, i64) {
+) -> Result<(At, i64)> {
     let mut at: At = HashMap::new();
     if target > 0 {
-        let (block, data, pos) = parser_at4_block(rdr, target, position);
+        let (block, data, pos) = parser_at4_block(rdr, target, position)?;
         position = pos;
         // Reads MD
-        position = read_meta_data(rdr, sharable, block.at_md_comment, position, BlockType::AT);
+        position = read_meta_data(rdr, sharable, block.at_md_comment, position, BlockType::AT)?;
         // reads TX file_name
-        position = read_meta_data(rdr, sharable, block.at_tx_filename, position, BlockType::AT);
+        position = read_meta_data(rdr, sharable, block.at_tx_filename, position, BlockType::AT)?;
         // Reads tx mime type
-        position = read_meta_data(rdr, sharable, block.at_tx_mimetype, position, BlockType::AT);
+        position = read_meta_data(rdr, sharable, block.at_tx_mimetype, position, BlockType::AT)?;
         let mut next_pointer = block.at_at_next;
         at.insert(target, (block, data));
 
         while next_pointer > 0 {
             let block_start = next_pointer;
-            let (block, data, pos) = parser_at4_block(rdr, next_pointer, position);
+            let (block, data, pos) = parser_at4_block(rdr, next_pointer, position)?;
             position = pos;
             // Reads MD
-            position = read_meta_data(rdr, sharable, block.at_md_comment, position, BlockType::AT);
+            position = read_meta_data(rdr, sharable, block.at_md_comment, position, BlockType::AT)?;
             // reads TX file_name
-            position = read_meta_data(rdr, sharable, block.at_tx_filename, position, BlockType::AT);
+            position =
+                read_meta_data(rdr, sharable, block.at_tx_filename, position, BlockType::AT)?;
             // Reads tx mime type
-            position = read_meta_data(rdr, sharable, block.at_tx_mimetype, position, BlockType::AT);
+            position =
+                read_meta_data(rdr, sharable, block.at_tx_mimetype, position, BlockType::AT)?;
             next_pointer = block.at_at_next;
             at.insert(block_start, (block, data));
         }
     }
-    (at, position)
+    Ok((at, position))
 }
 
 /// Ev4 Event block struct
@@ -1291,15 +1308,12 @@ fn parse_ev4_block(
     rdr: &mut SymBufReader<&File>,
     target: i64,
     mut position: i64,
-) -> (Ev4Block, i64) {
-    let (mut block, _header, pos) = parse_block_short(rdr, target, position);
+) -> Result<(Ev4Block, i64)> {
+    let (mut block, _header, pos) = parse_block_short(rdr, target, position)?;
     position = pos;
-    let block: Ev4Block = match block.read_le() {
-        Ok(v) => v,
-        Err(e) => panic!("Error reading ev block \n{}", e),
-    }; // reads the fh block
+    let block: Ev4Block = block.read_le().context("Error parsing ev block")?; // reads the fh block
 
-    (block, position)
+    Ok((block, position))
 }
 
 /// parses Event blocks along with its linked comments, returns a hashmap of Ev4 block with position as key
@@ -1308,31 +1322,31 @@ pub fn parse_ev4(
     sharable: &mut SharableBlocks,
     target: i64,
     mut position: i64,
-) -> (HashMap<i64, Ev4Block>, i64) {
+) -> Result<(HashMap<i64, Ev4Block>, i64)> {
     let mut ev: HashMap<i64, Ev4Block> = HashMap::new();
     if target > 0 {
-        let (block, pos) = parse_ev4_block(rdr, target, position);
+        let (block, pos) = parse_ev4_block(rdr, target, position)?;
         position = pos;
         // Reads MD
-        position = read_meta_data(rdr, sharable, block.ev_md_comment, position, BlockType::EV);
+        position = read_meta_data(rdr, sharable, block.ev_md_comment, position, BlockType::EV)?;
         // reads TX event name
-        position = read_meta_data(rdr, sharable, block.ev_tx_name, position, BlockType::EV);
+        position = read_meta_data(rdr, sharable, block.ev_tx_name, position, BlockType::EV)?;
         let mut next_pointer = block.ev_ev_next;
         ev.insert(target, block);
 
         while next_pointer > 0 {
             let block_start = next_pointer;
-            let (block, pos) = parse_ev4_block(rdr, next_pointer, position);
+            let (block, pos) = parse_ev4_block(rdr, next_pointer, position)?;
             position = pos;
             // Reads MD
-            position = read_meta_data(rdr, sharable, block.ev_md_comment, position, BlockType::EV);
+            position = read_meta_data(rdr, sharable, block.ev_md_comment, position, BlockType::EV)?;
             // reads TX event name
-            position = read_meta_data(rdr, sharable, block.ev_tx_name, position, BlockType::EV);
+            position = read_meta_data(rdr, sharable, block.ev_tx_name, position, BlockType::EV)?;
             next_pointer = block.ev_ev_next;
             ev.insert(block_start, block);
         }
     }
-    (ev, position)
+    Ok((ev, position))
 }
 
 /// Dg4 Data Group block struct
@@ -1386,22 +1400,22 @@ fn parse_dg4_block(
     sharable: &mut SharableBlocks,
     target: i64,
     mut position: i64,
-) -> (Dg4Block, i64) {
+) -> Result<(Dg4Block, i64)> {
     rdr.seek_relative(target - position)
-        .expect("Could not reach position of Dg4 block");
+        .context("Could not reach position of Dg4 block")?;
     let mut buf = [0u8; 64];
     rdr.read_exact(&mut buf)
-        .expect("Could not read Dg4Blcok buffer");
+        .context("Could not read Dg4Blcok buffer")?;
     let mut block = Cursor::new(buf);
     let dg: Dg4Block = block
         .read_le()
-        .expect("Could not read Dg4Block buffer into Dg4Block struct");
+        .context("Could not parse Dg4Block buffer into Dg4Block struct")?;
     position = target + 64;
 
     // Reads MD
-    position = read_meta_data(rdr, sharable, dg.dg_md_comment, position, BlockType::DG);
+    position = read_meta_data(rdr, sharable, dg.dg_md_comment, position, BlockType::DG)?;
 
-    (dg, position)
+    Ok((dg, position))
 }
 
 /// Dg4 struct wrapping block, comments and linked CG
@@ -1420,12 +1434,12 @@ pub fn parse_dg4(
     target: i64,
     mut position: i64,
     sharable: &mut SharableBlocks,
-) -> (BTreeMap<i64, Dg4>, i64, usize, usize) {
+) -> Result<(BTreeMap<i64, Dg4>, i64, usize, usize)> {
     let mut dg: BTreeMap<i64, Dg4> = BTreeMap::new();
     let mut n_cn: usize = 0;
     let mut n_cg: usize = 0;
     if target > 0 {
-        let (block, pos) = parse_dg4_block(rdr, sharable, target, position);
+        let (block, pos) = parse_dg4_block(rdr, sharable, target, position)?;
         position = pos;
         let mut next_pointer = block.dg_dg_next;
         let (mut cg, pos, num_cg, num_cn) = parse_cg4(
@@ -1434,7 +1448,7 @@ pub fn parse_dg4(
             position,
             sharable,
             block.dg_rec_id_size,
-        );
+        )?;
         n_cg += num_cg;
         n_cn += num_cn;
         identify_vlsd_cg(&mut cg);
@@ -1443,7 +1457,7 @@ pub fn parse_dg4(
         position = pos;
         while next_pointer > 0 {
             let block_start = next_pointer;
-            let (block, pos) = parse_dg4_block(rdr, sharable, next_pointer, position);
+            let (block, pos) = parse_dg4_block(rdr, sharable, next_pointer, position)?;
             next_pointer = block.dg_dg_next;
             position = pos;
             let (mut cg, pos, num_cg, num_cn) = parse_cg4(
@@ -1452,7 +1466,7 @@ pub fn parse_dg4(
                 position,
                 sharable,
                 block.dg_rec_id_size,
-            );
+            )?;
             n_cg += num_cg;
             n_cn += num_cn;
             identify_vlsd_cg(&mut cg);
@@ -1461,7 +1475,7 @@ pub fn parse_dg4(
             position = pos;
         }
     }
-    (dg, position, n_cg, n_cn)
+    Ok((dg, position, n_cg, n_cn))
 }
 
 /// Try to link VLSD Channel Groups with matching channel in other groups
@@ -1513,9 +1527,10 @@ impl fmt::Display for SharableBlocks {
                         writeln!(f, "Tag: {}  Text: {}", tag, text)?;
                     }
                 }
-                MetaDataBlockType::TX => {
-                    writeln!(f, "Text: {}", c.get_data_string())?;
-                }
+                MetaDataBlockType::TX => match c.get_data_string() {
+                    Ok(s) => writeln!(f, "Text: {}", s)?,
+                    Err(e) => writeln!(f, "Text: {:?}", e)?,
+                },
                 _ => (),
             }
         }
@@ -1533,12 +1548,12 @@ impl fmt::Display for SharableBlocks {
 
 impl SharableBlocks {
     /// Returns the text from TX Block or TX tag's text from MD block
-    pub fn get_tx(&self, position: i64) -> Option<String> {
+    pub fn get_tx(&self, position: i64) -> Result<Option<String>> {
         let mut txt: Option<String> = None;
         if let Some(md) = self.md_tx.get(&position) {
-            txt = md.get_tx();
+            txt = md.get_tx()?;
         };
-        txt
+        Ok(txt)
     }
     /// Creates a new SharableBlocks of type TX (not MD)
     pub fn create_tx(&mut self, position: i64, text: String) {
@@ -1559,12 +1574,16 @@ impl SharableBlocks {
         };
         comments
     }
-    /// Parallely extract matadata from raw xml string
-    pub fn extract_xml(&mut self) {
+    /// Parallely extract metadata from raw xml string
+    pub fn extract_xml(&mut self) -> Result<()> {
         self.md_tx
             .par_iter_mut()
             .filter(|(_k, v)| v.block_type == MetaDataBlockType::MdBlock)
-            .for_each(|(_k, val)| val.parse_xml());
+            .try_for_each(|(_k, val)| -> Result<(), Error> {
+                val.parse_xml()?;
+                Ok(())
+            })?;
+        Ok(())
     }
     /// Create new Shared Block
     pub fn new(n_channels: usize) -> SharableBlocks {
@@ -1650,15 +1669,15 @@ fn parse_cg4_block(
     mut position: i64,
     sharable: &mut SharableBlocks,
     record_id_size: u8,
-) -> (Cg4, i64, usize) {
-    let (mut block, header, pos) = parse_block_short(rdr, target, position);
+) -> Result<(Cg4, i64, usize)> {
+    let (mut block, header, pos) = parse_block_short(rdr, target, position)?;
     position = pos;
     let cg: Cg4Block = block
         .read_le()
-        .expect("Could not read buffer into Cg4Block struct");
+        .context("Could not read buffer into Cg4Block struct")?;
 
     // Reads MD
-    position = read_meta_data(rdr, sharable, cg.cg_md_comment, position, BlockType::CG);
+    position = read_meta_data(rdr, sharable, cg.cg_md_comment, position, BlockType::CG)?;
     let record_layout = (record_id_size, cg.cg_data_bytes, cg.cg_inval_bytes);
 
     // reads CN (and other linked block behind like CC, SI, CA, etc.)
@@ -1669,22 +1688,22 @@ fn parse_cg4_block(
         sharable,
         record_layout,
         cg.cg_cycle_count,
-    );
+    )?;
     position = pos;
 
     // Reads Acq Name
-    position = read_meta_data(rdr, sharable, cg.cg_tx_acq_name, position, BlockType::CG);
+    position = read_meta_data(rdr, sharable, cg.cg_tx_acq_name, position, BlockType::CG)?;
 
     // Reads SI Acq name
     let si_pointer = cg.cg_si_acq_source;
     if (si_pointer != 0) && !sharable.si.contains_key(&si_pointer) {
-        let (mut si_block, _header, pos) = parse_block_short(rdr, si_pointer, position);
+        let (mut si_block, _header, pos) = parse_block_short(rdr, si_pointer, position)?;
         position = pos;
         let si_block: Si4Block = si_block
             .read_le()
-            .expect("Could not read buffer into Si4block struct");
-        position = read_meta_data(rdr, sharable, si_block.si_tx_name, position, BlockType::SI);
-        position = read_meta_data(rdr, sharable, si_block.si_tx_path, position, BlockType::SI);
+            .context("Could not read buffer into Si4block struct")?;
+        position = read_meta_data(rdr, sharable, si_block.si_tx_name, position, BlockType::SI)?;
+        position = read_meta_data(rdr, sharable, si_block.si_tx_path, position, BlockType::SI)?;
         sharable.si.insert(si_pointer, si_block);
     }
 
@@ -1702,7 +1721,7 @@ fn parse_cg4_block(
         invalid_bytes: None,
     };
 
-    (cg_struct, position, n_cn)
+    Ok((cg_struct, position, n_cn))
 }
 
 /// Channel Group struct
@@ -1732,23 +1751,23 @@ pub struct Cg4 {
 /// Cg4 implementations for extracting acquisition and source name and path
 impl Cg4 {
     /// Channel group acquisition name
-    fn get_cg_name(&self, sharable: &SharableBlocks) -> Option<String> {
-        sharable.get_tx(self.block.cg_tx_acq_name)
+    fn get_cg_name(&self, sharable: &SharableBlocks) -> Result<Option<String>> {
+        Ok(sharable.get_tx(self.block.cg_tx_acq_name)?)
     }
     /// Channel group source name
-    fn get_cg_source_name(&self, sharable: &SharableBlocks) -> Option<String> {
+    fn get_cg_source_name(&self, sharable: &SharableBlocks) -> Result<Option<String>> {
         let si = sharable.si.get(&self.block.cg_si_acq_source);
         match si {
-            Some(block) => block.get_si_source_name(sharable),
-            None => None,
+            Some(block) => Ok(block.get_si_source_name(sharable)?),
+            None => Ok(None),
         }
     }
     /// Channel group source path
-    fn get_cg_source_path(&self, sharable: &SharableBlocks) -> Option<String> {
+    fn get_cg_source_path(&self, sharable: &SharableBlocks) -> Result<Option<String>> {
         let si = sharable.si.get(&self.block.cg_si_acq_source);
         match si {
-            Some(block) => block.get_si_path_name(sharable),
-            None => None,
+            Some(block) => Ok(block.get_si_path_name(sharable)?),
+            None => Ok(None),
         }
     }
     /// Computes the validity mask for each channel in the group
@@ -1788,13 +1807,13 @@ pub fn parse_cg4(
     mut position: i64,
     sharable: &mut SharableBlocks,
     record_id_size: u8,
-) -> (HashMap<u64, Cg4>, i64, usize, usize) {
+) -> Result<(HashMap<u64, Cg4>, i64, usize, usize)> {
     let mut cg: HashMap<u64, Cg4> = HashMap::new();
     let mut n_cg: usize = 0;
     let mut n_cn: usize = 0;
     if target != 0 {
         let (mut cg_struct, pos, num_cn) =
-            parse_cg4_block(rdr, target, position, sharable, record_id_size);
+            parse_cg4_block(rdr, target, position, sharable, record_id_size)?;
         position = pos;
         let mut next_pointer = cg_struct.block.cg_cg_next;
         cg_struct.record_length += record_id_size as u32 + cg_struct.block.cg_inval_bytes;
@@ -1804,7 +1823,7 @@ pub fn parse_cg4(
 
         while next_pointer != 0 {
             let (mut cg_struct, pos, num_cn) =
-                parse_cg4_block(rdr, next_pointer, position, sharable, record_id_size);
+                parse_cg4_block(rdr, next_pointer, position, sharable, record_id_size)?;
             position = pos;
             cg_struct.record_length += record_id_size as u32 + cg_struct.block.cg_inval_bytes;
             next_pointer = cg_struct.block.cg_cg_next;
@@ -1813,7 +1832,7 @@ pub fn parse_cg4(
             n_cn += num_cn;
         }
     }
-    (cg, position, n_cg, n_cn)
+    Ok((cg, position, n_cg, n_cn))
 }
 
 /// Cn4 Channel block struct
@@ -1985,7 +2004,7 @@ pub fn parse_cn4(
     sharable: &mut SharableBlocks,
     record_layout: RecordLayout,
     cg_cycle_count: u64,
-) -> (CnType, i64, usize, i32) {
+) -> Result<(CnType, i64, usize, i32)> {
     let mut cn: CnType = HashMap::new();
     let mut n_cn: usize = 0;
     let mut first_rec_pos: i32 = 0;
@@ -1998,7 +2017,7 @@ pub fn parse_cn4(
             sharable,
             record_layout,
             cg_cycle_count,
-        );
+        )?;
         position = pos;
         n_cn += n_cns;
         cn.extend(cns);
@@ -2046,7 +2065,7 @@ pub fn parse_cn4(
                 sharable,
                 record_layout,
                 cg_cycle_count,
-            );
+            )?;
             position = pos;
             n_cn += n_cns;
             cn.extend(cns);
@@ -2087,7 +2106,7 @@ pub fn parse_cn4(
             }
         }
     }
-    (cn, position, n_cn, first_rec_pos)
+    Ok((cn, position, n_cn, first_rec_pos))
 }
 
 /// returns created CANopenDate channels
@@ -2267,19 +2286,19 @@ fn calc_n_bytes_not_aligned(bitcount: u32) -> u32 {
 
 impl Cn4 {
     /// Returns the channel source name
-    fn get_cn_source_name(&self, sharable: &SharableBlocks) -> Option<String> {
+    fn get_cn_source_name(&self, sharable: &SharableBlocks) -> Result<Option<String>> {
         let si = sharable.si.get(&self.block.cn_si_source);
         match si {
-            Some(block) => block.get_si_source_name(sharable),
-            None => None,
+            Some(block) => Ok(block.get_si_source_name(sharable)?),
+            None => Ok(None),
         }
     }
     /// Returns the channel source path
-    fn get_cn_source_path(&self, sharable: &SharableBlocks) -> Option<String> {
+    fn get_cn_source_path(&self, sharable: &SharableBlocks) -> Result<Option<String>> {
         let si = sharable.si.get(&self.block.cn_si_source);
         match si {
-            Some(block) => block.get_si_path_name(sharable),
-            None => None,
+            Some(block) => Ok(block.get_si_path_name(sharable)?),
+            None => Ok(None),
         }
     }
 }
@@ -2292,15 +2311,15 @@ fn parse_cn4_block(
     sharable: &mut SharableBlocks,
     record_layout: RecordLayout,
     cg_cycle_count: u64,
-) -> (Cn4, i64, usize, CnType) {
+) -> Result<(Cn4, i64, usize, CnType)> {
     let (record_id_size, _cg_data_bytes, cg_inval_bytes) = record_layout;
     let mut n_cn: usize = 1;
     let mut cns: HashMap<i32, Cn4> = HashMap::new();
-    let (mut block, cnheader, pos) = parse_block_short(rdr, target, position);
+    let (mut block, cnheader, pos) = parse_block_short(rdr, target, position)?;
     position = pos;
     let block: Cn4Block = block
         .read_le()
-        .expect("Could not read buffer into Cn4Block struct");
+        .context("Could not read buffer into Cn4Block struct")?;
 
     let pos_byte_beg = block.cn_byte_offset + record_id_size as u32;
     let n_bytes = calc_n_bytes_not_aligned(block.cn_bit_count + (block.cn_bit_offset as u32));
@@ -2317,37 +2336,37 @@ fn parse_cn4_block(
     };
 
     // Reads TX name
-    position = read_meta_data(rdr, sharable, block.cn_tx_name, position, BlockType::CN);
-    let name: String = if let Some(n) = sharable.get_tx(block.cn_tx_name) {
+    position = read_meta_data(rdr, sharable, block.cn_tx_name, position, BlockType::CN)?;
+    let name: String = if let Some(n) = sharable.get_tx(block.cn_tx_name)? {
         n
     } else {
         String::new()
     };
 
     // Reads unit
-    position = read_meta_data(rdr, sharable, block.cn_md_unit, position, BlockType::CN);
+    position = read_meta_data(rdr, sharable, block.cn_md_unit, position, BlockType::CN)?;
 
     // Reads CC
     let cc_pointer = block.cn_cc_conversion;
     if (cc_pointer != 0) && !sharable.cc.contains_key(&cc_pointer) {
-        let (cc_block, _header, pos) = parse_block_short(rdr, cc_pointer, position);
+        let (cc_block, _header, pos) = parse_block_short(rdr, cc_pointer, position)?;
         position = pos;
-        position = read_cc(rdr, &cc_pointer, position, cc_block, sharable);
+        position = read_cc(rdr, &cc_pointer, position, cc_block, sharable)?;
     }
 
     // Reads MD
-    position = read_meta_data(rdr, sharable, block.cn_md_comment, position, BlockType::CN);
+    position = read_meta_data(rdr, sharable, block.cn_md_comment, position, BlockType::CN)?;
 
     //Reads SI
     let si_pointer = block.cn_si_source;
     if (si_pointer != 0) && !sharable.si.contains_key(&si_pointer) {
-        let (mut si_block, _header, pos) = parse_block_short(rdr, si_pointer, position);
+        let (mut si_block, _header, pos) = parse_block_short(rdr, si_pointer, position)?;
         position = pos;
         let si_block: Si4Block = si_block
             .read_le()
-            .expect("Could into read buffer into Si4Block struct");
-        position = read_meta_data(rdr, sharable, si_block.si_tx_name, position, BlockType::SI);
-        position = read_meta_data(rdr, sharable, si_block.si_tx_path, position, BlockType::SI);
+            .context("Could into read buffer into Si4Block struct")?;
+        position = read_meta_data(rdr, sharable, si_block.si_tx_name, position, BlockType::SI)?;
+        position = read_meta_data(rdr, sharable, si_block.si_tx_path, position, BlockType::SI)?;
         sharable.si.insert(si_pointer, si_block);
     }
 
@@ -2362,7 +2381,7 @@ fn parse_cn4_block(
             sharable,
             record_layout,
             cg_cycle_count,
-        );
+        )?;
         is_array = array_flag;
         compo = Some(co);
         position = pos;
@@ -2406,7 +2425,7 @@ fn parse_cn4_block(
         channel_data_valid: false,
     };
 
-    (cn_struct, position, n_cn, cns)
+    Ok((cn_struct, position, n_cn, cns))
 }
 
 /// reads pointed TX or CC Block(s) pointed by cc_ref in CCBlock
@@ -2416,31 +2435,31 @@ fn read_cc(
     mut position: i64,
     mut block: Cursor<Vec<u8>>,
     sharable: &mut SharableBlocks,
-) -> i64 {
+) -> Result<i64> {
     let cc_block: Cc4Block = block
         .read_le()
-        .expect("Could nto read buffer into Cc4Block struct");
-    position = read_meta_data(rdr, sharable, cc_block.cc_md_unit, position, BlockType::CC);
-    position = read_meta_data(rdr, sharable, cc_block.cc_tx_name, position, BlockType::CC);
+        .context("Could nto read buffer into Cc4Block struct")?;
+    position = read_meta_data(rdr, sharable, cc_block.cc_md_unit, position, BlockType::CC)?;
+    position = read_meta_data(rdr, sharable, cc_block.cc_tx_name, position, BlockType::CC)?;
 
     for pointer in &cc_block.cc_ref {
         if !sharable.cc.contains_key(pointer)
             && !sharable.md_tx.contains_key(pointer)
             && *pointer != 0
         {
-            let (ref_block, header, _pos) = parse_block_short(rdr, *pointer, position);
+            let (ref_block, header, _pos) = parse_block_short(rdr, *pointer, position)?;
             position = pointer + header.hdr_len as i64;
             if "##TX".as_bytes() == header.hdr_id {
                 // TX Block
-                position = read_meta_data(rdr, sharable, *pointer, position, BlockType::CC)
+                position = read_meta_data(rdr, sharable, *pointer, position, BlockType::CC)?
             } else {
                 // CC Block
-                position = read_cc(rdr, pointer, position, ref_block, sharable);
+                position = read_cc(rdr, pointer, position, ref_block, sharable)?;
             }
         }
     }
     sharable.cc.insert(*target, cc_block);
-    position
+    Ok(position)
 }
 
 /// Cc4 Channel Conversion block struct
@@ -2529,12 +2548,12 @@ pub struct Si4Block {
 
 impl Si4Block {
     /// returns the source name
-    fn get_si_source_name(&self, sharable: &SharableBlocks) -> Option<String> {
-        sharable.get_tx(self.si_tx_name)
+    fn get_si_source_name(&self, sharable: &SharableBlocks) -> Result<Option<String>> {
+        Ok(sharable.get_tx(self.si_tx_name)?)
     }
     /// returns the source path
-    fn get_si_path_name(&self, sharable: &SharableBlocks) -> Option<String> {
-        sharable.get_tx(self.si_tx_path)
+    fn get_si_path_name(&self, sharable: &SharableBlocks) -> Result<Option<String>> {
+        Ok(sharable.get_tx(self.si_tx_path)?)
     }
 }
 
@@ -2659,12 +2678,12 @@ fn parse_ca_block(
     ca_block: &mut Cursor<Vec<u8>>,
     block_header: Blockheader4,
     cg_cycle_count: u64,
-) -> Ca4Block {
+) -> Result<Ca4Block> {
     //Reads members first
     ca_block.set_position(block_header.hdr_links * 8); // change buffer position after links section
     let ca_members: Ca4BlockMembers = ca_block
         .read_le()
-        .expect("Coudl tno read buffer into CaBlockMembers struct");
+        .context("Coudl tno read buffer into CaBlockMembers struct")?;
     let mut snd: usize;
     let mut pnd: usize;
     // converts  ca_dim_size from u64 to usize
@@ -2694,7 +2713,7 @@ fn parse_ca_block(
     let ca_axis_value: Option<Vec<f64>> = if (ca_members.ca_flags & 0b100000) > 0 {
         ca_block
             .read_f64_into::<LittleEndian>(&mut val)
-            .expect("Could not read ca_axis_value");
+            .context("Could not read ca_axis_value")?;
         Some(val)
     } else {
         None
@@ -2704,7 +2723,7 @@ fn parse_ca_block(
     let ca_cycle_count: Option<Vec<u64>> = if ca_members.ca_storage >= 1 {
         ca_block
             .read_u64_into::<LittleEndian>(&mut val)
-            .expect("Could not read ca_cycle_count");
+            .context("Could not read ca_cycle_count")?;
         Some(val)
     } else {
         None
@@ -2715,13 +2734,13 @@ fn parse_ca_block(
 
     let ca_composition: i64 = ca_block
         .read_i64::<LittleEndian>()
-        .expect("Could not read ca_composition");
+        .context("Could not read ca_composition")?;
 
     let mut val = vec![0i64; pnd];
     let ca_data: Option<Vec<i64>> = if ca_members.ca_storage == 2 {
         ca_block
             .read_i64_into::<LittleEndian>(&mut val)
-            .expect("Could not read ca_storage");
+            .context("Could not read ca_storage")?;
         Some(val)
     } else {
         None
@@ -2731,7 +2750,7 @@ fn parse_ca_block(
     let ca_dynamic_size: Option<Vec<i64>> = if (ca_members.ca_flags & 0b1) > 0 {
         ca_block
             .read_i64_into::<LittleEndian>(&mut val)
-            .expect("Could not read ca_dynamic_size");
+            .context("Could not read ca_dynamic_size")?;
         Some(val)
     } else {
         None
@@ -2741,7 +2760,7 @@ fn parse_ca_block(
     let ca_input_quantity: Option<Vec<i64>> = if (ca_members.ca_flags & 0b10) > 0 {
         ca_block
             .read_i64_into::<LittleEndian>(&mut val)
-            .expect("Could not read ca_input_quantity");
+            .context("Could not read ca_input_quantity")?;
         Some(val)
     } else {
         None
@@ -2751,7 +2770,7 @@ fn parse_ca_block(
     let ca_output_quantity: Option<Vec<i64>> = if (ca_members.ca_flags & 0b100) > 0 {
         ca_block
             .read_i64_into::<LittleEndian>(&mut val)
-            .expect("Could not read ca_output_quantity");
+            .context("Could not read ca_output_quantity")?;
         Some(val)
     } else {
         None
@@ -2761,7 +2780,7 @@ fn parse_ca_block(
     let ca_comparison_quantity: Option<Vec<i64>> = if (ca_members.ca_flags & 0b1000) > 0 {
         ca_block
             .read_i64_into::<LittleEndian>(&mut val)
-            .expect("Could not read ca_comparison_quantity");
+            .context("Could not read ca_comparison_quantity")?;
         Some(val)
     } else {
         None
@@ -2771,7 +2790,7 @@ fn parse_ca_block(
     let ca_cc_axis_conversion: Option<Vec<i64>> = if (ca_members.ca_flags & 0b10000) > 0 {
         ca_block
             .read_i64_into::<LittleEndian>(&mut val)
-            .expect("Could not read ca_cc_axis_conversion");
+            .context("Could not read ca_cc_axis_conversion")?;
         Some(val)
     } else {
         None
@@ -2782,13 +2801,13 @@ fn parse_ca_block(
         if ((ca_members.ca_flags & 0b10000) > 0) & ((ca_members.ca_flags & 0b100000) > 0) {
             ca_block
                 .read_i64_into::<LittleEndian>(&mut val)
-                .expect("Could not read ca_axis");
+                .context("Could not read ca_axis")?;
             Some(val)
         } else {
             None
         };
 
-    Ca4Block {
+    Ok(Ca4Block {
         ca_id: block_header.hdr_id,
         reserved: block_header.hdr_gap,
         ca_len: block_header.hdr_len,
@@ -2813,7 +2832,7 @@ fn parse_ca_block(
         snd,
         pnd,
         shape,
-    }
+    })
 }
 
 /// contains composition blocks (CN or CA)
@@ -2840,8 +2859,8 @@ fn parse_composition(
     sharable: &mut SharableBlocks,
     record_layout: RecordLayout,
     cg_cycle_count: u64,
-) -> (Composition, i64, bool, usize, CnType) {
-    let (mut block, block_header, pos) = parse_block(rdr, target, position);
+) -> Result<(Composition, i64, bool, usize, CnType)> {
+    let (mut block, block_header, pos) = parse_block(rdr, target, position)?;
     position = pos;
     let is_array: bool;
     let mut cns: CnType;
@@ -2850,7 +2869,7 @@ fn parse_composition(
     if block_header.hdr_id == "##CA".as_bytes() {
         // Channel Array
         is_array = true;
-        let block = parse_ca_block(&mut block, block_header, cg_cycle_count);
+        let block = parse_ca_block(&mut block, block_header, cg_cycle_count)?;
         position = pos;
         let ca_compositon: Option<Box<Composition>>;
         if block.ca_composition != 0 {
@@ -2861,7 +2880,7 @@ fn parse_composition(
                 sharable,
                 record_layout,
                 cg_cycle_count,
-            );
+            )?;
             position = pos;
             cns = cnss;
             n_cn += n_cns;
@@ -2870,7 +2889,7 @@ fn parse_composition(
             ca_compositon = None;
             cns = HashMap::new();
         }
-        (
+        Ok((
             Composition {
                 block: Compo::CA(Box::new(block)),
                 compo: ca_compositon,
@@ -2879,7 +2898,7 @@ fn parse_composition(
             is_array,
             n_cn,
             cns,
-        )
+        ))
     } else {
         // Channel structure
         is_array = false;
@@ -2890,7 +2909,7 @@ fn parse_composition(
             sharable,
             record_layout,
             cg_cycle_count,
-        );
+        )?;
         position = pos;
         n_cn += n_cns;
         cns = cnss;
@@ -2908,7 +2927,7 @@ fn parse_composition(
                 sharable,
                 record_layout,
                 cg_cycle_count,
-            );
+            )?;
             position = pos;
             n_cn += n_cns;
             cns.extend(cnss);
@@ -2916,7 +2935,7 @@ fn parse_composition(
         } else {
             cn_composition = None
         }
-        (
+        Ok((
             Composition {
                 block: Compo::CN(Box::new(cn_struct)),
                 compo: cn_composition,
@@ -2925,7 +2944,7 @@ fn parse_composition(
             is_array,
             n_cn,
             cns,
-        )
+        ))
     }
 }
 
@@ -2950,27 +2969,27 @@ pub fn build_channel_db(
                     let mut changed: bool = false;
                     let space_char = String::from(" ");
                     // create unique channel name
-                    if let Some(cs) = cn.get_cn_source_name(sharable) {
+                    if let Ok(Some(cs)) = cn.get_cn_source_name(sharable) {
                         cn.unique_name.push_str(&space_char);
                         cn.unique_name.push_str(&cs);
                         changed = true;
                     }
-                    if let Some(cp) = cn.get_cn_source_path(sharable) {
+                    if let Ok(Some(cp)) = cn.get_cn_source_path(sharable) {
                         cn.unique_name.push_str(&space_char);
                         cn.unique_name.push_str(&cp);
                         changed = true;
                     }
-                    if let Some(name) = &gn {
+                    if let Ok(Some(name)) = &gn {
                         cn.unique_name.push_str(&space_char);
                         cn.unique_name.push_str(name);
                         changed = true;
                     }
-                    if let Some(source) = &gs {
+                    if let Ok(Some(source)) = &gs {
                         cn.unique_name.push_str(&space_char);
                         cn.unique_name.push_str(source);
                         changed = true;
                     }
-                    if let Some(path) = &gp {
+                    if let Ok(Some(path)) = &gp {
                         cn.unique_name.push_str(&space_char);
                         cn.unique_name.push_str(path);
                         changed = true;
@@ -3083,22 +3102,28 @@ pub fn parser_dl4_block(
     rdr: &mut BufReader<&File>,
     target: i64,
     mut position: i64,
-) -> (Dl4Block, i64) {
+) -> Result<(Dl4Block, i64)> {
     rdr.seek_relative(target - position)
-        .expect("Could not reach position to read Dl4Block");
-    let block: Dl4Block = rdr.read_le().expect("Could not read into Dl4Block struct");
+        .context("Could not reach position to read Dl4Block")?;
+    let block: Dl4Block = rdr
+        .read_le()
+        .context("Could not read into Dl4Block struct")?;
     position = target + block.dl_len as i64;
-    (block, position)
+    Ok((block, position))
 }
 
 /// parses DZBlock
-pub fn parse_dz(rdr: &mut BufReader<&File>) -> (Vec<u8>, Dz4Block) {
-    let block: Dz4Block = rdr.read_le().expect("Could not read into Dz4Block struct");
+pub fn parse_dz(rdr: &mut BufReader<&File>) -> Result<(Vec<u8>, Dz4Block)> {
+    let block: Dz4Block = rdr
+        .read_le()
+        .context("Could not read into Dz4Block struct")?;
     let mut buf = vec![0u8; block.dz_data_length as usize];
-    rdr.read_exact(&mut buf).expect("Could not read Dz data");
-    let (mut data, checksum) = decompress(&buf, Format::Zlib).expect("Could not decompress data");
-    if Adler32::from_buf(&data).finish() != checksum.expect("dz block checksum") {
-        panic!("Checksum not ok");
+    rdr.read_exact(&mut buf).context("Could not read Dz data")?;
+    let mut data: Vec<u8>;
+    let checksum: Option<u32>;
+    (data, checksum) = decompress(&buf, Format::Zlib).expect("Could not decompress data");
+    if Some(Adler32::from_buf(&data).finish()) != checksum {
+        return Err(anyhow!("Checksum not ok"));
     }
     if block.dz_zip_type == 1 {
         let m = block.dz_org_data_length / block.dz_zip_parameter as u64;
@@ -3115,7 +3140,7 @@ pub fn parse_dz(rdr: &mut BufReader<&File>) -> (Vec<u8>, Dz4Block) {
             data.extend(tail);
         }
     }
-    (data, block)
+    Ok((data, block))
 }
 
 /// DZ4 Data List block struct
@@ -3240,14 +3265,14 @@ pub fn parser_ld4_block(
     rdr: &mut BufReader<&File>,
     target: i64,
     mut position: i64,
-) -> (Ld4Block, i64) {
+) -> Result<(Ld4Block, i64)> {
     rdr.seek_relative(target - position)
-        .expect("Could not reach Ld4Block position");
+        .context("Could not reach Ld4Block position")?;
     let block: Ld4Block = rdr
         .read_le()
-        .expect("Could not read buffer into Ld4Block struct");
+        .context("Could not read buffer into Ld4Block struct")?;
     position = target + block.ld_len as i64;
-    (block, position)
+    Ok((block, position))
 }
 
 /// HL4 Data List block struct

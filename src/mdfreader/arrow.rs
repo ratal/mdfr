@@ -11,7 +11,6 @@ use arrow2::bitmap::Bitmap;
 use arrow2::buffer::Buffer;
 use arrow2::datatypes::{DataType, Field, Metadata, PhysicalType, PrimitiveType};
 use arrow2::ffi;
-
 use arrow2::types::f16;
 use encoding::all::ISO_8859_1;
 use encoding::{DecoderTrap, Encoding};
@@ -365,10 +364,13 @@ pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
                                 );
                                 columns.push(data);
                                 let mut metadata = Metadata::new();
-                                if let Some(unit) = mdfinfo4.sharable.get_tx(cn.block.cn_md_unit) {
+                                if let Ok(Some(unit)) =
+                                    mdfinfo4.sharable.get_tx(cn.block.cn_md_unit)
+                                {
                                     metadata.insert("unit".to_string(), unit);
                                 };
-                                if let Some(desc) = mdfinfo4.sharable.get_tx(cn.block.cn_md_comment)
+                                if let Ok(Some(desc)) =
+                                    mdfinfo4.sharable.get_tx(cn.block.cn_md_comment)
                                 {
                                     metadata.insert("description".to_string(), desc);
                                 };
