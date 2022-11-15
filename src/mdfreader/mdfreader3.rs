@@ -3,6 +3,7 @@ use rayon::prelude::*;
 
 use crate::mdfinfo::mdfinfo3::{Cg3, Dg3};
 use crate::mdfinfo::MdfInfo;
+use anyhow::{Context, Result};
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufReader, Read};
@@ -24,7 +25,7 @@ pub fn mdfreader3<'a>(
     rdr: &'a mut BufReader<&File>,
     mdf: &'a mut Mdf,
     channel_names: &HashSet<String>,
-) {
+) -> Result<()> {
     match &mut mdf.mdf_info {
         MdfInfo::V3(info) => {
             let mut position: i64 = 0;
@@ -44,7 +45,7 @@ pub fn mdfreader3<'a>(
                 if dg.block.dg_data != 0 && !channel_names_to_read_in_dg.is_empty() {
                     // header block
                     rdr.seek_relative(*data_position as i64 - position)
-                        .expect("Could not position buffer"); // change buffer position
+                        .context("Could not position buffer")?; // change buffer position
                     if dg.cg.len() == 1 {
                         // sorted data group
                         for channel_group in dg.cg.values_mut() {
@@ -52,7 +53,7 @@ pub fn mdfreader3<'a>(
                                 rdr,
                                 channel_group,
                                 &channel_names_to_read_in_dg,
-                            );
+                            )?;
                             position = *data_position as i64
                                 + (channel_group.record_length as i64)
                                     * (channel_group.block.cg_cycle_count as i64);
@@ -76,7 +77,7 @@ pub fn mdfreader3<'a>(
                             dg,
                             block_length,
                             &channel_names_to_read_in_dg,
-                        );
+                        )?;
                     }
 
                     // conversion of all channels to physical values
@@ -86,6 +87,7 @@ pub fn mdfreader3<'a>(
         }
         MdfInfo::V4(_) => {}
     };
+    Ok(())
 }
 
 /// initialise ndarrays for the data group/block
@@ -130,7 +132,7 @@ fn read_all_channels_sorted(
     rdr: &mut BufReader<&File>,
     channel_group: &mut Cg3,
     channel_names_to_read_in_dg: &HashSet<String>,
-) {
+) -> Result<()> {
     let chunks = generate_chunks(channel_group);
     // initialises the arrays
     initialise_arrays(
@@ -143,7 +145,7 @@ fn read_all_channels_sorted(
     for (n_record_chunk, chunk_size) in chunks {
         let mut data_chunk = vec![0u8; chunk_size];
         rdr.read_exact(&mut data_chunk)
-            .expect("Could not read data chunk");
+            .context("Could not read data chunk")?;
         read_channels_from_bytes(
             &data_chunk,
             &mut channel_group.cn,
@@ -153,6 +155,7 @@ fn read_all_channels_sorted(
         );
         previous_index += n_record_chunk;
     }
+    Ok(())
 }
 
 /// Reads unsorted data block chunk by chunk
@@ -161,7 +164,7 @@ fn read_all_channels_unsorted(
     dg: &mut Dg3,
     block_length: i64,
     channel_names_to_read_in_dg: &HashSet<String>,
-) {
+) -> Result<()> {
     let data_block_length = block_length as usize;
     let mut position: usize = 0;
     let mut record_counter: HashMap<u16, (usize, Vec<u8>)> = HashMap::new();
@@ -184,14 +187,15 @@ fn read_all_channels_unsorted(
             position += data_block_length - position;
         }
         rdr.read_exact(&mut data_chunk)
-            .expect("Could not read data chunk");
+            .context("Could not read data chunk")?;
         read_all_channels_unsorted_from_bytes(
             &mut data_chunk,
             dg,
             &mut record_counter,
             channel_names_to_read_in_dg,
-        );
+        )?;
     }
+    Ok(())
 }
 
 /// read record by record from unsorted data block into sorted data block, then copy data into channel arrays
@@ -200,7 +204,7 @@ fn read_all_channels_unsorted_from_bytes(
     dg: &mut Dg3,
     record_counter: &mut HashMap<u16, (usize, Vec<u8>)>,
     channel_names_to_read_in_dg: &HashSet<String>,
-) {
+) -> Result<()> {
     let mut position: usize = 0;
     let data_length = data.len();
     // unsort data into sorted data blocks, except for VLSD CG.
@@ -210,7 +214,7 @@ fn read_all_channels_unsorted_from_bytes(
         let rec_id: u16 = if remaining >= 1 {
             data[position]
                 .try_into()
-                .expect("Could not convert record id u8")
+                .context("Could not convert record id u8")?
         } else {
             break; // not enough data remaining
         };
@@ -248,4 +252,5 @@ fn read_all_channels_unsorted_from_bytes(
             record_data.clear(); // clears data for new block, keeping capacity
         }
     }
+    Ok(())
 }

@@ -13,13 +13,13 @@ readme = "README.md"
 
 [dependencies]
 clap = "4" # for input arguments
-anyhow = "1.0" # error handling
+anyhow = {version = "1.0", features = ["backtrace"]} # error handling
 byteorder = "1.4" # for bytes conversions
-encoding = "0.2" # for bytes to text conversion (utf8, SBC, UTF16)
 binrw = "0.10" # to efficiently read blocks
 num = {version = "0.4", features = ["serde"] } # for complex numbers
 half = "2" # for f16 handling
-encoding_rs = "0.8" # for endian management
+encoding_rs = "0.8" # for endian management and bytes to text conversion (utf8, SBC, UTF16)
+codepage = "0.1"  # to convert code page into encoding
 chrono = "0.4" # for time conversion
 ndarray = {version = "0.15", features = ["rayon", "serde", "approx"]} # for nd arrays
 ndarray-stats = "0.5" # for nd array stats

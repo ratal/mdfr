@@ -1752,7 +1752,7 @@ pub struct Cg4 {
 impl Cg4 {
     /// Channel group acquisition name
     fn get_cg_name(&self, sharable: &SharableBlocks) -> Result<Option<String>> {
-        Ok(sharable.get_tx(self.block.cg_tx_acq_name)?)
+        sharable.get_tx(self.block.cg_tx_acq_name)
     }
     /// Channel group source name
     fn get_cg_source_name(&self, sharable: &SharableBlocks) -> Result<Option<String>> {
@@ -2549,11 +2549,11 @@ pub struct Si4Block {
 impl Si4Block {
     /// returns the source name
     fn get_si_source_name(&self, sharable: &SharableBlocks) -> Result<Option<String>> {
-        Ok(sharable.get_tx(self.si_tx_name)?)
+        sharable.get_tx(self.si_tx_name)
     }
     /// returns the source path
     fn get_si_path_name(&self, sharable: &SharableBlocks) -> Result<Option<String>> {
-        Ok(sharable.get_tx(self.si_tx_path)?)
+        sharable.get_tx(self.si_tx_path)
     }
 }
 

@@ -1,10 +1,10 @@
 //! Parsing of file metadata into MdfInfo3 struct
 use crate::mdfreader::channel_data::Order;
+use anyhow::{Context, Result};
 use binrw::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::NaiveDate;
-use encoding::all::{ASCII, ISO_8859_1};
-use encoding::{DecoderTrap, EncoderTrap, Encoding};
+use encoding_rs::Encoding;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::convert::TryFrom;
@@ -19,12 +19,14 @@ use crate::mdfreader::channel_data::{data_type_init, ChannelData};
 use super::sym_buf_reader::SymBufReader;
 
 /// Specific to version 3.x mdf metadata structure
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct MdfInfo3 {
     /// file name string
     pub file_name: String,
     /// Identification block
     pub id_block: IdBlock,
+    /// code page
+    pub encoding: &'static Encoding,
     /// Header block
     pub hd_block: Hd3,
     /// Header comments
@@ -65,10 +67,7 @@ impl MdfInfo3 {
     pub fn _get_unit(&self, cc_position: &u32) -> Option<String> {
         if let Some(array) = self.sharable.cc.get(cc_position) {
             let txt = array.0.cc_unit;
-            let mut u = String::new();
-            ISO_8859_1
-                .decode_to(&txt, DecoderTrap::Replace, &mut u)
-                .expect("channel description is latin1 encoded");
+            let u: String = self.encoding.decode(&txt).0.to_string();
             Some(u.trim_end_matches(char::from(0)).to_string())
         } else {
             None
@@ -266,19 +265,15 @@ impl MdfInfo3 {
             if let Some(dg) = self.dg.get_mut(dg_pos) {
                 if let Some(cg) = dg.cg.get_mut(rec_id) {
                     if let Some(cn) = cg.cn.get_mut(cn_pos) {
-                        let unit_vector = ISO_8859_1
-                            .encode(unit, EncoderTrap::Replace)
-                            .expect("could not encode unit");
-                        let unit_array: [u8; 20] = match unit_vector.len().cmp(&20) {
-                            Ordering::Greater => unit_vector[0..20]
-                                .try_into()
-                                .expect("could not convert unit to array"),
-                            Ordering::Equal => unit_vector
-                                .try_into()
-                                .expect("could not convert unit to array"),
+                        let unit_vector = self.encoding.encode(unit).0;
+                        let mut unit_array = [0; 20];
+                        unit_array = match unit_vector.len().cmp(&20) {
                             Ordering::Less => {
-                                let mut unit_array = [0; 20];
                                 unit_array[0..unit_vector.len()].copy_from_slice(&unit_vector);
+                                unit_array
+                            }
+                            _ => {
+                                unit_array.copy_from_slice(&unit_vector[0..20]);
                                 unit_array
                             }
                         };
@@ -352,9 +347,11 @@ pub struct Blockheader3 {
 }
 
 /// Generic block header parser
-pub fn parse_block_header(rdr: &mut SymBufReader<&File>) -> Blockheader3 {
-    let header: Blockheader3 = rdr.read_le().expect("Could not read Blockheader3 struct");
-    header
+pub fn parse_block_header(rdr: &mut SymBufReader<&File>) -> Result<Blockheader3> {
+    let header: Blockheader3 = rdr
+        .read_le()
+        .context("Could not read Blockheader3 struct")?;
+    Ok(header)
 }
 
 /// HD3 strucutre
@@ -424,78 +421,61 @@ pub struct Hd3Block32 {
 }
 
 /// Header block parser
-pub fn hd3_parser(rdr: &mut SymBufReader<&File>, ver: u16) -> (Hd3, i64) {
+pub fn hd3_parser(
+    rdr: &mut SymBufReader<&File>,
+    ver: u16,
+    encoding: &'static Encoding,
+) -> Result<(Hd3, i64)> {
     let mut buf = [0u8; 164];
-    rdr.read_exact(&mut buf).expect("Could not read hd3 buffer");
+    rdr.read_exact(&mut buf)
+        .context("Could not read hd3 buffer")?;
     let mut block = Cursor::new(buf);
     let block: Hd3Block = block
         .read_le()
-        .expect("Could not read buffer into Hd3Block struct");
-    let mut datestr = String::new();
-    ASCII
-        .decode_to(&block.hd_date, DecoderTrap::Replace, &mut datestr)
-        .expect("Could not decode date string from Hd3 block");
+        .context("Could not read buffer into Hd3Block struct")?;
+    let datestr: String = encoding.decode(&block.hd_date).0.into();
     let mut dateiter = datestr.split(':');
     let day: u32 = dateiter
         .next()
-        .expect("date iteration ended")
+        .context("date iteration ended")?
         .parse::<u32>()
-        .expect("Could not parse day");
+        .context("Could not parse day")?;
     let month: u32 = dateiter
         .next()
-        .expect("date iteration ended")
+        .context("date iteration ended")?
         .parse::<u32>()
-        .expect("Could not parse month");
+        .context("Could not parse month")?;
     let year: i32 = dateiter
         .next()
-        .expect("date iteration ended")
+        .context("date iteration ended")?
         .parse::<i32>()
-        .expect("Could not parse year");
+        .context("Could not parse year")?;
     let hd_date = (day, month, year);
-    let mut timestr = String::new();
-    ASCII
-        .decode_to(&block.hd_time, DecoderTrap::Replace, &mut timestr)
-        .expect("Could not decode time string from Hd3 block");
+    let timestr: String = encoding.decode(&block.hd_time).0.into();
     let mut timeiter = timestr.split(':');
     let hour: u32 = timeiter
         .next()
-        .expect("time iteration ended")
+        .context("time iteration ended")?
         .parse::<u32>()
-        .expect("Could not parse hour");
+        .context("Could not parse hour")?;
     let minute: u32 = timeiter
         .next()
-        .expect("time iteration ended")
+        .context("time iteration ended")?
         .parse::<u32>()
-        .expect("Could not parse minute");
+        .context("Could not parse minute")?;
     let sec: u32 = timeiter
         .next()
-        .expect("time iteration ended")
+        .context("time iteration ended")?
         .parse::<u32>()
-        .expect("Could not parse sec");
+        .context("Could not parse sec")?;
     let hd_time = (hour, minute, sec);
-    let mut hd_author = String::new();
-    ISO_8859_1
-        .decode_to(&block.hd_author, DecoderTrap::Replace, &mut hd_author)
-        .expect("Could not decode author string from Hd3 block");
+    let mut hd_author: String = encoding.decode(&block.hd_author).0.into();
     hd_author = hd_author.trim_end_matches(char::from(0)).to_string();
-    let mut hd_organization = String::new();
-    ISO_8859_1
-        .decode_to(
-            &block.hd_organization,
-            DecoderTrap::Replace,
-            &mut hd_organization,
-        )
-        .expect("Could not decode organisation string from Hd3 block");
+    let mut hd_organization: String = encoding.decode(&block.hd_organization).0.into();
     hd_organization = hd_organization.trim_end_matches(char::from(0)).to_string();
-    let mut hd_project = String::new();
-    ISO_8859_1
-        .decode_to(&block.hd_project, DecoderTrap::Replace, &mut hd_project)
-        .expect("Could not decode project string from Hd3 block");
+    let mut hd_project: String = encoding.decode(&block.hd_project).0.into();
     hd_project = hd_project.trim_end_matches(char::from(0)).to_string();
-    let mut hd_subject = String::new();
-    ISO_8859_1
-        .decode_to(&block.hd_subject, DecoderTrap::Replace, &mut hd_subject)
-        .expect("Could not decode subject string from Hd3 block");
+    let mut hd_subject: String = encoding.decode(&block.hd_subject).0.into();
     hd_subject = hd_subject.trim_end_matches(char::from(0)).to_string();
     let hd_start_time_ns: Option<u64>;
     let hd_time_offset: Option<i16>;
@@ -505,19 +485,16 @@ pub fn hd3_parser(rdr: &mut SymBufReader<&File>, ver: u16) -> (Hd3, i64) {
     if ver >= 320 {
         let mut buf = [0u8; 44];
         rdr.read_exact(&mut buf)
-            .expect("Could not read buffer for Hd3Block32");
+            .context("Could not read buffer for Hd3Block32")?;
         let mut block = Cursor::new(buf);
         let block: Hd3Block32 = block
             .read_le()
-            .expect("Could not read buffer into Hd3Block32 struct");
-        let mut ti = String::new();
-        ISO_8859_1
-            .decode_to(&block.hd_time_identifier, DecoderTrap::Replace, &mut ti)
-            .expect("Could not decode time identifier string from Hd3 block");
+            .context("Could not read buffer into Hd3Block32 struct")?;
+        let ti = encoding.decode(&block.hd_time_identifier).0;
         hd_start_time_ns = Some(block.hd_start_time_ns);
         hd_time_offset = Some(block.hd_time_offset);
         hd_time_quality = Some(block.hd_time_quality);
-        hd_time_identifier = Some(ti);
+        hd_time_identifier = Some(ti.to_string());
         position = 208 + 64; // position after reading ID and HD
     } else {
         // calculate hd_start_time_ns
@@ -527,14 +504,14 @@ pub fn hd3_parser(rdr: &mut SymBufReader<&File>, ver: u16) -> (Hd3, i64) {
                     .and_hms(hd_time.0, hd_time.1, hd_time.2)
                     .timestamp_nanos(),
             )
-            .expect("cannot convert date into ns u64"),
+            .context("cannot convert date into ns u64")?,
         );
         hd_time_offset = None;
         hd_time_quality = None;
         hd_time_identifier = None;
         position = 164 + 64; // position after reading ID and HD
     }
-    (
+    Ok((
         Hd3 {
             hd_id: block.hd_id,
             hd_len: block.hd_len,
@@ -554,7 +531,7 @@ pub fn hd3_parser(rdr: &mut SymBufReader<&File>, ver: u16) -> (Hd3, i64) {
             hd_time_identifier,
         },
         position,
-    )
+    ))
 }
 
 /// Hd3 display implementation
@@ -582,33 +559,32 @@ pub fn hd3_comment_parser(
     rdr: &mut SymBufReader<&File>,
     hd3_block: &Hd3,
     mut position: i64,
-) -> (String, i64) {
-    let (_, comment, pos) = parse_tx(rdr, hd3_block.hd_md_comment, position);
+    encoding: &'static Encoding,
+) -> Result<(String, i64)> {
+    let (_, comment, pos) = parse_tx(rdr, hd3_block.hd_md_comment, position, encoding)?;
     position = pos;
-    (comment, position)
+    Ok((comment, position))
 }
 
-/// TX text block parser, expecting ISO_8859_1 encoded text
+/// TX text block parser, contexting ISO_8859_1 encoded text
 pub fn parse_tx(
     rdr: &mut SymBufReader<&File>,
     target: u32,
     position: i64,
-) -> (Blockheader3, String, i64) {
+    encoding: &'static Encoding,
+) -> Result<(Blockheader3, String, i64)> {
     rdr.seek_relative(target as i64 - position)
-        .expect("Could not reach position of TX block");
-    let block_header: Blockheader3 = parse_block_header(rdr); // reads header
+        .context("Could not reach position of TX block")?;
+    let block_header: Blockheader3 = parse_block_header(rdr)?; // reads header
 
     // reads comment
     let mut comment_raw = vec![0; (block_header.hdr_len - 4) as usize];
     rdr.read_exact(&mut comment_raw)
-        .expect("Could not read comment raw data");
-    let mut comment: String = String::new();
-    ISO_8859_1
-        .decode_to(&comment_raw, DecoderTrap::Replace, &mut comment)
-        .expect("Reads comment iso 8859 coded");
+        .context("Could not read comment raw data")?;
+    let comment: String = encoding.decode(&comment_raw).0.into();
     let comment: String = comment.trim_end_matches(char::from(0)).into();
     let position = target as i64 + block_header.hdr_len as i64;
-    (block_header, comment, position)
+    Ok((block_header, comment, position))
 }
 
 /// Data Group Block structure
@@ -640,17 +616,17 @@ pub fn parse_dg3_block(
     rdr: &mut SymBufReader<&File>,
     target: u32,
     position: i64,
-) -> (Dg3Block, i64) {
+) -> Result<(Dg3Block, i64)> {
     rdr.seek_relative(target as i64 - position)
-        .expect("Could not reach position of Dg3 block");
+        .context("Could not reach position of Dg3 block")?;
     let mut buf = [0u8; 24];
     rdr.read_exact(&mut buf)
-        .expect("Could not read Dg3 Block buffer");
+        .context("Could not read Dg3 Block buffer")?;
     let mut block = Cursor::new(buf);
     let block: Dg3Block = block
         .read_le()
-        .expect("Could not read buffer into Dg3Block structure");
-    (block, (target + 24).into())
+        .context("Could not read buffer into Dg3Block structure")?;
+    Ok((block, (target + 24).into()))
 }
 
 /// Dg3 struct wrapping block, comments and linked CG
@@ -671,12 +647,13 @@ pub fn parse_dg3(
     mut position: i64,
     sharable: &mut SharableBlocks3,
     default_byte_order: u16,
-) -> (BTreeMap<u32, Dg3>, i64, u16, u16) {
+    encoding: &'static Encoding,
+) -> Result<(BTreeMap<u32, Dg3>, i64, u16, u16)> {
     let mut dg: BTreeMap<u32, Dg3> = BTreeMap::new();
     let mut n_cn: u16 = 0;
     let mut n_cg: u16 = 0;
     if target > 0 {
-        let (block, pos) = parse_dg3_block(rdr, target, position);
+        let (block, pos) = parse_dg3_block(rdr, target, position)?;
         position = pos;
         let mut next_pointer = block.dg_dg_next;
         let (cg, pos, num_cn) = parse_cg3(
@@ -686,7 +663,8 @@ pub fn parse_dg3(
             sharable,
             block.dg_n_record_ids,
             default_byte_order,
-        );
+            encoding,
+        )?;
         n_cg += block.dg_n_cg;
         n_cn += num_cn;
         let dg_struct = Dg3 {
@@ -698,7 +676,7 @@ pub fn parse_dg3(
         position = pos;
         while next_pointer > 0 {
             let block_start = next_pointer;
-            let (block, pos) = parse_dg3_block(rdr, next_pointer, position);
+            let (block, pos) = parse_dg3_block(rdr, next_pointer, position)?;
             next_pointer = block.dg_dg_next;
             position = pos;
             let (cg, pos, num_cn) = parse_cg3(
@@ -708,7 +686,8 @@ pub fn parse_dg3(
                 sharable,
                 block.dg_n_record_ids,
                 default_byte_order,
-            );
+                encoding,
+            )?;
             n_cg += block.dg_n_cg;
             n_cn += num_cn;
             let dg_struct = Dg3 {
@@ -720,7 +699,7 @@ pub fn parse_dg3(
             position = pos;
         }
     }
-    (dg, position, n_cg, n_cn)
+    Ok((dg, position, n_cg, n_cn))
 }
 
 /// Cg3 Channel Group block struct
@@ -758,16 +737,17 @@ fn parse_cg3_block(
     sharable: &mut SharableBlocks3,
     record_id_size: u16,
     default_byte_order: u16,
-) -> (Cg3, i64, u16) {
+    encoding: &'static Encoding,
+) -> Result<(Cg3, i64, u16)> {
     rdr.seek_relative(target as i64 - position)
-        .expect("Could not reach position of Cg3Block"); // change buffer position
+        .context("Could not reach position of Cg3Block")?; // change buffer position
     let mut buf = vec![0u8; 30];
     rdr.read_exact(&mut buf)
-        .expect("Could not read Cg3Block buffer");
+        .context("Could not read Cg3Block buffer")?;
     let mut block = Cursor::new(buf);
     let cg: Cg3Block = block
         .read_le()
-        .expect("Could not read buffer into Cg3Block structure");
+        .context("Could not read buffer into Cg3Block structure")?;
     position = target as i64 + 30;
 
     // reads CN (and other linked block behind like CC, SI, CA, etc.)
@@ -778,7 +758,8 @@ fn parse_cg3_block(
         sharable,
         record_id_size,
         default_byte_order,
-    );
+        encoding,
+    )?;
     position = pos;
 
     let record_length = cg.cg_data_bytes;
@@ -793,7 +774,7 @@ fn parse_cg3_block(
         record_length,
     };
 
-    (cg_struct, position, n_cn)
+    Ok((cg_struct, position, n_cn))
 }
 
 /// Channel Group struct
@@ -816,7 +797,8 @@ pub fn parse_cg3(
     sharable: &mut SharableBlocks3,
     record_id_size: u16,
     default_byte_order: u16,
-) -> (HashMap<u16, Cg3>, i64, u16) {
+    encoding: &'static Encoding,
+) -> Result<(HashMap<u16, Cg3>, i64, u16)> {
     let mut cg: HashMap<u16, Cg3> = HashMap::new();
     let mut n_cn: u16 = 0;
     if target != 0 {
@@ -827,7 +809,8 @@ pub fn parse_cg3(
             sharable,
             record_id_size,
             default_byte_order,
-        );
+            encoding,
+        )?;
         position = pos;
         let mut next_pointer = cg_struct.block.cg_cg_next;
         cg_struct.record_length += record_id_size;
@@ -842,7 +825,8 @@ pub fn parse_cg3(
                 sharable,
                 record_id_size,
                 default_byte_order,
-            );
+                encoding,
+            )?;
             position = pos;
             cg_struct.record_length += record_id_size;
             next_pointer = cg_struct.block.cg_cg_next;
@@ -850,7 +834,7 @@ pub fn parse_cg3(
             n_cn += num_cn;
         }
     }
-    (cg, position, n_cn)
+    Ok((cg, position, n_cn))
 }
 
 /// Cn3 structure containing block but also unique_name, ndarray data
@@ -885,7 +869,8 @@ pub fn parse_cn3(
     sharable: &mut SharableBlocks3,
     record_id_size: u16,
     default_byte_order: u16,
-) -> (HashMap<u32, Cn3>, i64, u16) {
+    encoding: &'static Encoding,
+) -> Result<(HashMap<u32, Cn3>, i64, u16)> {
     let mut cn: HashMap<u32, Cn3> = HashMap::new();
     let mut n_cn: u16 = 0;
     if target != 0 {
@@ -897,7 +882,8 @@ pub fn parse_cn3(
             &mut cn,
             record_id_size,
             default_byte_order,
-        );
+            encoding,
+        )?;
         position = pos;
         n_cn += 1;
         let mut next_pointer = cn_struct.block1.cn_cn_next;
@@ -912,7 +898,8 @@ pub fn parse_cn3(
                 &mut cn,
                 record_id_size,
                 default_byte_order,
-            );
+                encoding,
+            )?;
             position = pos;
             n_cn += 1;
             target = next_pointer;
@@ -920,7 +907,7 @@ pub fn parse_cn3(
             cn.insert(target, cn_struct);
         }
     }
-    (cn, position, n_cn)
+    Ok((cn, position, n_cn))
 }
 
 /// Cn3 Channel block struct, first sub block
@@ -975,63 +962,55 @@ fn parse_cn3_block(
     cn: &mut HashMap<u32, Cn3>,
     record_id_size: u16,
     default_byte_order: u16,
-) -> (Cn3, i64) {
+    encoding: &'static Encoding,
+) -> Result<(Cn3, i64)> {
     rdr.seek_relative(target as i64 - position)
-        .expect("Could not reach position of CN Block"); // change buffer position
+        .context("Could not reach position of CN Block")?; // change buffer position
     let mut buf = vec![0u8; 228];
     rdr.read_exact(&mut buf)
-        .expect("Could not read Cn3 block buffer");
+        .context("Could not read Cn3 block buffer")?;
     position = target as i64 + 228;
     let mut block = Cursor::new(buf);
     let block1: Cn3Block1 = block
         .read_le()
-        .expect("Could not read buffer into Cn3Block1 structure");
+        .context("Could not read buffer into Cn3Block1 structure")?;
     let mut desc = vec![0u8; 128];
     block
         .read_exact(&mut desc)
-        .expect("Could not read channel description");
+        .context("Could not read channel description")?;
     let block2: Cn3Block2 = block
         .read_le()
-        .expect("Could not read buffer into Cn3Block2 struct");
+        .context("Could not read buffer into Cn3Block2 struct")?;
     let pos_byte_beg = block2.cn_bit_offset / 8 + record_id_size;
     let mut n_bytes = block2.cn_bit_count / 8u16;
     if (block2.cn_bit_count % 8) != 0 {
         n_bytes += 1;
     }
 
-    let mut unique_name = String::new();
-    ISO_8859_1
-        .decode_to(
-            &block1.cn_short_name,
-            DecoderTrap::Replace,
-            &mut unique_name,
-        )
-        .expect("channel name is latin1 encoded");
+    let mut unique_name: String = encoding.decode(&block1.cn_short_name).0.into();
     unique_name = unique_name.trim_end_matches(char::from(0)).to_string();
     if block2.cn_tx_long_name != 0 {
         // Reads TX long name
-        let (_, name, pos) = parse_tx(rdr, block2.cn_tx_long_name, position);
+        let (_, name, pos) = parse_tx(rdr, block2.cn_tx_long_name, position, encoding)?;
         unique_name = name;
         position = pos;
     }
 
-    let mut description = String::new();
-    ISO_8859_1
-        .decode_to(&desc, DecoderTrap::Replace, &mut description)
-        .expect("channel description is latin1 encoded");
+    let mut description: String = encoding.decode(&desc).0.into();
     description = description.trim_end_matches(char::from(0)).to_string();
 
     let mut comment = String::new();
     if block1.cn_tx_comment != 0 {
         // Reads TX comment
-        let (_, cm, pos) = parse_tx(rdr, block1.cn_tx_comment, position);
+        let (_, cm, pos) = parse_tx(rdr, block1.cn_tx_comment, position, encoding)?;
         comment = cm;
         position = pos;
     }
 
     // Reads CC block
     if !sharable.cc.contains_key(&block1.cn_cc_conversion) {
-        let (pos, cc_block) = parse_cc3_block(rdr, block1.cn_cc_conversion, position, sharable);
+        let (pos, cc_block) =
+            parse_cc3_block(rdr, block1.cn_cc_conversion, position, sharable, encoding)?;
         position = pos;
         if cc_block.cc_type == 132 {
             // CANopen date
@@ -1053,7 +1032,7 @@ fn parse_cn3_block(
 
     // Reads CE block
     if !sharable.ce.contains_key(&block1.cn_ce_source) {
-        position = parse_ce(rdr, block1.cn_ce_source, position, sharable);
+        position = parse_ce(rdr, block1.cn_ce_source, position, sharable, encoding)?;
     }
 
     let mut endian: bool = false; // Little endian by default
@@ -1083,7 +1062,7 @@ fn parse_cn3_block(
         channel_data_valid: false,
     };
 
-    (cn_struct, position)
+    Ok((cn_struct, position))
 }
 
 /// Converter of data type from 3.x to 4.x
@@ -1352,77 +1331,75 @@ pub fn parse_cc3_block(
     target: u32,
     mut position: i64,
     sharable: &mut SharableBlocks3,
-) -> (i64, Cc3Block) {
+    encoding: &'static Encoding,
+) -> Result<(i64, Cc3Block)> {
     rdr.seek_relative(target as i64 - position)
-        .expect("Could not reach CC Block position"); // change buffer position
+        .context("Could not reach CC Block position")?; // change buffer position
     let mut buf = vec![0u8; 46];
     rdr.read_exact(&mut buf)
-        .expect("Could not read Cc3Block buffer");
+        .context("Could not read Cc3Block buffer")?;
     position = target as i64 + 46;
     let mut block = Cursor::new(buf);
     let cc_block: Cc3Block = block
         .read_le()
-        .expect("Could not read buffer into Cc3Block structure");
+        .context("Could not read buffer into Cc3Block structure")?;
     let conversion: Conversion;
     match cc_block.cc_type {
         0 => {
             let mut buf = vec![0.0f64; 2];
             rdr.read_f64_into::<LittleEndian>(&mut buf)
-                .expect("Could not read linear conversion parameters");
+                .context("Could not read linear conversion parameters")?;
             conversion = Conversion::Linear(buf);
             position += 16;
         }
         1 => {
             let mut buf = vec![0.0f64; cc_block.cc_size as usize * 2];
             rdr.read_f64_into::<LittleEndian>(&mut buf)
-                .expect("Could not read tabular interpolation conversion parameters");
+                .context("Could not read tabular interpolation conversion parameters")?;
             conversion = Conversion::TabularInterpolation(buf);
             position += cc_block.cc_size as i64 * 2 * 8;
         }
         2 => {
             let mut buf = vec![0.0f64; cc_block.cc_size as usize * 2];
             rdr.read_f64_into::<LittleEndian>(&mut buf)
-                .expect("Could not read tabular conversion parameters");
+                .context("Could not read tabular conversion parameters")?;
             conversion = Conversion::Tabular(buf);
             position += cc_block.cc_size as i64 * 2 * 8;
         }
         6 => {
             let mut buf = vec![0.0f64; 6];
             rdr.read_f64_into::<LittleEndian>(&mut buf)
-                .expect("Could not read polynomial conversion parameters");
+                .context("Could not read polynomial conversion parameters")?;
             conversion = Conversion::Polynomial(buf);
             position += 48;
         }
         7 => {
             let mut buf = vec![0.0f64; 7];
             rdr.read_f64_into::<LittleEndian>(&mut buf)
-                .expect("Could not read exponential conversion parameters");
+                .context("Could not read exponential conversion parameters")?;
             conversion = Conversion::Exponential(buf);
             position += 56;
         }
         8 => {
             let mut buf = vec![0.0f64; 7];
             rdr.read_f64_into::<LittleEndian>(&mut buf)
-                .expect("Could not read logarithmic conversion parameters");
+                .context("Could not read logarithmic conversion parameters")?;
             conversion = Conversion::Logarithmic(buf);
             position += 56;
         }
         9 => {
             let mut buf = vec![0.0f64; 6];
             rdr.read_f64_into::<LittleEndian>(&mut buf)
-                .expect("Could not read rational conversion parameters");
+                .context("Could not read rational conversion parameters")?;
             conversion = Conversion::Rational(buf);
             position += 48;
         }
         10 => {
             let mut buf = vec![0u8; 256];
             rdr.read_exact(&mut buf)
-                .expect("Could not read formulae conversion parameters");
+                .context("Could not read formulae conversion parameters")?;
             position += 256;
-            let mut formula = String::new();
-            ISO_8859_1
-                .decode_to(&buf, DecoderTrap::Replace, &mut formula)
-                .expect("formula text is latin1 encoded");
+            let mut formula: String = encoding.decode(&buf).0.into();
             let index = formula.find(char::from(0));
             if let Some(ind) = index {
                 formula = formula[0..ind].to_string();
@@ -1434,16 +1411,13 @@ pub fn parse_cc3_block(
                 vec![(0.0f64, String::with_capacity(32)); cc_block.cc_size as usize];
             let mut buf = vec![0u8; 32];
             for mut pair in pairs.iter_mut() {
-                let mut text = String::with_capacity(32);
                 pair.0 = rdr
                     .read_f64::<LittleEndian>()
-                    .expect("Could not read text table conversion value parameters");
+                    .context("Could not read text table conversion value parameters")?;
                 rdr.read_exact(&mut buf)
-                    .expect("Could not read text-table conversion text parameters");
+                    .context("Could not read text-table conversion text parameters")?;
                 position += 40;
-                ISO_8859_1
-                    .decode_to(&buf, DecoderTrap::Replace, &mut text)
-                    .expect("formula text is latin1 encoded");
+                let text: String = encoding.decode(&buf).0.into();
                 pair.1 = text.trim_end_matches(char::from(0)).to_string();
             }
             conversion = Conversion::TextTable(pairs);
@@ -1458,29 +1432,29 @@ pub fn parse_cc3_block(
             let mut text_pointer;
             let mut buf_ignored = [0u8; 16];
             rdr.read_exact(&mut buf_ignored)
-                .expect("Could not read text range table conversion default value parameters");
+                .context("Could not read text range table conversion default value parameters")?;
             let default_text_pointer = rdr
                 .read_u32::<LittleEndian>()
-                .expect("Could not read text range table conversion default text parameters");
+                .context("Could not read text range table conversion default text parameters")?;
             position += 20;
             for _index in 0..(cc_block.cc_size as usize - 1) {
                 low_range = rdr
                     .read_f64::<LittleEndian>()
-                    .expect("Could not read text range table conversion low value parameters");
+                    .context("Could not read text range table conversion low value parameters")?;
                 high_range = rdr
                     .read_f64::<LittleEndian>()
-                    .expect("Could not read text range table conversion high value parameters");
+                    .context("Could not read text range table conversion high value parameters")?;
                 text_pointer = rdr
                     .read_u32::<LittleEndian>()
-                    .expect("Could not read text range table conversion value parameters");
+                    .context("Could not read text range table conversion value parameters")?;
                 position += 20;
                 pairs_pointer.push((low_range, high_range, text_pointer));
             }
             let (_block_header, default_string, pos) =
-                parse_tx(rdr, default_text_pointer, position);
+                parse_tx(rdr, default_text_pointer, position, encoding)?;
             position = pos;
             for (low_range, high_range, text_pointer) in pairs_pointer.iter() {
-                let (_block_header, text, pos) = parse_tx(rdr, *text_pointer, position);
+                let (_block_header, text, pos) = parse_tx(rdr, *text_pointer, position, encoding)?;
                 position = pos;
                 pairs_string.push((*low_range, *high_range, text));
             }
@@ -1490,7 +1464,7 @@ pub fn parse_cc3_block(
     }
 
     sharable.cc.insert(target, (cc_block.clone(), conversion));
-    (position, cc_block)
+    Ok((position, cc_block))
 }
 
 /// CE channel extension block struct, second sub block
@@ -1548,45 +1522,42 @@ fn parse_ce(
     target: u32,
     mut position: i64,
     sharable: &mut SharableBlocks3,
-) -> i64 {
+    encoding: &'static Encoding,
+) -> Result<i64> {
     rdr.seek_relative(target as i64 - position)
-        .expect("Could not reach CE block position"); // change buffer position
+        .context("Could not reach CE block position")?; // change buffer position
     let mut buf = vec![0u8; 6];
     rdr.read_exact(&mut buf)
-        .expect("Could not read buffer for CE Block");
+        .context("Could not read buffer for CE Block")?;
     position = target as i64 + 6;
     let mut block = Cursor::new(buf);
-    let ce_id: [u8; 2] = block.read_le().expect("could not read ce_id");
-    let ce_len: u16 = block.read_le().expect("could not read ce_len");
-    let ce_extension_type: u16 = block.read_le().expect("could not read ce_extension_type");
+    let ce_id: [u8; 2] = block.read_le().context("could not read ce_id")?;
+    let ce_len: u16 = block.read_le().context("could not read ce_len")?;
+    let ce_extension_type: u16 = block
+        .read_le()
+        .context("could not read ce_extension_type")?;
 
     let ce_extension: CeSupplement;
     if ce_extension_type == 0x02 {
         // Reads DIM
         let mut buf = vec![0u8; 118];
         rdr.read_exact(&mut buf)
-            .expect("Could not DIM Supplement buffer");
+            .context("Could not DIM Supplement buffer")?;
         position += 118;
         let mut block = Cursor::new(buf);
-        let ce_module_number: u16 = block.read_le().expect("could not read ce_module_number");
-        let ce_address: u32 = block.read_le().expect("could not read ce_address");
+        let ce_module_number: u16 = block.read_le().context("could not read ce_module_number")?;
+        let ce_address: u32 = block.read_le().context("could not read ce_address")?;
         let mut desc = vec![0u8; 80];
         block
             .read_exact(&mut desc)
-            .expect("Could not read DIM description");
-        let mut ce_desc = String::new();
-        ISO_8859_1
-            .decode_to(&desc, DecoderTrap::Replace, &mut ce_desc)
-            .expect("DIM block description is latin1 encoded");
+            .context("Could not read DIM description")?;
+        let mut ce_desc: String = encoding.decode(&desc).0.into();
         ce_desc = ce_desc.trim_end_matches(char::from(0)).to_string();
         let mut ecu_id = vec![0u8; 32];
         block
             .read_exact(&mut ecu_id)
-            .expect("Could not read DIM ecu_id");
-        let mut ce_ecu_id = String::new();
-        ISO_8859_1
-            .decode_to(&ecu_id, DecoderTrap::Replace, &mut ce_ecu_id)
-            .expect("DIM block description is latin1 encoded");
+            .context("Could not read DIM ecu_id")?;
+        let mut ce_ecu_id: String = encoding.decode(&ecu_id).0.into();
         ce_ecu_id = ce_ecu_id.trim_end_matches(char::from(0)).to_string();
         ce_extension = CeSupplement::Dim(DimBlock {
             ce_module_number,
@@ -1598,28 +1569,22 @@ fn parse_ce(
         // Reads CAN
         let mut buf = vec![0u8; 80];
         rdr.read_exact(&mut buf)
-            .expect("Could not CAN Supplement buffer");
+            .context("Could not CAN Supplement buffer")?;
         position += 80;
         let mut block = Cursor::new(buf);
-        let ce_can_id: u32 = block.read_le().expect("Could not read CAN ce_can_id");
-        let ce_can_index: u32 = block.read_le().expect("Could not read CAN ce_can_index");
+        let ce_can_id: u32 = block.read_le().context("Could not read CAN ce_can_id")?;
+        let ce_can_index: u32 = block.read_le().context("Could not read CAN ce_can_index")?;
         let mut message = vec![0u8; 36];
         block
             .read_exact(&mut message)
-            .expect("Could not read CAN Supplement message");
-        let mut ce_message_name = String::new();
-        ISO_8859_1
-            .decode_to(&message, DecoderTrap::Replace, &mut ce_message_name)
-            .expect("DIM block description is latin1 encoded");
+            .context("Could not read CAN Supplement message")?;
+        let mut ce_message_name: String = encoding.decode(&message).0.into();
         ce_message_name = ce_message_name.trim_end_matches(char::from(0)).to_string();
         let mut sender = vec![0u8; 32];
         block
             .read_exact(&mut sender)
-            .expect("Could not read CAN Supplement sender");
-        let mut ce_sender_name = String::new();
-        ISO_8859_1
-            .decode_to(&sender, DecoderTrap::Replace, &mut ce_sender_name)
-            .expect("DIM block description is latin1 encoded");
+            .context("Could not read CAN Supplement sender")?;
+        let mut ce_sender_name: String = encoding.decode(&sender).0.into();
         ce_sender_name = ce_sender_name.trim_end_matches(char::from(0)).to_string();
         ce_extension = CeSupplement::Can(CanBlock {
             ce_can_id,
@@ -1639,7 +1604,7 @@ fn parse_ce(
             ce_extension,
         },
     );
-    position
+    Ok(position)
 }
 
 /// parses mdfinfo structure to make channel names unique

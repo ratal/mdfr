@@ -244,7 +244,7 @@ impl Mdf {
         let mut rdr = BufReader::new(&f);
         match &mut self.mdf_info {
             MdfInfo::V3(_mdfinfo3) => {
-                mdfreader3(&mut rdr, self, &channel_names);
+                mdfreader3(&mut rdr, self, &channel_names)?;
             }
             MdfInfo::V4(_mdfinfo4) => {
                 mdfreader4(&mut rdr, self, &channel_names)?;

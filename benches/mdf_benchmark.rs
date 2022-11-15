@@ -1,3 +1,4 @@
+use anyhow::Result;
 use criterion::{criterion_group, criterion_main, Criterion};
 use mdfr::mdfreader::Mdf;
 use std::process::Command;
@@ -26,10 +27,11 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     );
     group.sample_size(10);
     group.bench_function("mdfr_with_mdf4_sorted", |b| {
-        b.iter(|| {
-            let mut mdf = Mdf::new(&file);
-            mdf.load_all_channels_data_in_memory();
+        b.iter(|| -> Result<()> {
+            let mut mdf = Mdf::new(&file)?;
+            mdf.load_all_channels_data_in_memory()?;
             // mdf.export_to_parquet(&PARQUET_FILE, "snappy");
+            Ok(())
         })
     });
     group.finish();

@@ -12,8 +12,8 @@ use arrow2::buffer::Buffer;
 use arrow2::datatypes::{DataType, Field, Metadata, PhysicalType, PrimitiveType};
 use arrow2::ffi;
 use arrow2::types::f16;
-use encoding::all::ISO_8859_1;
-use encoding::{DecoderTrap, Encoding};
+use codepage::to_encoding;
+use encoding_rs::Encoding;
 use pyo3::prelude::*;
 use pyo3::{ffi::Py_uintptr_t, PyAny, PyObject, PyResult};
 use rayon::iter::{IntoParallelIterator, ParallelExtend, ParallelIterator};
@@ -432,10 +432,10 @@ pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
                                 mdfinfo3.sharable.cc.get(&cn.block1.cn_cc_conversion)
                             {
                                 let txt = array.0.cc_unit;
-                                let mut u = String::new();
-                                ISO_8859_1
-                                    .decode_to(&txt, DecoderTrap::Replace, &mut u)
-                                    .expect("channel description is latin1 encoded");
+                                let encoding: &'static Encoding =
+                                    to_encoding(mdfinfo3.id_block.id_codepage)
+                                        .unwrap_or(encoding_rs::WINDOWS_1252);
+                                let u: String = encoding.decode(&txt).0.into();
                                 metadata.insert(
                                     "unit".to_string(),
                                     u.trim_end_matches(char::from(0)).to_string(),
