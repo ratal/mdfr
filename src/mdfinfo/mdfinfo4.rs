@@ -1031,7 +1031,8 @@ impl fmt::Display for Hd4 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let sec = self.hd_start_time_ns / 1000000000;
         let nsec = (self.hd_start_time_ns - sec * 1000000000) as u32;
-        let naive = NaiveDateTime::from_timestamp(sec as i64, nsec);
+        let naive =
+            NaiveDateTime::from_timestamp_opt(sec as i64, nsec).unwrap_or(NaiveDateTime::default());
         writeln!(
             f,
             "Time : {} ",

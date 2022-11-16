@@ -3,7 +3,7 @@ use crate::mdfreader::channel_data::Order;
 use anyhow::{Context, Result};
 use binrw::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
-use chrono::NaiveDate;
+use chrono::{NaiveDate, NaiveDateTime};
 use encoding_rs::Encoding;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -500,8 +500,10 @@ pub fn hd3_parser(
         // calculate hd_start_time_ns
         hd_start_time_ns = Some(
             u64::try_from(
-                NaiveDate::from_ymd(hd_date.2, hd_date.1, hd_date.0)
-                    .and_hms(hd_time.0, hd_time.1, hd_time.2)
+                NaiveDate::from_ymd_opt(hd_date.2, hd_date.1, hd_date.0)
+                    .unwrap_or(NaiveDate::default())
+                    .and_hms_opt(hd_time.0, hd_time.1, hd_time.2)
+                    .unwrap_or(NaiveDateTime::default())
                     .timestamp_nanos(),
             )
             .context("cannot convert date into ns u64")?,
