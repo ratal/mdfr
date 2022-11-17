@@ -7,6 +7,7 @@ mod mdfinfo;
 mod mdfreader;
 mod mdfwriter;
 use anyhow::Result;
+use log::info;
 
 fn main() -> Result<()> {
     let matches = Command::new("mdfr")
@@ -69,6 +70,7 @@ fn main() -> Result<()> {
         .expect("File name missing");
 
     let mut mdf_file = mdfreader::Mdf::new(file_name)?;
+
     if matches.get_flag("info") {
         println!("{:?}", mdf_file.get_master_channel_names_set());
     }
@@ -83,15 +85,23 @@ fn main() -> Result<()> {
     let compression = matches.get_flag("compress");
     if let Some(file_name) = mdf4_file_name {
         mdf_file.write(file_name, compression)?;
+        if compression {
+            info!("Wrote mdf4 file {} with compression", file_name);
+        } else {
+            info!("Wrote mdf4 file {} without compression", file_name);
+        }
     }
 
     let parquet_compression = matches.get_one::<String>("parquet_compression");
     if let Some(file_name) = parquet_file_name {
         mdf_file.export_to_parquet(file_name, parquet_compression.map(|x| &**x))?;
+        info!(
+            "Wrote parquet file {} with compression {:?}",
+            file_name, parquet_compression
+        );
     }
 
     Ok(())
 }
 
-// TODO better error handling with anyhow
 // TODO add C interface

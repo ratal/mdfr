@@ -6,6 +6,7 @@ use arrow2::bitmap::MutableBitmap;
 use binrw::{binrw, BinReaderExt};
 use codepage::to_encoding;
 use encoding_rs::Encoding;
+use log::info;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
@@ -95,6 +96,8 @@ impl MdfInfo {
             .write(false)
             .open(file_name)
             .with_context(|| format!("Cannot find the file {}", file_name))?;
+        info!("Opened file {}", file_name);
+
         let mut rdr = SymBufReader::new(&f);
         // Read beginning of ID Block
         let mut buf = [0u8; 64]; // reserved
@@ -104,6 +107,7 @@ impl MdfInfo {
         let id: IdBlock = block
             .read_le()
             .context("Could not parse buffer into IdBlock structure")?;
+        info!("Read IdBlock");
 
         // Depending of version different blocks
         let mdf_info: MdfInfo = if id.id_ver < 400 {
@@ -167,7 +171,6 @@ impl MdfInfo {
 
             // make channel names unique, list channels and create master dictionnary
             let channel_names_set = build_channel_db(&mut dg, &sharable, n_cg, n_cn);
-            // println!("{}", db);
 
             MdfInfo::V4(Box::new(MdfInfo4 {
                 file_name: file_name.to_string(),
@@ -181,6 +184,7 @@ impl MdfInfo {
                 channel_names_set,
             }))
         };
+        info!("Finished reading metadata");
         Ok(mdf_info)
     }
     /// gets the version of mdf file

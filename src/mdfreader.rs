@@ -15,6 +15,7 @@ use std::io::BufReader;
 use anyhow::{Context, Result};
 use arrow2::array::{get_display, Array};
 use arrow2::datatypes::{Field, Schema};
+use log::info;
 
 use crate::export::parquet::export_to_parquet;
 use crate::mdfinfo::mdfinfo4::{DataSignature, MasterSignature};
@@ -242,6 +243,8 @@ impl Mdf {
             .open(self.get_file_name())
             .with_context(|| format!("Cannot find the file {}", self.get_file_name()))?;
         let mut rdr = BufReader::new(&f);
+        info!("Opened file {}", self.get_file_name());
+
         match &mut self.mdf_info {
             MdfInfo::V3(_mdfinfo3) => {
                 mdfreader3(&mut rdr, self, &channel_names)?;
@@ -250,8 +253,12 @@ impl Mdf {
                 mdfreader4(&mut rdr, self, &channel_names)?;
             }
         };
-        // move the data from the MdfInfo3 structure into vect of chunks
+        info!("Loaded all channels data into memory");
+
+        // move the data from the MdfInfo structure into vect of arrow2 hunks
         mdf_data_to_arrow(self, &channel_names);
+        info!("Moved data into arrow");
+
         Ok(())
     }
     /// Clears all data arrays

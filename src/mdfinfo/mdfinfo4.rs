@@ -6,6 +6,7 @@ use binrw::{binrw, BinReaderExt, BinWriterExt};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::Local;
 use chrono::{naive::NaiveDateTime, DateTime, Utc};
+use log::warn;
 use rand;
 use rayon::prelude::*;
 use roxmltree;
@@ -849,7 +850,7 @@ impl MetaData {
                 }
             }
             Err(e) => {
-                println!("Could not parse HD MD comment : \n{}\n{}", comment, e);
+                warn!("Could not parse HD MD comment : \n{}\n{}", comment, e);
             }
         };
         self.comments = comments;
@@ -898,7 +899,7 @@ impl MetaData {
                 }
             }
             Err(e) => {
-                println!("Could not parse FH comment : \n{}\n{}", comment, e);
+                warn!("Could not parse FH comment : \n{}\n{}", comment, e);
             }
         };
         self.comments = comments;
@@ -929,7 +930,7 @@ impl MetaData {
                 }
             }
             Err(e) => {
-                println!("Error parsing comment : \n{}\n{}", comment, e);
+                warn!("Error parsing comment : \n{}\n{}", comment, e);
             }
         };
         self.comments = comments;
