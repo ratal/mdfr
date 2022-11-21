@@ -1,5 +1,6 @@
+use anyhow::Result;
 use criterion::{criterion_group, criterion_main, Criterion};
-use mdfr::mdfreader::mdfreader;
+use mdfr::mdfreader::Mdf;
 use std::process::Command;
 static BASE_PATH_MDF4: &str = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/";
 static BASE_PATH_MDF3: &str = "/home/ratal/workspace/mdfreader/mdfreader/tests/mdf3/";
@@ -26,9 +27,11 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     );
     group.sample_size(10);
     group.bench_function("mdfr_with_mdf4_sorted", |b| {
-        b.iter(|| {
-            let mut mdf = mdfreader(&file);
+        b.iter(|| -> Result<()> {
+            let mut mdf = Mdf::new(&file)?;
+            mdf.load_all_channels_data_in_memory()?;
             // mdf.export_to_parquet(&PARQUET_FILE, "snappy");
+            Ok(())
         })
     });
     group.finish();

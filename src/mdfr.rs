@@ -8,6 +8,7 @@ use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::arrow::array_to_rust;
 use crate::mdfreader::Mdf;
 use arrow2::array::get_display;
+use pyo3::exceptions::PyUnicodeDecodeError;
 use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyDict};
 
@@ -32,8 +33,8 @@ pub(crate) fn register(_py: Python, m: &PyModule) -> PyResult<()> {
 impl Mdfr {
     /// creates new object from file name
     #[new]
-    fn new(file_name: &str) -> Self {
-        Mdfr(Mdf::new(file_name))
+    fn new(file_name: &str) -> PyResult<Self> {
+        Ok(Mdfr(Mdf::new(file_name)?))
     }
     /// gets the version of mdf file
     pub fn get_version(&mut self) -> u16 {
@@ -122,19 +123,29 @@ df=polars.DataFrame(series)
         })
     }
     /// returns channel's unit string
-    fn get_channel_unit(&self, channel_name: String) -> Py<PyAny> {
+    fn get_channel_unit(&self, channel_name: String) -> PyResult<Py<PyAny>> {
         let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|py| {
-            let unit: Py<PyAny> = mdf.mdf_info.get_channel_unit(&channel_name).to_object(py);
-            unit
+            let unit_or_error = mdf.mdf_info.get_channel_unit(&channel_name);
+            match unit_or_error {
+                Ok(unit) => Ok(unit.to_object(py)),
+                Err(_) => Err(PyUnicodeDecodeError::new_err(
+                    "Invalid UTF-8 sequence in metadata",
+                )),
+            }
         })
     }
     /// returns channel's description string
-    fn get_channel_desc(&self, channel_name: String) -> Py<PyAny> {
+    fn get_channel_desc(&self, channel_name: String) -> PyResult<Py<PyAny>> {
         let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|py| {
-            let desc: Py<PyAny> = mdf.mdf_info.get_channel_desc(&channel_name).to_object(py);
-            desc
+            let desc_or_error = mdf.mdf_info.get_channel_desc(&channel_name);
+            match desc_or_error {
+                Ok(desc) => Ok(desc.to_object(py)),
+                Err(_) => Err(PyUnicodeDecodeError::new_err(
+                    "Invalid UTF-8 sequence in metadata",
+                )),
+            }
         })
     }
     /// returns channel's associated master channel name string
@@ -182,9 +193,10 @@ df=polars.DataFrame(series)
         })
     }
     /// load a set of channels in memory
-    pub fn load_channels_data_in_memory(&mut self, channel_names: HashSet<String>) {
+    pub fn load_channels_data_in_memory(&mut self, channel_names: HashSet<String>) -> PyResult<()> {
         let Mdfr(mdf) = self;
-        mdf.load_channels_data_in_memory(channel_names);
+        mdf.load_channels_data_in_memory(channel_names)?;
+        Ok(())
     }
     /// clear channels from memory
     pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) {
@@ -192,14 +204,15 @@ df=polars.DataFrame(series)
         mdf.clear_channel_data_from_memory(channel_names);
     }
     /// load all channels in memory
-    pub fn load_all_channels_data_in_memory(&mut self) {
+    pub fn load_all_channels_data_in_memory(&mut self) -> PyResult<()> {
         let Mdfr(mdf) = self;
-        mdf.load_all_channels_data_in_memory();
+        mdf.load_all_channels_data_in_memory()?;
+        Ok(())
     }
     /// writes file
-    pub fn write(&mut self, file_name: &str, compression: bool) -> Mdfr {
+    pub fn write(&mut self, file_name: &str, compression: bool) -> PyResult<Mdfr> {
         let Mdfr(mdf) = self;
-        Mdfr(mdf.write(file_name, compression))
+        Ok(Mdfr(mdf.write(file_name, compression)?))
     }
     /// Adds a new channel in memory (no file modification)
     pub fn add_channel(
@@ -270,7 +283,10 @@ df=polars.DataFrame(series)
                 .set_item("channel_name", &channel_name)
                 .expect("cannot set python channel_name");
             locals
-                .set_item("channel_unit", mdf.mdf_info.get_channel_unit(&channel_name))
+                .set_item(
+                    "channel_unit",
+                    mdf.mdf_info.get_channel_unit(&channel_name).unwrap_or(None),
+                )
                 .expect("cannot set python channel_unit");
             if let Some(master_name) = mdf.mdf_info.get_channel_master(&channel_name) {
                 locals
@@ -279,7 +295,7 @@ df=polars.DataFrame(series)
                 locals
                     .set_item(
                         "master_channel_unit",
-                        mdf.mdf_info.get_channel_unit(&master_name),
+                        mdf.mdf_info.get_channel_unit(&master_name).unwrap_or(None),
                     )
                     .expect("cannot set python master_channel_unit");
                 let data = self.get_channel_data(master_name);
@@ -377,11 +393,11 @@ pyplot.show()
                             }
                             writeln!(
                                 output,
-                                " {} {} ",
+                                " {:?} {:?} ",
                                 unit, desc
                             ).expect("cannot print channel unit and description with first and last item");
                         } else {
-                            writeln!(output, " {} {} ", unit, desc)
+                            writeln!(output, " {:?} {:?} ", unit, desc)
                                 .expect("cannot print channel unit and description");
                         }
                     }
@@ -420,11 +436,11 @@ pyplot.show()
                             }
                             writeln!(
                                 output,
-                                " {} {} ",
+                                " {:?} {:?} ",
                                 unit, desc
                             ).expect("cannot print channel unit and description with first and last item");
                         } else {
-                            writeln!(output, " {} {} ", unit, desc)
+                            writeln!(output, " {:?} {:?} ", unit, desc)
                                 .expect("cannot print channel unit and description");
                         }
                     }

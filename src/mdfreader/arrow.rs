@@ -11,10 +11,9 @@ use arrow2::bitmap::Bitmap;
 use arrow2::buffer::Buffer;
 use arrow2::datatypes::{DataType, Field, Metadata, PhysicalType, PrimitiveType};
 use arrow2::ffi;
-
 use arrow2::types::f16;
-use encoding::all::ISO_8859_1;
-use encoding::{DecoderTrap, Encoding};
+use codepage::to_encoding;
+use encoding_rs::Encoding;
 use pyo3::prelude::*;
 use pyo3::{ffi::Py_uintptr_t, PyAny, PyObject, PyResult};
 use rayon::iter::{IntoParallelIterator, ParallelExtend, ParallelIterator};
@@ -365,10 +364,13 @@ pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
                                 );
                                 columns.push(data);
                                 let mut metadata = Metadata::new();
-                                if let Some(unit) = mdfinfo4.sharable.get_tx(cn.block.cn_md_unit) {
+                                if let Ok(Some(unit)) =
+                                    mdfinfo4.sharable.get_tx(cn.block.cn_md_unit)
+                                {
                                     metadata.insert("unit".to_string(), unit);
                                 };
-                                if let Some(desc) = mdfinfo4.sharable.get_tx(cn.block.cn_md_comment)
+                                if let Ok(Some(desc)) =
+                                    mdfinfo4.sharable.get_tx(cn.block.cn_md_comment)
                                 {
                                     metadata.insert("description".to_string(), desc);
                                 };
@@ -430,10 +432,10 @@ pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
                                 mdfinfo3.sharable.cc.get(&cn.block1.cn_cc_conversion)
                             {
                                 let txt = array.0.cc_unit;
-                                let mut u = String::new();
-                                ISO_8859_1
-                                    .decode_to(&txt, DecoderTrap::Replace, &mut u)
-                                    .expect("channel description is latin1 encoded");
+                                let encoding: &'static Encoding =
+                                    to_encoding(mdfinfo3.id_block.id_codepage)
+                                        .unwrap_or(encoding_rs::WINDOWS_1252);
+                                let u: String = encoding.decode(&txt).0.into();
                                 metadata.insert(
                                     "unit".to_string(),
                                     u.trim_end_matches(char::from(0)).to_string(),
@@ -479,6 +481,7 @@ pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
 
 /// Take an arrow array from python and convert it to a rust arrow array.
 /// This operation does not copy data.
+#[allow(dead_code)]
 pub fn array_to_rust(arrow_array: &PyAny) -> PyResult<Box<dyn Array>> {
     // prepare a pointer to receive the Array struct
     let array = Box::new(ffi::ArrowArray::empty());

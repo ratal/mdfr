@@ -10,6 +10,7 @@ use crate::mdfreader::channel_data::Order;
 use crate::mdfreader::conversions4::convert_all_channels;
 use crate::mdfreader::data_read4::read_channels_from_bytes;
 use crate::mdfreader::data_read4::read_one_channel_array;
+use anyhow::{bail, Context, Result};
 use binrw::BinReaderExt;
 use encoding_rs::{Decoder, UTF_16BE, UTF_16LE, WINDOWS_1252};
 use rayon::prelude::*;
@@ -37,7 +38,7 @@ pub fn mdfreader4<'a>(
     rdr: &'a mut BufReader<&File>,
     mdf: &'a mut Mdf,
     channel_names: &HashSet<String>,
-) {
+) -> Result<()> {
     match &mut mdf.mdf_info {
         MdfInfo::V4(info) => {
             let mut position: i64 = 0;
@@ -63,9 +64,9 @@ pub fn mdfreader4<'a>(
                 if dg.block.dg_data != 0 && !channel_names_to_read_in_dg.is_empty() {
                     // header block
                     rdr.seek_relative(dg.block.dg_data - position)
-                        .expect("Could not position buffer"); // change buffer position
+                        .context("Could not position buffer")?; // change buffer position
                     let mut id = [0u8; 4];
-                    rdr.read_exact(&mut id).expect("could not read block id");
+                    rdr.read_exact(&mut id).context("could not read block id")?;
                     if dg.cg.len() == 1 {
                         sorted = true;
                     } else {
@@ -79,19 +80,20 @@ pub fn mdfreader4<'a>(
                         sorted,
                         &channel_names_to_read_in_dg,
                         &mut decoder,
-                    );
+                    )?;
                     apply_bit_mask_offset(dg, &channel_names_to_read_in_dg);
                     // channel_group invalid bits calculation (only for DIBlocks)
                     for channel_group in dg.cg.values_mut() {
                         channel_group.process_all_channel_invalid_bits();
                     }
                     // conversion of all channels to physical values
-                    convert_all_channels(dg, &info.sharable);
+                    convert_all_channels(dg, &info.sharable)?;
                 }
             }
         }
         MdfInfo::V3(_) => {}
     };
+    Ok(())
 }
 
 /// Reads all kind of data layout : simple DT or DV, sorted or unsorted, Data List,
@@ -104,7 +106,7 @@ fn read_data(
     sorted: bool,
     channel_names_to_read_in_dg: &HashSet<String>,
     decoder: &mut Dec,
-) -> i64 {
+) -> Result<i64> {
     // block header is already read
     let mut vlsd_channels: Vec<i32> = Vec::new();
     match id {
@@ -112,13 +114,13 @@ fn read_data(
             // ##DT
             let block_header: Dt4Block = rdr
                 .read_le()
-                .expect("could not read into Dt4Blcok structure");
+                .context("could not read into Dt4Blcok structure")?;
             // simple data block
             if sorted {
                 // sorted data group
                 for channel_group in dg.cg.values_mut() {
                     vlsd_channels =
-                        read_all_channels_sorted(rdr, channel_group, channel_names_to_read_in_dg);
+                        read_all_channels_sorted(rdr, channel_group, channel_names_to_read_in_dg)?;
                     position += block_header.len as i64;
                 }
                 if !vlsd_channels.is_empty() {
@@ -129,7 +131,7 @@ fn read_data(
                         position,
                         decoder,
                         channel_names_to_read_in_dg,
-                    );
+                    )?;
                 }
             } else if !dg.cg.is_empty() {
                 // unsorted data
@@ -146,13 +148,13 @@ fn read_data(
                     dg,
                     block_header.len as i64,
                     channel_names_to_read_in_dg,
-                );
+                )?;
                 position += block_header.len as i64;
             }
         }
         [35, 35, 68, 90] => {
             // ##DZ
-            let (mut data, block_header) = parse_dz(rdr);
+            let (mut data, block_header) = parse_dz(rdr)?;
             // compressed data
             if sorted {
                 // sorted data group
@@ -172,7 +174,7 @@ fn read_data(
                         position,
                         decoder,
                         channel_names_to_read_in_dg,
-                    );
+                    )?;
                 }
             } else if !dg.cg.is_empty() {
                 // unsorted data
@@ -204,13 +206,13 @@ fn read_data(
                     &mut record_counter,
                     decoder,
                     channel_names_to_read_in_dg,
-                );
+                )?;
                 position += block_header.len as i64;
             }
         }
         [35, 35, 72, 76] => {
             // ##HL
-            let (pos, id) = read_hl(rdr, position);
+            let (pos, id) = read_hl(rdr, position)?;
             position = pos;
             // Read DL Blocks
             position = read_data(
@@ -221,7 +223,7 @@ fn read_data(
                 sorted,
                 channel_names_to_read_in_dg,
                 decoder,
-            );
+            )?;
         }
         [35, 35, 68, 76] => {
             // ##DL
@@ -229,7 +231,7 @@ fn read_data(
             if sorted {
                 // sorted data group
                 for channel_group in dg.cg.values_mut() {
-                    let (dl_blocks, pos) = parser_dl4(rdr, position);
+                    let (dl_blocks, pos) = parser_dl4(rdr, position)?;
                     let (pos, vlsd) = parser_dl4_sorted(
                         rdr,
                         dl_blocks,
@@ -238,7 +240,7 @@ fn read_data(
                         decoder,
                         &0i32,
                         channel_names_to_read_in_dg,
-                    );
+                    )?;
                     position = pos;
                     vlsd_channels = vlsd;
                 }
@@ -250,7 +252,7 @@ fn read_data(
                         position,
                         decoder,
                         channel_names_to_read_in_dg,
-                    );
+                    )?;
                 }
             } else if !dg.cg.is_empty() {
                 // unsorted data
@@ -262,8 +264,9 @@ fn read_data(
                         channel_names_to_read_in_dg,
                     );
                 }
-                let (dl_blocks, pos) = parser_dl4(rdr, position);
-                let pos = parser_dl4_unsorted(rdr, dg, dl_blocks, pos, channel_names_to_read_in_dg);
+                let (dl_blocks, pos) = parser_dl4(rdr, position)?;
+                let pos =
+                    parser_dl4_unsorted(rdr, dg, dl_blocks, pos, channel_names_to_read_in_dg)?;
                 position = pos;
             }
         }
@@ -271,7 +274,7 @@ fn read_data(
             // ##LD
             // list data, cannot be used for unsorted data
             for channel_group in dg.cg.values_mut() {
-                let pos = parser_ld4(rdr, position, channel_group, channel_names_to_read_in_dg);
+                let pos = parser_ld4(rdr, position, channel_group, channel_names_to_read_in_dg)?;
                 position = pos;
             }
         }
@@ -281,31 +284,32 @@ fn read_data(
             // sorted data group only, no record id, no invalid bytes
             let block_header: Dt4Block = rdr
                 .read_le()
-                .expect("could not read into Dv4Block structure");
+                .context("could not read into Dv4Block structure")?;
             for channel_group in dg.cg.values_mut() {
-                read_all_channels_sorted(rdr, channel_group, channel_names_to_read_in_dg);
+                read_all_channels_sorted(rdr, channel_group, channel_names_to_read_in_dg)?;
             }
             position += block_header.len as i64;
         }
-        _ => panic!("Unknown block type"), // should never happen
+        _ => bail!("Unknown block type"), // should never happen
     }
-    position
+    Ok(position)
 }
 
 /// Header List block reader
 /// This HL Block references Data List Blocks that are listing DZ Blocks
 /// It is existing to add complementary information about compression in DZ
-fn read_hl(rdr: &mut BufReader<&File>, mut position: i64) -> (i64, [u8; 4]) {
+fn read_hl(rdr: &mut BufReader<&File>, mut position: i64) -> Result<(i64, [u8; 4])> {
     // compressed data in datal list
-    let block: Hl4Block = rdr.read_le().expect("could not read HL block");
+    let block: Hl4Block = rdr.read_le().context("could not read HL block")?;
     position += block.hl_len as i64;
     // Read Id of pointed DL Block
     rdr.seek_relative(block.hl_dl_first - position)
-        .expect("Could not reach DL block from HL block");
+        .context("Could not reach DL block from HL block")?;
     position = block.hl_dl_first;
     let mut id = [0u8; 4];
-    rdr.read_exact(&mut id).expect("could not read DL block id");
-    (position, id)
+    rdr.read_exact(&mut id)
+        .context("could not read DL block id")?;
+    Ok((position, id))
 }
 
 /// Reads Signal Data Block containing VLSD channel, pointed by cn_data
@@ -316,32 +320,32 @@ fn read_sd(
     mut position: i64,
     decoder: &mut Dec,
     channel_names_to_read_in_dg: &HashSet<String>,
-) -> i64 {
+) -> Result<i64> {
     for channel_group in dg.cg.values_mut() {
         for rec_pos in vlsd_channels {
             if let Some(cn) = channel_group.cn.get_mut(rec_pos) {
                 // header block
                 rdr.seek_relative(cn.block.cn_data - position)
-                    .expect("Could not position buffer"); // change buffer position
+                    .context("Could not position buffer")?; // change buffer position
                 position = cn.block.cn_data;
                 let mut id = [0u8; 4];
-                rdr.read_exact(&mut id).expect("could not read block id");
+                rdr.read_exact(&mut id).context("could not read block id")?;
                 if "##SD".as_bytes() == id {
                     let block_header: Dt4Block =
-                        rdr.read_le().expect("Could not read Sd4Block struct");
+                        rdr.read_le().context("Could not read Sd4Block struct")?;
                     let mut data = vec![0u8; block_header.len as usize - 24];
                     rdr.read_exact(&mut data)
-                        .expect("could not read SD data buffer");
+                        .context("could not read SD data buffer")?;
                     position += block_header.len as i64;
-                    read_vlsd_from_bytes(&mut data, cn, 0, decoder);
+                    read_vlsd_from_bytes(&mut data, cn, 0, decoder)?;
                 } else if "##DZ".as_bytes() == id {
-                    let (mut data, block_header) = parse_dz(rdr);
+                    let (mut data, block_header) = parse_dz(rdr)?;
                     position += block_header.len as i64;
-                    read_vlsd_from_bytes(&mut data, cn, 0, decoder);
+                    read_vlsd_from_bytes(&mut data, cn, 0, decoder)?;
                 } else if "##HL".as_bytes() == id {
-                    let (pos, _id) = read_hl(rdr, position);
+                    let (pos, _id) = read_hl(rdr, position)?;
                     position = pos;
-                    let (dl_blocks, pos) = parser_dl4(rdr, position);
+                    let (dl_blocks, pos) = parser_dl4(rdr, position)?;
                     let (pos, _vlsd) = parser_dl4_sorted(
                         rdr,
                         dl_blocks,
@@ -350,10 +354,10 @@ fn read_sd(
                         decoder,
                         rec_pos,
                         channel_names_to_read_in_dg,
-                    );
+                    )?;
                     position = pos;
                 } else if "##DL".as_bytes() == id {
-                    let (dl_blocks, pos) = parser_dl4(rdr, position);
+                    let (dl_blocks, pos) = parser_dl4(rdr, position)?;
                     let (pos, _vlsd) = parser_dl4_sorted(
                         rdr,
                         dl_blocks,
@@ -362,13 +366,13 @@ fn read_sd(
                         decoder,
                         rec_pos,
                         channel_names_to_read_in_dg,
-                    );
+                    )?;
                     position = pos;
                 }
             }
         }
     }
-    position
+    Ok(position)
 }
 
 /// Reads Variable Length Signal Data from bytes of a SD Block
@@ -379,7 +383,7 @@ fn read_vlsd_from_bytes(
     cn: &mut Cn4,
     previous_index: usize,
     decoder: &mut Dec,
-) -> usize {
+) -> Result<usize> {
     let mut position: usize = 0;
     let data_length = data.len();
     let mut remaining: usize = data_length - position;
@@ -407,7 +411,7 @@ fn read_vlsd_from_bytes(
             while remaining > 0 {
                 let len = &data[position..position + std::mem::size_of::<u32>()];
                 let length: usize =
-                    u32::from_le_bytes(len.try_into().expect("Could not read length")) as usize;
+                    u32::from_le_bytes(len.try_into().context("Could not read length")?) as usize;
                 if (position + length + 4) <= data_length {
                     position += std::mem::size_of::<u32>();
                     let record = &data[position..position + length];
@@ -436,12 +440,12 @@ fn read_vlsd_from_bytes(
             while remaining > 0 {
                 let len = &data[position..position + std::mem::size_of::<u32>()];
                 let length: usize =
-                    u32::from_le_bytes(len.try_into().expect("Could not read length")) as usize;
+                    u32::from_le_bytes(len.try_into().context("Could not read length")?) as usize;
                 if (position + length + 4) <= data_length {
                     position += std::mem::size_of::<u32>();
                     let record = &data[position..position + length];
                     array[nrecord + previous_index] = str::from_utf8(record)
-                        .expect("Found invalid UTF-8")
+                        .context("Found invalid UTF-8")?
                         .trim_end_matches('\0')
                         .to_string();
                     position += length;
@@ -465,7 +469,8 @@ fn read_vlsd_from_bytes(
                 while remaining > 0 {
                     let len = &data[position..position + std::mem::size_of::<u32>()];
                     let length: usize =
-                        u32::from_le_bytes(len.try_into().expect("Could not read length")) as usize;
+                        u32::from_le_bytes(len.try_into().context("Could not read length")?)
+                            as usize;
                     if (position + length + 4) <= data_length {
                         position += std::mem::size_of::<u32>();
                         let record = &data[position..position + length];
@@ -490,7 +495,8 @@ fn read_vlsd_from_bytes(
                 while remaining > 0 {
                     let len = &data[position..position + std::mem::size_of::<u32>()];
                     let length: usize =
-                        u32::from_le_bytes(len.try_into().expect("Could not read length")) as usize;
+                        u32::from_le_bytes(len.try_into().context("Could not read length")?)
+                            as usize;
                     if (position + length + 4) <= data_length {
                         position += std::mem::size_of::<u32>();
                         let record = &data[position..position + length];
@@ -520,7 +526,7 @@ fn read_vlsd_from_bytes(
             while remaining > 0 {
                 let len = &data[position..position + std::mem::size_of::<u32>()];
                 let length: usize =
-                    u32::from_le_bytes(len.try_into().expect("Could not read length")) as usize;
+                    u32::from_le_bytes(len.try_into().context("Could not read length")?) as usize;
                 if (position + length + 4) <= data_length {
                     position += std::mem::size_of::<u32>();
                     let record = &data[position..position + length];
@@ -561,7 +567,7 @@ fn read_vlsd_from_bytes(
         ChannelData::ArrayDComplex32(_) => {}
         ChannelData::ArrayDComplex64(_) => {}
     }
-    nrecord + previous_index
+    Ok(nrecord + previous_index)
 }
 
 /// Reads all DL Blocks and returns a vect of them
@@ -570,19 +576,20 @@ fn parser_ld4(
     mut position: i64,
     channel_group: &mut Cg4,
     channel_names_to_read_in_dg: &HashSet<String>,
-) -> i64 {
+) -> Result<i64> {
     let mut ld_blocks: Vec<Ld4Block> = Vec::new();
-    let (block, pos) = parser_ld4_block(rdr, position, position);
+    let (block, pos) = parser_ld4_block(rdr, position, position)?;
     position = pos;
     ld_blocks.push(block.clone());
     let mut next_ld = block.ld_ld_next();
     while next_ld > 0 {
         rdr.seek_relative(next_ld - position)
-            .expect("Could not reach LD block position");
+            .context("Could not reach LD block position")?;
         position = next_ld;
         let mut id = [0u8; 4];
-        rdr.read_exact(&mut id).expect("could not read LD block id");
-        let (block, pos) = parser_ld4_block(rdr, position, position);
+        rdr.read_exact(&mut id)
+            .context("could not read LD block id")?;
+        let (block, pos) = parser_ld4_block(rdr, position, position)?;
         position = pos;
         ld_blocks.push(block.clone());
         next_ld = block.ld_ld_next();
@@ -592,25 +599,26 @@ fn parser_ld4(
         // Reads DV or DZ block id
         let ld_data = ld_blocks[0].ld_data()[0];
         rdr.seek_relative(ld_data - position)
-            .expect("Could not reach DV or DZ block position from LD block");
+            .context("Could not reach DV or DZ block position from LD block")?;
         let mut id = [0u8; 4];
         rdr.read_exact(&mut id)
-            .expect("could not read data block id from ld4 invalid");
+            .context("could not read data block id from ld4 invalid")?;
         initialise_arrays(
             channel_group,
             &channel_group.block.cg_cycle_count.clone(),
             channel_names_to_read_in_dg,
         );
         if id == "##DZ".as_bytes() {
-            let (mut dt, block_header) = parse_dz(rdr);
+            let (mut dt, block_header) = parse_dz(rdr)?;
             for (_rec_pos, cn) in channel_group.cn.iter_mut() {
                 read_one_channel_array(&mut dt, cn, channel_group.block.cg_cycle_count as usize);
             }
             position = ld_data + block_header.len as i64;
         } else {
-            let block_header: Dt4Block = rdr.read_le().expect("Could not read DV block header");
+            let block_header: Dt4Block = rdr.read_le().context("Could not read DV block header")?;
             let mut buf = vec![0u8; block_header.len as usize - 24];
-            rdr.read_exact(&mut buf).expect("Could not read Dt4 block");
+            rdr.read_exact(&mut buf)
+                .context("Could not read Dt4 block")?;
             for (_rec_pos, cn) in channel_group.cn.iter_mut() {
                 read_one_channel_array(&mut buf, cn, channel_group.block.cg_cycle_count as usize);
             }
@@ -620,20 +628,21 @@ fn parser_ld4(
             // Reads invalid DI or DZ block
             let ld_invalid_data = ld_blocks[0].ld_invalid_data()[0];
             rdr.seek_relative(ld_invalid_data - position)
-                .expect("Could not reach DI or DZ block position");
+                .context("Could not reach DI or DZ block position")?;
             let mut id = [0u8; 4];
             rdr.read_exact(&mut id)
-                .expect("could not read data block id from ld4 invalid");
+                .context("could not read data block id from ld4 invalid")?;
             if id == "##DZ".as_bytes() {
-                let (dt, block_header) = parse_dz(rdr);
+                let (dt, block_header) = parse_dz(rdr)?;
                 channel_group.invalid_bytes = Some(dt);
                 position = ld_invalid_data + block_header.len as i64;
             } else {
                 let block_header: Dt4Block = rdr
                     .read_le()
-                    .expect("Could not read into DZ or DI block header");
+                    .context("Could not read into DZ or DI block header")?;
                 let mut buf = vec![0u8; (block_header.len - 24) as usize];
-                rdr.read_exact(&mut buf).expect("Could not read data block");
+                rdr.read_exact(&mut buf)
+                    .context("Could not read data block")?;
                 channel_group.invalid_bytes = Some(buf);
                 position = ld_invalid_data + block_header.len as i64;
             }
@@ -646,9 +655,9 @@ fn parser_ld4(
             channel_group,
             ld_blocks,
             channel_names_to_read_in_dg,
-        );
+        )?;
     }
-    position
+    Ok(position)
 }
 
 /// reads DV and DI block containing several channels
@@ -658,7 +667,7 @@ fn read_dv_di(
     channel_group: &mut Cg4,
     ld_blocks: Vec<Ld4Block>,
     channel_names_to_read_in_dg: &HashSet<String>,
-) -> i64 {
+) -> Result<i64> {
     let cg_cycle_count = channel_group.block.cg_cycle_count as usize;
     let cg_inval_bytes = channel_group.block.cg_inval_bytes as usize;
     // initialises the arrays
@@ -682,21 +691,21 @@ fn read_dv_di(
         for data_pointer in ld.ld_data() {
             // Reads DV or DZ block id
             rdr.seek_relative(data_pointer - position)
-                .expect("Could not reach DV or DZ block position");
+                .context("Could not reach DV or DZ block position")?;
             let mut id = [0u8; 4];
             rdr.read_exact(&mut id)
-                .expect("could not read data block id from LD4");
+                .context("could not read data block id from LD4")?;
             let block_length: usize;
             if id == "##DZ".as_bytes() {
-                let (dt, block_header) = parse_dz(rdr);
+                let (dt, block_header) = parse_dz(rdr)?;
                 data.extend(dt);
                 block_length = block_header.dz_org_data_length as usize;
                 position = data_pointer + block_header.len as i64;
             } else {
                 let block_header: Dt4Block =
-                    rdr.read_le().expect("Could not read DV block structure");
+                    rdr.read_le().context("Could not read DV block structure")?;
                 let mut buf = vec![0u8; (block_header.len - 24) as usize];
-                rdr.read_exact(&mut buf).expect("Could not read DV data");
+                rdr.read_exact(&mut buf).context("Could not read DV data")?;
                 data.extend(buf);
                 block_length = (block_header.len - 24) as usize;
                 position = data_pointer + block_header.len as i64;
@@ -740,22 +749,23 @@ fn read_dv_di(
         for data_pointer in ld.ld_invalid_data() {
             // Reads DV or DZ block id
             rdr.seek_relative(data_pointer - position)
-                .expect("Could not reach invalid block position");
+                .context("Could not reach invalid block position")?;
             let mut id = [0u8; 4];
             rdr.read_exact(&mut id)
-                .expect("could not read data block id from ld4 invalid");
+                .context("could not read data block id from ld4 invalid")?;
             let block_length: usize;
             if id == "##DZ".as_bytes() {
-                let (dt, block_header) = parse_dz(rdr);
+                let (dt, block_header) = parse_dz(rdr)?;
                 invalid_data.extend(dt);
                 block_length = block_header.dz_org_data_length as usize;
                 position = data_pointer + block_header.len as i64;
             } else {
-                let block_header: Dt4Block =
-                    rdr.read_le().expect("Could not read invalid block header");
+                let block_header: Dt4Block = rdr
+                    .read_le()
+                    .context("Could not read invalid block header")?;
                 let mut buf = vec![0u8; (block_header.len - 24) as usize];
                 rdr.read_exact(&mut buf)
-                    .expect("Could not read invalid data");
+                    .context("Could not read invalid data")?;
                 invalid_data.extend(buf);
                 block_length = (block_header.len - 24) as usize;
                 position = data_pointer + block_header.len as i64;
@@ -770,28 +780,29 @@ fn read_dv_di(
         }
     }
     validate_channels_set(&mut channel_group.cn, channel_names_to_read_in_dg);
-    position
+    Ok(position)
 }
 
 /// Reads all DL Blocks and returns a vect of them
-fn parser_dl4(rdr: &mut BufReader<&File>, mut position: i64) -> (Vec<Dl4Block>, i64) {
+fn parser_dl4(rdr: &mut BufReader<&File>, mut position: i64) -> Result<(Vec<Dl4Block>, i64)> {
     let mut dl_blocks: Vec<Dl4Block> = Vec::new();
-    let (block, pos) = parser_dl4_block(rdr, position, position);
+    let (block, pos) = parser_dl4_block(rdr, position, position)?;
     position = pos;
     dl_blocks.push(block.clone());
     let mut next_dl = block.dl_dl_next;
     while next_dl > 0 {
         rdr.seek_relative(next_dl - position)
-            .expect("Could not reach DL4 block position");
+            .context("Could not reach DL4 block position")?;
         position = next_dl;
         let mut id = [0u8; 4];
-        rdr.read_exact(&mut id).expect("could not read DL block id");
-        let (block, pos) = parser_dl4_block(rdr, position, position);
+        rdr.read_exact(&mut id)
+            .context("could not read DL block id")?;
+        let (block, pos) = parser_dl4_block(rdr, position, position)?;
         position = pos;
         dl_blocks.push(block.clone());
         next_dl = block.dl_dl_next;
     }
-    (dl_blocks, position)
+    Ok((dl_blocks, position))
 }
 
 /// Reads all sorted data blocks pointed by DL4 Blocks
@@ -803,7 +814,7 @@ fn parser_dl4_sorted(
     decoder: &mut Dec,
     rec_pos: &i32,
     channel_names_to_read_in_dg: &HashSet<String>,
-) -> (i64, Vec<i32>) {
+) -> Result<(i64, Vec<i32>)> {
     // initialises the arrays
     initialise_arrays(
         channel_group,
@@ -820,22 +831,22 @@ fn parser_dl4_sorted(
         for data_pointer in dl.dl_data {
             // Reads DT or DZ block id
             rdr.seek_relative(data_pointer - position)
-                .expect("Could not reach DV or DZ block position from DL4");
+                .context("Could not reach DV or DZ block position from DL4")?;
             let mut id = [0u8; 4];
             rdr.read_exact(&mut id)
-                .expect("could not read data block id");
+                .context("could not read data block id")?;
             let block_length: usize;
             if id == "##DZ".as_bytes() {
-                let (dt, block_header) = parse_dz(rdr);
+                let (dt, block_header) = parse_dz(rdr)?;
                 data.extend(dt);
                 block_length = block_header.dz_org_data_length as usize;
                 position = data_pointer + block_header.len as i64;
                 id[2..].copy_from_slice(&block_header.dz_org_block_type[..]);
             } else {
-                let block_header: Dt4Block = rdr.read_le().expect("Could not DT block header");
+                let block_header: Dt4Block = rdr.read_le().context("Could not DT block header")?;
                 let mut buf = vec![0u8; (block_header.len - 24) as usize];
                 rdr.read_exact(&mut buf)
-                    .expect("Could not read DT block data");
+                    .context("Could not read DT block data")?;
                 data.extend(buf);
                 block_length = (block_header.len - 24) as usize;
                 position = data_pointer + block_header.len as i64;
@@ -844,7 +855,7 @@ fn parser_dl4_sorted(
 
             if id == "##SD".as_bytes() {
                 if let Some(cn) = channel_group.cn.get_mut(rec_pos) {
-                    previous_index = read_vlsd_from_bytes(&mut data, cn, previous_index, decoder);
+                    previous_index = read_vlsd_from_bytes(&mut data, cn, previous_index, decoder)?;
                 }
             } else {
                 let n_record_chunk = block_length / record_length;
@@ -883,7 +894,7 @@ fn parser_dl4_sorted(
         }
     }
     validate_channels_set(&mut channel_group.cn, channel_names_to_read_in_dg);
-    (position, vlsd_channels)
+    Ok((position, vlsd_channels))
 }
 
 /// Reads all unsorted data blocks pointed by DL4 Blocks
@@ -893,7 +904,7 @@ fn parser_dl4_unsorted(
     dl_blocks: Vec<Dl4Block>,
     mut position: i64,
     channel_names_to_read_in_dg: &HashSet<String>,
-) -> i64 {
+) -> Result<i64> {
     // Read all data blocks
     let mut data: Vec<u8> = Vec::new();
     let mut decoder: Dec = Dec {
@@ -909,19 +920,19 @@ fn parser_dl4_unsorted(
     for dl in dl_blocks {
         for data_pointer in dl.dl_data {
             rdr.seek_relative(data_pointer - position)
-                .expect("Could not reach DT or DZ position from DL");
+                .context("Could not reach DT or DZ position from DL")?;
             let mut buf = [0u8; 24];
             rdr.read_exact(&mut buf)
-                .expect("could not read blockheader4 Id");
+                .context("could not read blockheader4 Id")?;
             let mut block = Cursor::new(buf);
-            let header: Blockheader4 = block.read_le().expect("could not parse blockheader4");
+            let header: Blockheader4 = block.read_le().context("could not parse blockheader4")?;
             if header.hdr_id == "##DZ".as_bytes() {
-                let (dt, _block) = parse_dz(rdr);
+                let (dt, _block) = parse_dz(rdr)?;
                 data.extend(dt);
             } else {
                 let mut buf = vec![0u8; (header.hdr_len - 24) as usize];
                 rdr.read_exact(&mut buf)
-                    .expect("Could not read DT block data");
+                    .context("Could not read DT block data")?;
                 data.extend(buf);
             }
             // saves records as much as possible
@@ -931,11 +942,11 @@ fn parser_dl4_unsorted(
                 &mut record_counter,
                 &mut decoder,
                 channel_names_to_read_in_dg,
-            );
+            )?;
             position = data_pointer + header.hdr_len as i64;
         }
     }
-    position
+    Ok(position)
 }
 
 /// Returns chunk size and corresponding number of records from a channel group
@@ -959,7 +970,7 @@ fn read_all_channels_sorted(
     rdr: &mut BufReader<&File>,
     channel_group: &mut Cg4,
     channel_names_to_read_in_dg: &HashSet<String>,
-) -> Vec<i32> {
+) -> Result<Vec<i32>> {
     let chunks = generate_chunks(channel_group);
     // initialises the arrays
     initialise_arrays(
@@ -973,7 +984,7 @@ fn read_all_channels_sorted(
     for (n_record_chunk, chunk_size) in chunks {
         let mut data_chunk = vec![0u8; chunk_size];
         rdr.read_exact(&mut data_chunk)
-            .expect("Could not read data chunk");
+            .context("Could not read data chunk")?;
         vlsd_channels = read_channels_from_bytes(
             &data_chunk,
             &mut channel_group.cn,
@@ -985,7 +996,7 @@ fn read_all_channels_sorted(
         previous_index += n_record_chunk;
     }
     validate_channels_set(&mut channel_group.cn, channel_names_to_read_in_dg);
-    vlsd_channels
+    Ok(vlsd_channels)
 }
 
 /// copies complete sorted data block (not chunk) into each channel array
@@ -1018,7 +1029,7 @@ fn read_all_channels_unsorted(
     dg: &mut Dg4,
     block_length: i64,
     channel_names_to_read_in_dg: &HashSet<String>,
-) {
+) -> Result<()> {
     let data_block_length = block_length as usize;
     let mut position: usize = 24;
     let mut record_counter: HashMap<u64, (usize, Vec<u8>)> = HashMap::new();
@@ -1046,7 +1057,7 @@ fn read_all_channels_unsorted(
             position += data_block_length - position;
         }
         rdr.read_exact(&mut data_chunk)
-            .expect("Could not read data chunk");
+            .context("Could not read data chunk")?;
         data.extend(data_chunk);
         read_all_channels_unsorted_from_bytes(
             &mut data,
@@ -1054,8 +1065,9 @@ fn read_all_channels_unsorted(
             &mut record_counter,
             &mut decoder,
             channel_names_to_read_in_dg,
-        );
+        )?;
     }
+    Ok(())
 }
 
 /// stores a vlsd record into channel vect (ChannelData)
@@ -1066,36 +1078,38 @@ fn save_vlsd(
     nrecord: &usize,
     decoder: &mut Dec,
     endian: bool,
-) {
+) -> Result<()> {
     match data {
-        ChannelData::Int8(_) => {}
-        ChannelData::UInt8(_) => {}
-        ChannelData::Int16(_) => {}
-        ChannelData::UInt16(_) => {}
-        ChannelData::Float16(_) => {}
-        ChannelData::Int24(_) => {}
-        ChannelData::UInt24(_) => {}
-        ChannelData::Int32(_) => {}
-        ChannelData::UInt32(_) => {}
-        ChannelData::Float32(_) => {}
-        ChannelData::Int48(_) => {}
-        ChannelData::UInt48(_) => {}
-        ChannelData::Int64(_) => {}
-        ChannelData::UInt64(_) => {}
-        ChannelData::Float64(_) => {}
-        ChannelData::Complex16(_) => {}
-        ChannelData::Complex32(_) => {}
-        ChannelData::Complex64(_) => {}
+        ChannelData::Int8(_) => Ok(()),
+        ChannelData::UInt8(_) => Ok(()),
+        ChannelData::Int16(_) => Ok(()),
+        ChannelData::UInt16(_) => Ok(()),
+        ChannelData::Float16(_) => Ok(()),
+        ChannelData::Int24(_) => Ok(()),
+        ChannelData::UInt24(_) => Ok(()),
+        ChannelData::Int32(_) => Ok(()),
+        ChannelData::UInt32(_) => Ok(()),
+        ChannelData::Float32(_) => Ok(()),
+        ChannelData::Int48(_) => Ok(()),
+        ChannelData::UInt48(_) => Ok(()),
+        ChannelData::Int64(_) => Ok(()),
+        ChannelData::UInt64(_) => Ok(()),
+        ChannelData::Float64(_) => Ok(()),
+        ChannelData::Complex16(_) => Ok(()),
+        ChannelData::Complex32(_) => Ok(()),
+        ChannelData::Complex64(_) => Ok(()),
         ChannelData::StringSBC(array) => {
             let (_result, _size, _replacement) =
                 decoder
                     .windows_1252
                     .decode_to_string(record, &mut array[*nrecord], false);
+            Ok(())
         }
         ChannelData::StringUTF8(array) => {
             array[*nrecord] = str::from_utf8(record)
-                .expect("Found invalid UTF-8")
+                .context("Found invalid UTF-8")?
                 .to_string();
+            Ok(())
         }
         ChannelData::StringUTF16(array) => {
             if endian {
@@ -1109,29 +1123,31 @@ fn save_vlsd(
                         .utf_16_le
                         .decode_to_string(record, &mut array[*nrecord], false);
             };
+            Ok(())
         }
         ChannelData::VariableSizeByteArray(array) => {
             array[*nrecord].extend_from_slice(record);
+            Ok(())
         }
-        ChannelData::FixedSizeByteArray(_) => {}
-        ChannelData::ArrayDInt8(_) => {}
-        ChannelData::ArrayDUInt8(_) => {}
-        ChannelData::ArrayDInt16(_) => {}
-        ChannelData::ArrayDUInt16(_) => {}
-        ChannelData::ArrayDFloat16(_) => {}
-        ChannelData::ArrayDInt24(_) => {}
-        ChannelData::ArrayDUInt24(_) => {}
-        ChannelData::ArrayDInt32(_) => {}
-        ChannelData::ArrayDUInt32(_) => {}
-        ChannelData::ArrayDFloat32(_) => {}
-        ChannelData::ArrayDInt48(_) => {}
-        ChannelData::ArrayDUInt48(_) => {}
-        ChannelData::ArrayDInt64(_) => {}
-        ChannelData::ArrayDUInt64(_) => {}
-        ChannelData::ArrayDFloat64(_) => {}
-        ChannelData::ArrayDComplex16(_) => {}
-        ChannelData::ArrayDComplex32(_) => {}
-        ChannelData::ArrayDComplex64(_) => {}
+        ChannelData::FixedSizeByteArray(_) => Ok(()),
+        ChannelData::ArrayDInt8(_) => Ok(()),
+        ChannelData::ArrayDUInt8(_) => Ok(()),
+        ChannelData::ArrayDInt16(_) => Ok(()),
+        ChannelData::ArrayDUInt16(_) => Ok(()),
+        ChannelData::ArrayDFloat16(_) => Ok(()),
+        ChannelData::ArrayDInt24(_) => Ok(()),
+        ChannelData::ArrayDUInt24(_) => Ok(()),
+        ChannelData::ArrayDInt32(_) => Ok(()),
+        ChannelData::ArrayDUInt32(_) => Ok(()),
+        ChannelData::ArrayDFloat32(_) => Ok(()),
+        ChannelData::ArrayDInt48(_) => Ok(()),
+        ChannelData::ArrayDUInt48(_) => Ok(()),
+        ChannelData::ArrayDInt64(_) => Ok(()),
+        ChannelData::ArrayDUInt64(_) => Ok(()),
+        ChannelData::ArrayDFloat64(_) => Ok(()),
+        ChannelData::ArrayDComplex16(_) => Ok(()),
+        ChannelData::ArrayDComplex32(_) => Ok(()),
+        ChannelData::ArrayDComplex64(_) => Ok(()),
     }
 }
 
@@ -1142,7 +1158,7 @@ fn read_all_channels_unsorted_from_bytes(
     record_counter: &mut HashMap<u64, (usize, Vec<u8>)>,
     decoder: &mut Dec,
     channel_names_to_read_in_dg: &HashSet<String>,
-) {
+) -> Result<()> {
     let mut position: usize = 0;
     let data_length = data.len();
     let dg_rec_id_size = dg.block.dg_rec_id_size as usize;
@@ -1155,18 +1171,18 @@ fn read_all_channels_unsorted_from_bytes(
         if dg_rec_id_size == 1 && remaining >= 1 {
             rec_id = data[position]
                 .try_into()
-                .expect("Could not convert record id u8");
+                .context("Could not convert record id u8")?;
         } else if dg_rec_id_size == 2 && remaining >= 2 {
             let rec = &data[position..position + std::mem::size_of::<u16>()];
-            rec_id =
-                u16::from_le_bytes(rec.try_into().expect("Could not convert record id u16")) as u64;
+            rec_id = u16::from_le_bytes(rec.try_into().context("Could not convert record id u16")?)
+                as u64;
         } else if dg_rec_id_size == 4 && remaining >= 4 {
             let rec = &data[position..position + std::mem::size_of::<u32>()];
-            rec_id =
-                u32::from_le_bytes(rec.try_into().expect("Could not convert record id u32")) as u64;
+            rec_id = u32::from_le_bytes(rec.try_into().context("Could not convert record id u32")?)
+                as u64;
         } else if dg_rec_id_size == 8 && remaining >= 8 {
             let rec = &data[position..position + std::mem::size_of::<u64>()];
-            rec_id = u64::from_le_bytes(rec.try_into().expect("Could not convert record id u64"));
+            rec_id = u64::from_le_bytes(rec.try_into().context("Could not convert record id u64")?);
         } else {
             break; // not enough data remaining
         }
@@ -1178,7 +1194,8 @@ fn read_all_channels_unsorted_from_bytes(
                 if remaining >= 4 + dg_rec_id_size {
                     let len = &data[position + dg_rec_id_size..position + vlsd_data_start_offset];
                     let length: usize =
-                        u32::from_le_bytes(len.try_into().expect("Could not read length")) as usize;
+                        u32::from_le_bytes(len.try_into().context("Could not read length")?)
+                            as usize;
                     remaining = data_length - position - vlsd_data_start_offset;
                     if remaining >= length {
                         position += vlsd_data_start_offset;
@@ -1193,19 +1210,19 @@ fn read_all_channels_unsorted_from_bytes(
                                             nrecord,
                                             decoder,
                                             target_cn.endian,
-                                        );
+                                        )?;
                                         *nrecord += 1;
                                     } else {
-                                        panic!("could not find the record id");
+                                        bail!("could not find the record id");
                                     }
                                 } else {
-                                    panic!("could not find the target record position");
+                                    bail!("could not find the target record position");
                                 }
                             } else {
-                                panic!("could not find the target record id");
+                                bail!("could not find the target record id");
                             }
                         } else {
-                            panic!("no vsld in CG, wrong cg_flags");
+                            bail!("no vsld in CG, wrong cg_flags");
                         }
                         position += length;
                     } else {
@@ -1220,14 +1237,14 @@ fn read_all_channels_unsorted_from_bytes(
                 if let Some((_nrecord, data)) = record_counter.get_mut(&rec_id) {
                     data.extend(record);
                 } else {
-                    panic!("could not find the record id");
+                    bail!("could not find the record id");
                 }
                 position += record_length;
             } else {
                 break; // not enough data remaining
             }
         } else {
-            panic!("could not find the record id");
+            bail!("could not find the record id");
         }
         remaining = data_length - position;
     }
@@ -1252,6 +1269,7 @@ fn read_all_channels_unsorted_from_bytes(
             validate_channels_set(&mut channel_group.cn, channel_names_to_read_in_dg);
         }
     }
+    Ok(())
 }
 
 /// decoder for String SBC and UTF16 Le & Be

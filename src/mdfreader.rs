@@ -12,12 +12,13 @@ use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::BufReader;
 
+use anyhow::{Context, Result};
 use arrow2::array::{get_display, Array};
 use arrow2::datatypes::{Field, Schema};
-use arrow2::error::Result;
+use log::info;
 
 use crate::export::parquet::export_to_parquet;
-use crate::mdfinfo::mdfinfo4::DataSignature;
+use crate::mdfinfo::mdfinfo4::{DataSignature, MasterSignature};
 use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::arrow::mdf_data_to_arrow;
 use crate::mdfreader::mdfreader3::mdfreader3;
@@ -60,20 +61,12 @@ impl Clone for ChannelIndexes {
     }
 }
 
-/// reads files metadata and loads all channels data into memory
-pub fn mdfreader(file_name: &str) -> Mdf {
-    // read file blocks
-    let mut mdf = Mdf::new(file_name);
-    mdf.load_all_channels_data_in_memory();
-    mdf
-}
-
 #[allow(dead_code)]
 impl Mdf {
     /// returns new empty Mdf
-    pub fn new(file_name: &str) -> Mdf {
+    pub fn new(file_name: &str) -> Result<Mdf> {
         let mut mdf = Mdf {
-            mdf_info: MdfInfo::new(file_name),
+            mdf_info: MdfInfo::new(file_name)?,
             arrow_data: Vec::new(),
             arrow_schema: Schema::default(),
             channel_indexes: HashMap::new(),
@@ -81,7 +74,7 @@ impl Mdf {
         mdf.arrow_schema
             .metadata
             .insert("file_name".to_string(), file_name.to_string());
-        mdf
+        Ok(mdf)
     }
     pub fn get_file_name(&self) -> String {
         match &self.mdf_info {
@@ -94,7 +87,7 @@ impl Mdf {
         self.mdf_info.get_version()
     }
     /// returns channel's unit string
-    pub fn get_channel_unit(&self, channel_name: &str) -> Option<String> {
+    pub fn get_channel_unit(&self, channel_name: &str) -> Result<Option<String>> {
         self.mdf_info.get_channel_unit(channel_name)
     }
     /// Sets the channel unit in memory
@@ -102,7 +95,7 @@ impl Mdf {
         self.mdf_info.set_channel_unit(channel_name, unit)
     }
     /// returns channel's description string
-    pub fn get_channel_desc(&self, channel_name: &str) -> Option<String> {
+    pub fn get_channel_desc(&self, channel_name: &str) -> Result<Option<String>> {
         self.mdf_info.get_channel_desc(channel_name)
     }
     /// Sets the channel description in memory
@@ -167,6 +160,7 @@ impl Mdf {
         }
     }
     /// Adds a new channel in memory (no file modification)
+    #[allow(clippy::too_many_arguments)]
     pub fn add_channel(
         &mut self,
         channel_name: String,
@@ -187,12 +181,15 @@ impl Mdf {
             ndim: ndim(&data),
             shape: shape(&data),
         };
+        let master_signature = MasterSignature {
+            master_channel: master_channel.clone(),
+            master_type,
+            master_flag,
+        };
         self.mdf_info.add_channel(
             channel_name.clone(),
             data_signature,
-            master_channel.clone(),
-            master_type,
-            master_flag,
+            master_signature,
             unit,
             description,
         );
@@ -233,28 +230,36 @@ impl Mdf {
         }
     }
     /// load all channels data in memory
-    pub fn load_all_channels_data_in_memory(&mut self) {
+    pub fn load_all_channels_data_in_memory(&mut self) -> Result<()> {
         let channel_names = self.get_channel_names_set();
-        self.load_channels_data_in_memory(channel_names);
+        self.load_channels_data_in_memory(channel_names)?;
+        Ok(())
     }
     /// load a set of channels data in memory
-    pub fn load_channels_data_in_memory(&mut self, channel_names: HashSet<String>) {
+    pub fn load_channels_data_in_memory(&mut self, channel_names: HashSet<String>) -> Result<()> {
         let f: File = OpenOptions::new()
             .read(true)
             .write(false)
             .open(self.get_file_name())
-            .expect("Cannot find the file");
+            .with_context(|| format!("Cannot find the file {}", self.get_file_name()))?;
         let mut rdr = BufReader::new(&f);
+        info!("Opened file {}", self.get_file_name());
+
         match &mut self.mdf_info {
             MdfInfo::V3(_mdfinfo3) => {
-                mdfreader3(&mut rdr, self, &channel_names);
+                mdfreader3(&mut rdr, self, &channel_names)?;
             }
             MdfInfo::V4(_mdfinfo4) => {
-                mdfreader4(&mut rdr, self, &channel_names);
+                mdfreader4(&mut rdr, self, &channel_names)?;
             }
         };
-        // move the data from the MdfInfo3 structure into vect of chunks
+        info!("Loaded all channels data into memory");
+
+        // move the data from the MdfInfo structure into vect of arrow2 hunks
         mdf_data_to_arrow(self, &channel_names);
+        info!("Moved data into arrow");
+
+        Ok(())
     }
     /// Clears all data arrays
     pub fn clear_all_channel_data_from_memory(&mut self) {
@@ -274,11 +279,15 @@ impl Mdf {
     }
 
     /// export to Parquet file
-    pub fn export_to_parquet(&mut self, file_name: &str, compression: Option<&str>) -> Result<()> {
+    pub fn export_to_parquet(
+        &mut self,
+        file_name: &str,
+        compression: Option<&str>,
+    ) -> arrow2::error::Result<()> {
         export_to_parquet(self, file_name, compression)
     }
     /// Writes mdf4 file
-    pub fn write(&mut self, file_name: &str, compression: bool) -> Mdf {
+    pub fn write(&mut self, file_name: &str, compression: bool) -> Result<Mdf> {
         mdfwriter4(self, file_name, compression)
     }
 }
@@ -322,10 +331,10 @@ impl fmt::Display for Mdf {
                                 displayer(f, data.len() - 1).expect("cannot channel data");
                             }
                         }
-                        if let Some(unit) = self.get_channel_unit(channel) {
+                        if let Ok(Some(unit)) = self.get_channel_unit(channel) {
                             writeln!(f, " {} ", unit).expect("cannot print channel unit");
                         }
-                        if let Some(desc) = self.get_channel_desc(channel) {
+                        if let Ok(Some(desc)) = self.get_channel_desc(channel) {
                             writeln!(f, " {} ", desc).expect("cannot print channel desc");
                         }
                     }
@@ -359,10 +368,10 @@ impl fmt::Display for Mdf {
                                 displayer(f, data.len() - 1).expect("cannot channel data");
                             }
                         }
-                        if let Some(unit) = self.get_channel_unit(channel) {
+                        if let Ok(Some(unit)) = self.get_channel_unit(channel) {
                             writeln!(f, " {} ", unit).expect("cannot print channel unit");
                         }
-                        if let Some(desc) = self.get_channel_desc(channel) {
+                        if let Ok(Some(desc)) = self.get_channel_desc(channel) {
                             writeln!(f, " {} ", desc).expect("cannot print channel desc");
                         }
                     }

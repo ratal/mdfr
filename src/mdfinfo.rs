@@ -1,8 +1,12 @@
 //! This module is reading the mdf file blocks (metadata)
 //! mdfinfo module
 
+use anyhow::{bail, Context, Result};
 use arrow2::bitmap::MutableBitmap;
 use binrw::{binrw, BinReaderExt};
+use codepage::to_encoding;
+use encoding_rs::Encoding;
+use log::info;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
@@ -26,7 +30,7 @@ use crate::mdfreader::channel_data::ChannelData;
 use crate::mdfwriter::mdfwriter3::convert3to4;
 
 use self::mdfinfo3::build_channel_db3;
-use self::mdfinfo4::DataSignature;
+use self::mdfinfo4::{DataSignature, MasterSignature};
 use self::sym_buf_reader::SymBufReader;
 
 /// joins mdf versions 3.x and 4.x
@@ -53,7 +57,8 @@ pub struct IdBlock {
     id_floatingpointformat: u16,
     /// version number, valid for both 3.x and 4.x
     pub id_ver: u16,
-    id_reserved: [u8; 2],
+    /// code page (only for version 3.3)
+    pub id_codepage: u16,
     /// check
     id_check: [u8; 2],
     id_fill: [u8; 26],
@@ -72,7 +77,7 @@ impl Default for IdBlock {
             id_ver: 420,
             id_default_byteorder: 0,
             id_floatingpointformat: 0,
-            id_reserved: [0u8; 2],
+            id_codepage: 0,
             id_check: [0, 0],
             id_fill: [0u8; 26],
             id_unfin_flags: 0,
@@ -85,21 +90,24 @@ impl Default for IdBlock {
 #[allow(dead_code)]
 impl MdfInfo {
     /// creates new MdfInfo from file
-    pub fn new(file_name: &str) -> MdfInfo {
+    pub fn new(file_name: &str) -> Result<MdfInfo> {
         let f: File = OpenOptions::new()
             .read(true)
             .write(false)
             .open(file_name)
-            .expect("Cannot find the file");
+            .with_context(|| format!("Cannot find the file {}", file_name))?;
+        info!("Opened file {}", file_name);
+
         let mut rdr = SymBufReader::new(&f);
         // Read beginning of ID Block
         let mut buf = [0u8; 64]; // reserved
         rdr.read_exact(&mut buf)
-            .expect("Could not read IdBlock buffer");
+            .context("Could not read IdBlock buffer")?;
         let mut block = Cursor::new(buf);
         let id: IdBlock = block
             .read_le()
-            .expect("Could not read buffer into IdBlock structure");
+            .context("Could not parse buffer into IdBlock structure")?;
+        info!("Read IdBlock");
 
         // Depending of version different blocks
         let mdf_info: MdfInfo = if id.id_ver < 400 {
@@ -107,9 +115,13 @@ impl MdfInfo {
                 cc: HashMap::new(),
                 ce: HashMap::new(),
             };
+            // define encoding if any
+            let encoding: &Encoding =
+                to_encoding(id.id_codepage).unwrap_or(encoding_rs::WINDOWS_1252);
+
             // Read HD Block
-            let (hd, position) = hd3_parser(&mut rdr, id.id_ver);
-            let (hd_comment, position) = hd3_comment_parser(&mut rdr, &hd, position);
+            let (hd, position) = hd3_parser(&mut rdr, id.id_ver, encoding)?;
+            let (hd_comment, position) = hd3_comment_parser(&mut rdr, &hd, position, encoding)?;
 
             // Read DG Block
             let (mut dg, _, n_cg, n_cn) = parse_dg3(
@@ -118,7 +130,8 @@ impl MdfInfo {
                 position,
                 &mut sharable,
                 id.id_default_byteorder,
-            );
+                encoding,
+            )?;
 
             // make channel names unique, list channels and create master dictionnary
             let channel_names_set = build_channel_db3(&mut dg, &sharable, n_cg, n_cn);
@@ -126,6 +139,7 @@ impl MdfInfo {
             MdfInfo::V3(Box::new(MdfInfo3 {
                 file_name: file_name.to_string(),
                 id_block: id,
+                encoding,
                 hd_block: hd,
                 hd_comment,
                 dg,
@@ -139,25 +153,24 @@ impl MdfInfo {
                 si: HashMap::new(),
             };
             // Read HD block
-            let (hd, position) = hd4_parser(&mut rdr, &mut sharable);
+            let (hd, position) = hd4_parser(&mut rdr, &mut sharable)?;
 
             // FH block
-            let (fh, position) = parse_fh(&mut rdr, &mut sharable, hd.hd_fh_first, position);
+            let (fh, position) = parse_fh(&mut rdr, &mut sharable, hd.hd_fh_first, position)?;
 
             // AT Block read
-            let (at, position) = parse_at4(&mut rdr, &mut sharable, hd.hd_at_first, position);
+            let (at, position) = parse_at4(&mut rdr, &mut sharable, hd.hd_at_first, position)?;
 
             // EV Block read
-            let (ev, position) = parse_ev4(&mut rdr, &mut sharable, hd.hd_ev_first, position);
+            let (ev, position) = parse_ev4(&mut rdr, &mut sharable, hd.hd_ev_first, position)?;
 
             // Read DG Block
             let (mut dg, _, n_cg, n_cn) =
-                parse_dg4(&mut rdr, hd.hd_dg_first, position, &mut sharable);
-            sharable.extract_xml(); // extract TX xml tag from text
+                parse_dg4(&mut rdr, hd.hd_dg_first, position, &mut sharable)?;
+            sharable.extract_xml()?; // extract TX xml tag from text
 
             // make channel names unique, list channels and create master dictionnary
             let channel_names_set = build_channel_db(&mut dg, &sharable, n_cg, n_cn);
-            // println!("{}", db);
 
             MdfInfo::V4(Box::new(MdfInfo4 {
                 file_name: file_name.to_string(),
@@ -171,7 +184,8 @@ impl MdfInfo {
                 channel_names_set,
             }))
         };
-        mdf_info
+        info!("Finished reading metadata");
+        Ok(mdf_info)
     }
     /// gets the version of mdf file
     pub fn get_version(&mut self) -> u16 {
@@ -181,20 +195,20 @@ impl MdfInfo {
         }
     }
     /// returns channel's unit string
-    pub fn get_channel_unit(&self, channel_name: &str) -> Option<String> {
+    pub fn get_channel_unit(&self, channel_name: &str) -> Result<Option<String>> {
         let unit: Option<String> = match self {
             MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_unit(channel_name),
-            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_unit(channel_name),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_unit(channel_name)?,
         };
-        unit
+        Ok(unit)
     }
     /// returns channel's description string
-    pub fn get_channel_desc(&self, channel_name: &str) -> Option<String> {
+    pub fn get_channel_desc(&self, channel_name: &str) -> Result<Option<String>> {
         let desc: Option<String> = match self {
             MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_desc(channel_name),
-            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_desc(channel_name),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_desc(channel_name)?,
         };
-        desc
+        Ok(desc)
     }
     /// returns channel's associated master channel name string
     pub fn get_channel_master(&self, channel_name: &str) -> Option<String> {
@@ -268,9 +282,7 @@ impl MdfInfo {
         &mut self,
         channel_name: String,
         data: DataSignature,
-        master_channel: Option<String>,
-        master_type: Option<u8>,
-        master_flag: bool,
+        master: MasterSignature,
         unit: Option<String>,
         description: Option<String>,
     ) {
@@ -279,39 +291,23 @@ impl MdfInfo {
                 let mut file_name = PathBuf::from(mdfinfo3.file_name.as_str());
                 file_name.set_extension("mf4");
                 let mut mdf4 = convert3to4(mdfinfo3, &file_name.to_string_lossy());
-                mdf4.add_channel(
-                    channel_name,
-                    data,
-                    master_channel,
-                    master_type,
-                    master_flag,
-                    unit,
-                    description,
-                );
+                mdf4.add_channel(channel_name, data, master, unit, description);
             }
             MdfInfo::V4(mdfinfo4) => {
-                mdfinfo4.add_channel(
-                    channel_name,
-                    data,
-                    master_channel,
-                    master_type,
-                    master_flag,
-                    unit,
-                    description,
-                );
+                mdfinfo4.add_channel(channel_name, data, master, unit, description);
             }
         }
     }
     /// Convert mdf verion 3.x to 4.2
     /// Require file name parameter but no file written
-    pub fn convert3to4(&mut self, file_name: &str) -> MdfInfo {
+    pub fn convert3to4(&mut self, file_name: &str) -> Result<MdfInfo> {
         match self {
-            MdfInfo::V3(mdfinfo3) => MdfInfo::V4(Box::new(convert3to4(mdfinfo3, file_name))),
-            MdfInfo::V4(_) => panic!("file is already a mdf version 4.x"),
+            MdfInfo::V3(mdfinfo3) => Ok(MdfInfo::V4(Box::new(convert3to4(mdfinfo3, file_name)))),
+            MdfInfo::V4(_) => bail!("file is already a mdf version 4.x"),
         }
     }
     /// defines channel's data in memory
-    pub fn set_channel_data(&mut self, channel_name: &str, data: &ChannelData) {
+    pub fn set_channel_data(&mut self, channel_name: &str, data: &ChannelData) -> Result<()> {
         match self {
             MdfInfo::V3(mdfinfo3) => {
                 let mut file_name = PathBuf::from(mdfinfo3.file_name.as_str());
@@ -321,6 +317,7 @@ impl MdfInfo {
             }
             MdfInfo::V4(mdfinfo4) => mdfinfo4.set_channel_data(channel_name, data),
         }
+        Ok(())
     }
     /// Sets the channel's related master channel type in memory
     pub fn set_channel_master_type(&mut self, master_name: &str, master_type: u8) {

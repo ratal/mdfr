@@ -23,6 +23,7 @@ use crate::{
         Mdf,
     },
 };
+use anyhow::{bail, Context, Error, Result};
 use arrow2::{array::Array, bitmap::Bitmap, datatypes::Schema};
 use binrw::BinWriterExt;
 use crossbeam_channel::bounded;
@@ -34,7 +35,7 @@ use yazi::{compress, CompressionLevel, Format};
 use super::mdfwriter3::convert3to4;
 
 /// writes mdf4.2 file
-pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Mdf {
+pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> {
     let info: MdfInfo4 = match &mdf.mdf_info {
         MdfInfo::V3(mdfinfo3) => convert3to4(mdfinfo3, file_name),
         MdfInfo::V4(mdfinfo4) => mdfinfo4.deref().clone(),
@@ -83,7 +84,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Mdf {
                                 data,
                                 &cg_cg_master,
                                 true,
-                            );
+                            )?;
                         }
                     }
                 }
@@ -104,7 +105,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Mdf {
                             data,
                             &cg_cg_master,
                             false,
-                        );
+                        )?;
                     }
                 }
             }
@@ -119,7 +120,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Mdf {
     let (tx, rx) = bounded::<Vec<u8>>(n_channels);
     let fname = Arc::new(Mutex::new(file_name.to_string()));
     let sfname = Arc::clone(&fname);
-    thread::spawn(move || {
+    thread::spawn(move || -> Result<(), Error> {
         let file_name = Arc::clone(&sfname);
         let file = file_name.lock();
         let f: File = OpenOptions::new()
@@ -132,19 +133,20 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Mdf {
 
         writer
             .seek(SeekFrom::Start(pointer as u64))
-            .expect("Could not reach position to write data blocks");
+            .context("Could not reach position to write data blocks")?;
         for buffer in rx {
             writer
                 .write_all(&buffer)
                 .expect("Could not write data blocks buffer");
         }
+        Ok(())
     });
 
     let data_pointer = Arc::new(Mutex::new(pointer));
     new_info
         .dg
         .par_iter_mut()
-        .for_each(|(_dg_block_position, dg)| {
+        .try_for_each(|(_dg_block_position, dg)| -> Result<(), Error> {
             for (_rec_id, cg) in dg.cg.iter_mut() {
                 for (_rec_pos, cn) in cg.cn.iter() {
                     let dt = mdf.get_channel_data(&cn.unique_name);
@@ -158,10 +160,10 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Mdf {
                                 ld_block = create_ld(m, &mut offset);
                             }
 
-                            let data_block: (DataBlock, usize, Vec<u8>) = if compression {
-                                create_dz_dv(data.clone(), &mut offset)
+                            let data_block = if compression {
+                                create_dz_dv(data.clone(), &mut offset)?
                             } else {
-                                create_dv(data.clone(), &mut offset)
+                                create_dv(data.clone(), &mut offset)?
                             };
 
                             // invalid mask existing
@@ -172,9 +174,9 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Mdf {
                                     ld.ld_links.push(offset);
                                 }
                                 if compression {
-                                    invalid_block = create_dz_di(mask, &mut offset);
+                                    invalid_block = create_dz_di(mask, &mut offset)?;
                                 } else {
-                                    invalid_block = create_di(mask, &mut offset);
+                                    invalid_block = create_di(mask, &mut offset)?;
                                 }
                             }
                             {
@@ -188,15 +190,16 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Mdf {
                                     data_block,
                                     invalid_block,
                                     offset as usize,
-                                );
-                                tx.send(buffer).expect("Channel disconnected");
+                                )?;
+                                tx.send(buffer).context("Channel disconnected")?;
                                 drop(locked_data_pointer);
                             }
                         }
                     }
                 }
             }
-        });
+            Ok(())
+        })?;
     drop(tx);
 
     let file_name = Arc::clone(&fname);
@@ -206,45 +209,51 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Mdf {
         .write(true)
         .create(true)
         .open(&*file)
-        .expect("Cannot create the file");
+        .context("Cannot create the file")?;
     let mut writer = BufWriter::new(f);
     let mut buffer = Cursor::new(Vec::<u8>::with_capacity(pointer as usize));
     // IDBlock
     buffer
         .write_le(&new_info.id_block)
-        .expect("Could not write IdBlock");
+        .context("Could not write IdBlock")?;
     // Writes HDblock
     buffer
         .write_le(&new_info.hd_block)
-        .expect("Could not write HDBlock");
+        .context("Could not write HDBlock")?;
     // Writes FHBlock
-    buffer.write_le(&fh).expect("Could not write FHBlock");
-    fh_comments.write(&mut buffer); // FH comments
+    buffer.write_le(&fh).context("Could not write FHBlock")?;
+    fh_comments.write(&mut buffer)?; // FH comments
 
     // Writes DG+CG+CN blocks
     for (_position, dg) in new_info.dg.iter() {
-        buffer.write_le(&dg.block).expect("Could not write CGBlock");
+        buffer
+            .write_le(&dg.block)
+            .context("Could not write CGBlock")?;
         for (_red_id, cg) in dg.cg.iter() {
             buffer
                 .write_le(&cg.header)
-                .expect("Could not write CGBlock header");
-            buffer.write_le(&cg.block).expect("Could not write CGBlock");
+                .context("Could not write CGBlock header")?;
+            buffer
+                .write_le(&cg.block)
+                .context("Could not write CGBlock")?;
             for (_rec_pos, cn) in cg.cn.iter() {
                 buffer
                     .write_le(&cn.header)
-                    .expect("Could not write CNBlock header");
-                buffer.write_le(&cn.block).expect("Could not write CNBlock");
+                    .context("Could not write CNBlock header")?;
+                buffer
+                    .write_le(&cn.block)
+                    .context("Could not write CNBlock")?;
                 // TX Block channel name
                 if let Some(tx_name_metadata) = new_info.sharable.md_tx.get(&cn.block.cn_tx_name) {
-                    tx_name_metadata.write(&mut buffer);
+                    tx_name_metadata.write(&mut buffer)?;
                 }
                 if let Some(tx_unit_metadata) = new_info.sharable.md_tx.get(&cn.block.cn_md_unit) {
-                    tx_unit_metadata.write(&mut buffer);
+                    tx_unit_metadata.write(&mut buffer)?;
                 }
                 if let Some(tx_comment_metadata) =
                     new_info.sharable.md_tx.get(&cn.block.cn_md_comment)
                 {
-                    tx_comment_metadata.write(&mut buffer);
+                    tx_comment_metadata.write(&mut buffer)?;
                 }
                 // channel array
                 if let Some(compo) = &cn.composition {
@@ -256,17 +265,17 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Mdf {
                             header.hdr_links = 1;
                             buffer
                                 .write_le(&header)
-                                .expect("Could not write CABlock header");
+                                .context("Could not write CABlock header")?;
                             let ca_composition: u64 = 0;
                             buffer
                                 .write_le(&ca_composition)
-                                .expect("Could not write CABlock ca_composition");
+                                .context("Could not write CABlock ca_composition")?;
                             let mut ca_block = Ca4BlockMembers::default();
                             ca_block.ca_ndim = c.ca_ndim;
                             ca_block.ca_dim_size = c.ca_dim_size.clone();
                             buffer
                                 .write_le(&ca_composition)
-                                .expect("Could not write CABlock members");
+                                .context("Could not write CABlock members")?;
                         }
                         Compo::CN(_) => {}
                     }
@@ -276,14 +285,14 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Mdf {
     }
     writer
         .write_all(&buffer.into_inner())
-        .expect("Could not write DG+CG+CN blocks");
-    writer.flush().expect("Could not flush file");
-    Mdf {
+        .context("Could not write DG+CG+CN blocks")?;
+    writer.flush().context("Could not flush file")?;
+    Ok(Mdf {
         mdf_info: MdfInfo::V4(Box::new(new_info)),
         arrow_data: Vec::new(),
         arrow_schema: Schema::default(),
         channel_indexes: HashMap::new(),
-    }
+    })
 }
 
 /// Writes the data blocks
@@ -293,63 +302,69 @@ fn write_data_blocks(
     data_block: (DataBlock, usize, Vec<u8>),
     invalid_block: Option<(DataBlock, Vec<u8>)>,
     offset: usize,
-) -> Vec<u8> {
+) -> Result<Vec<u8>> {
     let mut buffer = Cursor::new(vec![0u8; offset]);
     // Writes LD block
     if let Some(ref mut ld) = ld_block {
         let id_ld: [u8; 4] = [35, 35, 76, 68]; // ##LD
-        buffer.write_le(&id_ld).expect("Could not write LDBlock id");
+        buffer
+            .write_le(&id_ld)
+            .context("Could not write LDBlock id")?;
         ld.ld_links
             .iter_mut()
             .skip(1) // spare ld_next for offset
             .for_each(|x| *x += position);
-        buffer.write_le(ld).expect("Could not write LDBlock");
+        buffer.write_le(ld).context("Could not write LDBlock")?;
     }
 
     // Writes DV or DZ block
     match data_block.0 {
         DataBlock::DvDi(dv_block) => {
-            buffer.write_le(&dv_block).expect("Could not write DVBlock");
+            buffer
+                .write_le(&dv_block)
+                .context("Could not write DVBlock")?;
         }
         DataBlock::DZ(dz_block) => {
             let id_dz: [u8; 4] = [35, 35, 68, 90]; // ##DZ
             buffer
                 .write_le(&id_dz)
-                .expect("Could not write DZDVBlock id");
+                .context("Could not write DZDVBlock id")?;
             buffer
                 .write_le(&dz_block)
-                .expect("Could not write DZDVBlock");
+                .context("Could not write DZDVBlock")?;
         }
     }
     buffer
         .write_all(&data_block.2)
-        .expect("Could not write data in DVBlock or DZBlock");
+        .context("Could not write data in DVBlock or DZBlock")?;
     // 8 byte align
     buffer
         .write_all(&vec![0; data_block.1])
-        .expect("Could not align written data to 8 bytes");
+        .context("Could not align written data to 8 bytes")?;
 
     // invalid mask existing
     if let Some((invalid_block, invalid_bytes)) = invalid_block {
         match invalid_block {
             DataBlock::DvDi(di_block) => {
-                buffer.write_le(&di_block).expect("Could not write DIBlock");
+                buffer
+                    .write_le(&di_block)
+                    .context("Could not write DIBlock")?;
             }
             DataBlock::DZ(dz_di_block) => {
                 let id_dz: [u8; 4] = [35, 35, 68, 90]; // ##DZ
                 buffer
                     .write_le(&id_dz)
-                    .expect("Could not write DZDIBlock id");
+                    .context("Could not write DZDIBlock id")?;
                 buffer
                     .write_le(&dz_di_block)
-                    .expect("Could not write DZDIBlock");
+                    .context("Could not write DZDIBlock")?;
             }
         }
         buffer
             .write_all(&invalid_bytes)
-            .expect("Could not write invalid data");
+            .context("Could not write invalid data")?;
     }
-    buffer.into_inner()
+    Ok(buffer.into_inner())
 }
 
 /// Create a LDBlock
@@ -371,7 +386,7 @@ fn create_ld(m: Option<&Bitmap>, offset: &mut i64) -> Option<Ld4Block> {
 }
 
 /// Create a DV Block
-fn create_dv(data: Box<dyn Array>, offset: &mut i64) -> (DataBlock, usize, Vec<u8>) {
+fn create_dv(data: Box<dyn Array>, offset: &mut i64) -> Result<(DataBlock, usize, Vec<u8>)> {
     let mut dv_block = Blockheader4::default();
     dv_block.hdr_id = [35, 35, 68, 86]; // ##DV
     let data_bytes: Vec<u8> = arrow_to_bytes(&data);
@@ -381,7 +396,7 @@ fn create_dv(data: Box<dyn Array>, offset: &mut i64) -> (DataBlock, usize, Vec<u
 
     *offset += dv_block.hdr_len as i64 + byte_aligned as i64;
 
-    (DataBlock::DvDi(dv_block), byte_aligned, data_bytes)
+    Ok((DataBlock::DvDi(dv_block), byte_aligned, data_bytes))
 }
 
 /// Enumeration of data block types
@@ -392,7 +407,7 @@ enum DataBlock {
 }
 
 /// Create a DZ Block of DV type
-fn create_dz_dv(data: Box<dyn Array>, offset: &mut i64) -> (DataBlock, usize, Vec<u8>) {
+fn create_dz_dv(data: Box<dyn Array>, offset: &mut i64) -> Result<(DataBlock, usize, Vec<u8>)> {
     let mut dz_block = Dz4Block::default();
     let mut data_bytes = compress(
         &arrow_to_bytes(&data),
@@ -405,7 +420,7 @@ fn create_dz_dv(data: Box<dyn Array>, offset: &mut i64) -> (DataBlock, usize, Ve
     let byte_aligned: usize;
     dz_block.dz_org_data_length = (data.len() * arrow_byte_count(&data) as usize) as u64;
     if dz_block.dz_org_data_length < dz_block.dz_data_length {
-        (dv_dz_block, byte_aligned, data_bytes) = create_dv(data, offset);
+        (dv_dz_block, byte_aligned, data_bytes) = create_dv(data, offset)?;
     } else {
         byte_aligned = (8 - dz_block.dz_data_length % 8) as usize;
         dz_block.dz_data_length = data_bytes.len() as u64;
@@ -413,11 +428,11 @@ fn create_dz_dv(data: Box<dyn Array>, offset: &mut i64) -> (DataBlock, usize, Ve
         *offset += dz_block.len as i64 + byte_aligned as i64;
         dv_dz_block = DataBlock::DZ(dz_block);
     };
-    (dv_dz_block, byte_aligned, data_bytes)
+    Ok((dv_dz_block, byte_aligned, data_bytes))
 }
 
 /// Create a DI Block
-fn create_di(mask: &Bitmap, offset: &mut i64) -> Option<(DataBlock, Vec<u8>)> {
+fn create_di(mask: &Bitmap, offset: &mut i64) -> Result<Option<(DataBlock, Vec<u8>)>> {
     let mut dv_invalid_block = Blockheader4::default();
     dv_invalid_block.hdr_id = [35, 35, 68, 73]; // ##DI
     let mask_length = mask.len();
@@ -429,11 +444,11 @@ fn create_di(mask: &Bitmap, offset: &mut i64) -> Option<(DataBlock, Vec<u8>)> {
     ]
     .concat();
     *offset += dv_invalid_block.hdr_len as i64 + byte_aligned as i64;
-    Some((DataBlock::DvDi(dv_invalid_block), invalid_data))
+    Ok(Some((DataBlock::DvDi(dv_invalid_block), invalid_data)))
 }
 
 /// Create a DZ Block of DI type
-fn create_dz_di(mask: &Bitmap, offset: &mut i64) -> Option<(DataBlock, Vec<u8>)> {
+fn create_dz_di(mask: &Bitmap, offset: &mut i64) -> Result<Option<(DataBlock, Vec<u8>)>> {
     let mut dz_invalid_block = Dz4Block::default();
     dz_invalid_block.dz_org_data_length = mask.len() as u64;
     let mut data_bytes = compress(
@@ -444,18 +459,19 @@ fn create_dz_di(mask: &Bitmap, offset: &mut i64) -> Option<(DataBlock, Vec<u8>)>
     .expect("Could not compress invalid data");
     dz_invalid_block.dz_data_length = data_bytes.len() as u64;
     if dz_invalid_block.dz_org_data_length < dz_invalid_block.dz_data_length {
-        create_di(mask, offset)
+        Ok(create_di(mask, offset)?)
     } else {
         dz_invalid_block.len = data_bytes.len() as u64 + 48;
         let byte_aligned = 8 - data_bytes.len() % 8;
         data_bytes = [data_bytes, vec![0; byte_aligned]].concat();
         dz_invalid_block.dz_org_block_type = [68, 73]; // DI
         *offset += dz_invalid_block.len as i64 + byte_aligned as i64;
-        Some((DataBlock::DZ(dz_invalid_block), data_bytes))
+        Ok(Some((DataBlock::DZ(dz_invalid_block), data_bytes)))
     }
 }
 
 /// Creates the dg and following data strutures in the new mdfinfo from the old one
+#[allow(clippy::too_many_arguments)]
 fn create_blocks(
     new_info: &mut MdfInfo4,
     info: &MdfInfo4,
@@ -465,7 +481,7 @@ fn create_blocks(
     data: &Box<dyn Array>,
     cg_cg_master: &i64,
     master_flag: bool,
-) -> i64 {
+) -> Result<i64> {
     let bit_count = arrow_bit_count(data);
     if !data.is_empty() && bit_count > 0 {
         let byte_count = arrow_byte_count(data);
@@ -501,7 +517,7 @@ fn create_blocks(
         // CN Block
         let cn_position = pointer;
         if master_flag {
-            cn_block.cn_type = cn_type_writer(cn.block.cn_type); // master channel
+            cn_block.cn_type = cn_type_writer(cn.block.cn_type)?; // master channel
             if cn.block.cn_sync_type != 0 {
                 cn_block.cn_sync_type = cn.block.cn_sync_type;
             } else {
@@ -640,20 +656,20 @@ fn create_blocks(
             ),
         );
     }
-    pointer
+    Ok(pointer)
 }
 
 /// supports only data and master channels
-fn cn_type_writer(cn_type: u8) -> u8 {
+fn cn_type_writer(cn_type: u8) -> Result<u8> {
     // not all types are supported
     match cn_type {
-        0 => 0,
-        1 => 0,
-        2 => 2,
-        3 => 2,
-        4 => 0,
-        5 => 0,
-        6 => 0,
-        _ => panic!("Unknown CN type"),
+        0 => Ok(0),
+        1 => Ok(0),
+        2 => Ok(2),
+        3 => Ok(2),
+        4 => Ok(0),
+        5 => Ok(0),
+        6 => Ok(0),
+        _ => bail!("Unknown CN type"),
     }
 }

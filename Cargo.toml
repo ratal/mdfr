@@ -1,6 +1,6 @@
 [package]
 name = "mdfr"
-version = "0.2.2"
+version = "0.3.0"
 description = "A package for reading and writing MDF files"
 authors = ["ratal <ratal@ratal.org>"]
 edition = "2021"
@@ -12,13 +12,15 @@ readme = "README.md"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-clap = "4" # for input arguments 
+clap = "4" # for input arguments
+anyhow = {version = "1.0", features = ["backtrace"]} # error handling
+log = "0.4" # to log events
 byteorder = "1.4" # for bytes conversions
-encoding = "0.2" # for bytes to text conversion (utf8, SBC, UTF16)
 binrw = "0.10" # to efficiently read blocks
 num = {version = "0.4", features = ["serde"] } # for complex numbers
 half = "2" # for f16 handling
-encoding_rs = "0.8" # for endian management
+encoding_rs = "0.8" # for endian management and bytes to text conversion (utf8, SBC, UTF16)
+codepage = "0.1"  # to convert code page into encoding
 chrono = "0.4" # for time conversion
 ndarray = {version = "0.15", features = ["rayon", "serde", "approx"]} # for nd arrays
 ndarray-stats = "0.5" # for nd array stats
@@ -36,7 +38,7 @@ whoami = "1.2" # to get user nam for writing file
 rand = "0.8" # for random numbers
 parquet2 = "0.16" # for export to parquet file format
 arrow2 = {version = "0.14", features = ["compute", "io_parquet", "io_parquet_compression"] } # for efficient data storing in memory
-polars = {version = "0.24", features = ["dtype-full", "object", "fmt"]} # for python dataframe
+polars = {version = "0.25", features = ["dtype-full", "object", "fmt"]} # for python dataframe
 
 [dev-dependencies]
 criterion = "0.4" # for benchmark
@@ -47,7 +49,7 @@ crate-type = ["rlib", "cdylib"]
 
 [dependencies.pyo3]
 version = "0.17"
-features = ["extension-module", "num-complex"]
+features = ["extension-module", "num-complex", "anyhow"]
 
 [[bench]]
 name = "mdf_benchmark"
