@@ -3,7 +3,8 @@
 use std::io::{Error, ErrorKind, Read, Result, Seek, SeekFrom};
 use std::{cmp, io};
 
-const DEFAULT_BUF_SIZE: usize = 8192;
+/// reader buffer size, by default same as Rust BufReader
+pub const DEFAULT_BUF_SIZE: usize = 8192;
 pub struct SymBufReader<R>
 where
     R: Read,

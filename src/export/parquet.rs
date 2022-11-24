@@ -45,7 +45,7 @@ impl FallibleStreamingIterator for Bla {
 }
 
 /// writes mdf into parquet file
-pub fn export_to_parquet(mdf: &mut Mdf, file_name: &str, compression: Option<&str>) -> Result<()> {
+pub fn export_to_parquet(mdf: &Mdf, file_name: &str, compression: Option<&str>) -> Result<()> {
     // Create file
     let path = Path::new(file_name);
 

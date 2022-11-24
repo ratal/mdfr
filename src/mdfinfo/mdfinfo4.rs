@@ -37,6 +37,7 @@ pub(crate) type ChannelNamesSet = HashMap<String, ChannelId>;
 /// * in general the blocks are contained in HashMaps with key corresponding
 /// to their position in the file
 #[derive(Debug, Default, Clone)]
+#[repr(C)]
 pub struct MdfInfo4 {
     /// file name string
     pub file_name: String,
@@ -487,6 +488,7 @@ impl MdfInfo4 {
 }
 
 /// data generic description
+#[repr(C)]
 pub struct DataSignature {
     pub(crate) len: usize,
     pub(crate) data_type: u8,
@@ -497,6 +499,7 @@ pub struct DataSignature {
 }
 
 /// master channel generic description
+#[repr(C)]
 pub struct MasterSignature {
     pub(crate) master_channel: Option<String>,
     pub(crate) master_type: Option<u8>,
@@ -544,6 +547,7 @@ impl fmt::Display for MdfInfo4 {
 #[derive(Debug, Copy, Clone)]
 #[binrw]
 #[br(little)]
+#[repr(C)]
 pub struct Blockheader4 {
     /// '##XX'
     pub hdr_id: [u8; 4],
@@ -584,6 +588,7 @@ pub fn parse_block_header(rdr: &mut SymBufReader<&File>) -> Result<Blockheader4>
 #[binrw]
 #[br(little)]
 #[allow(dead_code)]
+#[repr(C)]
 pub struct Blockheader4Short {
     /// '##XX'
     hdr_id: [u8; 4],
@@ -681,6 +686,7 @@ fn parse_block_short(
 
 /// metadata are either stored in TX (text) or MD (xml) blocks for mdf version 4
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[repr(C)]
 pub enum MetaDataBlockType {
     MdBlock,
     MdParsed,
@@ -695,6 +701,7 @@ impl Default for MetaDataBlockType {
 
 /// Blocks types that could link to MDBlock
 #[derive(Debug, Clone)]
+#[repr(C)]
 pub enum BlockType {
     HD,
     FH,
@@ -715,6 +722,7 @@ impl Default for BlockType {
 
 /// struct linking MD or TX block with
 #[derive(Debug, Default, Clone)]
+#[repr(C)]
 pub struct MetaData {
     /// Header of the block
     pub block: Blockheader4,
@@ -958,6 +966,7 @@ impl MetaData {
 #[binrw]
 #[br(little)]
 #[allow(dead_code)]
+#[repr(C)]
 pub struct Hd4 {
     /// ##HD
     hd_id: [u8; 4],
@@ -1063,6 +1072,7 @@ pub fn hd4_parser(
 #[binrw]
 #[br(little)]
 #[allow(dead_code)]
+#[repr(C)]
 pub struct FhBlock {
     /// '##FH'
     fh_id: [u8; 4],
@@ -1153,6 +1163,7 @@ pub fn parse_fh(
 #[binrw]
 #[br(little)]
 #[allow(dead_code)]
+#[repr(C)]
 pub struct At4Block {
     /// ##DG
     at_id: [u8; 4],
@@ -1261,6 +1272,7 @@ pub fn parse_at4(
 #[binrw]
 #[br(little)]
 #[allow(dead_code)]
+#[repr(C)]
 pub struct Ev4Block {
     //ev_id: [u8; 4],  // DG
     //reserved: [u8; 4],  // reserved
@@ -1356,6 +1368,7 @@ pub fn parse_ev4(
 #[binrw]
 #[br(little)]
 #[allow(dead_code)]
+#[repr(C)]
 pub struct Dg4Block {
     /// ##DG
     dg_id: [u8; 4],
@@ -1423,6 +1436,7 @@ fn parse_dg4_block(
 /// Dg4 struct wrapping block, comments and linked CG
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
+#[repr(C)]
 pub struct Dg4 {
     /// DG Block
     pub block: Dg4Block,
@@ -1512,6 +1526,7 @@ fn identify_vlsd_cg(cg: &mut HashMap<u64, Cg4>) {
 /// sharable blocks (most likely referenced multiple times and shared by several blocks)
 /// that are in sharable fields and holds CC, SI, TX and MD blocks
 #[derive(Debug, Default, Clone)]
+#[repr(C)]
 pub struct SharableBlocks {
     pub(crate) md_tx: HashMap<i64, MetaData>,
     pub(crate) cc: HashMap<i64, Cc4Block>,
@@ -1600,6 +1615,7 @@ impl SharableBlocks {
 #[binrw]
 #[br(little)]
 #[allow(dead_code)]
+#[repr(C)]
 pub struct Cg4Block {
     /// ##CG
     // cg_id: [u8; 4],
@@ -1729,6 +1745,7 @@ fn parse_cg4_block(
 /// Channel Group struct
 /// it contains the related channels structure, a set of channel names, the dedicated master channel name and other helper data.
 #[derive(Debug, Clone)]
+#[repr(C)]
 pub struct Cg4 {
     /// short header
     pub header: Blockheader4Short,
@@ -1841,6 +1858,7 @@ pub fn parse_cg4(
 #[derive(Debug, PartialEq, Clone)]
 #[binrw]
 #[br(little)]
+#[repr(C)]
 pub struct Cn4Block {
     /// ##CN
     // cn_id: [u8; 4],
@@ -1943,6 +1961,7 @@ impl Default for Cn4Block {
 /// Cn4 structure containing block but also unique_name, ndarray data, composition
 /// and other attributes frequently needed and computed
 #[derive(Debug, Default)]
+#[repr(C)]
 pub struct Cn4 {
     /// short header
     pub header: Blockheader4Short,
@@ -2469,6 +2488,7 @@ fn read_cc(
 #[binrw]
 #[br(little)]
 #[allow(dead_code)]
+#[repr(C)]
 pub struct Cc4Block {
     // cc_id: [u8; 4],  // ##CC
     // reserved: [u8; 4],  // reserved
@@ -2511,6 +2531,7 @@ pub struct Cc4Block {
 #[derive(Debug, Clone)]
 #[binrw]
 #[br(little, import(count: u16, cc_type: u8))]
+#[repr(C)]
 pub enum CcVal {
     #[br(pre_assert(cc_type < 11))]
     Real(#[br(count = count)] Vec<f64>),
@@ -2523,6 +2544,7 @@ pub enum CcVal {
 #[derive(Debug, PartialEq, Eq, Default, Copy, Clone)]
 #[binrw]
 #[br(little)]
+#[repr(C)]
 pub struct Si4Block {
     // si_id: [u8; 4],  // ##SI
     // reserved: [u8; 4],  // reserved
@@ -2561,6 +2583,7 @@ impl Si4Block {
 
 /// Ca4 Channel Array block struct
 #[derive(Debug, PartialEq, Clone)]
+#[repr(C)]
 pub struct Ca4Block {
     // header
     /// ##CA
@@ -2644,6 +2667,7 @@ impl Default for Ca4Block {
 #[derive(Debug, Clone)]
 #[binrw]
 #[br(little)]
+#[repr(C)]
 pub struct Ca4BlockMembers {
     /// Array type (defines semantic of the array) see CA_T_xxx
     ca_type: u8,
@@ -2840,6 +2864,7 @@ fn parse_ca_block(
 /// contains composition blocks (CN or CA)
 /// can optionaly point to another composition
 #[derive(Debug, Clone)]
+#[repr(C)]
 pub struct Composition {
     pub block: Compo,
     pub compo: Option<Box<Composition>>,
@@ -2847,6 +2872,7 @@ pub struct Composition {
 
 /// enum allowing to nest CA or CN blocks for a compostion
 #[derive(Debug, Clone)]
+#[repr(C)]
 pub enum Compo {
     CA(Box<Ca4Block>),
     CN(Box<Cn4>),
@@ -3051,6 +3077,7 @@ pub fn build_channel_db(
 #[derive(Debug, PartialEq, Eq, Default, Clone)]
 #[binrw]
 #[br(little)]
+#[repr(C)]
 pub struct Dt4Block {
     //header
     // dl_id: [u8; 4],  // ##DL
@@ -3066,6 +3093,7 @@ pub struct Dt4Block {
 #[derive(Debug, PartialEq, Eq, Default, Clone)]
 #[binrw]
 #[br(little)]
+#[repr(C)]
 pub struct Dl4Block {
     //header
     // dl_id: [u8; 4],  // ##DL
@@ -3149,6 +3177,7 @@ pub fn parse_dz(rdr: &mut BufReader<&File>) -> Result<(Vec<u8>, Dz4Block)> {
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[binrw]
 #[br(little)]
+#[repr(C)]
 pub struct Dz4Block {
     //header
     // dz_id: [u8; 4],  // ##DZ
@@ -3192,6 +3221,7 @@ impl Default for Dz4Block {
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[binrw]
 #[br(little)]
+#[repr(C)]
 pub struct Ld4Block {
     // header
     // ld_id: [u8; 4],  // ##LD
@@ -3281,6 +3311,7 @@ pub fn parser_ld4_block(
 #[derive(Debug, PartialEq, Eq, Default, Clone)]
 #[binrw]
 #[br(little)]
+#[repr(C)]
 pub struct Hl4Block {
     //header
     // ##HL
