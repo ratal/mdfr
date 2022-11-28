@@ -79,7 +79,7 @@ pub fn export_to_parquet(mdf: &Mdf, file_name: &str, compression: Option<&str>) 
             .zip(parquet_schema.fields().to_vec())
             .zip(encodings.par_iter())
             .flat_map(move |((array, type_), encoding)| {
-                let encoded_columns = array_to_columns(array, type_, options, &encoding)
+                let encoded_columns = array_to_columns(array, type_, options, encoding)
                     .expect("Could not convert arrow array to column");
                 encoded_columns
                     .into_iter()
