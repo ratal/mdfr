@@ -62,7 +62,7 @@ pub unsafe extern "C" fn get_channel_unit(
                 Some(unit) => CString::new(unit)
                     .expect("CString::new failed because of internal 0 byte")
                     .into_raw(),
-                None => 0 as *const c_char, // null pointer
+                None => std::ptr::null::<c_char>(), // null pointer
             },
             Err(e) => panic!("{}", e),
         }
@@ -96,7 +96,7 @@ pub unsafe extern "C" fn get_channel_desc(
                     Some(desc) => CString::new(desc)
                         .expect("CString::new failed because of internal 0 byte")
                         .into_raw(),
-                    None => 0 as *const c_char, // null pointer
+                    None => std::ptr::null::<c_char>(), // null pointer
                 }
             }
             Err(e) => panic!("{}", e),
@@ -129,7 +129,7 @@ pub unsafe extern "C" fn get_channel_master(
             Some(st) => CString::new(st)
                 .expect("CString::new failed because of internal 0 byte")
                 .into_raw(),
-            None => 0 as *const c_char, // null pointer
+            None => std::ptr::null::<c_char>(), // null pointer
         }
     } else {
         panic!("Null pointer given for Mdf Rust object")
@@ -223,7 +223,7 @@ pub unsafe extern "C" fn get_channel_array(
                 let array_ptr: *const ArrowArray = &*array;
                 array_ptr
             }
-            None => 0 as *const ArrowArray, // null pointers
+            None => std::ptr::null::<ArrowArray>(), // null pointers
         }
     } else {
         panic!("Null pointer given for Mdf Rust object")
@@ -255,7 +255,7 @@ pub unsafe extern "C" fn get_channel_schema(
                 let schema_ptr: *const ArrowSchema = &*schema;
                 schema_ptr
             }
-            None => 0 as *const ArrowSchema, // null pointers
+            None => std::ptr::null::<ArrowSchema>(), // null pointers
         }
     } else {
         panic!("Null pointer given for Mdf Rust object")
