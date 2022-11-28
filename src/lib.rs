@@ -1,4 +1,5 @@
 //#![forbid(unsafe_code)]
+mod c_api;
 pub mod export;
 pub mod mdfinfo;
 pub mod mdfr;

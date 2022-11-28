@@ -27,10 +27,10 @@ use std::{
 
 use super::Mdf;
 
-// The following constant represents the size of data chunk to be read and processed.
-// a big chunk will improve performance but consume more memory
-// a small chunk will not consume too much memory but will cause many read calls, penalising performance
-const CHUNK_SIZE_READING: usize = 524288; // can be tuned according to architecture
+/// The following constant represents the size of data chunk to be read and processed.
+/// a big chunk will improve performance but consume more memory
+/// a small chunk will not consume too much memory but will cause many read calls, penalising performance
+pub const CHUNK_SIZE_READING_4: usize = 524288; // can be tuned according to architecture
 
 /// Reads the file data based on headers information contained in info parameter
 /// Hashset of channel names parameter allows to filter which channels to read
@@ -953,7 +953,7 @@ fn parser_dl4_unsorted(
 fn generate_chunks(channel_group: &Cg4) -> Vec<(usize, usize)> {
     let record_length = channel_group.record_length as usize;
     let cg_cycle_count = channel_group.block.cg_cycle_count as usize;
-    let n_chunks = (record_length * cg_cycle_count) / CHUNK_SIZE_READING + 1; // number of chunks
+    let n_chunks = (record_length * cg_cycle_count) / CHUNK_SIZE_READING_4 + 1; // number of chunks
     let chunk_length = (record_length * cg_cycle_count) / n_chunks; // chunks length
     let n_record_chunk = chunk_length / record_length; // number of records in chunk
     let chunck = (n_record_chunk, record_length * n_record_chunk);
@@ -1047,10 +1047,10 @@ fn read_all_channels_unsorted(
     let mut data: Vec<u8> = Vec::new();
     let mut data_chunk: Vec<u8>;
     while position < data_block_length {
-        if (data_block_length - position) > CHUNK_SIZE_READING {
+        if (data_block_length - position) > CHUNK_SIZE_READING_4 {
             // not last chunk of data
-            data_chunk = vec![0u8; CHUNK_SIZE_READING];
-            position += CHUNK_SIZE_READING;
+            data_chunk = vec![0u8; CHUNK_SIZE_READING_4];
+            position += CHUNK_SIZE_READING_4;
         } else {
             // last chunk of data
             data_chunk = vec![0u8; data_block_length - position];

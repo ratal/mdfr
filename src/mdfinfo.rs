@@ -35,6 +35,7 @@ use self::sym_buf_reader::SymBufReader;
 
 /// joins mdf versions 3.x and 4.x
 #[derive(Debug)]
+#[repr(C)]
 pub enum MdfInfo {
     V3(Box<MdfInfo3>), // version 3.x
     V4(Box<MdfInfo4>), // version 4.x
@@ -44,6 +45,7 @@ pub enum MdfInfo {
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[binrw]
 #[allow(dead_code)]
+#[repr(C)]
 pub struct IdBlock {
     /// "MDF
     pub id_file_id: [u8; 8],
@@ -188,7 +190,7 @@ impl MdfInfo {
         Ok(mdf_info)
     }
     /// gets the version of mdf file
-    pub fn get_version(&mut self) -> u16 {
+    pub fn get_version(&self) -> u16 {
         match self {
             MdfInfo::V3(mdfinfo3) => mdfinfo3.id_block.id_ver,
             MdfInfo::V4(mdfinfo4) => mdfinfo4.id_block.id_ver,

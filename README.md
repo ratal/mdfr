@@ -3,10 +3,10 @@ ASAM mdf reader in rust
 
 Currently a personal project to learn rust from past experience with python (mdfreader).
 
-mdfr is currently able to be used from python interpreter (using pyO3) to read mdf 3.x and 4.x files.
+mdfr is currently able to be used from python interpreter (using pyO3) to read mdf 3.x and 4.x files. You can install it with 'pip install mdfr' command.
 Using rayon crate on many parts of the code allows to have faster parsing in a safe and easy way compared to python.
 To allow efficient data sharing with many other tools, mdfr stores the data using arrow2. Polars (pandas equivalent) use is therefore also straight forward.
-It can be used the following way:
+It can be used the following way with python interpreter:
 
 ```python
 import mdfr
@@ -39,4 +39,4 @@ obj.export_to_parquet('file_name', compression_option)
 obj.write('file_name', conpression_flag)
 ```
 
- Packaging for pip should come later.
+A C/C++ api is also available allowing to get list of channels, units, description and data using the Arrow CDataInterface.

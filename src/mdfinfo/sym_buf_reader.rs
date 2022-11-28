@@ -3,7 +3,8 @@
 use std::io::{Error, ErrorKind, Read, Result, Seek, SeekFrom};
 use std::{cmp, io};
 
-const DEFAULT_BUF_SIZE: usize = 8192;
+/// reader buffer size, by default same as Rust BufReader
+pub const DEFAULT_BUF_SIZE: usize = 8192;
 pub struct SymBufReader<R>
 where
     R: Read,
@@ -190,7 +191,7 @@ where
             let stream_position = self.stream_position()? as i64;
             if let Some(remaining) = stream_position.checked_sub(middle_of_buffer) {
                 if remaining <= 0 {
-                    self.seek(SeekFrom::Start(0))?;
+                    self.rewind()?;
                     let n_read = self.reader.read(&mut self.buf)?;
                     self.cap = n_read;
                     self.pos = stream_position as usize;

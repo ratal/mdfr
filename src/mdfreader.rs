@@ -29,6 +29,7 @@ use self::arrow::{arrow_bit_count, arrow_byte_count, arrow_to_mdf_data_type, ndi
 
 /// Main Mdf struct holding mdfinfo, arrow data and schema
 #[derive(Debug)]
+#[repr(C)]
 pub struct Mdf {
     /// MdfInfo enum
     pub mdf_info: MdfInfo,
@@ -63,7 +64,7 @@ impl Clone for ChannelIndexes {
 
 #[allow(dead_code)]
 impl Mdf {
-    /// returns new empty Mdf
+    /// returns Mdf with metadata but no data
     pub fn new(file_name: &str) -> Result<Mdf> {
         let mut mdf = Mdf {
             mdf_info: MdfInfo::new(file_name)?,
@@ -83,7 +84,7 @@ impl Mdf {
         }
     }
     /// gets the version of mdf file
-    pub fn get_version(&mut self) -> u16 {
+    pub fn get_version(&self) -> u16 {
         self.mdf_info.get_version()
     }
     /// returns channel's unit string
@@ -280,7 +281,7 @@ impl Mdf {
 
     /// export to Parquet file
     pub fn export_to_parquet(
-        &mut self,
+        &self,
         file_name: &str,
         compression: Option<&str>,
     ) -> arrow2::error::Result<()> {

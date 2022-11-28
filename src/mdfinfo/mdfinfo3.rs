@@ -3,7 +3,7 @@ use crate::mdfreader::channel_data::Order;
 use anyhow::{Context, Result};
 use binrw::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
-use chrono::{NaiveDate, NaiveDateTime};
+use chrono::NaiveDate;
 use encoding_rs::Encoding;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -20,6 +20,7 @@ use super::sym_buf_reader::SymBufReader;
 
 /// Specific to version 3.x mdf metadata structure
 #[derive(Debug)]
+#[repr(C)]
 pub struct MdfInfo3 {
     /// file name string
     pub file_name: String,
@@ -357,6 +358,7 @@ pub fn parse_block_header(rdr: &mut SymBufReader<&File>) -> Result<Blockheader3>
 /// HD3 strucutre
 #[derive(Debug, PartialEq, Eq, Default)]
 #[allow(dead_code)]
+#[repr(C)]
 pub struct Hd3 {
     /// HD
     hd_id: [u8; 2],
@@ -396,6 +398,7 @@ pub struct Hd3 {
 
 /// HD3 block strucutre
 #[derive(Debug, PartialEq, Eq, Default, BinRead)]
+#[repr(C)]
 pub struct Hd3Block {
     hd_id: [u8; 2],            // HD
     hd_len: u16,               // Length of block in bytes
@@ -413,6 +416,7 @@ pub struct Hd3Block {
 
 /// Specific from version 3.2 HD block extension
 #[derive(Debug, PartialEq, Eq, Default, BinRead)]
+#[repr(C)]
 pub struct Hd3Block32 {
     hd_start_time_ns: u64, // time stamp at which recording was started in nanosecond
     hd_time_offset: i16,   // UTC time offset
@@ -501,9 +505,9 @@ pub fn hd3_parser(
         hd_start_time_ns = Some(
             u64::try_from(
                 NaiveDate::from_ymd_opt(hd_date.2, hd_date.1, hd_date.0)
-                    .unwrap_or(NaiveDate::default())
+                    .unwrap_or_default()
                     .and_hms_opt(hd_time.0, hd_time.1, hd_time.2)
-                    .unwrap_or(NaiveDateTime::default())
+                    .unwrap_or_default()
                     .timestamp_nanos(),
             )
             .context("cannot convert date into ns u64")?,
@@ -593,6 +597,7 @@ pub fn parse_tx(
 #[derive(Debug, BinRead, Clone)]
 #[br(little)]
 #[allow(dead_code)]
+#[repr(C)]
 pub struct Dg3Block {
     /// DG
     dg_id: [u8; 2],
@@ -633,6 +638,7 @@ pub fn parse_dg3_block(
 
 /// Dg3 struct wrapping block, comments and linked CG
 #[derive(Debug)]
+#[repr(C)]
 pub struct Dg3 {
     /// DG Block
     pub block: Dg3Block,
@@ -708,6 +714,7 @@ pub fn parse_dg3(
 #[derive(Debug, Copy, Clone, Default, BinRead)]
 #[br(little)]
 #[allow(dead_code)]
+#[repr(C)]
 pub struct Cg3Block {
     /// CG
     cg_id: [u8; 2],
@@ -782,6 +789,7 @@ fn parse_cg3_block(
 /// Channel Group struct
 /// it contains the related channels structure, a set of channel names, the dedicated master channel name and other helper data.
 #[derive(Debug)]
+#[repr(C)]
 pub struct Cg3 {
     pub block: Cg3Block,
     pub cn: HashMap<u32, Cn3>, // hashmap of channels
@@ -842,6 +850,7 @@ pub fn parse_cg3(
 /// Cn3 structure containing block but also unique_name, ndarray data
 /// and other attributes frequently needed and computed
 #[derive(Debug, Default)]
+#[repr(C)]
 pub struct Cn3 {
     pub block1: Cn3Block1,
     pub block2: Cn3Block2,
@@ -915,6 +924,7 @@ pub fn parse_cn3(
 /// Cn3 Channel block struct, first sub block
 #[derive(Debug, PartialEq, Eq, Default, Clone, BinRead)]
 #[br(little)]
+#[repr(C)]
 pub struct Cn3Block1 {
     /// CN
     cn_id: [u8; 2],
@@ -939,6 +949,7 @@ pub struct Cn3Block1 {
 /// Cn3 Channel block struct, second sub block
 #[derive(Debug, PartialEq, Default, Clone, BinRead)]
 #[br(little)]
+#[repr(C)]
 pub struct Cn3Block2 {
     /// Start offset in bits to determine the first bit of the signal in the data record.
     pub cn_bit_offset: u16,
@@ -1263,6 +1274,7 @@ fn can_open_time(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3) {
 /// sharable blocks (most likely referenced multiple times and shared by several blocks)
 /// that are in sharable fields and holds CC, CE, TX blocks
 #[derive(Debug, Default, Clone)]
+#[repr(C)]
 pub struct SharableBlocks3 {
     pub(crate) cc: HashMap<u32, (Cc3Block, Conversion)>,
     pub(crate) ce: HashMap<u32, CeBlock>,
@@ -1271,6 +1283,7 @@ pub struct SharableBlocks3 {
 #[derive(Debug, Clone, BinRead)]
 #[br(little)]
 #[allow(dead_code)]
+#[repr(C)]
 pub struct Cc3Block {
     /// CC
     cc_id: [u8; 2],
@@ -1307,6 +1320,7 @@ impl Default for Cc3Block {
 
 /// All kind of channel data conversions
 #[derive(Debug, Clone)]
+#[repr(C)]
 pub enum Conversion {
     Linear(Vec<f64>),
     TabularInterpolation(Vec<f64>),
@@ -1472,6 +1486,7 @@ pub fn parse_cc3_block(
 /// CE channel extension block struct, second sub block
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
+#[repr(C)]
 pub struct CeBlock {
     /// CE
     ce_id: [u8; 2],
@@ -1484,6 +1499,7 @@ pub struct CeBlock {
 
 /// Either a DIM or CAN Supplemental block
 #[derive(Debug, Clone)]
+#[repr(C)]
 pub enum CeSupplement {
     Dim(DimBlock),
     Can(CanBlock),
@@ -1493,6 +1509,7 @@ pub enum CeSupplement {
 /// DIM Block supplement
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
+#[repr(C)]
 pub struct DimBlock {
     /// Module number
     ce_module_number: u16,
@@ -1507,6 +1524,7 @@ pub struct DimBlock {
 /// Vector CAN Block supplement
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
+#[repr(C)]
 pub struct CanBlock {
     /// CAN identifier
     ce_can_id: u32,
