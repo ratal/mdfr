@@ -316,7 +316,6 @@ impl<T: NativeType> Tensor<T> {
     /// # Examples
     /// Creating a 2x2 vector and accessing the (1,0) element in the tensor
     /// ```
-    /// use arrow2::tensor::dense::Tensor;
     /// use arrow2::buffer::Buffer;
     /// let buffer: Buffer<i32> = vec![0i32, 1, 2, 3].into();
     /// let shape = Some(vec![2, 2]);

@@ -53,6 +53,7 @@ pub fn export_to_parquet(mdf: &Mdf, file_name: &str, compression: Option<&str>) 
         write_statistics: false,
         version: Version::V2,
         compression: parquet_compression_from_string(compression),
+        data_pagesize_limit: None,
     };
 
     let encoding_map = |data_type: &DataType| {
