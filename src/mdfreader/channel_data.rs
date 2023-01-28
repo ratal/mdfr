@@ -1924,86 +1924,86 @@ impl fmt::Display for ChannelData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ChannelData::Int8(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::UInt8(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::Int16(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::UInt16(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::Float16(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::Int24(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::UInt24(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::Int32(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::UInt32(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::Float32(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::Int48(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::UInt48(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::Int64(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::UInt64(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::Float64(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::Complex16(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::Complex32(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::Complex64(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::StringSBC(array) => {
                 for text in array.iter() {
-                    writeln!(f, " {} ", text)?;
+                    writeln!(f, " {text} ")?;
                 }
                 writeln!(f, " ")
             }
             ChannelData::StringUTF8(array) => {
                 for text in array.iter() {
-                    writeln!(f, " {} ", text)?;
+                    writeln!(f, " {text} ")?;
                 }
                 writeln!(f, " ")
             }
             ChannelData::StringUTF16(array) => {
                 for text in array.iter() {
-                    writeln!(f, " {} ", text)?;
+                    writeln!(f, " {text} ")?;
                 }
                 writeln!(f, " ")
             }
             ChannelData::VariableSizeByteArray(array) => {
                 for text in array.iter() {
-                    writeln!(f, " {:?} ", text)?;
+                    writeln!(f, " {text:?} ")?;
                 }
                 writeln!(f, " ")
             }
             ChannelData::FixedSizeByteArray(array) => {
                 for text in array.0.iter() {
-                    writeln!(f, " {:?} ", text)?;
+                    writeln!(f, " {text:?} ")?;
                 }
                 writeln!(f, " ")
             }

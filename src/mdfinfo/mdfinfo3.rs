@@ -324,14 +324,14 @@ impl fmt::Display for MdfInfo3 {
         writeln!(f, "{}\n", self.hd_block)?;
         for (master, list) in self.get_master_channel_names_set().iter() {
             if let Some(master_name) = master {
-                writeln!(f, "\nMaster: {}\n", master_name)?;
+                writeln!(f, "\nMaster: {master_name}\n")?;
             } else {
                 writeln!(f, "\nWithout Master channel\n")?;
             }
             for channel in list.iter() {
                 let unit = self.get_channel_unit(channel);
                 let desc = self.get_channel_desc(channel);
-                writeln!(f, " {} {:?} {:?} \n", channel, unit, desc)?;
+                writeln!(f, " {channel} {unit:?} {desc:?} \n")?;
             }
         }
         writeln!(f, "\n")

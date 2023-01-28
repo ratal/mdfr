@@ -24,7 +24,7 @@ pub unsafe extern "C" fn new_mdf(file_name: *const c_char) -> *mut Mdf {
             std::mem::forget(mdf);
             p
         }
-        Err(e) => panic!("{:?}", e),
+        Err(e) => panic!("{e:?}"),
     }
 }
 

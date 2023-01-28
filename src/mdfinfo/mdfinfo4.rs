@@ -529,14 +529,14 @@ impl fmt::Display for MdfInfo4 {
         }
         for (master, list) in self.get_master_channel_names_set().iter() {
             if let Some(master_name) = master {
-                writeln!(f, "\nMaster: {}\n", master_name)?;
+                writeln!(f, "\nMaster: {master_name}\n")?;
             } else {
                 writeln!(f, "\nWithout Master channel\n")?;
             }
             for channel in list.iter() {
                 let unit = self.get_channel_unit(channel);
                 let desc = self.get_channel_desc(channel);
-                writeln!(f, " {} {:?} {:?} \n", channel, unit, desc)?;
+                writeln!(f, " {channel} {unit:?} {desc:?} \n")?;
             }
         }
         writeln!(f, "\n")
@@ -687,21 +687,20 @@ fn parse_block_short(
 /// metadata are either stored in TX (text) or MD (xml) blocks for mdf version 4
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[repr(C)]
+#[derive(Default)]
 pub enum MetaDataBlockType {
     MdBlock,
     MdParsed,
+    #[default]
     TX,
 }
 
-impl Default for MetaDataBlockType {
-    fn default() -> Self {
-        MetaDataBlockType::TX
-    }
-}
+
 
 /// Blocks types that could link to MDBlock
 #[derive(Debug, Clone)]
 #[repr(C)]
+#[derive(Default)]
 pub enum BlockType {
     HD,
     FH,
@@ -709,16 +708,13 @@ pub enum BlockType {
     EV,
     DG,
     CG,
+    #[default]
     CN,
     CC,
     SI,
 }
 
-impl Default for BlockType {
-    fn default() -> Self {
-        BlockType::CN
-    }
-}
+
 
 /// struct linking MD or TX block with
 #[derive(Debug, Default, Clone)]
@@ -875,9 +871,8 @@ impl MetaData {
 <tool_id>mdfr</tool_id>
 <tool_vendor>ratalco</tool_vendor>
 <tool_version>0.1</tool_version>
-<user_name>{}</user_name>
-</FHcomment>",
-            user_name
+<user_name>{user_name}</user_name>
+</FHcomment>"
         );
         let raw_comments = format!(
             "{:\0<width$}",
@@ -1129,7 +1124,7 @@ fn parse_fh_block(
     let mut block = Cursor::new(buf);
     let fh: FhBlock = block
         .read_le()
-        .with_context(|| format!("Error parsing fh block into FhBlock struct \n{:?}", block))?; // reads the fh block
+        .with_context(|| format!("Error parsing fh block into FhBlock struct \n{block:?}"))?; // reads the fh block
     Ok((fh, target + 56))
 }
 
@@ -1540,23 +1535,23 @@ impl fmt::Display for SharableBlocks {
             match c.block_type {
                 MetaDataBlockType::MdParsed => {
                     for (tag, text) in c.comments.iter() {
-                        writeln!(f, "Tag: {}  Text: {}", tag, text)?;
+                        writeln!(f, "Tag: {tag}  Text: {text}")?;
                     }
                 }
                 MetaDataBlockType::TX => match c.get_data_string() {
-                    Ok(s) => writeln!(f, "Text: {}", s)?,
-                    Err(e) => writeln!(f, "Text: {:?}", e)?,
+                    Ok(s) => writeln!(f, "Text: {s}")?,
+                    Err(e) => writeln!(f, "Text: {e:?}")?,
                 },
                 _ => (),
             }
         }
         writeln!(f, "CC : \n")?;
         for (position, cc) in self.cc.iter() {
-            writeln!(f, "Position: {}  Text: {:?}", position, cc)?;
+            writeln!(f, "Position: {position}  Text: {cc:?}")?;
         }
         writeln!(f, "SI : ")?;
         for (position, si) in self.si.iter() {
-            writeln!(f, "Position: {}  Text: {:?}", position, si)?;
+            writeln!(f, "Position: {position}  Text: {si:?}")?;
         }
         writeln!(f, "finished")
     }

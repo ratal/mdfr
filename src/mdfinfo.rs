@@ -97,7 +97,7 @@ impl MdfInfo {
             .read(true)
             .write(false)
             .open(file_name)
-            .with_context(|| format!("Cannot find the file {}", file_name))?;
+            .with_context(|| format!("Cannot find the file {file_name}"))?;
         info!("Opened file {}", file_name);
 
         let mut rdr = SymBufReader::new(&f);
