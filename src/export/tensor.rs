@@ -70,15 +70,12 @@ pub struct Tensor<T: NativeType> {
 }
 
 /// Order of the array, Row or Column Major (first)
-#[derive(Debug, Clone, PartialEq, Eq)]
-#[derive(Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Order {
     #[default]
     RowMajor,
     ColumnMajor,
 }
-
-
 
 #[allow(dead_code)]
 impl<T: NativeType> Tensor<T> {

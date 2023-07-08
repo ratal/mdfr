@@ -67,11 +67,7 @@ pub fn mdfreader4<'a>(
                         .context("Could not position buffer")?; // change buffer position
                     let mut id = [0u8; 4];
                     rdr.read_exact(&mut id).context("could not read block id")?;
-                    if dg.cg.len() == 1 {
-                        sorted = true;
-                    } else {
-                        sorted = false
-                    }
+                    sorted = dg.cg.len() == 1;
                     position = read_data(
                         rdr,
                         id,

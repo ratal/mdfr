@@ -1071,12 +1071,9 @@ impl ChannelData {
                 ChannelData::Float64(_) => false,
                 ChannelData::Complex16(b) => {
                     a.len() == b.len()
-                        && a.clone()
-                            .into_iter()
-                            .zip(b.clone().into_iter())
-                            .all(|(a, b)| {
-                                ((a.re - b.re).abs() < epsilon) && ((a.im - b.im).abs() < epsilon)
-                            })
+                        && a.clone().into_iter().zip(b.clone()).all(|(a, b)| {
+                            ((a.re - b.re).abs() < epsilon) && ((a.im - b.im).abs() < epsilon)
+                        })
                 }
                 ChannelData::Complex32(_) => false,
                 ChannelData::Complex64(_) => false,
@@ -1123,12 +1120,9 @@ impl ChannelData {
                 ChannelData::Complex16(_) => false,
                 ChannelData::Complex32(b) => {
                     a.len() == b.len()
-                        && a.clone()
-                            .into_iter()
-                            .zip(b.clone().into_iter())
-                            .all(|(a, b)| {
-                                ((a.re - b.re).abs() < epsilon) && ((a.im - b.im).abs() < epsilon)
-                            })
+                        && a.clone().into_iter().zip(b.clone()).all(|(a, b)| {
+                            ((a.re - b.re).abs() < epsilon) && ((a.im - b.im).abs() < epsilon)
+                        })
                 }
                 ChannelData::Complex64(_) => false,
                 ChannelData::StringSBC(_) => false,
@@ -1266,12 +1260,9 @@ impl ChannelData {
                 ChannelData::Complex32(_) => false,
                 ChannelData::Complex64(b) => {
                     a.len() == b.len()
-                        && a.clone()
-                            .into_iter()
-                            .zip(b.clone().into_iter())
-                            .all(|(a, b)| {
-                                ((a.re - b.re).abs() < epsilon) && ((a.im - b.im).abs() < epsilon)
-                            })
+                        && a.clone().into_iter().zip(b.clone()).all(|(a, b)| {
+                            ((a.re - b.re).abs() < epsilon) && ((a.im - b.im).abs() < epsilon)
+                        })
                 }
                 ChannelData::StringSBC(_) => false,
                 ChannelData::StringUTF8(_) => false,

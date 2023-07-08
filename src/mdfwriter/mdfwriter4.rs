@@ -112,7 +112,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
         }
     }
     // last DG must point to null DGBlock
-    if let Some(mut last_dg) = new_info.dg.get_mut(&last_dg_pointer) {
+    if let Some(last_dg) = new_info.dg.get_mut(&last_dg_pointer) {
         last_dg.block.dg_dg_next = 0;
     }
 
