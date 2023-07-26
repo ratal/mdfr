@@ -245,12 +245,12 @@ impl<T: NativeType> Tensor<T> {
     /// This function panics iff `offset + length > self.len()`.
     #[inline]
     #[must_use]
-    pub fn slice(&self, offset: usize, length: usize) -> Self {
+    pub fn slice(&mut self, offset: usize, length: usize) {
         assert!(
             offset + length <= self.len(),
             "offset + length may not exceed length of array"
         );
-        unsafe { self.slice_unchecked(offset, length) }
+        unsafe { self.values.slice_unchecked(offset, length) }
     }
 
     /// Returns a clone of this PrimitiveArray sliced by an offset and length.
@@ -260,16 +260,8 @@ impl<T: NativeType> Tensor<T> {
     /// The caller must ensure that `offset + length <= self.len()`.
     #[inline]
     #[must_use]
-    pub unsafe fn slice_unchecked(&self, offset: usize, length: usize) -> Self {
-        Self {
-            data_type: self.data_type.clone(),
-            values: self.values.clone().slice_unchecked(offset, length),
-            shape: self.shape.clone(),
-            order: self.order.clone(),
-            names: self.names.clone(),
-            strides: self.strides.clone(),
-            _marker: PhantomData,
-        }
+    pub unsafe fn slice_unchecked(&mut self, offset: usize, length: usize) {
+        self.values.slice_unchecked(offset, length);
     }
 
     #[must_use]
@@ -443,11 +435,11 @@ impl<T: NativeType> Array for Tensor<T> {
         None
     }
 
-    fn slice(&self, offset: usize, length: usize) -> Box<dyn Array> {
-        Box::new(self.slice(offset, length))
+    fn slice(&mut self, offset: usize, length: usize) {
+        self.values.slice(offset, length)
     }
-    unsafe fn slice_unchecked(&self, offset: usize, length: usize) -> Box<dyn Array> {
-        Box::new(self.slice_unchecked(offset, length))
+    unsafe fn slice_unchecked(&mut self, offset: usize, length: usize) {
+        self.values.slice_unchecked(offset, length)
     }
     fn with_validity(&self, validity: Option<Bitmap>) -> Box<dyn Array> {
         Box::new(self.with_validity(validity))

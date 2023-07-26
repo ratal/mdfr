@@ -6,6 +6,7 @@ use encoding_rs::WINDOWS_1252;
 use half::f16;
 use rayon::prelude::*;
 use std::collections::HashMap;
+use std::io::Cursor;
 use std::str;
 use std::string::String;
 use std::{collections::HashSet, convert::TryInto};
@@ -225,7 +226,7 @@ pub fn read_channels_from_bytes(
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 buf[0..5]
                                     .copy_from_slice(&record[pos_byte_beg..pos_byte_beg + n_bytes]);
-                                data[i + previous_index] = Box::new(&buf[..])
+                                data[i + previous_index] = Cursor::new(buf)
                                     .read_u48::<BigEndian>()
                                     .expect("Could not read be u48 from 5 bytes");
                             }
@@ -242,7 +243,7 @@ pub fn read_channels_from_bytes(
                         let mut buf = [0u8; 6];
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             buf[0..5].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + 5]);
-                            data[i + previous_index] = Box::new(&buf[..])
+                            data[i + previous_index] = Cursor::new(buf)
                                 .read_u48::<LittleEndian>()
                                 .expect("Could not read le u48 from 5 bytes");
                         }
