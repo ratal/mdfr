@@ -482,15 +482,15 @@ mod tests {
     fn test_compute_row_major_strides() {
         assert_eq!(
             vec![6_usize, 1],
-            compute_row_major_strides::<i64>(&[4_usize, 6]).unwrap()
+            compute_row_major_strides(&[4_usize, 6]).unwrap()
         );
         assert_eq!(
             vec![6_usize, 1],
-            compute_row_major_strides::<i32>(&[4_usize, 6]).unwrap()
+            compute_row_major_strides(&[4_usize, 6]).unwrap()
         );
         assert_eq!(
             vec![6_usize, 1],
-            compute_row_major_strides::<i8>(&[4_usize, 6]).unwrap()
+            compute_row_major_strides(&[4_usize, 6]).unwrap()
         );
     }
 
