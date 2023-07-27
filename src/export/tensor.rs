@@ -1,4 +1,4 @@
-///! Arrow tensor, not official implementation
+//! Arrow tensor, not official implementation
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -27,7 +27,7 @@ use arrow2::error::{Error, Result};
 use arrow2::types::NativeType;
 
 /// Computes the strides required assuming a row major memory layout
-fn compute_row_major_strides<T>(shape: &[usize]) -> Result<Vec<usize>> {
+fn compute_row_major_strides(shape: &[usize]) -> Result<Vec<usize>> {
     let mut total_locations = shape.iter().product();
 
     Ok(shape
@@ -140,7 +140,7 @@ impl<T: NativeType> Tensor<T> {
         let tensor_strides = {
             if let Some(st) = strides {
                 if let Some(ref s) = shape {
-                    if compute_row_major_strides::<T>(s)? == st
+                    if compute_row_major_strides(s)? == st
                         || compute_column_major_strides::<T>(s)? == st
                     {
                         Some(st)
@@ -154,9 +154,9 @@ impl<T: NativeType> Tensor<T> {
                 }
             } else if let Some(ref s) = shape {
                 match order {
-                    Some(Order::RowMajor) => Some(compute_row_major_strides::<T>(s)?),
+                    Some(Order::RowMajor) => Some(compute_row_major_strides(s)?),
                     Some(Order::ColumnMajor) => Some(compute_column_major_strides::<T>(s)?),
-                    None => Some(compute_row_major_strides::<T>(s)?),
+                    None => Some(compute_row_major_strides(s)?),
                 }
             } else {
                 None
@@ -186,7 +186,7 @@ impl<T: NativeType> Tensor<T> {
         names: Option<Vec<String>>,
     ) -> Result<Self> {
         if let Some(ref s) = shape {
-            let strides = Some(compute_row_major_strides::<T>(s)?);
+            let strides = Some(compute_row_major_strides(s)?);
 
             Self::try_new(
                 data_type,
@@ -244,7 +244,6 @@ impl<T: NativeType> Tensor<T> {
     /// # Panic
     /// This function panics iff `offset + length > self.len()`.
     #[inline]
-    #[must_use]
     pub fn slice(&mut self, offset: usize, length: usize) {
         assert!(
             offset + length <= self.len(),
@@ -259,7 +258,6 @@ impl<T: NativeType> Tensor<T> {
     /// # Safety
     /// The caller must ensure that `offset + length <= self.len()`.
     #[inline]
-    #[must_use]
     pub unsafe fn slice_unchecked(&mut self, offset: usize, length: usize) {
         self.values.slice_unchecked(offset, length);
     }
