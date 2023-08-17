@@ -177,7 +177,7 @@ pub fn read_one_channel_array(data_bytes: &mut Vec<u8>, cn: &mut Cn4, cycle_coun
                         let mut temp = [0u8; 6];
                         for (i, value) in data_bytes.chunks(n_bytes).enumerate() {
                             temp[0..5].copy_from_slice(&value[0..n_bytes]);
-                            data[i] = Box::new(&temp[..])
+                            data[i] = Cursor::new(temp)
                                 .read_u48::<BigEndian>()
                                 .expect("Could not read be u48 from 5 bytes");
                         }
@@ -194,7 +194,7 @@ pub fn read_one_channel_array(data_bytes: &mut Vec<u8>, cn: &mut Cn4, cycle_coun
                     let mut temp = [0u8; 6];
                     for (i, value) in data_bytes.chunks(n_bytes).enumerate() {
                         temp[0..5].copy_from_slice(&value[0..n_bytes]);
-                        data[i] = Box::new(&temp[..])
+                        data[i] = Cursor::new(temp)
                             .read_u48::<LittleEndian>()
                             .expect("Could not read le u48 from 5 bytes");
                     }
@@ -582,7 +582,7 @@ pub fn read_one_channel_array(data_bytes: &mut Vec<u8>, cn: &mut Cn4, cycle_coun
                                     let mut temp = [0u8; 6];
                                     for (i, value) in data_bytes.chunks(n_bytes).enumerate() {
                                         temp[0..5].copy_from_slice(&value[0..n_bytes]);
-                                        data.0[i] = Box::new(&temp[..])
+                                        data.0[i] = Cursor::new(temp)
                                             .read_u48::<BigEndian>()
                                             .expect("Could not read be u48 from 5 bytes");
                                     }
@@ -599,7 +599,7 @@ pub fn read_one_channel_array(data_bytes: &mut Vec<u8>, cn: &mut Cn4, cycle_coun
                                 let mut temp = [0u8; 6];
                                 for (i, value) in data_bytes.chunks(n_bytes).enumerate() {
                                     temp[0..5].copy_from_slice(&value[0..n_bytes]);
-                                    data.0[i] = Box::new(&temp[..])
+                                    data.0[i] = Cursor::new(temp)
                                         .read_u48::<LittleEndian>()
                                         .expect("Could not read le u48 from 5 bytes");
                                 }
@@ -1008,7 +1008,7 @@ pub fn read_channels_from_bytes(
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 buf[0..5]
                                     .copy_from_slice(&record[pos_byte_beg..pos_byte_beg + n_bytes]);
-                                data[i + previous_index] = Box::new(&buf[..])
+                                data[i + previous_index] = Cursor::new(buf)
                                     .read_u48::<BigEndian>()
                                     .expect("Could not read be u48 from 5 bytes");
                             }
@@ -1025,7 +1025,7 @@ pub fn read_channels_from_bytes(
                         let mut buf = [0u8; 6];
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             buf[0..5].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + 5]);
-                            data[i + previous_index] = Box::new(&buf[..])
+                            data[i + previous_index] = Cursor::new(buf)
                                 .read_u48::<LittleEndian>()
                                 .expect("Could not read le u48 from 5 bytes");
                         }
@@ -1601,7 +1601,7 @@ pub fn read_channels_from_bytes(
                                             for j in 0..ca.pnd {
                                                 buf[0..5]
                                                     .copy_from_slice(&record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes]);
-                                                data.0[(i + previous_index) * ca.pnd + j] = Box::new(&buf[..])
+                                                data.0[(i + previous_index) * ca.pnd + j] = Cursor::new(buf)
                                                     .read_u48::<BigEndian>()
                                                     .expect("Could not read be u48 from 5 bytes in array");
                                             }
@@ -1622,7 +1622,7 @@ pub fn read_channels_from_bytes(
                                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                         for j in 0..ca.pnd {
                                             buf[0..5].copy_from_slice(&record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes]);
-                                            data.0[(i + previous_index) * ca.pnd + j] = Box::new(&buf[..])
+                                            data.0[(i + previous_index) * ca.pnd + j] = Cursor::new(buf)
                                                 .read_u48::<LittleEndian>()
                                                 .expect("Could not read le u48 from 5 bytes in array");
                                         }

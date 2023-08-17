@@ -1,4 +1,4 @@
-///! Arrow tensor, not official implementation
+//! Arrow tensor, not official implementation
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -27,7 +27,7 @@ use arrow2::error::{Error, Result};
 use arrow2::types::NativeType;
 
 /// Computes the strides required assuming a row major memory layout
-fn compute_row_major_strides<T>(shape: &[usize]) -> Result<Vec<usize>> {
+fn compute_row_major_strides(shape: &[usize]) -> Result<Vec<usize>> {
     let mut total_locations = shape.iter().product();
 
     Ok(shape
@@ -70,16 +70,11 @@ pub struct Tensor<T: NativeType> {
 }
 
 /// Order of the array, Row or Column Major (first)
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Order {
+    #[default]
     RowMajor,
     ColumnMajor,
-}
-
-impl Default for Order {
-    fn default() -> Self {
-        Order::RowMajor
-    }
 }
 
 #[allow(dead_code)]
@@ -145,7 +140,7 @@ impl<T: NativeType> Tensor<T> {
         let tensor_strides = {
             if let Some(st) = strides {
                 if let Some(ref s) = shape {
-                    if compute_row_major_strides::<T>(s)? == st
+                    if compute_row_major_strides(s)? == st
                         || compute_column_major_strides::<T>(s)? == st
                     {
                         Some(st)
@@ -159,9 +154,9 @@ impl<T: NativeType> Tensor<T> {
                 }
             } else if let Some(ref s) = shape {
                 match order {
-                    Some(Order::RowMajor) => Some(compute_row_major_strides::<T>(s)?),
+                    Some(Order::RowMajor) => Some(compute_row_major_strides(s)?),
                     Some(Order::ColumnMajor) => Some(compute_column_major_strides::<T>(s)?),
-                    None => Some(compute_row_major_strides::<T>(s)?),
+                    None => Some(compute_row_major_strides(s)?),
                 }
             } else {
                 None
@@ -191,7 +186,7 @@ impl<T: NativeType> Tensor<T> {
         names: Option<Vec<String>>,
     ) -> Result<Self> {
         if let Some(ref s) = shape {
-            let strides = Some(compute_row_major_strides::<T>(s)?);
+            let strides = Some(compute_row_major_strides(s)?);
 
             Self::try_new(
                 data_type,
@@ -249,13 +244,12 @@ impl<T: NativeType> Tensor<T> {
     /// # Panic
     /// This function panics iff `offset + length > self.len()`.
     #[inline]
-    #[must_use]
-    pub fn slice(&self, offset: usize, length: usize) -> Self {
+    pub fn slice(&mut self, offset: usize, length: usize) {
         assert!(
             offset + length <= self.len(),
             "offset + length may not exceed length of array"
         );
-        unsafe { self.slice_unchecked(offset, length) }
+        unsafe { self.values.slice_unchecked(offset, length) }
     }
 
     /// Returns a clone of this PrimitiveArray sliced by an offset and length.
@@ -264,17 +258,8 @@ impl<T: NativeType> Tensor<T> {
     /// # Safety
     /// The caller must ensure that `offset + length <= self.len()`.
     #[inline]
-    #[must_use]
-    pub unsafe fn slice_unchecked(&self, offset: usize, length: usize) -> Self {
-        Self {
-            data_type: self.data_type.clone(),
-            values: self.values.clone().slice_unchecked(offset, length),
-            shape: self.shape.clone(),
-            order: self.order.clone(),
-            names: self.names.clone(),
-            strides: self.strides.clone(),
-            _marker: PhantomData,
-        }
+    pub unsafe fn slice_unchecked(&mut self, offset: usize, length: usize) {
+        self.values.slice_unchecked(offset, length);
     }
 
     #[must_use]
@@ -316,7 +301,6 @@ impl<T: NativeType> Tensor<T> {
     /// # Examples
     /// Creating a 2x2 vector and accessing the (1,0) element in the tensor
     /// ```
-    /// use arrow2::tensor::dense::Tensor;
     /// use arrow2::buffer::Buffer;
     /// let buffer: Buffer<i32> = vec![0i32, 1, 2, 3].into();
     /// let shape = Some(vec![2, 2]);
@@ -449,11 +433,11 @@ impl<T: NativeType> Array for Tensor<T> {
         None
     }
 
-    fn slice(&self, offset: usize, length: usize) -> Box<dyn Array> {
-        Box::new(self.slice(offset, length))
+    fn slice(&mut self, offset: usize, length: usize) {
+        self.values.slice(offset, length)
     }
-    unsafe fn slice_unchecked(&self, offset: usize, length: usize) -> Box<dyn Array> {
-        Box::new(self.slice_unchecked(offset, length))
+    unsafe fn slice_unchecked(&mut self, offset: usize, length: usize) {
+        self.values.slice_unchecked(offset, length)
     }
     fn with_validity(&self, validity: Option<Bitmap>) -> Box<dyn Array> {
         Box::new(self.with_validity(validity))
@@ -498,15 +482,15 @@ mod tests {
     fn test_compute_row_major_strides() {
         assert_eq!(
             vec![6_usize, 1],
-            compute_row_major_strides::<i64>(&[4_usize, 6]).unwrap()
+            compute_row_major_strides(&[4_usize, 6]).unwrap()
         );
         assert_eq!(
             vec![6_usize, 1],
-            compute_row_major_strides::<i32>(&[4_usize, 6]).unwrap()
+            compute_row_major_strides(&[4_usize, 6]).unwrap()
         );
         assert_eq!(
             vec![6_usize, 1],
-            compute_row_major_strides::<i8>(&[4_usize, 6]).unwrap()
+            compute_row_major_strides(&[4_usize, 6]).unwrap()
         );
     }
 

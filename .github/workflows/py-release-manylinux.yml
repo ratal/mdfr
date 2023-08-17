@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [ '3.7', '3.8', '3.9', '3.10' ]
+        python-version: [ '3.8', '3.9', '3.10' , "3.11"]
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-python@v4
@@ -29,7 +29,7 @@ jobs:
           maturin-version: latest
           manylinux: auto
           command: publish
-          args: --skip-existing --no-sdist -i python3.9 -o wheels -u __token__
+          args: --skip-existing --no-sdist -i python3.11 -o wheels -u __token__
       - name: build aarch64
         uses: messense/maturin-action@v1
         env:
@@ -39,4 +39,4 @@ jobs:
           target: aarch64-unknown-linux-gnu
           maturin-version: latest
           command: publish
-          args: --skip-existing --no-sdist -o wheels -i python3.9 -u __token__
+          args: --skip-existing --no-sdist -o wheels -i python3.11 -u __token__

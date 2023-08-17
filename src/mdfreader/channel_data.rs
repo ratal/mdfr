@@ -1071,12 +1071,9 @@ impl ChannelData {
                 ChannelData::Float64(_) => false,
                 ChannelData::Complex16(b) => {
                     a.len() == b.len()
-                        && a.clone()
-                            .into_iter()
-                            .zip(b.clone().into_iter())
-                            .all(|(a, b)| {
-                                ((a.re - b.re).abs() < epsilon) && ((a.im - b.im).abs() < epsilon)
-                            })
+                        && a.clone().into_iter().zip(b.clone()).all(|(a, b)| {
+                            ((a.re - b.re).abs() < epsilon) && ((a.im - b.im).abs() < epsilon)
+                        })
                 }
                 ChannelData::Complex32(_) => false,
                 ChannelData::Complex64(_) => false,
@@ -1123,12 +1120,9 @@ impl ChannelData {
                 ChannelData::Complex16(_) => false,
                 ChannelData::Complex32(b) => {
                     a.len() == b.len()
-                        && a.clone()
-                            .into_iter()
-                            .zip(b.clone().into_iter())
-                            .all(|(a, b)| {
-                                ((a.re - b.re).abs() < epsilon) && ((a.im - b.im).abs() < epsilon)
-                            })
+                        && a.clone().into_iter().zip(b.clone()).all(|(a, b)| {
+                            ((a.re - b.re).abs() < epsilon) && ((a.im - b.im).abs() < epsilon)
+                        })
                 }
                 ChannelData::Complex64(_) => false,
                 ChannelData::StringSBC(_) => false,
@@ -1266,12 +1260,9 @@ impl ChannelData {
                 ChannelData::Complex32(_) => false,
                 ChannelData::Complex64(b) => {
                     a.len() == b.len()
-                        && a.clone()
-                            .into_iter()
-                            .zip(b.clone().into_iter())
-                            .all(|(a, b)| {
-                                ((a.re - b.re).abs() < epsilon) && ((a.im - b.im).abs() < epsilon)
-                            })
+                        && a.clone().into_iter().zip(b.clone()).all(|(a, b)| {
+                            ((a.re - b.re).abs() < epsilon) && ((a.im - b.im).abs() < epsilon)
+                        })
                 }
                 ChannelData::StringSBC(_) => false,
                 ChannelData::StringUTF8(_) => false,
@@ -1924,86 +1915,86 @@ impl fmt::Display for ChannelData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ChannelData::Int8(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::UInt8(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::Int16(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::UInt16(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::Float16(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::Int24(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::UInt24(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::Int32(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::UInt32(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::Float32(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::Int48(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::UInt48(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::Int64(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::UInt64(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::Float64(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::Complex16(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::Complex32(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::Complex64(array) => {
-                writeln!(f, "{:?}", array)
+                writeln!(f, "{array:?}")
             }
             ChannelData::StringSBC(array) => {
                 for text in array.iter() {
-                    writeln!(f, " {} ", text)?;
+                    writeln!(f, " {text} ")?;
                 }
                 writeln!(f, " ")
             }
             ChannelData::StringUTF8(array) => {
                 for text in array.iter() {
-                    writeln!(f, " {} ", text)?;
+                    writeln!(f, " {text} ")?;
                 }
                 writeln!(f, " ")
             }
             ChannelData::StringUTF16(array) => {
                 for text in array.iter() {
-                    writeln!(f, " {} ", text)?;
+                    writeln!(f, " {text} ")?;
                 }
                 writeln!(f, " ")
             }
             ChannelData::VariableSizeByteArray(array) => {
                 for text in array.iter() {
-                    writeln!(f, " {:?} ", text)?;
+                    writeln!(f, " {text:?} ")?;
                 }
                 writeln!(f, " ")
             }
             ChannelData::FixedSizeByteArray(array) => {
                 for text in array.0.iter() {
-                    writeln!(f, " {:?} ", text)?;
+                    writeln!(f, " {text:?} ")?;
                 }
                 writeln!(f, " ")
             }

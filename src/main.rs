@@ -103,5 +103,3 @@ fn main() -> Result<()> {
 
     Ok(())
 }
-
-// TODO add C interface

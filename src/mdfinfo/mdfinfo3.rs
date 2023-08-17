@@ -143,7 +143,7 @@ impl MdfInfo3 {
         for (_dg_position, dg) in self.dg.iter() {
             for (_record_id, cg) in dg.cg.iter() {
                 if let Some(list) = channel_master_list.get_mut(&None) {
-                    list.extend(list.clone().into_iter());
+                    list.extend(list.clone());
                 } else {
                     channel_master_list
                         .insert(cg.master_channel_name.clone(), cg.channel_names.clone());
@@ -324,14 +324,14 @@ impl fmt::Display for MdfInfo3 {
         writeln!(f, "{}\n", self.hd_block)?;
         for (master, list) in self.get_master_channel_names_set().iter() {
             if let Some(master_name) = master {
-                writeln!(f, "\nMaster: {}\n", master_name)?;
+                writeln!(f, "\nMaster: {master_name}\n")?;
             } else {
                 writeln!(f, "\nWithout Master channel\n")?;
             }
             for channel in list.iter() {
                 let unit = self.get_channel_unit(channel);
                 let desc = self.get_channel_desc(channel);
-                writeln!(f, " {} {:?} {:?} \n", channel, unit, desc)?;
+                writeln!(f, " {channel} {unit:?} {desc:?} \n")?;
             }
         }
         writeln!(f, "\n")
@@ -1426,7 +1426,7 @@ pub fn parse_cc3_block(
             let mut pairs: Vec<(f64, String)> =
                 vec![(0.0f64, String::with_capacity(32)); cc_block.cc_size as usize];
             let mut buf = vec![0u8; 32];
-            for mut pair in pairs.iter_mut() {
+            for pair in pairs.iter_mut() {
                 pair.0 = rdr
                     .read_f64::<LittleEndian>()
                     .context("Could not read text table conversion value parameters")?;

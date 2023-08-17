@@ -219,9 +219,9 @@ df=polars.DataFrame(series)
         &mut self,
         channel_name: String,
         data: Py<PyAny>,
+        master_flag: bool,
         master_channel: Option<String>,
         master_type: Option<u8>,
-        master_flag: bool,
         unit: Option<String>,
         description: Option<String>,
     ) {
@@ -373,7 +373,7 @@ pyplot.show()
                 write!(output, "Comments: {}", mdfinfo3.hd_comment).expect("cannot print comments");
                 for (master, list) in mdfinfo3.get_master_channel_names_set().iter() {
                     if let Some(master_name) = master {
-                        writeln!(output, "\nMaster: {}", master_name)
+                        writeln!(output, "\nMaster: {master_name}")
                             .expect("cannot print master channel name");
                     } else {
                         writeln!(output, "\nWithout Master channel")
@@ -382,7 +382,7 @@ pyplot.show()
                     for channel in list.iter() {
                         let unit = self.get_channel_unit(channel.to_string());
                         let desc = self.get_channel_desc(channel.to_string());
-                        write!(output, " {} ", channel).expect("cannot print channel name");
+                        write!(output, " {channel} ").expect("cannot print channel name");
                         if let Some(data) = self.0.get_channel_data(channel) {
                             if !data.is_empty() {
                                 let displayer = get_display(data.as_ref(), "null");
@@ -393,11 +393,10 @@ pyplot.show()
                             }
                             writeln!(
                                 output,
-                                " {:?} {:?} ",
-                                unit, desc
+                                " {unit:?} {desc:?} "
                             ).expect("cannot print channel unit and description with first and last item");
                         } else {
-                            writeln!(output, " {:?} {:?} ", unit, desc)
+                            writeln!(output, " {unit:?} {desc:?} ")
                                 .expect("cannot print channel unit and description");
                         }
                     }
@@ -415,7 +414,7 @@ pyplot.show()
                 }
                 for (master, list) in mdfinfo4.get_master_channel_names_set().iter() {
                     if let Some(master_name) = master {
-                        writeln!(output, "\nMaster: {}", master_name)
+                        writeln!(output, "\nMaster: {master_name}")
                             .expect("cannot print master channel name");
                     } else {
                         writeln!(output, "\nWithout Master channel")
@@ -424,7 +423,7 @@ pyplot.show()
                     for channel in list.iter() {
                         let unit = self.get_channel_unit(channel.to_string());
                         let desc = self.get_channel_desc(channel.to_string());
-                        write!(output, " {} ", channel).expect("cannot print channel name");
+                        write!(output, " {channel} ").expect("cannot print channel name");
                         if let Some(data) = self.0.get_channel_data(channel) {
                             if !data.is_empty() {
                                 let displayer = get_display(data.as_ref(), "null");
@@ -436,11 +435,10 @@ pyplot.show()
                             }
                             writeln!(
                                 output,
-                                " {:?} {:?} ",
-                                unit, desc
+                                " {unit:?} {desc:?} "
                             ).expect("cannot print channel unit and description with first and last item");
                         } else {
-                            writeln!(output, " {:?} {:?} ", unit, desc)
+                            writeln!(output, " {unit:?} {desc:?} ")
                                 .expect("cannot print channel unit and description");
                         }
                     }

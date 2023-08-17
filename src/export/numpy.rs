@@ -360,7 +360,7 @@ pub fn arrow_to_numpy(py: Python, array: &Box<dyn Array>) -> PyObject {
 
 impl ArrowComplex<f64> {
     pub fn to_ndarray(&self) -> Vec<Complex<f64>> {
-        Vec::<Complex<f64>>::from_iter(self.clone().into_iter())
+        Vec::<Complex<f64>>::from_iter(self.clone())
     }
     pub fn from_array(array: Vec<Complex<f64>>) -> Self {
         let mut output = Vec::with_capacity(array.len() * 2);
@@ -374,7 +374,7 @@ impl ArrowComplex<f64> {
 
 impl ArrowComplex<f32> {
     pub fn to_ndarray(&self) -> Vec<Complex<f32>> {
-        Vec::<Complex<f32>>::from_iter(self.clone().into_iter())
+        Vec::<Complex<f32>>::from_iter(self.clone())
     }
     pub fn from_array(array: Vec<Complex<f32>>) -> Self {
         let mut output = Vec::with_capacity(array.len() * 2);
