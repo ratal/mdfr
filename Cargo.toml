@@ -46,7 +46,7 @@ arrow2 = { version = "0.17", features = [
     "io_parquet",
     "io_parquet_compression",
 ] } # for efficient data storing in memory
-polars = { version = "0.31", features = [
+polars = { version = "0.32", features = [
     "dtype-full",
     "object",
     "fmt",
