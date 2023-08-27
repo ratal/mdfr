@@ -57,7 +57,7 @@ libc = "0.2" # for the C api
 criterion = "0.5" # for benchmark
 
 [build-dependencies]
-cbindgen = "0.24" # to generate C api headers
+cbindgen = "0.25" # to generate C api headers
 
 [lib]
 name = "mdfr"
