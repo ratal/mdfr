@@ -4,8 +4,8 @@ use anyhow::{anyhow, Context, Error, Result};
 use arrow2::bitmap::MutableBitmap;
 use binrw::{binrw, BinReaderExt, BinWriterExt};
 use byteorder::{LittleEndian, ReadBytesExt};
+use chrono::naive::NaiveDateTime;
 use chrono::Local;
-use chrono::{naive::NaiveDateTime, DateTime, Utc};
 use log::warn;
 use rand;
 use rayon::prelude::*;
@@ -1014,7 +1014,10 @@ impl Default for Hd4 {
             hd_at_first: 0,
             hd_ev_first: 0,
             hd_md_comment: 0,
-            hd_start_time_ns: Local::now().timestamp_nanos() as u64,
+            hd_start_time_ns: Local::now()
+                .timestamp_nanos_opt()
+                .map(|t| t as u64)
+                .unwrap_or(0),
             hd_tz_offset_min: 0,
             hd_dst_offset_min: 0,
             hd_time_flags: 0,
@@ -1032,12 +1035,10 @@ impl fmt::Display for Hd4 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let sec = self.hd_start_time_ns / 1000000000;
         let nsec = (self.hd_start_time_ns - sec * 1000000000) as u32;
-        let naive = NaiveDateTime::from_timestamp_opt(sec as i64, nsec).unwrap_or_default();
-        writeln!(
-            f,
-            "Time : {} ",
-            DateTime::<Utc>::from_utc(naive, Utc).to_rfc3339()
-        )
+        let naive = NaiveDateTime::from_timestamp_opt(sec as i64, nsec)
+            .unwrap_or_default()
+            .and_utc();
+        writeln!(f, "Time : {} ", naive.to_rfc3339())
     }
 }
 
@@ -1097,7 +1098,10 @@ impl Default for FhBlock {
             fh_links: 2,
             fh_fh_next: 0,
             fh_md_comment: 0,
-            fh_time_ns: Local::now().timestamp_nanos() as u64,
+            fh_time_ns: Local::now()
+                .timestamp_nanos_opt()
+                .map(|t| t as u64)
+                .unwrap_or(0),
             fh_tz_offset_min: 0,
             fh_dst_offset_min: 0,
             fh_time_flags: 0,

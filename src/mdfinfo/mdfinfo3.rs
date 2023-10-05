@@ -7,7 +7,6 @@ use chrono::NaiveDate;
 use encoding_rs::Encoding;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::convert::TryFrom;
 use std::default::Default;
 use std::fmt;
 use std::fs::File;
@@ -502,16 +501,12 @@ pub fn hd3_parser(
         position = 208 + 64; // position after reading ID and HD
     } else {
         // calculate hd_start_time_ns
-        hd_start_time_ns = Some(
-            u64::try_from(
-                NaiveDate::from_ymd_opt(hd_date.2, hd_date.1, hd_date.0)
-                    .unwrap_or_default()
-                    .and_hms_opt(hd_time.0, hd_time.1, hd_time.2)
-                    .unwrap_or_default()
-                    .timestamp_nanos(),
-            )
-            .context("cannot convert date into ns u64")?,
-        );
+        hd_start_time_ns = NaiveDate::from_ymd_opt(hd_date.2, hd_date.1, hd_date.0)
+            .unwrap_or_default()
+            .and_hms_opt(hd_time.0, hd_time.1, hd_time.2)
+            .unwrap_or_default()
+            .timestamp_nanos_opt()
+            .map(|t| t as u64);
         hd_time_offset = None;
         hd_time_quality = None;
         hd_time_identifier = None;
