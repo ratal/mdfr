@@ -152,7 +152,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
                     let dt = mdf.get_channel_data(&cn.unique_name);
                     if let Some(data) = dt {
                         let m = data.validity();
-                        if !data.is_empty() && arrow_bit_count(data) > 0 {
+                        if !data.is_empty() && arrow_bit_count(data.clone()) > 0 {
                             // empty strings are not written
                             let mut offset: i64 = 0;
                             let mut ld_block: Option<Ld4Block> = None;
@@ -389,7 +389,7 @@ fn create_ld(m: Option<&Bitmap>, offset: &mut i64) -> Option<Ld4Block> {
 fn create_dv(data: Box<dyn Array>, offset: &mut i64) -> Result<(DataBlock, usize, Vec<u8>)> {
     let mut dv_block = Blockheader4::default();
     dv_block.hdr_id = [35, 35, 68, 86]; // ##DV
-    let data_bytes: Vec<u8> = arrow_to_bytes(&data);
+    let data_bytes: Vec<u8> = arrow_to_bytes(data);
     let data_bytes_len = data_bytes.len();
     dv_block.hdr_len += data_bytes_len as u64;
     let byte_aligned = 8 - data_bytes_len % 8;
@@ -410,7 +410,7 @@ enum DataBlock {
 fn create_dz_dv(data: Box<dyn Array>, offset: &mut i64) -> Result<(DataBlock, usize, Vec<u8>)> {
     let mut dz_block = Dz4Block::default();
     let mut data_bytes = compress(
-        &arrow_to_bytes(&data),
+        &arrow_to_bytes(data.clone()),
         Format::Zlib,
         CompressionLevel::Default,
     )
@@ -418,9 +418,10 @@ fn create_dz_dv(data: Box<dyn Array>, offset: &mut i64) -> Result<(DataBlock, us
     dz_block.dz_data_length = data_bytes.len() as u64;
     let dv_dz_block: DataBlock;
     let byte_aligned: usize;
-    dz_block.dz_org_data_length = (data.len() * arrow_byte_count(&data) as usize) as u64;
+    let length = data.clone().len();
+    dz_block.dz_org_data_length = (length * arrow_byte_count(data.clone()) as usize) as u64;
     if dz_block.dz_org_data_length < dz_block.dz_data_length {
-        (dv_dz_block, byte_aligned, data_bytes) = create_dv(data, offset)?;
+        (dv_dz_block, byte_aligned, data_bytes) = create_dv(data.clone(), offset)?;
     } else {
         byte_aligned = (8 - dz_block.dz_data_length % 8) as usize;
         dz_block.dz_data_length = data_bytes.len() as u64;
@@ -478,13 +479,13 @@ fn create_blocks(
     mut pointer: i64,
     cg: &Cg4,
     cn: &Cn4,
-    data: &Box<dyn Array>,
+    data: Box<dyn Array>,
     cg_cg_master: &i64,
     master_flag: bool,
 ) -> Result<i64> {
-    let bit_count = arrow_bit_count(data);
+    let bit_count = arrow_bit_count(data.clone());
     if !data.is_empty() && bit_count > 0 {
-        let byte_count = arrow_byte_count(data);
+        let byte_count = arrow_byte_count(data.clone());
         // no empty strings
         let mut dg_block = Dg4Block::default();
         let mut cg_block_header = default_short_header(BlockType::CG);
@@ -527,7 +528,7 @@ fn create_blocks(
 
         let machine_endian: bool = cfg!(target_endian = "big");
 
-        cn_block.cn_data_type = arrow_to_mdf_data_type(data, machine_endian);
+        cn_block.cn_data_type = arrow_to_mdf_data_type(data.clone(), machine_endian);
 
         cn_block.cn_bit_count = bit_count;
 
@@ -573,7 +574,7 @@ fn create_blocks(
         }
 
         // Channel array
-        let data_ndim = ndim(data) - 1;
+        let data_ndim = ndim(data.clone()) - 1;
         let mut composition: Option<Composition> = None;
         if data_ndim > 0 {
             let data_dim_size = cn

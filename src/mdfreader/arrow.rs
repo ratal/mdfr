@@ -508,14 +508,14 @@ pub fn array_to_rust(arrow_array: &PyAny) -> PyResult<Box<dyn Array>> {
 pub(crate) fn to_py_array(
     py: Python,
     pyarrow: &PyModule,
-    array: &Box<dyn Array>,
+    array: Box<dyn Array>,
 ) -> PyResult<PyObject> {
     let schema = Box::new(ffi::export_field_to_c(&Field::new(
         "",
         array.data_type().clone(),
         true,
     )));
-    let array = Box::new(ffi::export_array_to_c(array.clone()));
+    let array = Box::new(ffi::export_array_to_c(array));
 
     let schema_ptr: *const ffi::ArrowSchema = &*schema;
     let array_ptr: *const ffi::ArrowArray = &*array;
@@ -529,11 +529,12 @@ pub(crate) fn to_py_array(
 }
 
 /// returns the number of bits corresponding to the array's datatype
-pub fn arrow_bit_count(array: &Box<dyn Array>) -> u32 {
-    bit_count(array, array.data_type())
+pub fn arrow_bit_count(array: Box<dyn Array>) -> u32 {
+    let data_type = array.data_type();
+    bit_count(array.clone(), data_type)
 }
 
-fn bit_count(array: &Box<dyn Array>, data_type: &DataType) -> u32 {
+fn bit_count(array: Box<dyn Array>, data_type: &DataType) -> u32 {
     match data_type {
         DataType::Null => 0,
         DataType::Boolean => 8,
@@ -616,10 +617,11 @@ fn bit_count(array: &Box<dyn Array>, data_type: &DataType) -> u32 {
 }
 
 /// returns the number of bytes corresponding to the array's datatype
-pub fn arrow_byte_count(array: &Box<dyn Array>) -> u32 {
-    byte_count(array, array.data_type())
+pub fn arrow_byte_count(array: Box<dyn Array>) -> u32 {
+    let data_type = array.data_type();
+    byte_count(array.clone(), data_type)
 }
-fn byte_count(array: &Box<dyn Array>, data_type: &DataType) -> u32 {
+fn byte_count(array: Box<dyn Array>, data_type: &DataType) -> u32 {
     match data_type {
         DataType::Null => 0,
         DataType::Boolean => 1,
@@ -698,7 +700,7 @@ fn byte_count(array: &Box<dyn Array>, data_type: &DataType) -> u32 {
 }
 
 /// returns mdf4 data type from arrow array
-pub fn arrow_to_mdf_data_type(array: &Box<dyn Array>, endian: bool) -> u8 {
+pub fn arrow_to_mdf_data_type(array: Box<dyn Array>, endian: bool) -> u8 {
     mdf_data_type(array.data_type(), endian)
 }
 
@@ -781,7 +783,7 @@ fn mdf_data_type(data_type: &DataType, endian: bool) -> u8 {
 }
 
 /// returns the number of dimensions of the channel
-pub fn ndim(array: &Box<dyn Array>) -> usize {
+pub fn ndim(array: Box<dyn Array>) -> usize {
     match array.data_type() {
         DataType::Extension(ext_str, dtype, _) => match ext_str.as_str() {
             "Tensor" => match &**dtype {
@@ -928,7 +930,7 @@ fn order_convert(tensor_order: &TensorOrder) -> Order {
 }
 
 /// returns the number of dimensions of the channel
-pub fn shape(array: &Box<dyn Array>) -> (Vec<usize>, Order) {
+pub fn shape(array: Box<dyn Array>) -> (Vec<usize>, Order) {
     match array.data_type() {
         DataType::Extension(ext_str, dtype, _) => match ext_str.as_str() {
             "Tensor" => match &**dtype {
@@ -1068,11 +1070,12 @@ pub fn shape(array: &Box<dyn Array>) -> (Vec<usize>, Order) {
 }
 
 /// returns the a vec<u8>, bytes vector of arrow array
-pub fn arrow_to_bytes(array: &Box<dyn Array>) -> Vec<u8> {
-    to_bytes(array, array.data_type())
+pub fn arrow_to_bytes(array: Box<dyn Array>) -> Vec<u8> {
+    let data_type = array.data_type();
+    to_bytes(array.clone(), data_type)
 }
 
-fn to_bytes(array: &Box<dyn Array>, data_type: &DataType) -> Vec<u8> {
+fn to_bytes(array: Box<dyn Array>, data_type: &DataType) -> Vec<u8> {
     match data_type {
         DataType::Null => Vec::new(),
         DataType::Boolean => {

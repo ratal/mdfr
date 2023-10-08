@@ -46,6 +46,7 @@ impl FallibleStreamingIterator for Bla {
 
 /// writes mdf into parquet file
 pub fn export_to_parquet(mdf: &Mdf, file_name: &str, compression: Option<&str>) -> Result<()> {
+    //let _ = data_type;
     // Create file
     let path = Path::new(file_name);
 
@@ -56,12 +57,8 @@ pub fn export_to_parquet(mdf: &Mdf, file_name: &str, compression: Option<&str>) 
         data_pagesize_limit: None,
     };
 
-    let encoding_map = |data_type: &DataType| {
-        match data_type.to_physical_type() {
-            // remaining is plain
-            _ => Encoding::Plain,
-        }
-    };
+    // No other encoding yet implemented, to be reviewed later if needed.
+    let encoding_map = |_data_type: &DataType| Encoding::Plain;
 
     // declare encodings
     let encodings = (mdf.arrow_schema.fields)

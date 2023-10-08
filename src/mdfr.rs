@@ -49,8 +49,8 @@ impl Mdfr {
             let mut py_array: Py<PyAny>;
             let dt = mdf.get_channel_data(&channel_name);
             if let Some(data) = dt {
-                py_array = arrow_to_numpy(py, data);
-                if let Some(m) = data.validity() {
+                py_array = arrow_to_numpy(py, data.clone());
+                if let Some(m) = data.clone().validity() {
                     let mask: Py<PyAny> = m.iter().collect::<Vec<bool>>().into_py(py);
                     let locals = [("numpy", py.import("numpy").expect("could not import numpy"))]
                         .into_py_dict(py);

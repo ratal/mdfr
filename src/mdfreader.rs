@@ -131,9 +131,9 @@ impl Mdf {
         self.channel_indexes.get(channel_name)
     }
     /// returns channel's arrow2 Array.
-    pub fn get_channel_data(&self, channel_name: &str) -> Option<&Box<dyn Array>> {
+    pub fn get_channel_data(&self, channel_name: &str) -> Option<Box<dyn Array>> {
         if let Some(index) = self.get_channel_index(channel_name) {
-            Some(&self.arrow_data[index.chunk_index][index.array_index])
+            Some(self.arrow_data[index.chunk_index][index.array_index].clone())
         } else {
             None
         }
@@ -176,11 +176,11 @@ impl Mdf {
         let machine_endian: bool = cfg!(target_endian = "big");
         let data_signature = DataSignature {
             len: data.len(),
-            data_type: arrow_to_mdf_data_type(&data, machine_endian),
-            bit_count: arrow_bit_count(&data),
-            byte_count: arrow_byte_count(&data),
-            ndim: ndim(&data),
-            shape: shape(&data),
+            data_type: arrow_to_mdf_data_type(data.clone(), machine_endian),
+            bit_count: arrow_bit_count(data.clone()),
+            byte_count: arrow_byte_count(data.clone()),
+            ndim: ndim(data.clone()),
+            shape: shape(data.clone()),
         };
         let master_signature = MasterSignature {
             master_channel: master_channel.clone(),
@@ -195,8 +195,12 @@ impl Mdf {
             description,
         );
         // add field
-        let is_nullable: bool = data.validity().is_some();
-        let new_field = Field::new(channel_name.clone(), data.data_type().clone(), is_nullable);
+        let is_nullable: bool = data.clone().validity().is_some();
+        let new_field = Field::new(
+            channel_name.clone(),
+            data.clone().data_type().clone(),
+            is_nullable,
+        );
         let field_index = self.arrow_schema.fields.len();
         self.arrow_schema.fields.push(new_field);
         // add data
