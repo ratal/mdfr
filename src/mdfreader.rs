@@ -16,11 +16,12 @@ use anyhow::{Context, Result};
 use arrow2::array::{get_display, Array};
 use arrow2::datatypes::{Field, Schema};
 use log::info;
+use pyo3::prelude::*;
 
 use crate::export::parquet::export_to_parquet;
-use crate::mdfinfo::mdfinfo4::{DataSignature, MasterSignature};
 use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::arrow::mdf_data_to_arrow;
+use crate::mdfreader::channel_data::Order;
 use crate::mdfreader::mdfreader3::mdfreader3;
 use crate::mdfreader::mdfreader4::mdfreader4;
 use crate::mdfwriter::mdfwriter4::mdfwriter4;
@@ -39,6 +40,30 @@ pub struct Mdf {
     pub arrow_schema: Schema,
     /// tuple of chunk index, array index and field index
     pub channel_indexes: HashMap<String, ChannelIndexes>,
+}
+
+/// data generic description
+#[repr(C)]
+#[derive(Clone)]
+pub struct DataSignature {
+    pub(crate) len: usize,
+    pub(crate) data_type: u8,
+    pub(crate) bit_count: u32,
+    pub(crate) byte_count: u32,
+    pub(crate) ndim: usize,
+    pub(crate) shape: (Vec<usize>, Order),
+}
+
+/// master channel generic description
+#[repr(C)]
+#[derive(Clone, FromPyObject)]
+pub struct MasterSignature {
+    #[pyo3(attribute("name"))]
+    pub(crate) master_channel: Option<String>,
+    #[pyo3(attribute("type"))]
+    pub(crate) master_type: Option<u8>,
+    #[pyo3(attribute("flag"))]
+    pub(crate) master_flag: bool,
 }
 
 /// Struct channel indexes for chunk, array and field

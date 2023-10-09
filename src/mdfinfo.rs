@@ -30,8 +30,8 @@ use crate::mdfreader::channel_data::ChannelData;
 use crate::mdfwriter::mdfwriter3::convert3to4;
 
 use self::mdfinfo3::build_channel_db3;
-use self::mdfinfo4::{DataSignature, MasterSignature};
 use self::sym_buf_reader::SymBufReader;
+use crate::mdfreader::{DataSignature, MasterSignature};
 
 /// joins mdf versions 3.x and 4.x
 #[derive(Debug)]

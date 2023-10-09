@@ -6,6 +6,7 @@ use crate::export::numpy::arrow_to_numpy;
 use crate::export::polars::rust_arrow_to_py_series;
 use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::arrow::array_to_rust;
+use crate::mdfreader::MasterSignature;
 use crate::mdfreader::Mdf;
 use arrow2::array::get_display;
 use pyo3::exceptions::PyUnicodeDecodeError;
@@ -215,13 +216,12 @@ df=polars.DataFrame(series)
         Ok(Mdfr(mdf.write(file_name, compression)?))
     }
     /// Adds a new channel in memory (no file modification)
+    /// Master must be a dict with keys name, type and flag
     pub fn add_channel(
         &mut self,
         channel_name: String,
         data: Py<PyAny>,
-        master_flag: bool,
-        master_channel: Option<String>,
-        master_type: Option<u8>,
+        master: MasterSignature,
         unit: Option<String>,
         description: Option<String>,
     ) {
@@ -232,9 +232,9 @@ df=polars.DataFrame(series)
             mdf.add_channel(
                 channel_name,
                 array,
-                master_channel,
-                master_type,
-                master_flag,
+                master.master_channel,
+                master.master_type,
+                master.master_flag,
                 unit,
                 description,
             );

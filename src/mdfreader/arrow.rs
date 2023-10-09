@@ -375,18 +375,16 @@ pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
                                     metadata.insert("description".to_string(), desc);
                                 };
                                 if let Some((
-                                    master_channel_name,
+                                    Some(master_channel_name),
                                     _dg_pos,
                                     (_cg_pos, _rec_idd),
                                     (_cn_pos, _rec_pos),
                                 )) = mdfinfo4.channel_names_set.get(&cn.unique_name)
                                 {
-                                    if let Some(master) = master_channel_name {
-                                        metadata.insert(
-                                            "master_channel".to_string(),
-                                            master.to_string(),
-                                        );
-                                    }
+                                    metadata.insert(
+                                        "master_channel".to_string(),
+                                        master_channel_name.to_string(),
+                                    );
                                 }
                                 if cn.block.cn_type == 4 {
                                     metadata.insert(
@@ -443,18 +441,16 @@ pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
                             };
                             metadata.insert("description".to_string(), cn.description.clone());
                             if let Some((
-                                master_channel_name,
+                                Some(master_channel_name),
                                 _dg_pos,
                                 (_cg_pos, _rec_idd),
                                 _cn_pos,
                             )) = mdfinfo3.channel_names_set.get(&cn.unique_name)
                             {
-                                if let Some(master_channel_name) = master_channel_name {
-                                    metadata.insert(
-                                        "master_channel".to_string(),
-                                        master_channel_name.to_string(),
-                                    );
-                                }
+                                metadata.insert(
+                                    "master_channel".to_string(),
+                                    master_channel_name.to_string(),
+                                );
                             }
                             let field = field.with_metadata(metadata);
                             mdf.arrow_schema.fields.push(field);

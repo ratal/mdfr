@@ -1,5 +1,6 @@
 //! Parsing of file metadata into MdfInfo4 struct
 use crate::mdfreader::channel_data::Order;
+use crate::mdfreader::{DataSignature, MasterSignature};
 use anyhow::{anyhow, Context, Error, Result};
 use arrow2::bitmap::MutableBitmap;
 use binrw::{binrw, BinReaderExt, BinWriterExt};
@@ -485,25 +486,6 @@ impl MdfInfo4 {
         }
     }
     // TODO Extract attachments
-}
-
-/// data generic description
-#[repr(C)]
-pub struct DataSignature {
-    pub(crate) len: usize,
-    pub(crate) data_type: u8,
-    pub(crate) bit_count: u32,
-    pub(crate) byte_count: u32,
-    pub(crate) ndim: usize,
-    pub(crate) shape: (Vec<usize>, Order),
-}
-
-/// master channel generic description
-#[repr(C)]
-pub struct MasterSignature {
-    pub(crate) master_channel: Option<String>,
-    pub(crate) master_type: Option<u8>,
-    pub(crate) master_flag: bool,
 }
 
 /// creates random negative position
