@@ -962,6 +962,7 @@ pub struct Cn3Block2 {
 }
 
 /// CN3 Block parsing
+#[allow(clippy::too_many_arguments)]
 fn parse_cn3_block(
     rdr: &mut SymBufReader<&File>,
     target: u32,
