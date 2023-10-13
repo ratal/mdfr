@@ -116,7 +116,7 @@ df=polars.DataFrame(series)
                     Some(locals),
                 )
                 .expect("dataframe creation failed");
-                if let Some(df) = locals.get_item("df") {
+                if let Ok(Some(df)) = locals.get_item("df") {
                     py_dataframe = df.into();
                 }
             }
