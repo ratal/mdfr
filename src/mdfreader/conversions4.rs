@@ -686,7 +686,7 @@ fn alegbraic_conversion_calculation<T: ToPrimitive>(
     array: &Vec<T>,
     cycle_count: &usize,
 ) -> Vec<f64> {
-    let mut new_array = vec![0f64; *cycle_count as usize];
+    let mut new_array = vec![0f64; *cycle_count];
     new_array.iter_mut().zip(array).for_each(|(new_a, a)| {
         let mut map = BTreeMap::new();
         let value = a.to_f64().unwrap_or_default();
@@ -953,7 +953,7 @@ fn value_to_value_with_interpolation_calculation<T: ToPrimitive>(
     val: Vec<(&f64, &f64)>,
     cycle_count: &usize,
 ) -> Vec<f64> {
-    let mut new_array = vec![0f64; *cycle_count as usize];
+    let mut new_array = vec![0f64; *cycle_count];
     new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
         let a64 = a.to_f64().unwrap_or_default();
         *new_array = match val
@@ -1453,7 +1453,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
     match &mut cn.data {
         ChannelData::Int8(a) => {
             cn.data = ChannelData::Float64(value_range_to_value_table_calculation(
-                &a,
+                a,
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1461,7 +1461,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
         }
         ChannelData::UInt8(a) => {
             cn.data = ChannelData::Float64(value_range_to_value_table_calculation(
-                &a,
+                a,
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1469,7 +1469,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
         }
         ChannelData::Int16(a) => {
             cn.data = ChannelData::Float64(value_range_to_value_table_calculation(
-                &a,
+                a,
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1477,7 +1477,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
         }
         ChannelData::UInt16(a) => {
             cn.data = ChannelData::Float64(value_range_to_value_table_calculation(
-                &a,
+                a,
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1485,7 +1485,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
         }
         ChannelData::Float16(a) => {
             cn.data = ChannelData::Float64(value_range_to_value_table_calculation(
-                &a,
+                a,
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1493,7 +1493,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
         }
         ChannelData::Int24(a) => {
             cn.data = ChannelData::Float64(value_range_to_value_table_calculation(
-                &a,
+                a,
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1501,7 +1501,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
         }
         ChannelData::UInt24(a) => {
             cn.data = ChannelData::Float64(value_range_to_value_table_calculation(
-                &a,
+                a,
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1509,7 +1509,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
         }
         ChannelData::Int32(a) => {
             cn.data = ChannelData::Float64(value_range_to_value_table_calculation(
-                &a,
+                a,
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1517,7 +1517,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
         }
         ChannelData::UInt32(a) => {
             cn.data = ChannelData::Float64(value_range_to_value_table_calculation(
-                &a,
+                a,
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1525,7 +1525,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
         }
         ChannelData::Float32(a) => {
             cn.data = ChannelData::Float64(value_range_to_value_table_calculation(
-                &a,
+                a,
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1533,7 +1533,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
         }
         ChannelData::Int48(a) => {
             cn.data = ChannelData::Float64(value_range_to_value_table_calculation(
-                &a,
+                a,
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1541,7 +1541,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
         }
         ChannelData::UInt48(a) => {
             cn.data = ChannelData::Float64(value_range_to_value_table_calculation(
-                &a,
+                a,
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1549,7 +1549,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
         }
         ChannelData::Int64(a) => {
             cn.data = ChannelData::Float64(value_range_to_value_table_calculation(
-                &a,
+                a,
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1557,7 +1557,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
         }
         ChannelData::UInt64(a) => {
             cn.data = ChannelData::Float64(value_range_to_value_table_calculation(
-                &a,
+                a,
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1565,7 +1565,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
         }
         ChannelData::Float64(a) => {
             cn.data = ChannelData::Float64(value_range_to_value_table_calculation(
-                &a,
+                a,
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1707,7 +1707,7 @@ fn value_to_text_calculation_int<T: Sized + Display + ToPrimitive>(
             table_int.insert(val_i64, TextOrScaleConversion::Nil);
         }
     }
-    let mut new_array = vec![String::new(); *cycle_count as usize];
+    let mut new_array = vec![String::new(); *cycle_count];
     new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
         let ref_val = a.to_i64().unwrap_or_default();
         if let Some(tosc) = table_int.get(&ref_val) {
@@ -1753,7 +1753,7 @@ fn value_to_text_calculation_f32(
     // table for floating point comparison
     let mut table_float: HashMap<i64, TextOrScaleConversion> = HashMap::with_capacity(cc_val.len());
     for (ind, val) in cc_val.iter().enumerate() {
-        let ref_val = (*val * canonization_value.clone()).round() as i64; // Canonization
+        let ref_val = (*val * canonization_value).round() as i64; // Canonization
         if let Ok(Some(txt)) = sharable.get_tx(cc_ref[ind]) {
             table_float.insert(ref_val, TextOrScaleConversion::Txt(txt));
         } else if let Some(cc) = sharable.cc.get(&cc_ref[ind]) {
@@ -1763,7 +1763,7 @@ fn value_to_text_calculation_f32(
             table_float.insert(ref_val, TextOrScaleConversion::Nil);
         }
     }
-    let mut new_array = vec![String::new(); *cycle_count as usize];
+    let mut new_array = vec![String::new(); *cycle_count];
     new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
         let ref_val = (*a * canonization_value as f32)
             .round()
@@ -1818,9 +1818,9 @@ fn value_to_text(
     match &mut cn.data {
         ChannelData::Int8(a) => {
             cn.data = ChannelData::StringUTF8(value_to_text_calculation_int(
-                &a,
-                &cc_val,
-                &cc_ref,
+                a,
+                cc_val,
+                cc_ref,
                 &def,
                 &(*cycle_count as usize),
                 sharable,
@@ -1828,9 +1828,9 @@ fn value_to_text(
         }
         ChannelData::UInt8(a) => {
             cn.data = ChannelData::StringUTF8(value_to_text_calculation_int(
-                &a,
-                &cc_val,
-                &cc_ref,
+                a,
+                cc_val,
+                cc_ref,
                 &def,
                 &(*cycle_count as usize),
                 sharable,
@@ -1838,9 +1838,9 @@ fn value_to_text(
         }
         ChannelData::Int16(a) => {
             cn.data = ChannelData::StringUTF8(value_to_text_calculation_int(
-                &a,
-                &cc_val,
-                &cc_ref,
+                a,
+                cc_val,
+                cc_ref,
                 &def,
                 &(*cycle_count as usize),
                 sharable,
@@ -1848,9 +1848,9 @@ fn value_to_text(
         }
         ChannelData::UInt16(a) => {
             cn.data = ChannelData::StringUTF8(value_to_text_calculation_int(
-                &a,
-                &cc_val,
-                &cc_ref,
+                a,
+                cc_val,
+                cc_ref,
                 &def,
                 &(*cycle_count as usize),
                 sharable,
@@ -1858,7 +1858,7 @@ fn value_to_text(
         }
         ChannelData::Float16(a) => {
             cn.data = ChannelData::StringUTF8(value_to_text_calculation_f32(
-                &a,
+                a,
                 cc_val,
                 cc_ref,
                 128.0f64,
@@ -1869,9 +1869,9 @@ fn value_to_text(
         }
         ChannelData::Int24(a) => {
             cn.data = ChannelData::StringUTF8(value_to_text_calculation_int(
-                &a,
-                &cc_val,
-                &cc_ref,
+                a,
+                cc_val,
+                cc_ref,
                 &def,
                 &(*cycle_count as usize),
                 sharable,
@@ -1879,9 +1879,9 @@ fn value_to_text(
         }
         ChannelData::UInt24(a) => {
             cn.data = ChannelData::StringUTF8(value_to_text_calculation_int(
-                &a,
-                &cc_val,
-                &cc_ref,
+                a,
+                cc_val,
+                cc_ref,
                 &def,
                 &(*cycle_count as usize),
                 sharable,
@@ -1889,9 +1889,9 @@ fn value_to_text(
         }
         ChannelData::Int32(a) => {
             cn.data = ChannelData::StringUTF8(value_to_text_calculation_int(
-                &a,
-                &cc_val,
-                &cc_ref,
+                a,
+                cc_val,
+                cc_ref,
                 &def,
                 &(*cycle_count as usize),
                 sharable,
@@ -1899,9 +1899,9 @@ fn value_to_text(
         }
         ChannelData::UInt32(a) => {
             cn.data = ChannelData::StringUTF8(value_to_text_calculation_int(
-                &a,
-                &cc_val,
-                &cc_ref,
+                a,
+                cc_val,
+                cc_ref,
                 &def,
                 &(*cycle_count as usize),
                 sharable,
@@ -1909,7 +1909,7 @@ fn value_to_text(
         }
         ChannelData::Float32(a) => {
             cn.data = ChannelData::StringUTF8(value_to_text_calculation_f32(
-                &a,
+                a,
                 cc_val,
                 cc_ref,
                 1048576.0f64,
@@ -1920,9 +1920,9 @@ fn value_to_text(
         }
         ChannelData::Int48(a) => {
             cn.data = ChannelData::StringUTF8(value_to_text_calculation_int(
-                &a,
-                &cc_val,
-                &cc_ref,
+                a,
+                cc_val,
+                cc_ref,
                 &def,
                 &(*cycle_count as usize),
                 sharable,
@@ -1930,9 +1930,9 @@ fn value_to_text(
         }
         ChannelData::UInt48(a) => {
             cn.data = ChannelData::StringUTF8(value_to_text_calculation_int(
-                &a,
-                &cc_val,
-                &cc_ref,
+                a,
+                cc_val,
+                cc_ref,
                 &def,
                 &(*cycle_count as usize),
                 sharable,
@@ -1940,9 +1940,9 @@ fn value_to_text(
         }
         ChannelData::Int64(a) => {
             cn.data = ChannelData::StringUTF8(value_to_text_calculation_int(
-                &a,
-                &cc_val,
-                &cc_ref,
+                a,
+                cc_val,
+                cc_ref,
                 &def,
                 &(*cycle_count as usize),
                 sharable,
@@ -1950,9 +1950,9 @@ fn value_to_text(
         }
         ChannelData::UInt64(a) => {
             cn.data = ChannelData::StringUTF8(value_to_text_calculation_int(
-                &a,
-                &cc_val,
-                &cc_ref,
+                a,
+                cc_val,
+                cc_ref,
                 &def,
                 &(*cycle_count as usize),
                 sharable,
