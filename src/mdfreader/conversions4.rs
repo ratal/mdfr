@@ -1,18 +1,20 @@
 //! this modules implements functions to convert arrays into physical arrays using CCBlock
 use itertools::Itertools;
+use log::warn;
+use num::{Integer, ToPrimitive};
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap};
+use std::fmt::Display;
 
 use crate::mdfinfo::mdfinfo4::{Cc4Block, CcVal, Cn4, Dg4, SharableBlocks};
 use crate::mdfreader::channel_data::ChannelData;
-use anyhow::Result;
-use fasteval::Compiler;
-use fasteval::{Evaler, Instruction, Slab};
+use fasteval::{Compiler, Evaler, Instruction, Slab};
 use rayon::prelude::*;
 
 use crate::mdfreader::channel_data::ArrowComplex;
 
 /// convert all channel arrays into physical values as required by CCBlock content
-pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) -> Result<()> {
+pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) {
     for channel_group in dg.cg.values_mut() {
         let cycle_count = channel_group.block.cg_cycle_count;
         channel_group
@@ -34,7 +36,7 @@ pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) -> Result<(
                         3 => {
                             if !&conv.cc_ref.is_empty() {
                                 if let Ok(Some(conv)) = sharable.get_tx(conv.cc_ref[0]) {
-                                    algebraic_conversion(cn, &conv, &cycle_count);
+                                    algebraic_conversion(cn, &conv, &cycle_count)
                                 }
                             }
                         }
@@ -91,12 +93,11 @@ pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) -> Result<(
                                 sharable,
                             ),
                         },
-                        _ => {}
+                        _ => (),
                     }
                 }
             })
     }
-    Ok(())
 }
 
 /// Apply linear conversion to get physical data
@@ -242,11 +243,6 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             ChannelData::Complex64(a) => {
                 a.0.iter_mut().for_each(|a| *a = *a * p2 + p1);
             }
-            ChannelData::StringSBC(_) => {}
-            ChannelData::StringUTF8(_) => {}
-            ChannelData::StringUTF16(_) => {}
-            ChannelData::VariableSizeByteArray(_) => {}
-            ChannelData::FixedSizeByteArray(_) => {}
             ChannelData::ArrayDUInt8(a) => {
                 let mut new_array = vec![0f64; a.0.len()];
                 new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
@@ -382,6 +378,10 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
                     });
                 cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
             }
+            _ => warn!(
+                "linear conversion of channel {} not possible, channel does not contain primitives",
+                cn.unique_name
+            ),
         }
     }
 }
@@ -533,11 +533,6 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
         ChannelData::Complex16(_) => todo!(),
         ChannelData::Complex32(_) => todo!(),
         ChannelData::Complex64(_) => todo!(),
-        ChannelData::StringSBC(_) => {}
-        ChannelData::StringUTF8(_) => {}
-        ChannelData::StringUTF16(_) => {}
-        ChannelData::VariableSizeByteArray(_) => {}
-        ChannelData::FixedSizeByteArray(_) => {}
         ChannelData::ArrayDUInt8(a) => {
             let mut new_array = vec![0f64; a.0.len()];
             new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
@@ -676,332 +671,305 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
         ChannelData::ArrayDComplex16(_) => todo!(),
         ChannelData::ArrayDComplex32(_) => todo!(),
         ChannelData::ArrayDComplex64(_) => todo!(),
+        _ => warn!(
+            "rational conversion of channel {} not possible, channel does not contain primitives",
+            cn.unique_name
+        ),
     }
+}
+
+/// Generic function calculating algebraic expression
+#[inline]
+fn alegbraic_conversion_calculation<T: ToPrimitive>(
+    compiled: &Instruction,
+    slab: &Slab,
+    array: &Vec<T>,
+    cycle_count: &usize,
+) -> Vec<f64> {
+    let mut new_array = vec![0f64; *cycle_count as usize];
+    new_array.iter_mut().zip(array).for_each(|(new_a, a)| {
+        let mut map = BTreeMap::new();
+        let value = a.to_f64().unwrap_or_default();
+        map.insert("X".to_string(), value);
+        let val = compiled.eval(slab, &mut map);
+        *new_a = match val {
+            Ok(val) => val,
+            Err(err) => {
+                warn!(
+                    "could not compute the value {:?} with expression {:?}, error {}",
+                    value, compiled, err
+                );
+                value
+            }
+        }
+    });
+    new_array
 }
 
 /// Apply algebraic conversion to get physical data
 fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
     let parser = fasteval::Parser::new();
     let mut slab = fasteval::Slab::new();
-    let mut map = BTreeMap::new();
-    let compiled = parser
-        .parse(formulae, &mut slab.ps)
-        .expect("error parsing formulae for conversion")
-        .from(&slab.ps)
-        .compile(&slab.ps, &mut slab.cs);
-    match &mut cn.data {
-        ChannelData::UInt8(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
+    let compiled = parser.parse(formulae, &mut slab.ps);
+    match compiled {
+        Ok(c) => {
+            let compiled = c.from(&slab.ps).compile(&slab.ps, &mut slab.cs);
+            match &mut cn.data {
+                ChannelData::UInt8(a) => {
+                    cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
+                        &compiled,
+                        &slab,
+                        a,
+                        &(*cycle_count as usize),
+                    ));
+                }
+                ChannelData::Int8(a) => {
+                    cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
+                        &compiled,
+                        &slab,
+                        a,
+                        &(*cycle_count as usize),
+                    ));
+                }
+                ChannelData::Int16(a) => {
+                    cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
+                        &compiled,
+                        &slab,
+                        a,
+                        &(*cycle_count as usize),
+                    ));
+                }
+                ChannelData::UInt16(a) => {
+                    cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
+                        &compiled,
+                        &slab,
+                        a,
+                        &(*cycle_count as usize),
+                    ));
+                }
+                ChannelData::Float16(a) => {
+                    cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
+                        &compiled,
+                        &slab,
+                        a,
+                        &(*cycle_count as usize),
+                    ));
+                }
+                ChannelData::Int24(a) => {
+                    cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
+                        &compiled,
+                        &slab,
+                        a,
+                        &(*cycle_count as usize),
+                    ));
+                }
+                ChannelData::UInt24(a) => {
+                    cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
+                        &compiled,
+                        &slab,
+                        a,
+                        &(*cycle_count as usize),
+                    ));
+                }
+                ChannelData::Int32(a) => {
+                    cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
+                        &compiled,
+                        &slab,
+                        a,
+                        &(*cycle_count as usize),
+                    ));
+                }
+                ChannelData::UInt32(a) => {
+                    cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
+                        &compiled,
+                        &slab,
+                        a,
+                        &(*cycle_count as usize),
+                    ));
+                }
+                ChannelData::Float32(a) => {
+                    cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
+                        &compiled,
+                        &slab,
+                        a,
+                        &(*cycle_count as usize),
+                    ));
+                }
+                ChannelData::Int48(a) => {
+                    cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
+                        &compiled,
+                        &slab,
+                        a,
+                        &(*cycle_count as usize),
+                    ));
+                }
+                ChannelData::UInt48(a) => {
+                    cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
+                        &compiled,
+                        &slab,
+                        a,
+                        &(*cycle_count as usize),
+                    ));
+                }
+                ChannelData::Int64(a) => {
+                    cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
+                        &compiled,
+                        &slab,
+                        a,
+                        &(*cycle_count as usize),
+                    ));
+                }
+                ChannelData::UInt64(a) => {
+                    cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
+                        &compiled,
+                        &slab,
+                        a,
+                        &(*cycle_count as usize),
+                    ));
+                }
+                ChannelData::Float64(a) => {
+                    cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
+                        &compiled,
+                        &slab,
+                        a,
+                        &(*cycle_count as usize),
+                    ));
+                }
+                ChannelData::Complex16(_) => todo!(),
+                ChannelData::Complex32(_) => todo!(),
+                ChannelData::Complex64(_) => todo!(),
+                ChannelData::ArrayDInt8(a) => {
+                    cn.data = ChannelData::ArrayDFloat64((
+                        alegbraic_conversion_calculation(&compiled, &slab, &a.0, &a.0.len()),
+                        a.1.clone(),
+                    ));
+                }
+                ChannelData::ArrayDUInt8(a) => {
+                    cn.data = ChannelData::ArrayDFloat64((
+                        alegbraic_conversion_calculation(&compiled, &slab, &a.0, &a.0.len()),
+                        a.1.clone(),
+                    ));
+                }
+                ChannelData::ArrayDInt16(a) => {
+                    cn.data = ChannelData::ArrayDFloat64((
+                        alegbraic_conversion_calculation(&compiled, &slab, &a.0, &a.0.len()),
+                        a.1.clone(),
+                    ));
+                }
+                ChannelData::ArrayDUInt16(a) => {
+                    cn.data = ChannelData::ArrayDFloat64((
+                        alegbraic_conversion_calculation(&compiled, &slab, &a.0, &a.0.len()),
+                        a.1.clone(),
+                    ));
+                }
+                ChannelData::ArrayDFloat16(a) => {
+                    cn.data = ChannelData::ArrayDFloat64((
+                        alegbraic_conversion_calculation(&compiled, &slab, &a.0, &a.0.len()),
+                        a.1.clone(),
+                    ));
+                }
+                ChannelData::ArrayDInt24(a) => {
+                    cn.data = ChannelData::ArrayDFloat64((
+                        alegbraic_conversion_calculation(&compiled, &slab, &a.0, &a.0.len()),
+                        a.1.clone(),
+                    ));
+                }
+                ChannelData::ArrayDUInt24(a) => {
+                    cn.data = ChannelData::ArrayDFloat64((
+                        alegbraic_conversion_calculation(&compiled, &slab, &a.0, &a.0.len()),
+                        a.1.clone(),
+                    ));
+                }
+                ChannelData::ArrayDInt32(a) => {
+                    cn.data = ChannelData::ArrayDFloat64((
+                        alegbraic_conversion_calculation(&compiled, &slab, &a.0, &a.0.len()),
+                        a.1.clone(),
+                    ));
+                }
+                ChannelData::ArrayDUInt32(a) => {
+                    cn.data = ChannelData::ArrayDFloat64((
+                        alegbraic_conversion_calculation(&compiled, &slab, &a.0, &a.0.len()),
+                        a.1.clone(),
+                    ));
+                }
+                ChannelData::ArrayDFloat32(a) => {
+                    cn.data = ChannelData::ArrayDFloat64((
+                        alegbraic_conversion_calculation(&compiled, &slab, &a.0, &a.0.len()),
+                        a.1.clone(),
+                    ));
+                }
+                ChannelData::ArrayDInt48(a) => {
+                    cn.data = ChannelData::ArrayDFloat64((
+                        alegbraic_conversion_calculation(&compiled, &slab, &a.0, &a.0.len()),
+                        a.1.clone(),
+                    ));
+                }
+                ChannelData::ArrayDUInt48(a) => {
+                    cn.data = ChannelData::ArrayDFloat64((
+                        alegbraic_conversion_calculation(&compiled, &slab, &a.0, &a.0.len()),
+                        a.1.clone(),
+                    ));
+                }
+                ChannelData::ArrayDInt64(a) => {
+                    cn.data = ChannelData::ArrayDFloat64((
+                        alegbraic_conversion_calculation(&compiled, &slab, &a.0, &a.0.len()),
+                        a.1.clone(),
+                    ));
+                }
+                ChannelData::ArrayDUInt64(a) => {
+                    cn.data = ChannelData::ArrayDFloat64((
+                        alegbraic_conversion_calculation(&compiled, &slab, &a.0, &a.0.len()),
+                        a.1.clone(),
+                    ));
+                }
+                ChannelData::ArrayDFloat64(a) => {
+                    cn.data = ChannelData::ArrayDFloat64((
+                        alegbraic_conversion_calculation(&compiled, &slab, &a.0, &a.0.len()),
+                        a.1.clone(),
+                    ));
+                }
+                ChannelData::ArrayDComplex16(_) => todo!(),
+                ChannelData::ArrayDComplex32(_) => todo!(),
+                ChannelData::ArrayDComplex64(_) => todo!(),
+                _=> warn!(
+                    "algebraic conversion of channel {} not possible, channel does not contain primitives",
+                    cn.unique_name
+                )
+            }
         }
-        ChannelData::Int8(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
+        Err(err) => {
+            warn!(
+                "could not compile algebraic conversion expression {}, {}, channel {} not converted",
+                formulae, err, cn.unique_name
+            )
         }
-        ChannelData::Int16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::UInt16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::Float16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::Int24(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::UInt24(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::Int32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::UInt32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::Float32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::Int48(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::UInt48(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::Int64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::UInt64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::Float64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                map.insert("X".to_string(), *a);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::Float64(new_array);
-        }
-        ChannelData::Complex16(_) => todo!(),
-        ChannelData::Complex32(_) => todo!(),
-        ChannelData::Complex64(_) => todo!(),
-        ChannelData::StringSBC(_) => (),
-        ChannelData::StringUTF8(_) => (),
-        ChannelData::StringUTF16(_) => (),
-        ChannelData::VariableSizeByteArray(_) => (),
-        ChannelData::FixedSizeByteArray(_) => (),
-        ChannelData::ArrayDInt8(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
-        }
-        ChannelData::ArrayDUInt8(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
-        }
-        ChannelData::ArrayDInt16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
-        }
-        ChannelData::ArrayDUInt16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
-        }
-        ChannelData::ArrayDFloat16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
-        }
-        ChannelData::ArrayDInt24(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
-        }
-        ChannelData::ArrayDUInt24(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
-        }
-        ChannelData::ArrayDInt32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
-        }
-        ChannelData::ArrayDUInt32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
-        }
-        ChannelData::ArrayDFloat32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
-        }
-        ChannelData::ArrayDInt48(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
-        }
-        ChannelData::ArrayDUInt48(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
-        }
-        ChannelData::ArrayDInt64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
-        }
-        ChannelData::ArrayDUInt64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                map.insert("X".to_string(), *a as f64);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
-        }
-        ChannelData::ArrayDFloat64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                map.insert("X".to_string(), *a);
-                *new_array = compiled
-                    .eval(&slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
-        }
-        ChannelData::ArrayDComplex16(_) => todo!(),
-        ChannelData::ArrayDComplex32(_) => todo!(),
-        ChannelData::ArrayDComplex64(_) => todo!(),
     }
+}
+
+/// Generic function calculating value to value interpolation
+#[inline]
+fn value_to_value_with_interpolation_calculation<T: ToPrimitive>(
+    a: &Vec<T>,
+    val: Vec<(&f64, &f64)>,
+    cycle_count: &usize,
+) -> Vec<f64> {
+    let mut new_array = vec![0f64; *cycle_count as usize];
+    new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
+        let a64 = a.to_f64().unwrap_or_default();
+        *new_array = match val
+            .binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap_or(Ordering::Equal))
+        {
+            Ok(idx) => *val[idx].1,
+            Err(0) => *val[0].1,
+            Err(idx) if idx >= val.len() => *val[idx - 1].1,
+            Err(idx) => {
+                let (x0, y0) = val[idx - 1];
+                let (x1, y1) = val[idx];
+                (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
+            }
+        };
+    });
+    new_array
 }
 
 /// Apply value to value with interpolation conversion to get physical data
@@ -1009,585 +977,235 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
     let val: Vec<(&f64, &f64)> = cc_val.iter().tuples().collect();
     match &mut cn.data {
         ChannelData::Int8(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(
+                a,
+                val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::UInt8(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(
+                a,
+                val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Int16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(
+                a,
+                val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::UInt16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(
+                a,
+                val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Float16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(
+                a,
+                val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Int24(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(
+                a,
+                val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::UInt24(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(
+                a,
+                val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Int32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(
+                a,
+                val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::UInt32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(
+                a,
+                val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Float32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(
+                a,
+                val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Int48(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(
+                a,
+                val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::UInt48(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(
+                a,
+                val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Int64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(
+                a,
+                val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::UInt64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(
+                a,
+                val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Float64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(a).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - *a) + y1 * (*a - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(
+                a,
+                val,
+                &(*cycle_count as usize),
+            ));
         }
-        ChannelData::Complex16(_) => {}
-        ChannelData::Complex32(_) => {}
-        ChannelData::Complex64(_) => {}
-        ChannelData::StringSBC(_) => {}
-        ChannelData::StringUTF8(_) => {}
-        ChannelData::StringUTF16(_) => {}
-        ChannelData::VariableSizeByteArray(_) => {}
-        ChannelData::FixedSizeByteArray(_) => {}
         ChannelData::ArrayDInt8(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_to_value_with_interpolation_calculation(&a.0, val, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDUInt8(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_to_value_with_interpolation_calculation(&a.0, val, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDInt16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_to_value_with_interpolation_calculation(&a.0, val, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDUInt16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_to_value_with_interpolation_calculation(&a.0, val, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDFloat16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_to_value_with_interpolation_calculation(&a.0, val, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDInt24(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_to_value_with_interpolation_calculation(&a.0, val, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDUInt24(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_to_value_with_interpolation_calculation(&a.0, val, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDInt32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_to_value_with_interpolation_calculation(&a.0, val, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDUInt32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_to_value_with_interpolation_calculation(&a.0, val, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDFloat32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_to_value_with_interpolation_calculation(&a.0, val, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDInt48(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_to_value_with_interpolation_calculation(&a.0, val, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDUInt48(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_to_value_with_interpolation_calculation(&a.0, val, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDInt64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_to_value_with_interpolation_calculation(&a.0, val, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDUInt64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_to_value_with_interpolation_calculation(&a.0, val, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDFloat64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(a).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - *a) + y1 * (*a - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_to_value_with_interpolation_calculation(&a.0, val, &a.0.len()),
+                a.1.clone(),
+            ));
         }
-        ChannelData::ArrayDComplex16(_) => {}
-        ChannelData::ArrayDComplex32(_) => {}
-        ChannelData::ArrayDComplex64(_) => {}
+        _ => warn!(
+            "value to value with interpolation conversion of channel {} not possible, channel does not contain primitive",
+            cn.unique_name
+        )
     }
+}
+
+/// Generic function calculating value to value without interpolation
+#[inline]
+fn value_to_value_without_interpolation_calculation<T: ToPrimitive>(
+    a: &Vec<T>,
+    val: Vec<(&f64, &f64)>,
+    cycle_count: &usize,
+) -> Vec<f64> {
+    let mut new_array = vec![0f64; *cycle_count];
+    new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
+        let a64 = a.to_f64().unwrap_or_default();
+        *new_array = match val
+            .binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap_or(Ordering::Equal))
+        {
+            Ok(idx) => *val[idx].1,
+            Err(0) => *val[0].1,
+            Err(idx) if idx >= val.len() => *val[idx - 1].1,
+            Err(idx) => {
+                let (x0, y0) = val[idx - 1];
+                let (x1, y1) = val[idx];
+                if (a64 - x0) > (x1 - a64) {
+                    *y1
+                } else {
+                    *y0
+                }
+            }
+        };
+    });
+    new_array
 }
 
 /// Apply value to value without interpolation conversion to get physical data
@@ -1595,708 +1213,237 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
     let val: Vec<(&f64, &f64)> = cc_val.iter().tuples().collect();
     match &mut cn.data {
         ChannelData::Int8(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(
+                a,
+                val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::UInt8(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(
+                a,
+                val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Int16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(
+                a,
+                val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::UInt16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(
+                a,
+                val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Float16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(
+                a,
+                val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Int24(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(
+                a,
+                val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::UInt24(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(
+                a,
+                val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Int32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(
+                a,
+                val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::UInt32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(
+                a,
+                val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Float32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(
+                a,
+                val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Int48(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(
+                a,
+                val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::UInt48(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(
+                a,
+                val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Int64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(
+                a,
+                val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::UInt64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(
+                a,
+                val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Float64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(a).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (*a - x0) > (x1 - *a) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(
+                a,
+                val,
+                &(*cycle_count as usize),
+            ));
         }
-        ChannelData::Complex16(_) => {}
-        ChannelData::Complex32(_) => {}
-        ChannelData::Complex64(_) => {}
-        ChannelData::StringSBC(_) => {}
-        ChannelData::StringUTF8(_) => {}
-        ChannelData::StringUTF16(_) => {}
-        ChannelData::VariableSizeByteArray(_) => {}
-        ChannelData::FixedSizeByteArray(_) => {}
         ChannelData::ArrayDInt8(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_to_value_without_interpolation_calculation(&a.0, val, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDUInt8(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_to_value_without_interpolation_calculation(&a.0, val, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDInt16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_to_value_without_interpolation_calculation(&a.0, val, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDUInt16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_to_value_without_interpolation_calculation(&a.0, val, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDFloat16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_to_value_without_interpolation_calculation(&a.0, val, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDInt24(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_to_value_without_interpolation_calculation(&a.0, val, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDUInt24(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_to_value_without_interpolation_calculation(&a.0, val, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDInt32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_to_value_without_interpolation_calculation(&a.0, val, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDUInt32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_to_value_without_interpolation_calculation(&a.0, val, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDFloat32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_to_value_without_interpolation_calculation(&a.0, val, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDInt48(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_to_value_without_interpolation_calculation(&a.0, val, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDUInt48(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_to_value_without_interpolation_calculation(&a.0, val, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDInt64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_to_value_without_interpolation_calculation(&a.0, val, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDUInt64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_to_value_without_interpolation_calculation(&a.0, val, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDFloat64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(a).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (*a - x0) > (x1 - *a) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_to_value_without_interpolation_calculation(&a.0, val, &a.0.len()),
+                a.1.clone(),
+            ));
         }
-        ChannelData::ArrayDComplex16(_) => {}
-        ChannelData::ArrayDComplex32(_) => {}
-        ChannelData::ArrayDComplex64(_) => {}
+        _ => warn!(
+            "value to value without interpolation conversion of channel {} not possible, channel does not contain primitive",
+            cn.unique_name
+        )
     }
 }
 
-/// Apply value to value without interpolation conversion to get physical data
+/// Generic function calculating value range to value table without interpolation
+#[inline]
+fn value_range_to_value_table_calculation<T: ToPrimitive>(
+    a: &Vec<T>,
+    val: &Vec<(f64, f64, f64)>,
+    default_value: &f64,
+    cycle_count: &usize,
+) -> Vec<f64> {
+    let mut new_array = vec![0f64; *cycle_count];
+    new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
+        let a64 = a.to_f64().unwrap_or_default();
+        *new_array = match val
+            .binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap_or(Ordering::Equal))
+        {
+            Ok(idx) => val[idx].2,
+            Err(0) => *default_value,
+            Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+            Err(idx) => {
+                if a64 <= val[idx].1 {
+                    val[idx].2
+                } else {
+                    *default_value
+                }
+            }
+        };
+    });
+    new_array
+}
+
+/// Apply value range to value table without interpolation conversion to get physical data
 fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64) {
     let mut val: Vec<(f64, f64, f64)> = Vec::new();
     for (a, b, c) in cc_val.iter().tuples::<(_, _, _)>() {
@@ -2305,644 +1452,219 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
     let default_value = cc_val[cc_val.len() - 1];
     match &mut cn.data {
         ChannelData::Int8(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if a64 <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_range_to_value_table_calculation(
+                &a,
+                &val,
+                &default_value,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::UInt8(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if a64 <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_range_to_value_table_calculation(
+                &a,
+                &val,
+                &default_value,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Int16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if a64 <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_range_to_value_table_calculation(
+                &a,
+                &val,
+                &default_value,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::UInt16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if a64 <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_range_to_value_table_calculation(
+                &a,
+                &val,
+                &default_value,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Float16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if a64 <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_range_to_value_table_calculation(
+                &a,
+                &val,
+                &default_value,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Int24(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if a64 <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_range_to_value_table_calculation(
+                &a,
+                &val,
+                &default_value,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::UInt24(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if a64 <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_range_to_value_table_calculation(
+                &a,
+                &val,
+                &default_value,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Int32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if a64 <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_range_to_value_table_calculation(
+                &a,
+                &val,
+                &default_value,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::UInt32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if a64 <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_range_to_value_table_calculation(
+                &a,
+                &val,
+                &default_value,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Float32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if a64 <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_range_to_value_table_calculation(
+                &a,
+                &val,
+                &default_value,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Int48(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if a64 <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_range_to_value_table_calculation(
+                &a,
+                &val,
+                &default_value,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::UInt48(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if a64 <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_range_to_value_table_calculation(
+                &a,
+                &val,
+                &default_value,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Int64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if a64 <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_range_to_value_table_calculation(
+                &a,
+                &val,
+                &default_value,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::UInt64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if a64 <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_range_to_value_table_calculation(
+                &a,
+                &val,
+                &default_value,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Float64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(a).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && *a <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if *a <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_range_to_value_table_calculation(
+                &a,
+                &val,
+                &default_value,
+                &(*cycle_count as usize),
+            ));
         }
-        ChannelData::Complex16(_) => {}
-        ChannelData::Complex32(_) => {}
-        ChannelData::Complex64(_) => {}
-        ChannelData::StringSBC(_) => {}
-        ChannelData::StringUTF8(_) => {}
-        ChannelData::StringUTF16(_) => {}
-        ChannelData::VariableSizeByteArray(_) => {}
-        ChannelData::FixedSizeByteArray(_) => {}
         ChannelData::ArrayDInt8(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if a64 <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_range_to_value_table_calculation(&a.0, &val, &default_value, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDUInt8(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if a64 <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_range_to_value_table_calculation(&a.0, &val, &default_value, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDInt16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if a64 <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_range_to_value_table_calculation(&a.0, &val, &default_value, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDUInt16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if a64 <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_range_to_value_table_calculation(&a.0, &val, &default_value, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDFloat16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if a64 <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_range_to_value_table_calculation(&a.0, &val, &default_value, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDInt24(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if a64 <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_range_to_value_table_calculation(&a.0, &val, &default_value, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDUInt24(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if a64 <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_range_to_value_table_calculation(&a.0, &val, &default_value, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDInt32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if a64 <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_range_to_value_table_calculation(&a.0, &val, &default_value, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDUInt32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if a64 <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_range_to_value_table_calculation(&a.0, &val, &default_value, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDFloat32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if a64 <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_range_to_value_table_calculation(&a.0, &val, &default_value, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDInt48(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if a64 <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_range_to_value_table_calculation(&a.0, &val, &default_value, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDUInt48(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if a64 <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_range_to_value_table_calculation(&a.0, &val, &default_value, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDInt64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if a64 <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_range_to_value_table_calculation(&a.0, &val, &default_value, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDUInt64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if a64 <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_range_to_value_table_calculation(&a.0, &val, &default_value, &a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDFloat64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                *new_array = match val.binary_search_by(|&(xi, _, _)| {
-                    xi.partial_cmp(a).expect("Could not compare values")
-                }) {
-                    Ok(idx) => val[idx].2,
-                    Err(0) => default_value,
-                    Err(idx) if (idx >= val.len() && *a <= val[idx - 1].1) => val[idx - 1].2,
-                    Err(idx) => {
-                        if *a <= val[idx].1 {
-                            val[idx].2
-                        } else {
-                            default_value
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                value_range_to_value_table_calculation(&a.0, &val, &default_value, &a.0.len()),
+                a.1.clone(),
+            ));
         }
-        ChannelData::ArrayDComplex16(_) => {}
-        ChannelData::ArrayDComplex32(_) => {}
-        ChannelData::ArrayDComplex64(_) => {}
+        _ => warn!(
+            "value range to value conversion of channel {} not possible, channel does not contain primitive",
+            cn.unique_name
+        )
     }
 }
 
@@ -2962,14 +1684,16 @@ enum DefaultTextOrScaleConversion {
     Nil,
 }
 
-/// Apply value to text or scale conversion to get physical data
-fn value_to_text(
-    cn: &mut Cn4,
+/// Generic function calculating integer value range to text
+#[inline]
+fn value_to_text_calculation_int<T: Sized + Display + ToPrimitive>(
+    a: &Vec<T>,
     cc_val: &[f64],
     cc_ref: &[i64],
-    cycle_count: &u64,
+    def: &DefaultTextOrScaleConversion,
+    cycle_count: &usize,
     sharable: &SharableBlocks,
-) {
+) -> Vec<String> {
     // table applicable only to integers, no canonization
     let mut table_int: HashMap<i64, TextOrScaleConversion> = HashMap::with_capacity(cc_val.len());
     for (ind, val) in cc_val.iter().enumerate() {
@@ -2983,6 +1707,105 @@ fn value_to_text(
             table_int.insert(val_i64, TextOrScaleConversion::Nil);
         }
     }
+    let mut new_array = vec![String::new(); *cycle_count as usize];
+    new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
+        let ref_val = a.to_i64().unwrap_or_default();
+        if let Some(tosc) = table_int.get(&ref_val) {
+            match tosc {
+                TextOrScaleConversion::Txt(txt) => {
+                    *new_array = txt.clone();
+                }
+                TextOrScaleConversion::Scale(conv) => {
+                    *new_array = conv.eval_to_txt(a.to_f64().unwrap_or_default());
+                }
+                _ => {
+                    *new_array = a.to_string();
+                }
+            }
+        } else {
+            match &def {
+                DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                    *new_array = txt.clone();
+                }
+                DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                    *new_array = conv.eval_to_txt(a.to_f64().unwrap_or_default());
+                }
+                _ => {
+                    *new_array = a.to_string();
+                }
+            }
+        }
+    });
+    new_array
+}
+
+/// Generic function calculating float value range to text
+#[inline]
+fn value_to_text_calculation_f32(
+    a: &Vec<f32>,
+    cc_val: &[f64],
+    cc_ref: &[i64],
+    canonization_value: f64,
+    def: &DefaultTextOrScaleConversion,
+    cycle_count: &usize,
+    sharable: &SharableBlocks,
+) -> Vec<String> {
+    // table for floating point comparison
+    let mut table_float: HashMap<i64, TextOrScaleConversion> = HashMap::with_capacity(cc_val.len());
+    for (ind, val) in cc_val.iter().enumerate() {
+        let ref_val = (*val * canonization_value.clone()).round() as i64; // Canonization
+        if let Ok(Some(txt)) = sharable.get_tx(cc_ref[ind]) {
+            table_float.insert(ref_val, TextOrScaleConversion::Txt(txt));
+        } else if let Some(cc) = sharable.cc.get(&cc_ref[ind]) {
+            let conv = conversion_function(cc, sharable);
+            table_float.insert(ref_val, TextOrScaleConversion::Scale(Box::new(conv)));
+        } else {
+            table_float.insert(ref_val, TextOrScaleConversion::Nil);
+        }
+    }
+    let mut new_array = vec![String::new(); *cycle_count as usize];
+    new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
+        let ref_val = (*a * canonization_value as f32)
+            .round()
+            .to_i64()
+            .unwrap_or_default();
+        if let Some(tosc) = table_float.get(&ref_val) {
+            match tosc {
+                TextOrScaleConversion::Txt(txt) => {
+                    *new_array = txt.clone();
+                }
+                TextOrScaleConversion::Scale(conv) => {
+                    *new_array = conv.eval_to_txt(a.to_f64().unwrap_or_default());
+                }
+                _ => {
+                    *new_array = a.to_string();
+                }
+            }
+        } else {
+            match &def {
+                DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                    *new_array = txt.clone();
+                }
+                DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                    *new_array = conv.eval_to_txt(a.to_f64().unwrap_or_default());
+                }
+                _ => {
+                    *new_array = a.to_string();
+                }
+            }
+        }
+    });
+    new_array
+}
+
+/// Apply value to text or scale conversion to get physical data
+fn value_to_text(
+    cn: &mut Cn4,
+    cc_val: &[f64],
+    cc_ref: &[i64],
+    cycle_count: &u64,
+    sharable: &SharableBlocks,
+) {
     let def: DefaultTextOrScaleConversion;
     if let Ok(Some(txt)) = sharable.get_tx(cc_ref[cc_val.len()]) {
         def = DefaultTextOrScaleConversion::DefaultTxt(txt);
@@ -2992,482 +1815,148 @@ fn value_to_text(
     } else {
         def = DefaultTextOrScaleConversion::Nil;
     }
-
     match &mut cn.data {
         ChannelData::Int8(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let ref_val = *a as i64;
-                if let Some(tosc) = table_int.get(&ref_val) {
-                    match tosc {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_to_text_calculation_int(
+                &a,
+                &cc_val,
+                &cc_ref,
+                &def,
+                &(*cycle_count as usize),
+                sharable,
+            ));
         }
         ChannelData::UInt8(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let ref_val = *a as i64;
-                if let Some(tosc) = table_int.get(&ref_val) {
-                    match tosc {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_to_text_calculation_int(
+                &a,
+                &cc_val,
+                &cc_ref,
+                &def,
+                &(*cycle_count as usize),
+                sharable,
+            ));
         }
         ChannelData::Int16(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let ref_val = *a as i64;
-                if let Some(tosc) = table_int.get(&ref_val) {
-                    match tosc {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_to_text_calculation_int(
+                &a,
+                &cc_val,
+                &cc_ref,
+                &def,
+                &(*cycle_count as usize),
+                sharable,
+            ));
         }
         ChannelData::UInt16(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let ref_val = *a as i64;
-                if let Some(tosc) = table_int.get(&ref_val) {
-                    match tosc {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_to_text_calculation_int(
+                &a,
+                &cc_val,
+                &cc_ref,
+                &def,
+                &(*cycle_count as usize),
+                sharable,
+            ));
         }
         ChannelData::Float16(a) => {
-            // table for floating point comparison
-            let mut table_float: HashMap<i64, TextOrScaleConversion> =
-                HashMap::with_capacity(cc_val.len());
-            for (ind, val) in cc_val.iter().enumerate() {
-                let ref_val = (*val * 128.0).round() as i64; // Canonization
-                if let Ok(Some(txt)) = sharable.get_tx(cc_ref[ind]) {
-                    table_float.insert(ref_val, TextOrScaleConversion::Txt(txt));
-                } else if let Some(cc) = sharable.cc.get(&cc_ref[ind]) {
-                    let conv = conversion_function(cc, sharable);
-                    table_float.insert(ref_val, TextOrScaleConversion::Scale(Box::new(conv)));
-                } else {
-                    table_float.insert(ref_val, TextOrScaleConversion::Nil);
-                }
-            }
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let ref_val = (*a * 128.0).round() as i64;
-                if let Some(tosc) = table_float.get(&ref_val) {
-                    match tosc {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_to_text_calculation_f32(
+                &a,
+                cc_val,
+                cc_ref,
+                128.0f64,
+                &def,
+                &(*cycle_count as usize),
+                sharable,
+            ));
         }
         ChannelData::Int24(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let ref_val = *a as i64;
-                if let Some(tosc) = table_int.get(&ref_val) {
-                    match tosc {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_to_text_calculation_int(
+                &a,
+                &cc_val,
+                &cc_ref,
+                &def,
+                &(*cycle_count as usize),
+                sharable,
+            ));
         }
         ChannelData::UInt24(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let ref_val = *a as i64;
-                if let Some(tosc) = table_int.get(&ref_val) {
-                    match tosc {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_to_text_calculation_int(
+                &a,
+                &cc_val,
+                &cc_ref,
+                &def,
+                &(*cycle_count as usize),
+                sharable,
+            ));
         }
         ChannelData::Int32(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let ref_val = *a as i64;
-                if let Some(tosc) = table_int.get(&ref_val) {
-                    match tosc {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_to_text_calculation_int(
+                &a,
+                &cc_val,
+                &cc_ref,
+                &def,
+                &(*cycle_count as usize),
+                sharable,
+            ));
         }
         ChannelData::UInt32(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let ref_val = *a as i64;
-                if let Some(tosc) = table_int.get(&ref_val) {
-                    match tosc {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_to_text_calculation_int(
+                &a,
+                &cc_val,
+                &cc_ref,
+                &def,
+                &(*cycle_count as usize),
+                sharable,
+            ));
         }
         ChannelData::Float32(a) => {
-            // table for floating point comparison
-            let mut table_float: HashMap<i64, TextOrScaleConversion> =
-                HashMap::with_capacity(cc_val.len());
-            for (ind, val) in cc_val.iter().enumerate() {
-                let ref_val = (*val * 1024.0 * 1024.0).round() as i64; // Canonization
-                if let Ok(Some(txt)) = sharable.get_tx(cc_ref[ind]) {
-                    table_float.insert(ref_val, TextOrScaleConversion::Txt(txt));
-                } else if let Some(cc) = sharable.cc.get(&cc_ref[ind]) {
-                    let conv = conversion_function(cc, sharable);
-                    table_float.insert(ref_val, TextOrScaleConversion::Scale(Box::new(conv)));
-                } else {
-                    table_float.insert(ref_val, TextOrScaleConversion::Nil);
-                }
-            }
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let ref_val = (*a * 1024.0 * 1024.0).round() as i64;
-                if let Some(tosc) = table_float.get(&ref_val) {
-                    match tosc {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_to_text_calculation_f32(
+                &a,
+                cc_val,
+                cc_ref,
+                1048576.0f64,
+                &def,
+                &(*cycle_count as usize),
+                sharable,
+            ));
         }
         ChannelData::Int48(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let ref_val = *a;
-                if let Some(tosc) = table_int.get(&ref_val) {
-                    match tosc {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_to_text_calculation_int(
+                &a,
+                &cc_val,
+                &cc_ref,
+                &def,
+                &(*cycle_count as usize),
+                sharable,
+            ));
         }
         ChannelData::UInt48(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let ref_val = *a as i64;
-                if let Some(tosc) = table_int.get(&ref_val) {
-                    match tosc {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_to_text_calculation_int(
+                &a,
+                &cc_val,
+                &cc_ref,
+                &def,
+                &(*cycle_count as usize),
+                sharable,
+            ));
         }
         ChannelData::Int64(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                if let Some(tosc) = table_int.get(a) {
-                    match tosc {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_to_text_calculation_int(
+                &a,
+                &cc_val,
+                &cc_ref,
+                &def,
+                &(*cycle_count as usize),
+                sharable,
+            ));
         }
         ChannelData::UInt64(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let ref_val = *a as i64;
-                if let Some(tosc) = table_int.get(&ref_val) {
-                    match tosc {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_to_text_calculation_int(
+                &a,
+                &cc_val,
+                &cc_ref,
+                &def,
+                &(*cycle_count as usize),
+                sharable,
+            ));
         }
         ChannelData::Float64(a) => {
             // table for floating point comparison
@@ -3515,32 +2004,10 @@ fn value_to_text(
             });
             cn.data = ChannelData::StringUTF8(new_array);
         }
-        ChannelData::Complex16(_) => (),
-        ChannelData::Complex32(_) => (),
-        ChannelData::Complex64(_) => (),
-        ChannelData::StringSBC(_) => (),
-        ChannelData::StringUTF8(_) => (),
-        ChannelData::StringUTF16(_) => (),
-        ChannelData::VariableSizeByteArray(_) => (),
-        ChannelData::FixedSizeByteArray(_) => (),
-        ChannelData::ArrayDInt8(_) => (),
-        ChannelData::ArrayDUInt8(_) => (),
-        ChannelData::ArrayDInt16(_) => (),
-        ChannelData::ArrayDUInt16(_) => (),
-        ChannelData::ArrayDFloat16(_) => (),
-        ChannelData::ArrayDInt24(_) => (),
-        ChannelData::ArrayDUInt24(_) => (),
-        ChannelData::ArrayDInt32(_) => (),
-        ChannelData::ArrayDUInt32(_) => (),
-        ChannelData::ArrayDFloat32(_) => (),
-        ChannelData::ArrayDInt48(_) => (),
-        ChannelData::ArrayDUInt48(_) => (),
-        ChannelData::ArrayDInt64(_) => (),
-        ChannelData::ArrayDUInt64(_) => (),
-        ChannelData::ArrayDFloat64(_) => (),
-        ChannelData::ArrayDComplex16(_) => (),
-        ChannelData::ArrayDComplex32(_) => (),
-        ChannelData::ArrayDComplex64(_) => (),
+        _ => warn!(
+            "value to text conversion of channel {} not possible, channel does not contain primitive",
+            cn.unique_name
+        ),
     }
 }
 
@@ -3567,12 +2034,17 @@ fn conversion_function(cc: &Cc4Block, sharable: &SharableBlocks) -> ConversionFu
                     if let Ok(Some(formulae)) = sharable.get_tx(cc.cc_ref[0]) {
                         let parser = fasteval::Parser::new();
                         let mut slab = fasteval::Slab::new();
-                        let compiled = parser
-                            .parse(&formulae, &mut slab.ps)
-                            .expect("error parsing formulae for conversion")
-                            .from(&slab.ps)
-                            .compile(&slab.ps, &mut slab.cs);
-                        ConversionFunction::Algebraic(compiled, Box::new(slab))
+                        let compiled = parser.parse(&formulae, &mut slab.ps);
+                        match compiled {
+                            Ok(c) => ConversionFunction::Algebraic(
+                                c.from(&slab.ps).compile(&slab.ps, &mut slab.cs),
+                                Box::new(slab),
+                            ),
+                            Err(e) => {
+                                warn!("Error parsing formulae {}, error {}", formulae, e);
+                                ConversionFunction::Identity
+                            }
+                        }
                     } else {
                         ConversionFunction::Identity
                     }
@@ -3599,10 +2071,17 @@ impl ConversionFunction {
             ConversionFunction::Algebraic(compiled, slab) => {
                 let mut map: BTreeMap<String, f64> = BTreeMap::new();
                 map.insert("X".to_string(), a);
-                let result: f64 = compiled
-                    .eval(slab, &mut map)
-                    .expect("could not evaluate algebraic expression");
-                result.to_string()
+                let result = compiled.eval(slab, &mut map);
+                match result {
+                    Ok(res) => res.to_string(),
+                    Err(e) => {
+                        warn!(
+                            "could not evaluate algebraic expression for {}, error {}",
+                            a, e
+                        );
+                        a.to_string()
+                    }
+                }
             }
         }
     }
@@ -3615,14 +2094,15 @@ struct KeyRange {
     max: f64,
 }
 
-/// Apply value range to text or scale conversion to get physical data
-fn value_range_to_text(
-    cn: &mut Cn4,
+/// Generic function calculating value range to text
+#[inline]
+fn value_range_to_text_calculation<T: Sized + Display + ToPrimitive>(
+    array: &Vec<T>,
     cc_val: &[f64],
     cc_ref: &[i64],
-    cycle_count: &u64,
+    cycle_count: usize,
     sharable: &SharableBlocks,
-) {
+) -> Vec<String> {
     let n_keys = cc_val.len() / 2;
     let mut keys: Vec<KeyRange> = Vec::with_capacity(n_keys);
     for (key_min, key_max) in cc_val.iter().tuples() {
@@ -3652,560 +2132,216 @@ fn value_range_to_text(
     } else {
         def = DefaultTextOrScaleConversion::Nil;
     }
+    let mut new_array = vec![String::new(); cycle_count];
+    new_array.iter_mut().zip(array).for_each(|(new_array, a)| {
+        let matched_key = keys.iter().enumerate().find(|&x| {
+            x.1.min <= a.to_f64().unwrap_or_default() && a.to_f64().unwrap_or_default() <= x.1.max
+        });
+        if let Some(key) = matched_key {
+            match &txt[key.0] {
+                TextOrScaleConversion::Txt(txt) => {
+                    *new_array = txt.clone();
+                }
+                TextOrScaleConversion::Scale(conv) => {
+                    *new_array = conv.eval_to_txt(a.to_f64().unwrap_or_default());
+                }
+                _ => {
+                    *new_array = a.to_string();
+                }
+            }
+        } else {
+            match &def {
+                DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                    *new_array = txt.clone();
+                }
+                DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                    *new_array = conv.eval_to_txt(a.to_f64().unwrap_or_default());
+                }
+                _ => {
+                    *new_array = a.to_string();
+                }
+            }
+        }
+    });
+    new_array
+}
 
+/// Apply value range to text or scale conversion to get physical data
+fn value_range_to_text(
+    cn: &mut Cn4,
+    cc_val: &[f64],
+    cc_ref: &[i64],
+    cycle_count: &u64,
+    sharable: &SharableBlocks,
+) {
     match &mut cn.data {
         ChannelData::Int8(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = keys
-                    .iter()
-                    .enumerate()
-                    .find(|&x| x.1.min <= *a as f64 && *a as f64 <= x.1.max);
-                if let Some(key) = matched_key {
-                    match &txt[key.0] {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_range_to_text_calculation(
+                a,
+                cc_val,
+                cc_ref,
+                *cycle_count as usize,
+                sharable,
+            ));
         }
         ChannelData::UInt8(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = keys
-                    .iter()
-                    .enumerate()
-                    .find(|&x| x.1.min <= *a as f64 && *a as f64 <= x.1.max);
-                if let Some(key) = matched_key {
-                    match &txt[key.0] {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_range_to_text_calculation(
+                a,
+                cc_val,
+                cc_ref,
+                *cycle_count as usize,
+                sharable,
+            ));
         }
         ChannelData::Int16(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = keys
-                    .iter()
-                    .enumerate()
-                    .find(|&x| x.1.min <= *a as f64 && *a as f64 <= x.1.max);
-                if let Some(key) = matched_key {
-                    match &txt[key.0] {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_range_to_text_calculation(
+                a,
+                cc_val,
+                cc_ref,
+                *cycle_count as usize,
+                sharable,
+            ));
         }
         ChannelData::UInt16(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = keys
-                    .iter()
-                    .enumerate()
-                    .find(|&x| x.1.min <= *a as f64 && *a as f64 <= x.1.max);
-                if let Some(key) = matched_key {
-                    match &txt[key.0] {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_range_to_text_calculation(
+                a,
+                cc_val,
+                cc_ref,
+                *cycle_count as usize,
+                sharable,
+            ));
         }
         ChannelData::Float16(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = keys
-                    .iter()
-                    .enumerate()
-                    .find(|&x| x.1.min <= *a as f64 && *a as f64 <= x.1.max);
-                if let Some(key) = matched_key {
-                    match &txt[key.0] {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_range_to_text_calculation(
+                a,
+                cc_val,
+                cc_ref,
+                *cycle_count as usize,
+                sharable,
+            ));
         }
         ChannelData::Int24(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = keys
-                    .iter()
-                    .enumerate()
-                    .find(|&x| x.1.min <= *a as f64 && *a as f64 <= x.1.max);
-                if let Some(key) = matched_key {
-                    match &txt[key.0] {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_range_to_text_calculation(
+                a,
+                cc_val,
+                cc_ref,
+                *cycle_count as usize,
+                sharable,
+            ));
         }
         ChannelData::UInt24(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = keys
-                    .iter()
-                    .enumerate()
-                    .find(|&x| x.1.min <= *a as f64 && *a as f64 <= x.1.max);
-                if let Some(key) = matched_key {
-                    match &txt[key.0] {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_range_to_text_calculation(
+                a,
+                cc_val,
+                cc_ref,
+                *cycle_count as usize,
+                sharable,
+            ));
         }
         ChannelData::Int32(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = keys
-                    .iter()
-                    .enumerate()
-                    .find(|&x| x.1.min <= *a as f64 && *a as f64 <= x.1.max);
-                if let Some(key) = matched_key {
-                    match &txt[key.0] {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_range_to_text_calculation(
+                a,
+                cc_val,
+                cc_ref,
+                *cycle_count as usize,
+                sharable,
+            ));
         }
         ChannelData::UInt32(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = keys
-                    .iter()
-                    .enumerate()
-                    .find(|&x| x.1.min <= *a as f64 && *a as f64 <= x.1.max);
-                if let Some(key) = matched_key {
-                    match &txt[key.0] {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_range_to_text_calculation(
+                a,
+                cc_val,
+                cc_ref,
+                *cycle_count as usize,
+                sharable,
+            ));
         }
         ChannelData::Float32(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = keys
-                    .iter()
-                    .enumerate()
-                    .find(|&x| x.1.min <= *a as f64 && *a as f64 <= x.1.max);
-                if let Some(key) = matched_key {
-                    match &txt[key.0] {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_range_to_text_calculation(
+                a,
+                cc_val,
+                cc_ref,
+                *cycle_count as usize,
+                sharable,
+            ));
         }
         ChannelData::Int48(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = keys
-                    .iter()
-                    .enumerate()
-                    .find(|&x| x.1.min <= *a as f64 && *a as f64 <= x.1.max);
-                if let Some(key) = matched_key {
-                    match &txt[key.0] {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_range_to_text_calculation(
+                a,
+                cc_val,
+                cc_ref,
+                *cycle_count as usize,
+                sharable,
+            ));
         }
         ChannelData::UInt48(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = keys
-                    .iter()
-                    .enumerate()
-                    .find(|&x| x.1.min <= *a as f64 && *a as f64 <= x.1.max);
-                if let Some(key) = matched_key {
-                    match &txt[key.0] {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_range_to_text_calculation(
+                a,
+                cc_val,
+                cc_ref,
+                *cycle_count as usize,
+                sharable,
+            ));
         }
         ChannelData::Int64(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = keys
-                    .iter()
-                    .enumerate()
-                    .find(|&x| x.1.min <= *a as f64 && *a as f64 <= x.1.max);
-                if let Some(key) = matched_key {
-                    match &txt[key.0] {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_range_to_text_calculation(
+                a,
+                cc_val,
+                cc_ref,
+                *cycle_count as usize,
+                sharable,
+            ));
         }
         ChannelData::UInt64(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = keys
-                    .iter()
-                    .enumerate()
-                    .find(|&x| x.1.min <= *a as f64 && *a as f64 <= x.1.max);
-                if let Some(key) = matched_key {
-                    match &txt[key.0] {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a as f64);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_range_to_text_calculation(
+                a,
+                cc_val,
+                cc_ref,
+                *cycle_count as usize,
+                sharable,
+            ));
         }
         ChannelData::Float64(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = keys
-                    .iter()
-                    .enumerate()
-                    .find(|&x| x.1.min <= *a && *a <= x.1.max);
-                if let Some(key) = matched_key {
-                    match &txt[key.0] {
-                        TextOrScaleConversion::Txt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        TextOrScaleConversion::Scale(conv) => {
-                            *new_array = conv.eval_to_txt(*a);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                } else {
-                    match &def {
-                        DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            *new_array = txt.clone();
-                        }
-                        DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            *new_array = conv.eval_to_txt(*a);
-                        }
-                        _ => {
-                            *new_array = a.to_string();
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_range_to_text_calculation(
+                a,
+                cc_val,
+                cc_ref,
+                *cycle_count as usize,
+                sharable,
+            ));
         }
-        ChannelData::Complex16(_) => {}
-        ChannelData::Complex32(_) => {}
-        ChannelData::Complex64(_) => {}
-        ChannelData::StringSBC(_) => {}
-        ChannelData::StringUTF8(_) => {}
-        ChannelData::StringUTF16(_) => {}
-        ChannelData::VariableSizeByteArray(_) => {}
-        ChannelData::FixedSizeByteArray(_) => {}
-        ChannelData::ArrayDInt8(_) => {}
-        ChannelData::ArrayDUInt8(_) => {}
-        ChannelData::ArrayDInt16(_) => {}
-        ChannelData::ArrayDUInt16(_) => {}
-        ChannelData::ArrayDFloat16(_) => {}
-        ChannelData::ArrayDInt24(_) => {}
-        ChannelData::ArrayDUInt24(_) => {}
-        ChannelData::ArrayDInt32(_) => {}
-        ChannelData::ArrayDUInt32(_) => {}
-        ChannelData::ArrayDFloat32(_) => {}
-        ChannelData::ArrayDInt48(_) => {}
-        ChannelData::ArrayDUInt48(_) => {}
-        ChannelData::ArrayDInt64(_) => {}
-        ChannelData::ArrayDUInt64(_) => {}
-        ChannelData::ArrayDFloat64(_) => {}
-        ChannelData::ArrayDComplex16(_) => {}
-        ChannelData::ArrayDComplex32(_) => {}
-        ChannelData::ArrayDComplex64(_) => {}
+        _ => warn!(
+            "value range to text conversion of channel {} not possible, channel does not contain primitive",
+            cn.unique_name
+        ),
     }
+}
+
+/// Generic function calculating text to value
+#[inline]
+fn text_to_value_calculation(
+    array: &Vec<String>,
+    cc_val: &[f64],
+    cc_ref: &[i64],
+    cycle_count: usize,
+    sharable: &SharableBlocks,
+) -> Vec<f64> {
+    let mut table: HashMap<String, f64> = HashMap::with_capacity(cc_ref.len());
+    for (ind, ccref) in cc_ref.iter().enumerate() {
+        if let Ok(Some(txt)) = sharable.get_tx(*ccref) {
+            table.insert(txt, cc_val[ind]);
+        }
+    }
+    let default = cc_val[cc_val.len() - 1];
+    let mut new_array = vec![0f64; cycle_count];
+    new_array.iter_mut().zip(array).for_each(|(new_a, a)| {
+        if let Some(val) = table.get(a) {
+            *new_a = *val;
+        } else {
+            *new_a = default;
+        }
+    });
+    new_array
 }
 
 /// Apply text to value conversion to get physical data
@@ -4216,90 +2352,49 @@ fn text_to_value(
     cycle_count: &u64,
     sharable: &SharableBlocks,
 ) {
-    let mut table: HashMap<String, f64> = HashMap::with_capacity(cc_ref.len());
-    for (ind, ccref) in cc_ref.iter().enumerate() {
-        if let Ok(Some(txt)) = sharable.get_tx(*ccref) {
-            table.insert(txt, cc_val[ind]);
-        }
-    }
-    let default = cc_val[cc_val.len() - 1];
     match &mut cn.data {
-        ChannelData::Int8(_) => {}
-        ChannelData::UInt8(_) => {}
-        ChannelData::Int16(_) => {}
-        ChannelData::UInt16(_) => {}
-        ChannelData::Float16(_) => {}
-        ChannelData::Int24(_) => {}
-        ChannelData::UInt24(_) => {}
-        ChannelData::Int32(_) => {}
-        ChannelData::UInt32(_) => {}
-        ChannelData::Float32(_) => {}
-        ChannelData::Int48(_) => {}
-        ChannelData::UInt48(_) => {}
-        ChannelData::Int64(_) => {}
-        ChannelData::UInt64(_) => {}
-        ChannelData::Float64(_) => {}
-        ChannelData::Complex16(_) => {}
-        ChannelData::Complex32(_) => {}
-        ChannelData::Complex64(_) => {}
         ChannelData::StringSBC(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_a, a)| {
-                if let Some(val) = table.get(a) {
-                    *new_a = *val;
-                } else {
-                    *new_a = default;
-                }
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(text_to_value_calculation(
+                a,
+                cc_val,
+                cc_ref,
+                *cycle_count as usize,
+                sharable,
+            ));
         }
         ChannelData::StringUTF8(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_a, a)| {
-                if let Some(val) = table.get(a) {
-                    *new_a = *val;
-                } else {
-                    *new_a = default;
-                }
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(text_to_value_calculation(
+                a,
+                cc_val,
+                cc_ref,
+                *cycle_count as usize,
+                sharable,
+            ));
         }
         ChannelData::StringUTF16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_a, a)| {
-                if let Some(val) = table.get(a) {
-                    *new_a = *val;
-                } else {
-                    *new_a = default;
-                }
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(text_to_value_calculation(
+                a,
+                cc_val,
+                cc_ref,
+                *cycle_count as usize,
+                sharable,
+            ));
         }
-        ChannelData::VariableSizeByteArray(_) => {}
-        ChannelData::FixedSizeByteArray(_) => {}
-        ChannelData::ArrayDInt8(_) => {}
-        ChannelData::ArrayDUInt8(_) => {}
-        ChannelData::ArrayDInt16(_) => {}
-        ChannelData::ArrayDUInt16(_) => {}
-        ChannelData::ArrayDFloat16(_) => {}
-        ChannelData::ArrayDInt24(_) => {}
-        ChannelData::ArrayDUInt24(_) => {}
-        ChannelData::ArrayDInt32(_) => {}
-        ChannelData::ArrayDUInt32(_) => {}
-        ChannelData::ArrayDFloat32(_) => {}
-        ChannelData::ArrayDInt48(_) => {}
-        ChannelData::ArrayDUInt48(_) => {}
-        ChannelData::ArrayDInt64(_) => {}
-        ChannelData::ArrayDUInt64(_) => {}
-        ChannelData::ArrayDFloat64(_) => {}
-        ChannelData::ArrayDComplex16(_) => {}
-        ChannelData::ArrayDComplex32(_) => {}
-        ChannelData::ArrayDComplex64(_) => {}
+        _ => warn!(
+            "text conversion into value of channel {} not possible, channel does not contain string",
+            cn.unique_name
+        ),
     }
 }
 
-/// Apply text to text conversion to get physical data
-fn text_to_text(cn: &mut Cn4, cc_ref: &[i64], cycle_count: &u64, sharable: &SharableBlocks) {
+/// Generic function calculating text to value
+#[inline]
+fn text_to_text_calculation(
+    array: &Vec<String>,
+    cc_ref: &[i64],
+    cycle_count: usize,
+    sharable: &SharableBlocks,
+) -> Vec<String> {
     let pairs: Vec<(&i64, &i64)> = cc_ref.iter().tuples().collect();
     let mut table: HashMap<String, Option<String>> = HashMap::with_capacity(cc_ref.len());
     for ccref in pairs.iter() {
@@ -4315,96 +2410,54 @@ fn text_to_text(cn: &mut Cn4, cc_ref: &[i64], cycle_count: &u64, sharable: &Shar
     if let Ok(Some(txt)) = sharable.get_tx(cc_ref[cc_ref.len() - 1]) {
         default = Some(txt);
     }
+    let mut new_array = vec![String::new(); cycle_count];
+    new_array.iter_mut().zip(array).for_each(|(new_a, a)| {
+        if let Some(val) = table.get(a) {
+            if let Some(txt) = val.clone() {
+                *new_a = txt;
+            } else {
+                *new_a = a.clone();
+            }
+        } else if let Some(tx) = default.clone() {
+            *new_a = tx;
+        } else {
+            *new_a = a.clone();
+        }
+    });
+    new_array
+}
+
+/// Apply text to text conversion to get physical data
+fn text_to_text(cn: &mut Cn4, cc_ref: &[i64], cycle_count: &u64, sharable: &SharableBlocks) {
     match &mut cn.data {
-        ChannelData::Int8(_) => {}
-        ChannelData::UInt8(_) => {}
-        ChannelData::Int16(_) => {}
-        ChannelData::UInt16(_) => {}
-        ChannelData::Float16(_) => {}
-        ChannelData::Int24(_) => {}
-        ChannelData::UInt24(_) => {}
-        ChannelData::Int32(_) => {}
-        ChannelData::UInt32(_) => {}
-        ChannelData::Float32(_) => {}
-        ChannelData::Int48(_) => {}
-        ChannelData::UInt48(_) => {}
-        ChannelData::Int64(_) => {}
-        ChannelData::UInt64(_) => {}
-        ChannelData::Float64(_) => {}
-        ChannelData::Complex16(_) => {}
-        ChannelData::Complex32(_) => {}
-        ChannelData::Complex64(_) => {}
         ChannelData::StringSBC(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_a, a)| {
-                if let Some(val) = table.get(a) {
-                    if let Some(txt) = val.clone() {
-                        *new_a = txt;
-                    } else {
-                        *new_a = a.clone();
-                    }
-                } else if let Some(tx) = default.clone() {
-                    *new_a = tx;
-                } else {
-                    *new_a = a.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(text_to_text_calculation(
+                a,
+                cc_ref,
+                *cycle_count as usize,
+                sharable,
+            ));
         }
         ChannelData::StringUTF8(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_a, a)| {
-                if let Some(val) = table.get(a) {
-                    if let Some(txt) = val.clone() {
-                        *new_a = txt;
-                    } else {
-                        *new_a = a.clone();
-                    }
-                } else if let Some(tx) = default.clone() {
-                    *new_a = tx;
-                } else {
-                    *new_a = a.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(text_to_text_calculation(
+                a,
+                cc_ref,
+                *cycle_count as usize,
+                sharable,
+            ));
         }
         ChannelData::StringUTF16(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_a, a)| {
-                if let Some(val) = table.get(a) {
-                    if let Some(txt) = val.clone() {
-                        *new_a = txt;
-                    } else {
-                        *new_a = a.clone();
-                    }
-                } else if let Some(tx) = default.clone() {
-                    *new_a = tx;
-                } else {
-                    *new_a = a.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(text_to_text_calculation(
+                a,
+                cc_ref,
+                *cycle_count as usize,
+                sharable,
+            ));
         }
-        ChannelData::VariableSizeByteArray(_) => {}
-        ChannelData::FixedSizeByteArray(_) => {}
-        ChannelData::ArrayDInt8(_) => {}
-        ChannelData::ArrayDUInt8(_) => {}
-        ChannelData::ArrayDInt16(_) => {}
-        ChannelData::ArrayDUInt16(_) => {}
-        ChannelData::ArrayDFloat16(_) => {}
-        ChannelData::ArrayDInt24(_) => {}
-        ChannelData::ArrayDUInt24(_) => {}
-        ChannelData::ArrayDInt32(_) => {}
-        ChannelData::ArrayDUInt32(_) => {}
-        ChannelData::ArrayDFloat32(_) => {}
-        ChannelData::ArrayDInt48(_) => {}
-        ChannelData::ArrayDUInt48(_) => {}
-        ChannelData::ArrayDInt64(_) => {}
-        ChannelData::ArrayDUInt64(_) => {}
-        ChannelData::ArrayDFloat64(_) => {}
-        ChannelData::ArrayDComplex16(_) => {}
-        ChannelData::ArrayDComplex32(_) => {}
-        ChannelData::ArrayDComplex64(_) => {}
+        _ => warn!(
+            "text conversion into text of channel {} not possible, channel does not contain string",
+            cn.unique_name
+        ),
     }
 }
 
@@ -4420,13 +2473,15 @@ enum ValueOrValueRangeToText {
     ),
 }
 
-fn bitfield_text_table(
-    cn: &mut Cn4,
+/// Generic function calculating text to value
+#[inline]
+fn bitfield_text_table_calculation<T: Integer + ToPrimitive>(
+    array: &Vec<T>,
     cc_val: &[u64],
     cc_ref: &[i64],
-    cycle_count: &u64,
+    cycle_count: usize,
     sharable: &SharableBlocks,
-) {
+) -> Vec<String> {
     let mut table: Vec<(ValueOrValueRangeToText, Option<String>)> =
         Vec::with_capacity(cc_ref.len());
     for pointer in cc_ref.iter() {
@@ -4513,527 +2568,176 @@ fn bitfield_text_table(
             }
         }
     }
+    let mut new_array = vec![String::new(); cycle_count];
+    new_array.iter_mut().zip(array).for_each(|(new_a, a)| {
+        for (ind, val) in cc_val.iter().enumerate() {
+            match &table[ind] {
+                (ValueOrValueRangeToText::ValueToText(table_int, def), name) => {
+                    let ref_val =
+                        a.to_i64().unwrap_or_default() & (val.to_i64().unwrap_or_default());
+                    if let Some(tosc) = table_int.get(&ref_val) {
+                        match tosc {
+                            TextOrScaleConversion::Txt(txt) => {
+                                if let Some(n) = name {
+                                    *new_a = format!("{} | {} = {}", new_a, n, txt.clone());
+                                } else {
+                                    *new_a = format!("{} | {}", new_a, txt.clone());
+                                }
+                            }
+                            TextOrScaleConversion::Scale(conv) => {
+                                if let Some(n) = name {
+                                    *new_a = format!(
+                                        "{} | {} = {}",
+                                        new_a,
+                                        n,
+                                        conv.eval_to_txt(a.to_f64().unwrap_or_default())
+                                    );
+                                } else {
+                                    *new_a = format!(
+                                        "{} | {}",
+                                        new_a,
+                                        conv.eval_to_txt(a.to_f64().unwrap_or_default())
+                                    );
+                                }
+                            }
+                            _ => {
+                                *new_a = format!("{} | {}", new_a, "nothing");
+                            }
+                        }
+                    } else {
+                        match &def {
+                            DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                                *new_a = txt.clone();
+                            }
+                            DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                                *new_a = conv.eval_to_txt(a.to_f64().unwrap_or_default());
+                            }
+                            _ => {
+                                *new_a = format!("{} | {}", new_a, "nothing");
+                            }
+                        }
+                    }
+                }
+                (ValueOrValueRangeToText::ValueRangeToText(txt, def, keys), name) => {
+                    let matched_key = keys.iter().enumerate().find(|&x| {
+                        x.1.min <= a.to_f64().unwrap_or_default()
+                            && a.to_f64().unwrap_or_default() <= x.1.max
+                    });
+                    if let Some(key) = matched_key {
+                        match &txt[key.0] {
+                            TextOrScaleConversion::Txt(txt) => {
+                                if let Some(n) = name {
+                                    *new_a = format!("{} | {} = {}", new_a, n, txt.clone());
+                                } else {
+                                    *new_a = format!("{} | {}", new_a, txt.clone());
+                                }
+                            }
+                            TextOrScaleConversion::Scale(conv) => {
+                                if let Some(n) = name {
+                                    *new_a = format!(
+                                        "{} | {} = {}",
+                                        new_a,
+                                        n,
+                                        conv.eval_to_txt(a.to_f64().unwrap_or_default())
+                                    );
+                                } else {
+                                    *new_a = format!(
+                                        "{} | {}",
+                                        new_a,
+                                        conv.eval_to_txt(a.to_f64().unwrap_or_default())
+                                    );
+                                }
+                            }
+                            _ => {
+                                *new_a = format!("{} | {}", new_a, "nothing");
+                            }
+                        }
+                    } else {
+                        match &def {
+                            DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                                if let Some(n) = name {
+                                    *new_a = format!("{} | {} = {}", new_a, n, txt.clone());
+                                } else {
+                                    *new_a = format!("{} | {}", new_a, txt.clone());
+                                }
+                            }
+                            DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                                if let Some(n) = name {
+                                    *new_a = format!(
+                                        "{} | {} = {}",
+                                        new_a,
+                                        n,
+                                        conv.eval_to_txt(a.to_f64().unwrap_or_default())
+                                    );
+                                } else {
+                                    *new_a = format!(
+                                        "{} | {}",
+                                        new_a,
+                                        conv.eval_to_txt(a.to_f64().unwrap_or_default())
+                                    );
+                                }
+                            }
+                            _ => {
+                                *new_a = format!("{} | {}", new_a, "nothing");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    });
+    new_array
+}
+
+fn bitfield_text_table(
+    cn: &mut Cn4,
+    cc_val: &[u64],
+    cc_ref: &[i64],
+    cycle_count: &u64,
+    sharable: &SharableBlocks,
+) {
     match &mut cn.data {
         ChannelData::UInt8(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_a, a)| {
-                for (ind, val) in cc_val.iter().enumerate() {
-                    let masked_val = *a & (*val as u8);
-                    match &table[ind] {
-                        (ValueOrValueRangeToText::ValueToText(table_int, def), name) => {
-                            let ref_val = masked_val as i64;
-                            if let Some(tosc) = table_int.get(&ref_val) {
-                                match tosc {
-                                    TextOrScaleConversion::Txt(txt) => {
-                                        if let Some(n) = name {
-                                            *new_a = format!("{} | {} = {}", new_a, n, txt.clone());
-                                        } else {
-                                            *new_a = format!("{} | {}", new_a, txt.clone());
-                                        }
-                                    }
-                                    TextOrScaleConversion::Scale(conv) => {
-                                        if let Some(n) = name {
-                                            *new_a = format!(
-                                                "{} | {} = {}",
-                                                new_a,
-                                                n,
-                                                conv.eval_to_txt(*a as f64)
-                                            );
-                                        } else {
-                                            *new_a = format!(
-                                                "{} | {}",
-                                                new_a,
-                                                conv.eval_to_txt(*a as f64)
-                                            );
-                                        }
-                                    }
-                                    _ => {
-                                        *new_a = format!("{} | {}", new_a, "nothing");
-                                    }
-                                }
-                            } else {
-                                match &def {
-                                    DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                                        *new_a = txt.clone();
-                                    }
-                                    DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                                        *new_a = conv.eval_to_txt(*a as f64);
-                                    }
-                                    _ => {
-                                        *new_a = format!("{} | {}", new_a, "nothing");
-                                    }
-                                }
-                            }
-                        }
-                        (ValueOrValueRangeToText::ValueRangeToText(txt, def, keys), name) => {
-                            let matched_key = keys
-                                .iter()
-                                .enumerate()
-                                .find(|&x| x.1.min <= *a as f64 && *a as f64 <= x.1.max);
-                            if let Some(key) = matched_key {
-                                match &txt[key.0] {
-                                    TextOrScaleConversion::Txt(txt) => {
-                                        if let Some(n) = name {
-                                            *new_a = format!("{} | {} = {}", new_a, n, txt.clone());
-                                        } else {
-                                            *new_a = format!("{} | {}", new_a, txt.clone());
-                                        }
-                                    }
-                                    TextOrScaleConversion::Scale(conv) => {
-                                        if let Some(n) = name {
-                                            *new_a = format!(
-                                                "{} | {} = {}",
-                                                new_a,
-                                                n,
-                                                conv.eval_to_txt(*a as f64)
-                                            );
-                                        } else {
-                                            *new_a = format!(
-                                                "{} | {}",
-                                                new_a,
-                                                conv.eval_to_txt(*a as f64)
-                                            );
-                                        }
-                                    }
-                                    _ => {
-                                        *new_a = format!("{} | {}", new_a, "nothing");
-                                    }
-                                }
-                            } else {
-                                match &def {
-                                    DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                                        if let Some(n) = name {
-                                            *new_a = format!("{} | {} = {}", new_a, n, txt.clone());
-                                        } else {
-                                            *new_a = format!("{} | {}", new_a, txt.clone());
-                                        }
-                                    }
-                                    DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                                        if let Some(n) = name {
-                                            *new_a = format!(
-                                                "{} | {} = {}",
-                                                new_a,
-                                                n,
-                                                conv.eval_to_txt(*a as f64)
-                                            );
-                                        } else {
-                                            *new_a = format!(
-                                                "{} | {}",
-                                                new_a,
-                                                conv.eval_to_txt(*a as f64)
-                                            );
-                                        }
-                                    }
-                                    _ => {
-                                        *new_a = format!("{} | {}", new_a, "nothing");
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(bitfield_text_table_calculation(
+                a,
+                cc_val,
+                cc_ref,
+                *cycle_count as usize,
+                sharable,
+            ));
         }
-        ChannelData::Int8(_) => (),
-        ChannelData::Int16(_) => (),
         ChannelData::UInt16(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_a, a)| {
-                for (ind, val) in cc_val.iter().enumerate() {
-                    let masked_val = *a & (*val as u16);
-                    match &table[ind] {
-                        (ValueOrValueRangeToText::ValueToText(table_int, def), name) => {
-                            let ref_val = masked_val as i64;
-                            if let Some(tosc) = table_int.get(&ref_val) {
-                                match tosc {
-                                    TextOrScaleConversion::Txt(txt) => {
-                                        if let Some(n) = name {
-                                            *new_a = format!("{} | {} = {}", new_a, n, txt.clone());
-                                        } else {
-                                            *new_a = format!("{} | {}", new_a, txt.clone());
-                                        }
-                                    }
-                                    TextOrScaleConversion::Scale(conv) => {
-                                        if let Some(n) = name {
-                                            *new_a = format!(
-                                                "{} | {} = {}",
-                                                new_a,
-                                                n,
-                                                conv.eval_to_txt(*a as f64)
-                                            );
-                                        } else {
-                                            *new_a = format!(
-                                                "{} | {}",
-                                                new_a,
-                                                conv.eval_to_txt(*a as f64)
-                                            );
-                                        }
-                                    }
-                                    _ => {
-                                        *new_a = format!("{} | {}", new_a, "nothing");
-                                    }
-                                }
-                            } else {
-                                match &def {
-                                    DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                                        *new_a = txt.clone();
-                                    }
-                                    DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                                        *new_a = conv.eval_to_txt(*a as f64);
-                                    }
-                                    _ => {
-                                        *new_a = format!("{} | {}", new_a, "nothing");
-                                    }
-                                }
-                            }
-                        }
-                        (ValueOrValueRangeToText::ValueRangeToText(txt, def, keys), name) => {
-                            let matched_key = keys
-                                .iter()
-                                .enumerate()
-                                .find(|&x| x.1.min <= *a as f64 && *a as f64 <= x.1.max);
-                            if let Some(key) = matched_key {
-                                match &txt[key.0] {
-                                    TextOrScaleConversion::Txt(txt) => {
-                                        if let Some(n) = name {
-                                            *new_a = format!("{} | {} = {}", new_a, n, txt.clone());
-                                        } else {
-                                            *new_a = format!("{} | {}", new_a, txt.clone());
-                                        }
-                                    }
-                                    TextOrScaleConversion::Scale(conv) => {
-                                        if let Some(n) = name {
-                                            *new_a = format!(
-                                                "{} | {} = {}",
-                                                new_a,
-                                                n,
-                                                conv.eval_to_txt(*a as f64)
-                                            );
-                                        } else {
-                                            *new_a = format!(
-                                                "{} | {}",
-                                                new_a,
-                                                conv.eval_to_txt(*a as f64)
-                                            );
-                                        }
-                                    }
-                                    _ => {
-                                        *new_a = format!("{} | {}", new_a, "nothing");
-                                    }
-                                }
-                            } else {
-                                match &def {
-                                    DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                                        if let Some(n) = name {
-                                            *new_a = format!("{} | {} = {}", new_a, n, txt.clone());
-                                        } else {
-                                            *new_a = format!("{} | {}", new_a, txt.clone());
-                                        }
-                                    }
-                                    DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                                        if let Some(n) = name {
-                                            *new_a = format!(
-                                                "{} | {} = {}",
-                                                new_a,
-                                                n,
-                                                conv.eval_to_txt(*a as f64)
-                                            );
-                                        } else {
-                                            *new_a = format!(
-                                                "{} | {}",
-                                                new_a,
-                                                conv.eval_to_txt(*a as f64)
-                                            );
-                                        }
-                                    }
-                                    _ => {
-                                        *new_a = format!("{} | {}", new_a, "nothing");
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(bitfield_text_table_calculation(
+                a,
+                cc_val,
+                cc_ref,
+                *cycle_count as usize,
+                sharable,
+            ));
         }
-        ChannelData::Float16(_) => {}
-        ChannelData::Int24(_) => (),
-        ChannelData::UInt24(_) => (),
-        ChannelData::Int32(_) => (),
         ChannelData::UInt32(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_a, a)| {
-                for (ind, val) in cc_val.iter().enumerate() {
-                    let masked_val = *a & (*val as u32);
-                    match &table[ind] {
-                        (ValueOrValueRangeToText::ValueToText(table_int, def), name) => {
-                            let ref_val = masked_val as i64;
-                            if let Some(tosc) = table_int.get(&ref_val) {
-                                match tosc {
-                                    TextOrScaleConversion::Txt(txt) => {
-                                        if let Some(n) = name {
-                                            *new_a = format!("{} | {} = {}", new_a, n, txt.clone());
-                                        } else {
-                                            *new_a = format!("{} | {}", new_a, txt.clone());
-                                        }
-                                    }
-                                    TextOrScaleConversion::Scale(conv) => {
-                                        if let Some(n) = name {
-                                            *new_a = format!(
-                                                "{} | {} = {}",
-                                                new_a,
-                                                n,
-                                                conv.eval_to_txt(*a as f64)
-                                            );
-                                        } else {
-                                            *new_a = format!(
-                                                "{} | {}",
-                                                new_a,
-                                                conv.eval_to_txt(*a as f64)
-                                            );
-                                        }
-                                    }
-                                    _ => {
-                                        *new_a = format!("{} | {}", new_a, "nothing");
-                                    }
-                                }
-                            } else {
-                                match &def {
-                                    DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                                        *new_a = txt.clone();
-                                    }
-                                    DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                                        *new_a = conv.eval_to_txt(*a as f64);
-                                    }
-                                    _ => {
-                                        *new_a = format!("{} | {}", new_a, "nothing");
-                                    }
-                                }
-                            }
-                        }
-                        (ValueOrValueRangeToText::ValueRangeToText(txt, def, keys), name) => {
-                            let matched_key = keys
-                                .iter()
-                                .enumerate()
-                                .find(|&x| x.1.min <= *a as f64 && *a as f64 <= x.1.max);
-                            if let Some(key) = matched_key {
-                                match &txt[key.0] {
-                                    TextOrScaleConversion::Txt(txt) => {
-                                        if let Some(n) = name {
-                                            *new_a = format!("{} | {} = {}", new_a, n, txt.clone());
-                                        } else {
-                                            *new_a = format!("{} | {}", new_a, txt.clone());
-                                        }
-                                    }
-                                    TextOrScaleConversion::Scale(conv) => {
-                                        if let Some(n) = name {
-                                            *new_a = format!(
-                                                "{} | {} = {}",
-                                                new_a,
-                                                n,
-                                                conv.eval_to_txt(*a as f64)
-                                            );
-                                        } else {
-                                            *new_a = format!(
-                                                "{} | {}",
-                                                new_a,
-                                                conv.eval_to_txt(*a as f64)
-                                            );
-                                        }
-                                    }
-                                    _ => {
-                                        *new_a = format!("{} | {}", new_a, "nothing");
-                                    }
-                                }
-                            } else {
-                                match &def {
-                                    DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                                        if let Some(n) = name {
-                                            *new_a = format!("{} | {} = {}", new_a, n, txt.clone());
-                                        } else {
-                                            *new_a = format!("{} | {}", new_a, txt.clone());
-                                        }
-                                    }
-                                    DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                                        if let Some(n) = name {
-                                            *new_a = format!(
-                                                "{} | {} = {}",
-                                                new_a,
-                                                n,
-                                                conv.eval_to_txt(*a as f64)
-                                            );
-                                        } else {
-                                            *new_a = format!(
-                                                "{} | {}",
-                                                new_a,
-                                                conv.eval_to_txt(*a as f64)
-                                            );
-                                        }
-                                    }
-                                    _ => {
-                                        *new_a = format!("{} | {}", new_a, "nothing");
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(bitfield_text_table_calculation(
+                a,
+                cc_val,
+                cc_ref,
+                *cycle_count as usize,
+                sharable,
+            ));
         }
-        ChannelData::Float32(_) => {}
-        ChannelData::Int48(_) => (),
-        ChannelData::UInt48(_) => (),
-        ChannelData::Int64(_) => (),
         ChannelData::UInt64(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_a, a)| {
-                for (ind, val) in cc_val.iter().enumerate() {
-                    let masked_val = *a & val;
-                    match &table[ind] {
-                        (ValueOrValueRangeToText::ValueToText(table_int, def), name) => {
-                            let ref_val = masked_val as i64;
-                            if let Some(tosc) = table_int.get(&ref_val) {
-                                match tosc {
-                                    TextOrScaleConversion::Txt(txt) => {
-                                        if let Some(n) = name {
-                                            *new_a = format!("{} | {} = {}", new_a, n, txt.clone());
-                                        } else {
-                                            *new_a = format!("{} | {}", new_a, txt.clone());
-                                        }
-                                    }
-                                    TextOrScaleConversion::Scale(conv) => {
-                                        if let Some(n) = name {
-                                            *new_a = format!(
-                                                "{} | {} = {}",
-                                                new_a,
-                                                n,
-                                                conv.eval_to_txt(*a as f64)
-                                            );
-                                        } else {
-                                            *new_a = format!(
-                                                "{} | {}",
-                                                new_a,
-                                                conv.eval_to_txt(*a as f64)
-                                            );
-                                        }
-                                    }
-                                    _ => {
-                                        *new_a = format!("{} | {}", new_a, "nothing");
-                                    }
-                                }
-                            } else {
-                                match &def {
-                                    DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                                        *new_a = txt.clone();
-                                    }
-                                    DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                                        *new_a = conv.eval_to_txt(*a as f64);
-                                    }
-                                    _ => {
-                                        *new_a = format!("{} | {}", new_a, "nothing");
-                                    }
-                                }
-                            }
-                        }
-                        (ValueOrValueRangeToText::ValueRangeToText(txt, def, keys), name) => {
-                            let matched_key = keys
-                                .iter()
-                                .enumerate()
-                                .find(|&x| x.1.min <= *a as f64 && *a as f64 <= x.1.max);
-                            if let Some(key) = matched_key {
-                                match &txt[key.0] {
-                                    TextOrScaleConversion::Txt(txt) => {
-                                        if let Some(n) = name {
-                                            *new_a = format!("{} | {} = {}", new_a, n, txt.clone());
-                                        } else {
-                                            *new_a = format!("{} | {}", new_a, txt.clone());
-                                        }
-                                    }
-                                    TextOrScaleConversion::Scale(conv) => {
-                                        if let Some(n) = name {
-                                            *new_a = format!(
-                                                "{} | {} = {}",
-                                                new_a,
-                                                n,
-                                                conv.eval_to_txt(*a as f64)
-                                            );
-                                        } else {
-                                            *new_a = format!(
-                                                "{} | {}",
-                                                new_a,
-                                                conv.eval_to_txt(*a as f64)
-                                            );
-                                        }
-                                    }
-                                    _ => {
-                                        *new_a = format!("{} | {}", new_a, "nothing");
-                                    }
-                                }
-                            } else {
-                                match &def {
-                                    DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                                        if let Some(n) = name {
-                                            *new_a = format!("{} | {} = {}", new_a, n, txt.clone());
-                                        } else {
-                                            *new_a = format!("{} | {}", new_a, txt.clone());
-                                        }
-                                    }
-                                    DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                                        if let Some(n) = name {
-                                            *new_a = format!(
-                                                "{} | {} = {}",
-                                                new_a,
-                                                n,
-                                                conv.eval_to_txt(*a as f64)
-                                            );
-                                        } else {
-                                            *new_a = format!(
-                                                "{} | {}",
-                                                new_a,
-                                                conv.eval_to_txt(*a as f64)
-                                            );
-                                        }
-                                    }
-                                    _ => {
-                                        *new_a = format!("{} | {}", new_a, "nothing");
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(bitfield_text_table_calculation(
+                a,
+                cc_val,
+                cc_ref,
+                *cycle_count as usize,
+                sharable,
+            ));
         }
-        ChannelData::Float64(_) => {}
-        ChannelData::Complex16(_) => {}
-        ChannelData::Complex32(_) => {}
-        ChannelData::Complex64(_) => {}
-        ChannelData::StringSBC(_) => {}
-        ChannelData::StringUTF8(_) => {}
-        ChannelData::StringUTF16(_) => {}
-        ChannelData::VariableSizeByteArray(_) => {}
-        ChannelData::FixedSizeByteArray(_) => {}
-        ChannelData::ArrayDInt8(_) => {}
-        ChannelData::ArrayDUInt8(_) => {}
-        ChannelData::ArrayDInt16(_) => {}
-        ChannelData::ArrayDUInt16(_) => {}
-        ChannelData::ArrayDFloat16(_) => {}
-        ChannelData::ArrayDInt24(_) => {}
-        ChannelData::ArrayDUInt24(_) => {}
-        ChannelData::ArrayDInt32(_) => {}
-        ChannelData::ArrayDUInt32(_) => {}
-        ChannelData::ArrayDFloat32(_) => {}
-        ChannelData::ArrayDInt48(_) => {}
-        ChannelData::ArrayDUInt48(_) => {}
-        ChannelData::ArrayDInt64(_) => {}
-        ChannelData::ArrayDUInt64(_) => {}
-        ChannelData::ArrayDFloat64(_) => {}
-        ChannelData::ArrayDComplex16(_) => {}
-        ChannelData::ArrayDComplex32(_) => {}
-        ChannelData::ArrayDComplex64(_) => {}
+        _ => {
+            warn!(
+                "bitfield conversion into text of channel {} not possible, channel does not contain unsigned integer",
+                cn.unique_name
+            )
+        }
     }
 }

@@ -6,6 +6,7 @@ use crate::mdfinfo::mdfinfo3::{Cn3, Conversion, Dg3, SharableBlocks3};
 use crate::mdfreader::channel_data::ChannelData;
 use fasteval::Compiler;
 use fasteval::Evaler;
+use log::warn;
 use rayon::prelude::*;
 
 use crate::mdfreader::channel_data::ArrowComplex;
@@ -1818,7 +1819,7 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
                         *new_array = res;
                     } else if let Err(error_message) = result {
                         if error_flag {
-                            println!(
+                            warn!(
                                 "{}\n Could not compute formulae {} for channel {} and value {}",
                                 error_message, formulae, cn.unique_name, a
                             );
@@ -1838,7 +1839,7 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
                         *new_array = res;
                     } else if let Err(error_message) = result {
                         if error_flag {
-                            println!(
+                            warn!(
                                 "{}\n Could not compute formulae {} for channel {} and value {}",
                                 error_message, formulae, cn.unique_name, a
                             );
@@ -1858,7 +1859,7 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
                         *new_array = res;
                     } else if let Err(error_message) = result {
                         if error_flag {
-                            println!(
+                            warn!(
                                 "{}\n Could not compute formulae {} for channel {} and value {}",
                                 error_message, formulae, cn.unique_name, a
                             );
@@ -1878,7 +1879,7 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
                         *new_array = res;
                     } else if let Err(error_message) = result {
                         if error_flag {
-                            println!(
+                            warn!(
                                 "{}\n Could not compute formulae {} for channel {} and value {}",
                                 error_message, formulae, cn.unique_name, a
                             );
@@ -1898,7 +1899,7 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
                         *new_array = res;
                     } else if let Err(error_message) = result {
                         if error_flag {
-                            println!(
+                            warn!(
                                 "{}\n Could not compute formulae {} for channel {} and value {}",
                                 error_message, formulae, cn.unique_name, a
                             );
@@ -1918,7 +1919,7 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
                         *new_array = res;
                     } else if let Err(error_message) = result {
                         if error_flag {
-                            println!(
+                            warn!(
                                 "{}\n Could not compute formulae {} for channel {} and value {}",
                                 error_message, formulae, cn.unique_name, a
                             );
@@ -1938,7 +1939,7 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
                         *new_array = res;
                     } else if let Err(error_message) = result {
                         if error_flag {
-                            println!(
+                            warn!(
                                 "{}\n Could not compute formulae {} for channel {} and value {}",
                                 error_message, formulae, cn.unique_name, a
                             );
@@ -1958,7 +1959,7 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
                         *new_array = res;
                     } else if let Err(error_message) = result {
                         if error_flag {
-                            println!(
+                            warn!(
                                 "{}\n Could not compute formulae {} for channel {} and value {}",
                                 error_message, formulae, cn.unique_name, a
                             );
@@ -1978,7 +1979,7 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
                         *new_array = res;
                     } else if let Err(error_message) = result {
                         if error_flag {
-                            println!(
+                            warn!(
                                 "{}\n Could not compute formulae {} for channel {} and value {}",
                                 error_message, formulae, cn.unique_name, a
                             );
@@ -1998,7 +1999,7 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
                         *new_array = res;
                     } else if let Err(error_message) = result {
                         if error_flag {
-                            println!(
+                            warn!(
                                 "{}\n Could not compute formulae {} for channel {} and value {}",
                                 error_message, formulae, cn.unique_name, a
                             );
@@ -2018,7 +2019,7 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
                         *new_array = res;
                     } else if let Err(error_message) = result {
                         if error_flag {
-                            println!(
+                            warn!(
                                 "{}\n Could not compute formulae {} for channel {} and value {}",
                                 error_message, formulae, cn.unique_name, a
                             );
@@ -2038,7 +2039,7 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
                         *new_array = res;
                     } else if let Err(error_message) = result {
                         if error_flag {
-                            println!(
+                            warn!(
                                 "{}\n Could not compute formulae {} for channel {} and value {}",
                                 error_message, formulae, cn.unique_name, a
                             );
@@ -2058,7 +2059,7 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
                         *new_array = res;
                     } else if let Err(error_message) = result {
                         if error_flag {
-                            println!(
+                            warn!(
                                 "{}\n Could not compute formulae {} for channel {} and value {}",
                                 error_message, formulae, cn.unique_name, a
                             );
@@ -2078,7 +2079,7 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
                         *new_array = res;
                     } else if let Err(error_message) = result {
                         if error_flag {
-                            println!(
+                            warn!(
                                 "{}\n Could not compute formulae {} for channel {} and value {}",
                                 error_message, formulae, cn.unique_name, a
                             );
@@ -2098,7 +2099,7 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
                         *new_array = res;
                     } else if let Err(error_message) = result {
                         if error_flag {
-                            println!(
+                            warn!(
                                 "{}\n Could not compute formulae {} for channel {} and value {}",
                                 error_message, formulae, cn.unique_name, a
                             );
@@ -2272,7 +2273,7 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
         }
     } else if let Err(error_message) = compiled_instruction {
         // could not parse the formulae, probably some function or syntax not yet implementated by fasteval
-        println!(
+        warn!(
             "{}\n Could not parse formulae {} for channel {}",
             error_message, formulae, cn.unique_name
         );

@@ -7,9 +7,17 @@ mod mdfinfo;
 mod mdfreader;
 mod mdfwriter;
 use anyhow::Result;
+use env_logger::Env;
 use log::info;
 
+fn init() {
+    let _ = env_logger::Builder::from_env(Env::default().default_filter_or("warn"))
+        .is_test(true)
+        .try_init();
+}
+
 fn main() -> Result<()> {
+    init();
     let matches = Command::new("mdfr")
         .bin_name("mdfr")
         .version("0.1.0")

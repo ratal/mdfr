@@ -28,17 +28,17 @@ mod tests {
         let mut file_name = "test_files/test_basic.mf4";
         println!("reading {}", file_name);
         let mdf = Mdf::new(file_name)?;
-        println!("{:#?}", mdf);
+        // println!("{:#?}", mdf);
         assert_eq!(mdf.get_version(), 410);
         file_name = "test_files/test_mdf3.mdf";
-        println!("reading {}", file_name);
+        // println!("reading {}", file_name);
         let mdf = Mdf::new(file_name)?;
-        println!("{:#?}", &mdf);
+        // println!("{:#?}", &mdf);
         assert_eq!(mdf.get_version(), 310);
         file_name = "test_files/test_mdf4.mf4";
-        println!("reading {}", file_name);
+        // println!("reading {}", file_name);
         let mdf = Mdf::new(file_name)?;
-        println!("{:#?}", &mdf);
+        // println!("{:#?}", &mdf);
         assert_eq!(mdf.get_version(), 400);
         Ok(())
     }

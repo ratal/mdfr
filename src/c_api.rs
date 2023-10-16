@@ -45,14 +45,6 @@ pub unsafe extern "C" fn get_channel_unit(
     mdf: *const Mdf,
     channel_name: *const c_char,
 ) -> *const c_char {
-    // # Safety
-    //
-    // It is the caller's guarantee to ensure `file_name`:
-    //
-    // - is not a null pointer
-    // - points to valid, initialized data
-    // - points to memory ending in a null byte
-    // - won't be mutated for the duration of this function call
     let name = CStr::from_ptr(channel_name)
         .to_str()
         .expect("Could not convert into utf8 the file name string");
@@ -78,14 +70,6 @@ pub unsafe extern "C" fn get_channel_desc(
     mdf: *const Mdf,
     channel_name: *const libc::c_char,
 ) -> *const c_char {
-    // # Safety
-    //
-    // It is the caller's guarantee to ensure `file_name`:
-    //
-    // - is not a null pointer
-    // - points to valid, initialized data
-    // - points to memory ending in a null byte
-    // - won't be mutated for the duration of this function call
     let name = CStr::from_ptr(channel_name)
         .to_str()
         .expect("Could not convert into utf8 the file name string");
@@ -113,14 +97,6 @@ pub unsafe extern "C" fn get_channel_master(
     mdf: *const Mdf,
     channel_name: *const libc::c_char,
 ) -> *const c_char {
-    // # Safety
-    //
-    // It is the caller's guarantee to ensure `file_name`:
-    //
-    // - is not a null pointer
-    // - points to valid, initialized data
-    // - points to memory ending in a null byte
-    // - won't be mutated for the duration of this function call
     let name = CStr::from_ptr(channel_name)
         .to_str()
         .expect("Could not convert into utf8 the file name string");
@@ -144,14 +120,6 @@ pub unsafe extern "C" fn get_channel_master_type(
     mdf: *const Mdf,
     channel_name: *const libc::c_char,
 ) -> c_uchar {
-    // # Safety
-    //
-    // It is the caller's guarantee to ensure `file_name`:
-    //
-    // - is not a null pointer
-    // - points to valid, initialized data
-    // - points to memory ending in a null byte
-    // - won't be mutated for the duration of this function call
     let name = CStr::from_ptr(channel_name)
         .to_str()
         .expect("Could not convert into utf8 the file name string");
@@ -205,14 +173,6 @@ pub unsafe extern "C" fn get_channel_array(
     mdf: *const Mdf,
     channel_name: *const libc::c_char,
 ) -> *const ArrowArray {
-    // # Safety
-    //
-    // It is the caller's guarantee to ensure `file_name`:
-    //
-    // - is not a null pointer
-    // - points to valid, initialized data
-    // - points to memory ending in a null byte
-    // - won't be mutated for the duration of this function call
     let name = CStr::from_ptr(channel_name)
         .to_str()
         .expect("Could not convert into utf8 the file name string");
@@ -237,14 +197,6 @@ pub unsafe extern "C" fn get_channel_schema(
     mdf: *const Mdf,
     channel_name: *const libc::c_char,
 ) -> *const ArrowSchema {
-    // # Safety
-    //
-    // It is the caller's guarantee to ensure `file_name`:
-    //
-    // - is not a null pointer
-    // - points to valid, initialized data
-    // - points to memory ending in a null byte
-    // - won't be mutated for the duration of this function call
     let name = CStr::from_ptr(channel_name)
         .to_str()
         .expect("Could not convert into utf8 the file name string");

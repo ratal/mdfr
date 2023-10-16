@@ -52,11 +52,11 @@ polars = { version = "0.33", features = [
     "fmt",
 ] } # for python dataframe
 libc = "0.2" # for the C api
+env_logger = "*"
 
 [dev-dependencies]
 criterion = "0.5" # for benchmark
 test-log = "*"
-env_logger = "*"
 
 [build-dependencies]
 cbindgen = "0.26" # to generate C api headers
