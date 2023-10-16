@@ -1,11 +1,13 @@
 //! this modules implements functions to convert arrays into physical arrays using CCBlock
 use itertools::Itertools;
+use num::ToPrimitive;
 use std::collections::BTreeMap;
+use std::fmt::Display;
 
 use crate::mdfinfo::mdfinfo3::{Cn3, Conversion, Dg3, SharableBlocks3};
 use crate::mdfreader::channel_data::ChannelData;
-use fasteval::Compiler;
 use fasteval::Evaler;
+use fasteval::{Compiler, Instruction, Slab};
 use log::warn;
 use rayon::prelude::*;
 
@@ -184,14 +186,6 @@ fn linear_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                     .for_each(|(new_array, a)| *new_array = *a * p2 + p1);
                 cn.data = ChannelData::Float64(new_array);
             }
-            ChannelData::Complex16(_) => {}
-            ChannelData::Complex32(_) => {}
-            ChannelData::Complex64(_) => {}
-            ChannelData::StringSBC(_) => {}
-            ChannelData::StringUTF8(_) => {}
-            ChannelData::StringUTF16(_) => {}
-            ChannelData::VariableSizeByteArray(_) => {}
-            ChannelData::FixedSizeByteArray(_) => {}
             ChannelData::ArrayDUInt8(a) => {
                 let mut new_array = vec![0f64; a.0.len()];
                 new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
@@ -324,6 +318,10 @@ fn linear_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 cn.data =
                     ChannelData::ArrayDComplex64((ArrowComplex::<f64>(new_array), a.1.clone()));
             }
+            _ => warn!(
+                "not possible to apply linear conversion to the data type of channel {}",
+                cn.unique_name,
+            ),
         }
     }
 }
@@ -472,14 +470,6 @@ fn rational_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             });
             cn.data = ChannelData::Float64(new_array);
         }
-        ChannelData::Complex16(_) => todo!(),
-        ChannelData::Complex32(_) => todo!(),
-        ChannelData::Complex64(_) => todo!(),
-        ChannelData::StringSBC(_) => {}
-        ChannelData::StringUTF8(_) => {}
-        ChannelData::StringUTF16(_) => {}
-        ChannelData::VariableSizeByteArray(_) => {}
-        ChannelData::FixedSizeByteArray(_) => {}
         ChannelData::ArrayDUInt8(a) => {
             let mut new_array = vec![0f64; a.0.len()];
             new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
@@ -614,9 +604,10 @@ fn rational_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             });
             cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
         }
-        ChannelData::ArrayDComplex16(_) => todo!(),
-        ChannelData::ArrayDComplex32(_) => todo!(),
-        ChannelData::ArrayDComplex64(_) => todo!(),
+        _ => warn!(
+            "not possible to apply ratioanl conversion to the data type of channel {}",
+            cn.unique_name,
+        ),
     }
 }
 
@@ -749,14 +740,6 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             });
             cn.data = ChannelData::Float64(new_array);
         }
-        ChannelData::Complex16(_) => todo!(),
-        ChannelData::Complex32(_) => todo!(),
-        ChannelData::Complex64(_) => todo!(),
-        ChannelData::StringSBC(_) => {}
-        ChannelData::StringUTF8(_) => {}
-        ChannelData::StringUTF16(_) => {}
-        ChannelData::VariableSizeByteArray(_) => {}
-        ChannelData::FixedSizeByteArray(_) => {}
         ChannelData::ArrayDUInt8(a) => {
             let mut new_array = vec![0f64; a.0.len()];
             new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
@@ -876,9 +859,10 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             });
             cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
         }
-        ChannelData::ArrayDComplex16(_) => todo!(),
-        ChannelData::ArrayDComplex32(_) => todo!(),
-        ChannelData::ArrayDComplex64(_) => todo!(),
+        _ => warn!(
+            "not possible to apply polynomial conversion to the data type of channel {}",
+            cn.unique_name,
+        ),
     }
 }
 
@@ -1131,14 +1115,6 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 cn.data = ChannelData::Float64(new_array);
             }
         }
-        ChannelData::Complex16(_) => {} // no complex in mdf v3
-        ChannelData::Complex32(_) => {}
-        ChannelData::Complex64(_) => {}
-        ChannelData::StringSBC(_) => {}
-        ChannelData::StringUTF8(_) => {}
-        ChannelData::StringUTF16(_) => {}
-        ChannelData::VariableSizeByteArray(_) => {}
-        ChannelData::FixedSizeByteArray(_) => {}
         ChannelData::ArrayDUInt8(a) => {
             let mut new_array = vec![0f64; a.0.len()];
             if p4 == 0.0 {
@@ -1334,9 +1310,10 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             }
             cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
         }
-        ChannelData::ArrayDComplex16(_) => {}
-        ChannelData::ArrayDComplex32(_) => {}
-        ChannelData::ArrayDComplex64(_) => {}
+        _ => warn!(
+            "not possible to apply exponential conversion to the data type of channel {}",
+            cn.unique_name,
+        ),
     }
 }
 
@@ -1589,14 +1566,6 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
                 cn.data = ChannelData::Float64(new_array);
             }
         }
-        ChannelData::Complex16(_) => todo!(),
-        ChannelData::Complex32(_) => todo!(),
-        ChannelData::Complex64(_) => todo!(),
-        ChannelData::StringSBC(_) => {}
-        ChannelData::StringUTF8(_) => {}
-        ChannelData::StringUTF16(_) => {}
-        ChannelData::VariableSizeByteArray(_) => {}
-        ChannelData::FixedSizeByteArray(_) => {}
         ChannelData::ArrayDUInt8(a) => {
             let mut new_array = vec![0f64; a.0.len()];
             if p4 == 0.0 {
@@ -1792,17 +1761,45 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
             }
             cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
         }
-        ChannelData::ArrayDComplex16(_) => todo!(),
-        ChannelData::ArrayDComplex32(_) => todo!(),
-        ChannelData::ArrayDComplex64(_) => todo!(),
+        _ => warn!(
+            "not possible to apply logarithmic conversion to the data type of channel {}",
+            cn.unique_name,
+        ),
     }
+}
+
+/// Generic function calculating algebraic expression
+#[inline]
+fn alegbraic_conversion_calculation<T: ToPrimitive + Display>(
+    array: &Vec<T>,
+    compiled: &Instruction,
+    slab: &Slab,
+    cycle_count: &usize,
+    formulae: &str,
+    name: &str,
+) -> Vec<f64> {
+    let mut map = BTreeMap::new();
+    let mut new_array = vec![0f64; *cycle_count];
+    new_array.iter_mut().zip(array).for_each(|(new_array, a)| {
+        map.insert("X".to_string(), a.to_f64().unwrap_or_default());
+        match compiled.eval(slab, &mut map) {
+            Ok(res) => *new_array = res,
+            Err(error_message) => {
+                *new_array = a.to_f64().unwrap_or_default();
+                warn!(
+                    "{}\n Could not compute formulae {} for channel {} and value {}",
+                    error_message, formulae, name, a
+                );
+            }
+        }
+    });
+    new_array
 }
 
 /// Apply algebraic conversion to get physical data
 fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
     let parser = fasteval::Parser::new();
     let mut slab = fasteval::Slab::new();
-    let mut map = BTreeMap::new();
     let compiled_instruction = parser.parse(formulae, &mut slab.ps);
     if let Ok(compiled_instruct) = compiled_instruction {
         let compiled = compiled_instruct
@@ -1810,466 +1807,354 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
             .compile(&slab.ps, &mut slab.cs);
         match &mut cn.data {
             ChannelData::UInt8(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                let mut error_flag = true;
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    map.insert("X".to_string(), *a as f64);
-                    let result = compiled.eval(&slab, &mut map);
-                    if let Ok(res) = result {
-                        *new_array = res;
-                    } else if let Err(error_message) = result {
-                        if error_flag {
-                            warn!(
-                                "{}\n Could not compute formulae {} for channel {} and value {}",
-                                error_message, formulae, cn.unique_name, a
-                            );
-                            error_flag = false;
-                        }
-                    }
-                });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
+                    a,
+                    &compiled,
+                    &slab,
+                    &(*cycle_count as usize),
+                    formulae,
+                    &cn.unique_name,
+                ));
             }
             ChannelData::Int8(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                let mut error_flag = true;
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    map.insert("X".to_string(), *a as f64);
-                    let result = compiled.eval(&slab, &mut map);
-                    if let Ok(res) = result {
-                        *new_array = res;
-                    } else if let Err(error_message) = result {
-                        if error_flag {
-                            warn!(
-                                "{}\n Could not compute formulae {} for channel {} and value {}",
-                                error_message, formulae, cn.unique_name, a
-                            );
-                            error_flag = false;
-                        }
-                    }
-                });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
+                    a,
+                    &compiled,
+                    &slab,
+                    &(*cycle_count as usize),
+                    formulae,
+                    &cn.unique_name,
+                ));
             }
             ChannelData::Int16(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                let mut error_flag = true;
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    map.insert("X".to_string(), *a as f64);
-                    let result = compiled.eval(&slab, &mut map);
-                    if let Ok(res) = result {
-                        *new_array = res;
-                    } else if let Err(error_message) = result {
-                        if error_flag {
-                            warn!(
-                                "{}\n Could not compute formulae {} for channel {} and value {}",
-                                error_message, formulae, cn.unique_name, a
-                            );
-                            error_flag = false;
-                        }
-                    }
-                });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
+                    a,
+                    &compiled,
+                    &slab,
+                    &(*cycle_count as usize),
+                    formulae,
+                    &cn.unique_name,
+                ));
             }
             ChannelData::UInt16(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                let mut error_flag = true;
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    map.insert("X".to_string(), *a as f64);
-                    let result = compiled.eval(&slab, &mut map);
-                    if let Ok(res) = result {
-                        *new_array = res;
-                    } else if let Err(error_message) = result {
-                        if error_flag {
-                            warn!(
-                                "{}\n Could not compute formulae {} for channel {} and value {}",
-                                error_message, formulae, cn.unique_name, a
-                            );
-                            error_flag = false;
-                        }
-                    }
-                });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
+                    a,
+                    &compiled,
+                    &slab,
+                    &(*cycle_count as usize),
+                    formulae,
+                    &cn.unique_name,
+                ));
             }
             ChannelData::Float16(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                let mut error_flag = true;
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    map.insert("X".to_string(), *a as f64);
-                    let result = compiled.eval(&slab, &mut map);
-                    if let Ok(res) = result {
-                        *new_array = res;
-                    } else if let Err(error_message) = result {
-                        if error_flag {
-                            warn!(
-                                "{}\n Could not compute formulae {} for channel {} and value {}",
-                                error_message, formulae, cn.unique_name, a
-                            );
-                            error_flag = false;
-                        }
-                    }
-                });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
+                    a,
+                    &compiled,
+                    &slab,
+                    &(*cycle_count as usize),
+                    formulae,
+                    &cn.unique_name,
+                ));
             }
             ChannelData::Int24(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                let mut error_flag = true;
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    map.insert("X".to_string(), *a as f64);
-                    let result = compiled.eval(&slab, &mut map);
-                    if let Ok(res) = result {
-                        *new_array = res;
-                    } else if let Err(error_message) = result {
-                        if error_flag {
-                            warn!(
-                                "{}\n Could not compute formulae {} for channel {} and value {}",
-                                error_message, formulae, cn.unique_name, a
-                            );
-                            error_flag = false;
-                        }
-                    }
-                });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
+                    a,
+                    &compiled,
+                    &slab,
+                    &(*cycle_count as usize),
+                    formulae,
+                    &cn.unique_name,
+                ));
             }
             ChannelData::UInt24(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                let mut error_flag = true;
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    map.insert("X".to_string(), *a as f64);
-                    let result = compiled.eval(&slab, &mut map);
-                    if let Ok(res) = result {
-                        *new_array = res;
-                    } else if let Err(error_message) = result {
-                        if error_flag {
-                            warn!(
-                                "{}\n Could not compute formulae {} for channel {} and value {}",
-                                error_message, formulae, cn.unique_name, a
-                            );
-                            error_flag = false;
-                        }
-                    }
-                });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
+                    a,
+                    &compiled,
+                    &slab,
+                    &(*cycle_count as usize),
+                    formulae,
+                    &cn.unique_name,
+                ));
             }
             ChannelData::Int32(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                let mut error_flag = true;
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    map.insert("X".to_string(), *a as f64);
-                    let result = compiled.eval(&slab, &mut map);
-                    if let Ok(res) = result {
-                        *new_array = res;
-                    } else if let Err(error_message) = result {
-                        if error_flag {
-                            warn!(
-                                "{}\n Could not compute formulae {} for channel {} and value {}",
-                                error_message, formulae, cn.unique_name, a
-                            );
-                            error_flag = false;
-                        }
-                    }
-                });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
+                    a,
+                    &compiled,
+                    &slab,
+                    &(*cycle_count as usize),
+                    formulae,
+                    &cn.unique_name,
+                ));
             }
             ChannelData::UInt32(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                let mut error_flag = true;
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    map.insert("X".to_string(), *a as f64);
-                    let result = compiled.eval(&slab, &mut map);
-                    if let Ok(res) = result {
-                        *new_array = res;
-                    } else if let Err(error_message) = result {
-                        if error_flag {
-                            warn!(
-                                "{}\n Could not compute formulae {} for channel {} and value {}",
-                                error_message, formulae, cn.unique_name, a
-                            );
-                            error_flag = false;
-                        }
-                    }
-                });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
+                    a,
+                    &compiled,
+                    &slab,
+                    &(*cycle_count as usize),
+                    formulae,
+                    &cn.unique_name,
+                ));
             }
             ChannelData::Float32(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                let mut error_flag = true;
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    map.insert("X".to_string(), *a as f64);
-                    let result = compiled.eval(&slab, &mut map);
-                    if let Ok(res) = result {
-                        *new_array = res;
-                    } else if let Err(error_message) = result {
-                        if error_flag {
-                            warn!(
-                                "{}\n Could not compute formulae {} for channel {} and value {}",
-                                error_message, formulae, cn.unique_name, a
-                            );
-                            error_flag = false;
-                        }
-                    }
-                });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
+                    a,
+                    &compiled,
+                    &slab,
+                    &(*cycle_count as usize),
+                    formulae,
+                    &cn.unique_name,
+                ));
             }
             ChannelData::Int48(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                let mut error_flag = true;
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    map.insert("X".to_string(), *a as f64);
-                    let result = compiled.eval(&slab, &mut map);
-                    if let Ok(res) = result {
-                        *new_array = res;
-                    } else if let Err(error_message) = result {
-                        if error_flag {
-                            warn!(
-                                "{}\n Could not compute formulae {} for channel {} and value {}",
-                                error_message, formulae, cn.unique_name, a
-                            );
-                            error_flag = false;
-                        }
-                    }
-                });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
+                    a,
+                    &compiled,
+                    &slab,
+                    &(*cycle_count as usize),
+                    formulae,
+                    &cn.unique_name,
+                ));
             }
             ChannelData::UInt48(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                let mut error_flag = true;
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    map.insert("X".to_string(), *a as f64);
-                    let result = compiled.eval(&slab, &mut map);
-                    if let Ok(res) = result {
-                        *new_array = res;
-                    } else if let Err(error_message) = result {
-                        if error_flag {
-                            warn!(
-                                "{}\n Could not compute formulae {} for channel {} and value {}",
-                                error_message, formulae, cn.unique_name, a
-                            );
-                            error_flag = false;
-                        }
-                    }
-                });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
+                    a,
+                    &compiled,
+                    &slab,
+                    &(*cycle_count as usize),
+                    formulae,
+                    &cn.unique_name,
+                ));
             }
             ChannelData::Int64(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                let mut error_flag = true;
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    map.insert("X".to_string(), *a as f64);
-                    let result = compiled.eval(&slab, &mut map);
-                    if let Ok(res) = result {
-                        *new_array = res;
-                    } else if let Err(error_message) = result {
-                        if error_flag {
-                            warn!(
-                                "{}\n Could not compute formulae {} for channel {} and value {}",
-                                error_message, formulae, cn.unique_name, a
-                            );
-                            error_flag = false;
-                        }
-                    }
-                });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
+                    a,
+                    &compiled,
+                    &slab,
+                    &(*cycle_count as usize),
+                    formulae,
+                    &cn.unique_name,
+                ));
             }
             ChannelData::UInt64(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                let mut error_flag = true;
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    map.insert("X".to_string(), *a as f64);
-                    let result = compiled.eval(&slab, &mut map);
-                    if let Ok(res) = result {
-                        *new_array = res;
-                    } else if let Err(error_message) = result {
-                        if error_flag {
-                            warn!(
-                                "{}\n Could not compute formulae {} for channel {} and value {}",
-                                error_message, formulae, cn.unique_name, a
-                            );
-                            error_flag = false;
-                        }
-                    }
-                });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
+                    a,
+                    &compiled,
+                    &slab,
+                    &(*cycle_count as usize),
+                    formulae,
+                    &cn.unique_name,
+                ));
             }
             ChannelData::Float64(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                let mut error_flag = true;
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    map.insert("X".to_string(), *a);
-                    let result = compiled.eval(&slab, &mut map);
-                    if let Ok(res) = result {
-                        *new_array = res;
-                    } else if let Err(error_message) = result {
-                        if error_flag {
-                            warn!(
-                                "{}\n Could not compute formulae {} for channel {} and value {}",
-                                error_message, formulae, cn.unique_name, a
-                            );
-                            error_flag = false;
-                        }
-                    }
-                });
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
+                    a,
+                    &compiled,
+                    &slab,
+                    &(*cycle_count as usize),
+                    formulae,
+                    &cn.unique_name,
+                ));
             }
-            ChannelData::Complex16(_) => todo!(),
-            ChannelData::Complex32(_) => todo!(),
-            ChannelData::Complex64(_) => todo!(),
-            ChannelData::StringSBC(_) => (),
-            ChannelData::StringUTF8(_) => (),
-            ChannelData::StringUTF16(_) => (),
-            ChannelData::VariableSizeByteArray(_) => (),
-            ChannelData::FixedSizeByteArray(_) => (),
             ChannelData::ArrayDInt8(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    map.insert("X".to_string(), *a as f64);
-                    *new_array = compiled
-                        .eval(&slab, &mut map)
-                        .expect("could not evaluate algebraic expression");
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+                cn.data = ChannelData::ArrayDFloat64((
+                    alegbraic_conversion_calculation(
+                        &a.0,
+                        &compiled,
+                        &slab,
+                        &(*cycle_count as usize),
+                        formulae,
+                        &cn.unique_name,
+                    ),
+                    a.1.clone(),
+                ));
             }
             ChannelData::ArrayDUInt8(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    map.insert("X".to_string(), *a as f64);
-                    *new_array = compiled
-                        .eval(&slab, &mut map)
-                        .expect("could not evaluate algebraic expression");
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+                cn.data = ChannelData::ArrayDFloat64((
+                    alegbraic_conversion_calculation(
+                        &a.0,
+                        &compiled,
+                        &slab,
+                        &(*cycle_count as usize),
+                        formulae,
+                        &cn.unique_name,
+                    ),
+                    a.1.clone(),
+                ));
             }
             ChannelData::ArrayDInt16(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    map.insert("X".to_string(), *a as f64);
-                    *new_array = compiled
-                        .eval(&slab, &mut map)
-                        .expect("could not evaluate algebraic expression");
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+                cn.data = ChannelData::ArrayDFloat64((
+                    alegbraic_conversion_calculation(
+                        &a.0,
+                        &compiled,
+                        &slab,
+                        &(*cycle_count as usize),
+                        formulae,
+                        &cn.unique_name,
+                    ),
+                    a.1.clone(),
+                ));
             }
             ChannelData::ArrayDUInt16(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    map.insert("X".to_string(), *a as f64);
-                    *new_array = compiled
-                        .eval(&slab, &mut map)
-                        .expect("could not evaluate algebraic expression");
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+                cn.data = ChannelData::ArrayDFloat64((
+                    alegbraic_conversion_calculation(
+                        &a.0,
+                        &compiled,
+                        &slab,
+                        &(*cycle_count as usize),
+                        formulae,
+                        &cn.unique_name,
+                    ),
+                    a.1.clone(),
+                ));
             }
             ChannelData::ArrayDFloat16(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    map.insert("X".to_string(), *a as f64);
-                    *new_array = compiled
-                        .eval(&slab, &mut map)
-                        .expect("could not evaluate algebraic expression");
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+                cn.data = ChannelData::ArrayDFloat64((
+                    alegbraic_conversion_calculation(
+                        &a.0,
+                        &compiled,
+                        &slab,
+                        &(*cycle_count as usize),
+                        formulae,
+                        &cn.unique_name,
+                    ),
+                    a.1.clone(),
+                ));
             }
             ChannelData::ArrayDInt24(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    map.insert("X".to_string(), *a as f64);
-                    *new_array = compiled
-                        .eval(&slab, &mut map)
-                        .expect("could not evaluate algebraic expression");
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+                cn.data = ChannelData::ArrayDFloat64((
+                    alegbraic_conversion_calculation(
+                        &a.0,
+                        &compiled,
+                        &slab,
+                        &(*cycle_count as usize),
+                        formulae,
+                        &cn.unique_name,
+                    ),
+                    a.1.clone(),
+                ));
             }
             ChannelData::ArrayDUInt24(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    map.insert("X".to_string(), *a as f64);
-                    *new_array = compiled
-                        .eval(&slab, &mut map)
-                        .expect("could not evaluate algebraic expression");
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+                cn.data = ChannelData::ArrayDFloat64((
+                    alegbraic_conversion_calculation(
+                        &a.0,
+                        &compiled,
+                        &slab,
+                        &(*cycle_count as usize),
+                        formulae,
+                        &cn.unique_name,
+                    ),
+                    a.1.clone(),
+                ));
             }
             ChannelData::ArrayDInt32(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    map.insert("X".to_string(), *a as f64);
-                    *new_array = compiled
-                        .eval(&slab, &mut map)
-                        .expect("could not evaluate algebraic expression");
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+                cn.data = ChannelData::ArrayDFloat64((
+                    alegbraic_conversion_calculation(
+                        &a.0,
+                        &compiled,
+                        &slab,
+                        &(*cycle_count as usize),
+                        formulae,
+                        &cn.unique_name,
+                    ),
+                    a.1.clone(),
+                ));
             }
             ChannelData::ArrayDUInt32(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    map.insert("X".to_string(), *a as f64);
-                    *new_array = compiled
-                        .eval(&slab, &mut map)
-                        .expect("could not evaluate algebraic expression");
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+                cn.data = ChannelData::ArrayDFloat64((
+                    alegbraic_conversion_calculation(
+                        &a.0,
+                        &compiled,
+                        &slab,
+                        &(*cycle_count as usize),
+                        formulae,
+                        &cn.unique_name,
+                    ),
+                    a.1.clone(),
+                ));
             }
             ChannelData::ArrayDFloat32(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    map.insert("X".to_string(), *a as f64);
-                    *new_array = compiled
-                        .eval(&slab, &mut map)
-                        .expect("could not evaluate algebraic expression");
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+                cn.data = ChannelData::ArrayDFloat64((
+                    alegbraic_conversion_calculation(
+                        &a.0,
+                        &compiled,
+                        &slab,
+                        &(*cycle_count as usize),
+                        formulae,
+                        &cn.unique_name,
+                    ),
+                    a.1.clone(),
+                ));
             }
             ChannelData::ArrayDInt48(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    map.insert("X".to_string(), *a as f64);
-                    *new_array = compiled
-                        .eval(&slab, &mut map)
-                        .expect("could not evaluate algebraic expression");
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+                cn.data = ChannelData::ArrayDFloat64((
+                    alegbraic_conversion_calculation(
+                        &a.0,
+                        &compiled,
+                        &slab,
+                        &(*cycle_count as usize),
+                        formulae,
+                        &cn.unique_name,
+                    ),
+                    a.1.clone(),
+                ));
             }
             ChannelData::ArrayDUInt48(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    map.insert("X".to_string(), *a as f64);
-                    *new_array = compiled
-                        .eval(&slab, &mut map)
-                        .expect("could not evaluate algebraic expression");
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+                cn.data = ChannelData::ArrayDFloat64((
+                    alegbraic_conversion_calculation(
+                        &a.0,
+                        &compiled,
+                        &slab,
+                        &(*cycle_count as usize),
+                        formulae,
+                        &cn.unique_name,
+                    ),
+                    a.1.clone(),
+                ));
             }
             ChannelData::ArrayDInt64(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    map.insert("X".to_string(), *a as f64);
-                    *new_array = compiled
-                        .eval(&slab, &mut map)
-                        .expect("could not evaluate algebraic expression");
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+                cn.data = ChannelData::ArrayDFloat64((
+                    alegbraic_conversion_calculation(
+                        &a.0,
+                        &compiled,
+                        &slab,
+                        &(*cycle_count as usize),
+                        formulae,
+                        &cn.unique_name,
+                    ),
+                    a.1.clone(),
+                ));
             }
             ChannelData::ArrayDUInt64(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    map.insert("X".to_string(), *a as f64);
-                    *new_array = compiled
-                        .eval(&slab, &mut map)
-                        .expect("could not evaluate algebraic expression");
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+                cn.data = ChannelData::ArrayDFloat64((
+                    alegbraic_conversion_calculation(
+                        &a.0,
+                        &compiled,
+                        &slab,
+                        &(*cycle_count as usize),
+                        formulae,
+                        &cn.unique_name,
+                    ),
+                    a.1.clone(),
+                ));
             }
             ChannelData::ArrayDFloat64(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    map.insert("X".to_string(), *a);
-                    *new_array = compiled
-                        .eval(&slab, &mut map)
-                        .expect("could not evaluate algebraic expression");
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+                cn.data = ChannelData::ArrayDFloat64((
+                    alegbraic_conversion_calculation(
+                        &a.0,
+                        &compiled,
+                        &slab,
+                        &(*cycle_count as usize),
+                        formulae,
+                        &cn.unique_name,
+                    ),
+                    a.1.clone(),
+                ));
             }
-            ChannelData::ArrayDComplex16(_) => {} // no complex in mdf3
-            ChannelData::ArrayDComplex32(_) => {}
-            ChannelData::ArrayDComplex64(_) => {}
+            _ => warn!(
+                "not possible to apply algebraic conversion to the data type of channel {}",
+                cn.unique_name,
+            ),
         }
     } else if let Err(error_message) = compiled_instruction {
         // could not parse the formulae, probably some function or syntax not yet implementated by fasteval
@@ -2568,14 +2453,6 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
             });
             cn.data = ChannelData::Float64(new_array);
         }
-        ChannelData::Complex16(_) => {}
-        ChannelData::Complex32(_) => {}
-        ChannelData::Complex64(_) => {}
-        ChannelData::StringSBC(_) => {}
-        ChannelData::StringUTF8(_) => {}
-        ChannelData::StringUTF16(_) => {}
-        ChannelData::VariableSizeByteArray(_) => {}
-        ChannelData::FixedSizeByteArray(_) => {}
         ChannelData::ArrayDInt8(a) => {
             let mut new_array = vec![0f64; a.0.len()];
             new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
@@ -2860,9 +2737,10 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
             });
             cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
         }
-        ChannelData::ArrayDComplex16(_) => {}
-        ChannelData::ArrayDComplex32(_) => {}
-        ChannelData::ArrayDComplex64(_) => {}
+        _=> warn!(
+            "not possible to apply value to value with interpolation conversion to the data type of channel {}",
+            cn.unique_name,
+        ),
     }
 }
 
@@ -3214,14 +3092,6 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
             });
             cn.data = ChannelData::Float64(new_array);
         }
-        ChannelData::Complex16(_) => {}
-        ChannelData::Complex32(_) => {}
-        ChannelData::Complex64(_) => {}
-        ChannelData::StringSBC(_) => {}
-        ChannelData::StringUTF8(_) => {}
-        ChannelData::StringUTF16(_) => {}
-        ChannelData::VariableSizeByteArray(_) => {}
-        ChannelData::FixedSizeByteArray(_) => {}
         ChannelData::ArrayDInt8(a) => {
             let mut new_array = vec![0f64; a.0.len()];
             new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
@@ -3566,9 +3436,10 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
             });
             cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
         }
-        ChannelData::ArrayDComplex16(_) => {}
-        ChannelData::ArrayDComplex32(_) => {}
-        ChannelData::ArrayDComplex64(_) => {}
+        _ => warn!(
+            "not possible to apply value to value without interpolation conversion to the data type of channel {}",
+            cn.unique_name,
+        ),
     }
 }
 
@@ -3726,32 +3597,10 @@ fn value_to_text(cn: &mut Cn3, cc_val_ref: &[(f64, String)], cycle_count: &u32) 
             });
             cn.data = ChannelData::StringUTF8(new_array);
         }
-        ChannelData::Complex16(_) => (),
-        ChannelData::Complex32(_) => (),
-        ChannelData::Complex64(_) => (),
-        ChannelData::StringSBC(_) => (),
-        ChannelData::StringUTF8(_) => (),
-        ChannelData::StringUTF16(_) => (),
-        ChannelData::VariableSizeByteArray(_) => (),
-        ChannelData::FixedSizeByteArray(_) => (),
-        ChannelData::ArrayDInt8(_) => (),
-        ChannelData::ArrayDUInt8(_) => (),
-        ChannelData::ArrayDInt16(_) => (),
-        ChannelData::ArrayDUInt16(_) => (),
-        ChannelData::ArrayDFloat16(_) => (),
-        ChannelData::ArrayDInt24(_) => (),
-        ChannelData::ArrayDUInt24(_) => (),
-        ChannelData::ArrayDInt32(_) => (),
-        ChannelData::ArrayDUInt32(_) => (),
-        ChannelData::ArrayDFloat32(_) => (),
-        ChannelData::ArrayDInt48(_) => (),
-        ChannelData::ArrayDUInt48(_) => (),
-        ChannelData::ArrayDInt64(_) => (),
-        ChannelData::ArrayDUInt64(_) => (),
-        ChannelData::ArrayDFloat64(_) => (),
-        ChannelData::ArrayDComplex16(_) => (),
-        ChannelData::ArrayDComplex32(_) => (),
-        ChannelData::ArrayDComplex64(_) => (),
+        _ => warn!(
+            "not possible to apply value to text conversion to the data type of channel {}",
+            cn.unique_name,
+        ),
     }
 }
 
@@ -4002,31 +3851,9 @@ fn value_range_to_text(
             });
             cn.data = ChannelData::StringUTF8(new_array);
         }
-        ChannelData::Complex16(_) => {}
-        ChannelData::Complex32(_) => {}
-        ChannelData::Complex64(_) => {}
-        ChannelData::StringSBC(_) => {}
-        ChannelData::StringUTF8(_) => {}
-        ChannelData::StringUTF16(_) => {}
-        ChannelData::VariableSizeByteArray(_) => {}
-        ChannelData::FixedSizeByteArray(_) => {}
-        ChannelData::ArrayDInt8(_) => {}
-        ChannelData::ArrayDUInt8(_) => {}
-        ChannelData::ArrayDInt16(_) => {}
-        ChannelData::ArrayDUInt16(_) => {}
-        ChannelData::ArrayDFloat16(_) => {}
-        ChannelData::ArrayDInt24(_) => {}
-        ChannelData::ArrayDUInt24(_) => {}
-        ChannelData::ArrayDInt32(_) => {}
-        ChannelData::ArrayDUInt32(_) => {}
-        ChannelData::ArrayDFloat32(_) => {}
-        ChannelData::ArrayDInt48(_) => {}
-        ChannelData::ArrayDUInt48(_) => {}
-        ChannelData::ArrayDInt64(_) => {}
-        ChannelData::ArrayDUInt64(_) => {}
-        ChannelData::ArrayDFloat64(_) => {}
-        ChannelData::ArrayDComplex16(_) => {}
-        ChannelData::ArrayDComplex32(_) => {}
-        ChannelData::ArrayDComplex64(_) => {}
+        _ => warn!(
+            "not possible to apply value to text conversion to the data type of channel {}",
+            cn.unique_name,
+        ),
     }
 }
