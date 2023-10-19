@@ -60,6 +60,22 @@ pub fn convert_all_channels(dg: &mut Dg3, sharable: &SharableBlocks3) {
     }
 }
 
+/// Generic function calculating exponential conversion
+#[inline]
+fn linear_calculation<T: ToPrimitive + Display>(
+    array: &Vec<T>,
+    cc_val: &[f64],
+    cycle_count: usize,
+) -> Vec<f64> {
+    let p1 = cc_val[0];
+    let p2 = cc_val[1];
+    let mut new_array = vec![0f64; cycle_count];
+    new_array.iter_mut().zip(array).for_each(|(new_array, a)| {
+        *new_array = a.to_f64().unwrap_or_default() * p2 + p1;
+    });
+    new_array
+}
+
 /// Apply linear conversion to get physical data
 fn linear_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
     let p1 = cc_val[0];
@@ -67,256 +83,172 @@ fn linear_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
     if !(p1 == 0.0 && num::abs(p2 - 1.0) < 1e-12) {
         match &mut cn.data {
             ChannelData::UInt8(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                new_array
-                    .iter_mut()
-                    .zip(a)
-                    .for_each(|(new_array, a)| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data =
+                    ChannelData::Float64(linear_calculation(a, cc_val, *cycle_count as usize));
             }
             ChannelData::Int8(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                new_array
-                    .iter_mut()
-                    .zip(a)
-                    .for_each(|(new_array, a)| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data =
+                    ChannelData::Float64(linear_calculation(a, cc_val, *cycle_count as usize));
             }
             ChannelData::Int16(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                new_array
-                    .iter_mut()
-                    .zip(a)
-                    .for_each(|(new_array, a)| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data =
+                    ChannelData::Float64(linear_calculation(a, cc_val, *cycle_count as usize));
             }
             ChannelData::UInt16(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                new_array
-                    .iter_mut()
-                    .zip(a)
-                    .for_each(|(new_array, a)| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data =
+                    ChannelData::Float64(linear_calculation(a, cc_val, *cycle_count as usize));
             }
             ChannelData::Float16(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                new_array
-                    .iter_mut()
-                    .zip(a)
-                    .for_each(|(new_array, a)| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data =
+                    ChannelData::Float64(linear_calculation(a, cc_val, *cycle_count as usize));
             }
             ChannelData::Int24(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                new_array
-                    .iter_mut()
-                    .zip(a)
-                    .for_each(|(new_array, a)| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data =
+                    ChannelData::Float64(linear_calculation(a, cc_val, *cycle_count as usize));
             }
             ChannelData::UInt24(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                new_array
-                    .iter_mut()
-                    .zip(a)
-                    .for_each(|(new_array, a)| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data =
+                    ChannelData::Float64(linear_calculation(a, cc_val, *cycle_count as usize));
             }
             ChannelData::Int32(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                new_array
-                    .iter_mut()
-                    .zip(a)
-                    .for_each(|(new_array, a)| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data =
+                    ChannelData::Float64(linear_calculation(a, cc_val, *cycle_count as usize));
             }
             ChannelData::UInt32(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                new_array
-                    .iter_mut()
-                    .zip(a)
-                    .for_each(|(new_array, a)| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data =
+                    ChannelData::Float64(linear_calculation(a, cc_val, *cycle_count as usize));
             }
             ChannelData::Float32(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                new_array
-                    .iter_mut()
-                    .zip(a)
-                    .for_each(|(new_array, a)| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data =
+                    ChannelData::Float64(linear_calculation(a, cc_val, *cycle_count as usize));
             }
             ChannelData::Int48(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                new_array
-                    .iter_mut()
-                    .zip(a)
-                    .for_each(|(new_array, a)| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data =
+                    ChannelData::Float64(linear_calculation(a, cc_val, *cycle_count as usize));
             }
             ChannelData::UInt48(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                new_array
-                    .iter_mut()
-                    .zip(a)
-                    .for_each(|(new_array, a)| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data =
+                    ChannelData::Float64(linear_calculation(a, cc_val, *cycle_count as usize));
             }
             ChannelData::Int64(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                new_array
-                    .iter_mut()
-                    .zip(a)
-                    .for_each(|(new_array, a)| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data =
+                    ChannelData::Float64(linear_calculation(a, cc_val, *cycle_count as usize));
             }
             ChannelData::UInt64(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                new_array
-                    .iter_mut()
-                    .zip(a)
-                    .for_each(|(new_array, a)| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data =
+                    ChannelData::Float64(linear_calculation(a, cc_val, *cycle_count as usize));
             }
             ChannelData::Float64(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                new_array
-                    .iter_mut()
-                    .zip(a)
-                    .for_each(|(new_array, a)| *new_array = *a * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data =
+                    ChannelData::Float64(linear_calculation(a, cc_val, *cycle_count as usize));
             }
             ChannelData::ArrayDUInt8(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a as f64 * p2 + p1;
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDFloat64((
+                    rational_calculation(&a.0, cc_val, a.0.len()),
+                    a.1.clone(),
+                ));
             }
             ChannelData::ArrayDInt8(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a as f64 * p2 + p1;
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDFloat64((
+                    rational_calculation(&a.0, cc_val, a.0.len()),
+                    a.1.clone(),
+                ));
             }
             ChannelData::ArrayDInt16(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a as f64 * p2 + p1;
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDFloat64((
+                    rational_calculation(&a.0, cc_val, a.0.len()),
+                    a.1.clone(),
+                ));
             }
             ChannelData::ArrayDUInt16(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a as f64 * p2 + p1;
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDFloat64((
+                    rational_calculation(&a.0, cc_val, a.0.len()),
+                    a.1.clone(),
+                ));
             }
             ChannelData::ArrayDFloat16(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a as f64 * p2 + p1;
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDFloat64((
+                    rational_calculation(&a.0, cc_val, a.0.len()),
+                    a.1.clone(),
+                ));
             }
             ChannelData::ArrayDInt24(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a as f64 * p2 + p1;
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDFloat64((
+                    rational_calculation(&a.0, cc_val, a.0.len()),
+                    a.1.clone(),
+                ));
             }
             ChannelData::ArrayDUInt24(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a as f64 * p2 + p1;
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDFloat64((
+                    rational_calculation(&a.0, cc_val, a.0.len()),
+                    a.1.clone(),
+                ));
             }
             ChannelData::ArrayDInt32(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a as f64 * p2 + p1;
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDFloat64((
+                    rational_calculation(&a.0, cc_val, a.0.len()),
+                    a.1.clone(),
+                ));
             }
             ChannelData::ArrayDUInt32(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a as f64 * p2 + p1;
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDFloat64((
+                    rational_calculation(&a.0, cc_val, a.0.len()),
+                    a.1.clone(),
+                ));
             }
             ChannelData::ArrayDFloat32(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a as f64 * p2 + p1;
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDFloat64((
+                    rational_calculation(&a.0, cc_val, a.0.len()),
+                    a.1.clone(),
+                ));
             }
             ChannelData::ArrayDInt48(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a as f64 * p2 + p1;
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDFloat64((
+                    rational_calculation(&a.0, cc_val, a.0.len()),
+                    a.1.clone(),
+                ));
             }
             ChannelData::ArrayDUInt48(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a as f64 * p2 + p1;
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDFloat64((
+                    rational_calculation(&a.0, cc_val, a.0.len()),
+                    a.1.clone(),
+                ));
             }
             ChannelData::ArrayDInt64(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a as f64 * p2 + p1;
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDFloat64((
+                    rational_calculation(&a.0, cc_val, a.0.len()),
+                    a.1.clone(),
+                ));
             }
             ChannelData::ArrayDUInt64(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a as f64 * p2 + p1;
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDFloat64((
+                    rational_calculation(&a.0, cc_val, a.0.len()),
+                    a.1.clone(),
+                ));
             }
             ChannelData::ArrayDFloat64(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a * p2 + p1;
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDFloat64((
+                    rational_calculation(&a.0, cc_val, a.0.len()),
+                    a.1.clone(),
+                ));
             }
             ChannelData::ArrayDComplex16(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array
-                    .iter_mut()
-                    .zip(&a.0 .0)
-                    .for_each(|(new_array, a)| *new_array = *a as f64 * p2 + p1);
-                cn.data =
-                    ChannelData::ArrayDComplex64((ArrowComplex::<f64>(new_array), a.1.clone()));
+                cn.data = ChannelData::ArrayDComplex64((
+                    ArrowComplex::<f64>(rational_calculation(&a.0 .0, cc_val, a.0.len())),
+                    a.1.clone(),
+                ));
             }
             ChannelData::ArrayDComplex32(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array
-                    .iter_mut()
-                    .zip(&a.0 .0)
-                    .for_each(|(new_array, a)| *new_array = *a as f64 * p2 + p1);
-                cn.data =
-                    ChannelData::ArrayDComplex64((ArrowComplex::<f64>(new_array), a.1.clone()));
+                cn.data = ChannelData::ArrayDComplex64((
+                    ArrowComplex::<f64>(rational_calculation(&a.0 .0, cc_val, a.0.len())),
+                    a.1.clone(),
+                ));
             }
             ChannelData::ArrayDComplex64(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array
-                    .iter_mut()
-                    .zip(&a.0 .0)
-                    .for_each(|(new_array, a)| *new_array = *a * p2 + p1);
-                cn.data =
-                    ChannelData::ArrayDComplex64((ArrowComplex::<f64>(new_array), a.1.clone()));
+                cn.data = ChannelData::ArrayDComplex64((
+                    ArrowComplex::<f64>(rational_calculation(&a.0 .0, cc_val, a.0.len())),
+                    a.1.clone(),
+                ));
             }
             _ => warn!(
                 "not possible to apply linear conversion to the data type of channel {}",
@@ -326,283 +258,165 @@ fn linear_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
     }
 }
 
-/// Apply rational conversion to get physical data
-fn rational_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
+/// Generic function calculating rational conversion
+#[inline]
+fn rational_calculation<T: ToPrimitive + Display>(
+    array: &Vec<T>,
+    cc_val: &[f64],
+    cycle_count: usize,
+) -> Vec<f64> {
     let p1 = cc_val[0];
     let p2 = cc_val[1];
     let p3 = cc_val[2];
     let p4 = cc_val[3];
     let p5 = cc_val[4];
     let p6 = cc_val[5];
+    let mut new_array = vec![0f64; cycle_count];
+    new_array.iter_mut().zip(array).for_each(|(new_array, a)| {
+        let m = a.to_f64().unwrap_or_default();
+        let m_2 = f64::powi(m, 2);
+        *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
+    });
+    new_array
+}
 
+/// Apply rational conversion to get physical data
+fn rational_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
     match &mut cn.data {
         ChannelData::UInt8(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(rational_calculation(a, cc_val, *cycle_count as usize));
         }
         ChannelData::Int8(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(rational_calculation(a, cc_val, *cycle_count as usize));
         }
         ChannelData::Int16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(rational_calculation(a, cc_val, *cycle_count as usize));
         }
         ChannelData::UInt16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(rational_calculation(a, cc_val, *cycle_count as usize));
         }
         ChannelData::Float16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(rational_calculation(a, cc_val, *cycle_count as usize));
         }
         ChannelData::Int24(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(rational_calculation(a, cc_val, *cycle_count as usize));
         }
         ChannelData::UInt24(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(rational_calculation(a, cc_val, *cycle_count as usize));
         }
         ChannelData::Int32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(rational_calculation(a, cc_val, *cycle_count as usize));
         }
         ChannelData::UInt32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(rational_calculation(a, cc_val, *cycle_count as usize));
         }
         ChannelData::Float32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(rational_calculation(a, cc_val, *cycle_count as usize));
         }
         ChannelData::Int48(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(rational_calculation(a, cc_val, *cycle_count as usize));
         }
         ChannelData::UInt48(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(rational_calculation(a, cc_val, *cycle_count as usize));
         }
         ChannelData::Int64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(rational_calculation(a, cc_val, *cycle_count as usize));
         }
         ChannelData::UInt64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(rational_calculation(a, cc_val, *cycle_count as usize));
         }
         ChannelData::Float64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m_2 = f64::powi(*a, 2);
-                *new_array = (m_2 * p1 + *a * p2 + p1) / (m_2 * p4 + *a * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(rational_calculation(a, cc_val, *cycle_count as usize));
         }
         ChannelData::ArrayDUInt8(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                rational_calculation(&a.0, cc_val, a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDInt8(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                rational_calculation(&a.0, cc_val, a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDInt16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                rational_calculation(&a.0, cc_val, a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDUInt16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                rational_calculation(&a.0, cc_val, a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDFloat16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                rational_calculation(&a.0, cc_val, a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDInt24(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                rational_calculation(&a.0, cc_val, a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDUInt24(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                rational_calculation(&a.0, cc_val, a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDInt32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                rational_calculation(&a.0, cc_val, a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDUInt32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                rational_calculation(&a.0, cc_val, a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDFloat32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                rational_calculation(&a.0, cc_val, a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDInt48(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                rational_calculation(&a.0, cc_val, a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDUInt48(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                rational_calculation(&a.0, cc_val, a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDInt64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                rational_calculation(&a.0, cc_val, a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDUInt64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                rational_calculation(&a.0, cc_val, a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDFloat64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m_2 = f64::powi(*a, 2);
-                *new_array = (m_2 * p1 + *a * p2 + p1) / (m_2 * p4 + *a * p5 + p6)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                rational_calculation(&a.0, cc_val, a.0.len()),
+                a.1.clone(),
+            ));
         }
         _ => warn!(
             "not possible to apply ratioanl conversion to the data type of channel {}",
@@ -611,253 +425,179 @@ fn rational_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
     }
 }
 
-/// Apply polynomial conversion to get physical data
-fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
+/// Generic function calculating polynomial conversion
+#[inline]
+fn polynomial_calculation<T: ToPrimitive + Display>(
+    array: &Vec<T>,
+    cc_val: &[f64],
+    cycle_count: usize,
+) -> Vec<f64> {
     let p1 = cc_val[0];
     let p2 = cc_val[1];
     let p3 = cc_val[2];
     let p4 = cc_val[3];
     let p5 = cc_val[4];
     let p6 = cc_val[5];
+    let mut new_array = vec![0f64; cycle_count];
+    new_array.iter_mut().zip(array).for_each(|(new_array, a)| {
+        let m = a.to_f64().unwrap_or_default();
+        *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
+    });
+    new_array
+}
 
+/// Apply polynomial conversion to get physical data
+fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
     match &mut cn.data {
         ChannelData::UInt8(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data =
+                ChannelData::Float64(polynomial_calculation(a, cc_val, *cycle_count as usize));
         }
         ChannelData::Int8(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data =
+                ChannelData::Float64(polynomial_calculation(a, cc_val, *cycle_count as usize));
         }
         ChannelData::Int16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data =
+                ChannelData::Float64(polynomial_calculation(a, cc_val, *cycle_count as usize));
         }
         ChannelData::UInt16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data =
+                ChannelData::Float64(polynomial_calculation(a, cc_val, *cycle_count as usize));
         }
         ChannelData::Float16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data =
+                ChannelData::Float64(polynomial_calculation(a, cc_val, *cycle_count as usize));
         }
         ChannelData::Int24(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data =
+                ChannelData::Float64(polynomial_calculation(a, cc_val, *cycle_count as usize));
         }
         ChannelData::UInt24(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data =
+                ChannelData::Float64(polynomial_calculation(a, cc_val, *cycle_count as usize));
         }
         ChannelData::Int32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data =
+                ChannelData::Float64(polynomial_calculation(a, cc_val, *cycle_count as usize));
         }
         ChannelData::UInt32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data =
+                ChannelData::Float64(polynomial_calculation(a, cc_val, *cycle_count as usize));
         }
         ChannelData::Float32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data =
+                ChannelData::Float64(polynomial_calculation(a, cc_val, *cycle_count as usize));
         }
         ChannelData::Int48(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data =
+                ChannelData::Float64(polynomial_calculation(a, cc_val, *cycle_count as usize));
         }
         ChannelData::UInt48(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data =
+                ChannelData::Float64(polynomial_calculation(a, cc_val, *cycle_count as usize));
         }
         ChannelData::Int64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data =
+                ChannelData::Float64(polynomial_calculation(a, cc_val, *cycle_count as usize));
         }
         ChannelData::UInt64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data =
+                ChannelData::Float64(polynomial_calculation(a, cc_val, *cycle_count as usize));
         }
         ChannelData::Float64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                *new_array = (p2 - (p4 * (*a - p5 - p6))) / (p3 * (*a - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data =
+                ChannelData::Float64(polynomial_calculation(a, cc_val, *cycle_count as usize));
         }
         ChannelData::ArrayDUInt8(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                polynomial_calculation(&a.0, cc_val, a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDInt8(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                polynomial_calculation(&a.0, cc_val, a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDInt16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                polynomial_calculation(&a.0, cc_val, a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDUInt16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                polynomial_calculation(&a.0, cc_val, a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDFloat16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                polynomial_calculation(&a.0, cc_val, a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDInt24(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                polynomial_calculation(&a.0, cc_val, a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDUInt24(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                polynomial_calculation(&a.0, cc_val, a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDInt32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                polynomial_calculation(&a.0, cc_val, a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDUInt32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                polynomial_calculation(&a.0, cc_val, a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDFloat32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                polynomial_calculation(&a.0, cc_val, a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDInt48(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                polynomial_calculation(&a.0, cc_val, a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDUInt48(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                polynomial_calculation(&a.0, cc_val, a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDInt64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                polynomial_calculation(&a.0, cc_val, a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDUInt64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                *new_array = (p2 - (p4 * (m - p5 - p6))) / (p3 * (m - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                polynomial_calculation(&a.0, cc_val, a.0.len()),
+                a.1.clone(),
+            ));
         }
         ChannelData::ArrayDFloat64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                *new_array = (p2 - (p4 * (*a - p5 - p6))) / (p3 * (*a - p5 - p6) - p1)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((
+                polynomial_calculation(&a.0, cc_val, a.0.len()),
+                a.1.clone(),
+            ));
         }
         _ => warn!(
             "not possible to apply polynomial conversion to the data type of channel {}",
@@ -866,8 +606,13 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
     }
 }
 
-/// Apply exponential conversion to get physical data
-fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
+/// Generic function calculating exponential conversion
+#[inline]
+fn exponential_calculation<T: ToPrimitive + Display>(
+    array: &Vec<T>,
+    cc_val: &[f64],
+    cycle_count: usize,
+) -> Option<Vec<f64>> {
     let p1 = cc_val[0];
     let p2 = cc_val[1];
     let p3 = cc_val[2];
@@ -875,440 +620,176 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
     let p5 = cc_val[4];
     let p6 = cc_val[5];
     let p7 = cc_val[6];
+    let mut new_array = vec![0f64; cycle_count];
+    if p4 == 0.0 {
+        new_array.iter_mut().zip(array).for_each(|(new_array, a)| {
+            let m = a.to_f64().unwrap_or_default();
+            *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
+        });
+        Some(new_array)
+    } else if p1 == 0.0 {
+        new_array.iter_mut().zip(array).for_each(|(new_array, a)| {
+            let m = a.to_f64().unwrap_or_default();
+            *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
+        });
+        Some(new_array)
+    } else {
+        None
+    }
+}
 
+/// Apply exponential conversion to get physical data
+fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
     match &mut cn.data {
         ChannelData::UInt8(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            }
+            if let Some(new_array) = exponential_calculation(a, cc_val, *cycle_count as usize) {
+                cn.data = ChannelData::Float64(new_array)
+            };
         }
         ChannelData::Int8(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            }
+            if let Some(new_array) = exponential_calculation(a, cc_val, *cycle_count as usize) {
+                cn.data = ChannelData::Float64(new_array)
+            };
         }
         ChannelData::Int16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            }
+            if let Some(new_array) = exponential_calculation(a, cc_val, *cycle_count as usize) {
+                cn.data = ChannelData::Float64(new_array)
+            };
         }
         ChannelData::UInt16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            }
+            if let Some(new_array) = exponential_calculation(a, cc_val, *cycle_count as usize) {
+                cn.data = ChannelData::Float64(new_array)
+            };
         }
         ChannelData::Float16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            }
+            if let Some(new_array) = exponential_calculation(a, cc_val, *cycle_count as usize) {
+                cn.data = ChannelData::Float64(new_array)
+            };
         }
         ChannelData::Int24(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            }
+            if let Some(new_array) = exponential_calculation(a, cc_val, *cycle_count as usize) {
+                cn.data = ChannelData::Float64(new_array)
+            };
         }
         ChannelData::UInt24(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            }
+            if let Some(new_array) = exponential_calculation(a, cc_val, *cycle_count as usize) {
+                cn.data = ChannelData::Float64(new_array)
+            };
         }
         ChannelData::Int32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            }
+            if let Some(new_array) = exponential_calculation(a, cc_val, *cycle_count as usize) {
+                cn.data = ChannelData::Float64(new_array)
+            };
         }
         ChannelData::UInt32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            }
+            if let Some(new_array) = exponential_calculation(a, cc_val, *cycle_count as usize) {
+                cn.data = ChannelData::Float64(new_array)
+            };
         }
         ChannelData::Float32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            }
+            if let Some(new_array) = exponential_calculation(a, cc_val, *cycle_count as usize) {
+                cn.data = ChannelData::Float64(new_array)
+            };
         }
         ChannelData::Int48(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            }
+            if let Some(new_array) = exponential_calculation(a, cc_val, *cycle_count as usize) {
+                cn.data = ChannelData::Float64(new_array)
+            };
         }
         ChannelData::UInt48(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            }
+            if let Some(new_array) = exponential_calculation(a, cc_val, *cycle_count as usize) {
+                cn.data = ChannelData::Float64(new_array)
+            };
         }
         ChannelData::Int64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            }
+            if let Some(new_array) = exponential_calculation(a, cc_val, *cycle_count as usize) {
+                cn.data = ChannelData::Float64(new_array)
+            };
         }
         ChannelData::UInt64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = (((m - p7) * p6 - p3) / p1).ln() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = ((p3 / (m - p7) - p6) / p4).ln() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            }
+            if let Some(new_array) = exponential_calculation(a, cc_val, *cycle_count as usize) {
+                cn.data = ChannelData::Float64(new_array)
+            };
         }
         ChannelData::Float64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    *new_array = (((*a - p7) * p6 - p3) / p1).ln() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a - p7) - p6) / p4).ln() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            }
+            if let Some(new_array) = exponential_calculation(a, cc_val, *cycle_count as usize) {
+                cn.data = ChannelData::Float64(new_array)
+            };
         }
         ChannelData::ArrayDUInt8(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = (((*a as f64 - p7) * p6 - p3) / p1).ln() / p2;
-                });
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).ln() / p5;
-                });
-            }
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            if let Some(new_array) = exponential_calculation(&a.0, cc_val, a.0.len()) {
+                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            };
         }
         ChannelData::ArrayDInt8(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = (((*a as f64 - p7) * p6 - p3) / p1).ln() / p2;
-                });
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).ln() / p5;
-                });
-            }
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            if let Some(new_array) = exponential_calculation(&a.0, cc_val, a.0.len()) {
+                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            };
         }
         ChannelData::ArrayDInt16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = (((*a as f64 - p7) * p6 - p3) / p1).ln() / p2;
-                });
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).ln() / p5;
-                });
-            }
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            if let Some(new_array) = exponential_calculation(&a.0, cc_val, a.0.len()) {
+                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            };
         }
         ChannelData::ArrayDUInt16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = (((*a as f64 - p7) * p6 - p3) / p1).ln() / p2;
-                });
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).ln() / p5;
-                });
-            }
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            if let Some(new_array) = exponential_calculation(&a.0, cc_val, a.0.len()) {
+                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            };
         }
         ChannelData::ArrayDFloat16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = (((*a as f64 - p7) * p6 - p3) / p1).ln() / p2;
-                });
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).ln() / p5;
-                });
-            }
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            if let Some(new_array) = exponential_calculation(&a.0, cc_val, a.0.len()) {
+                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            };
         }
         ChannelData::ArrayDInt24(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = (((*a as f64 - p7) * p6 - p3) / p1).ln() / p2;
-                });
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).ln() / p5;
-                });
-            }
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            if let Some(new_array) = exponential_calculation(&a.0, cc_val, a.0.len()) {
+                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            };
         }
         ChannelData::ArrayDUInt24(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = (((*a as f64 - p7) * p6 - p3) / p1).ln() / p2;
-                });
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).ln() / p5;
-                });
-            }
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            if let Some(new_array) = exponential_calculation(&a.0, cc_val, a.0.len()) {
+                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            };
         }
         ChannelData::ArrayDInt32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = (((*a as f64 - p7) * p6 - p3) / p1).ln() / p2;
-                });
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).ln() / p5;
-                });
-            }
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            if let Some(new_array) = exponential_calculation(&a.0, cc_val, a.0.len()) {
+                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            };
         }
         ChannelData::ArrayDUInt32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = (((*a as f64 - p7) * p6 - p3) / p1).ln() / p2;
-                });
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).ln() / p5;
-                });
-            }
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            if let Some(new_array) = exponential_calculation(&a.0, cc_val, a.0.len()) {
+                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            };
         }
         ChannelData::ArrayDFloat32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = (((*a as f64 - p7) * p6 - p3) / p1).ln() / p2;
-                });
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).ln() / p5;
-                });
-            }
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            if let Some(new_array) = exponential_calculation(&a.0, cc_val, a.0.len()) {
+                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            };
         }
         ChannelData::ArrayDInt48(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = (((*a as f64 - p7) * p6 - p3) / p1).ln() / p2;
-                });
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).ln() / p5;
-                });
-            }
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            if let Some(new_array) = exponential_calculation(&a.0, cc_val, a.0.len()) {
+                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            };
         }
         ChannelData::ArrayDUInt48(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = (((*a as f64 - p7) * p6 - p3) / p1).ln() / p2;
-                });
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).ln() / p5;
-                });
-            }
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            if let Some(new_array) = exponential_calculation(&a.0, cc_val, a.0.len()) {
+                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            };
         }
         ChannelData::ArrayDInt64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = (((*a as f64 - p7) * p6 - p3) / p1).ln() / p2;
-                });
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).ln() / p5;
-                });
-            }
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            if let Some(new_array) = exponential_calculation(&a.0, cc_val, a.0.len()) {
+                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            };
         }
         ChannelData::ArrayDUInt64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = (((*a as f64 - p7) * p6 - p3) / p1).ln() / p2;
-                });
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).ln() / p5;
-                });
-            }
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            if let Some(new_array) = exponential_calculation(&a.0, cc_val, a.0.len()) {
+                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            };
         }
         ChannelData::ArrayDFloat64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = (((*a - p7) * p6 - p3) / p1).ln() / p2;
-                });
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a - p7) - p6) / p4).ln() / p5;
-                });
-            }
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            if let Some(new_array) = exponential_calculation(&a.0, cc_val, a.0.len()) {
+                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            };
         }
         _ => warn!(
             "not possible to apply exponential conversion to the data type of channel {}",
@@ -1317,8 +798,13 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
     }
 }
 
-/// Apply exponential conversion to get physical data
-fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
+/// Generic function calculating value logarithmic conversion
+#[inline]
+fn logarithmic_calculation<T: ToPrimitive + Display>(
+    array: &Vec<T>,
+    cc_val: &[f64],
+    cycle_count: usize,
+) -> Option<Vec<f64>> {
     let p1 = cc_val[0];
     let p2 = cc_val[1];
     let p3 = cc_val[2];
@@ -1326,440 +812,176 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
     let p5 = cc_val[4];
     let p6 = cc_val[5];
     let p7 = cc_val[6];
+    let mut new_array = vec![0f64; cycle_count];
+    if p4 == 0.0 {
+        new_array.iter_mut().zip(array).for_each(|(new_array, a)| {
+            let m = a.to_f64().unwrap_or_default();
+            *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
+        });
+        Some(new_array)
+    } else if p1 == 0.0 {
+        new_array.iter_mut().zip(array).for_each(|(new_array, a)| {
+            let m = a.to_f64().unwrap_or_default();
+            *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
+        });
+        Some(new_array)
+    } else {
+        None
+    }
+}
 
+/// Apply exponential conversion to get physical data
+fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
     match &mut cn.data {
         ChannelData::UInt8(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            }
+            if let Some(new_array) = logarithmic_calculation(a, cc_val, *cycle_count as usize) {
+                cn.data = ChannelData::Float64(new_array)
+            };
         }
         ChannelData::Int8(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            }
+            if let Some(new_array) = logarithmic_calculation(a, cc_val, *cycle_count as usize) {
+                cn.data = ChannelData::Float64(new_array)
+            };
         }
         ChannelData::Int16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            }
+            if let Some(new_array) = logarithmic_calculation(a, cc_val, *cycle_count as usize) {
+                cn.data = ChannelData::Float64(new_array)
+            };
         }
         ChannelData::UInt16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            }
+            if let Some(new_array) = logarithmic_calculation(a, cc_val, *cycle_count as usize) {
+                cn.data = ChannelData::Float64(new_array)
+            };
         }
         ChannelData::Float16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            }
+            if let Some(new_array) = logarithmic_calculation(a, cc_val, *cycle_count as usize) {
+                cn.data = ChannelData::Float64(new_array)
+            };
         }
         ChannelData::Int24(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            }
+            if let Some(new_array) = logarithmic_calculation(a, cc_val, *cycle_count as usize) {
+                cn.data = ChannelData::Float64(new_array)
+            };
         }
         ChannelData::UInt24(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            }
+            if let Some(new_array) = logarithmic_calculation(a, cc_val, *cycle_count as usize) {
+                cn.data = ChannelData::Float64(new_array)
+            };
         }
         ChannelData::Int32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            }
+            if let Some(new_array) = logarithmic_calculation(a, cc_val, *cycle_count as usize) {
+                cn.data = ChannelData::Float64(new_array)
+            };
         }
         ChannelData::UInt32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            }
+            if let Some(new_array) = logarithmic_calculation(a, cc_val, *cycle_count as usize) {
+                cn.data = ChannelData::Float64(new_array)
+            };
         }
         ChannelData::Float32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            }
+            if let Some(new_array) = logarithmic_calculation(a, cc_val, *cycle_count as usize) {
+                cn.data = ChannelData::Float64(new_array)
+            };
         }
         ChannelData::Int48(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            }
+            if let Some(new_array) = logarithmic_calculation(a, cc_val, *cycle_count as usize) {
+                cn.data = ChannelData::Float64(new_array)
+            };
         }
         ChannelData::UInt48(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            }
+            if let Some(new_array) = logarithmic_calculation(a, cc_val, *cycle_count as usize) {
+                cn.data = ChannelData::Float64(new_array)
+            };
         }
         ChannelData::Int64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            }
+            if let Some(new_array) = logarithmic_calculation(a, cc_val, *cycle_count as usize) {
+                cn.data = ChannelData::Float64(new_array)
+            };
         }
         ChannelData::UInt64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = (((m - p7) * p6 - p3) / p1).exp() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    let m = *a as f64;
-                    *new_array = ((p3 / (m - p7) - p6) / p4).exp() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            }
+            if let Some(new_array) = logarithmic_calculation(a, cc_val, *cycle_count as usize) {
+                cn.data = ChannelData::Float64(new_array)
+            };
         }
         ChannelData::Float64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    *new_array = (((*a - p7) * p6 - p3) / p1).exp() / p2;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a - p7) - p6) / p4).exp() / p5;
-                });
-                cn.data = ChannelData::Float64(new_array);
-            }
+            if let Some(new_array) = logarithmic_calculation(a, cc_val, *cycle_count as usize) {
+                cn.data = ChannelData::Float64(new_array)
+            };
         }
         ChannelData::ArrayDUInt8(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = (((*a as f64 - p7) * p6 - p3) / p1).exp() / p2;
-                });
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).exp() / p5;
-                });
-            }
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            if let Some(new_array) = logarithmic_calculation(&a.0, cc_val, a.0.len()) {
+                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            };
         }
         ChannelData::ArrayDInt8(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = (((*a as f64 - p7) * p6 - p3) / p1).exp() / p2;
-                });
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).exp() / p5;
-                });
-            }
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            if let Some(new_array) = logarithmic_calculation(&a.0, cc_val, a.0.len()) {
+                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            };
         }
         ChannelData::ArrayDInt16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = (((*a as f64 - p7) * p6 - p3) / p1).exp() / p2;
-                });
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).exp() / p5;
-                });
-            }
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            if let Some(new_array) = logarithmic_calculation(&a.0, cc_val, a.0.len()) {
+                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            };
         }
         ChannelData::ArrayDUInt16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = (((*a as f64 - p7) * p6 - p3) / p1).exp() / p2;
-                });
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).exp() / p5;
-                });
-            }
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            if let Some(new_array) = logarithmic_calculation(&a.0, cc_val, a.0.len()) {
+                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            };
         }
         ChannelData::ArrayDFloat16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = (((*a as f64 - p7) * p6 - p3) / p1).exp() / p2;
-                });
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).exp() / p5;
-                });
-            }
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            if let Some(new_array) = logarithmic_calculation(&a.0, cc_val, a.0.len()) {
+                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            };
         }
         ChannelData::ArrayDInt24(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = (((*a as f64 - p7) * p6 - p3) / p1).exp() / p2;
-                });
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).exp() / p5;
-                });
-            }
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            if let Some(new_array) = logarithmic_calculation(&a.0, cc_val, a.0.len()) {
+                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            };
         }
         ChannelData::ArrayDUInt24(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = (((*a as f64 - p7) * p6 - p3) / p1).exp() / p2;
-                });
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).exp() / p5;
-                });
-            }
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            if let Some(new_array) = logarithmic_calculation(&a.0, cc_val, a.0.len()) {
+                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            };
         }
         ChannelData::ArrayDInt32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = (((*a as f64 - p7) * p6 - p3) / p1).exp() / p2;
-                });
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).exp() / p5;
-                });
-            }
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            if let Some(new_array) = logarithmic_calculation(&a.0, cc_val, a.0.len()) {
+                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            };
         }
         ChannelData::ArrayDUInt32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = (((*a as f64 - p7) * p6 - p3) / p1).exp() / p2;
-                });
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).exp() / p5;
-                });
-            }
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            if let Some(new_array) = logarithmic_calculation(&a.0, cc_val, a.0.len()) {
+                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            };
         }
         ChannelData::ArrayDFloat32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = (((*a as f64 - p7) * p6 - p3) / p1).exp() / p2;
-                });
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).exp() / p5;
-                });
-            }
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            if let Some(new_array) = logarithmic_calculation(&a.0, cc_val, a.0.len()) {
+                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            };
         }
         ChannelData::ArrayDInt48(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = (((*a as f64 - p7) * p6 - p3) / p1).exp() / p2;
-                });
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).exp() / p5;
-                });
-            }
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            if let Some(new_array) = logarithmic_calculation(&a.0, cc_val, a.0.len()) {
+                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            };
         }
         ChannelData::ArrayDUInt48(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = (((*a as f64 - p7) * p6 - p3) / p1).exp() / p2;
-                });
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).exp() / p5;
-                });
-            }
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            if let Some(new_array) = logarithmic_calculation(&a.0, cc_val, a.0.len()) {
+                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            };
         }
         ChannelData::ArrayDInt64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = (((*a as f64 - p7) * p6 - p3) / p1).exp() / p2;
-                });
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).exp() / p5;
-                });
-            }
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            if let Some(new_array) = logarithmic_calculation(&a.0, cc_val, a.0.len()) {
+                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            };
         }
         ChannelData::ArrayDUInt64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = (((*a as f64 - p7) * p6 - p3) / p1).exp() / p2;
-                });
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a as f64 - p7) - p6) / p4).exp() / p5;
-                });
-            }
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            if let Some(new_array) = logarithmic_calculation(&a.0, cc_val, a.0.len()) {
+                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            };
         }
         ChannelData::ArrayDFloat64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            if p4 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = (((*a - p7) * p6 - p3) / p1).exp() / p2;
-                });
-            } else if p1 == 0.0 {
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = ((p3 / (*a - p7) - p6) / p4).exp() / p5;
-                });
-            }
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            if let Some(new_array) = logarithmic_calculation(&a.0, cc_val, a.0.len()) {
+                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            };
         }
         _ => warn!(
             "not possible to apply logarithmic conversion to the data type of channel {}",
@@ -1768,7 +990,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64], cycle_count: &u32) {
     }
 }
 
-/// Generic function calculating algebraic expression
+/// Generic function calculating algebraic expression conversion
 #[inline]
 fn alegbraic_conversion_calculation<T: ToPrimitive + Display>(
     array: &Vec<T>,
@@ -2165,577 +1387,185 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) {
     }
 }
 
+/// Generic function calculating value to value with interpolation conversion
+#[inline]
+fn value_to_value_with_interpolation_calculation<T: ToPrimitive + Display>(
+    array: &Vec<T>,
+    cc_val: Vec<f64>,
+    cycle_count: usize,
+) -> Vec<f64> {
+    let val: Vec<(&f64, &f64)> = cc_val.iter().tuples().collect();
+    let mut new_array = vec![0f64; cycle_count];
+    new_array.iter_mut().zip(array).for_each(|(new_array, a)| {
+        let a64 = a.to_f64().unwrap_or_default();
+        *new_array = match val
+            .binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).expect("Could not compare values"))
+        {
+            Ok(idx) => *val[idx].1,
+            Err(0) => *val[0].1,
+            Err(idx) if idx >= val.len() => *val[idx - 1].1,
+            Err(idx) => {
+                let (x0, y0) = val[idx - 1];
+                let (x1, y1) = val[idx];
+                (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
+            }
+        };
+    });
+    new_array
+}
+
 /// Apply value to value with interpolation conversion to get physical data
 fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count: &u32) {
-    let val: Vec<(&f64, &f64)> = cc_val.iter().tuples().collect();
     match &mut cn.data {
         ChannelData::Int8(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(a,
+                cc_val,
+                *cycle_count as usize));
         }
         ChannelData::UInt8(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(a,
+                cc_val,
+                *cycle_count as usize));
         }
         ChannelData::Int16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(a,
+                cc_val,
+                *cycle_count as usize));
         }
         ChannelData::UInt16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(a,
+                cc_val,
+                *cycle_count as usize));
         }
         ChannelData::Float16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(a,
+                cc_val,
+                *cycle_count as usize));
         }
         ChannelData::Int24(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(a,
+                cc_val,
+                *cycle_count as usize));
         }
         ChannelData::UInt24(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(a,
+                cc_val,
+                *cycle_count as usize));
         }
         ChannelData::Int32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(a,
+                cc_val,
+                *cycle_count as usize));
         }
         ChannelData::UInt32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(a,
+                cc_val,
+                *cycle_count as usize));
         }
         ChannelData::Float32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(a,
+                cc_val,
+                *cycle_count as usize));
         }
         ChannelData::Int48(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(a,
+                cc_val,
+                *cycle_count as usize));
         }
         ChannelData::UInt48(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(a,
+                cc_val,
+                *cycle_count as usize));
         }
         ChannelData::Int64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(a,
+                cc_val,
+                *cycle_count as usize));
         }
         ChannelData::UInt64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(a,
+                cc_val,
+                *cycle_count as usize));
         }
         ChannelData::Float64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(a).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - *a) + y1 * (*a - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(a,
+                cc_val,
+                *cycle_count as usize));
         }
         ChannelData::ArrayDInt8(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((value_to_value_with_interpolation_calculation(&a.0,
+                cc_val,
+                a.0.len()), a.1.clone()));
         }
         ChannelData::ArrayDUInt8(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((value_to_value_with_interpolation_calculation(&a.0,
+                cc_val,
+                a.0.len()), a.1.clone()));
         }
         ChannelData::ArrayDInt16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((value_to_value_with_interpolation_calculation(&a.0,
+                cc_val,
+                a.0.len()), a.1.clone()));
         }
         ChannelData::ArrayDUInt16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((value_to_value_with_interpolation_calculation(&a.0,
+                cc_val,
+                a.0.len()), a.1.clone()));
         }
         ChannelData::ArrayDFloat16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((value_to_value_with_interpolation_calculation(&a.0,
+                cc_val,
+                a.0.len()), a.1.clone()));
         }
         ChannelData::ArrayDInt24(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((value_to_value_with_interpolation_calculation(&a.0,
+                cc_val,
+                a.0.len()), a.1.clone()));
         }
         ChannelData::ArrayDUInt24(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((value_to_value_with_interpolation_calculation(&a.0,
+                cc_val,
+                a.0.len()), a.1.clone()));
         }
         ChannelData::ArrayDInt32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((value_to_value_with_interpolation_calculation(&a.0,
+                cc_val,
+                a.0.len()), a.1.clone()));
         }
         ChannelData::ArrayDUInt32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((value_to_value_with_interpolation_calculation(&a.0,
+                cc_val,
+                a.0.len()), a.1.clone()));
         }
         ChannelData::ArrayDFloat32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((value_to_value_with_interpolation_calculation(&a.0,
+                cc_val,
+                a.0.len()), a.1.clone()));
         }
         ChannelData::ArrayDInt48(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((value_to_value_with_interpolation_calculation(&a.0,
+                cc_val,
+                a.0.len()), a.1.clone()));
         }
         ChannelData::ArrayDUInt48(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((value_to_value_with_interpolation_calculation(&a.0,
+                cc_val,
+                a.0.len()), a.1.clone()));
         }
         ChannelData::ArrayDInt64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((value_to_value_with_interpolation_calculation(&a.0,
+                cc_val,
+                a.0.len()), a.1.clone()));
         }
         ChannelData::ArrayDUInt64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((value_to_value_with_interpolation_calculation(&a.0,
+                cc_val,
+                a.0.len()), a.1.clone()));
         }
         ChannelData::ArrayDFloat64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(a).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        (y0 * (x1 - *a) + y1 * (*a - x0)) / (x1 - x0)
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((value_to_value_with_interpolation_calculation(&a.0,
+                cc_val,
+                a.0.len()), a.1.clone()));
         }
         _=> warn!(
             "not possible to apply value to value with interpolation conversion to the data type of channel {}",
@@ -2744,697 +1574,189 @@ fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count
     }
 }
 
+/// Generic function calculating algebraic expression
+#[inline]
+fn value_to_value_without_interpolation_calculation<T: ToPrimitive + Display>(
+    array: &Vec<T>,
+    cc_val: Vec<f64>,
+    cycle_count: usize,
+) -> Vec<f64> {
+    let val: Vec<(&f64, &f64)> = cc_val.iter().tuples().collect();
+    let mut new_array = vec![0f64; cycle_count];
+    new_array.iter_mut().zip(array).for_each(|(new_array, a)| {
+        let a64 = a.to_f64().unwrap_or_default();
+        *new_array = match val
+            .binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).expect("Could not compare values"))
+        {
+            Ok(idx) => *val[idx].1,
+            Err(0) => *val[0].1,
+            Err(idx) if idx >= val.len() => *val[idx - 1].1,
+            Err(idx) => {
+                let (x0, y0) = val[idx - 1];
+                let (x1, y1) = val[idx];
+                if (a64 - x0) > (x1 - a64) {
+                    *y1
+                } else {
+                    *y0
+                }
+            }
+        };
+    });
+    new_array
+}
+
 /// Apply value to value without interpolation conversion to get physical data
 fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_count: &u32) {
-    let val: Vec<(&f64, &f64)> = cc_val.iter().tuples().collect();
     match &mut cn.data {
         ChannelData::Int8(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(a,
+                cc_val,
+                *cycle_count as usize));
         }
         ChannelData::UInt8(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(a,
+                cc_val,
+                *cycle_count as usize));
         }
         ChannelData::Int16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(a,
+                cc_val,
+                *cycle_count as usize));
         }
         ChannelData::UInt16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(a,
+                cc_val,
+                *cycle_count as usize));
         }
         ChannelData::Float16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(a,
+                cc_val,
+                *cycle_count as usize));
         }
         ChannelData::Int24(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(a,
+                cc_val,
+                *cycle_count as usize));
         }
         ChannelData::UInt24(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(a,
+                cc_val,
+                *cycle_count as usize));
         }
         ChannelData::Int32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(a,
+                cc_val,
+                *cycle_count as usize));
         }
         ChannelData::UInt32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(a,
+                cc_val,
+                *cycle_count as usize));
         }
         ChannelData::Float32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(a,
+                cc_val,
+                *cycle_count as usize));
         }
         ChannelData::Int48(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(a,
+                cc_val,
+                *cycle_count as usize));
         }
         ChannelData::UInt48(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(a,
+                cc_val,
+                *cycle_count as usize));
         }
         ChannelData::Int64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(a,
+                cc_val,
+                *cycle_count as usize));
         }
         ChannelData::UInt64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(a,
+                cc_val,
+                *cycle_count as usize));
         }
         ChannelData::Float64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(a).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (*a - x0) > (x1 - *a) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(a,
+                cc_val,
+                *cycle_count as usize));
         }
         ChannelData::ArrayDInt8(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((value_to_value_without_interpolation_calculation(&a.0,
+                cc_val,
+                a.0.len()), a.1.clone()));
         }
         ChannelData::ArrayDUInt8(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((value_to_value_without_interpolation_calculation(&a.0,
+                cc_val,
+                a.0.len()), a.1.clone()));
         }
         ChannelData::ArrayDInt16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((value_to_value_without_interpolation_calculation(&a.0,
+                cc_val,
+                a.0.len()), a.1.clone()));
         }
         ChannelData::ArrayDUInt16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((value_to_value_without_interpolation_calculation(&a.0,
+                cc_val,
+                a.0.len()), a.1.clone()));
         }
         ChannelData::ArrayDFloat16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((value_to_value_without_interpolation_calculation(&a.0,
+                cc_val,
+                a.0.len()), a.1.clone()));
         }
         ChannelData::ArrayDInt24(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((value_to_value_without_interpolation_calculation(&a.0,
+                cc_val,
+                a.0.len()), a.1.clone()));
         }
         ChannelData::ArrayDUInt24(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((value_to_value_without_interpolation_calculation(&a.0,
+                cc_val,
+                a.0.len()), a.1.clone()));
         }
         ChannelData::ArrayDInt32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((value_to_value_without_interpolation_calculation(&a.0,
+                cc_val,
+                a.0.len()), a.1.clone()));
         }
         ChannelData::ArrayDUInt32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((value_to_value_without_interpolation_calculation(&a.0,
+                cc_val,
+                a.0.len()), a.1.clone()));
         }
         ChannelData::ArrayDFloat32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((value_to_value_without_interpolation_calculation(&a.0,
+                cc_val,
+                a.0.len()), a.1.clone()));
         }
         ChannelData::ArrayDInt48(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((value_to_value_without_interpolation_calculation(&a.0,
+                cc_val,
+                a.0.len()), a.1.clone()));
         }
         ChannelData::ArrayDUInt48(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((value_to_value_without_interpolation_calculation(&a.0,
+                cc_val,
+                a.0.len()), a.1.clone()));
         }
         ChannelData::ArrayDInt64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((value_to_value_without_interpolation_calculation(&a.0,
+                cc_val,
+                a.0.len()), a.1.clone()));
         }
         ChannelData::ArrayDUInt64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let a64 = *a as f64;
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(&a64).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (a64 - x0) > (x1 - a64) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((value_to_value_without_interpolation_calculation(&a.0,
+                cc_val,
+                a.0.len()), a.1.clone()));
         }
         ChannelData::ArrayDFloat64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                *new_array = match val.binary_search_by(|&(xi, _)| {
-                    xi.partial_cmp(a).expect("Could not compare values")
-                }) {
-                    Ok(idx) => *val[idx].1,
-                    Err(0) => *val[0].1,
-                    Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                    Err(idx) => {
-                        let (x0, y0) = val[idx - 1];
-                        let (x1, y1) = val[idx];
-                        if (*a - x0) > (x1 - *a) {
-                            *y1
-                        } else {
-                            *y0
-                        }
-                    }
-                };
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()));
+            cn.data = ChannelData::ArrayDFloat64((value_to_value_without_interpolation_calculation(&a.0,
+                cc_val,
+                a.0.len()), a.1.clone()));
         }
         _ => warn!(
             "not possible to apply value to value without interpolation conversion to the data type of channel {}",
@@ -3443,165 +1765,161 @@ fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>, cycle_co
     }
 }
 
+/// Generic function calculating value to text expression
+#[inline]
+fn value_to_text_calculation<T: ToPrimitive + Display>(
+    array: &Vec<T>,
+    cc_val_ref: &[(f64, String)],
+    cycle_count: usize,
+) -> Vec<String> {
+    let mut new_array = vec![String::with_capacity(32); cycle_count];
+    new_array.iter_mut().zip(array).for_each(|(new_str, val)| {
+        let matched_key = cc_val_ref
+            .iter()
+            .find(|&x| x.0 == val.to_f64().unwrap_or_default());
+        if let Some(key) = matched_key {
+            *new_str = key.1.clone();
+        }
+    });
+    new_array
+}
+
 /// Apply value to text or scale conversion to get physical data
 fn value_to_text(cn: &mut Cn3, cc_val_ref: &[(f64, String)], cycle_count: &u32) {
     // identify max string length in cc_val_ref
     match &mut cn.data {
         ChannelData::Int8(a) => {
-            let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_str, val)| {
-                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *val as f64);
-                if let Some(key) = matched_key {
-                    *new_str = key.1.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_to_text_calculation(
+                a,
+                cc_val_ref,
+                *cycle_count as usize,
+            ));
         }
         ChannelData::UInt8(a) => {
-            let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_str, val)| {
-                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *val as f64);
-                if let Some(key) = matched_key {
-                    *new_str = key.1.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_to_text_calculation(
+                a,
+                cc_val_ref,
+                *cycle_count as usize,
+            ));
         }
         ChannelData::Int16(a) => {
-            let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
-                if let Some(key) = matched_key {
-                    *new_array = key.1.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_to_text_calculation(
+                a,
+                cc_val_ref,
+                *cycle_count as usize,
+            ));
         }
         ChannelData::UInt16(a) => {
-            let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
-                if let Some(key) = matched_key {
-                    *new_array = key.1.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_to_text_calculation(
+                a,
+                cc_val_ref,
+                *cycle_count as usize,
+            ));
         }
         ChannelData::Float16(a) => {
-            let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
-                if let Some(key) = matched_key {
-                    *new_array = key.1.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_to_text_calculation(
+                a,
+                cc_val_ref,
+                *cycle_count as usize,
+            ));
         }
         ChannelData::Int24(a) => {
-            let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
-                if let Some(key) = matched_key {
-                    *new_array = key.1.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_to_text_calculation(
+                a,
+                cc_val_ref,
+                *cycle_count as usize,
+            ));
         }
         ChannelData::UInt24(a) => {
-            let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
-                if let Some(key) = matched_key {
-                    *new_array = key.1.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_to_text_calculation(
+                a,
+                cc_val_ref,
+                *cycle_count as usize,
+            ));
         }
         ChannelData::Int32(a) => {
-            let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
-                if let Some(key) = matched_key {
-                    *new_array = key.1.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_to_text_calculation(
+                a,
+                cc_val_ref,
+                *cycle_count as usize,
+            ));
         }
         ChannelData::UInt32(a) => {
-            let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
-                if let Some(key) = matched_key {
-                    *new_array = key.1.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_to_text_calculation(
+                a,
+                cc_val_ref,
+                *cycle_count as usize,
+            ));
         }
         ChannelData::Float32(a) => {
-            let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
-                if let Some(key) = matched_key {
-                    *new_array = key.1.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_to_text_calculation(
+                a,
+                cc_val_ref,
+                *cycle_count as usize,
+            ));
         }
         ChannelData::Int48(a) => {
-            let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
-                if let Some(key) = matched_key {
-                    *new_array = key.1.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_to_text_calculation(
+                a,
+                cc_val_ref,
+                *cycle_count as usize,
+            ));
         }
         ChannelData::UInt48(a) => {
-            let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
-                if let Some(key) = matched_key {
-                    *new_array = key.1.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_to_text_calculation(
+                a,
+                cc_val_ref,
+                *cycle_count as usize,
+            ));
         }
         ChannelData::Int64(a) => {
-            let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
-                if let Some(key) = matched_key {
-                    *new_array = key.1.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_to_text_calculation(
+                a,
+                cc_val_ref,
+                *cycle_count as usize,
+            ));
         }
         ChannelData::UInt64(a) => {
-            let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a as f64);
-                if let Some(key) = matched_key {
-                    *new_array = key.1.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_to_text_calculation(
+                a,
+                cc_val_ref,
+                *cycle_count as usize,
+            ));
         }
         ChannelData::Float64(a) => {
-            let mut new_array = vec![String::with_capacity(32); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = cc_val_ref.iter().find(|&x| x.0 == *a);
-                if let Some(key) = matched_key {
-                    *new_array = key.1.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_to_text_calculation(
+                a,
+                cc_val_ref,
+                *cycle_count as usize,
+            ));
         }
         _ => warn!(
             "not possible to apply value to text conversion to the data type of channel {}",
             cn.unique_name,
         ),
     }
+}
+
+/// Generic function calculating value range to text expression
+#[inline]
+fn value_range_to_text_calculation<T: ToPrimitive + Display>(
+    array: &Vec<T>,
+    cc_val_ref: &(Vec<(f64, f64, String)>, String),
+    cycle_count: usize,
+) -> Vec<String> {
+    let mut new_array = vec![String::new(); cycle_count];
+    new_array.iter_mut().zip(array).for_each(|(new_array, a)| {
+        let matched_key = cc_val_ref.0.iter().enumerate().find(|&x| {
+            (x.1 .0 <= (a.to_f64().unwrap_or_default()))
+                && ((a.to_f64().unwrap_or_default()) < x.1 .1)
+        });
+        if let Some(key) = matched_key {
+            *new_array = key.1 .2.clone();
+        } else {
+            *new_array = cc_val_ref.1.clone();
+        }
+    });
+    new_array
 }
 
 /// Apply value range to text or scale conversion to get physical data
@@ -3612,244 +1930,109 @@ fn value_range_to_text(
 ) {
     match &mut cn.data {
         ChannelData::Int8(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = cc_val_ref
-                    .0
-                    .iter()
-                    .enumerate()
-                    .find(|&x| (x.1 .0 <= (*a as f64)) && ((*a as f64) < x.1 .1));
-                if let Some(key) = matched_key {
-                    *new_array = key.1 .2.clone();
-                } else {
-                    *new_array = cc_val_ref.1.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_range_to_text_calculation(
+                a,
+                cc_val_ref,
+                *cycle_count as usize,
+            ));
         }
         ChannelData::UInt8(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = cc_val_ref
-                    .0
-                    .iter()
-                    .enumerate()
-                    .find(|&x| (x.1 .0 <= (*a as f64)) && ((*a as f64) < x.1 .1));
-                if let Some(key) = matched_key {
-                    *new_array = key.1 .2.clone();
-                } else {
-                    *new_array = cc_val_ref.1.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_range_to_text_calculation(
+                a,
+                cc_val_ref,
+                *cycle_count as usize,
+            ));
         }
         ChannelData::Int16(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = cc_val_ref
-                    .0
-                    .iter()
-                    .enumerate()
-                    .find(|&x| (x.1 .0 <= (*a as f64)) && ((*a as f64) < x.1 .1));
-                if let Some(key) = matched_key {
-                    *new_array = key.1 .2.clone();
-                } else {
-                    *new_array = cc_val_ref.1.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_range_to_text_calculation(
+                a,
+                cc_val_ref,
+                *cycle_count as usize,
+            ));
         }
         ChannelData::UInt16(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = cc_val_ref
-                    .0
-                    .iter()
-                    .enumerate()
-                    .find(|&x| (x.1 .0 <= (*a as f64)) && ((*a as f64) < x.1 .1));
-                if let Some(key) = matched_key {
-                    *new_array = key.1 .2.clone();
-                } else {
-                    *new_array = cc_val_ref.1.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_range_to_text_calculation(
+                a,
+                cc_val_ref,
+                *cycle_count as usize,
+            ));
         }
         ChannelData::Float16(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = cc_val_ref
-                    .0
-                    .iter()
-                    .enumerate()
-                    .find(|&x| (x.1 .0 <= (*a as f64)) && ((*a as f64) < x.1 .1));
-                if let Some(key) = matched_key {
-                    *new_array = key.1 .2.clone();
-                } else {
-                    *new_array = cc_val_ref.1.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_range_to_text_calculation(
+                a,
+                cc_val_ref,
+                *cycle_count as usize,
+            ));
         }
         ChannelData::Int24(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = cc_val_ref
-                    .0
-                    .iter()
-                    .enumerate()
-                    .find(|&x| (x.1 .0 <= (*a as f64)) && ((*a as f64) < x.1 .1));
-                if let Some(key) = matched_key {
-                    *new_array = key.1 .2.clone();
-                } else {
-                    *new_array = cc_val_ref.1.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_range_to_text_calculation(
+                a,
+                cc_val_ref,
+                *cycle_count as usize,
+            ));
         }
         ChannelData::UInt24(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = cc_val_ref
-                    .0
-                    .iter()
-                    .enumerate()
-                    .find(|&x| (x.1 .0 <= (*a as f64)) && ((*a as f64) < x.1 .1));
-                if let Some(key) = matched_key {
-                    *new_array = key.1 .2.clone();
-                } else {
-                    *new_array = cc_val_ref.1.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_range_to_text_calculation(
+                a,
+                cc_val_ref,
+                *cycle_count as usize,
+            ));
         }
         ChannelData::Int32(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = cc_val_ref
-                    .0
-                    .iter()
-                    .enumerate()
-                    .find(|&x| (x.1 .0 <= (*a as f64)) && ((*a as f64) < x.1 .1));
-                if let Some(key) = matched_key {
-                    *new_array = key.1 .2.clone();
-                } else {
-                    *new_array = cc_val_ref.1.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_range_to_text_calculation(
+                a,
+                cc_val_ref,
+                *cycle_count as usize,
+            ));
         }
         ChannelData::UInt32(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = cc_val_ref
-                    .0
-                    .iter()
-                    .enumerate()
-                    .find(|&x| (x.1 .0 <= (*a as f64)) && ((*a as f64) < x.1 .1));
-                if let Some(key) = matched_key {
-                    *new_array = key.1 .2.clone();
-                } else {
-                    *new_array = cc_val_ref.1.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_range_to_text_calculation(
+                a,
+                cc_val_ref,
+                *cycle_count as usize,
+            ));
         }
         ChannelData::Float32(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = cc_val_ref
-                    .0
-                    .iter()
-                    .enumerate()
-                    .find(|&x| (x.1 .0 <= (*a as f64)) && ((*a as f64) < x.1 .1));
-                if let Some(key) = matched_key {
-                    *new_array = key.1 .2.clone();
-                } else {
-                    *new_array = cc_val_ref.1.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_range_to_text_calculation(
+                a,
+                cc_val_ref,
+                *cycle_count as usize,
+            ));
         }
         ChannelData::Int48(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = cc_val_ref
-                    .0
-                    .iter()
-                    .enumerate()
-                    .find(|&x| (x.1 .0 <= (*a as f64)) && ((*a as f64) < x.1 .1));
-                if let Some(key) = matched_key {
-                    *new_array = key.1 .2.clone();
-                } else {
-                    *new_array = cc_val_ref.1.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_range_to_text_calculation(
+                a,
+                cc_val_ref,
+                *cycle_count as usize,
+            ));
         }
         ChannelData::UInt48(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = cc_val_ref
-                    .0
-                    .iter()
-                    .enumerate()
-                    .find(|&x| (x.1 .0 <= (*a as f64)) && ((*a as f64) < x.1 .1));
-                if let Some(key) = matched_key {
-                    *new_array = key.1 .2.clone();
-                } else {
-                    *new_array = cc_val_ref.1.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_range_to_text_calculation(
+                a,
+                cc_val_ref,
+                *cycle_count as usize,
+            ));
         }
         ChannelData::Int64(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = cc_val_ref
-                    .0
-                    .iter()
-                    .enumerate()
-                    .find(|&x| (x.1 .0 <= (*a as f64)) && ((*a as f64) < x.1 .1));
-                if let Some(key) = matched_key {
-                    *new_array = key.1 .2.clone();
-                } else {
-                    *new_array = cc_val_ref.1.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_range_to_text_calculation(
+                a,
+                cc_val_ref,
+                *cycle_count as usize,
+            ));
         }
         ChannelData::UInt64(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = cc_val_ref
-                    .0
-                    .iter()
-                    .enumerate()
-                    .find(|&x| (x.1 .0 <= (*a as f64)) && ((*a as f64) < x.1 .1));
-                if let Some(key) = matched_key {
-                    *new_array = key.1 .2.clone();
-                } else {
-                    *new_array = cc_val_ref.1.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_range_to_text_calculation(
+                a,
+                cc_val_ref,
+                *cycle_count as usize,
+            ));
         }
         ChannelData::Float64(a) => {
-            let mut new_array = vec![String::new(); *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let matched_key = cc_val_ref
-                    .0
-                    .iter()
-                    .enumerate()
-                    .find(|&x| (x.1 .0 <= *a) && (*a < x.1 .1));
-                if let Some(key) = matched_key {
-                    *new_array = key.1 .2.clone();
-                } else {
-                    *new_array = cc_val_ref.1.clone();
-                }
-            });
-            cn.data = ChannelData::StringUTF8(new_array);
+            cn.data = ChannelData::StringUTF8(value_range_to_text_calculation(
+                a,
+                cc_val_ref,
+                *cycle_count as usize,
+            ));
         }
         _ => warn!(
             "not possible to apply value to text conversion to the data type of channel {}",
