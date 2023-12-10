@@ -103,6 +103,22 @@ pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) {
     }
 }
 
+/// Generic function calculating linear expression
+#[inline]
+fn linear_conversion_calculation<T: ToPrimitive>(
+    array: &Vec<T>,
+    p1: f64,
+    p2: f64,
+    cycle_count: &usize,
+) -> Vec<f64> {
+    let mut new_array = vec![0f64; *cycle_count];
+    new_array
+        .iter_mut()
+        .zip(array)
+        .for_each(|(new_array, a)| *new_array = a.to_f64().unwrap_or_default() * p2 + p1);
+    new_array
+}
+
 /// Apply linear conversion to get physical data
 fn linear_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
     let p1 = cc_val[0];
@@ -110,276 +126,256 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
     if !(p1 == 0.0 && num::abs(p2 - 1.0) < 1e-12) {
         match &mut cn.data {
             ChannelData::UInt8(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                new_array
-                    .iter_mut()
-                    .zip(a)
-                    .for_each(|(new_array, a)| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(linear_conversion_calculation(
+                    a,
+                    p1,
+                    p2,
+                    &(*cycle_count as usize),
+                ));
             }
             ChannelData::Int8(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                new_array
-                    .iter_mut()
-                    .zip(a)
-                    .for_each(|(new_array, a)| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(linear_conversion_calculation(
+                    a,
+                    p1,
+                    p2,
+                    &(*cycle_count as usize),
+                ));
             }
             ChannelData::Int16(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                new_array
-                    .iter_mut()
-                    .zip(a)
-                    .for_each(|(new_array, a)| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(linear_conversion_calculation(
+                    a,
+                    p1,
+                    p2,
+                    &(*cycle_count as usize),
+                ));
             }
             ChannelData::UInt16(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                new_array
-                    .iter_mut()
-                    .zip(a)
-                    .for_each(|(new_array, a)| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(linear_conversion_calculation(
+                    a,
+                    p1,
+                    p2,
+                    &(*cycle_count as usize),
+                ));
             }
             ChannelData::Float16(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                new_array
-                    .iter_mut()
-                    .zip(a)
-                    .for_each(|(new_array, a)| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(linear_conversion_calculation(
+                    a,
+                    p1,
+                    p2,
+                    &(*cycle_count as usize),
+                ));
             }
             ChannelData::Int24(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                new_array
-                    .iter_mut()
-                    .zip(a)
-                    .for_each(|(new_array, a)| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(linear_conversion_calculation(
+                    a,
+                    p1,
+                    p2,
+                    &(*cycle_count as usize),
+                ));
             }
             ChannelData::UInt24(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                new_array
-                    .iter_mut()
-                    .zip(a)
-                    .for_each(|(new_array, a)| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(linear_conversion_calculation(
+                    a,
+                    p1,
+                    p2,
+                    &(*cycle_count as usize),
+                ));
             }
             ChannelData::Int32(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                new_array
-                    .iter_mut()
-                    .zip(a)
-                    .for_each(|(new_array, a)| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(linear_conversion_calculation(
+                    a,
+                    p1,
+                    p2,
+                    &(*cycle_count as usize),
+                ));
             }
             ChannelData::UInt32(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                new_array
-                    .iter_mut()
-                    .zip(a)
-                    .for_each(|(new_array, a)| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(linear_conversion_calculation(
+                    a,
+                    p1,
+                    p2,
+                    &(*cycle_count as usize),
+                ));
             }
             ChannelData::Float32(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                new_array
-                    .iter_mut()
-                    .zip(a)
-                    .for_each(|(new_array, a)| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(linear_conversion_calculation(
+                    a,
+                    p1,
+                    p2,
+                    &(*cycle_count as usize),
+                ));
             }
             ChannelData::Int48(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                new_array
-                    .iter_mut()
-                    .zip(a)
-                    .for_each(|(new_array, a)| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(linear_conversion_calculation(
+                    a,
+                    p1,
+                    p2,
+                    &(*cycle_count as usize),
+                ));
             }
             ChannelData::UInt48(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                new_array
-                    .iter_mut()
-                    .zip(a)
-                    .for_each(|(new_array, a)| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(linear_conversion_calculation(
+                    a,
+                    p1,
+                    p2,
+                    &(*cycle_count as usize),
+                ));
             }
             ChannelData::Int64(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                new_array
-                    .iter_mut()
-                    .zip(a)
-                    .for_each(|(new_array, a)| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(linear_conversion_calculation(
+                    a,
+                    p1,
+                    p2,
+                    &(*cycle_count as usize),
+                ));
             }
             ChannelData::UInt64(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                new_array
-                    .iter_mut()
-                    .zip(a)
-                    .for_each(|(new_array, a)| *new_array = (*a as f64) * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(linear_conversion_calculation(
+                    a,
+                    p1,
+                    p2,
+                    &(*cycle_count as usize),
+                ));
             }
             ChannelData::Float64(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize];
-                new_array
-                    .iter_mut()
-                    .zip(a)
-                    .for_each(|(new_array, a)| *new_array = *a * p2 + p1);
-                cn.data = ChannelData::Float64(new_array);
+                cn.data = ChannelData::Float64(linear_conversion_calculation(
+                    a,
+                    p1,
+                    p2,
+                    &(*cycle_count as usize),
+                ));
             }
             ChannelData::Complex16(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize * 2];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a as f64 * p2 + p1;
-                });
-                cn.data = ChannelData::Complex64(ArrowComplex(new_array));
+                cn.data = ChannelData::Complex64(ArrowComplex(linear_conversion_calculation(
+                    &a.0,
+                    p1,
+                    p2,
+                    &a.0.len(),
+                )))
             }
             ChannelData::Complex32(a) => {
-                let mut new_array = vec![0f64; *cycle_count as usize * 2];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a as f64 * p2 + p1;
-                });
-                cn.data = ChannelData::Complex64(ArrowComplex(new_array));
+                cn.data = ChannelData::Complex64(ArrowComplex(linear_conversion_calculation(
+                    &a.0,
+                    p1,
+                    p2,
+                    &a.0.len(),
+                )))
             }
             ChannelData::Complex64(a) => {
-                a.0.iter_mut().for_each(|a| *a = *a * p2 + p1);
+                cn.data = ChannelData::Complex64(ArrowComplex(linear_conversion_calculation(
+                    &a.0,
+                    p1,
+                    p2,
+                    &a.0.len(),
+                )))
             }
             ChannelData::ArrayDUInt8(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a as f64 * p2 + p1;
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDFloat64((
+                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
+                    a.1.clone(),
+                ))
             }
             ChannelData::ArrayDInt8(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a as f64 * p2 + p1;
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDFloat64((
+                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
+                    a.1.clone(),
+                ))
             }
             ChannelData::ArrayDInt16(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a as f64 * p2 + p1;
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDFloat64((
+                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
+                    a.1.clone(),
+                ))
             }
             ChannelData::ArrayDUInt16(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a as f64 * p2 + p1;
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDFloat64((
+                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
+                    a.1.clone(),
+                ))
             }
             ChannelData::ArrayDFloat16(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a as f64 * p2 + p1;
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDFloat64((
+                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
+                    a.1.clone(),
+                ))
             }
             ChannelData::ArrayDInt24(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a as f64 * p2 + p1;
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDFloat64((
+                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
+                    a.1.clone(),
+                ))
             }
             ChannelData::ArrayDUInt24(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a as f64 * p2 + p1;
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDFloat64((
+                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
+                    a.1.clone(),
+                ))
             }
             ChannelData::ArrayDInt32(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a as f64 * p2 + p1;
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDFloat64((
+                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
+                    a.1.clone(),
+                ))
             }
             ChannelData::ArrayDUInt32(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a as f64 * p2 + p1;
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDFloat64((
+                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
+                    a.1.clone(),
+                ))
             }
             ChannelData::ArrayDFloat32(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a as f64 * p2 + p1;
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDFloat64((
+                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
+                    a.1.clone(),
+                ))
             }
             ChannelData::ArrayDInt48(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a as f64 * p2 + p1;
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDFloat64((
+                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
+                    a.1.clone(),
+                ))
             }
             ChannelData::ArrayDUInt48(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a as f64 * p2 + p1;
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDFloat64((
+                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
+                    a.1.clone(),
+                ))
             }
             ChannelData::ArrayDInt64(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a as f64 * p2 + p1;
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDFloat64((
+                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
+                    a.1.clone(),
+                ))
             }
             ChannelData::ArrayDUInt64(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a as f64 * p2 + p1;
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDFloat64((
+                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
+                    a.1.clone(),
+                ))
             }
             ChannelData::ArrayDFloat64(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                    *new_array = *a * p2 + p1;
-                });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDFloat64((
+                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
+                    a.1.clone(),
+                ))
             }
             ChannelData::ArrayDComplex16(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array
-                    .iter_mut()
-                    .zip(&a.0 .0)
-                    .for_each(|(new_array, a)| {
-                        *new_array = *a as f64 * p2 + p1;
-                    });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDComplex64((
+                    ArrowComplex(linear_conversion_calculation(&a.0 .0, p1, p2, &a.0.len())),
+                    a.1.clone(),
+                ))
             }
             ChannelData::ArrayDComplex32(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array
-                    .iter_mut()
-                    .zip(&a.0 .0)
-                    .for_each(|(new_array, a)| {
-                        *new_array = *a as f64 * p2 + p1;
-                    });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDComplex64((
+                    ArrowComplex(linear_conversion_calculation(&a.0 .0, p1, p2, &a.0.len())),
+                    a.1.clone(),
+                ))
             }
             ChannelData::ArrayDComplex64(a) => {
-                let mut new_array = vec![0f64; a.0.len()];
-                new_array
-                    .iter_mut()
-                    .zip(&a.0 .0)
-                    .for_each(|(new_array, a)| {
-                        *new_array = *a * p2 + p1;
-                    });
-                cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+                cn.data = ChannelData::ArrayDComplex64((
+                    ArrowComplex(linear_conversion_calculation(&a.0 .0, p1, p2, &a.0.len())),
+                    a.1.clone(),
+                ))
             }
             _ => warn!(
                 "linear conversion of channel {} not possible, channel does not contain primitives",
@@ -389,291 +385,265 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
     }
 }
 
-/// Apply rational conversion to get physical data
-fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
+/// Generic function calculating rational expression
+#[inline]
+fn rational_conversion_calculation<T: ToPrimitive>(
+    array: &Vec<T>,
+    cc_val: &[f64],
+    cycle_count: &usize,
+) -> Vec<f64> {
     let p1 = cc_val[0];
     let p2 = cc_val[1];
     let p3 = cc_val[2];
     let p4 = cc_val[3];
     let p5 = cc_val[4];
     let p6 = cc_val[5];
+    let mut new_array = vec![0f64; *cycle_count];
+    new_array.iter_mut().zip(array).for_each(|(new_array, a)| {
+        let m = a.to_f64().unwrap_or_default();
+        let m_2 = f64::powi(m, 2);
+        *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
+    });
+    new_array
+}
 
+/// Apply rational conversion to get physical data
+fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
     match &mut cn.data {
         ChannelData::UInt8(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(rational_conversion_calculation(
+                a,
+                cc_val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Int8(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(rational_conversion_calculation(
+                a,
+                cc_val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Int16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(rational_conversion_calculation(
+                a,
+                cc_val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::UInt16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(rational_conversion_calculation(
+                a,
+                cc_val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Float16(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(rational_conversion_calculation(
+                a,
+                cc_val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Int24(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(rational_conversion_calculation(
+                a,
+                cc_val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::UInt24(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(rational_conversion_calculation(
+                a,
+                cc_val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Int32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(rational_conversion_calculation(
+                a,
+                cc_val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::UInt32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(rational_conversion_calculation(
+                a,
+                cc_val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Float32(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(rational_conversion_calculation(
+                a,
+                cc_val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Int48(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(rational_conversion_calculation(
+                a,
+                cc_val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::UInt48(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(rational_conversion_calculation(
+                a,
+                cc_val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Int64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(rational_conversion_calculation(
+                a,
+                cc_val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::UInt64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(rational_conversion_calculation(
+                a,
+                cc_val,
+                &(*cycle_count as usize),
+            ));
         }
         ChannelData::Float64(a) => {
-            let mut new_array = vec![0f64; *cycle_count as usize];
-            new_array.iter_mut().zip(a).for_each(|(new_array, a)| {
-                let m_2 = f64::powi(*a, 2);
-                *new_array = (m_2 * p1 + *a * p2 + p1) / (m_2 * p4 + *a * p5 + p6)
-            });
-            cn.data = ChannelData::Float64(new_array);
+            cn.data = ChannelData::Float64(rational_conversion_calculation(
+                a,
+                cc_val,
+                &(*cycle_count as usize),
+            ));
         }
-        ChannelData::Complex16(_) => todo!(),
-        ChannelData::Complex32(_) => todo!(),
-        ChannelData::Complex64(_) => todo!(),
+        ChannelData::Complex16(a) => {
+            cn.data = ChannelData::Complex64(ArrowComplex(rational_conversion_calculation(
+                &a.0,
+                cc_val,
+                &a.0.len(),
+            )))
+        }
+        ChannelData::Complex32(a) => {
+            cn.data = ChannelData::Complex64(ArrowComplex(rational_conversion_calculation(
+                &a.0,
+                cc_val,
+                &a.0.len(),
+            )))
+        }
+        ChannelData::Complex64(a) => {
+            cn.data = ChannelData::Complex64(ArrowComplex(rational_conversion_calculation(
+                &a.0,
+                cc_val,
+                &a.0.len(),
+            )))
+        }
         ChannelData::ArrayDUInt8(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            cn.data = ChannelData::ArrayDFloat64((
+                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
+                a.1.clone(),
+            ))
         }
         ChannelData::ArrayDInt8(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            cn.data = ChannelData::ArrayDFloat64((
+                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
+                a.1.clone(),
+            ))
         }
         ChannelData::ArrayDInt16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            cn.data = ChannelData::ArrayDFloat64((
+                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
+                a.1.clone(),
+            ))
         }
         ChannelData::ArrayDUInt16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            cn.data = ChannelData::ArrayDFloat64((
+                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
+                a.1.clone(),
+            ))
         }
         ChannelData::ArrayDFloat16(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            cn.data = ChannelData::ArrayDFloat64((
+                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
+                a.1.clone(),
+            ))
         }
         ChannelData::ArrayDInt24(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            cn.data = ChannelData::ArrayDFloat64((
+                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
+                a.1.clone(),
+            ))
         }
         ChannelData::ArrayDUInt24(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            cn.data = ChannelData::ArrayDFloat64((
+                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
+                a.1.clone(),
+            ))
         }
         ChannelData::ArrayDInt32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            cn.data = ChannelData::ArrayDFloat64((
+                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
+                a.1.clone(),
+            ))
         }
         ChannelData::ArrayDUInt32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            cn.data = ChannelData::ArrayDFloat64((
+                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
+                a.1.clone(),
+            ))
         }
         ChannelData::ArrayDFloat32(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            cn.data = ChannelData::ArrayDFloat64((
+                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
+                a.1.clone(),
+            ))
         }
         ChannelData::ArrayDInt48(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            cn.data = ChannelData::ArrayDFloat64((
+                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
+                a.1.clone(),
+            ))
         }
         ChannelData::ArrayDUInt48(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            cn.data = ChannelData::ArrayDFloat64((
+                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
+                a.1.clone(),
+            ))
         }
         ChannelData::ArrayDInt64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            cn.data = ChannelData::ArrayDFloat64((
+                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
+                a.1.clone(),
+            ))
         }
         ChannelData::ArrayDUInt64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a as f64;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            cn.data = ChannelData::ArrayDFloat64((
+                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
+                a.1.clone(),
+            ))
         }
         ChannelData::ArrayDFloat64(a) => {
-            let mut new_array = vec![0f64; a.0.len()];
-            new_array.iter_mut().zip(&a.0).for_each(|(new_array, a)| {
-                let m = *a;
-                let m_2 = f64::powi(m, 2);
-                *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-            });
-            cn.data = ChannelData::ArrayDFloat64((new_array, a.1.clone()))
+            cn.data = ChannelData::ArrayDFloat64((
+                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
+                a.1.clone(),
+            ))
         }
-        ChannelData::ArrayDComplex16(_) => todo!(),
-        ChannelData::ArrayDComplex32(_) => todo!(),
-        ChannelData::ArrayDComplex64(_) => todo!(),
+        ChannelData::ArrayDComplex16(a) => {
+            cn.data = ChannelData::ArrayDComplex64((
+                ArrowComplex(rational_conversion_calculation(&a.0 .0, cc_val, &a.0.len())),
+                a.1.clone(),
+            ))
+        }
+        ChannelData::ArrayDComplex32(a) => {
+            cn.data = ChannelData::ArrayDComplex64((
+                ArrowComplex(rational_conversion_calculation(&a.0 .0, cc_val, &a.0.len())),
+                a.1.clone(),
+            ))
+        }
+        ChannelData::ArrayDComplex64(a) => {
+            cn.data = ChannelData::ArrayDComplex64((
+                ArrowComplex(rational_conversion_calculation(&a.0 .0, cc_val, &a.0.len())),
+                a.1.clone(),
+            ))
+        }
         _ => warn!(
             "rational conversion of channel {} not possible, channel does not contain primitives",
             cn.unique_name
@@ -838,9 +808,15 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                         &(*cycle_count as usize),
                     ));
                 }
-                ChannelData::Complex16(_) => todo!(),
-                ChannelData::Complex32(_) => todo!(),
-                ChannelData::Complex64(_) => todo!(),
+                ChannelData::Complex16(a) => cn.data = ChannelData::Complex64(ArrowComplex(alegbraic_conversion_calculation(
+                    &compiled, &slab, &a.0, &a.0.len()
+                ))),
+                ChannelData::Complex32(a) => cn.data = ChannelData::Complex64(ArrowComplex(alegbraic_conversion_calculation(
+                    &compiled, &slab, &a.0, &a.0.len()
+                ))),
+                ChannelData::Complex64(a) => cn.data = ChannelData::Complex64(ArrowComplex(alegbraic_conversion_calculation(
+                    &compiled, &slab, &a.0, &a.0.len()
+                ))),
                 ChannelData::ArrayDInt8(a) => {
                     cn.data = ChannelData::ArrayDFloat64((
                         alegbraic_conversion_calculation(&compiled, &slab, &a.0, &a.0.len()),
@@ -931,9 +907,24 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                         a.1.clone(),
                     ));
                 }
-                ChannelData::ArrayDComplex16(_) => todo!(),
-                ChannelData::ArrayDComplex32(_) => todo!(),
-                ChannelData::ArrayDComplex64(_) => todo!(),
+                ChannelData::ArrayDComplex16(a) => {
+                    cn.data = ChannelData::ArrayDComplex64((
+                        ArrowComplex(alegbraic_conversion_calculation(&compiled, &slab, &a.0.0, &a.0.len())),
+                        a.1.clone(),
+                    ))
+                },
+                ChannelData::ArrayDComplex32(a) => {
+                    cn.data = ChannelData::ArrayDComplex64((
+                        ArrowComplex(alegbraic_conversion_calculation(&compiled, &slab, &a.0.0, &a.0.len())),
+                        a.1.clone(),
+                    ))
+                },
+                ChannelData::ArrayDComplex64(a) => {
+                    cn.data = ChannelData::ArrayDComplex64((
+                        ArrowComplex(alegbraic_conversion_calculation(&compiled, &slab, &a.0.0, &a.0.len())),
+                        a.1.clone(),
+                    ))
+                },
                 _=> warn!(
                     "algebraic conversion of channel {} not possible, channel does not contain primitives",
                     cn.unique_name
@@ -1421,7 +1412,7 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
 #[inline]
 fn value_range_to_value_table_calculation<T: ToPrimitive>(
     a: &Vec<T>,
-    val: &Vec<(f64, f64, f64)>,
+    val: &[(f64, f64, f64)],
     default_value: &f64,
     cycle_count: &usize,
 ) -> Vec<f64> {
