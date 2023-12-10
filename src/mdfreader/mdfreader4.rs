@@ -1169,9 +1169,7 @@ fn read_all_channels_unsorted_from_bytes(
         // reads record id
         let rec_id: u64;
         if dg_rec_id_size == 1 && remaining >= 1 {
-            rec_id = data[position]
-                .try_into()
-                .context("Could not convert record id u8")?;
+            rec_id = data[position].into();
         } else if dg_rec_id_size == 2 && remaining >= 2 {
             let rec = &data[position..position + std::mem::size_of::<u16>()];
             rec_id = u16::from_le_bytes(rec.try_into().context("Could not convert record id u16")?)
