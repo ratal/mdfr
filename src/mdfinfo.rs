@@ -361,6 +361,20 @@ impl MdfInfo {
             MdfInfo::V4(mdfinfo4) => mdfinfo4.set_channel_desc(channel_name, desc),
         }
     }
+    /// list attachments
+    pub fn list_attachments(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            MdfInfo::V3(_) => Ok(()),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.list_attachments(f),
+        }
+    }
+    /// get embedded data in attachment
+    pub fn get_attachment_embedded_data(&self, position: i64) -> Option<Vec<u8>> {
+        match self {
+            MdfInfo::V3(_) => None,
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_attachment_embedded_data(position),
+        }
+    }
 }
 
 impl fmt::Display for MdfInfo {

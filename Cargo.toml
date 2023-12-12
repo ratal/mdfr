@@ -33,6 +33,7 @@ crossbeam-channel = "0.5" # for efficient channel between threads
 parking_lot = "0.12" # for efficient mutex
 roxmltree = "0.19" # for xml parsing
 yazi = "0.2" # for DZ block data deflate
+md-5 = "0.10" # md5sum of attachments
 transpose = "0.2" # for DZBlock transpose
 numpy = "0.20" # export rust ndarrays into numpy
 fasteval = "0.2" # for algebraic conversion

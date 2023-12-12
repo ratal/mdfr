@@ -8,6 +8,7 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::naive::NaiveDateTime;
 use chrono::Local;
 use log::warn;
+use md5::{Digest, Md5};
 use rand;
 use rayon::prelude::*;
 use roxmltree;
@@ -483,6 +484,74 @@ impl MdfInfo4 {
                     }
                 }
             }
+        }
+    }
+    /// list attachments
+    pub fn list_attachments(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (key, (block, _embedded_data)) in self.at.iter() {
+            writeln!(
+                f,
+                "position: {}, filename: {:?}, mimetype: {:?}, comment: {:?}\n",
+                key,
+                self.sharable.get_tx(block.at_tx_filename),
+                self.sharable.get_tx(block.at_tx_mimetype),
+                self.sharable.get_comments(block.at_md_comment)
+            )?;
+        }
+        writeln!(f, "\n")
+    }
+    /// get embedded data in attachment for a block at position
+    pub fn get_attachment_embedded_data(&self, position: i64) -> Option<Vec<u8>> {
+        if let Some(at) = self.at.get(&position) {
+            match &at.1 {
+                None => None,
+                Some(embedded_data) => {
+                    // are data compressed
+                    let data: Vec<u8>;
+                    if (at.0.at_flags & 0b10) > 0 {
+                        // Compressed data
+                        let checksum: Option<u32>;
+                        (data, checksum) = decompress(embedded_data, Format::Zlib)
+                            .expect("Could not decompress attached embedded data");
+                        // is checksum valid
+                        if (at.0.at_flags & 0b100) > 0 {
+                            // verify data integrity
+                            let mut hasher = Md5::new();
+                            hasher.update(data.clone());
+                            let result = hasher.finalize();
+                            if result == at.0.at_md5_checksum.into() {
+                                Some(data)
+                            } else {
+                                warn!("Embedded data checksum not ok");
+                                None
+                            }
+                        } else if Some(Adler32::from_buf(&data).finish()) != checksum {
+                            warn!("Embedded data checksum not ok");
+                            None
+                        } else {
+                            Some(data)
+                        }
+                    } else {
+                        // not compressed data
+                        if (at.0.at_flags & 0b100) > 0 {
+                            // verify data integrity
+                            let mut hasher = Md5::new();
+                            hasher.update(embedded_data.clone());
+                            let result = hasher.finalize();
+                            if result == at.0.at_md5_checksum.into() {
+                                Some(embedded_data.to_vec())
+                            } else {
+                                warn!("Embedded data checksum not ok");
+                                None
+                            }
+                        } else {
+                            Some(embedded_data.to_vec())
+                        }
+                    }
+                }
+            }
+        } else {
+            None
         }
     }
     // TODO Extract attachments
@@ -1152,23 +1221,23 @@ pub struct At4Block {
     /// Link to next ATBLOCK (linked list) (can be NIL)
     at_at_next: i64,
     /// Link to TXBLOCK with the path and file name of the embedded or referenced file (can only be NIL if data is embedded). The path of the file can be relative or absolute. If relative, it is relative to the directory of the MDF file. If no path is given, the file must be in the same directory as the MDF file.      
-    at_tx_filename: i64,
+    pub at_tx_filename: i64,
     /// Link to TXBLOCK with MIME content-type text that gives information about the attached data. Can be NIL if the content-type is unknown, but should be specified whenever possible. The MIME content-type string must be written in lowercase.
-    at_tx_mimetype: i64,
+    pub at_tx_mimetype: i64,
     /// Link to MDBLOCK with comment and additional information about the attachment (can be NIL).
-    at_md_comment: i64,
+    pub at_md_comment: i64,
     /// Flags The value contains the following bit flags (see AT_FL_xxx):
-    at_flags: u16,
+    pub at_flags: u16,
     /// Creator index, i.e. zero-based index of FHBLOCK in global list of FHBLOCKs that specifies which application has created this attachment, or changed it most recently.
     at_creator_index: u16,
     /// Reserved
     at_reserved: [u8; 4],
     /// 128-bit value for MD5 check sum (of the uncompressed data if data is embedded and compressed). Only valid if "MD5 check sum valid" flag (bit 2) is set.
-    at_md5_checksum: [u8; 16],
+    pub at_md5_checksum: [u8; 16],
     /// Original data size in Bytes, i.e. either for external file or for uncompressed data.
-    at_original_size: u64,
+    pub at_original_size: u64,
     /// Embedded data size N, i.e. number of Bytes for binary embedded data following this element. Must be 0 if external file is referenced.
-    at_embedded_size: u64,
+    pub at_embedded_size: u64,
     // followed by embedded data depending of flag
 }
 
