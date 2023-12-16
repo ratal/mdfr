@@ -317,7 +317,6 @@ df=polars.DataFrame(series)
                 py.None()
             }
         })
-        .into()
     }
     /// list events
     pub fn list_events(&self) -> PyResult<String> {
