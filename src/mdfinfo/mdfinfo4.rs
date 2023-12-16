@@ -487,18 +487,18 @@ impl MdfInfo4 {
         }
     }
     /// list attachments
-    pub fn list_attachments(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    pub fn list_attachments(&self) -> String {
+        let mut output = String::new();
         for (key, (block, _embedded_data)) in self.at.iter() {
-            writeln!(
-                f,
-                "position: {}, filename: {:?}, mimetype: {:?}, comment: {:?}\n",
+            output.push_str(&format!(
+                "position: {}, filename: {:?}, mimetype: {:?}, comment: {:?}\n ",
                 key,
                 self.sharable.get_tx(block.at_tx_filename),
                 self.sharable.get_tx(block.at_tx_mimetype),
                 self.sharable.get_comments(block.at_md_comment)
-            )?;
+            ))
         }
-        writeln!(f, "\n")
+        output
     }
     /// get embedded data in attachment for a block at position
     pub fn get_attachment_embedded_data(&self, position: i64) -> Option<Vec<u8>> {
@@ -554,7 +554,47 @@ impl MdfInfo4 {
             None
         }
     }
-    // TODO Extract attachments
+    /// get list attachment block
+    pub fn get_attachment_block(&self, position: i64) -> Option<At4Block> {
+        if let Some((block, _)) = self.at.get(&position) {
+            Some(*block)
+        } else {
+            None
+        }
+    }
+    /// get all attachment blocks
+    pub fn get_attachment_blocks(&self) -> HashMap<i64, At4Block> {
+        let mut output: HashMap<i64, At4Block> = HashMap::new();
+        for (key, (block, _data)) in self.at.iter() {
+            output.insert(*key, *block);
+        }
+        output
+    }
+    /// list events
+    pub fn list_events(&self) -> String {
+        let mut output = String::new();
+        for (key, block) in self.ev.iter() {
+            output.push_str(&format!(
+                "position: {}, name: {:?}, comment: {:?}, scope: {:?}, attachment references: {:?}, event type: {}\n",
+                key,
+                self.sharable.get_tx(block.ev_tx_name),
+                self.sharable.get_comments(block.ev_md_comment),
+                block.links[0..block.ev_scope_count as usize].to_vec(),
+                block.links[block.ev_scope_count as usize.. block.ev_attachment_count as usize].to_vec(),
+                block.ev_type,
+            ))
+        }
+        output
+    }
+    /// get event block from its position
+    pub fn get_event_block(&self, position: i64) -> Option<Ev4Block> {
+        self.ev.get(&position).cloned()
+    }
+    /// get all event blocks
+    pub fn get_event_blocks(&self) -> HashMap<i64, Ev4Block> {
+        self.ev.clone()
+    }
+    // TODO Extract CH
 }
 
 /// creates random negative position
@@ -1229,7 +1269,7 @@ pub struct At4Block {
     /// Flags The value contains the following bit flags (see AT_FL_xxx):
     pub at_flags: u16,
     /// Creator index, i.e. zero-based index of FHBLOCK in global list of FHBLOCKs that specifies which application has created this attachment, or changed it most recently.
-    at_creator_index: u16,
+    pub at_creator_index: u16,
     /// Reserved
     at_reserved: [u8; 4],
     /// 128-bit value for MD5 check sum (of the uncompressed data if data is embedded and compressed). Only valid if "MD5 check sum valid" flag (bit 2) is set.
@@ -1331,35 +1371,35 @@ pub struct Ev4Block {
     /// Referencing link to EVBLOCK with event that defines the beginning of a range (can be NIL, must be NIL if ev_range_type ≠ 2).  
     ev_ev_range: i64,
     /// Pointer to TXBLOCK with event name (can be NIL) Name must be according to naming rules stated in 4.4.2 Naming Rules. If available, the name of a named trigger condition should be used as event name. Other event types may have individual names or no names.
-    ev_tx_name: i64,
+    pub ev_tx_name: i64,
     /// Pointer to TX/MDBLOCK with event comment and additional information, e.g. trigger condition or formatted user comment text (can be NIL)
-    ev_md_comment: i64,
+    pub ev_md_comment: i64,
     #[br(if(ev_links > 5), little, count = ev_links - 5)]
     /// links
     links: Vec<i64>,
 
     /// Event type (see EV_T_xxx)
-    ev_type: u8,
+    pub ev_type: u8,
     /// Sync type (see EV_S_xxx)
-    ev_sync_type: u8,
+    pub ev_sync_type: u8,
     /// Range Type (see EV_R_xxx)
-    ev_range_type: u8,
+    pub ev_range_type: u8,
     /// Cause of event (see EV_C_xxx)
-    ev_cause: u8,
+    pub ev_cause: u8,
     /// flags (see EV_F_xxx)
-    ev_flags: u8,
+    pub ev_flags: u8,
     /// Reserved
     ev_reserved: [u8; 3],
     /// Length M of ev_scope list. Can be zero.
-    ev_scope_count: u32,
+    pub ev_scope_count: u32,
     /// Length N of ev_at_reference list, i.e. number of attachments for this event. Can be zero.
-    ev_attachment_count: u16,
+    pub ev_attachment_count: u16,
     /// Creator index, i.e. zero-based index of FHBLOCK in global list of FHBLOCKs that specifies which application has created or changed this event (e.g. when generating event offline).
-    ev_creator_index: u16,
+    pub ev_creator_index: u16,
     /// Base value for synchronization value.
-    ev_sync_base_value: i64,
+    pub ev_sync_base_value: i64,
     /// Factor for event synchronization value.
-    ev_sync_factor: f64,
+    pub ev_sync_factor: f64,
 }
 
 /// Ev4 (Event) block struct parser

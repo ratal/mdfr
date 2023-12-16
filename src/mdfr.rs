@@ -11,7 +11,7 @@ use crate::mdfreader::Mdf;
 use arrow2::array::get_display;
 use pyo3::exceptions::PyUnicodeDecodeError;
 use pyo3::prelude::*;
-use pyo3::types::{IntoPyDict, PyDict};
+use pyo3::types::{IntoPyDict, PyBytes, PyDict, PyList};
 
 #[pymodule]
 #[pyo3(name = "mdfr")]
@@ -273,6 +273,104 @@ df=polars.DataFrame(series)
     pub fn set_channel_desc(&mut self, channel_name: &str, desc: &str) {
         let Mdfr(mdf) = self;
         mdf.set_channel_desc(channel_name, desc);
+    }
+    /// list attachments
+    pub fn list_attachments(&self) -> PyResult<String> {
+        let Mdfr(mdf) = self;
+        Ok(mdf.mdf_info.list_attachments())
+    }
+    /// get attachment blocks
+    pub fn get_attachment_blocks(&self) -> Py<PyAny> {
+        let Mdfr(mdf) = self;
+        let atbs = mdf.mdf_info.get_attachement_blocks();
+        pyo3::Python::with_gil(|py| {
+            if let Some(at) = atbs {
+                let atl = PyList::empty(py);
+                for (position, atb) in at {
+                    let atdict = PyDict::new(py);
+                    let _ = atdict.set_item("position", position);
+                    if let Ok(res) = mdf.mdf_info.get_tx(atb.at_tx_filename) {
+                        let _ = atdict.set_item("tx_name", res);
+                    }
+                    if let Ok(res) = mdf.mdf_info.get_tx(atb.at_tx_mimetype) {
+                        let _ = atdict.set_item("tx_mimetype", res);
+                    }
+                    let _ =
+                        atdict.set_item("md_comment", mdf.mdf_info.get_comments(atb.at_md_comment));
+                    let _ = atdict.set_item("flags", atb.at_flags);
+                    let _ = atdict.set_item("creator_index", atb.at_creator_index);
+                    let _ = atl.append(atdict);
+                }
+                atl.into()
+            } else {
+                py.None()
+            }
+        })
+    }
+    /// get embedded data in attachment
+    pub fn get_attachment_embedded_data(&self, position: i64) -> Py<PyAny> {
+        let Mdfr(mdf) = self;
+        pyo3::Python::with_gil(|py| {
+            if let Some(data) = mdf.mdf_info.get_attachment_embedded_data(position) {
+                PyBytes::new(py, &data).into()
+            } else {
+                py.None()
+            }
+        })
+        .into()
+    }
+    /// list events
+    pub fn list_events(&self) -> PyResult<String> {
+        let Mdfr(mdf) = self;
+        Ok(mdf.mdf_info.list_events())
+    }
+    /// get event blocks
+    pub fn get_event_blocks(&self) -> Py<PyAny> {
+        let Mdfr(mdf) = self;
+        let evbs = mdf.mdf_info.get_event_blocks();
+        pyo3::Python::with_gil(|py| {
+            if let Some(ev) = evbs {
+                let evl = PyList::empty(py);
+                for (_position, evb) in ev {
+                    let evdict = PyDict::new(py);
+                    if let Ok(res) = mdf.mdf_info.get_tx(evb.ev_tx_name) {
+                        let _ = evdict.set_item("tx_name", res);
+                    }
+                    let _ =
+                        evdict.set_item("md_comment", mdf.mdf_info.get_comments(evb.ev_md_comment));
+                    let _ = evdict.set_item("type", evb.ev_type);
+                    let _ = evdict.set_item("sync_type", evb.ev_sync_type);
+                    let _ = evdict.set_item("range_type", evb.ev_range_type);
+                    let _ = evl.append(evdict);
+                }
+                evl.into()
+            } else {
+                py.None()
+            }
+        })
+    }
+    /// get file history
+    pub fn get_file_history_blocks(&self) -> Py<PyAny> {
+        let Mdfr(mdf) = self;
+        let fhbs = mdf.mdf_info.get_file_history_blocks();
+        pyo3::Python::with_gil(|py| {
+            if let Some(fh) = fhbs {
+                let fhl = PyList::empty(py);
+                for fhb in fh {
+                    let fhdict: &PyDict = PyDict::new(py);
+                    let _ =
+                        fhdict.set_item("comment", mdf.mdf_info.get_comments(fhb.fh_md_comment));
+                    let _ = fhdict.set_item("time_ns", fhb.fh_time_ns);
+                    let _ = fhdict.set_item("tz_offset_min", fhb.fh_tz_offset_min);
+                    let _ = fhdict.set_item("dst_offset_min", fhb.fh_dst_offset_min);
+                    let _ = fhdict.set_item("time_flags", fhb.fh_time_flags);
+                    let _ = fhl.append(fhdict);
+                }
+                fhl.into()
+            } else {
+                py.None()
+            }
+        })
     }
     /// plot one channel
     pub fn plot(&self, channel_name: String) {
