@@ -212,9 +212,7 @@ fn read_all_channels_unsorted_from_bytes(
     while remaining > 0 {
         // reads record id
         let rec_id: u16 = if remaining >= 1 {
-            data[position]
-                .try_into()
-                .context("Could not convert record id u8")?
+            data[position].into()
         } else {
             break; // not enough data remaining
         };

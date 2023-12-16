@@ -6,7 +6,7 @@ use crate::mdfreader::arrow::to_py_array;
 
 /// converts rust arrow array into python polars series
 #[allow(dead_code)]
-pub fn rust_arrow_to_py_series(array: &Box<dyn Array>) -> PyResult<PyObject> {
+pub fn rust_arrow_to_py_series(array: Box<dyn Array>) -> PyResult<PyObject> {
     // ensure we have a single chunk
 
     // acquire the gil

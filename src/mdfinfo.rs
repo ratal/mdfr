@@ -30,8 +30,9 @@ use crate::mdfreader::channel_data::ChannelData;
 use crate::mdfwriter::mdfwriter3::convert3to4;
 
 use self::mdfinfo3::build_channel_db3;
-use self::mdfinfo4::{DataSignature, MasterSignature};
+use self::mdfinfo4::{At4Block, Ev4Block, FhBlock};
 use self::sym_buf_reader::SymBufReader;
+use crate::mdfreader::{DataSignature, MasterSignature};
 
 /// joins mdf versions 3.x and 4.x
 #[derive(Debug)]
@@ -359,6 +360,76 @@ impl MdfInfo {
         match self {
             MdfInfo::V3(mdfinfo3) => mdfinfo3.set_channel_desc(channel_name, desc),
             MdfInfo::V4(mdfinfo4) => mdfinfo4.set_channel_desc(channel_name, desc),
+        }
+    }
+    /// get comment from position
+    pub fn get_comments(&self, position: i64) -> Option<HashMap<String, String>> {
+        match self {
+            MdfInfo::V3(_mdfinfo3) => None,
+            MdfInfo::V4(mdfinfo4) => Some(mdfinfo4.sharable.get_comments(position)),
+        }
+    }
+    /// get tx from position
+    pub fn get_tx(&self, position: i64) -> Result<Option<String>> {
+        match self {
+            MdfInfo::V3(_mdfinfo3) => Ok(None),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.sharable.get_tx(position),
+        }
+    }
+    /// list attachments
+    pub fn list_attachments(&self) -> String {
+        match self {
+            MdfInfo::V3(_) => "".to_string(),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.list_attachments(),
+        }
+    }
+    /// get attachment block
+    pub fn get_attachment_block(&self, position: i64) -> Option<At4Block> {
+        match self {
+            MdfInfo::V3(_) => None,
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_attachment_block(position),
+        }
+    }
+    /// get all attachement blocks
+    pub fn get_attachement_blocks(&self) -> Option<HashMap<i64, At4Block>> {
+        match self {
+            MdfInfo::V3(_) => None,
+            MdfInfo::V4(mdfinfo4) => Some(mdfinfo4.get_attachment_blocks()),
+        }
+    }
+    /// get embedded data in attachment
+    pub fn get_attachment_embedded_data(&self, position: i64) -> Option<Vec<u8>> {
+        match self {
+            MdfInfo::V3(_) => None,
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_attachment_embedded_data(position),
+        }
+    }
+    /// list events
+    pub fn list_events(&self) -> String {
+        match self {
+            MdfInfo::V3(_) => "".to_string(),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.list_events(),
+        }
+    }
+    /// get event block
+    pub fn get_event_block(&self, position: i64) -> Option<Ev4Block> {
+        match self {
+            MdfInfo::V3(_) => None,
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_event_block(position),
+        }
+    }
+    /// get all event blocks
+    pub fn get_event_blocks(&self) -> Option<HashMap<i64, Ev4Block>> {
+        match self {
+            MdfInfo::V3(_) => None,
+            MdfInfo::V4(mdfinfo4) => Some(mdfinfo4.get_event_blocks()),
+        }
+    }
+    /// get file history blocks
+    pub fn get_file_history_blocks(&self) -> Option<Vec<FhBlock>> {
+        match self {
+            MdfInfo::V3(_) => None,
+            MdfInfo::V4(mdfinfo4) => Some(mdfinfo4.fh.clone()),
         }
     }
 }

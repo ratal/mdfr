@@ -11,7 +11,7 @@ It can be used the following way with python interpreter:
 ```python
 import mdfr
 # load file metadata in memory
-obj = mdfr.Mdf('path/to/file.mdf')
+obj = mdfr.Mdfr('path/to/file.mdf')
 # loads all data in memory
 obj.load_all_channels_data_in_memory()
 # loads a set of channels in memory, for instance in case there is not enough free memory or for performance

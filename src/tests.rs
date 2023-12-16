@@ -16,6 +16,7 @@ mod tests {
     use std::io;
     use std::path::Path;
     use std::vec::Vec;
+    use test_log::test;
 
     static BASE_PATH_MDF4: &str = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/";
     static BASE_PATH_MDF3: &str = "/home/ratal/workspace/mdfreader/mdfreader/tests/mdf3/";
@@ -27,17 +28,17 @@ mod tests {
         let mut file_name = "test_files/test_basic.mf4";
         println!("reading {}", file_name);
         let mdf = Mdf::new(file_name)?;
-        println!("{:#?}", mdf);
+        // println!("{:#?}", mdf);
         assert_eq!(mdf.get_version(), 410);
         file_name = "test_files/test_mdf3.mdf";
-        println!("reading {}", file_name);
+        // println!("reading {}", file_name);
         let mdf = Mdf::new(file_name)?;
-        println!("{:#?}", &mdf);
+        // println!("{:#?}", &mdf);
         assert_eq!(mdf.get_version(), 310);
         file_name = "test_files/test_mdf4.mf4";
-        println!("reading {}", file_name);
+        // println!("reading {}", file_name);
         let mdf = Mdf::new(file_name)?;
-        println!("{:#?}", &mdf);
+        // println!("{:#?}", &mdf);
         assert_eq!(mdf.get_version(), 400);
         Ok(())
     }
@@ -183,7 +184,7 @@ mod tests {
         mdf.load_all_channels_data_in_memory()?;
         if let Some(data) = mdf.get_channel_data(&"Time channel".to_string()) {
             assert_eq!(
-                &PrimitiveArray::new(
+                PrimitiveArray::new(
                     DataType::Float64,
                     Buffer::from([0., 1., 2., 3., 4., 5., 6., 7., 8., 9.].to_vec()),
                     None
@@ -193,12 +194,12 @@ mod tests {
             );
         }
         if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
-            assert_eq!(&expected_string_result, data);
+            assert_eq!(expected_string_result, data);
         }
         let mut mdf2 = mdf.write(&writing_mdf_file, false)?;
         mdf2.load_all_channels_data_in_memory()?;
         if let Some(data) = mdf2.get_channel_data(&"Data channel".to_string()) {
-            assert_eq!(&expected_string_result, data);
+            assert_eq!(expected_string_result, data);
         }
         //UTF16
         let file_name = format!(
@@ -208,12 +209,12 @@ mod tests {
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
         if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
-            assert_eq!(&expected_string_result, data);
+            assert_eq!(expected_string_result, data);
         }
         let mut mdf2 = mdf.write(&writing_mdf_file, false)?;
         mdf2.load_all_channels_data_in_memory()?;
         if let Some(data) = mdf2.get_channel_data(&"Data channel".to_string()) {
-            assert_eq!(&expected_string_result, data);
+            assert_eq!(expected_string_result, data);
         }
         //SBC
         let file_name = format!(
@@ -223,12 +224,12 @@ mod tests {
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
         if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
-            assert_eq!(&expected_string_result, data);
+            assert_eq!(expected_string_result, data);
         }
         let mut mdf2 = mdf.write(&writing_mdf_file, false)?;
         mdf2.load_all_channels_data_in_memory()?;
         if let Some(data) = mdf2.get_channel_data(&"Data channel".to_string()) {
-            assert_eq!(&expected_string_result, data);
+            assert_eq!(expected_string_result, data);
         }
         // byteArray testing
         let file_name = format!(
@@ -252,7 +253,7 @@ mod tests {
         mdf.load_all_channels_data_in_memory()?;
         if let Some(data) = mdf.get_channel_data(&"Time channel".to_string()) {
             assert_eq!(
-                &PrimitiveArray::new(
+                PrimitiveArray::new(
                     DataType::Float64,
                     Buffer::from([0., 1., 2., 3., 4., 5., 6., 7., 8., 9.].to_vec()),
                     None
@@ -285,7 +286,7 @@ mod tests {
         });
         if let Some(data) = mdf.get_channel_data(&"Counter_INT64_BE".to_string()) {
             assert_eq!(
-                &PrimitiveArray::new(DataType::Int64, Buffer::from(vect.clone()), None).boxed(),
+                PrimitiveArray::new(DataType::Int64, Buffer::from(vect.clone()), None).boxed(),
                 data
             );
         }
@@ -293,7 +294,7 @@ mod tests {
         mdf2.load_all_channels_data_in_memory()?;
         if let Some(data) = mdf2.get_channel_data(&"Counter_INT64_BE".to_string()) {
             assert_eq!(
-                &PrimitiveArray::new(DataType::Int64, Buffer::from(vect), None).boxed(),
+                PrimitiveArray::new(DataType::Int64, Buffer::from(vect), None).boxed(),
                 data
             );
         }
@@ -305,13 +306,13 @@ mod tests {
         });
         if let Some(data) = mdf.get_channel_data(&"Counter_INT32_LE".to_string()) {
             assert_eq!(
-                &PrimitiveArray::new(DataType::Int32, Buffer::from(vect.clone()), None).boxed(),
+                PrimitiveArray::new(DataType::Int32, Buffer::from(vect.clone()), None).boxed(),
                 data
             );
         }
         if let Some(data) = mdf2.get_channel_data(&"Counter_INT32_LE".to_string()) {
             assert_eq!(
-                &PrimitiveArray::new(DataType::Int32, Buffer::from(vect), None).boxed(),
+                PrimitiveArray::new(DataType::Int32, Buffer::from(vect), None).boxed(),
                 data
             );
         }
@@ -323,13 +324,13 @@ mod tests {
         });
         if let Some(data) = mdf.get_channel_data(&"Counter_INT16_LE".to_string()) {
             assert_eq!(
-                &PrimitiveArray::new(DataType::Int16, Buffer::from(vect.clone()), None).boxed(),
+                PrimitiveArray::new(DataType::Int16, Buffer::from(vect.clone()), None).boxed(),
                 data
             );
         }
         if let Some(data) = mdf2.get_channel_data(&"Counter_INT16_LE".to_string()) {
             assert_eq!(
-                &PrimitiveArray::new(DataType::Int16, Buffer::from(vect), None).boxed(),
+                PrimitiveArray::new(DataType::Int16, Buffer::from(vect), None).boxed(),
                 data
             );
         }
@@ -361,7 +362,7 @@ mod tests {
                 counter += 1.
             });
             assert_eq!(
-                &PrimitiveArray::new(DataType::Float64, Buffer::from(vect), None).boxed(),
+                PrimitiveArray::new(DataType::Float64, Buffer::from(vect), None).boxed(),
                 data
             );
         }
@@ -386,7 +387,7 @@ mod tests {
         ])
         .boxed();
         if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
-            assert_eq!(&expected_string_result, data);
+            assert_eq!(expected_string_result, data);
         }
         // Virtual data testing
         let file_name = format!(
@@ -412,7 +413,7 @@ mod tests {
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
         if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
-            assert_eq!(&expected_string_result, data);
+            assert_eq!(expected_string_result, data);
         }
         // Synchronization
         let file_name = format!(
@@ -440,7 +441,7 @@ mod tests {
                 counter += 1
             });
             assert_eq!(
-                &PrimitiveArray::new(DataType::UInt64, Buffer::from(vect), None).boxed(),
+                PrimitiveArray::new(DataType::UInt64, Buffer::from(vect), None).boxed(),
                 data
             );
         }
@@ -515,7 +516,7 @@ mod tests {
                 counter += 1;
             });
             assert_eq!(
-                &PrimitiveArray::new(DataType::Float64, Buffer::from(vect), None).boxed(),
+                PrimitiveArray::new(DataType::Float64, Buffer::from(vect), None).boxed(),
                 data
             );
         }
@@ -535,7 +536,7 @@ mod tests {
                 counter += 1;
             });
             assert_eq!(
-                &PrimitiveArray::new(DataType::Float64, Buffer::from(vect), None).boxed(),
+                PrimitiveArray::new(DataType::Float64, Buffer::from(vect), None).boxed(),
                 data
             );
         }
@@ -586,7 +587,7 @@ mod tests {
                 counter += 1.
             });
             assert_eq!(
-                &PrimitiveArray::new(DataType::Float64, Buffer::from(vect), None).boxed(),
+                PrimitiveArray::new(DataType::Float64, Buffer::from(vect), None).boxed(),
                 data
             );
         }
@@ -599,7 +600,7 @@ mod tests {
         if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
             let vect: Vec<f64> = vec![3.; 10];
             assert_eq!(
-                &PrimitiveArray::new(DataType::Float64, Buffer::from(vect), None).boxed(),
+                PrimitiveArray::new(DataType::Float64, Buffer::from(vect), None).boxed(),
                 data
             );
         }
@@ -621,7 +622,7 @@ mod tests {
         if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
             let vect = Vec::from([1., 2., 5., 10., 17., 26., 37., 50., 65., 82.]);
             assert_eq!(
-                &PrimitiveArray::new(DataType::Float64, Buffer::from(vect), None).boxed(),
+                PrimitiveArray::new(DataType::Float64, Buffer::from(vect), None).boxed(),
                 data
             );
         }
@@ -667,7 +668,7 @@ mod tests {
                 0.,
             ]);
             assert_eq!(
-                &PrimitiveArray::new(DataType::Float64, Buffer::from(vect), None).boxed(),
+                PrimitiveArray::new(DataType::Float64, Buffer::from(vect), None).boxed(),
                 data
             );
         }
@@ -685,7 +686,7 @@ mod tests {
                 2., 0., 0., 3., 3., 6., 6., 3., 3., 0., 0., 0.,
             ]);
             assert_eq!(
-                &PrimitiveArray::new(DataType::Float64, Buffer::from(vect), None).boxed(),
+                PrimitiveArray::new(DataType::Float64, Buffer::from(vect), None).boxed(),
                 data
             );
         }
@@ -703,7 +704,7 @@ mod tests {
                 2.0, 3.0, 3.0, 5.0, 5.0, 5.0, 6.0, 7.0, 7.0, 8.0, 8.0, 9.0, 9.0, 9.0, 9.0,
             ]);
             assert_eq!(
-                &PrimitiveArray::new(DataType::Float64, Buffer::from(vect), None).boxed(),
+                PrimitiveArray::new(DataType::Float64, Buffer::from(vect), None).boxed(),
                 data
             );
         }
@@ -729,7 +730,7 @@ mod tests {
                 Some("No match"),
             ])
             .boxed();
-            assert_eq!(&target, data);
+            assert_eq!(target, data);
         }
 
         // Lookup conversion : Value range to Text
@@ -753,7 +754,7 @@ mod tests {
                 Some("high"),
             ])
             .boxed();
-            assert_eq!(&target, data);
+            assert_eq!(target, data);
         }
 
         // Lookup conversion : Value range to Text,
@@ -797,7 +798,7 @@ mod tests {
         if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
             let vect = Vec::from([-50., 1., 2., 3., 4., 5., 6., 7., 8., 9.]);
             assert_eq!(
-                &PrimitiveArray::new(DataType::Float64, Buffer::from(vect), None).boxed(),
+                PrimitiveArray::new(DataType::Float64, Buffer::from(vect), None).boxed(),
                 data
             );
         }
@@ -823,7 +824,7 @@ mod tests {
                 Some("Neun"),
             ])
             .boxed();
-            assert_eq!(&target, data);
+            assert_eq!(target, data);
         }
         Ok(())
     }

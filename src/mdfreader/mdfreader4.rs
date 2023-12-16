@@ -83,7 +83,7 @@ pub fn mdfreader4<'a>(
                         channel_group.process_all_channel_invalid_bits();
                     }
                     // conversion of all channels to physical values
-                    convert_all_channels(dg, &info.sharable)?;
+                    convert_all_channels(dg, &info.sharable);
                 }
             }
         }
@@ -286,7 +286,11 @@ fn read_data(
             }
             position += block_header.len as i64;
         }
-        _ => bail!("Unknown block type"), // should never happen
+        [35, 35, 68, 71] => {
+            // ##DG
+            bail!("Weird, a DG block type {:?}", id) // should never happen
+        }
+        _ => bail!("Unknown data block type {:?}", id), // should never happen
     }
     Ok(position)
 }
@@ -1165,9 +1169,7 @@ fn read_all_channels_unsorted_from_bytes(
         // reads record id
         let rec_id: u64;
         if dg_rec_id_size == 1 && remaining >= 1 {
-            rec_id = data[position]
-                .try_into()
-                .context("Could not convert record id u8")?;
+            rec_id = data[position].into();
         } else if dg_rec_id_size == 2 && remaining >= 2 {
             let rec = &data[position..position + std::mem::size_of::<u16>()];
             rec_id = u16::from_le_bytes(rec.try_into().context("Could not convert record id u16")?)

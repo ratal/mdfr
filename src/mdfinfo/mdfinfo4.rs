@@ -1,12 +1,14 @@
 //! Parsing of file metadata into MdfInfo4 struct
 use crate::mdfreader::channel_data::Order;
+use crate::mdfreader::{DataSignature, MasterSignature};
 use anyhow::{anyhow, Context, Error, Result};
 use arrow2::bitmap::MutableBitmap;
 use binrw::{binrw, BinReaderExt, BinWriterExt};
 use byteorder::{LittleEndian, ReadBytesExt};
+use chrono::naive::NaiveDateTime;
 use chrono::Local;
-use chrono::{naive::NaiveDateTime, DateTime, Utc};
 use log::warn;
+use md5::{Digest, Md5};
 use rand;
 use rayon::prelude::*;
 use roxmltree;
@@ -484,26 +486,115 @@ impl MdfInfo4 {
             }
         }
     }
-    // TODO Extract attachments
-}
-
-/// data generic description
-#[repr(C)]
-pub struct DataSignature {
-    pub(crate) len: usize,
-    pub(crate) data_type: u8,
-    pub(crate) bit_count: u32,
-    pub(crate) byte_count: u32,
-    pub(crate) ndim: usize,
-    pub(crate) shape: (Vec<usize>, Order),
-}
-
-/// master channel generic description
-#[repr(C)]
-pub struct MasterSignature {
-    pub(crate) master_channel: Option<String>,
-    pub(crate) master_type: Option<u8>,
-    pub(crate) master_flag: bool,
+    /// list attachments
+    pub fn list_attachments(&self) -> String {
+        let mut output = String::new();
+        for (key, (block, _embedded_data)) in self.at.iter() {
+            output.push_str(&format!(
+                "position: {}, filename: {:?}, mimetype: {:?}, comment: {:?}\n ",
+                key,
+                self.sharable.get_tx(block.at_tx_filename),
+                self.sharable.get_tx(block.at_tx_mimetype),
+                self.sharable.get_comments(block.at_md_comment)
+            ))
+        }
+        output
+    }
+    /// get embedded data in attachment for a block at position
+    pub fn get_attachment_embedded_data(&self, position: i64) -> Option<Vec<u8>> {
+        if let Some(at) = self.at.get(&position) {
+            match &at.1 {
+                None => None,
+                Some(embedded_data) => {
+                    // are data compressed
+                    let data: Vec<u8>;
+                    if (at.0.at_flags & 0b10) > 0 {
+                        // Compressed data
+                        let checksum: Option<u32>;
+                        (data, checksum) = decompress(embedded_data, Format::Zlib)
+                            .expect("Could not decompress attached embedded data");
+                        // is checksum valid
+                        if (at.0.at_flags & 0b100) > 0 {
+                            // verify data integrity
+                            let mut hasher = Md5::new();
+                            hasher.update(data.clone());
+                            let result = hasher.finalize();
+                            if result == at.0.at_md5_checksum.into() {
+                                Some(data)
+                            } else {
+                                warn!("Embedded data checksum not ok");
+                                None
+                            }
+                        } else if Some(Adler32::from_buf(&data).finish()) != checksum {
+                            warn!("Embedded data checksum not ok");
+                            None
+                        } else {
+                            Some(data)
+                        }
+                    } else {
+                        // not compressed data
+                        if (at.0.at_flags & 0b100) > 0 {
+                            // verify data integrity
+                            let mut hasher = Md5::new();
+                            hasher.update(embedded_data.clone());
+                            let result = hasher.finalize();
+                            if result == at.0.at_md5_checksum.into() {
+                                Some(embedded_data.to_vec())
+                            } else {
+                                warn!("Embedded data checksum not ok");
+                                None
+                            }
+                        } else {
+                            Some(embedded_data.to_vec())
+                        }
+                    }
+                }
+            }
+        } else {
+            None
+        }
+    }
+    /// get list attachment block
+    pub fn get_attachment_block(&self, position: i64) -> Option<At4Block> {
+        if let Some((block, _)) = self.at.get(&position) {
+            Some(*block)
+        } else {
+            None
+        }
+    }
+    /// get all attachment blocks
+    pub fn get_attachment_blocks(&self) -> HashMap<i64, At4Block> {
+        let mut output: HashMap<i64, At4Block> = HashMap::new();
+        for (key, (block, _data)) in self.at.iter() {
+            output.insert(*key, *block);
+        }
+        output
+    }
+    /// list events
+    pub fn list_events(&self) -> String {
+        let mut output = String::new();
+        for (key, block) in self.ev.iter() {
+            output.push_str(&format!(
+                "position: {}, name: {:?}, comment: {:?}, scope: {:?}, attachment references: {:?}, event type: {}\n",
+                key,
+                self.sharable.get_tx(block.ev_tx_name),
+                self.sharable.get_comments(block.ev_md_comment),
+                block.links[0..block.ev_scope_count as usize].to_vec(),
+                block.links[block.ev_scope_count as usize.. block.ev_attachment_count as usize].to_vec(),
+                block.ev_type,
+            ))
+        }
+        output
+    }
+    /// get event block from its position
+    pub fn get_event_block(&self, position: i64) -> Option<Ev4Block> {
+        self.ev.get(&position).cloned()
+    }
+    /// get all event blocks
+    pub fn get_event_blocks(&self) -> HashMap<i64, Ev4Block> {
+        self.ev.clone()
+    }
+    // TODO Extract CH
 }
 
 /// creates random negative position
@@ -1014,7 +1105,10 @@ impl Default for Hd4 {
             hd_at_first: 0,
             hd_ev_first: 0,
             hd_md_comment: 0,
-            hd_start_time_ns: Local::now().timestamp_nanos() as u64,
+            hd_start_time_ns: Local::now()
+                .timestamp_nanos_opt()
+                .map(|t| t as u64)
+                .unwrap_or(0),
             hd_tz_offset_min: 0,
             hd_dst_offset_min: 0,
             hd_time_flags: 0,
@@ -1032,12 +1126,10 @@ impl fmt::Display for Hd4 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let sec = self.hd_start_time_ns / 1000000000;
         let nsec = (self.hd_start_time_ns - sec * 1000000000) as u32;
-        let naive = NaiveDateTime::from_timestamp_opt(sec as i64, nsec).unwrap_or_default();
-        writeln!(
-            f,
-            "Time : {} ",
-            DateTime::<Utc>::from_utc(naive, Utc).to_rfc3339()
-        )
+        let naive = NaiveDateTime::from_timestamp_opt(sec as i64, nsec)
+            .unwrap_or_default()
+            .and_utc();
+        writeln!(f, "Time : {} ", naive.to_rfc3339())
     }
 }
 
@@ -1097,7 +1189,10 @@ impl Default for FhBlock {
             fh_links: 2,
             fh_fh_next: 0,
             fh_md_comment: 0,
-            fh_time_ns: Local::now().timestamp_nanos() as u64,
+            fh_time_ns: Local::now()
+                .timestamp_nanos_opt()
+                .map(|t| t as u64)
+                .unwrap_or(0),
             fh_tz_offset_min: 0,
             fh_dst_offset_min: 0,
             fh_time_flags: 0,
@@ -1166,23 +1261,23 @@ pub struct At4Block {
     /// Link to next ATBLOCK (linked list) (can be NIL)
     at_at_next: i64,
     /// Link to TXBLOCK with the path and file name of the embedded or referenced file (can only be NIL if data is embedded). The path of the file can be relative or absolute. If relative, it is relative to the directory of the MDF file. If no path is given, the file must be in the same directory as the MDF file.      
-    at_tx_filename: i64,
+    pub at_tx_filename: i64,
     /// Link to TXBLOCK with MIME content-type text that gives information about the attached data. Can be NIL if the content-type is unknown, but should be specified whenever possible. The MIME content-type string must be written in lowercase.
-    at_tx_mimetype: i64,
+    pub at_tx_mimetype: i64,
     /// Link to MDBLOCK with comment and additional information about the attachment (can be NIL).
-    at_md_comment: i64,
+    pub at_md_comment: i64,
     /// Flags The value contains the following bit flags (see AT_FL_xxx):
-    at_flags: u16,
+    pub at_flags: u16,
     /// Creator index, i.e. zero-based index of FHBLOCK in global list of FHBLOCKs that specifies which application has created this attachment, or changed it most recently.
-    at_creator_index: u16,
+    pub at_creator_index: u16,
     /// Reserved
     at_reserved: [u8; 4],
     /// 128-bit value for MD5 check sum (of the uncompressed data if data is embedded and compressed). Only valid if "MD5 check sum valid" flag (bit 2) is set.
-    at_md5_checksum: [u8; 16],
+    pub at_md5_checksum: [u8; 16],
     /// Original data size in Bytes, i.e. either for external file or for uncompressed data.
-    at_original_size: u64,
+    pub at_original_size: u64,
     /// Embedded data size N, i.e. number of Bytes for binary embedded data following this element. Must be 0 if external file is referenced.
-    at_embedded_size: u64,
+    pub at_embedded_size: u64,
     // followed by embedded data depending of flag
 }
 
@@ -1276,35 +1371,35 @@ pub struct Ev4Block {
     /// Referencing link to EVBLOCK with event that defines the beginning of a range (can be NIL, must be NIL if ev_range_type ≠ 2).  
     ev_ev_range: i64,
     /// Pointer to TXBLOCK with event name (can be NIL) Name must be according to naming rules stated in 4.4.2 Naming Rules. If available, the name of a named trigger condition should be used as event name. Other event types may have individual names or no names.
-    ev_tx_name: i64,
+    pub ev_tx_name: i64,
     /// Pointer to TX/MDBLOCK with event comment and additional information, e.g. trigger condition or formatted user comment text (can be NIL)
-    ev_md_comment: i64,
+    pub ev_md_comment: i64,
     #[br(if(ev_links > 5), little, count = ev_links - 5)]
     /// links
     links: Vec<i64>,
 
     /// Event type (see EV_T_xxx)
-    ev_type: u8,
+    pub ev_type: u8,
     /// Sync type (see EV_S_xxx)
-    ev_sync_type: u8,
+    pub ev_sync_type: u8,
     /// Range Type (see EV_R_xxx)
-    ev_range_type: u8,
+    pub ev_range_type: u8,
     /// Cause of event (see EV_C_xxx)
-    ev_cause: u8,
+    pub ev_cause: u8,
     /// flags (see EV_F_xxx)
-    ev_flags: u8,
+    pub ev_flags: u8,
     /// Reserved
     ev_reserved: [u8; 3],
     /// Length M of ev_scope list. Can be zero.
-    ev_scope_count: u32,
+    pub ev_scope_count: u32,
     /// Length N of ev_at_reference list, i.e. number of attachments for this event. Can be zero.
-    ev_attachment_count: u16,
+    pub ev_attachment_count: u16,
     /// Creator index, i.e. zero-based index of FHBLOCK in global list of FHBLOCKs that specifies which application has created or changed this event (e.g. when generating event offline).
-    ev_creator_index: u16,
+    pub ev_creator_index: u16,
     /// Base value for synchronization value.
-    ev_sync_base_value: i64,
+    pub ev_sync_base_value: i64,
     /// Factor for event synchronization value.
-    ev_sync_factor: f64,
+    pub ev_sync_factor: f64,
 }
 
 /// Ev4 (Event) block struct parser

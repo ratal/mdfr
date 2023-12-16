@@ -16,11 +16,12 @@ use anyhow::{Context, Result};
 use arrow2::array::{get_display, Array};
 use arrow2::datatypes::{Field, Schema};
 use log::info;
+use pyo3::prelude::*;
 
 use crate::export::parquet::export_to_parquet;
-use crate::mdfinfo::mdfinfo4::{DataSignature, MasterSignature};
 use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::arrow::mdf_data_to_arrow;
+use crate::mdfreader::channel_data::Order;
 use crate::mdfreader::mdfreader3::mdfreader3;
 use crate::mdfreader::mdfreader4::mdfreader4;
 use crate::mdfwriter::mdfwriter4::mdfwriter4;
@@ -39,6 +40,30 @@ pub struct Mdf {
     pub arrow_schema: Schema,
     /// tuple of chunk index, array index and field index
     pub channel_indexes: HashMap<String, ChannelIndexes>,
+}
+
+/// data generic description
+#[repr(C)]
+#[derive(Clone)]
+pub struct DataSignature {
+    pub(crate) len: usize,
+    pub(crate) data_type: u8,
+    pub(crate) bit_count: u32,
+    pub(crate) byte_count: u32,
+    pub(crate) ndim: usize,
+    pub(crate) shape: (Vec<usize>, Order),
+}
+
+/// master channel generic description
+#[repr(C)]
+#[derive(Clone, FromPyObject)]
+pub struct MasterSignature {
+    #[pyo3(attribute("name"))]
+    pub(crate) master_channel: Option<String>,
+    #[pyo3(attribute("type"))]
+    pub(crate) master_type: Option<u8>,
+    #[pyo3(attribute("flag"))]
+    pub(crate) master_flag: bool,
 }
 
 /// Struct channel indexes for chunk, array and field
@@ -131,9 +156,9 @@ impl Mdf {
         self.channel_indexes.get(channel_name)
     }
     /// returns channel's arrow2 Array.
-    pub fn get_channel_data(&self, channel_name: &str) -> Option<&Box<dyn Array>> {
+    pub fn get_channel_data(&self, channel_name: &str) -> Option<Box<dyn Array>> {
         if let Some(index) = self.get_channel_index(channel_name) {
-            Some(&self.arrow_data[index.chunk_index][index.array_index])
+            Some(self.arrow_data[index.chunk_index][index.array_index].clone())
         } else {
             None
         }
@@ -176,11 +201,11 @@ impl Mdf {
         let machine_endian: bool = cfg!(target_endian = "big");
         let data_signature = DataSignature {
             len: data.len(),
-            data_type: arrow_to_mdf_data_type(&data, machine_endian),
-            bit_count: arrow_bit_count(&data),
-            byte_count: arrow_byte_count(&data),
-            ndim: ndim(&data),
-            shape: shape(&data),
+            data_type: arrow_to_mdf_data_type(data.clone(), machine_endian),
+            bit_count: arrow_bit_count(data.clone()),
+            byte_count: arrow_byte_count(data.clone()),
+            ndim: ndim(data.clone()),
+            shape: shape(data.clone()),
         };
         let master_signature = MasterSignature {
             master_channel: master_channel.clone(),
@@ -195,8 +220,12 @@ impl Mdf {
             description,
         );
         // add field
-        let is_nullable: bool = data.validity().is_some();
-        let new_field = Field::new(channel_name.clone(), data.data_type().clone(), is_nullable);
+        let is_nullable: bool = data.clone().validity().is_some();
+        let new_field = Field::new(
+            channel_name.clone(),
+            data.clone().data_type().clone(),
+            is_nullable,
+        );
         let field_index = self.arrow_schema.fields.len();
         self.arrow_schema.fields.push(new_field);
         // add data

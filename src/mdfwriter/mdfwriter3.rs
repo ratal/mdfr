@@ -1,7 +1,10 @@
 //! Converter of mdf version 3.x into mdf version 4.2
-use crate::mdfinfo::mdfinfo4::{DataSignature, FhBlock, MasterSignature};
+use crate::mdfreader::{DataSignature, MasterSignature};
 
-use crate::mdfinfo::{mdfinfo3::MdfInfo3, mdfinfo4::MdfInfo4};
+use crate::mdfinfo::{
+    mdfinfo3::MdfInfo3,
+    mdfinfo4::{FhBlock, MdfInfo4},
+};
 use crate::mdfreader::channel_data::Order;
 
 /// Converts mdfinfo3 into mdfinfo4

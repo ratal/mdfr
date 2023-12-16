@@ -1,4 +1,5 @@
 use anyhow::Result;
+use core::time::Duration;
 use criterion::{criterion_group, criterion_main, Criterion};
 use mdfr::mdfreader::Mdf;
 use std::process::Command;
@@ -25,7 +26,8 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         BASE_PATH_MDF4,
         &"Simple/error.mf4"
     );
-    group.sample_size(10);
+    group.sample_size(15);
+    group.measurement_time(Duration::new(10, 0));
     group.bench_function("mdfr_with_mdf4_sorted", |b| {
         b.iter(|| -> Result<()> {
             let mut mdf = Mdf::new(&file)?;
