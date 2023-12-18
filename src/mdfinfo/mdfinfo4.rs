@@ -1,7 +1,7 @@
 //! Parsing of file metadata into MdfInfo4 struct
 use crate::mdfreader::channel_data::Order;
 use crate::mdfreader::{DataSignature, MasterSignature};
-use anyhow::{anyhow, Context, Error, Result};
+use anyhow::{anyhow, Context, Result};
 use arrow2::bitmap::MutableBitmap;
 use binrw::{binrw, BinReaderExt, BinWriterExt};
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -26,6 +26,7 @@ use crate::mdfreader::channel_data::{data_type_init, ChannelData};
 
 use super::sym_buf_reader::SymBufReader;
 
+/// ChannelId : (Option<master_channelname>, dg_pos, (cg_pos, rec_id), (cn_pos, rec_pos))
 pub(crate) type ChannelId = (Option<String>, i64, (i64, u64), (i64, i32));
 pub(crate) type ChannelNamesSet = HashMap<String, ChannelId>;
 
@@ -487,7 +488,7 @@ impl MdfInfo4 {
         }
     }
     /// list attachments
-    pub fn list_attachments(&self) -> String {
+    pub fn list_attachments(&mut self) -> String {
         let mut output = String::new();
         for (key, (block, _embedded_data)) in self.at.iter() {
             output.push_str(&format!(
@@ -571,7 +572,7 @@ impl MdfInfo4 {
         output
     }
     /// list events
-    pub fn list_events(&self) -> String {
+    pub fn list_events(&mut self) -> String {
         let mut output = String::new();
         for (key, block) in self.ev.iter() {
             output.push_str(&format!(
@@ -614,7 +615,7 @@ impl fmt::Display for MdfInfo4 {
         writeln!(f, "MdfInfo4: {}", self.file_name)?;
         writeln!(f, "Version : {}\n", self.id_block.id_ver)?;
         writeln!(f, "{}\n", self.hd_block)?;
-        let comments = &self.sharable.get_comments(self.hd_block.hd_md_comment);
+        let comments = &self.sharable.get_hd_comments(self.hd_block.hd_md_comment);
         for c in comments.iter() {
             writeln!(f, "{} {}\n", c.0, c.1)?;
         }
@@ -1667,25 +1668,43 @@ impl SharableBlocks {
     }
     /// Returns metadata from MD Block
     /// keys are tag and related value text of tag
-    pub fn get_comments(&self, position: i64) -> HashMap<String, String> {
+    pub fn get_comments(&mut self, position: i64) -> HashMap<String, String> {
+        let mut comments: HashMap<String, String> = HashMap::new();
+        if let Some(md) = self.md_tx.get_mut(&position) {
+            match md.block_type {
+                MetaDataBlockType::MdParsed => {
+                    comments = md.comments.clone();
+                }
+                MetaDataBlockType::MdBlock => {
+                    // not yet parsed, so let's parse it
+                    let _ = md.parse_xml();
+                    comments = md.comments.clone();
+                }
+                MetaDataBlockType::TX => {
+                    // should not happen
+                }
+            }
+        };
+        comments
+    }
+    /// Returns metadata from MD Block linked by HD Block
+    /// keys are tag and related value text of tag
+    pub fn get_hd_comments(&self, position: i64) -> HashMap<String, String> {
+        // this method assumes the xml was already parsed
         let mut comments: HashMap<String, String> = HashMap::new();
         if let Some(md) = self.md_tx.get(&position) {
-            if let MetaDataBlockType::MdParsed = md.block_type {
+            if md.block_type == MetaDataBlockType::MdParsed {
                 comments = md.comments.clone();
             }
         };
         comments
     }
-    /// Parallely extract metadata from raw xml string
-    pub fn extract_xml(&mut self) -> Result<()> {
-        self.md_tx
-            .par_iter_mut()
-            .filter(|(_k, v)| v.block_type == MetaDataBlockType::MdBlock)
-            .try_for_each(|(_k, val)| -> Result<(), Error> {
-                val.parse_xml()?;
-                Ok(())
-            })?;
-        Ok(())
+    /// parses the HD Block metadata comments
+    /// done right after reading HD block
+    pub fn parse_hd_comments(&mut self, position: i64) {
+        if let Some(md) = self.md_tx.get_mut(&position) {
+            let _ = md.parse_hd_xml();
+        };
     }
     /// Create new Shared Block
     pub fn new(n_channels: usize) -> SharableBlocks {
@@ -3072,12 +3091,12 @@ pub fn build_channel_db(
     let mut channel_list: ChannelNamesSet = HashMap::with_capacity(n_cn);
     let mut master_channel_list: HashMap<i64, String> = HashMap::with_capacity(n_cg);
     // creating channel list for whole file and making channel names unique
-    for (dg_position, dg) in dg.iter_mut() {
-        for (record_id, cg) in dg.cg.iter_mut() {
+    dg.iter_mut().for_each(|(dg_position, dg)| {
+        dg.cg.iter_mut().for_each(|(record_id, cg)| {
             let gn = cg.get_cg_name(sharable);
             let gs = cg.get_cg_source_name(sharable);
             let gp = cg.get_cg_source_path(sharable);
-            for (cn_record_position, cn) in cg.cn.iter_mut() {
+            cg.cn.iter_mut().for_each(|(cn_record_position, cn)| {
                 if channel_list.contains_key(&cn.unique_name) {
                     let mut changed: bool = false;
                     let space_char = String::from(" ");
@@ -3127,13 +3146,13 @@ pub fn build_channel_db(
                     // Master channel
                     master_channel_list.insert(cg.block_position, cn.unique_name.clone());
                 }
-            }
-        }
-    }
+            });
+        });
+    });
     // identifying master channels
     let avg_ncn_per_cg = n_cn / n_cg;
-    for (_dg_position, dg) in dg.iter_mut() {
-        for (_record_id, cg) in dg.cg.iter_mut() {
+    dg.iter_mut().for_each(|(_dg_position, dg)| {
+        dg.cg.iter_mut().for_each(|(_record_id, cg)| {
             let mut cg_channel_list: HashSet<String> = HashSet::with_capacity(avg_ncn_per_cg);
             let mut master_channel_name: Option<String> = None;
             if let Some(name) = master_channel_list.get(&cg.block_position) {
@@ -3144,17 +3163,17 @@ pub fn build_channel_db(
                     master_channel_name = Some(name.to_string());
                 }
             }
-            for (_cn_record_position, cn) in cg.cn.iter_mut() {
+            cg.cn.iter_mut().for_each(|(_cn_record_position, cn)| {
                 cg_channel_list.insert(cn.unique_name.clone());
                 // assigns master in channel_list
                 if let Some(id) = channel_list.get_mut(&cn.unique_name) {
                     id.0 = master_channel_name.clone();
                 }
-            }
+            });
             cg.channel_names = cg_channel_list;
             cg.master_channel_name = master_channel_name;
-        }
-    }
+        });
+    });
     channel_list
 }
 

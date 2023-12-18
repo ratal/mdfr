@@ -376,7 +376,7 @@ impl fmt::Display for Mdf {
                 writeln!(f, "{}\n", mdfinfo4.hd_block)?;
                 let comments = &mdfinfo4
                     .sharable
-                    .get_comments(mdfinfo4.hd_block.hd_md_comment);
+                    .get_hd_comments(mdfinfo4.hd_block.hd_md_comment);
                 for c in comments.iter() {
                     writeln!(f, "{} {}", c.0, c.1)?;
                 }

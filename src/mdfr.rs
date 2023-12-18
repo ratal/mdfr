@@ -275,12 +275,12 @@ df=polars.DataFrame(series)
         mdf.set_channel_desc(channel_name, desc);
     }
     /// list attachments
-    pub fn list_attachments(&self) -> PyResult<String> {
+    pub fn list_attachments(&mut self) -> PyResult<String> {
         let Mdfr(mdf) = self;
         Ok(mdf.mdf_info.list_attachments())
     }
     /// get attachment blocks
-    pub fn get_attachment_blocks(&self) -> Py<PyAny> {
+    pub fn get_attachment_blocks(&mut self) -> Py<PyAny> {
         let Mdfr(mdf) = self;
         let atbs = mdf.mdf_info.get_attachement_blocks();
         pyo3::Python::with_gil(|py| {
@@ -319,12 +319,12 @@ df=polars.DataFrame(series)
         })
     }
     /// list events
-    pub fn list_events(&self) -> PyResult<String> {
+    pub fn list_events(&mut self) -> PyResult<String> {
         let Mdfr(mdf) = self;
         Ok(mdf.mdf_info.list_events())
     }
     /// get event blocks
-    pub fn get_event_blocks(&self) -> Py<PyAny> {
+    pub fn get_event_blocks(&mut self) -> Py<PyAny> {
         let Mdfr(mdf) = self;
         let evbs = mdf.mdf_info.get_event_blocks();
         pyo3::Python::with_gil(|py| {
@@ -349,7 +349,7 @@ df=polars.DataFrame(series)
         })
     }
     /// get file history
-    pub fn get_file_history_blocks(&self) -> Py<PyAny> {
+    pub fn get_file_history_blocks(&mut self) -> Py<PyAny> {
         let Mdfr(mdf) = self;
         let fhbs = mdf.mdf_info.get_file_history_blocks();
         pyo3::Python::with_gil(|py| {
@@ -446,7 +446,7 @@ pyplot.show()
     }
     fn __repr__(&mut self) -> PyResult<String> {
         let mut output: String;
-        match &self.0.mdf_info {
+        match &mut self.0.mdf_info {
             MdfInfo::V3(mdfinfo3) => {
                 output = format!("Version : {}\n", mdfinfo3.id_block.id_ver);
                 writeln!(
@@ -477,8 +477,8 @@ pyplot.show()
                             .expect("cannot print thre is no master channel");
                     }
                     for channel in list.iter() {
-                        let unit = self.get_channel_unit(channel.to_string());
-                        let desc = self.get_channel_desc(channel.to_string());
+                        let unit = self.get_channel_unit(channel.to_string())?;
+                        let desc = self.get_channel_desc(channel.to_string())?;
                         write!(output, " {channel} ").expect("cannot print channel name");
                         if let Some(data) = self.0.get_channel_data(channel) {
                             if !data.is_empty() {
@@ -490,10 +490,10 @@ pyplot.show()
                             }
                             writeln!(
                                 output,
-                                " {unit:?} {desc:?} "
+                                " {unit} {desc} "
                             ).expect("cannot print channel unit and description with first and last item");
                         } else {
-                            writeln!(output, " {unit:?} {desc:?} ")
+                            writeln!(output, " {unit} {desc} ")
                                 .expect("cannot print channel unit and description");
                         }
                     }
@@ -518,8 +518,8 @@ pyplot.show()
                             .expect("cannot print thre is no master channel");
                     }
                     for channel in list.iter() {
-                        let unit = self.get_channel_unit(channel.to_string());
-                        let desc = self.get_channel_desc(channel.to_string());
+                        let unit = self.get_channel_unit(channel.to_string())?;
+                        let desc = self.get_channel_desc(channel.to_string())?;
                         write!(output, " {channel} ").expect("cannot print channel name");
                         if let Some(data) = self.0.get_channel_data(channel) {
                             if !data.is_empty() {
@@ -532,10 +532,10 @@ pyplot.show()
                             }
                             writeln!(
                                 output,
-                                " {unit:?} {desc:?} "
+                                " {unit} {desc} "
                             ).expect("cannot print channel unit and description with first and last item");
                         } else {
-                            writeln!(output, " {unit:?} {desc:?} ")
+                            writeln!(output, " {unit} {desc} ")
                                 .expect("cannot print channel unit and description");
                         }
                     }

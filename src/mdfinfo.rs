@@ -155,8 +155,11 @@ impl MdfInfo {
                 cc: HashMap::new(),
                 si: HashMap::new(),
             };
+
             // Read HD block
             let (hd, position) = hd4_parser(&mut rdr, &mut sharable)?;
+            // parse HD metadata
+            sharable.parse_hd_comments(hd.hd_md_comment);
 
             // FH block
             let (fh, position) = parse_fh(&mut rdr, &mut sharable, hd.hd_fh_first, position)?;
@@ -170,7 +173,6 @@ impl MdfInfo {
             // Read DG Block
             let (mut dg, _, n_cg, n_cn) =
                 parse_dg4(&mut rdr, hd.hd_dg_first, position, &mut sharable)?;
-            sharable.extract_xml()?; // extract TX xml tag from text
 
             // make channel names unique, list channels and create master dictionnary
             let channel_names_set = build_channel_db(&mut dg, &sharable, n_cg, n_cn);
@@ -363,7 +365,7 @@ impl MdfInfo {
         }
     }
     /// get comment from position
-    pub fn get_comments(&self, position: i64) -> Option<HashMap<String, String>> {
+    pub fn get_comments(&mut self, position: i64) -> Option<HashMap<String, String>> {
         match self {
             MdfInfo::V3(_mdfinfo3) => None,
             MdfInfo::V4(mdfinfo4) => Some(mdfinfo4.sharable.get_comments(position)),
@@ -377,7 +379,7 @@ impl MdfInfo {
         }
     }
     /// list attachments
-    pub fn list_attachments(&self) -> String {
+    pub fn list_attachments(&mut self) -> String {
         match self {
             MdfInfo::V3(_) => "".to_string(),
             MdfInfo::V4(mdfinfo4) => mdfinfo4.list_attachments(),
@@ -405,7 +407,7 @@ impl MdfInfo {
         }
     }
     /// list events
-    pub fn list_events(&self) -> String {
+    pub fn list_events(&mut self) -> String {
         match self {
             MdfInfo::V3(_) => "".to_string(),
             MdfInfo::V4(mdfinfo4) => mdfinfo4.list_events(),
@@ -462,7 +464,7 @@ impl fmt::Display for MdfInfo {
                 writeln!(f, "{}\n", mdfinfo4.hd_block)?;
                 let comments = &mdfinfo4
                     .sharable
-                    .get_comments(mdfinfo4.hd_block.hd_md_comment);
+                    .get_hd_comments(mdfinfo4.hd_block.hd_md_comment);
                 for c in comments.iter() {
                     writeln!(f, "{} {}", c.0, c.1)?;
                 }
