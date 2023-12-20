@@ -285,7 +285,7 @@ impl Mdf {
         };
         info!("Loaded all channels data into memory");
 
-        // move the data from the MdfInfo structure into vect of arrow2 hunks
+        // move the data from the MdfInfo structure into vect of arrow2 chunks
         mdf_data_to_arrow(self, &channel_names);
         info!("Moved data into arrow");
 

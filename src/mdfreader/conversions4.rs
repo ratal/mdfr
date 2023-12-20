@@ -93,6 +93,7 @@ pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) {
                                 sharable,
                             ),
                         },
+                        0 => (),
                         _ => warn!(
                             "conversion type not recognised for channel {} not possible, type {}",
                             cn.unique_name, conv.cc_type,
