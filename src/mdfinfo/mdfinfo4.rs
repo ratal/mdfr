@@ -1,8 +1,12 @@
 //! Parsing of file metadata into MdfInfo4 struct
-use crate::mdfreader::channel_data::Order;
+use crate::export::tensor::Order;
+use crate::mdfreader::arrow::{arrow_data_type_init, ndim};
 use crate::mdfreader::{DataSignature, MasterSignature};
 use anyhow::{anyhow, Context, Result};
+use arrow2::array::{Array, PrimitiveArray};
 use arrow2::bitmap::MutableBitmap;
+use arrow2::buffer::Buffer;
+use arrow2::datatypes::{DataType, Field, Metadata};
 use binrw::{binrw, BinReaderExt, BinWriterExt};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::naive::NaiveDateTime;
@@ -22,7 +26,6 @@ use transpose;
 use yazi::{decompress, Adler32, Format};
 
 use crate::mdfinfo::IdBlock;
-use crate::mdfreader::channel_data::{data_type_init, ChannelData};
 
 use super::sym_buf_reader::SymBufReader;
 
@@ -77,8 +80,8 @@ impl MdfInfo4 {
     pub fn get_channel_data(
         &self,
         channel_name: &str,
-    ) -> (Option<&ChannelData>, Option<&MutableBitmap>) {
-        let mut data: Option<&ChannelData> = None;
+    ) -> (Option<Box<dyn Array>>, Option<&MutableBitmap>) {
+        let mut data: Option<Box<dyn Array>> = None;
         let mut bitmap: Option<&MutableBitmap> = None;
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
             self.get_channel_id(channel_name)
@@ -87,7 +90,7 @@ impl MdfInfo4 {
                 if let Some(cg) = dg.cg.get(rec_id) {
                     if let Some(cn) = cg.cn.get(rec_pos) {
                         if !cn.data.is_empty() {
-                            data = Some(&cn.data);
+                            data = Some(cn.data);
                         }
                         if let Some((bm, _invalid_byte_offset, _invalid_bit_position)) =
                             &cn.invalid_mask
@@ -206,12 +209,13 @@ impl MdfInfo4 {
                     if let Some(cg) = dg.cg.get_mut(rec_id) {
                         if let Some(cn) = cg.cn.get_mut(rec_pos) {
                             if !cn.data.is_empty() {
-                                cn.data = cn.data.zeros(
+                                cn.data = arrow_data_type_init(
+                                    cn.block.cn_type,
                                     cn.block.cn_data_type,
-                                    0,
-                                    0,
-                                    (Vec::new(), Order::RowMajor),
-                                );
+                                    cn.n_bytes,
+                                    ndim(cn.data.clone()) > 1,
+                                )
+                                .to_boxed();
                             }
                         }
                     }
@@ -259,6 +263,10 @@ impl MdfInfo4 {
         cn_block.cn_tx_name = channel_name_position;
         self.sharable
             .create_tx(channel_name_position, channel_name.to_string());
+
+        // field
+        let mut field = Field::new(channel_name.to_string(), DataType::UInt8, false);
+        let mut metadata = Metadata::new();
 
         // Channel array
         let data_ndim = data.ndim - 1;
@@ -309,6 +317,7 @@ impl MdfInfo4 {
                     cg_block.cg_links = 7; // with cg_cg_master
                                            // cg_block.cg_len = 112;
                     master.master_channel = m.clone();
+                    metadata.insert("master_channel".to_string(), m.clone().unwrap_or_default());
                 }
             }
         }
@@ -320,22 +329,32 @@ impl MdfInfo4 {
         if let Some(u) = unit {
             let unit_position = position_generator();
             cn_block.cn_md_unit = unit_position;
-            self.sharable.create_tx(unit_position, u);
+            self.sharable.create_tx(unit_position, u.clone());
+            metadata.insert("unit".to_string(), u);
         }
 
         // description
         if let Some(d) = description {
             let md_comment = position_generator();
             cn_block.cn_md_comment = md_comment;
-            self.sharable.create_tx(md_comment, d);
+            self.sharable.create_tx(md_comment, d.clone());
+            metadata.insert("description".to_string(), d);
         }
 
         // CN
         let n_bytes = data.byte_count;
+        field.data_type = arrow_data_type_init(
+            cn_block.cn_type,
+            cn_block.cn_data_type,
+            n_bytes,
+            data_ndim > 0,
+        )
+        .data_type()
+        .clone();
         let cn = Cn4 {
             header: default_short_header(BlockType::CN),
             unique_name: channel_name.to_string(),
-            data: ChannelData::UInt8(vec![]),
+            data: PrimitiveArray::new(DataType::UInt8, Buffer::<u8>::new(), None).to_boxed(),
             block: cn_block,
             endian: machine_endian,
             block_position: cn_pos,
@@ -427,7 +446,7 @@ impl MdfInfo4 {
         }
     }
     /// defines channel's data in memory
-    pub fn set_channel_data(&mut self, channel_name: &str, data: &ChannelData) {
+    pub fn set_channel_data(&mut self, channel_name: &str, data: Box<dyn Array>) {
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
             self.channel_names_set.get(channel_name)
         {
@@ -2064,7 +2083,7 @@ impl Default for Cn4Block {
 
 /// Cn4 structure containing block but also unique_name, ndarray data, composition
 /// and other attributes frequently needed and computed
-#[derive(Debug, Default)]
+#[derive(Debug)]
 #[repr(C)]
 pub struct Cn4 {
     /// short header
@@ -2080,13 +2099,31 @@ pub struct Cn4 {
     pub n_bytes: u32,
     pub composition: Option<Composition>,
     /// channel data
-    pub data: ChannelData,
+    pub data: Box<dyn Array>,
     /// false = little endian
     pub endian: bool,
     /// optional invalid mask array, invalid byte position in record, invalid byte mask
     pub invalid_mask: Option<(MutableBitmap, usize, u8)>,
     /// True if channel is valid = contains data converted
     pub channel_data_valid: bool,
+}
+
+impl Default for Cn4 {
+    fn default() -> Self {
+        Self {
+            header: Default::default(),
+            block: Default::default(),
+            unique_name: Default::default(),
+            block_position: Default::default(),
+            pos_byte_beg: Default::default(),
+            n_bytes: Default::default(),
+            composition: Default::default(),
+            data: PrimitiveArray::new(DataType::UInt8, Buffer::<u8>::new(), None).to_boxed(),
+            endian: Default::default(),
+            invalid_mask: Default::default(),
+            channel_data_valid: Default::default(),
+        }
+    }
 }
 
 impl Clone for Cn4 {
@@ -2099,7 +2136,7 @@ impl Clone for Cn4 {
             pos_byte_beg: self.pos_byte_beg,
             n_bytes: self.n_bytes,
             composition: self.composition.clone(),
-            data: ChannelData::default(),
+            data: self.data.clone(),
             endian: self.endian,
             invalid_mask: self.invalid_mask.clone(),
             channel_data_valid: self.channel_data_valid,
@@ -2254,7 +2291,7 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 2,
         composition: None,
-        data: ChannelData::UInt16(Vec::<u16>::new()),
+        data: PrimitiveArray::new(DataType::UInt16, Buffer::<u16>::new(), None).to_boxed(),
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
@@ -2273,7 +2310,7 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 1,
         composition: None,
-        data: ChannelData::UInt8(Vec::<u8>::new()),
+        data: PrimitiveArray::new(DataType::UInt8, Buffer::<u8>::new(), None).to_boxed(),
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
@@ -2292,7 +2329,7 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 1,
         composition: None,
-        data: ChannelData::UInt8(Vec::<u8>::new()),
+        data: PrimitiveArray::new(DataType::UInt8, Buffer::<u8>::new(), None).to_boxed(),
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
@@ -2311,7 +2348,7 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 1,
         composition: None,
-        data: ChannelData::UInt8(Vec::<u8>::new()),
+        data: PrimitiveArray::new(DataType::UInt8, Buffer::<u8>::new(), None).to_boxed(),
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
@@ -2330,7 +2367,7 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 1,
         composition: None,
-        data: ChannelData::UInt8(Vec::<u8>::new()),
+        data: PrimitiveArray::new(DataType::UInt8, Buffer::<u8>::new(), None).to_boxed(),
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
@@ -2349,7 +2386,7 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 1,
         composition: None,
-        data: ChannelData::UInt8(Vec::<u8>::new()),
+        data: PrimitiveArray::new(DataType::UInt8, Buffer::<u8>::new(), None).to_boxed(),
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
@@ -2373,7 +2410,7 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         pos_byte_beg,
         n_bytes: 4,
         composition: None,
-        data: ChannelData::UInt32(Vec::<u32>::new()),
+        data: PrimitiveArray::new(DataType::UInt32, Buffer::<u32>::new(), None).to_boxed(),
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
@@ -2392,7 +2429,7 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         pos_byte_beg,
         n_bytes: 2,
         composition: None,
-        data: ChannelData::UInt16(Vec::<u16>::new()),
+        data: PrimitiveArray::new(DataType::UInt16, Buffer::<u16>::new(), None).to_boxed(),
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
@@ -2539,12 +2576,12 @@ fn parse_cn4_block(
     let cn_struct = Cn4 {
         header: cnheader,
         block,
-        unique_name: name,
+        unique_name: name.clone(),
         block_position: target,
         pos_byte_beg,
         n_bytes,
         composition: compo,
-        data: data_type_init(cn_type, data_type, n_bytes, is_array),
+        data: arrow_data_type_init(cn_type, data_type, n_bytes, is_array),
         endian,
         invalid_mask,
         channel_data_valid: false,

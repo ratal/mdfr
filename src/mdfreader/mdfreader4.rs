@@ -1,4 +1,5 @@
 //! data read and load in memory based in MdfInfo4's metadata
+use crate::export::tensor::Order;
 use crate::mdfinfo::mdfinfo4::{
     parse_dz, parser_dl4_block, parser_ld4_block, validate_channels_set, Dl4Block, Dt4Block,
     Hl4Block, Ld4Block,
@@ -6,11 +7,11 @@ use crate::mdfinfo::mdfinfo4::{
 use crate::mdfinfo::mdfinfo4::{Blockheader4, Cg4, Cn4, Compo, Dg4};
 use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::channel_data::ChannelData;
-use crate::mdfreader::channel_data::Order;
 use crate::mdfreader::conversions4::convert_all_channels;
 use crate::mdfreader::data_read4::read_channels_from_bytes;
 use crate::mdfreader::data_read4::read_one_channel_array;
 use anyhow::{bail, Context, Result};
+use arrow2::array::Array;
 use binrw::BinReaderExt;
 use encoding_rs::{Decoder, UTF_16BE, UTF_16LE, WINDOWS_1252};
 use rayon::prelude::*;
@@ -25,6 +26,7 @@ use std::{
     usize,
 };
 
+use super::arrow::arrow_zeros;
 use super::Mdf;
 
 /// The following constant represents the size of data chunk to be read and processed.
@@ -1073,7 +1075,7 @@ fn read_all_channels_unsorted(
 /// stores a vlsd record into channel vect (ChannelData)
 #[inline]
 fn save_vlsd(
-    data: &mut ChannelData,
+    data: Box<dyn Array>,
     record: &[u8],
     nrecord: &usize,
     decoder: &mut Dec,
@@ -1203,7 +1205,7 @@ fn read_all_channels_unsorted_from_bytes(
                                 if let Some(target_cn) = target_cg.cn.get_mut(&target_rec_pos) {
                                     if let Some((nrecord, _)) = record_counter.get_mut(&rec_id) {
                                         save_vlsd(
-                                            &mut target_cn.data,
+                                            target_cn.data,
                                             record,
                                             nrecord,
                                             decoder,
@@ -1298,9 +1300,14 @@ fn initialise_arrays(
                     Compo::CN(_) => (),
                 }
             }
-            cn.data = cn
-                .data
-                .zeros(cn.block.cn_type, *cg_cycle_count, cn.n_bytes, shape);
+            cn.data = arrow_zeros(
+                cn.data,
+                cn.block.cn_type,
+                cn.block.cn_data_type,
+                *cg_cycle_count,
+                cn.n_bytes,
+                shape,
+            );
             cn.channel_data_valid = false;
         })
 }

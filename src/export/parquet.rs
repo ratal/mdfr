@@ -1,6 +1,7 @@
 //! Exporting mdf to Parquet files.
 use arrow2::{
     datatypes::DataType,
+    datatypes::{Field, Metadata, Schema},
     error::{Error, Result},
     io::parquet::write::{
         array_to_columns, compress, to_parquet_schema, CompressedPage, CompressionOptions, DynIter,
@@ -13,7 +14,7 @@ use rayon::iter::{IndexedParallelIterator, IntoParallelRefIterator, ParallelIter
 
 use crate::mdfreader::Mdf;
 
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::{fs, path::Path};
 
 struct Bla {
@@ -44,76 +45,95 @@ impl FallibleStreamingIterator for Bla {
     }
 }
 
-/// writes mdf into parquet file
-pub fn export_to_parquet(mdf: &Mdf, file_name: &str, compression: Option<&str>) -> Result<()> {
-    //let _ = data_type;
-    // Create file
-    let path = Path::new(file_name);
+// impl Clone for ChannelIndexes {
+//     fn clone(&self) -> Self {
+//         Self {
+//             chunk_index: self.chunk_index,
+//             array_index: self.array_index,
+//             field_index: self.field_index,
+//         }
+//     }
+// }
 
-    let options = WriteOptions {
-        write_statistics: false,
-        version: Version::V2,
-        compression: parquet_compression_from_string(compression),
-        data_pagesize_limit: None,
-    };
+// /// writes mdf into parquet file
+// pub fn export_to_parquet(mdf: &Mdf, file_name: &str, compression: Option<&str>) -> Result<()> {
+//     //let _ = data_type;
+//     // Create file
+//     let path = Path::new(file_name);
 
-    // No other encoding yet implemented, to be reviewed later if needed.
-    let encoding_map = |_data_type: &DataType| Encoding::Plain;
+//     let options = WriteOptions {
+//         write_statistics: false,
+//         version: Version::V2,
+//         compression: parquet_compression_from_string(compression),
+//         data_pagesize_limit: None,
+//     };
 
-    // declare encodings
-    let encodings = (mdf.arrow_schema.fields)
-        .par_iter()
-        .map(|f| transverse(&f.data_type, encoding_map))
-        .collect::<Vec<_>>();
+//     // No other encoding yet implemented, to be reviewed later if needed.
+//     let encoding_map = |_data_type: &DataType| Encoding::Plain;
 
-    // derive the parquet schema (physical types) from arrow's schema.
-    let parquet_schema = to_parquet_schema(&mdf.arrow_schema)
-        .expect("Failed to create SchemaDescriptor from Schema");
+//     let arrow_schema = Schema::default();
+//     arrow_schema
+//         .metadata
+//         .insert("file_name".to_string(), file_name.to_string());
 
-    let row_groups = mdf.arrow_data.iter().map(|batch| {
-        // write batch to pages; parallelized by rayon
-        let columns = batch
-            .par_iter()
-            .zip(parquet_schema.fields().to_vec())
-            .zip(encodings.par_iter())
-            .flat_map(move |((array, type_), encoding)| {
-                let encoded_columns = array_to_columns(array, type_, options, encoding)
-                    .expect("Could not convert arrow array to column");
-                encoded_columns
-                    .into_iter()
-                    .map(|encoded_pages| {
-                        let encoded_pages = DynIter::new(encoded_pages.into_iter().map(|x| {
-                            x.map_err(|e| ParquetError::FeatureNotSupported(e.to_string()))
-                        }));
-                        encoded_pages
-                            .map(|page| {
-                                compress(page?, vec![], options.compression).map_err(|x| x.into())
-                            })
-                            .collect::<Result<VecDeque<_>>>()
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .collect::<Result<Vec<VecDeque<CompressedPage>>>>()?;
+//     // iterate to create fields for each channels
 
-        let row_group = DynIter::new(
-            columns
-                .into_iter()
-                .map(|column| Ok(DynStreamingIterator::new(Bla::new(column)))),
-        );
-        Result::Ok(row_group)
-    });
+//     // iterate channel data ?
 
-    let file = fs::File::create(path).expect("Failed to create file");
-    let mut writer = FileWriter::try_new(file, mdf.arrow_schema.clone(), options)
-        .expect("Failed to write parquet file");
+//     // declare encodings
+//     let encodings = (arrow_schema.fields)
+//         .par_iter()
+//         .map(|f| transverse(&f.data_type, encoding_map))
+//         .collect::<Vec<_>>();
 
-    // write data in file
-    for group in row_groups {
-        writer.write(group?)?;
-    }
-    writer.end(None).expect("Failed to write footer");
-    Ok(())
-}
+//     // derive the parquet schema (physical types) from arrow's schema.
+//     let parquet_schema =
+//         to_parquet_schema(&arrow_schema).expect("Failed to create SchemaDescriptor from Schema");
+
+//     let row_groups = arrow_data.iter().map(|batch| {
+//         // write batch to pages; parallelized by rayon
+//         let columns = batch
+//             .par_iter()
+//             .zip(parquet_schema.fields().to_vec())
+//             .zip(encodings.par_iter())
+//             .flat_map(move |((array, type_), encoding)| {
+//                 let encoded_columns = array_to_columns(array, type_, options, encoding)
+//                     .expect("Could not convert arrow array to column");
+//                 encoded_columns
+//                     .into_iter()
+//                     .map(|encoded_pages| {
+//                         let encoded_pages = DynIter::new(encoded_pages.into_iter().map(|x| {
+//                             x.map_err(|e| ParquetError::FeatureNotSupported(e.to_string()))
+//                         }));
+//                         encoded_pages
+//                             .map(|page| {
+//                                 compress(page?, vec![], options.compression).map_err(|x| x.into())
+//                             })
+//                             .collect::<Result<VecDeque<_>>>()
+//                     })
+//                     .collect::<Vec<_>>()
+//             })
+//             .collect::<Result<Vec<VecDeque<CompressedPage>>>>()?;
+
+//         let row_group = DynIter::new(
+//             columns
+//                 .into_iter()
+//                 .map(|column| Ok(DynStreamingIterator::new(Bla::new(column)))),
+//         );
+//         Result::Ok(row_group)
+//     });
+
+//     let file = fs::File::create(path).expect("Failed to create file");
+//     let mut writer = FileWriter::try_new(file, arrow_schema.clone(), options)
+//         .expect("Failed to write parquet file");
+
+//     // write data in file
+//     for group in row_groups {
+//         writer.write(group?)?;
+//     }
+//     writer.end(None).expect("Failed to write footer");
+//     Ok(())
+// }
 
 /// converts a clap compression string into a CompressionOptions enum
 pub fn parquet_compression_from_string(compression_option: Option<&str>) -> CompressionOptions {

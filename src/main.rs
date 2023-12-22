@@ -78,6 +78,7 @@ fn main() -> Result<()> {
         .expect("File name missing");
 
     let mut mdf_file = mdfreader::Mdf::new(file_name)?;
+    // mdf_file.load_all_channels_data_in_memory()?;
 
     if matches.get_flag("info") {
         println!("{:?}", mdf_file.get_master_channel_names_set());

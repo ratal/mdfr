@@ -14,19 +14,18 @@ use std::io::BufReader;
 
 use anyhow::{Context, Result};
 use arrow2::array::{get_display, Array};
-use arrow2::datatypes::{Field, Schema};
+use arrow2::datatypes::Field;
 use log::info;
 use pyo3::prelude::*;
 
-use crate::export::parquet::export_to_parquet;
+// use crate::export::parquet::export_to_parquet;
 use crate::mdfinfo::MdfInfo;
-use crate::mdfreader::arrow::mdf_data_to_arrow;
 use crate::mdfreader::channel_data::Order;
 use crate::mdfreader::mdfreader3::mdfreader3;
 use crate::mdfreader::mdfreader4::mdfreader4;
 use crate::mdfwriter::mdfwriter4::mdfwriter4;
 
-use self::arrow::{arrow_bit_count, arrow_byte_count, arrow_to_mdf_data_type, ndim, shape};
+use self::arrow::{arrow_bit_count, arrow_byte_count, arrow_to_mdf_data_type, ndim};
 
 /// Main Mdf struct holding mdfinfo, arrow data and schema
 #[derive(Debug)]
@@ -34,12 +33,6 @@ use self::arrow::{arrow_bit_count, arrow_byte_count, arrow_to_mdf_data_type, ndi
 pub struct Mdf {
     /// MdfInfo enum
     pub mdf_info: MdfInfo,
-    /// contains the file data according to Arrow memory layout
-    pub arrow_data: Vec<Vec<Box<dyn Array>>>,
-    /// arrow schema and metadata for the data
-    pub arrow_schema: Schema,
-    /// tuple of chunk index, array index and field index
-    pub channel_indexes: HashMap<String, ChannelIndexes>,
 }
 
 /// data generic description
@@ -66,40 +59,13 @@ pub struct MasterSignature {
     pub(crate) master_flag: bool,
 }
 
-/// Struct channel indexes for chunk, array and field
-#[derive(Debug, Default)]
-pub struct ChannelIndexes {
-    /// index of the chunk in the arrow_data vector
-    pub chunk_index: usize,
-    /// index of the array in the chunk
-    pub array_index: usize,
-    /// index of the field in the schema
-    pub field_index: usize,
-}
-
-impl Clone for ChannelIndexes {
-    fn clone(&self) -> Self {
-        Self {
-            chunk_index: self.chunk_index,
-            array_index: self.array_index,
-            field_index: self.field_index,
-        }
-    }
-}
-
 #[allow(dead_code)]
 impl Mdf {
     /// returns Mdf with metadata but no data
     pub fn new(file_name: &str) -> Result<Mdf> {
         let mut mdf = Mdf {
             mdf_info: MdfInfo::new(file_name)?,
-            arrow_data: Vec::new(),
-            arrow_schema: Schema::default(),
-            channel_indexes: HashMap::new(),
         };
-        mdf.arrow_schema
-            .metadata
-            .insert("file_name".to_string(), file_name.to_string());
         Ok(mdf)
     }
     pub fn get_file_name(&self) -> String {
@@ -151,39 +117,29 @@ impl Mdf {
     pub fn get_master_channel_names_set(&self) -> HashMap<Option<String>, HashSet<String>> {
         self.mdf_info.get_master_channel_names_set()
     }
-    /// return the tuple of chunk index and array index corresponding to the channel name
-    pub(crate) fn get_channel_index(&self, channel_name: &str) -> Option<&ChannelIndexes> {
-        self.channel_indexes.get(channel_name)
-    }
+    // /// return the tuple of chunk index and array index corresponding to the channel name
+    // pub(crate) fn get_channel_index(&self, channel_name: &str) -> Option<&ChannelIndexes> {
+    //     self.mdf_info.channel_names_set .get(channel_name)
+    // }
     /// returns channel's arrow2 Array.
     pub fn get_channel_data(&self, channel_name: &str) -> Option<Box<dyn Array>> {
-        if let Some(index) = self.get_channel_index(channel_name) {
-            Some(self.arrow_data[index.chunk_index][index.array_index].clone())
-        } else {
-            None
-        }
+        self.get_channel_data(channel_name)
     }
-    /// returns channel's arrow2 Field.
-    pub fn get_channel_field(&self, channel_name: &str) -> Option<&Field> {
-        if let Some(index) = self.get_channel_index(channel_name) {
-            Some(&self.arrow_schema.fields[index.field_index])
-        } else {
-            None
-        }
-    }
+    // /// returns channel's arrow2 Field.
+    // pub fn get_channel_field(&self, channel_name: &str) -> Option<&Field> {
+    //     if let Some(index) = self.get_channel_index(channel_name) {
+    //         Some(&self.arrow_schema.fields[index.field_index])
+    //     } else {
+    //         None
+    //     }
+    // }
     /// defines channel's data in memory
     pub fn set_channel_data(&mut self, channel_name: &str, data: Box<dyn Array>) {
-        if let Some(index) = self.channel_indexes.get(channel_name) {
-            let chunk = &mut self.arrow_data[index.chunk_index];
-            chunk[index.array_index] = data;
-        }
+        self.set_channel_data(channel_name, data)
     }
     /// Renames a channel's name in memory
     pub fn rename_channel(&mut self, channel_name: &str, new_name: &str) {
-        if let Some(value) = self.channel_indexes.remove(channel_name) {
-            self.mdf_info.rename_channel(channel_name, new_name);
-            self.channel_indexes.insert(new_name.to_string(), value);
-        }
+        self.rename_channel(channel_name, new_name)
     }
     /// Adds a new channel in memory (no file modification)
     #[allow(clippy::too_many_arguments)]
@@ -226,38 +182,32 @@ impl Mdf {
             data.clone().data_type().clone(),
             is_nullable,
         );
-        let field_index = self.arrow_schema.fields.len();
-        self.arrow_schema.fields.push(new_field);
-        // add data
-        let mut chunk_index: usize = self.arrow_data.len();
-        if let Some(master) = &master_channel {
-            if let Some(master_index) = self.get_channel_index(master) {
-                chunk_index = master_index.chunk_index;
-                self.arrow_data[chunk_index].push(data);
-            } else {
-                // master channel not found
-                self.arrow_data.push(vec![data]);
-            }
-        } else {
-            self.arrow_data.push(vec![data]);
-        }
-        // add index
-        let index = ChannelIndexes {
-            chunk_index,
-            array_index: 0,
-            field_index,
-        };
-        self.channel_indexes.insert(channel_name, index);
+        // let field_index = self.arrow_schema.fields.len();
+        // self.arrow_schema.fields.push(new_field);
+        // // add data
+        // let mut chunk_index: usize = self.arrow_data.len();
+        // if let Some(master) = &master_channel {
+        //     if let Some(master_index) = self.get_channel_index(master) {
+        //         chunk_index = master_index.chunk_index;
+        //         self.arrow_data[chunk_index].push(data);
+        //     } else {
+        //         // master channel not found
+        //         self.arrow_data.push(vec![data]);
+        //     }
+        // } else {
+        //     self.arrow_data.push(vec![data]);
+        // }
+        // // add index
+        // let index = ChannelIndexes {
+        //     chunk_index,
+        //     array_index: 0,
+        //     field_index,
+        // };
+        // self.channel_indexes.insert(channel_name, index);
     }
     /// Removes a channel in memory (no file modification)
     pub fn remove_channel(&mut self, channel_name: &str) {
-        if let Some(index) = self.channel_indexes.remove(channel_name) {
-            self.mdf_info.remove_channel(channel_name);
-            // remove data
-            self.arrow_data[index.chunk_index].remove(index.array_index);
-            // removes field entry in Schema
-            self.arrow_schema.fields.remove(index.field_index);
-        }
+        self.remove_channel(channel_name);
     }
     /// load all channels data in memory
     pub fn load_all_channels_data_in_memory(&mut self) -> Result<()> {
@@ -285,37 +235,33 @@ impl Mdf {
         };
         info!("Loaded all channels data into memory");
 
-        // move the data from the MdfInfo structure into vect of arrow2 chunks
-        mdf_data_to_arrow(self, &channel_names);
-        info!("Moved data into arrow");
-
         Ok(())
     }
     /// Clears all data arrays
     pub fn clear_all_channel_data_from_memory(&mut self) {
         let channel_names = self.get_channel_names_set();
-        self.arrow_data = Vec::new();
-        self.arrow_schema = Schema::default();
-        self.channel_indexes = HashMap::new();
+        // self.arrow_data = Vec::new();
+        // self.arrow_schema = Schema::default();
+        // self.channel_indexes = HashMap::new();
         self.mdf_info.clear_channel_data_from_memory(channel_names);
     }
 
     /// Clears data arrays
     pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) {
-        self.arrow_data = Vec::new();
-        self.arrow_schema = Schema::default();
-        self.channel_indexes = HashMap::new();
+        // self.arrow_data = Vec::new();
+        // self.arrow_schema = Schema::default();
+        // self.channel_indexes = HashMap::new();
         self.mdf_info.clear_channel_data_from_memory(channel_names);
     }
 
-    /// export to Parquet file
-    pub fn export_to_parquet(
-        &self,
-        file_name: &str,
-        compression: Option<&str>,
-    ) -> arrow2::error::Result<()> {
-        export_to_parquet(self, file_name, compression)
-    }
+    // /// export to Parquet file
+    // pub fn export_to_parquet(
+    //     &self,
+    //     file_name: &str,
+    //     compression: Option<&str>,
+    // ) -> arrow2::error::Result<()> {
+    //     export_to_parquet(self, file_name, compression)
+    // }
     /// Writes mdf4 file
     pub fn write(&mut self, file_name: &str, compression: bool) -> Result<Mdf> {
         mdfwriter4(self, file_name, compression)

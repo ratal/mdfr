@@ -1,6 +1,6 @@
 //! Writer of data in memory into mdf4.2 file
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, HashMap, HashSet},
     fs::OpenOptions,
     io::{BufWriter, Cursor, Seek, SeekFrom, Write},
     ops::Deref,
@@ -18,13 +18,20 @@ use crate::{
         MdfInfo,
     },
     mdfreader::{
-        arrow::{arrow_bit_count, arrow_byte_count, arrow_to_bytes, arrow_to_mdf_data_type, ndim},
+        arrow::{
+            arrow_bit_count, arrow_byte_count, arrow_data_type_init, arrow_to_bytes,
+            arrow_to_mdf_data_type, ndim,
+        },
         channel_data::data_type_init,
         Mdf,
     },
 };
 use anyhow::{bail, Context, Error, Result};
-use arrow2::{array::Array, bitmap::Bitmap, datatypes::Schema};
+use arrow2::{
+    array::Array,
+    bitmap::Bitmap,
+    datatypes::{Field, Schema},
+};
 use binrw::BinWriterExt;
 use crossbeam_channel::bounded;
 use parking_lot::Mutex;
@@ -289,9 +296,9 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
     writer.flush().context("Could not flush file")?;
     Ok(Mdf {
         mdf_info: MdfInfo::V4(Box::new(new_info)),
-        arrow_data: Vec::new(),
-        arrow_schema: Schema::default(),
-        channel_indexes: HashMap::new(),
+        // arrow_data: Vec::new(),
+        // arrow_schema: Schema::default(),
+        // channel_indexes: HashMap::new(),
     })
 }
 
@@ -613,7 +620,7 @@ fn create_blocks(
         let new_cn = Cn4 {
             header: cn_block_header,
             unique_name: cn.unique_name.clone(),
-            data: data_type_init(
+            data: arrow_data_type_init(
                 cn_block.cn_type,
                 cn_block.cn_data_type,
                 cg_block.cg_data_bytes,
