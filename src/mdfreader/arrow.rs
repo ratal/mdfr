@@ -1426,9 +1426,7 @@ pub fn arrow_data_type_init(
                 }
                 4 | 5 => {
                     // float
-                    if n_bytes <= 2 {
-                        PrimitiveArray::new(DataType::Float16, Buffer::<f16>::new(), None).boxed()
-                    } else if n_bytes <= 4 {
+                    if n_bytes <= 4 {
                         PrimitiveArray::new(DataType::Float32, Buffer::<f32>::new(), None).boxed()
                     } else {
                         PrimitiveArray::new(DataType::Float64, Buffer::<f64>::new(), None).boxed()
@@ -1436,16 +1434,7 @@ pub fn arrow_data_type_init(
                 }
                 15 | 16 => {
                     // complex
-                    if n_bytes <= 2 {
-                        let field = Field::new("complex16", DataType::Float16, false);
-                        FixedSizeListArray::new(
-                            DataType::FixedSizeList(Box::new(field), 2),
-                            PrimitiveArray::new(DataType::Float16, Buffer::<f16>::new(), None)
-                                .boxed(),
-                            None,
-                        )
-                        .to_boxed()
-                    } else if n_bytes <= 4 {
+                    if n_bytes <= 4 {
                         let field = Field::new("complex32", DataType::Float32, false);
                         FixedSizeListArray::new(
                             DataType::FixedSizeList(Box::new(field), 2),
@@ -1465,27 +1454,9 @@ pub fn arrow_data_type_init(
                         .to_boxed()
                     }
                 }
-                6 => {
+                6 | 7 | 8 | 9 => {
                     // SBC ISO-8859-1 to be converted into UTF8
-                    Utf8Array::<i64>::new(
-                        DataType::Utf8,
-                        OffsetsBuffer::new(),
-                        Buffer::<u8>::new(),
-                        None,
-                    )
-                    .boxed()
-                }
-                7 => {
                     // String UTF8
-                    Utf8Array::<i64>::new(
-                        DataType::Utf8,
-                        OffsetsBuffer::new(),
-                        Buffer::<u8>::new(),
-                        None,
-                    )
-                    .boxed()
-                }
-                8 | 9 => {
                     // String UTF16 to be converted into UTF8
                     Utf8Array::<i64>::new(
                         DataType::Utf8,
@@ -1648,17 +1619,7 @@ pub fn arrow_data_type_init(
             }
             4 | 5 => {
                 // float
-                if n_bytes <= 2 {
-                    Tensor::new(
-                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::Float16), None),
-                        Buffer::<f16>::new(),
-                        Some(Vec::new()),
-                        Some(Order::RowMajor),
-                        None,
-                        None,
-                    )
-                    .to_boxed()
-                } else if n_bytes <= 4 {
+                if n_bytes <= 4 {
                     Tensor::new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::Float32), None),
                         Buffer::<f32>::new(),
@@ -1682,22 +1643,7 @@ pub fn arrow_data_type_init(
             }
             15 | 16 => {
                 // complex
-                if n_bytes <= 2 {
-                    let field = Field::new("complex16", DataType::Float16, false);
-                    Tensor::new(
-                        DataType::Extension(
-                            "Tensor".to_owned(),
-                            Box::new(DataType::FixedSizeList(Box::new(field), 2)),
-                            None,
-                        ),
-                        Buffer::<f16>::new(),
-                        Some(Vec::new()),
-                        Some(Order::RowMajor),
-                        None,
-                        None,
-                    )
-                    .to_boxed()
-                } else if n_bytes <= 4 {
+                if n_bytes <= 4 {
                     let field = Field::new("complex32", DataType::Float32, false);
                     Tensor::new(
                         DataType::Extension(
@@ -1788,9 +1734,7 @@ pub fn arrow_zeros(
                 }
                 4 | 5 => {
                     // float
-                    if n_bytes <= 2 {
-                        PrimitiveArray::from_vec(vec![0f32; cycle_count as usize]).boxed()
-                    } else if n_bytes <= 4 {
+                    if n_bytes <= 4 {
                         PrimitiveArray::from_vec(vec![0f32; cycle_count as usize]).boxed()
                     } else {
                         PrimitiveArray::from_vec(vec![0f64; cycle_count as usize]).boxed()
@@ -1798,15 +1742,7 @@ pub fn arrow_zeros(
                 }
                 15 | 16 => {
                     // complex
-                    if n_bytes <= 2 {
-                        let field = Field::new("complex16", DataType::Float16, false);
-                        FixedSizeListArray::new(
-                            DataType::FixedSizeList(Box::new(field), 2),
-                            PrimitiveArray::from_vec(vec![0f32; cycle_count as usize]).boxed(),
-                            None,
-                        )
-                        .to_boxed()
-                    } else if n_bytes <= 4 {
+                    if n_bytes <= 4 {
                         let field = Field::new("complex32", DataType::Float32, false);
                         FixedSizeListArray::new(
                             DataType::FixedSizeList(Box::new(field), 2),
@@ -1824,26 +1760,17 @@ pub fn arrow_zeros(
                         .to_boxed()
                     }
                 }
-                6 => {
-                    // SBC ISO-8859-1 to be converted into UTF8
-                    Utf8Array::<i64>::from(&vec![Some(String::default()); cycle_count as usize])
-                        .boxed()
-                }
-                7 => {
-                    // String UTF8
-                    Utf8Array::<i64>::from(&vec![Some(String::default()); cycle_count as usize])
-                        .boxed()
-                }
-                8 | 9 => {
-                    // String UTF16 to be converted into UTF8
-                    Utf8Array::<i64>::from(&vec![Some(String::default()); cycle_count as usize])
-                        .boxed()
+                6 | 7 | 8 | 9 => {
+                    // 6: SBC ISO-8859-1 to be converted into UTF8
+                    // 7: String UTF8
+                    // 8 | 9 :String UTF16 to be converted into UTF8
+                    Utf8Array::<i64>::new_null(DataType::LargeUtf8,cycle_count as usize).boxed()
                 }
                 _ => {
                     // bytearray
                     if cn_type == 1 {
                         // VLSD
-                        BinaryArray::<i64>::from(vec![Some(vec![0u8; 0]); cycle_count as usize])
+                        BinaryArray::<i64>::new_null(DataType::UInt8, cycle_count as usize)
                             .boxed()
                     } else {
                         BinaryArray::<i64>::from(vec![
@@ -1993,7 +1920,7 @@ pub fn arrow_zeros(
                 // float
                 if n_bytes <= 2 {
                     Tensor::new(
-                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::Float16), None),
+                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::Float32), None),
                         Buffer::from(vec![0f32; cycle_count as usize]),
                         Some(dim.0),
                         Some(dim.1),
@@ -2025,22 +1952,7 @@ pub fn arrow_zeros(
             }
             15 | 16 => {
                 // complex
-                if n_bytes <= 2 {
-                    let field = Field::new("complex16", DataType::Float16, false);
-                    Tensor::new(
-                        DataType::Extension(
-                            "Tensor".to_owned(),
-                            Box::new(DataType::FixedSizeList(Box::new(field), 2)),
-                            None,
-                        ),
-                        Buffer::from(vec![0f32; cycle_count as usize]),
-                        Some(dim.0),
-                        Some(dim.1),
-                        None,
-                        None,
-                    )
-                    .to_boxed()
-                } else if n_bytes <= 4 {
+                if n_bytes <= 4 {
                     let field = Field::new("complex32", DataType::Float32, false);
                     Tensor::new(
                         DataType::Extension(
