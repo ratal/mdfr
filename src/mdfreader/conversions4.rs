@@ -2,6 +2,7 @@
 use itertools::Itertools;
 use log::warn;
 use num::{Integer, ToPrimitive};
+use num_traits::cast::AsPrimitive;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Display;
@@ -10,6 +11,12 @@ use crate::mdfinfo::mdfinfo4::{Cc4Block, CcVal, Cn4, Dg4, SharableBlocks};
 use crate::mdfreader::channel_data::ChannelData;
 use fasteval::{Compiler, Evaler, Instruction, Slab};
 use rayon::prelude::*;
+use arrow2::datatypes::{PhysicalType, PrimitiveType, DataType};
+use arrow2::types::NativeType;
+use arrow2::compute::arity_assign;
+use arrow2::array::{Array, PrimitiveArray};
+use arrow2::compute::cast::primitive_as_primitive;
+use arrow2::types::f16;
 
 use crate::mdfreader::channel_data::ArrowComplex;
 
@@ -106,18 +113,17 @@ pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) {
 
 /// Generic function calculating linear expression
 #[inline]
-fn linear_conversion_calculation<T: ToPrimitive>(
-    array: &Vec<T>,
+fn linear_conversion_calculation<T: NativeType + AsPrimitive<f64>>(
+    array: Box<dyn Array>,
     p1: f64,
     p2: f64,
-    cycle_count: &usize,
-) -> Vec<f64> {
-    let mut new_array = vec![0f64; *cycle_count];
-    new_array
-        .iter_mut()
-        .zip(array)
-        .for_each(|(new_array, a)| *new_array = a.to_f64().unwrap_or_default() * p2 + p1);
-    new_array
+) -> Box<dyn Array> {
+    let parray = array.as_any()
+        .downcast_ref::<PrimitiveArray<T>>()
+        .unwrap();
+    let mut array_f64 = primitive_as_primitive::<T,f64>(&parray, &DataType::Float64);
+    arity_assign::unary(&mut array_f64, |x| x * p2 + p1);
+    array_f64.to_boxed()
 }
 
 /// Apply linear conversion to get physical data
@@ -125,258 +131,85 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
     let p1 = cc_val[0];
     let p2 = cc_val[1];
     if !(p1 == 0.0 && num::abs(p2 - 1.0) < 1e-12) {
-        match &mut cn.data {
-            ChannelData::UInt8(a) => {
-                cn.data = ChannelData::Float64(linear_conversion_calculation(
-                    a,
-                    p1,
-                    p2,
-                    &(*cycle_count as usize),
-                ));
+        match &mut cn.data.data_type() {
+            DataType::UInt8 => {
+                cn.data = linear_conversion_calculation::<u8>(cn.data, p1, p2);
             }
-            ChannelData::Int8(a) => {
-                cn.data = ChannelData::Float64(linear_conversion_calculation(
-                    a,
-                    p1,
-                    p2,
-                    &(*cycle_count as usize),
-                ));
+            DataType::UInt16 => {
+                cn.data = linear_conversion_calculation::<u16>(cn.data, p1, p2);
             }
-            ChannelData::Int16(a) => {
-                cn.data = ChannelData::Float64(linear_conversion_calculation(
-                    a,
-                    p1,
-                    p2,
-                    &(*cycle_count as usize),
-                ));
+            DataType::UInt32 => {
+                cn.data = linear_conversion_calculation::<u32>(cn.data, p1, p2);
             }
-            ChannelData::UInt16(a) => {
-                cn.data = ChannelData::Float64(linear_conversion_calculation(
-                    a,
-                    p1,
-                    p2,
-                    &(*cycle_count as usize),
-                ));
+            DataType::UInt64 => {
+                cn.data = linear_conversion_calculation::<u64>(cn.data, p1, p2);
             }
-            ChannelData::Float16(a) => {
-                cn.data = ChannelData::Float64(linear_conversion_calculation(
-                    a,
-                    p1,
-                    p2,
-                    &(*cycle_count as usize),
-                ));
+            DataType::Int8 => {
+                cn.data = linear_conversion_calculation::<i8>(cn.data, p1, p2);
             }
-            ChannelData::Int24(a) => {
-                cn.data = ChannelData::Float64(linear_conversion_calculation(
-                    a,
-                    p1,
-                    p2,
-                    &(*cycle_count as usize),
-                ));
+            DataType::Int16 => {
+                cn.data = linear_conversion_calculation::<i16>(cn.data, p1, p2);
             }
-            ChannelData::UInt24(a) => {
-                cn.data = ChannelData::Float64(linear_conversion_calculation(
-                    a,
-                    p1,
-                    p2,
-                    &(*cycle_count as usize),
-                ));
+            DataType::Int32 => {
+                cn.data = linear_conversion_calculation::<i32>(cn.data, p1, p2);
             }
-            ChannelData::Int32(a) => {
-                cn.data = ChannelData::Float64(linear_conversion_calculation(
-                    a,
-                    p1,
-                    p2,
-                    &(*cycle_count as usize),
-                ));
+            DataType::Int64 => {
+                cn.data = linear_conversion_calculation::<i64>(cn.data, p1, p2);
             }
-            ChannelData::UInt32(a) => {
-                cn.data = ChannelData::Float64(linear_conversion_calculation(
-                    a,
-                    p1,
-                    p2,
-                    &(*cycle_count as usize),
-                ));
+            DataType::Float16 => {
+                cn.data = linear_conversion_calculation::<f32>(cn.data, p1, p2);
             }
-            ChannelData::Float32(a) => {
-                cn.data = ChannelData::Float64(linear_conversion_calculation(
-                    a,
-                    p1,
-                    p2,
-                    &(*cycle_count as usize),
-                ));
+            DataType::Float32 => {
+                cn.data = linear_conversion_calculation::<f32>(cn.data, p1, p2);
             }
-            ChannelData::Int48(a) => {
-                cn.data = ChannelData::Float64(linear_conversion_calculation(
-                    a,
-                    p1,
-                    p2,
-                    &(*cycle_count as usize),
-                ));
+            DataType::Float64 => {
+                cn.data = linear_conversion_calculation::<f64>(cn.data, p1, p2);
             }
-            ChannelData::UInt48(a) => {
-                cn.data = ChannelData::Float64(linear_conversion_calculation(
-                    a,
-                    p1,
-                    p2,
-                    &(*cycle_count as usize),
-                ));
+            DataType::FixedSizeList(field, size) => {
+                if field.name.eq(&"complex32".to_string()) {
+                    cn.data = linear_conversion_calculation::<f32>(cn.data, p1, p2);
+                } else if field.name.eq(&"complex64".to_string()) {
+                    cn.data = linear_conversion_calculation::<f64>(cn.data, p1, p2);
+                }
             }
-            ChannelData::Int64(a) => {
-                cn.data = ChannelData::Float64(linear_conversion_calculation(
-                    a,
-                    p1,
-                    p2,
-                    &(*cycle_count as usize),
-                ));
-            }
-            ChannelData::UInt64(a) => {
-                cn.data = ChannelData::Float64(linear_conversion_calculation(
-                    a,
-                    p1,
-                    p2,
-                    &(*cycle_count as usize),
-                ));
-            }
-            ChannelData::Float64(a) => {
-                cn.data = ChannelData::Float64(linear_conversion_calculation(
-                    a,
-                    p1,
-                    p2,
-                    &(*cycle_count as usize),
-                ));
-            }
-            ChannelData::Complex16(a) => {
-                cn.data = ChannelData::Complex64(ArrowComplex(linear_conversion_calculation(
-                    &a.0,
-                    p1,
-                    p2,
-                    &a.0.len(),
-                )))
-            }
-            ChannelData::Complex32(a) => {
-                cn.data = ChannelData::Complex64(ArrowComplex(linear_conversion_calculation(
-                    &a.0,
-                    p1,
-                    p2,
-                    &a.0.len(),
-                )))
-            }
-            ChannelData::Complex64(a) => {
-                cn.data = ChannelData::Complex64(ArrowComplex(linear_conversion_calculation(
-                    &a.0,
-                    p1,
-                    p2,
-                    &a.0.len(),
-                )))
-            }
-            ChannelData::ArrayDUInt8(a) => {
-                cn.data = ChannelData::ArrayDFloat64((
-                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
-                    a.1.clone(),
-                ))
-            }
-            ChannelData::ArrayDInt8(a) => {
-                cn.data = ChannelData::ArrayDFloat64((
-                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
-                    a.1.clone(),
-                ))
-            }
-            ChannelData::ArrayDInt16(a) => {
-                cn.data = ChannelData::ArrayDFloat64((
-                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
-                    a.1.clone(),
-                ))
-            }
-            ChannelData::ArrayDUInt16(a) => {
-                cn.data = ChannelData::ArrayDFloat64((
-                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
-                    a.1.clone(),
-                ))
-            }
-            ChannelData::ArrayDFloat16(a) => {
-                cn.data = ChannelData::ArrayDFloat64((
-                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
-                    a.1.clone(),
-                ))
-            }
-            ChannelData::ArrayDInt24(a) => {
-                cn.data = ChannelData::ArrayDFloat64((
-                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
-                    a.1.clone(),
-                ))
-            }
-            ChannelData::ArrayDUInt24(a) => {
-                cn.data = ChannelData::ArrayDFloat64((
-                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
-                    a.1.clone(),
-                ))
-            }
-            ChannelData::ArrayDInt32(a) => {
-                cn.data = ChannelData::ArrayDFloat64((
-                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
-                    a.1.clone(),
-                ))
-            }
-            ChannelData::ArrayDUInt32(a) => {
-                cn.data = ChannelData::ArrayDFloat64((
-                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
-                    a.1.clone(),
-                ))
-            }
-            ChannelData::ArrayDFloat32(a) => {
-                cn.data = ChannelData::ArrayDFloat64((
-                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
-                    a.1.clone(),
-                ))
-            }
-            ChannelData::ArrayDInt48(a) => {
-                cn.data = ChannelData::ArrayDFloat64((
-                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
-                    a.1.clone(),
-                ))
-            }
-            ChannelData::ArrayDUInt48(a) => {
-                cn.data = ChannelData::ArrayDFloat64((
-                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
-                    a.1.clone(),
-                ))
-            }
-            ChannelData::ArrayDInt64(a) => {
-                cn.data = ChannelData::ArrayDFloat64((
-                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
-                    a.1.clone(),
-                ))
-            }
-            ChannelData::ArrayDUInt64(a) => {
-                cn.data = ChannelData::ArrayDFloat64((
-                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
-                    a.1.clone(),
-                ))
-            }
-            ChannelData::ArrayDFloat64(a) => {
-                cn.data = ChannelData::ArrayDFloat64((
-                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
-                    a.1.clone(),
-                ))
-            }
-            ChannelData::ArrayDComplex16(a) => {
-                cn.data = ChannelData::ArrayDComplex64((
-                    ArrowComplex(linear_conversion_calculation(&a.0 .0, p1, p2, &a.0.len())),
-                    a.1.clone(),
-                ))
-            }
-            ChannelData::ArrayDComplex32(a) => {
-                cn.data = ChannelData::ArrayDComplex64((
-                    ArrowComplex(linear_conversion_calculation(&a.0 .0, p1, p2, &a.0.len())),
-                    a.1.clone(),
-                ))
-            }
-            ChannelData::ArrayDComplex64(a) => {
-                cn.data = ChannelData::ArrayDComplex64((
-                    ArrowComplex(linear_conversion_calculation(&a.0 .0, p1, p2, &a.0.len())),
-                    a.1.clone(),
-                ))
+            DataType::Extension(extension_name, data_type, _) => {
+                if extension_name.eq(&"Tensor".to_string()) {
+                    match **data_type {
+                        DataType::UInt8 => {
+                            cn.data = linear_conversion_calculation::<u8>(cn.data, p1, p2);
+                        }
+                        DataType::UInt16 => {
+                            cn.data = linear_conversion_calculation::<u16>(cn.data, p1, p2);
+                        }
+                        DataType::UInt32 => {
+                            cn.data = linear_conversion_calculation::<u32>(cn.data, p1, p2);
+                        }
+                        DataType::UInt64 => {
+                            cn.data = linear_conversion_calculation::<u64>(cn.data, p1, p2);
+                        }
+                        DataType::Int8 => {
+                            cn.data = linear_conversion_calculation::<i8>(cn.data, p1, p2);
+                        }
+                        DataType::Int16 => {
+                            cn.data = linear_conversion_calculation::<i16>(cn.data, p1, p2);
+                        }
+                        DataType::Int32 => {
+                            cn.data = linear_conversion_calculation::<i32>(cn.data, p1, p2);
+                        }
+                        DataType::Int64 => {
+                            cn.data = linear_conversion_calculation::<i64>(cn.data, p1, p2);
+                        }
+                        DataType::Float16 => {
+                            cn.data = linear_conversion_calculation::<f32>(cn.data, p1, p2);
+                        }
+                        DataType::Float32 => {
+                            cn.data = linear_conversion_calculation::<f32>(cn.data, p1, p2);
+                        }
+                        DataType::Float64 => {
+                            cn.data = linear_conversion_calculation::<f64>(cn.data, p1, p2);
+                        }
+                    }
+                }
             }
             _ => warn!(
                 "linear conversion of channel {} not possible, channel does not contain primitives",
@@ -388,262 +221,105 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
 
 /// Generic function calculating rational expression
 #[inline]
-fn rational_conversion_calculation<T: ToPrimitive>(
-    array: &Vec<T>,
+fn rational_conversion_calculation<T: NativeType + AsPrimitive<f64>>(
+    array: Box<dyn Array>,
     cc_val: &[f64],
-    cycle_count: &usize,
-) -> Vec<f64> {
+) -> Box<dyn Array> {
     let p1 = cc_val[0];
     let p2 = cc_val[1];
     let p3 = cc_val[2];
     let p4 = cc_val[3];
     let p5 = cc_val[4];
     let p6 = cc_val[5];
-    let mut new_array = vec![0f64; *cycle_count];
-    new_array.iter_mut().zip(array).for_each(|(new_array, a)| {
-        let m = a.to_f64().unwrap_or_default();
-        let m_2 = f64::powi(m, 2);
-        *new_array = (m_2 * p1 + m * p2 + p3) / (m_2 * p4 + m * p5 + p6)
-    });
-    new_array
+    let parray = array.as_any()
+        .downcast_ref::<PrimitiveArray<T>>()
+        .unwrap();
+    let mut array_f64 = primitive_as_primitive::<T,f64>(&parray, &DataType::Float64);
+    arity_assign::unary(&mut array_f64, |x| (x * x * p1 + x * p2 + p3) / (x * x * p4 + x * p5 + p6));
+    array_f64.to_boxed()
 }
 
 /// Apply rational conversion to get physical data
 fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
-    match &mut cn.data {
-        ChannelData::UInt8(a) => {
-            cn.data = ChannelData::Float64(rational_conversion_calculation(
-                a,
-                cc_val,
-                &(*cycle_count as usize),
-            ));
+    match cn.data.data_type() {
+        DataType::UInt8 => {
+            cn.data = rational_conversion_calculation::<u8>(cn.data, cc_val);
         }
-        ChannelData::Int8(a) => {
-            cn.data = ChannelData::Float64(rational_conversion_calculation(
-                a,
-                cc_val,
-                &(*cycle_count as usize),
-            ));
+        DataType::UInt16 => {
+            cn.data = rational_conversion_calculation::<u16>(cn.data, cc_val);
         }
-        ChannelData::Int16(a) => {
-            cn.data = ChannelData::Float64(rational_conversion_calculation(
-                a,
-                cc_val,
-                &(*cycle_count as usize),
-            ));
+        DataType::UInt32 => {
+            cn.data = rational_conversion_calculation::<u32>(cn.data, cc_val);
         }
-        ChannelData::UInt16(a) => {
-            cn.data = ChannelData::Float64(rational_conversion_calculation(
-                a,
-                cc_val,
-                &(*cycle_count as usize),
-            ));
+        DataType::UInt64 => {
+            cn.data = rational_conversion_calculation::<u64>(cn.data, cc_val);
         }
-        ChannelData::Float16(a) => {
-            cn.data = ChannelData::Float64(rational_conversion_calculation(
-                a,
-                cc_val,
-                &(*cycle_count as usize),
-            ));
+        DataType::Int8 => {
+            cn.data = rational_conversion_calculation::<i8>(cn.data, cc_val);
         }
-        ChannelData::Int24(a) => {
-            cn.data = ChannelData::Float64(rational_conversion_calculation(
-                a,
-                cc_val,
-                &(*cycle_count as usize),
-            ));
+        DataType::Int16 => {
+            cn.data = rational_conversion_calculation::<i16>(cn.data, cc_val);
         }
-        ChannelData::UInt24(a) => {
-            cn.data = ChannelData::Float64(rational_conversion_calculation(
-                a,
-                cc_val,
-                &(*cycle_count as usize),
-            ));
+        DataType::Int32 => {
+            cn.data = rational_conversion_calculation::<i32>(cn.data, cc_val);
         }
-        ChannelData::Int32(a) => {
-            cn.data = ChannelData::Float64(rational_conversion_calculation(
-                a,
-                cc_val,
-                &(*cycle_count as usize),
-            ));
+        DataType::Int64 => {
+            cn.data = rational_conversion_calculation::<i64>(cn.data, cc_val);
         }
-        ChannelData::UInt32(a) => {
-            cn.data = ChannelData::Float64(rational_conversion_calculation(
-                a,
-                cc_val,
-                &(*cycle_count as usize),
-            ));
+        DataType::Float16 => {
+            cn.data = rational_conversion_calculation::<f32>(cn.data, cc_val);
         }
-        ChannelData::Float32(a) => {
-            cn.data = ChannelData::Float64(rational_conversion_calculation(
-                a,
-                cc_val,
-                &(*cycle_count as usize),
-            ));
+        DataType::Float32 => {
+            cn.data = rational_conversion_calculation::<f32>(cn.data, cc_val);
         }
-        ChannelData::Int48(a) => {
-            cn.data = ChannelData::Float64(rational_conversion_calculation(
-                a,
-                cc_val,
-                &(*cycle_count as usize),
-            ));
+        DataType::Float64 => {
+            cn.data = rational_conversion_calculation::<f64>(cn.data, cc_val);
         }
-        ChannelData::UInt48(a) => {
-            cn.data = ChannelData::Float64(rational_conversion_calculation(
-                a,
-                cc_val,
-                &(*cycle_count as usize),
-            ));
+        DataType::FixedSizeList(field, size) => {
+            if field.name.eq(&"complex32".to_string()) {
+                cn.data = rational_conversion_calculation::<f32>(cn.data, cc_val);
+            } else if field.name.eq(&"complex64".to_string()) {
+                cn.data = rational_conversion_calculation::<f64>(cn.data, cc_val);
+            }
         }
-        ChannelData::Int64(a) => {
-            cn.data = ChannelData::Float64(rational_conversion_calculation(
-                a,
-                cc_val,
-                &(*cycle_count as usize),
-            ));
-        }
-        ChannelData::UInt64(a) => {
-            cn.data = ChannelData::Float64(rational_conversion_calculation(
-                a,
-                cc_val,
-                &(*cycle_count as usize),
-            ));
-        }
-        ChannelData::Float64(a) => {
-            cn.data = ChannelData::Float64(rational_conversion_calculation(
-                a,
-                cc_val,
-                &(*cycle_count as usize),
-            ));
-        }
-        ChannelData::Complex16(a) => {
-            cn.data = ChannelData::Complex64(ArrowComplex(rational_conversion_calculation(
-                &a.0,
-                cc_val,
-                &a.0.len(),
-            )))
-        }
-        ChannelData::Complex32(a) => {
-            cn.data = ChannelData::Complex64(ArrowComplex(rational_conversion_calculation(
-                &a.0,
-                cc_val,
-                &a.0.len(),
-            )))
-        }
-        ChannelData::Complex64(a) => {
-            cn.data = ChannelData::Complex64(ArrowComplex(rational_conversion_calculation(
-                &a.0,
-                cc_val,
-                &a.0.len(),
-            )))
-        }
-        ChannelData::ArrayDUInt8(a) => {
-            cn.data = ChannelData::ArrayDFloat64((
-                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
-                a.1.clone(),
-            ))
-        }
-        ChannelData::ArrayDInt8(a) => {
-            cn.data = ChannelData::ArrayDFloat64((
-                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
-                a.1.clone(),
-            ))
-        }
-        ChannelData::ArrayDInt16(a) => {
-            cn.data = ChannelData::ArrayDFloat64((
-                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
-                a.1.clone(),
-            ))
-        }
-        ChannelData::ArrayDUInt16(a) => {
-            cn.data = ChannelData::ArrayDFloat64((
-                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
-                a.1.clone(),
-            ))
-        }
-        ChannelData::ArrayDFloat16(a) => {
-            cn.data = ChannelData::ArrayDFloat64((
-                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
-                a.1.clone(),
-            ))
-        }
-        ChannelData::ArrayDInt24(a) => {
-            cn.data = ChannelData::ArrayDFloat64((
-                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
-                a.1.clone(),
-            ))
-        }
-        ChannelData::ArrayDUInt24(a) => {
-            cn.data = ChannelData::ArrayDFloat64((
-                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
-                a.1.clone(),
-            ))
-        }
-        ChannelData::ArrayDInt32(a) => {
-            cn.data = ChannelData::ArrayDFloat64((
-                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
-                a.1.clone(),
-            ))
-        }
-        ChannelData::ArrayDUInt32(a) => {
-            cn.data = ChannelData::ArrayDFloat64((
-                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
-                a.1.clone(),
-            ))
-        }
-        ChannelData::ArrayDFloat32(a) => {
-            cn.data = ChannelData::ArrayDFloat64((
-                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
-                a.1.clone(),
-            ))
-        }
-        ChannelData::ArrayDInt48(a) => {
-            cn.data = ChannelData::ArrayDFloat64((
-                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
-                a.1.clone(),
-            ))
-        }
-        ChannelData::ArrayDUInt48(a) => {
-            cn.data = ChannelData::ArrayDFloat64((
-                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
-                a.1.clone(),
-            ))
-        }
-        ChannelData::ArrayDInt64(a) => {
-            cn.data = ChannelData::ArrayDFloat64((
-                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
-                a.1.clone(),
-            ))
-        }
-        ChannelData::ArrayDUInt64(a) => {
-            cn.data = ChannelData::ArrayDFloat64((
-                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
-                a.1.clone(),
-            ))
-        }
-        ChannelData::ArrayDFloat64(a) => {
-            cn.data = ChannelData::ArrayDFloat64((
-                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
-                a.1.clone(),
-            ))
-        }
-        ChannelData::ArrayDComplex16(a) => {
-            cn.data = ChannelData::ArrayDComplex64((
-                ArrowComplex(rational_conversion_calculation(&a.0 .0, cc_val, &a.0.len())),
-                a.1.clone(),
-            ))
-        }
-        ChannelData::ArrayDComplex32(a) => {
-            cn.data = ChannelData::ArrayDComplex64((
-                ArrowComplex(rational_conversion_calculation(&a.0 .0, cc_val, &a.0.len())),
-                a.1.clone(),
-            ))
-        }
-        ChannelData::ArrayDComplex64(a) => {
-            cn.data = ChannelData::ArrayDComplex64((
-                ArrowComplex(rational_conversion_calculation(&a.0 .0, cc_val, &a.0.len())),
-                a.1.clone(),
-            ))
+        DataType::Extension(extension_name, data_type, _) => {
+            if extension_name.eq(&"Tensor".to_string()) {
+                match **data_type {
+                    DataType::UInt8 => {
+                        cn.data = rational_conversion_calculation::<u8>(cn.data, cc_val);
+                    }
+                    DataType::UInt16 => {
+                        cn.data = rational_conversion_calculation::<u16>(cn.data, cc_val);
+                    }
+                    DataType::UInt32 => {
+                        cn.data = rational_conversion_calculation::<u32>(cn.data, cc_val);
+                    }
+                    DataType::UInt64 => {
+                        cn.data = rational_conversion_calculation::<u64>(cn.data, cc_val);
+                    }
+                    DataType::Int8 => {
+                        cn.data = rational_conversion_calculation::<i8>(cn.data, cc_val);
+                    }
+                    DataType::Int16 => {
+                        cn.data = rational_conversion_calculation::<i16>(cn.data, cc_val);
+                    }
+                    DataType::Int32 => {
+                        cn.data = rational_conversion_calculation::<i32>(cn.data, cc_val);
+                    }
+                    DataType::Int64 => {
+                        cn.data = rational_conversion_calculation::<i64>(cn.data, cc_val);
+                    }
+                    DataType::Float16 => {
+                        cn.data = rational_conversion_calculation::<f32>(cn.data, cc_val);
+                    }
+                    DataType::Float32 => {
+                        cn.data = rational_conversion_calculation::<f32>(cn.data, cc_val);
+                    }
+                    DataType::Float64 => {
+                        cn.data = rational_conversion_calculation::<f64>(cn.data, cc_val);
+                    }
+                }
+            }
         }
         _ => warn!(
             "rational conversion of channel {} not possible, channel does not contain primitives",
