@@ -1773,10 +1773,9 @@ pub fn arrow_zeros(
                         BinaryArray::<i64>::new_null(DataType::UInt8, cycle_count as usize)
                             .boxed()
                     } else {
-                        BinaryArray::<i64>::from(vec![
-                            Some(vec![0u8; n_bytes as usize]);
+                        FixedSizeBinaryArray::new_null(DataType::FixedSizeBinary(n_bytes as usize),
                             cycle_count as usize
-                        ])
+                        )
                         .boxed()
                     }
                 }
