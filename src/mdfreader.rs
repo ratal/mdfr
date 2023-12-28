@@ -20,12 +20,12 @@ use pyo3::prelude::*;
 
 // use crate::export::parquet::export_to_parquet;
 use crate::mdfinfo::MdfInfo;
-use crate::mdfreader::channel_data::Order;
 use crate::mdfreader::mdfreader3::mdfreader3;
 use crate::mdfreader::mdfreader4::mdfreader4;
 use crate::mdfwriter::mdfwriter4::mdfwriter4;
+use crate::export::tensor::Order;
 
-use self::arrow::{arrow_bit_count, arrow_byte_count, arrow_to_mdf_data_type, ndim};
+use self::arrow::{arrow_bit_count, arrow_byte_count, arrow_to_mdf_data_type, ndim, shape};
 
 /// Main Mdf struct holding mdfinfo, arrow data and schema
 #[derive(Debug)]
