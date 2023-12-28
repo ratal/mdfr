@@ -1793,7 +1793,7 @@ pub fn arrow_zeros(
                 if n_bytes <= 1 {
                     Tensor::new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt8), None),
-                        Buffer::from(vec![0u8; cycle_count as usize]),
+                        Buffer::from(vec![0u8; (cycle_count as usize) * dim.0.iter().product::<usize>()]),
                         Some(dim.0),
                         Some(dim.1),
                         None,
@@ -1803,7 +1803,7 @@ pub fn arrow_zeros(
                 } else if n_bytes == 2 {
                     Tensor::new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt16), None),
-                        Buffer::from(vec![0u16; cycle_count as usize]),
+                        Buffer::from(vec![0u16; (cycle_count as usize) * dim.0.iter().product::<usize>()]),
                         Some(dim.0),
                         Some(dim.1),
                         None,
@@ -1813,7 +1813,7 @@ pub fn arrow_zeros(
                 } else if n_bytes == 3 {
                     Tensor::new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt32), None),
-                        Buffer::from(vec![0u32; cycle_count as usize]),
+                        Buffer::from(vec![0u32; (cycle_count as usize) * dim.0.iter().product::<usize>()]),
                         Some(dim.0),
                         Some(dim.1),
                         None,
@@ -1823,7 +1823,7 @@ pub fn arrow_zeros(
                 } else if n_bytes == 4 {
                     Tensor::new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt32), None),
-                        Buffer::from(vec![0u32; cycle_count as usize]),
+                        Buffer::from(vec![0u32; (cycle_count as usize) * dim.0.iter().product::<usize>()]),
                         Some(dim.0),
                         Some(dim.1),
                         None,
@@ -1833,7 +1833,7 @@ pub fn arrow_zeros(
                 } else if n_bytes <= 6 {
                     Tensor::new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt64), None),
-                        Buffer::from(vec![0u64; cycle_count as usize]),
+                        Buffer::from(vec![0u64; (cycle_count as usize) * dim.0.iter().product::<usize>()]),
                         Some(dim.0),
                         Some(dim.1),
                         None,
@@ -1843,7 +1843,7 @@ pub fn arrow_zeros(
                 } else {
                     Tensor::new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt64), None),
-                        Buffer::from(vec![0u64; cycle_count as usize]),
+                        Buffer::from(vec![0u64; (cycle_count as usize) * dim.0.iter().product::<usize>()]),
                         Some(dim.0),
                         Some(dim.1),
                         None,
@@ -1857,7 +1857,7 @@ pub fn arrow_zeros(
                 if n_bytes <= 1 {
                     Tensor::new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int8), None),
-                        Buffer::from(vec![0i8; cycle_count as usize]),
+                        Buffer::from(vec![0i8; (cycle_count as usize) * dim.0.iter().product::<usize>()]),
                         Some(dim.0),
                         Some(dim.1),
                         None,
@@ -1867,7 +1867,7 @@ pub fn arrow_zeros(
                 } else if n_bytes == 2 {
                     Tensor::new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int16), None),
-                        Buffer::from(vec![0i16; cycle_count as usize]),
+                        Buffer::from(vec![0i16; (cycle_count as usize) * dim.0.iter().product::<usize>()]),
                         Some(dim.0),
                         Some(dim.1),
                         None,
@@ -1877,7 +1877,7 @@ pub fn arrow_zeros(
                 } else if n_bytes == 3 {
                     Tensor::new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int32), None),
-                        Buffer::from(vec![0i32; cycle_count as usize]),
+                        Buffer::from(vec![0i32; (cycle_count as usize) * dim.0.iter().product::<usize>()]),
                         Some(dim.0),
                         Some(dim.1),
                         None,
@@ -1887,7 +1887,7 @@ pub fn arrow_zeros(
                 } else if n_bytes == 4 {
                     Tensor::new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int32), None),
-                        Buffer::from(vec![0i32; cycle_count as usize]),
+                        Buffer::from(vec![0i32; (cycle_count as usize) * dim.0.iter().product::<usize>()]),
                         Some(dim.0),
                         Some(dim.1),
                         None,
@@ -1897,7 +1897,7 @@ pub fn arrow_zeros(
                 } else if n_bytes <= 6 {
                     Tensor::new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int64), None),
-                        Buffer::from(vec![0i64; cycle_count as usize]),
+                        Buffer::from(vec![0i64; (cycle_count as usize) * dim.0.iter().product::<usize>()]),
                         Some(dim.0),
                         Some(dim.1),
                         None,
@@ -1907,7 +1907,7 @@ pub fn arrow_zeros(
                 } else {
                     Tensor::new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int64), None),
-                        Buffer::from(vec![0i64; cycle_count as usize]),
+                        Buffer::from(vec![0i64; (cycle_count as usize) * dim.0.iter().product::<usize>()]),
                         Some(dim.0),
                         Some(dim.1),
                         None,
@@ -1960,7 +1960,7 @@ pub fn arrow_zeros(
                             Box::new(DataType::FixedSizeList(Box::new(field), 2)),
                             None,
                         ),
-                        Buffer::from(vec![0f32; cycle_count as usize]),
+                        Buffer::from(vec![0f32; (cycle_count as usize) * dim.0.iter().product::<usize>() * 2]),
                         Some(dim.0),
                         Some(dim.1),
                         None,
@@ -1975,7 +1975,7 @@ pub fn arrow_zeros(
                             Box::new(DataType::FixedSizeList(Box::new(field), 2)),
                             None,
                         ),
-                        Buffer::from(vec![0f64; cycle_count as usize]),
+                        Buffer::from(vec![0f64; (cycle_count as usize) * dim.0.iter().product::<usize>() * 2]),
                         Some(dim.0),
                         Some(dim.1),
                         None,
