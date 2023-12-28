@@ -10,7 +10,7 @@ use crate::mdfreader::conversions4::convert_all_channels;
 use crate::mdfreader::data_read4::read_channels_from_bytes;
 use crate::mdfreader::data_read4::read_one_channel_array;
 use anyhow::{bail, Context, Result};
-use arrow2::array::{Array, PrimitiveArray};
+use arrow2::array::{Array, PrimitiveArray, Utf8Array, BinaryArray};
 use arrow2::datatypes::DataType;
 use log::warn;
 use binrw::BinReaderExt;
@@ -392,78 +392,23 @@ fn read_vlsd_from_bytes(
     let mut remaining: usize = data_length - position;
     let mut nrecord: usize = 0;
     match cn.data.data_type() {
-        DataType::StringSBC(array) => {
-            while remaining > 0 {
-                let len = &data[position..position + std::mem::size_of::<u32>()];
-                let length: usize =
-                    u32::from_le_bytes(len.try_into().context("Could not read length")?) as usize;
-                if (position + length + 4) <= data_length {
-                    position += std::mem::size_of::<u32>();
-                    let record = &data[position..position + length];
-                    let (_result, _size, _replacement) = decoder.windows_1252.decode_to_string(
-                        record,
-                        &mut array[nrecord + previous_index],
-                        false,
-                    );
-                    position += length;
-                    remaining = data_length - position;
-                    nrecord += 1;
-                } else {
-                    remaining = data_length - position;
-                    // copies tail part at beginnning of vect
-                    data.copy_within(position.., 0);
-                    // clears the last part
-                    data.truncate(remaining);
-                    break;
-                }
-            }
-            if remaining == 0 {
-                data.clear()
-            }
-        }
-        DataType::StringUTF8(array) => {
-            while remaining > 0 {
-                let len = &data[position..position + std::mem::size_of::<u32>()];
-                let length: usize =
-                    u32::from_le_bytes(len.try_into().context("Could not read length")?) as usize;
-                if (position + length + 4) <= data_length {
-                    position += std::mem::size_of::<u32>();
-                    let record = &data[position..position + length];
-                    array[nrecord + previous_index] = str::from_utf8(record)
-                        .context("Found invalid UTF-8")?
-                        .trim_end_matches('\0')
-                        .to_string();
-                    position += length;
-                    remaining = data_length - position;
-                    nrecord += 1;
-                } else {
-                    remaining = data_length - position;
-                    // copies tail part at beginnning of vect
-                    data.copy_within(position.., 0);
-                    // clears the last part
-                    data.truncate(remaining);
-                    break;
-                }
-            }
-            if remaining == 0 {
-                data.clear()
-            }
-        }
-        DataType::StringUTF16(array) => {
-            if cn.endian {
+        DataType::LargeUtf8 => {
+            let mut array = cn.data.as_any_mut().downcast_mut::<Utf8Array<i64>>().unwrap().into_mut().unwrap_right();
+            if cn.block.cn_data_type == 6 {
                 while remaining > 0 {
                     let len = &data[position..position + std::mem::size_of::<u32>()];
                     let length: usize =
-                        u32::from_le_bytes(len.try_into().context("Could not read length")?)
-                            as usize;
+                        u32::from_le_bytes(len.try_into().context("Could not read length")?) as usize;
                     if (position + length + 4) <= data_length {
                         position += std::mem::size_of::<u32>();
                         let record = &data[position..position + length];
-                        let (_result, _size, _replacement) = decoder.utf_16_be.decode_to_string(
+                        let dst=String::new();
+                        let (_result, _size, _replacement) = decoder.windows_1252.decode_to_string(
                             record,
-                            &mut array[nrecord + previous_index],
+                            &mut dst,
                             false,
                         );
+                        array.push(Some(dst));
                         position += length;
                         remaining = data_length - position;
                         nrecord += 1;
@@ -476,7 +421,31 @@ fn read_vlsd_from_bytes(
                         break;
                     }
                 }
-            } else {
+            } else if cn.block.cn_data_type == 7 {
+                while remaining > 0 {
+                    let len = &data[position..position + std::mem::size_of::<u32>()];
+                    let length: usize =
+                        u32::from_le_bytes(len.try_into().context("Could not read length")?) as usize;
+                    if (position + length + 4) <= data_length {
+                        position += std::mem::size_of::<u32>();
+                        let record = &data[position..position + length];
+                        array.push(Some(str::from_utf8(record)
+                            .context("Found invalid UTF-8")?
+                            .trim_end_matches('\0')
+                            .to_string()));
+                        position += length;
+                        remaining = data_length - position;
+                        nrecord += 1;
+                    } else {
+                        remaining = data_length - position;
+                        // copies tail part at beginnning of vect
+                        data.copy_within(position.., 0);
+                        // clears the last part
+                        data.truncate(remaining);
+                        break;
+                    }
+                }
+            } else if cn.block.cn_data_type == 8 {
                 while remaining > 0 {
                     let len = &data[position..position + std::mem::size_of::<u32>()];
                     let length: usize =
@@ -485,11 +454,41 @@ fn read_vlsd_from_bytes(
                     if (position + length + 4) <= data_length {
                         position += std::mem::size_of::<u32>();
                         let record = &data[position..position + length];
-                        let (_result, _size, _replacement) = decoder.utf_16_le.decode_to_string(
+                        let dst=String::new();
+                        let (_result, _size, _replacement) = decoder.utf_16_be.decode_to_string(
                             record,
-                            &mut array[nrecord + previous_index],
+                            &mut dst,
                             false,
                         );
+                        array.push(Some(dst));
+                        position += length;
+                        remaining = data_length - position;
+                        nrecord += 1;
+                    } else {
+                        remaining = data_length - position;
+                        // copies tail part at beginnning of vect
+                        data.copy_within(position.., 0);
+                        // clears the last part
+                        data.truncate(remaining);
+                        break;
+                    }
+                }
+            } else if cn.block.cn_data_type == 9 {
+                while remaining > 0 {
+                    let len = &data[position..position + std::mem::size_of::<u32>()];
+                    let length: usize =
+                        u32::from_le_bytes(len.try_into().context("Could not read length")?)
+                            as usize;
+                    if (position + length + 4) <= data_length {
+                        position += std::mem::size_of::<u32>();
+                        let record = &data[position..position + length];
+                        let dst=String::new();
+                        let (_result, _size, _replacement) = decoder.utf_16_le.decode_to_string(
+                            record,
+                            &mut dst,
+                            false,
+                        );
+                        array.push(Some(dst));
                         position += length;
                         remaining = data_length - position;
                         nrecord += 1;
@@ -507,7 +506,8 @@ fn read_vlsd_from_bytes(
                 data.clear()
             }
         }
-        DataType::VariableSizeByteArray(array) => {
+        DataType::LargeBinary => {
+            let mut array = cn.data.as_any_mut().downcast_mut::<BinaryArray<i64>>().unwrap().into_mut().unwrap_right();
             while remaining > 0 {
                 let len = &data[position..position + std::mem::size_of::<u32>()];
                 let length: usize =
@@ -515,7 +515,7 @@ fn read_vlsd_from_bytes(
                 if (position + length + 4) <= data_length {
                     position += std::mem::size_of::<u32>();
                     let record = &data[position..position + length];
-                    array[nrecord + previous_index] = record.to_vec();
+                    array.push(Some(record.to_vec()));
                     position += length;
                     remaining = data_length - position;
                     nrecord += 1;
@@ -576,18 +576,18 @@ fn parser_ld4(
             channel_names_to_read_in_dg,
         );
         if id == "##DZ".as_bytes() {
-            let (mut dt, block_header) = parse_dz(rdr)?;
+            let (dt, block_header) = parse_dz(rdr)?;
             for (_rec_pos, cn) in channel_group.cn.iter_mut() {
-                read_one_channel_array(&mut dt, cn, channel_group.block.cg_cycle_count as usize);
+                read_one_channel_array(dt, cn, channel_group.block.cg_cycle_count as usize);
             }
             position = ld_data + block_header.len as i64;
         } else {
             let block_header: Dt4Block = rdr.read_le().context("Could not read DV block header")?;
-            let mut buf = vec![0u8; block_header.len as usize - 24];
+            let buf = vec![0u8; block_header.len as usize - 24];
             rdr.read_exact(&mut buf)
                 .context("Could not read Dt4 block")?;
             for (_rec_pos, cn) in channel_group.cn.iter_mut() {
-                read_one_channel_array(&mut buf, cn, channel_group.block.cg_cycle_count as usize);
+                read_one_channel_array(buf, cn, channel_group.block.cg_cycle_count as usize);
             }
             position = ld_data + block_header.len as i64;
         }
@@ -1044,38 +1044,40 @@ fn save_vlsd(
     record: &[u8],
     nrecord: &usize,
     decoder: &mut Dec,
-    endian: bool,
+    cn_data_type: u8,
 ) -> Result<()> {
     match data.data_type() {
-        DataType::StringSBC(array) => {
-            let (_result, _size, _replacement) =
-                decoder
-                    .windows_1252
-                    .decode_to_string(record, &mut array[*nrecord], false);
-            Ok(())
-        }
-        DataType::StringUTF8(array) => {
-            array[*nrecord] = str::from_utf8(record)
-                .context("Found invalid UTF-8")?
-                .to_string();
-            Ok(())
-        }
-        DataType::StringUTF16(array) => {
-            if endian {
+        DataType::LargeUtf8 => {
+            let mut array = data.as_any_mut().downcast_mut::<Utf8Array<i64>>().unwrap().into_mut().unwrap_right();
+            let mut dst = String::new();
+            if cn_data_type == 6 {
+                let (_result, _size, _replacement) =
+                    decoder
+                        .windows_1252
+                        .decode_to_string(record, &mut dst, false);
+                array.push(Some(dst));
+            } else if cn_data_type == 7 {
+                array.push(Some(str::from_utf8(record)
+                    .context("Found invalid UTF-8")?
+                    .to_string()));
+            } else if cn_data_type == 8 {
                 let (_result, _size, _replacement) =
                     decoder
                         .utf_16_be
-                        .decode_to_string(record, &mut array[*nrecord], false);
-            } else {
+                        .decode_to_string(record, &mut dst, false);
+                array.push(Some(dst));
+            } else if cn_data_type == 9 {
                 let (_result, _size, _replacement) =
                     decoder
                         .utf_16_le
-                        .decode_to_string(record, &mut array[*nrecord], false);
+                        .decode_to_string(record, &mut dst, false);
+                array.push(Some(dst));
             };
             Ok(())
         }
-        DataType::VariableSizeByteArray(array) => {
-            array[*nrecord].extend_from_slice(record);
+        DataType::LargeBinary => {
+            let mut array = data.as_any_mut().downcast_mut::<BinaryArray<i64>>().unwrap().into_mut().unwrap_right();
+            array.push(Some(record));
             Ok(())
         }
         _ => warn!("data type of VLSD is not possible")
@@ -1138,7 +1140,7 @@ fn read_all_channels_unsorted_from_bytes(
                                             record,
                                             nrecord,
                                             decoder,
-                                            target_cn.endian,
+                                            target_cn.block.cn_data_type,
                                         )?;
                                         *nrecord += 1;
                                     } else {
@@ -1352,7 +1354,7 @@ fn apply_bit_mask_offset(dg: &mut Dg4, channel_names_to_read_in_dg: &HashSet<Str
                             DataType::FixedSizeList(_,_) => (),
                             DataType::LargeUtf8 => (),
                             DataType::Binary => (),
-                            DataType::FixedSizeBinary => (),
+                            DataType::FixedSizeBinary(_size) => (),
                             DataType::Extension(extension_name, data_type, _) => {
                                 if extension_name.eq(&"Tensor".to_string()) {
                                     match **data_type {
