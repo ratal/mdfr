@@ -934,126 +934,126 @@ pub fn shape(array: Box<dyn Array>) -> (Vec<usize>, Order) {
                         .as_any()
                         .downcast_ref::<Tensor<i8>>()
                         .expect("could not downcast to i8 array");
-                    (array.shape().to_vec(), *array.order())
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::Int16 => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<i16>>()
                         .expect("could not downcast to i16 array");
-                    (array.shape().to_vec(), *array.order())
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::Int32 => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<i32>>()
                         .expect("could not downcast to i32 array");
-                    (array.shape().to_vec(), *array.order())
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::Int64 => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<i64>>()
                         .expect("could not downcast to i64 array");
-                    (array.shape().to_vec(), *array.order())
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::UInt8 => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<u8>>()
                         .expect("could not downcast to u8 array");
-                    (array.shape().to_vec(), *array.order())
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::UInt16 => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<u16>>()
                         .expect("could not downcast to u16 array");
-                    (array.shape().to_vec(), *array.order())
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::UInt32 => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<u32>>()
                         .expect("could not downcast to u32 array");
-                    (array.shape().to_vec(), *array.order())
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::UInt64 => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<u64>>()
                         .expect("could not downcast to u64 array");
-                    (array.shape().to_vec(), *array.order())
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::Float16 => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<f16>>()
                         .expect("could not downcast to f16 array");
-                    (array.shape().to_vec(), *array.order())
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::Float32 => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<f32>>()
                         .expect("could not downcast to f32 array");
-                    (array.shape().to_vec(), *array.order())
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::Float64 => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<f64>>()
                         .expect("could not downcast to f64 array");
-                    (array.shape().to_vec(), *array.order())
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::Timestamp(_, _) => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<i64>>()
                         .expect("could not downcast to i64 array");
-                    (array.shape().to_vec(), *array.order())
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::Date32 => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<i32>>()
                         .expect("could not downcast to i64 array");
-                    (array.shape().to_vec(), *array.order())
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::Date64 => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<i64>>()
                         .expect("could not downcast to i64 array");
-                    (array.shape().to_vec(), *array.order())
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::Time32(_) => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<i32>>()
                         .expect("could not downcast to i64 array");
-                    (array.shape().to_vec(), *array.order())
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::Time64(_) => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<i64>>()
                         .expect("could not downcast to i64 array");
-                    (array.shape().to_vec(), *array.order())
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::Duration(_) => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<i64>>()
                         .expect("could not downcast to i64 array");
-                    (array.shape().to_vec(), *array.order())
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::Interval(_) => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<i64>>()
                         .expect("could not downcast to i64 array");
-                    (array.shape().to_vec(), *array.order())
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::FixedSizeList(_, _) => todo!(),
                 _ => panic!("unsupported type"),
@@ -1688,7 +1688,6 @@ pub fn arrow_data_type_init(
 
 /// based on already existing type, rewrite the array filled with zeros at needed size based on cycle_count
 pub fn arrow_zeros(
-    data: Box<dyn Array>,
     cn_type: u8,
     cn_data_type: u8,
     cycle_count: u64,
