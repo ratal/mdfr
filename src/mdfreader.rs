@@ -14,7 +14,6 @@ use std::io::BufReader;
 
 use anyhow::{Context, Result};
 use arrow2::array::{get_display, Array};
-use arrow2::datatypes::Field;
 use log::info;
 use pyo3::prelude::*;
 
@@ -63,7 +62,7 @@ pub struct MasterSignature {
 impl Mdf {
     /// returns Mdf with metadata but no data
     pub fn new(file_name: &str) -> Result<Mdf> {
-        let mut mdf = Mdf {
+        let mdf = Mdf {
             mdf_info: MdfInfo::new(file_name)?,
         };
         Ok(mdf)
@@ -123,7 +122,7 @@ impl Mdf {
     // }
     /// returns channel's arrow2 Array.
     pub fn get_channel_data(&self, channel_name: &str) -> Option<Box<dyn Array>> {
-        self.get_channel_data(channel_name)
+        self.mdf_info.get_channel_data(channel_name)
     }
     // /// returns channel's arrow2 Field.
     // pub fn get_channel_field(&self, channel_name: &str) -> Option<&Field> {
@@ -134,12 +133,12 @@ impl Mdf {
     //     }
     // }
     /// defines channel's data in memory
-    pub fn set_channel_data(&mut self, channel_name: &str, data: Box<dyn Array>) {
-        self.set_channel_data(channel_name, data)
+    pub fn set_channel_data(&mut self, channel_name: &str, data: Box<dyn Array>) -> Result<()> {
+        self.mdf_info.set_channel_data(channel_name, data)
     }
     /// Renames a channel's name in memory
     pub fn rename_channel(&mut self, channel_name: &str, new_name: &str) {
-        self.rename_channel(channel_name, new_name)
+        self.mdf_info.rename_channel(channel_name, new_name)
     }
     /// Adds a new channel in memory (no file modification)
     #[allow(clippy::too_many_arguments)]
@@ -176,12 +175,12 @@ impl Mdf {
             description,
         );
         // add field
-        let is_nullable: bool = data.clone().validity().is_some();
-        let new_field = Field::new(
-            channel_name.clone(),
-            data.clone().data_type().clone(),
-            is_nullable,
-        );
+        // let is_nullable: bool = data.clone().validity().is_some();
+        // let new_field = Field::new(
+        //     channel_name.clone(),
+        //     data.clone().data_type().clone(),
+        //     is_nullable,
+        // );
         // let field_index = self.arrow_schema.fields.len();
         // self.arrow_schema.fields.push(new_field);
         // // add data
@@ -207,7 +206,7 @@ impl Mdf {
     }
     /// Removes a channel in memory (no file modification)
     pub fn remove_channel(&mut self, channel_name: &str) {
-        self.remove_channel(channel_name);
+        self.mdf_info.remove_channel(channel_name);
     }
     /// load all channels data in memory
     pub fn load_all_channels_data_in_memory(&mut self) -> Result<()> {
