@@ -2,7 +2,7 @@
 //! mdfinfo module
 
 use anyhow::{bail, Context, Result};
-use arrow2::bitmap::MutableBitmap;
+use arrow2::array::Array;
 use binrw::{binrw, BinReaderExt};
 use codepage::to_encoding;
 use encoding_rs::Encoding;
@@ -26,7 +26,6 @@ use mdfinfo4::{
     SharableBlocks,
 };
 
-use crate::mdfreader::channel_data::ChannelData;
 use crate::mdfwriter::mdfwriter3::convert3to4;
 
 use self::mdfinfo3::build_channel_db3;
@@ -269,18 +268,18 @@ impl MdfInfo {
         }
     }
     /// returns channel's data ndarray.
-    pub fn get_channel_data<'a>(
-        &'a mut self,
-        channel_name: &'a str,
-    ) -> (Option<&ChannelData>, Option<&MutableBitmap>) {
-        let (data, mask) = match self {
+    pub fn get_channel_data(
+        &self,
+        channel_name: &str,
+    ) -> Option<Box<dyn Array>> {
+        let data = match self {
             MdfInfo::V3(mdfinfo3) => {
-                let dt = mdfinfo3.get_channel_data(channel_name);
-                (dt, None)
+                // mdfinfo3.get_channel_data(channel_name)
+                None
             }
             MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_data(channel_name),
         };
-        (data, mask)
+        data
     }
     /// Adds a new channel in memory (no file modification)
     pub fn add_channel(
@@ -312,7 +311,7 @@ impl MdfInfo {
         }
     }
     /// defines channel's data in memory
-    pub fn set_channel_data(&mut self, channel_name: &str, data: &ChannelData) -> Result<()> {
+    pub fn set_channel_data(&mut self, channel_name: &str, data: Box<dyn Array>) -> Result<()> {
         match self {
             MdfInfo::V3(mdfinfo3) => {
                 let mut file_name = PathBuf::from(mdfinfo3.file_name.as_str());
