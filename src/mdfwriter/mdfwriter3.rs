@@ -5,7 +5,7 @@ use crate::mdfinfo::{
     mdfinfo3::MdfInfo3,
     mdfinfo4::{FhBlock, MdfInfo4},
 };
-use crate::mdfreader::channel_data::Order;
+use crate::export::tensor::Order;
 
 /// Converts mdfinfo3 into mdfinfo4
 pub fn convert3to4(mdf3: &MdfInfo3, file_name: &str) -> MdfInfo4 {
