@@ -4,7 +4,7 @@ use crate::mdfreader::arrow::{arrow_data_type_init, ndim};
 use crate::mdfreader::{DataSignature, MasterSignature};
 use anyhow::{anyhow, Context, Result};
 use arrow2::array::{Array, PrimitiveArray};
-use arrow2::bitmap::MutableBitmap;
+use arrow2::bitmap::{MutableBitmap, Bitmap};
 use arrow2::buffer::Buffer;
 use arrow2::datatypes::{DataType, Field, Metadata};
 use binrw::{binrw, BinReaderExt, BinWriterExt};
@@ -80,9 +80,8 @@ impl MdfInfo4 {
     pub fn get_channel_data(
         &self,
         channel_name: &str,
-    ) -> (Option<Box<dyn Array>>, Option<&MutableBitmap>) {
+    ) -> Option<Box<dyn Array>> {
         let mut data: Option<Box<dyn Array>> = None;
-        let mut bitmap: Option<&MutableBitmap> = None;
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
             self.get_channel_id(channel_name)
         {
@@ -90,18 +89,13 @@ impl MdfInfo4 {
                 if let Some(cg) = dg.cg.get(rec_id) {
                     if let Some(cn) = cg.cn.get(rec_pos) {
                         if !cn.data.is_empty() {
-                            data = Some(cn.data);
-                        }
-                        if let Some((bm, _invalid_byte_offset, _invalid_bit_position)) =
-                            &cn.invalid_mask
-                        {
-                            bitmap = Some(bm);
+                            data = Some(cn.data.clone());
                         }
                     }
                 }
             }
         }
-        (data, bitmap)
+        data
     }
     /// Returns the channel's unit string. If it does not exist, it is an empty string.
     pub fn get_channel_unit(&self, channel_name: &str) -> Result<Option<String>> {
@@ -1920,7 +1914,7 @@ impl Cg4 {
             let cg_inval_bytes = self.block.cg_inval_bytes as usize;
             self.cn
                 .par_iter_mut()
-                .filter(|(_rec_pos, cn)| !cn.data.is_empty())
+                .filter(|(_rec_pos, cn)| !cn.data.is_empty() & cn.data.validity().is_none())
                 .for_each(|(_rec_pos, cn)| {
                     if let Some((mask, invalid_byte_position, invalid_byte_mask)) =
                         &mut cn.invalid_mask
@@ -1935,6 +1929,7 @@ impl Cg4 {
                                 );
                             },
                         );
+                        cn.data=cn.data.with_validity(Some(Bitmap::from(mask.clone())));
                     }
                 });
             self.invalid_bytes = None; // Clears out invalid bytes channel
