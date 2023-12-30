@@ -18,7 +18,7 @@ use arrow2::buffer::Buffer;
 use std::str;
 
 /// converts raw data block containing only one channel into a ndarray
-pub fn read_one_channel_array(data_bytes: Vec<u8>, cn: &mut Cn4, cycle_count: usize) {
+pub fn read_one_channel_array(data_bytes: &Vec<u8>, cn: &mut Cn4, cycle_count: usize) {
     if (cn.block.cn_type == 0
         || cn.block.cn_type == 2
         || cn.block.cn_type == 4
@@ -39,7 +39,7 @@ pub fn read_one_channel_array(data_bytes: Vec<u8>, cn: &mut Cn4, cycle_count: us
                 cn.data = PrimitiveArray::from_vec(buf).boxed();
             }
             DataType::UInt8 => {
-                cn.data = PrimitiveArray::from_vec(data_bytes).boxed();
+                cn.data = PrimitiveArray::from_vec(data_bytes.clone()).boxed();
             }
             DataType::Int16 => {
                 let mut buf = vec![0; cycle_count];
@@ -68,27 +68,27 @@ pub fn read_one_channel_array(data_bytes: Vec<u8>, cn: &mut Cn4, cycle_count: us
                 cn.data = PrimitiveArray::from_vec(buf).boxed();
             }
             DataType::Int32 => {
-                let mut buf = vec![0; cycle_count];
-                if cn.endian {
-                    if n_bytes == 4 {
+                if n_bytes == 4 {
+                    let mut buf = vec![0; cycle_count];
+                    if cn.endian {
                         Cursor::new(data_bytes)
                             .read_i32_into::<BigEndian>(&mut buf)
                             .expect("Could not read be i32 array");
-                    } else if n_bytes == 3 {
-                        let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<i32>>().unwrap().values();
+                    } else {
+                        Cursor::new(data_bytes)
+                        .read_i32_into::<LittleEndian>(&mut buf)
+                        .expect("Could not read le i32 array");
+                    }
+                    cn.data = PrimitiveArray::from_vec(buf).boxed();
+                } else if n_bytes == 3 {
+                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<i32>>().unwrap().get_mut_values().unwrap();
+                    if cn.endian {
                         for (i, mut value) in data_bytes.chunks(n_bytes).enumerate() {
                             data[i] = value
                                 .read_i24::<BigEndian>()
                                 .expect("Could not read be i24");
                         }
-                    }
-                } else {
-                    if n_bytes == 4 {
-                        Cursor::new(data_bytes)
-                            .read_i32_into::<LittleEndian>(&mut buf)
-                            .expect("Could not read le i32 array");
-                    } else if n_bytes == 3 {
-                        let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<i32>>().unwrap().values();
+                    } else {
                         for (i, mut value) in data_bytes.chunks(n_bytes).enumerate() {
                             data[i] = value
                                 .read_i24::<LittleEndian>()
@@ -96,30 +96,30 @@ pub fn read_one_channel_array(data_bytes: Vec<u8>, cn: &mut Cn4, cycle_count: us
                         }
                     }
                 }
-                cn.data = PrimitiveArray::from_vec(buf).boxed();
+                
             }
             DataType::UInt32 => {
-                let mut buf = vec![0; cycle_count];
-                if cn.endian {
-                    if n_bytes == 4 {
+                if n_bytes == 4 {
+                    let mut buf = vec![0; cycle_count];
+                    if cn.endian {
                         Cursor::new(data_bytes)
                             .read_u32_into::<BigEndian>(&mut buf)
                             .expect("Could not read be u32 array");
-                    } else if n_bytes == 3 {
-                        let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u32>>().unwrap().values();
+                    } else {
+                        Cursor::new(data_bytes)
+                            .read_u32_into::<LittleEndian>(&mut buf)
+                            .expect("Could not read le u32 array");
+                    }
+                    cn.data = PrimitiveArray::from_vec(buf).boxed();
+                } else if n_bytes == 3 {
+                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u32>>().unwrap().get_mut_values().unwrap();
+                    if cn.endian {
                         for (i, mut value) in data_bytes.chunks(n_bytes).enumerate() {
                             data[i] = value
                                 .read_u24::<BigEndian>()
                                 .expect("Could not read be u24");
                         }
-                    }
-                } else {
-                    if n_bytes == 4 {
-                        Cursor::new(data_bytes)
-                            .read_u32_into::<LittleEndian>(&mut buf)
-                            .expect("Could not read le u32 array");
-                    }  else if n_bytes == 3 {
-                        let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u32>>().unwrap().values();
+                    }  else {
                         for (i, mut value) in data_bytes.chunks(n_bytes).enumerate() {
                             data[i] = value
                                 .read_u24::<LittleEndian>()
@@ -127,30 +127,29 @@ pub fn read_one_channel_array(data_bytes: Vec<u8>, cn: &mut Cn4, cycle_count: us
                         }
                     }
                 }
-                cn.data = PrimitiveArray::from_vec(buf).boxed();
             }
             DataType::Float32 => {
-                let mut buf = vec![0f32; cycle_count];
-                if cn.endian {
-                    if n_bytes == 4 {
+                if n_bytes == 4 {
+                    let mut buf = vec![0f32; cycle_count];
+                    if cn.endian {
                         Cursor::new(data_bytes)
                             .read_f32_into::<BigEndian>(&mut buf)
                             .expect("Could not read be f32 array");
-                    } else if  n_bytes == 2 {
-                        let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<f32>>().unwrap().values();
+                    } else {
+                        Cursor::new(data_bytes)
+                        .read_f32_into::<LittleEndian>(&mut buf)
+                        .expect("Could not read le f32 array");
+                    }
+                    cn.data = PrimitiveArray::from_vec(buf).boxed();
+                } else if n_bytes == 2 {
+                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<f32>>().unwrap().get_mut_values().unwrap();
+                    if cn.endian {
                         for (i, value) in data_bytes.chunks(std::mem::size_of::<f16>()).enumerate() {
                             data[i] =
                                 f16::from_be_bytes(value.try_into().expect("Could not read be f16"))
                                     .to_f32();
                         }
-                    }
-                } else {
-                    if n_bytes == 4 {
-                    Cursor::new(data_bytes)
-                        .read_f32_into::<LittleEndian>(&mut buf)
-                        .expect("Could not read le f32 array");
-                    }  else if  n_bytes == 2 {
-                        let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<f32>>().unwrap().values();
+                    }  else {
                         for (i, value) in data_bytes.chunks(std::mem::size_of::<f16>()).enumerate() {
                             data[i] =
                                 f16::from_le_bytes(value.try_into().expect("Could not read le f16"))
@@ -158,30 +157,30 @@ pub fn read_one_channel_array(data_bytes: Vec<u8>, cn: &mut Cn4, cycle_count: us
                         }
                     }
                 }
-                cn.data = PrimitiveArray::from_vec(buf).boxed();
+                
             }
             DataType::Int64 => {
-                let mut buf = vec![0; cycle_count];
-                if cn.endian {
-                    if n_bytes == 8 {
+                if n_bytes == 8 {
+                    let mut buf = vec![0; cycle_count];
+                    if cn.endian {
                         Cursor::new(data_bytes)
                             .read_i64_into::<BigEndian>(&mut buf)
                             .expect("Could not read be i64 array");
-                    } else if n_bytes == 6 {
-                        let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<i64>>().unwrap().values();
+                    } else  {
+                        Cursor::new(data_bytes)
+                            .read_i64_into::<LittleEndian>(&mut buf)
+                            .expect("Could not read le i64 array");
+                    }
+                    cn.data = PrimitiveArray::from_vec(buf).boxed();
+                } else if n_bytes == 6 {
+                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<i64>>().unwrap().get_mut_values().unwrap();
+                    if cn.endian {
                         for (i, mut value) in data_bytes.chunks(n_bytes).enumerate() {
                             data[i] = value
                                 .read_i48::<BigEndian>()
                                 .expect("Could not read be i48");
                         }
-                    }
-                } else {
-                    if n_bytes == 8 {
-                        Cursor::new(data_bytes)
-                            .read_i64_into::<LittleEndian>(&mut buf)
-                            .expect("Could not read le i64 array");
-                    } else if n_bytes == 6 {
-                        let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<i64>>().unwrap().values();
+                    } else  {
                         for (i, mut value) in data_bytes.chunks(n_bytes).enumerate() {
                             data[i] = value
                                 .read_i48::<LittleEndian>()
@@ -189,7 +188,6 @@ pub fn read_one_channel_array(data_bytes: Vec<u8>, cn: &mut Cn4, cycle_count: us
                         }
                     }
                 }
-                cn.data = PrimitiveArray::from_vec(buf).boxed();
             }
             DataType::UInt64 => {
                 if n_bytes == 8 {
@@ -206,7 +204,7 @@ pub fn read_one_channel_array(data_bytes: Vec<u8>, cn: &mut Cn4, cycle_count: us
                     cn.data = PrimitiveArray::from_vec(buf).boxed();
                 } else if n_bytes == 7 {
                     let mut temp = [0u8; std::mem::size_of::<u64>()];
-                    let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u64>>().unwrap().values();
+                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u64>>().unwrap().get_mut_values().unwrap();
                     if cn.endian {
                         for (i, value) in data_bytes.chunks(n_bytes).enumerate() {
                             temp[0..7].copy_from_slice(&value[0..7]);
@@ -219,7 +217,7 @@ pub fn read_one_channel_array(data_bytes: Vec<u8>, cn: &mut Cn4, cycle_count: us
                         }
                     }
                 } else if n_bytes == 6 {
-                    let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u64>>().unwrap().values();
+                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u64>>().unwrap().get_mut_values().unwrap();
                     if cn.endian {
                         for (i, mut value) in data_bytes.chunks(n_bytes).enumerate() {
                             data[i] = value
@@ -227,7 +225,6 @@ pub fn read_one_channel_array(data_bytes: Vec<u8>, cn: &mut Cn4, cycle_count: us
                                 .expect("Could not read be u48");
                         }
                     } else {
-                        let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u64>>().unwrap().values();
                         for (i, mut value) in data_bytes.chunks(n_bytes).enumerate() {
                             data[i] = value
                                 .read_u48::<LittleEndian>()
@@ -237,7 +234,7 @@ pub fn read_one_channel_array(data_bytes: Vec<u8>, cn: &mut Cn4, cycle_count: us
                 } else {
                     // n_bytes = 5
                     let mut temp = [0u8; 6];
-                    let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u64>>().unwrap().values();
+                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u64>>().unwrap().get_mut_values().unwrap();
                     if cn.endian {
                         for (i, value) in data_bytes.chunks(n_bytes).enumerate() {
                             temp[0..5].copy_from_slice(&value[0..n_bytes]);
@@ -270,7 +267,7 @@ pub fn read_one_channel_array(data_bytes: Vec<u8>, cn: &mut Cn4, cycle_count: us
             }
             DataType::FixedSizeList(field, _size) => {
                 if field.name.eq(&"complex32".to_string()) {
-                    let mut data = cn.data.as_any().downcast_ref::<PrimitiveArray<f32>>().unwrap().values();
+                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<f32>>().unwrap().get_mut_values().unwrap();
                     if n_bytes <= 2 { 
                         // complex 16
                         if cn.endian {
@@ -306,7 +303,7 @@ pub fn read_one_channel_array(data_bytes: Vec<u8>, cn: &mut Cn4, cycle_count: us
                     }
                 } else if field.name.eq(&"complex64".to_string()) { 
                     // complex 64
-                    let mut data = cn.data.as_any().downcast_ref::<PrimitiveArray<f64>>().unwrap().values();
+                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<f64>>().unwrap().get_mut_values().unwrap();
                     if cn.endian {
                         for (i, value) in data_bytes.chunks(std::mem::size_of::<f64>()).enumerate() {
                             data[i] = f64::from_be_bytes(
@@ -376,11 +373,11 @@ pub fn read_one_channel_array(data_bytes: Vec<u8>, cn: &mut Cn4, cycle_count: us
             }
             DataType::FixedSizeBinary(_size) => {
                 let data = cn.data.as_any().downcast_ref::<FixedSizeBinaryArray>().unwrap().values();
-                data = &Buffer::<u8>::from(data_bytes);
+                data = &Buffer::<u8>::from(*data_bytes);
             }
             DataType::Extension(extension_name, data_type, _) => {
                 if extension_name.eq(&"Tensor".to_string()) {
-                    match **data_type {
+                    match *data_type.clone() {
                         DataType::Int8 => {
                             if let Some(compo) = &cn.composition {
                                 match &compo.block {
@@ -389,8 +386,7 @@ pub fn read_one_channel_array(data_bytes: Vec<u8>, cn: &mut Cn4, cycle_count: us
                                         Cursor::new(data_bytes)
                                             .read_i8_into(&mut buf)
                                             .expect("Could not read i8 array");
-                                        let mut data = cn.data.as_any().downcast_ref::<PrimitiveArray<i8>>().unwrap().values();
-                                        data = &Buffer::<i8>::from(buf);
+                                        cn.data = PrimitiveArray::from_vec(buf).boxed();
                                     }
                                     Compo::CN(_) => {}
                                 }
@@ -400,8 +396,7 @@ pub fn read_one_channel_array(data_bytes: Vec<u8>, cn: &mut Cn4, cycle_count: us
                             if let Some(compo) = &cn.composition {
                                 match &compo.block {
                                     Compo::CA(_) => {
-                                        let mut data = cn.data.as_any().downcast_ref::<PrimitiveArray<u8>>().unwrap().values();
-                                        data = &Buffer::<u8>::from(data_bytes);
+                                        cn.data = PrimitiveArray::from_vec(data_bytes.clone()).boxed();
                                     }
                                     Compo::CN(_) => {}
                                 }
@@ -421,8 +416,7 @@ pub fn read_one_channel_array(data_bytes: Vec<u8>, cn: &mut Cn4, cycle_count: us
                                                 .read_i16_into::<LittleEndian>(&mut buf)
                                                 .expect("Could not read le i16 array");
                                         }
-                                        let mut data = cn.data.as_any().downcast_ref::<PrimitiveArray<i16>>().unwrap().values();
-                                        data = &Buffer::<i16>::from(buf);
+                                        cn.data = PrimitiveArray::from_vec(buf).boxed();
                                     }
                                     Compo::CN(_) => {}
                                 }
@@ -442,8 +436,7 @@ pub fn read_one_channel_array(data_bytes: Vec<u8>, cn: &mut Cn4, cycle_count: us
                                                 .read_u16_into::<LittleEndian>(&mut buf)
                                                 .expect("Could not read le 16 array");
                                         }
-                                        let mut data = cn.data.as_any().downcast_ref::<PrimitiveArray<u16>>().unwrap().values();
-                                        data = &Buffer::<u16>::from(buf);
+                                        cn.data = PrimitiveArray::from_vec(buf).boxed();
                                     }
                                     Compo::CN(_) => {}
                                 }
@@ -479,8 +472,7 @@ pub fn read_one_channel_array(data_bytes: Vec<u8>, cn: &mut Cn4, cycle_count: us
                                                     .expect("Could not read le i32 array");
                                             }
                                         }
-                                        let mut data = cn.data.as_any().downcast_ref::<PrimitiveArray<i32>>().unwrap().values();
-                                        data = &Buffer::<i32>::from(buf);
+                                        cn.data = PrimitiveArray::from_vec(buf).boxed();
                                     }
                                     Compo::CN(_) => {}
                                 }
@@ -516,8 +508,7 @@ pub fn read_one_channel_array(data_bytes: Vec<u8>, cn: &mut Cn4, cycle_count: us
                                                     .expect("Could not read le u32 array");
                                             }
                                         }
-                                        let mut data = cn.data.as_any().downcast_ref::<PrimitiveArray<u32>>().unwrap().values();
-                                        data = &Buffer::<u32>::from(buf);
+                                        cn.data = PrimitiveArray::from_vec(buf).boxed();
                                     }
                                     Compo::CN(_) => {}
                                 }
@@ -559,8 +550,7 @@ pub fn read_one_channel_array(data_bytes: Vec<u8>, cn: &mut Cn4, cycle_count: us
                                                     .expect("Could not read le f32 array");
                                             }
                                         }
-                                        let mut data = cn.data.as_any().downcast_ref::<PrimitiveArray<f32>>().unwrap().values();
-                                        data = &Buffer::<f32>::from(buf);
+                                        cn.data = PrimitiveArray::from_vec(buf).boxed();
                                     }
                                     Compo::CN(_) => {}
                                 }
@@ -596,8 +586,7 @@ pub fn read_one_channel_array(data_bytes: Vec<u8>, cn: &mut Cn4, cycle_count: us
                                                 }
                                             }
                                         }
-                                        let mut data = cn.data.as_any().downcast_ref::<PrimitiveArray<i64>>().unwrap().values();
-                                        data = &Buffer::<i64>::from(buf);
+                                        cn.data = PrimitiveArray::from_vec(buf).boxed();
                                     }
                                     Compo::CN(_) => {}
                                 }
@@ -664,8 +653,7 @@ pub fn read_one_channel_array(data_bytes: Vec<u8>, cn: &mut Cn4, cycle_count: us
                                                 }
                                             }
                                         }
-                                        let mut data = cn.data.as_any().downcast_ref::<PrimitiveArray<u64>>().unwrap().values();
-                                        data = &Buffer::<u64>::from(buf);
+                                        cn.data = PrimitiveArray::from_vec(buf).boxed();
                                     }
                                     Compo::CN(_) => {}
                                 }
@@ -685,8 +673,7 @@ pub fn read_one_channel_array(data_bytes: Vec<u8>, cn: &mut Cn4, cycle_count: us
                                                 .read_f64_into::<LittleEndian>(&mut buf)
                                                 .expect("Could not read le f64 array");
                                         }
-                                        let mut data = cn.data.as_any().downcast_ref::<PrimitiveArray<f64>>().unwrap().values();
-                                        data = &Buffer::<f64>::from(buf);
+                                        cn.data = PrimitiveArray::from_vec(buf).boxed();
                                     }
                                     Compo::CN(_) => {}
                                 }
@@ -694,7 +681,7 @@ pub fn read_one_channel_array(data_bytes: Vec<u8>, cn: &mut Cn4, cycle_count: us
                         }
                         DataType::FixedSizeList(field, _size) => {
                             if field.name.eq(&"complex32".to_string()) {
-                                let mut data = cn.data.as_any().downcast_ref::<PrimitiveArray<f32>>().unwrap().into_mut().unwrap_right().values();
+                                let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<f32>>().unwrap().get_mut_values().unwrap();
                                 if n_bytes <= 2 { 
                                     // complex 16
                                     if let Some(compo) = &cn.composition {
@@ -758,7 +745,7 @@ pub fn read_one_channel_array(data_bytes: Vec<u8>, cn: &mut Cn4, cycle_count: us
                                     }
                                 }
                             } else if field.name.eq(&"complex64".to_string())  {
-                                let mut data = cn.data.as_any().downcast_ref::<PrimitiveArray<f64>>().unwrap().into_mut().unwrap_right().values();
+                                let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<f64>>().unwrap().get_mut_values().unwrap();
                                 if let Some(compo) = &cn.composition {
                                     match &compo.block {
                                         Compo::CA(_) => {
@@ -789,9 +776,17 @@ pub fn read_one_channel_array(data_bytes: Vec<u8>, cn: &mut Cn4, cycle_count: us
                                 }
                             }
                         }
+                        _ => warn!(
+                            "channel {} type is not of valid type for a tensor to be read for a mdf",
+                            cn.unique_name
+                        ),
                     }
                 }
             }
+            _ => warn!(
+                "channel {} type is not of valid type to be read for a mdf",
+                cn.unique_name
+            ),
         }
         // channel was properly read
         cn.channel_data_valid = true;
@@ -828,75 +823,75 @@ pub fn read_channels_from_bytes(
             let n_bytes = cn.n_bytes as usize;
             match cn.data.data_type() {
                 DataType::Int8 => {
-                    let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<i8>>().unwrap().into_mut().unwrap_right();
+                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<i8>>().unwrap().get_mut_values().unwrap();
                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
                         value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i8>()];
-                        data.set(i + previous_index, Some(i8::from_le_bytes(value.try_into().expect("Could not read i8"))));
+                        data[i + previous_index] = i8::from_le_bytes(value.try_into().expect("Could not read i8"));
                     }
                 }
                 DataType::UInt8 => {
-                    let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u8>>().unwrap().into_mut().unwrap_right();
+                    let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u8>>().unwrap().get_mut_values().unwrap();
                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
                         value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u8>()];
-                        data.set(i + previous_index, Some(u8::from_le_bytes(value.try_into().expect("Could not read u8"))));
+                        data[i + previous_index] = u8::from_le_bytes(value.try_into().expect("Could not read u8"));
                     }
                 }
                 DataType::Int16 => {
-                    let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<i16>>().unwrap().into_mut().unwrap_right();
+                    let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<i16>>().unwrap().get_mut_values().unwrap();
                     if cn.endian {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             value =
                                 &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i16>()];
-                            data.set(i + previous_index, Some(i16::from_be_bytes(
+                            data[i + previous_index] = i16::from_be_bytes(
                                 value.try_into().expect("Could not read be i16"),
-                            )));
+                            );
                         }
                     } else {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             value =
                                 &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i16>()];
-                            data.set(i + previous_index, Some(i16::from_le_bytes(
+                            data[i + previous_index] = i16::from_le_bytes(
                                 value.try_into().expect("Could not read le i16"),
-                            )));
+                            );
                         }
                     }
                 }
                 DataType::UInt16 => {
-                    let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u16>>().unwrap().into_mut().unwrap_right();
+                    let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u16>>().unwrap().get_mut_values().unwrap();
                     if cn.endian {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             value =
                                 &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u16>()];
-                                data.set(i + previous_index, Some(u16::from_be_bytes(
+                                data[i + previous_index]  = u16::from_be_bytes(
                                 value.try_into().expect("Could not read be u16"),
-                            )));
+                            );
                         }
                     } else {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             value =
                                 &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u16>()];
-                                data.set(i + previous_index, Some(u16::from_le_bytes(
+                                data[i + previous_index]  = u16::from_le_bytes(
                                 value.try_into().expect("Could not read le u16"),
-                            )));
+                            );
                         }
                     }
                 }
                 DataType::Int32 => {
-                    let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<i32>>().unwrap().into_mut().unwrap_right();
+                    let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<i32>>().unwrap().get_mut_values().unwrap();
                     if  n_bytes == 3 {
                         if cn.endian {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                data.set(i + previous_index, Some(value
+                                data[i + previous_index] = value
                                     .read_i24::<BigEndian>()
-                                    .expect("Could not read be i24")));
+                                    .expect("Could not read be i24");
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                data.set(i + previous_index, Some(value
+                                data[i + previous_index] = value
                                     .read_i24::<LittleEndian>()
-                                    .expect("Could not read le i24")));
+                                    .expect("Could not read le i24");
                             }
                         }
                     } else {
@@ -904,37 +899,37 @@ pub fn read_channels_from_bytes(
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value =
                                     &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i32>()];
-                                data.set(i + previous_index, Some(i32::from_be_bytes(
+                                data[i + previous_index] = i32::from_be_bytes(
                                     value.try_into().expect("Could not read be i32"),
-                                )));
+                                );
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value =
                                     &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i32>()];
-                                data.set(i + previous_index, Some(i32::from_le_bytes(
+                                data[i + previous_index] = i32::from_le_bytes(
                                     value.try_into().expect("Could not read le i32"),
-                                )));
+                                );
                             }
                         }
                     }
                 }
                 DataType::UInt32 => {
-                    let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u32>>().unwrap().into_mut().unwrap_right();
+                    let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u32>>().unwrap().get_mut_values().unwrap();
                     if n_bytes == 3 {
                         if cn.endian {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                data.set(i + previous_index, Some(value
+                                data[i + previous_index] = value
                                     .read_u24::<BigEndian>()
-                                    .expect("Could not read be u24")));
+                                    .expect("Could not read be u24");
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                data.set(i + previous_index, Some(value
+                                data[i + previous_index] = value
                                     .read_u24::<LittleEndian>()
-                                    .expect("Could not read le u24")));
+                                    .expect("Could not read le u24");
                             }
                         }
                     } else {
@@ -942,40 +937,40 @@ pub fn read_channels_from_bytes(
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value =
                                     &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u32>()];
-                                data.set(i + previous_index, Some(u32::from_be_bytes(
+                                data[i + previous_index] = u32::from_be_bytes(
                                     value.try_into().expect("Could not read be u32"),
-                                )));
+                                );
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value =
                                     &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u32>()];
-                                data.set(i + previous_index, Some(u32::from_le_bytes(
+                                data[i + previous_index] = u32::from_le_bytes(
                                     value.try_into().expect("Could not read le u32"),
-                                )));
+                                );
                             }
                         }
                     }
                 }
                 DataType::Float32 => {
-                    let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<f32>>().unwrap().into_mut().unwrap_right();
+                    let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<f32>>().unwrap().get_mut_values().unwrap();
                     if cn.endian {
                         if n_bytes == 2 {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value =
                                     &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f16>()];
-                                    data.set(i + previous_index, Some(f16::from_be_bytes(
+                                    data[i + previous_index] = f16::from_be_bytes(
                                     value.try_into().expect("Could not read be f16"),
                                 )
-                                .to_f32()));
+                                .to_f32();
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value =
                                     &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f32>()];
-                                    data.set(i + previous_index, Some(f32::from_be_bytes(
+                                    data[i + previous_index] = f32::from_be_bytes(
                                     value.try_into().expect("Could not read be f32"),
-                                )));
+                                );
                             }
                         }
                     } else {
@@ -983,81 +978,81 @@ pub fn read_channels_from_bytes(
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value =
                                     &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f16>()];
-                                    data.set(i + previous_index, Some(f16::from_le_bytes(
+                                    data[i + previous_index] = f16::from_le_bytes(
                                     value.try_into().expect("Could not read le f16"),
                                 )
-                                .to_f32()));
+                                .to_f32();
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value =
                                     &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f32>()];
-                                data.set(i + previous_index, Some(f32::from_le_bytes(
+                                data[i + previous_index] = f32::from_le_bytes(
                                     value.try_into().expect("Could not read le f32"),
-                                )));
+                                );
                             }
                         }
                     }
                 }
                 DataType::Int64 => {
-                    let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<i64>>().unwrap().into_mut().unwrap_right();
+                    let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<i64>>().unwrap().get_mut_values().unwrap();
                     if cn.endian {
                         if n_bytes == 8 {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                data.set(i + previous_index, Some(i64::from_be_bytes(
+                                data[i + previous_index] = i64::from_be_bytes(
                                     value.try_into().expect("Could not read be i64"),
-                                )));
+                                );
                             }
                         } else if n_bytes == 6 {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                data.set(i + previous_index, Some(value
+                                data[i + previous_index] = value
                                     .read_i48::<BigEndian>()
-                                    .expect("Could not read be i48")));
+                                    .expect("Could not read be i48");
                             }
                         }
                     } else {
                         if n_bytes == 8 {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                data.set(i + previous_index, Some(i64::from_le_bytes(
+                                data[i + previous_index] = i64::from_le_bytes(
                                     value.try_into().expect("Could not read le i64"),
-                                )));
+                                );
                             }
                         } else if n_bytes == 6 {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                data.set(i + previous_index, Some(value
+                                data[i + previous_index] = value
                                     .read_i48::<LittleEndian>()
-                                    .expect("Could not read le i48")));
+                                    .expect("Could not read le i48");
                             }
                         }
                     }
                 }
                 DataType::UInt64 => {
-                    let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u64>>().unwrap().into_mut().unwrap_right();
+                    let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u64>>().unwrap().get_mut_values().unwrap();
                     if cn.endian {
                         if n_bytes == 8 {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                data.set(i + previous_index, Some(u64::from_be_bytes(
+                                data[i + previous_index] = u64::from_be_bytes(
                                     value.try_into().expect("Could not read be u64"),
-                                )));
+                                );
                             }
                         } else if n_bytes == 7 {
                             // n_bytes = 7
                             let mut buf = [0u8; std::mem::size_of::<u64>()];
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 buf[0..7].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + 7]);
-                                data.set(i + previous_index, Some(u64::from_be_bytes(buf)));
+                                data[i + previous_index] = u64::from_be_bytes(buf);
                             }
                         } else if n_bytes == 6 {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                data.set(i + previous_index, Some(value
+                                data[i + previous_index] = value
                                     .read_u48::<BigEndian>()
-                                    .expect("Could not read be u48")));
+                                    .expect("Could not read be u48");
                             }
                         } else {
                             // n_bytes = 5
@@ -1065,66 +1060,66 @@ pub fn read_channels_from_bytes(
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 buf[0..5]
                                     .copy_from_slice(&record[pos_byte_beg..pos_byte_beg + n_bytes]);
-                                data.set(i + previous_index, Some(Cursor::new(buf)
+                                data[i + previous_index] = Cursor::new(buf)
                                     .read_u48::<BigEndian>()
-                                    .expect("Could not read be u48 from 5 bytes")));
+                                    .expect("Could not read be u48 from 5 bytes");
                             }
                         }
                     } else if n_bytes == 8 {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                            data.set(i + previous_index, Some(u64::from_le_bytes(
+                            data[i + previous_index] = u64::from_le_bytes(
                                 value.try_into().expect("Could not read le u64"),
-                            )));
+                            );
                         }
                     } else  if n_bytes == 7 {
                         // n_bytes = 7, little endian
                         let mut buf = [0u8; std::mem::size_of::<u64>()];
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             buf[0..7].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + 7]);
-                            data.set(i + previous_index, Some(u64::from_le_bytes(buf)));
+                            data[i + previous_index] = u64::from_le_bytes(buf);
                         }
                     } else if n_bytes == 6 {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                            data.set(i + previous_index, Some(value
+                            data[i + previous_index] = value
                                 .read_u48::<LittleEndian>()
-                                .expect("Could not read le u48")));
+                                .expect("Could not read le u48");
                         }
                     } else {
                         // n_bytes = 5
                         let mut buf = [0u8; 6];
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             buf[0..5].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + 5]);
-                            data.set(i + previous_index, Some(Cursor::new(buf)
+                            data[i + previous_index] = Cursor::new(buf)
                                 .read_u48::<LittleEndian>()
-                                .expect("Could not read le u48 from 5 bytes")));
+                                .expect("Could not read le u48 from 5 bytes");
                         }
                     }
                 }
                 DataType::Float64 => {
-                    let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<f64>>().unwrap().into_mut().unwrap_right();
+                    let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<f64>>().unwrap().get_mut_values().unwrap();
                     if cn.endian {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             value =
                                 &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
-                            data.set(i + previous_index, Some(f64::from_be_bytes(
+                            data[i + previous_index] = f64::from_be_bytes(
                                     value.try_into().expect("Could not read be f64"),
-                                )));
+                                );
                         }
                     } else {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             value =
                                 &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
-                            data.set(i + previous_index, Some(f64::from_le_bytes(
+                            data[i + previous_index] = f64::from_le_bytes(
                                     value.try_into().expect("Could not read le f64"),
-                                )));
+                                );
                         }
                     }
                 }
                 DataType::FixedSizeList(field, _size) => {
                     if field.name.eq(&"complex32".to_string()) {
-                        let mut data = cn.data.as_any().downcast_ref::<PrimitiveArray<f32>>().unwrap().into_mut().unwrap_right();
+                        let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<f32>>().unwrap().get_mut_values().unwrap();
                         if n_bytes <= 2 { 
                             // complex 16
                             let mut re_val: &[u8];
@@ -1135,18 +1130,18 @@ pub fn read_channels_from_bytes(
                                         &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f16>()];
                                     im_val = &record[pos_byte_beg + std::mem::size_of::<f16>()
                                         ..pos_byte_beg + 2 * std::mem::size_of::<f16>()];
-                                    data.set(i*2 + previous_index, Some(f16::from_be_bytes(
+                                    data[i*2 + previous_index] = f16::from_be_bytes(
                                         re_val
                                             .try_into()
                                             .expect("Could not read be real f16 complex"),
                                     )
-                                    .to_f32()));
-                                    data.set(i*2 + 1 + previous_index, Some(f16::from_be_bytes(
+                                    .to_f32();
+                                    data[i*2 + 1 + previous_index] = f16::from_be_bytes(
                                         im_val
                                             .try_into()
                                             .expect("Could not read be img f16 complex"),
                                     )
-                                    .to_f32()));
+                                    .to_f32();
                                 }
                             } else {
                                 for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -1154,18 +1149,18 @@ pub fn read_channels_from_bytes(
                                         &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f16>()];
                                     im_val = &record[pos_byte_beg + std::mem::size_of::<f16>()
                                         ..pos_byte_beg + 2 * std::mem::size_of::<f16>()];
-                                    data.set(i*2 + previous_index, Some(f16::from_le_bytes(
+                                    data[i*2 + previous_index] = f16::from_le_bytes(
                                         re_val
                                             .try_into()
                                             .expect("Could not read le real f16 complex"),
                                     )
-                                    .to_f32()));
-                                    data.set(i*2 + 1 + previous_index, Some(f16::from_le_bytes(
+                                    .to_f32();
+                                    data[i*2 + 1 + previous_index] = f16::from_le_bytes(
                                         im_val
                                             .try_into()
                                             .expect("Could not read le img f16 complex"),
                                     )
-                                    .to_f32()));
+                                    .to_f32();
                                 }
                             }
                         } else if n_bytes <= 4 {
@@ -1178,16 +1173,16 @@ pub fn read_channels_from_bytes(
                                         &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f32>()];
                                     im_val = &record[pos_byte_beg + std::mem::size_of::<f32>()
                                         ..pos_byte_beg + 2 * std::mem::size_of::<f32>()];
-                                    data.set(i*2 + previous_index, Some(f32::from_be_bytes(
+                                    data[i*2 + previous_index] = f32::from_be_bytes(
                                         re_val
                                             .try_into()
                                             .expect("Could not read be real f32 complex"),
-                                    )));
-                                    data.set(i*2 + 1 + previous_index, Some(f32::from_be_bytes(
+                                    );
+                                    data[i*2 + 1 + previous_index] = f32::from_be_bytes(
                                         im_val
                                             .try_into()
                                             .expect("Could not read be img f32 complex"),
-                                    )));
+                                    );
                                 }
                             } else {
                                 for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -1195,16 +1190,16 @@ pub fn read_channels_from_bytes(
                                         &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f32>()];
                                     im_val = &record[pos_byte_beg + std::mem::size_of::<f32>()
                                         ..pos_byte_beg + 2 * std::mem::size_of::<f32>()];
-                                    data.set(i*2 + previous_index, Some(f32::from_le_bytes(
+                                    data[i*2 + previous_index] = f32::from_le_bytes(
                                         re_val
                                             .try_into()
                                             .expect("Could not read le real f32 complex"),
-                                    )));
-                                    data.set(i*2 + 1 + previous_index, Some(f32::from_le_bytes(
+                                    );
+                                    data[i*2 + 1 + previous_index] = f32::from_le_bytes(
                                         im_val
                                             .try_into()
                                             .expect("Could not read le img f32 complex"),
-                                    )));
+                                    );
                                 }
                             }
                         }
@@ -1212,23 +1207,23 @@ pub fn read_channels_from_bytes(
                         // complex 64
                         let mut re_val: &[u8];
                         let mut im_val: &[u8];
-                        let mut data = cn.data.as_any().downcast_ref::<PrimitiveArray<f64>>().unwrap().into_mut().unwrap_right();
+                        let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<f64>>().unwrap().get_mut_values().unwrap();
                         if cn.endian {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 re_val =
                                     &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
                                 im_val = &record[pos_byte_beg + std::mem::size_of::<f64>()
                                     ..pos_byte_beg + 2 * std::mem::size_of::<f64>()];
-                                data.set(i*2 + previous_index, Some(f64::from_be_bytes(
+                                data[i*2 + previous_index]  = f64::from_be_bytes(
                                     re_val
                                         .try_into()
                                         .expect("Could not read be real f64 complex"),
-                                )));
-                                data.set(i*2 + 1 + previous_index, Some(f64::from_be_bytes(
+                                );
+                                data[i*2 + 1 + previous_index] = f64::from_be_bytes(
                                     im_val
                                         .try_into()
                                         .expect("Could not read be img f64 complex"),
-                                )));
+                                );
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -1236,16 +1231,16 @@ pub fn read_channels_from_bytes(
                                     &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
                                 im_val = &record[pos_byte_beg + std::mem::size_of::<f64>()
                                     ..pos_byte_beg + 2 * std::mem::size_of::<f64>()];
-                                data.set(i*2 + previous_index, Some(f64::from_le_bytes(
+                                data[i*2 + previous_index] = f64::from_le_bytes(
                                     re_val
                                         .try_into()
                                         .expect("Could not read le real f64 complex"),
-                                )));
-                                data.set(i*2 + 1 + previous_index, Some(f64::from_le_bytes(
+                                );
+                                data[i*2 + 1 + previous_index] = f64::from_le_bytes(
                                     im_val
                                         .try_into()
                                         .expect("Could not read le img f64 complex"),
-                                )));
+                                );
                             }
                         }
                     }
@@ -1308,21 +1303,21 @@ pub fn read_channels_from_bytes(
                         data.push(Some(record[pos_byte_beg..pos_byte_beg + n_bytes].to_vec()));
                     }
                 }
-                DataType::FixedSizeBinary(size) => {
+                DataType::FixedSizeBinary(_size) => {
                     let n_bytes = cn.n_bytes as usize;
-                    let mut data = cn.data.as_any_mut().downcast_mut::<FixedSizeBinaryArray>().unwrap().values();
+                    let data = cn.data.as_any_mut().downcast_mut::<FixedSizeBinaryArray>().unwrap().values();
                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
                         data[i*n_bytes+previous_index..(i+1)*n_bytes+previous_index].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + n_bytes]);
                     }
                 }
                 DataType::Extension(extension_name, data_type, _) => {
                     if extension_name.eq(&"Tensor".to_string()) {
-                        match **data_type {
+                        match *data_type.clone() {
                             DataType::Int8 => {
                                 if let Some(compo) = &cn.composition {
                                     match &compo.block {
                                         Compo::CA(ca) => {
-                                            let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<i8>>().unwrap().get_mut_values().unwrap();
+                                            let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<i8>>().unwrap().get_mut_values().unwrap();
                                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                                 for j in 0..ca.pnd {
                                                     value = &record[pos_byte_beg + j * std::mem::size_of::<i8>()..pos_byte_beg + (j + 1) * std::mem::size_of::<i8>()];
@@ -1339,7 +1334,7 @@ pub fn read_channels_from_bytes(
                                 if let Some(compo) = &cn.composition {
                                     match &compo.block {
                                         Compo::CA(ca) => {
-                                            let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u8>>().unwrap().get_mut_values().unwrap();
+                                            let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u8>>().unwrap().get_mut_values().unwrap();
                                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                                 for j in 0..ca.pnd {
                                                     value = &record[pos_byte_beg + j * std::mem::size_of::<u8>()..pos_byte_beg + (j + 1) * std::mem::size_of::<u8>()];
@@ -1356,7 +1351,7 @@ pub fn read_channels_from_bytes(
                                 if let Some(compo) = &cn.composition {
                                     match &compo.block {
                                         Compo::CA(ca) => {
-                                            let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<i16>>().unwrap().get_mut_values().unwrap();
+                                            let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<i16>>().unwrap().get_mut_values().unwrap();
                                             if cn.endian {
                                                 for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                                     for j in 0..ca.pnd {
@@ -1387,7 +1382,7 @@ pub fn read_channels_from_bytes(
                                 if let Some(compo) = &cn.composition {
                                     match &compo.block {
                                         Compo::CA(ca) => {
-                                            let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u16>>().unwrap().get_mut_values().unwrap();
+                                            let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u16>>().unwrap().get_mut_values().unwrap();
                                             if cn.endian {
                                                 for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                                     for j in 0..ca.pnd {
@@ -1418,7 +1413,7 @@ pub fn read_channels_from_bytes(
                                 if let Some(compo) = &cn.composition {
                                     match &compo.block {
                                         Compo::CA(ca) => {
-                                            let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<i32>>().unwrap().get_mut_values().unwrap();
+                                            let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<i32>>().unwrap().get_mut_values().unwrap();
                                             if cn.endian {
                                                 if n_bytes <=3 {
                                                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -1473,7 +1468,7 @@ pub fn read_channels_from_bytes(
                                 if let Some(compo) = &cn.composition {
                                     match &compo.block {
                                         Compo::CA(ca) => {
-                                            let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u32>>().unwrap().get_mut_values().unwrap();
+                                            let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u32>>().unwrap().get_mut_values().unwrap();
                                             if cn.endian {
                                                 if n_bytes <=3 {
                                                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -1527,7 +1522,7 @@ pub fn read_channels_from_bytes(
                                 if let Some(compo) = &cn.composition {
                                     match &compo.block {
                                         Compo::CA(ca) => {
-                                            let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<f32>>().unwrap().get_mut_values().unwrap();
+                                            let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<f32>>().unwrap().get_mut_values().unwrap();
                                             if cn.endian {
                                                 if n_bytes <= 2 {
                                                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -1586,7 +1581,7 @@ pub fn read_channels_from_bytes(
                                 if let Some(compo) = &cn.composition {
                                     match &compo.block {
                                         Compo::CA(ca) => {
-                                            let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<i64>>().unwrap().get_mut_values().unwrap();
+                                            let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<i64>>().unwrap().get_mut_values().unwrap();
                                             if cn.endian {
                                                 if n_bytes == 8 {
                                                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -1637,7 +1632,7 @@ pub fn read_channels_from_bytes(
                                 if let Some(compo) = &cn.composition {
                                     match &compo.block {
                                         Compo::CA(ca) => {
-                                            let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u64>>().unwrap().get_mut_values().unwrap();
+                                            let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u64>>().unwrap().get_mut_values().unwrap();
                                             if cn.endian {
                                                 if n_bytes == 8 {
                                                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -1724,7 +1719,7 @@ pub fn read_channels_from_bytes(
                                 if let Some(compo) = &cn.composition {
                                     match &compo.block {
                                         Compo::CA(ca) => {
-                                            let mut data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<f64>>().unwrap().get_mut_values().unwrap();
+                                            let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<f64>>().unwrap().get_mut_values().unwrap();
                                             if cn.endian {
                                                 for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                                     for j in 0..ca.pnd {
@@ -1751,7 +1746,7 @@ pub fn read_channels_from_bytes(
                             }
                             DataType::FixedSizeList(field, _size) => {
                                 if field.name.eq(&"complex32".to_string()) {
-                                    let mut data = cn.data.as_any().downcast_ref::<PrimitiveArray<f32>>().unwrap().into_mut().unwrap_right().values();
+                                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<f32>>().unwrap().get_mut_values().unwrap();
                                     if n_bytes <= 2 { 
                                         // complex 16
                                         if let Some(compo) = &cn.composition {
@@ -1859,7 +1854,7 @@ pub fn read_channels_from_bytes(
                                     if let Some(compo) = &cn.composition {
                                         match &compo.block {
                                             Compo::CA(ca) => {
-                                                let mut data = cn.data.as_any().downcast_ref::<PrimitiveArray<f64>>().unwrap().into_mut().unwrap_right().values();
+                                                let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<f64>>().unwrap().get_mut_values().unwrap();
                                                 let mut re_val: &[u8];
                                                 let mut im_val: &[u8];
                                                 if cn.endian {
