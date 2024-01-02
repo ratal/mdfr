@@ -8,13 +8,13 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::Display;
 
 use crate::mdfinfo::mdfinfo4::{Cc4Block, CcVal, Cn4, Dg4, SharableBlocks};
-use fasteval::{Compiler, Evaler, Instruction, Slab};
-use rayon::prelude::*;
+use arrow2::array::{Array, PrimitiveArray, Utf8Array};
+use arrow2::compute::arity_assign;
+use arrow2::compute::cast::primitive_as_primitive;
 use arrow2::datatypes::DataType;
 use arrow2::types::NativeType;
-use arrow2::compute::arity_assign;
-use arrow2::array::{Array, PrimitiveArray, Utf8Array};
-use arrow2::compute::cast::primitive_as_primitive;
+use fasteval::{Compiler, Evaler, Instruction, Slab};
+use rayon::prelude::*;
 
 /// convert all channel arrays into physical values as required by CCBlock content
 pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) {
@@ -110,14 +110,12 @@ pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) {
 /// Generic function calculating linear expression
 #[inline]
 fn linear_conversion_calculation<T: NativeType + AsPrimitive<f64>>(
-    array: &Box<dyn Array>,
+    array: &dyn Array,
     p1: f64,
     p2: f64,
 ) -> Box<dyn Array> {
-    let parray = array.as_any()
-        .downcast_ref::<PrimitiveArray<T>>()
-        .unwrap();
-    let mut array_f64 = primitive_as_primitive::<T,f64>(&parray, &DataType::Float64);
+    let parray = array.as_any().downcast_ref::<PrimitiveArray<T>>().unwrap();
+    let mut array_f64 = primitive_as_primitive::<T, f64>(parray, &DataType::Float64);
     arity_assign::unary(&mut array_f64, |x| x * p2 + p1);
     array_f64.to_boxed()
 }
@@ -129,86 +127,86 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64]) {
     if !(p1 == 0.0 && num::abs(p2 - 1.0) < 1e-12) {
         match &mut cn.data.data_type() {
             DataType::UInt8 => {
-                cn.data = linear_conversion_calculation::<u8>(&cn.data, p1, p2);
+                cn.data = linear_conversion_calculation::<u8>(cn.data.as_ref(), p1, p2);
             }
             DataType::UInt16 => {
-                cn.data = linear_conversion_calculation::<u16>(&cn.data, p1, p2);
+                cn.data = linear_conversion_calculation::<u16>(cn.data.as_ref(), p1, p2);
             }
             DataType::UInt32 => {
-                cn.data = linear_conversion_calculation::<u32>(&cn.data, p1, p2);
+                cn.data = linear_conversion_calculation::<u32>(cn.data.as_ref(), p1, p2);
             }
             DataType::UInt64 => {
-                cn.data = linear_conversion_calculation::<u64>(&cn.data, p1, p2);
+                cn.data = linear_conversion_calculation::<u64>(cn.data.as_ref(), p1, p2);
             }
             DataType::Int8 => {
-                cn.data = linear_conversion_calculation::<i8>(&cn.data, p1, p2);
+                cn.data = linear_conversion_calculation::<i8>(cn.data.as_ref(), p1, p2);
             }
             DataType::Int16 => {
-                cn.data = linear_conversion_calculation::<i16>(&cn.data, p1, p2);
+                cn.data = linear_conversion_calculation::<i16>(cn.data.as_ref(), p1, p2);
             }
             DataType::Int32 => {
-                cn.data = linear_conversion_calculation::<i32>(&cn.data, p1, p2);
+                cn.data = linear_conversion_calculation::<i32>(cn.data.as_ref(), p1, p2);
             }
             DataType::Int64 => {
-                cn.data = linear_conversion_calculation::<i64>(&cn.data, p1, p2);
+                cn.data = linear_conversion_calculation::<i64>(cn.data.as_ref(), p1, p2);
             }
             DataType::Float16 => {
-                cn.data = linear_conversion_calculation::<f32>(&cn.data, p1, p2);
+                cn.data = linear_conversion_calculation::<f32>(cn.data.as_ref(), p1, p2);
             }
             DataType::Float32 => {
-                cn.data = linear_conversion_calculation::<f32>(&cn.data, p1, p2);
+                cn.data = linear_conversion_calculation::<f32>(cn.data.as_ref(), p1, p2);
             }
             DataType::Float64 => {
-                cn.data = linear_conversion_calculation::<f64>(&cn.data, p1, p2);
+                cn.data = linear_conversion_calculation::<f64>(cn.data.as_ref(), p1, p2);
             }
             DataType::FixedSizeList(field, _size) => {
                 if field.name.eq(&"complex32".to_string()) {
-                    cn.data = linear_conversion_calculation::<f32>(&cn.data, p1, p2);
+                    cn.data = linear_conversion_calculation::<f32>(cn.data.as_ref(), p1, p2);
                 } else if field.name.eq(&"complex64".to_string()) {
-                    cn.data = linear_conversion_calculation::<f64>(&cn.data, p1, p2);
+                    cn.data = linear_conversion_calculation::<f64>(cn.data.as_ref(), p1, p2);
                 }
             }
             DataType::Extension(extension_name, data_type, _) => {
                 if extension_name.eq(&"Tensor".to_string()) {
                     match *data_type.clone() {
                         DataType::UInt8 => {
-                            cn.data = linear_conversion_calculation::<u8>(&cn.data, p1, p2);
+                            cn.data = linear_conversion_calculation::<u8>(cn.data.as_ref(), p1, p2);
                         }
                         DataType::UInt16 => {
-                            cn.data = linear_conversion_calculation::<u16>(&cn.data, p1, p2);
+                            cn.data = linear_conversion_calculation::<u16>(cn.data.as_ref(), p1, p2);
                         }
                         DataType::UInt32 => {
-                            cn.data = linear_conversion_calculation::<u32>(&cn.data, p1, p2);
+                            cn.data = linear_conversion_calculation::<u32>(cn.data.as_ref(), p1, p2);
                         }
                         DataType::UInt64 => {
-                            cn.data = linear_conversion_calculation::<u64>(&cn.data, p1, p2);
+                            cn.data = linear_conversion_calculation::<u64>(cn.data.as_ref(), p1, p2);
                         }
                         DataType::Int8 => {
-                            cn.data = linear_conversion_calculation::<i8>(&cn.data, p1, p2);
+                            cn.data = linear_conversion_calculation::<i8>(cn.data.as_ref(), p1, p2);
                         }
                         DataType::Int16 => {
-                            cn.data = linear_conversion_calculation::<i16>(&cn.data, p1, p2);
+                            cn.data = linear_conversion_calculation::<i16>(cn.data.as_ref(), p1, p2);
                         }
                         DataType::Int32 => {
-                            cn.data = linear_conversion_calculation::<i32>(&cn.data, p1, p2);
+                            cn.data = linear_conversion_calculation::<i32>(cn.data.as_ref(), p1, p2);
                         }
                         DataType::Int64 => {
-                            cn.data = linear_conversion_calculation::<i64>(&cn.data, p1, p2);
+                            cn.data = linear_conversion_calculation::<i64>(cn.data.as_ref(), p1, p2);
                         }
                         DataType::Float16 => {
-                            cn.data = linear_conversion_calculation::<f32>(&cn.data, p1, p2);
+                            cn.data = linear_conversion_calculation::<f32>(cn.data.as_ref(), p1, p2);
                         }
                         DataType::Float32 => {
-                            cn.data = linear_conversion_calculation::<f32>(&cn.data, p1, p2);
+                            cn.data = linear_conversion_calculation::<f32>(cn.data.as_ref(), p1, p2);
                         }
                         DataType::Float64 => {
-                            cn.data = linear_conversion_calculation::<f64>(&cn.data, p1, p2);
+                            cn.data = linear_conversion_calculation::<f64>(cn.data.as_ref(), p1, p2);
                         }
                         DataType::FixedSizeList(field, _size) => {
                             if field.name.eq(&"complex32".to_string()) {
-                                cn.data = linear_conversion_calculation::<f32>(&cn.data, p1, p2);
+                                cn.data = linear_conversion_calculation::<f32>(cn.data.as_ref(), p1, p2);
                             } else if field.name.eq(&"complex64".to_string()) {
-                                cn.data = linear_conversion_calculation::<f64>(&cn.data, p1, p2);
+                                cn.data = linear_conversion_calculation::<f64>(cn.data.as_ref(), p1, p2);
                             }
                         }
                         _ => warn!(
@@ -229,7 +227,7 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64]) {
 /// Generic function calculating rational expression
 #[inline]
 fn rational_conversion_calculation<T: NativeType + AsPrimitive<f64>>(
-    array: &Box<dyn Array>,
+    array: &dyn Array,
     cc_val: &[f64],
 ) -> Box<dyn Array> {
     let p1 = cc_val[0];
@@ -238,11 +236,11 @@ fn rational_conversion_calculation<T: NativeType + AsPrimitive<f64>>(
     let p4 = cc_val[3];
     let p5 = cc_val[4];
     let p6 = cc_val[5];
-    let parray = array.as_any()
-        .downcast_ref::<PrimitiveArray<T>>()
-        .unwrap();
-    let mut array_f64 = primitive_as_primitive::<T,f64>(&parray, &DataType::Float64);
-    arity_assign::unary(&mut array_f64, |x| (x * x * p1 + x * p2 + p3) / (x * x * p4 + x * p5 + p6));
+    let parray = array.as_any().downcast_ref::<PrimitiveArray<T>>().unwrap();
+    let mut array_f64 = primitive_as_primitive::<T, f64>(parray, &DataType::Float64);
+    arity_assign::unary(&mut array_f64, |x| {
+        (x * x * p1 + x * p2 + p3) / (x * x * p4 + x * p5 + p6)
+    });
     array_f64.to_boxed()
 }
 
@@ -250,86 +248,86 @@ fn rational_conversion_calculation<T: NativeType + AsPrimitive<f64>>(
 fn rational_conversion(cn: &mut Cn4, cc_val: &[f64]) {
     match cn.data.data_type() {
         DataType::UInt8 => {
-            cn.data = rational_conversion_calculation::<u8>(&cn.data, cc_val);
+            cn.data = rational_conversion_calculation::<u8>(cn.data.as_ref(), cc_val);
         }
         DataType::UInt16 => {
-            cn.data = rational_conversion_calculation::<u16>(&cn.data, cc_val);
+            cn.data = rational_conversion_calculation::<u16>(cn.data.as_ref(), cc_val);
         }
         DataType::UInt32 => {
-            cn.data = rational_conversion_calculation::<u32>(&cn.data, cc_val);
+            cn.data = rational_conversion_calculation::<u32>(cn.data.as_ref(), cc_val);
         }
         DataType::UInt64 => {
-            cn.data = rational_conversion_calculation::<u64>(&cn.data, cc_val);
+            cn.data = rational_conversion_calculation::<u64>(cn.data.as_ref(), cc_val);
         }
         DataType::Int8 => {
-            cn.data = rational_conversion_calculation::<i8>(&cn.data, cc_val);
+            cn.data = rational_conversion_calculation::<i8>(cn.data.as_ref(), cc_val);
         }
         DataType::Int16 => {
-            cn.data = rational_conversion_calculation::<i16>(&cn.data, cc_val);
+            cn.data = rational_conversion_calculation::<i16>(cn.data.as_ref(), cc_val);
         }
         DataType::Int32 => {
-            cn.data = rational_conversion_calculation::<i32>(&cn.data, cc_val);
+            cn.data = rational_conversion_calculation::<i32>(cn.data.as_ref(), cc_val);
         }
         DataType::Int64 => {
-            cn.data = rational_conversion_calculation::<i64>(&cn.data, cc_val);
+            cn.data = rational_conversion_calculation::<i64>(cn.data.as_ref(), cc_val);
         }
         DataType::Float16 => {
-            cn.data = rational_conversion_calculation::<f32>(&cn.data, cc_val);
+            cn.data = rational_conversion_calculation::<f32>(cn.data.as_ref(), cc_val);
         }
         DataType::Float32 => {
-            cn.data = rational_conversion_calculation::<f32>(&cn.data, cc_val);
+            cn.data = rational_conversion_calculation::<f32>(cn.data.as_ref(), cc_val);
         }
         DataType::Float64 => {
-            cn.data = rational_conversion_calculation::<f64>(&cn.data, cc_val);
+            cn.data = rational_conversion_calculation::<f64>(cn.data.as_ref(), cc_val);
         }
         DataType::FixedSizeList(field, _size) => {
             if field.name.eq(&"complex32".to_string()) {
-                cn.data = rational_conversion_calculation::<f32>(&cn.data, cc_val);
+                cn.data = rational_conversion_calculation::<f32>(cn.data.as_ref(), cc_val);
             } else if field.name.eq(&"complex64".to_string()) {
-                cn.data = rational_conversion_calculation::<f64>(&cn.data, cc_val);
+                cn.data = rational_conversion_calculation::<f64>(cn.data.as_ref(), cc_val);
             }
         }
         DataType::Extension(extension_name, data_type, _) => {
             if extension_name.eq(&"Tensor".to_string()) {
                 match *data_type.clone() {
                     DataType::UInt8 => {
-                        cn.data = rational_conversion_calculation::<u8>(&cn.data, cc_val);
+                        cn.data = rational_conversion_calculation::<u8>(cn.data.as_ref(), cc_val);
                     }
                     DataType::UInt16 => {
-                        cn.data = rational_conversion_calculation::<u16>(&cn.data, cc_val);
+                        cn.data = rational_conversion_calculation::<u16>(cn.data.as_ref(), cc_val);
                     }
                     DataType::UInt32 => {
-                        cn.data = rational_conversion_calculation::<u32>(&cn.data, cc_val);
+                        cn.data = rational_conversion_calculation::<u32>(cn.data.as_ref(), cc_val);
                     }
                     DataType::UInt64 => {
-                        cn.data = rational_conversion_calculation::<u64>(&cn.data, cc_val);
+                        cn.data = rational_conversion_calculation::<u64>(cn.data.as_ref(), cc_val);
                     }
                     DataType::Int8 => {
-                        cn.data = rational_conversion_calculation::<i8>(&cn.data, cc_val);
+                        cn.data = rational_conversion_calculation::<i8>(cn.data.as_ref(), cc_val);
                     }
                     DataType::Int16 => {
-                        cn.data = rational_conversion_calculation::<i16>(&cn.data, cc_val);
+                        cn.data = rational_conversion_calculation::<i16>(cn.data.as_ref(), cc_val);
                     }
                     DataType::Int32 => {
-                        cn.data = rational_conversion_calculation::<i32>(&cn.data, cc_val);
+                        cn.data = rational_conversion_calculation::<i32>(cn.data.as_ref(), cc_val);
                     }
                     DataType::Int64 => {
-                        cn.data = rational_conversion_calculation::<i64>(&cn.data, cc_val);
+                        cn.data = rational_conversion_calculation::<i64>(cn.data.as_ref(), cc_val);
                     }
                     DataType::Float16 => {
-                        cn.data = rational_conversion_calculation::<f32>(&cn.data, cc_val);
+                        cn.data = rational_conversion_calculation::<f32>(cn.data.as_ref(), cc_val);
                     }
                     DataType::Float32 => {
-                        cn.data = rational_conversion_calculation::<f32>(&cn.data, cc_val);
+                        cn.data = rational_conversion_calculation::<f32>(cn.data.as_ref(), cc_val);
                     }
                     DataType::Float64 => {
-                        cn.data = rational_conversion_calculation::<f64>(&cn.data, cc_val);
+                        cn.data = rational_conversion_calculation::<f64>(cn.data.as_ref(), cc_val);
                     }
                     DataType::FixedSizeList(field, _size) => {
                         if field.name.eq(&"complex32".to_string()) {
-                            cn.data = rational_conversion_calculation::<f32>(&cn.data, cc_val);
+                            cn.data = rational_conversion_calculation::<f32>(cn.data.as_ref(), cc_val);
                         } else if field.name.eq(&"complex64".to_string()) {
-                            cn.data = rational_conversion_calculation::<f64>(&cn.data, cc_val);
+                            cn.data = rational_conversion_calculation::<f64>(cn.data.as_ref(), cc_val);
                         }
                     }
                     _ => warn!(
@@ -351,30 +349,31 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64]) {
 fn alegbraic_conversion_calculation<T: NativeType + AsPrimitive<f64>>(
     compiled: &Instruction,
     slab: &Slab,
-    array: &Box<dyn Array>,
+    array: &dyn Array,
     cycle_count: &usize,
 ) -> Box<dyn Array> {
-    let parray = array.as_any()
-        .downcast_ref::<PrimitiveArray<T>>()
-        .unwrap();
-    let array_f64 = primitive_as_primitive::<T,f64>(&parray, &DataType::Float64);
+    let parray = array.as_any().downcast_ref::<PrimitiveArray<T>>().unwrap();
+    let array_f64 = primitive_as_primitive::<T, f64>(parray, &DataType::Float64);
     let mut new_array = vec![0f64; *cycle_count];
-    new_array.iter_mut().zip(array_f64.iter()).for_each(|(new_a, a)| {
-        let mut map = BTreeMap::new();
-        let value = a.copied().unwrap_or_default();
-        map.insert("X".to_string(), value);
-        let val = compiled.eval(slab, &mut map);
-        *new_a = match val {
-            Ok(val) => val,
-            Err(err) => {
-                warn!(
-                    "could not compute the value {:?} with expression {:?}, error {}",
-                    value, compiled, err
-                );
-                value
+    new_array
+        .iter_mut()
+        .zip(array_f64.iter())
+        .for_each(|(new_a, a)| {
+            let mut map = BTreeMap::new();
+            let value = a.copied().unwrap_or_default();
+            map.insert("X".to_string(), value);
+            let val = compiled.eval(slab, &mut map);
+            *new_a = match val {
+                Ok(val) => val,
+                Err(err) => {
+                    warn!(
+                        "could not compute the value {:?} with expression {:?}, error {}",
+                        value, compiled, err
+                    );
+                    value
+                }
             }
-        }
-    });
+        });
     PrimitiveArray::from_vec(new_array).boxed()
 }
 
@@ -391,7 +390,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                     cn.data = alegbraic_conversion_calculation::<u8>(
                         &compiled,
                         &slab,
-                        &cn.data,
+                        cn.data.as_ref(),
                         &(*cycle_count as usize),
                     );
                 }
@@ -399,7 +398,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                     cn.data = alegbraic_conversion_calculation::<i8>(
                         &compiled,
                         &slab,
-                        &cn.data,
+                        cn.data.as_ref(),
                         &(*cycle_count as usize),
                     );
                 }
@@ -407,7 +406,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                     cn.data = alegbraic_conversion_calculation::<i16>(
                         &compiled,
                         &slab,
-                        &cn.data,
+                        cn.data.as_ref(),
                         &(*cycle_count as usize),
                     );
                 }
@@ -415,7 +414,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                     cn.data = alegbraic_conversion_calculation::<u16>(
                         &compiled,
                         &slab,
-                        &cn.data,
+                        cn.data.as_ref(),
                         &(*cycle_count as usize),
                     );
                 }
@@ -423,7 +422,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                     cn.data = alegbraic_conversion_calculation::<i32>(
                         &compiled,
                         &slab,
-                        &cn.data,
+                        cn.data.as_ref(),
                         &(*cycle_count as usize),
                     );
                 }
@@ -431,7 +430,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                     cn.data = alegbraic_conversion_calculation::<u32>(
                         &compiled,
                         &slab,
-                        &cn.data,
+                        cn.data.as_ref(),
                         &(*cycle_count as usize),
                     );
                 }
@@ -439,7 +438,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                     cn.data = alegbraic_conversion_calculation::<f32>(
                         &compiled,
                         &slab,
-                        &cn.data,
+                        cn.data.as_ref(),
                         &(*cycle_count as usize),
                     );
                 }
@@ -447,7 +446,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                     cn.data = alegbraic_conversion_calculation::<i64>(
                         &compiled,
                         &slab,
-                        &cn.data,
+                        cn.data.as_ref(),
                         &(*cycle_count as usize),
                     );
                 }
@@ -455,7 +454,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                     cn.data = alegbraic_conversion_calculation::<u64>(
                         &compiled,
                         &slab,
-                        &cn.data,
+                        cn.data.as_ref(),
                         &(*cycle_count as usize),
                     );
                 }
@@ -463,7 +462,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                     cn.data = alegbraic_conversion_calculation::<f64>(
                         &compiled,
                         &slab,
-                        &cn.data,
+                        cn.data.as_ref(),
                         &(*cycle_count as usize),
                     );
                 }
@@ -472,14 +471,14 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                         cn.data = alegbraic_conversion_calculation::<f32>(
                             &compiled,
                             &slab,
-                            &cn.data,
+                            cn.data.as_ref(),
                             &(*cycle_count as usize),
                         );
                     } else if field.name.eq(&"complex64".to_string()) {
                         cn.data = alegbraic_conversion_calculation::<f64>(
                             &compiled,
                             &slab,
-                            &cn.data,
+                            cn.data.as_ref(),
                             &(*cycle_count as usize),
                         );
                     }
@@ -491,7 +490,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                                 cn.data = alegbraic_conversion_calculation::<u8>(
                                     &compiled,
                                     &slab,
-                                    &cn.data,
+                                    cn.data.as_ref(),
                                     &(*cycle_count as usize),
                                 );
                             }
@@ -499,7 +498,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                                 cn.data = alegbraic_conversion_calculation::<i8>(
                                     &compiled,
                                     &slab,
-                                    &cn.data,
+                                    cn.data.as_ref(),
                                     &(*cycle_count as usize),
                                 );
                             }
@@ -507,7 +506,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                                 cn.data = alegbraic_conversion_calculation::<i16>(
                                     &compiled,
                                     &slab,
-                                    &cn.data,
+                                    cn.data.as_ref(),
                                     &(*cycle_count as usize),
                                 );
                             }
@@ -515,7 +514,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                                 cn.data = alegbraic_conversion_calculation::<u16>(
                                     &compiled,
                                     &slab,
-                                    &cn.data,
+                                    cn.data.as_ref(),
                                     &(*cycle_count as usize),
                                 );
                             }
@@ -523,7 +522,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                                 cn.data = alegbraic_conversion_calculation::<i32>(
                                     &compiled,
                                     &slab,
-                                    &cn.data,
+                                    cn.data.as_ref(),
                                     &(*cycle_count as usize),
                                 );
                             }
@@ -531,7 +530,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                                 cn.data = alegbraic_conversion_calculation::<u32>(
                                     &compiled,
                                     &slab,
-                                    &cn.data,
+                                    cn.data.as_ref(),
                                     &(*cycle_count as usize),
                                 );
                             }
@@ -539,7 +538,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                                 cn.data = alegbraic_conversion_calculation::<f32>(
                                     &compiled,
                                     &slab,
-                                    &cn.data,
+                                    cn.data.as_ref(),
                                     &(*cycle_count as usize),
                                 );
                             }
@@ -547,7 +546,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                                 cn.data = alegbraic_conversion_calculation::<i64>(
                                     &compiled,
                                     &slab,
-                                    &cn.data,
+                                    cn.data.as_ref(),
                                     &(*cycle_count as usize),
                                 );
                             }
@@ -555,7 +554,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                                 cn.data = alegbraic_conversion_calculation::<u64>(
                                     &compiled,
                                     &slab,
-                                    &cn.data,
+                                    cn.data.as_ref(),
                                     &(*cycle_count as usize),
                                 );
                             }
@@ -563,7 +562,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                                 cn.data = alegbraic_conversion_calculation::<f64>(
                                     &compiled,
                                     &slab,
-                                    &cn.data,
+                                    cn.data.as_ref(),
                                     &(*cycle_count as usize),
                                 );
                             }
@@ -572,14 +571,14 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                                     cn.data = alegbraic_conversion_calculation::<f32>(
                                         &compiled,
                                         &slab,
-                                        &cn.data,
+                                        cn.data.as_ref(),
                                         &(*cycle_count as usize),
                                     );
                                 } else if field.name.eq(&"complex64".to_string()) {
                                     cn.data = alegbraic_conversion_calculation::<f64>(
                                         &compiled,
                                         &slab,
-                                        &cn.data,
+                                        cn.data.as_ref(),
                                         &(*cycle_count as usize),
                                     );
                                 }
@@ -609,30 +608,31 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
 /// Generic function calculating value to value interpolation
 #[inline]
 fn value_to_value_with_interpolation_calculation<T: NativeType + AsPrimitive<f64>>(
-    array: &Box<dyn Array>,
+    array: &dyn Array,
     val: Vec<(&f64, &f64)>,
     cycle_count: &usize,
 ) -> Box<dyn Array> {
-    let parray = array.as_any()
-        .downcast_ref::<PrimitiveArray<T>>()
-        .unwrap();
-    let array_f64 = primitive_as_primitive::<T,f64>(&parray, &DataType::Float64);
+    let parray = array.as_any().downcast_ref::<PrimitiveArray<T>>().unwrap();
+    let array_f64 = primitive_as_primitive::<T, f64>(parray, &DataType::Float64);
     let mut new_array = vec![0f64; *cycle_count];
-    new_array.iter_mut().zip(array_f64).for_each(|(new_array, a)| {
-        let a64 = a.unwrap_or_default();
-        *new_array = match val
-            .binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap_or(Ordering::Equal))
-        {
-            Ok(idx) => *val[idx].1,
-            Err(0) => *val[0].1,
-            Err(idx) if idx >= val.len() => *val[idx - 1].1,
-            Err(idx) => {
-                let (x0, y0) = val[idx - 1];
-                let (x1, y1) = val[idx];
-                (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
-            }
-        };
-    });
+    new_array
+        .iter_mut()
+        .zip(array_f64)
+        .for_each(|(new_array, a)| {
+            let a64 = a.unwrap_or_default();
+            *new_array = match val
+                .binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap_or(Ordering::Equal))
+            {
+                Ok(idx) => *val[idx].1,
+                Err(0) => *val[0].1,
+                Err(idx) if idx >= val.len() => *val[idx - 1].1,
+                Err(idx) => {
+                    let (x0, y0) = val[idx - 1];
+                    let (x1, y1) = val[idx];
+                    (y0 * (x1 - a64) + y1 * (a64 - x0)) / (x1 - x0)
+                }
+            };
+        });
     PrimitiveArray::from_vec(new_array).boxed()
 }
 
@@ -642,70 +642,70 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
     match cn.data.data_type() {
         DataType::Int8 => {
             cn.data = value_to_value_with_interpolation_calculation::<i8>(
-                &cn.data,
+                cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             );
         }
         DataType::UInt8 => {
             cn.data = value_to_value_with_interpolation_calculation::<u8>(
-                &cn.data,
+                cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             );
         }
         DataType::Int16 => {
             cn.data = value_to_value_with_interpolation_calculation::<i16>(
-                &cn.data,
+                cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             );
         }
         DataType::UInt16 => {
             cn.data = value_to_value_with_interpolation_calculation::<u16>(
-                &cn.data,
+                cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             );
         }
         DataType::Int32 => {
             cn.data = value_to_value_with_interpolation_calculation::<i32>(
-                &cn.data,
+                cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             );
         }
         DataType::UInt32 => {
             cn.data = value_to_value_with_interpolation_calculation::<u32>(
-                &cn.data,
+                cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             );
         }
         DataType::Float32 => {
             cn.data = value_to_value_with_interpolation_calculation::<f32>(
-                &cn.data,
+                cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             );
         }
         DataType::Int64 => {
             cn.data = value_to_value_with_interpolation_calculation::<i64>(
-                &cn.data,
+                cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             );
         }
         DataType::UInt64 => {
             cn.data = value_to_value_with_interpolation_calculation::<u64>(
-                &cn.data,
+                cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             );
         }
         DataType::Float64 => {
             cn.data = value_to_value_with_interpolation_calculation::<f64>(
-                &cn.data,
+                cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             );
@@ -715,70 +715,70 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
                 match *data_type.clone() {
                     DataType::Int8 => {
                         cn.data = value_to_value_with_interpolation_calculation::<i8>(
-                            &cn.data,
+                            cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         );
                     }
                     DataType::UInt8 => {
                         cn.data = value_to_value_with_interpolation_calculation::<u8>(
-                            &cn.data,
+                            cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         );
                     }
                     DataType::Int16 => {
                         cn.data = value_to_value_with_interpolation_calculation::<i16>(
-                            &cn.data,
+                            cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         );
                     }
                     DataType::UInt16 => {
                         cn.data = value_to_value_with_interpolation_calculation::<u16>(
-                            &cn.data,
+                            cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         );
                     }
                     DataType::Int32 => {
                         cn.data = value_to_value_with_interpolation_calculation::<i32>(
-                            &cn.data,
+                            cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         );
                     }
                     DataType::UInt32 => {
                         cn.data = value_to_value_with_interpolation_calculation::<u32>(
-                            &cn.data,
+                            cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         );
                     }
                     DataType::Float32 => {
                         cn.data = value_to_value_with_interpolation_calculation::<f32>(
-                            &cn.data,
+                            cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         );
                     }
                     DataType::Int64 => {
                         cn.data = value_to_value_with_interpolation_calculation::<i64>(
-                            &cn.data,
+                            cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         );
                     }
                     DataType::UInt64 => {
                         cn.data = value_to_value_with_interpolation_calculation::<u64>(
-                            &cn.data,
+                            cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         );
                     }
                     DataType::Float64 => {
                         cn.data = value_to_value_with_interpolation_calculation::<f64>(
-                            &cn.data,
+                            cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         );
@@ -800,34 +800,35 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
 /// Generic function calculating value to value without interpolation
 #[inline]
 fn value_to_value_without_interpolation_calculation<T: NativeType + AsPrimitive<f64>>(
-    array: &Box<dyn Array>,
+    array: &dyn Array,
     val: Vec<(&f64, &f64)>,
     cycle_count: &usize,
 ) -> Box<dyn Array> {
-    let parray = array.as_any()
-        .downcast_ref::<PrimitiveArray<T>>()
-        .unwrap();
-    let array_f64 = primitive_as_primitive::<T,f64>(&parray, &DataType::Float64);
+    let parray = array.as_any().downcast_ref::<PrimitiveArray<T>>().unwrap();
+    let array_f64 = primitive_as_primitive::<T, f64>(parray, &DataType::Float64);
     let mut new_array = vec![0f64; *cycle_count];
-    new_array.iter_mut().zip(array_f64).for_each(|(new_array, a)| {
-        let a64 = a.unwrap_or_default();
-        *new_array = match val
-            .binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap_or(Ordering::Equal))
-        {
-            Ok(idx) => *val[idx].1,
-            Err(0) => *val[0].1,
-            Err(idx) if idx >= val.len() => *val[idx - 1].1,
-            Err(idx) => {
-                let (x0, y0) = val[idx - 1];
-                let (x1, y1) = val[idx];
-                if (a64 - x0) > (x1 - a64) {
-                    *y1
-                } else {
-                    *y0
+    new_array
+        .iter_mut()
+        .zip(array_f64)
+        .for_each(|(new_array, a)| {
+            let a64 = a.unwrap_or_default();
+            *new_array = match val
+                .binary_search_by(|&(xi, _)| xi.partial_cmp(&a64).unwrap_or(Ordering::Equal))
+            {
+                Ok(idx) => *val[idx].1,
+                Err(0) => *val[0].1,
+                Err(idx) if idx >= val.len() => *val[idx - 1].1,
+                Err(idx) => {
+                    let (x0, y0) = val[idx - 1];
+                    let (x1, y1) = val[idx];
+                    if (a64 - x0) > (x1 - a64) {
+                        *y1
+                    } else {
+                        *y0
+                    }
                 }
-            }
-        };
-    });
+            };
+        });
     PrimitiveArray::from_vec(new_array).boxed()
 }
 
@@ -837,70 +838,70 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
     match cn.data.data_type() {
         DataType::Int8 => {
             cn.data = value_to_value_without_interpolation_calculation::<i8>(
-                &cn.data,
+                cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             );
         }
         DataType::UInt8 => {
             cn.data = value_to_value_without_interpolation_calculation::<u8>(
-                &cn.data,
+                cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             );
         }
         DataType::Int16 => {
             cn.data = value_to_value_without_interpolation_calculation::<i16>(
-                &cn.data,
+                cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             );
         }
         DataType::UInt16 => {
             cn.data = value_to_value_without_interpolation_calculation::<u16>(
-                &cn.data,
+                cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             );
         }
         DataType::Int32 => {
             cn.data = value_to_value_without_interpolation_calculation::<i32>(
-                &cn.data,
+                cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             );
         }
         DataType::UInt32 => {
             cn.data = value_to_value_without_interpolation_calculation::<u32>(
-                &cn.data,
+                cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             );
         }
         DataType::Float32 => {
             cn.data = value_to_value_without_interpolation_calculation::<f32>(
-                &cn.data,
+                cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             );
         }
         DataType::Int64 => {
             cn.data = value_to_value_without_interpolation_calculation::<i64>(
-                &cn.data,
+                cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             );
         }
         DataType::UInt64 => {
             cn.data = value_to_value_without_interpolation_calculation::<u64>(
-                &cn.data,
+                cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             );
         }
         DataType::Float64 => {
             cn.data = value_to_value_without_interpolation_calculation::<f64>(
-                &cn.data,
+                cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             );
@@ -910,70 +911,70 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
                 match *data_type.clone() {
                     DataType::Int8 => {
                         cn.data = value_to_value_without_interpolation_calculation::<i8>(
-                            &cn.data,
+                            cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         );
                     }
                     DataType::UInt8 => {
                         cn.data = value_to_value_without_interpolation_calculation::<u8>(
-                            &cn.data,
+                            cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         );
                     }
                     DataType::Int16 => {
                         cn.data = value_to_value_without_interpolation_calculation::<i16>(
-                            &cn.data,
+                            cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         );
                     }
                     DataType::UInt16 => {
                         cn.data = value_to_value_without_interpolation_calculation::<u16>(
-                            &cn.data,
+                            cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         );
                     }
                     DataType::Int32 => {
                         cn.data = value_to_value_without_interpolation_calculation::<i32>(
-                            &cn.data,
+                            cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         );
                     }
                     DataType::UInt32 => {
                         cn.data = value_to_value_without_interpolation_calculation::<u32>(
-                            &cn.data,
+                            cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         );
                     }
                     DataType::Float32 => {
                         cn.data = value_to_value_without_interpolation_calculation::<f32>(
-                            &cn.data,
+                            cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         );
                     }
                     DataType::Int64 => {
                         cn.data = value_to_value_without_interpolation_calculation::<i64>(
-                            &cn.data,
+                            cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         );
                     }
                     DataType::UInt64 => {
                         cn.data = value_to_value_without_interpolation_calculation::<u64>(
-                            &cn.data,
+                            cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         );
                     }
                     DataType::Float64 => {
                         cn.data = value_to_value_without_interpolation_calculation::<f64>(
-                            &cn.data,
+                            cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         );
@@ -995,33 +996,34 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
 /// Generic function calculating value range to value table without interpolation
 #[inline]
 fn value_range_to_value_table_calculation<T: NativeType + AsPrimitive<f64>>(
-    array: &Box<dyn Array>,
+    array: &dyn Array,
     val: &[(f64, f64, f64)],
     default_value: &f64,
     cycle_count: &usize,
 ) -> Box<dyn Array> {
-    let parray = array.as_any()
-        .downcast_ref::<PrimitiveArray<T>>()
-        .unwrap();
-    let array_f64 = primitive_as_primitive::<T,f64>(&parray, &DataType::Float64);
+    let parray = array.as_any().downcast_ref::<PrimitiveArray<T>>().unwrap();
+    let array_f64 = primitive_as_primitive::<T, f64>(parray, &DataType::Float64);
     let mut new_array = vec![0f64; *cycle_count];
-    new_array.iter_mut().zip(array_f64).for_each(|(new_array, a)| {
-        let a64 = a.unwrap_or_default();
-        *new_array = match val
-            .binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap_or(Ordering::Equal))
-        {
-            Ok(idx) => val[idx].2,
-            Err(0) => *default_value,
-            Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
-            Err(idx) => {
-                if a64 <= val[idx].1 {
-                    val[idx].2
-                } else {
-                    *default_value
+    new_array
+        .iter_mut()
+        .zip(array_f64)
+        .for_each(|(new_array, a)| {
+            let a64 = a.unwrap_or_default();
+            *new_array = match val
+                .binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap_or(Ordering::Equal))
+            {
+                Ok(idx) => val[idx].2,
+                Err(0) => *default_value,
+                Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                Err(idx) => {
+                    if a64 <= val[idx].1 {
+                        val[idx].2
+                    } else {
+                        *default_value
+                    }
                 }
-            }
-        };
-    });
+            };
+        });
     PrimitiveArray::from_vec(new_array).boxed()
 }
 
@@ -1035,7 +1037,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
     match cn.data.data_type() {
         DataType::Int8 => {
             cn.data = value_range_to_value_table_calculation::<i8>(
-                &cn.data,
+                cn.data.as_ref(),
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1043,7 +1045,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
         }
         DataType::UInt8 => {
             cn.data = value_range_to_value_table_calculation::<u8>(
-                &cn.data,
+                cn.data.as_ref(),
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1051,7 +1053,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
         }
         DataType::Int16 => {
             cn.data = value_range_to_value_table_calculation::<i16>(
-                &cn.data,
+                cn.data.as_ref(),
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1059,7 +1061,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
         }
         DataType::UInt16 => {
             cn.data = value_range_to_value_table_calculation::<u16>(
-                &cn.data,
+                cn.data.as_ref(),
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1067,7 +1069,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
         }
         DataType::Int32 => {
             cn.data = value_range_to_value_table_calculation::<i32>(
-                &cn.data,
+                cn.data.as_ref(),
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1075,7 +1077,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
         }
         DataType::UInt32 => {
             cn.data = value_range_to_value_table_calculation::<u32>(
-                &cn.data,
+                cn.data.as_ref(),
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1083,7 +1085,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
         }
         DataType::Float32 => {
             cn.data = value_range_to_value_table_calculation::<f32>(
-                &cn.data,
+                cn.data.as_ref(),
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1091,7 +1093,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
         }
         DataType::Int64 => {
             cn.data = value_range_to_value_table_calculation::<i64>(
-                &cn.data,
+                cn.data.as_ref(),
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1099,7 +1101,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
         }
         DataType::UInt64 => {
             cn.data = value_range_to_value_table_calculation::<u64>(
-                &cn.data,
+                cn.data.as_ref(),
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1107,7 +1109,7 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count: &u64)
         }
         DataType::Float64 => {
             cn.data = value_range_to_value_table_calculation::<f64>(
-                &cn.data,
+                cn.data.as_ref(),
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1139,7 +1141,7 @@ enum DefaultTextOrScaleConversion {
 /// Generic function calculating integer value range to text
 #[inline]
 fn value_to_text_calculation_int<T: Sized + Display + Integer + NativeType + AsPrimitive<f64>>(
-    array: &Box<dyn Array>,
+    array: &dyn Array,
     cc_val: &[f64],
     cc_ref: &[i64],
     def: &DefaultTextOrScaleConversion,
@@ -1159,39 +1161,40 @@ fn value_to_text_calculation_int<T: Sized + Display + Integer + NativeType + AsP
             table_int.insert(val_i64, TextOrScaleConversion::Nil);
         }
     }
-    let parray = array.as_any()
-        .downcast_ref::<PrimitiveArray<T>>()
-        .unwrap();
-    let array_f64 = primitive_as_primitive::<T,f64>(&parray, &DataType::Float64);
+    let parray = array.as_any().downcast_ref::<PrimitiveArray<T>>().unwrap();
+    let array_f64 = primitive_as_primitive::<T, f64>(parray, &DataType::Float64);
     let mut new_array = vec![String::new(); *cycle_count];
-    new_array.iter_mut().zip(array_f64).for_each(|(new_array, a)| {
-        let ref_val = a.unwrap_or_default().to_i64().unwrap_or_default();
-        if let Some(tosc) = table_int.get(&ref_val) {
-            match tosc {
-                TextOrScaleConversion::Txt(txt) => {
-                    *new_array = txt.clone();
+    new_array
+        .iter_mut()
+        .zip(array_f64)
+        .for_each(|(new_array, a)| {
+            let ref_val = a.unwrap_or_default().to_i64().unwrap_or_default();
+            if let Some(tosc) = table_int.get(&ref_val) {
+                match tosc {
+                    TextOrScaleConversion::Txt(txt) => {
+                        *new_array = txt.clone();
+                    }
+                    TextOrScaleConversion::Scale(conv) => {
+                        *new_array = conv.eval_to_txt(a.unwrap_or_default());
+                    }
+                    _ => {
+                        *new_array = a.unwrap_or_default().to_string();
+                    }
                 }
-                TextOrScaleConversion::Scale(conv) => {
-                    *new_array = conv.eval_to_txt(a.unwrap_or_default());
-                }
-                _ => {
-                    *new_array = a.unwrap_or_default().to_string();
+            } else {
+                match &def {
+                    DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                        *new_array = txt.clone();
+                    }
+                    DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                        *new_array = conv.eval_to_txt(a.unwrap_or_default());
+                    }
+                    _ => {
+                        *new_array = a.unwrap_or_default().to_string();
+                    }
                 }
             }
-        } else {
-            match &def {
-                DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                    *new_array = txt.clone();
-                }
-                DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                    *new_array = conv.eval_to_txt(a.unwrap_or_default());
-                }
-                _ => {
-                    *new_array = a.unwrap_or_default().to_string();
-                }
-            }
-        }
-    });
+        });
     Utf8Array::<i64>::from_iter_values(new_array.iter()).boxed()
 }
 
@@ -1231,7 +1234,8 @@ fn value_to_text_calculation_f32(
                     *new_array = txt.clone();
                 }
                 TextOrScaleConversion::Scale(conv) => {
-                    *new_array = conv.eval_to_txt(a.copied().unwrap_or_default().to_f64().unwrap_or_default());
+                    *new_array = conv
+                        .eval_to_txt(a.copied().unwrap_or_default().to_f64().unwrap_or_default());
                 }
                 _ => {
                     *new_array = a.copied().unwrap_or_default().to_string();
@@ -1243,7 +1247,8 @@ fn value_to_text_calculation_f32(
                     *new_array = txt.clone();
                 }
                 DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                    *new_array = conv.eval_to_txt(a.copied().unwrap_or_default().to_f64().unwrap_or_default());
+                    *new_array = conv
+                        .eval_to_txt(a.copied().unwrap_or_default().to_f64().unwrap_or_default());
                 }
                 _ => {
                     *new_array = a.copied().unwrap_or_default().to_string();
@@ -1274,7 +1279,7 @@ fn value_to_text(
     match cn.data.data_type() {
         DataType::Int8 => {
             cn.data = value_to_text_calculation_int::<i8>(
-                &cn.data,
+                cn.data.as_ref(),
                 cc_val,
                 cc_ref,
                 &def,
@@ -1284,7 +1289,7 @@ fn value_to_text(
         }
         DataType::UInt8 => {
             cn.data = value_to_text_calculation_int::<u8>(
-                &cn.data,
+                cn.data.as_ref(),
                 cc_val,
                 cc_ref,
                 &def,
@@ -1294,7 +1299,7 @@ fn value_to_text(
         }
         DataType::Int16 => {
             cn.data = value_to_text_calculation_int::<i16>(
-                &cn.data,
+                cn.data.as_ref(),
                 cc_val,
                 cc_ref,
                 &def,
@@ -1304,7 +1309,7 @@ fn value_to_text(
         }
         DataType::UInt16 => {
             cn.data = value_to_text_calculation_int::<u16>(
-                &cn.data,
+                cn.data.as_ref(),
                 cc_val,
                 cc_ref,
                 &def,
@@ -1314,7 +1319,7 @@ fn value_to_text(
         }
         DataType::Int32 => {
             cn.data = value_to_text_calculation_int::<i32>(
-                &cn.data,
+                cn.data.as_ref(),
                 cc_val,
                 cc_ref,
                 &def,
@@ -1324,7 +1329,7 @@ fn value_to_text(
         }
         DataType::UInt32 => {
             cn.data = value_to_text_calculation_int::<u32>(
-                &cn.data,
+                cn.data.as_ref(),
                 cc_val,
                 cc_ref,
                 &def,
@@ -1348,7 +1353,7 @@ fn value_to_text(
         }
         DataType::Int64 => {
             cn.data = value_to_text_calculation_int::<i64>(
-                &cn.data,
+                cn.data.as_ref(),
                 cc_val,
                 cc_ref,
                 &def,
@@ -1358,7 +1363,7 @@ fn value_to_text(
         }
         DataType::UInt64 => {
             cn.data = value_to_text_calculation_int::<u64>(
-                &cn.data,
+                cn.data.as_ref(),
                 cc_val,
                 cc_ref,
                 &def,
@@ -1508,7 +1513,7 @@ struct KeyRange {
 /// Generic function calculating value range to text
 #[inline]
 fn value_range_to_text_calculation<T: Sized + Display + NativeType + AsPrimitive<f64>>(
-    array: &Box<dyn Array>,
+    array: &dyn Array,
     cc_val: &[f64],
     cc_ref: &[i64],
     cycle_count: usize,
@@ -1543,41 +1548,43 @@ fn value_range_to_text_calculation<T: Sized + Display + NativeType + AsPrimitive
     } else {
         def = DefaultTextOrScaleConversion::Nil;
     }
-    let parray = array.as_any()
-        .downcast_ref::<PrimitiveArray<T>>()
-        .unwrap();
-    let array_f64 = primitive_as_primitive::<T,f64>(&parray, &DataType::Float64);
+    let parray = array.as_any().downcast_ref::<PrimitiveArray<T>>().unwrap();
+    let array_f64 = primitive_as_primitive::<T, f64>(parray, &DataType::Float64);
     let mut new_array = vec![String::new(); cycle_count];
-    new_array.iter_mut().zip(array_f64).for_each(|(new_array, a)| {
-        let matched_key = keys.iter().enumerate().find(|&x| {
-            x.1.min <= a.unwrap_or_default() && a.unwrap_or_default() <= x.1.max
+    new_array
+        .iter_mut()
+        .zip(array_f64)
+        .for_each(|(new_array, a)| {
+            let matched_key = keys
+                .iter()
+                .enumerate()
+                .find(|&x| x.1.min <= a.unwrap_or_default() && a.unwrap_or_default() <= x.1.max);
+            if let Some(key) = matched_key {
+                match &txt[key.0] {
+                    TextOrScaleConversion::Txt(txt) => {
+                        *new_array = txt.clone();
+                    }
+                    TextOrScaleConversion::Scale(conv) => {
+                        *new_array = conv.eval_to_txt(a.unwrap_or_default());
+                    }
+                    _ => {
+                        *new_array = a.unwrap_or_default().to_string();
+                    }
+                }
+            } else {
+                match &def {
+                    DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                        *new_array = txt.clone();
+                    }
+                    DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                        *new_array = conv.eval_to_txt(a.unwrap_or_default());
+                    }
+                    _ => {
+                        *new_array = a.unwrap_or_default().to_string();
+                    }
+                }
+            }
         });
-        if let Some(key) = matched_key {
-            match &txt[key.0] {
-                TextOrScaleConversion::Txt(txt) => {
-                    *new_array = txt.clone();
-                }
-                TextOrScaleConversion::Scale(conv) => {
-                    *new_array = conv.eval_to_txt(a.unwrap_or_default());
-                }
-                _ => {
-                    *new_array = a.unwrap_or_default().to_string();
-                }
-            }
-        } else {
-            match &def {
-                DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                    *new_array = txt.clone();
-                }
-                DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                    *new_array = conv.eval_to_txt(a.unwrap_or_default());
-                }
-                _ => {
-                    *new_array = a.unwrap_or_default().to_string();
-                }
-            }
-        }
-    });
     Utf8Array::<i64>::from_iter_values(new_array.iter()).boxed()
 }
 
@@ -1592,7 +1599,7 @@ fn value_range_to_text(
     match cn.data.data_type() {
         DataType::Int8 => {
             cn.data = value_range_to_text_calculation::<i8>(
-                &cn.data,
+                cn.data.as_ref(),
                 cc_val,
                 cc_ref,
                 *cycle_count as usize,
@@ -1601,7 +1608,7 @@ fn value_range_to_text(
         }
         DataType::UInt8 => {
             cn.data = value_range_to_text_calculation::<u8>(
-                &cn.data,
+                cn.data.as_ref(),
                 cc_val,
                 cc_ref,
                 *cycle_count as usize,
@@ -1610,7 +1617,7 @@ fn value_range_to_text(
         }
         DataType::Int16 => {
             cn.data = value_range_to_text_calculation::<i16>(
-                &cn.data,
+                cn.data.as_ref(),
                 cc_val,
                 cc_ref,
                 *cycle_count as usize,
@@ -1619,7 +1626,7 @@ fn value_range_to_text(
         }
         DataType::UInt16 => {
             cn.data = value_range_to_text_calculation::<u16>(
-                &cn.data,
+                cn.data.as_ref(),
                 cc_val,
                 cc_ref,
                 *cycle_count as usize,
@@ -1628,7 +1635,7 @@ fn value_range_to_text(
         }
         DataType::Int32 => {
             cn.data = value_range_to_text_calculation::<i32>(
-                &cn.data,
+                cn.data.as_ref(),
                 cc_val,
                 cc_ref,
                 *cycle_count as usize,
@@ -1637,7 +1644,7 @@ fn value_range_to_text(
         }
         DataType::UInt32 => {
             cn.data = value_range_to_text_calculation::<u32>(
-                &cn.data,
+                cn.data.as_ref(),
                 cc_val,
                 cc_ref,
                 *cycle_count as usize,
@@ -1646,7 +1653,7 @@ fn value_range_to_text(
         }
         DataType::Float32 => {
             cn.data = value_range_to_text_calculation::<f32>(
-                &cn.data,
+                cn.data.as_ref(),
                 cc_val,
                 cc_ref,
                 *cycle_count as usize,
@@ -1655,7 +1662,7 @@ fn value_range_to_text(
         }
         DataType::Int64 => {
             cn.data = value_range_to_text_calculation::<i64>(
-                &cn.data,
+                cn.data.as_ref(),
                 cc_val,
                 cc_ref,
                 *cycle_count as usize,
@@ -1664,7 +1671,7 @@ fn value_range_to_text(
         }
         DataType::UInt64 => {
             cn.data = value_range_to_text_calculation::<u64>(
-                &cn.data,
+                cn.data.as_ref(),
                 cc_val,
                 cc_ref,
                 *cycle_count as usize,
@@ -1673,7 +1680,7 @@ fn value_range_to_text(
         }
         DataType::Float64 => {
             cn.data = value_range_to_text_calculation::<f64>(
-                &cn.data,
+                cn.data.as_ref(),
                 cc_val,
                 cc_ref,
                 *cycle_count as usize,
@@ -1690,7 +1697,7 @@ fn value_range_to_text(
 /// Generic function calculating text to value
 #[inline]
 fn text_to_value_calculation(
-    array: &Utf8Array::<i64>,
+    array: &Utf8Array<i64>,
     cc_val: &[f64],
     cc_ref: &[i64],
     cycle_count: usize,
@@ -1745,7 +1752,7 @@ fn text_to_value(
 /// Generic function calculating text to value
 #[inline]
 fn text_to_text_calculation(
-    array: &Utf8Array::<i64>,
+    array: &Utf8Array<i64>,
     cc_ref: &[i64],
     cycle_count: usize,
     sharable: &SharableBlocks,
@@ -1786,15 +1793,8 @@ fn text_to_text_calculation(
 fn text_to_text(cn: &mut Cn4, cc_ref: &[i64], cycle_count: &u64, sharable: &SharableBlocks) {
     match cn.data.data_type() {
         DataType::LargeUtf8 => {
-            let sarray = cn.data.as_any()
-                .downcast_ref::<Utf8Array::<i64>>()
-                .unwrap();
-            cn.data = text_to_text_calculation(
-                sarray,
-                cc_ref,
-                *cycle_count as usize,
-                sharable,
-            );
+            let sarray = cn.data.as_any().downcast_ref::<Utf8Array<i64>>().unwrap();
+            cn.data = text_to_text_calculation(sarray, cc_ref, *cycle_count as usize, sharable);
         }
         _ => warn!(
             "text conversion into text of channel {} not possible, channel does not contain string",
@@ -1818,7 +1818,7 @@ enum ValueOrValueRangeToText {
 /// Generic function calculating text to value
 #[inline]
 fn bitfield_text_table_calculation<T: Integer + NativeType + AsPrimitive<f64>>(
-    array: &Box<dyn Array>,
+    array: &dyn Array,
     cc_val: &[u64],
     cc_ref: &[i64],
     cycle_count: usize,
@@ -1910,17 +1910,15 @@ fn bitfield_text_table_calculation<T: Integer + NativeType + AsPrimitive<f64>>(
             }
         }
     }
-    let parray = array.as_any()
-        .downcast_ref::<PrimitiveArray<T>>()
-        .unwrap();
-    let array_f64 = primitive_as_primitive::<T,f64>(&parray, &DataType::Float64);
+    let parray = array.as_any().downcast_ref::<PrimitiveArray<T>>().unwrap();
+    let array_f64 = primitive_as_primitive::<T, f64>(parray, &DataType::Float64);
     let mut new_array = vec![String::new(); cycle_count];
     new_array.iter_mut().zip(array_f64).for_each(|(new_a, a)| {
         for (ind, val) in cc_val.iter().enumerate() {
             match &table[ind] {
                 (ValueOrValueRangeToText::ValueToText(table_int, def), name) => {
-                    let ref_val =
-                        a.unwrap_or_default().to_i64().unwrap_or_default() & (val.to_i64().unwrap_or_default());
+                    let ref_val = a.unwrap_or_default().to_i64().unwrap_or_default()
+                        & (val.to_i64().unwrap_or_default());
                     if let Some(tosc) = table_int.get(&ref_val) {
                         match tosc {
                             TextOrScaleConversion::Txt(txt) => {
@@ -1966,8 +1964,7 @@ fn bitfield_text_table_calculation<T: Integer + NativeType + AsPrimitive<f64>>(
                 }
                 (ValueOrValueRangeToText::ValueRangeToText(txt, def, keys), name) => {
                     let matched_key = keys.iter().enumerate().find(|&x| {
-                        x.1.min <= a.unwrap_or_default()
-                            && a.unwrap_or_default() <= x.1.max
+                        x.1.min <= a.unwrap_or_default() && a.unwrap_or_default() <= x.1.max
                     });
                     if let Some(key) = matched_key {
                         match &txt[key.0] {
@@ -2045,7 +2042,7 @@ fn bitfield_text_table(
     match cn.data.data_type() {
         DataType::UInt8 => {
             cn.data = bitfield_text_table_calculation::<u8>(
-                &cn.data,
+                cn.data.as_ref(),
                 cc_val,
                 cc_ref,
                 *cycle_count as usize,
@@ -2054,7 +2051,7 @@ fn bitfield_text_table(
         }
         DataType::UInt16 => {
             cn.data = bitfield_text_table_calculation::<u16>(
-                &cn.data,
+                cn.data.as_ref(),
                 cc_val,
                 cc_ref,
                 *cycle_count as usize,
@@ -2063,7 +2060,7 @@ fn bitfield_text_table(
         }
         DataType::UInt32 => {
             cn.data = bitfield_text_table_calculation::<u32>(
-                &cn.data,
+                cn.data.as_ref(),
                 cc_val,
                 cc_ref,
                 *cycle_count as usize,
@@ -2072,7 +2069,7 @@ fn bitfield_text_table(
         }
         DataType::UInt64 => {
             cn.data = bitfield_text_table_calculation::<u64>(
-                &cn.data,
+                cn.data.as_ref(),
                 cc_val,
                 cc_ref,
                 *cycle_count as usize,
