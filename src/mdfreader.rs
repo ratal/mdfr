@@ -18,11 +18,11 @@ use log::info;
 use pyo3::prelude::*;
 
 // use crate::export::parquet::export_to_parquet;
+use crate::export::tensor::Order;
 use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::mdfreader3::mdfreader3;
 use crate::mdfreader::mdfreader4::mdfreader4;
 use crate::mdfwriter::mdfwriter4::mdfwriter4;
-use crate::export::tensor::Order;
 
 use self::arrow::{arrow_bit_count, arrow_byte_count, arrow_to_mdf_data_type, ndim, shape};
 
@@ -151,7 +151,7 @@ impl Mdf {
         master_flag: bool,
         unit: Option<String>,
         description: Option<String>,
-    ) {
+    ) -> Result<()> {
         // mdfinfo metadata but no data
         let machine_endian: bool = cfg!(target_endian = "big");
         let data_signature = DataSignature {
@@ -173,7 +173,7 @@ impl Mdf {
             master_signature,
             unit,
             description,
-        );
+        )?;
         // add field
         // let is_nullable: bool = data.clone().validity().is_some();
         // let new_field = Field::new(
@@ -203,6 +203,7 @@ impl Mdf {
         //     field_index,
         // };
         // self.channel_indexes.insert(channel_name, index);
+        Ok(())
     }
     /// Removes a channel in memory (no file modification)
     pub fn remove_channel(&mut self, channel_name: &str) {
@@ -237,20 +238,24 @@ impl Mdf {
         Ok(())
     }
     /// Clears all data arrays
-    pub fn clear_all_channel_data_from_memory(&mut self) {
+    pub fn clear_all_channel_data_from_memory(&mut self) -> Result<()> {
         let channel_names = self.get_channel_names_set();
         // self.arrow_data = Vec::new();
         // self.arrow_schema = Schema::default();
         // self.channel_indexes = HashMap::new();
-        self.mdf_info.clear_channel_data_from_memory(channel_names);
+        self.mdf_info
+            .clear_channel_data_from_memory(channel_names)?;
+        Ok(())
     }
 
     /// Clears data arrays
-    pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) {
+    pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) -> Result<()> {
         // self.arrow_data = Vec::new();
         // self.arrow_schema = Schema::default();
         // self.channel_indexes = HashMap::new();
-        self.mdf_info.clear_channel_data_from_memory(channel_names);
+        self.mdf_info
+            .clear_channel_data_from_memory(channel_names)?;
+        Ok(())
     }
 
     // /// export to Parquet file

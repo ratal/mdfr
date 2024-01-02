@@ -257,21 +257,19 @@ impl MdfInfo {
         channel_master_list
     }
     /// Clears all data arrays
-    pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) {
+    pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) -> Result<()> {
         match self {
             MdfInfo::V3(mdfinfo3) => {
                 mdfinfo3.clear_channel_data_from_memory(channel_names);
             }
             MdfInfo::V4(mdfinfo4) => {
-                mdfinfo4.clear_channel_data_from_memory(channel_names);
+                mdfinfo4.clear_channel_data_from_memory(channel_names)?;
             }
         }
+        Ok(())
     }
     /// returns channel's data ndarray.
-    pub fn get_channel_data(
-        &self,
-        channel_name: &str,
-    ) -> Option<Box<dyn Array>> {
+    pub fn get_channel_data(&self, channel_name: &str) -> Option<Box<dyn Array>> {
         let data = match self {
             MdfInfo::V3(mdfinfo3) => {
                 // mdfinfo3.get_channel_data(channel_name)
@@ -289,18 +287,19 @@ impl MdfInfo {
         master: MasterSignature,
         unit: Option<String>,
         description: Option<String>,
-    ) {
+    ) -> Result<()> {
         match self {
             MdfInfo::V3(mdfinfo3) => {
                 let mut file_name = PathBuf::from(mdfinfo3.file_name.as_str());
                 file_name.set_extension("mf4");
                 let mut mdf4 = convert3to4(mdfinfo3, &file_name.to_string_lossy());
-                mdf4.add_channel(channel_name, data, master, unit, description);
+                mdf4.add_channel(channel_name, data, master, unit, description)?;
             }
             MdfInfo::V4(mdfinfo4) => {
-                mdfinfo4.add_channel(channel_name, data, master, unit, description);
+                mdfinfo4.add_channel(channel_name, data, master, unit, description)?;
             }
         }
+        Ok(())
     }
     /// Convert mdf verion 3.x to 4.2
     /// Require file name parameter but no file written

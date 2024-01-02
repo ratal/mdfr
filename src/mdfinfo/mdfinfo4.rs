@@ -2,9 +2,9 @@
 use crate::export::tensor::Order;
 use crate::mdfreader::arrow::{arrow_data_type_init, ndim};
 use crate::mdfreader::{DataSignature, MasterSignature};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Context, Error, Result};
 use arrow2::array::{Array, PrimitiveArray};
-use arrow2::bitmap::{MutableBitmap, Bitmap};
+use arrow2::bitmap::{Bitmap, MutableBitmap};
 use arrow2::buffer::Buffer;
 use arrow2::datatypes::{DataType, Field, Metadata};
 use binrw::{binrw, BinReaderExt, BinWriterExt};
@@ -77,10 +77,7 @@ impl MdfInfo4 {
         self.channel_names_set.get(channel_name)
     }
     /// Returns the channel's vector data if present in memory, otherwise None.
-    pub fn get_channel_data(
-        &self,
-        channel_name: &str,
-    ) -> Option<Box<dyn Array>> {
+    pub fn get_channel_data(&self, channel_name: &str) -> Option<Box<dyn Array>> {
         let mut data: Option<Box<dyn Array>> = None;
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
             self.get_channel_id(channel_name)
@@ -194,7 +191,7 @@ impl MdfInfo4 {
         channel_master_list
     }
     /// empty the channels' ndarray
-    pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) {
+    pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) -> Result<()> {
         for channel_name in channel_names {
             if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
                 self.channel_names_set.get_mut(&channel_name)
@@ -208,7 +205,7 @@ impl MdfInfo4 {
                                     cn.block.cn_data_type,
                                     cn.n_bytes,
                                     ndim(cn.data.clone()) > 1,
-                                )
+                                )?
                                 .to_boxed();
                             }
                         }
@@ -216,6 +213,7 @@ impl MdfInfo4 {
                 }
             }
         }
+        Ok(())
     }
     /// returns a new empty MdfInfo4 struct
     pub fn new(file_name: &str, n_channels: usize) -> MdfInfo4 {
@@ -239,7 +237,7 @@ impl MdfInfo4 {
         mut master: MasterSignature,
         unit: Option<String>,
         description: Option<String>,
-    ) {
+    ) -> Result<(), Error> {
         let mut cg_block = Cg4Block {
             cg_cycle_count: data.len as u64,
             ..Default::default()
@@ -342,7 +340,7 @@ impl MdfInfo4 {
             cn_block.cn_data_type,
             n_bytes,
             data_ndim > 0,
-        )
+        )?
         .data_type()
         .clone();
         let cn = Cn4 {
@@ -390,6 +388,7 @@ impl MdfInfo4 {
             channel_name,
             (master.master_channel, dg_pos, (cg_pos, 0), (cn_pos, 0)),
         );
+        Ok(())
     }
     /// Removes a channel in memory (no file modification)
     pub fn remove_channel(&mut self, channel_name: &str) {
@@ -1929,7 +1928,7 @@ impl Cg4 {
                                 );
                             },
                         );
-                        cn.data=cn.data.with_validity(Some(Bitmap::from(mask.clone())));
+                        cn.data = cn.data.with_validity(Some(Bitmap::from(mask.clone())));
                     }
                 });
             self.invalid_bytes = None; // Clears out invalid bytes channel
@@ -2576,7 +2575,7 @@ fn parse_cn4_block(
         pos_byte_beg,
         n_bytes,
         composition: compo,
-        data: arrow_data_type_init(cn_type, data_type, n_bytes, is_array),
+        data: arrow_data_type_init(cn_type, data_type, n_bytes, is_array)?,
         endian,
         invalid_mask,
         channel_data_valid: false,

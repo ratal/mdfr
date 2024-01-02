@@ -112,25 +112,31 @@ impl<T: NativeType> Tensor<T> {
             Some(ref s) => {
                 if let Some(ref st) = strides {
                     if st.len() != s.len() {
-                        return Err(Error::InvalidArgumentError(
-                            "shape and stride dimensions differ".to_string(),
-                        ));
+                        return Err(Error::InvalidArgumentError(format!(
+                            "shape {} and stride {} dimensions differ",
+                            s.len(),
+                            st.len()
+                        )));
                     }
                 }
 
                 if let Some(ref n) = names {
                     if n.len() != s.len() {
-                        return Err(Error::InvalidArgumentError(
-                            "number of dimensions and number of dimension names differ".to_string(),
-                        ));
+                        return Err(Error::InvalidArgumentError(format!(
+                            "number of dimensions {} and number of dimension names differ {}",
+                            s.len(),
+                            n.len()
+                        )));
                     }
                 }
 
                 let total_elements: usize = s.iter().product();
                 if total_elements != values.len() {
-                    return Err(Error::InvalidArgumentError(
-                        "number of elements in buffer does not match dimensions".to_string(),
-                    ));
+                    return Err(Error::InvalidArgumentError(format!(
+                        "number of elements {} in buffer does not match dimensions {}",
+                        total_elements,
+                        values.len()
+                    )));
                 }
             }
         };
