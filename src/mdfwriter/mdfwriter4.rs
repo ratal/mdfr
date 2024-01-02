@@ -1,6 +1,6 @@
 //! Writer of data in memory into mdf4.2 file
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     fs::OpenOptions,
     io::{BufWriter, Cursor, Seek, SeekFrom, Write},
     ops::Deref,
@@ -20,18 +20,13 @@ use crate::{
     mdfreader::{
         arrow::{
             arrow_bit_count, arrow_byte_count, arrow_data_type_init, arrow_to_bytes,
-            arrow_to_mdf_data_type, ndim,
+            arrow_to_mdf_data_type, ndim, shape,
         },
-        channel_data::data_type_init,
         Mdf,
     },
 };
 use anyhow::{bail, Context, Error, Result};
-use arrow2::{
-    array::Array,
-    bitmap::Bitmap,
-    datatypes::{Field, Schema},
-};
+use arrow2::{array::Array, bitmap::Bitmap};
 use binrw::BinWriterExt;
 use crossbeam_channel::bounded;
 use parking_lot::Mutex;
@@ -135,7 +130,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
             .write(true)
             .create(true)
             .open(&*file)
-            .expect("Cannot create the file");
+            .context("Cannot create the file")?;
         let mut writer = BufWriter::new(&f);
 
         writer
@@ -144,7 +139,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
         for buffer in rx {
             writer
                 .write_all(&buffer)
-                .expect("Could not write data blocks buffer");
+                .context("Could not write data blocks buffer")?;
         }
         Ok(())
     });
@@ -584,9 +579,7 @@ fn create_blocks(
         let data_ndim = ndim(data.clone()) - 1;
         let mut composition: Option<Composition> = None;
         if data_ndim > 0 {
-            let data_dim_size = cn
-                .data
-                .shape()
+            let data_dim_size = shape(cn.data.clone())
                 .0
                 .iter()
                 .skip(1)
@@ -625,7 +618,7 @@ fn create_blocks(
                 cn_block.cn_data_type,
                 cg_block.cg_data_bytes,
                 data_ndim > 0,
-            ),
+            )?,
             block: cn_block,
             endian: machine_endian,
             block_position: cn_position,
