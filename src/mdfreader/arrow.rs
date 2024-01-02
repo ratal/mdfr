@@ -3,6 +3,7 @@ use crate::export::tensor::Order;
 use crate::export::tensor::Tensor;
 use crate::mdfinfo::mdfinfo4::Cn4;
 use crate::mdfinfo::mdfinfo4::MdfInfo4;
+use anyhow::{bail, Context, Error};
 // use crate::mdfinfo::MdfInfo;
 // use crate::mdfreader::channel_data::ChannelData;
 // use crate::mdfreader::Mdf;
@@ -155,7 +156,7 @@ use pyo3::{ffi::Py_uintptr_t, PyAny, PyObject, PyResult};
 //             )),
 //             ChannelData::ArrayDInt8(a) => {
 //                 let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-//                 Box::new(Tensor::new(
+//                 Box::new(Tensor::try_new(
 //                     DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int8), None),
 //                     Buffer::<i8>::from(a.0),
 //                     Some(a.1 .0),
@@ -166,7 +167,7 @@ use pyo3::{ffi::Py_uintptr_t, PyAny, PyObject, PyResult};
 //             }
 //             ChannelData::ArrayDUInt8(a) => {
 //                 let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-//                 Box::new(Tensor::new(
+//                 Box::new(Tensor::try_new(
 //                     DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt8), None),
 //                     Buffer::<u8>::from(a.0),
 //                     Some(a.1 .0),
@@ -177,7 +178,7 @@ use pyo3::{ffi::Py_uintptr_t, PyAny, PyObject, PyResult};
 //             }
 //             ChannelData::ArrayDInt16(a) => {
 //                 let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-//                 Box::new(Tensor::new(
+//                 Box::new(Tensor::try_new(
 //                     DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int16), None),
 //                     Buffer::<i16>::from(a.0),
 //                     Some(a.1 .0),
@@ -188,7 +189,7 @@ use pyo3::{ffi::Py_uintptr_t, PyAny, PyObject, PyResult};
 //             }
 //             ChannelData::ArrayDUInt16(a) => {
 //                 let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-//                 Box::new(Tensor::new(
+//                 Box::new(Tensor::try_new(
 //                     DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt16), None),
 //                     Buffer::<u16>::from(a.0),
 //                     Some(a.1 .0),
@@ -199,7 +200,7 @@ use pyo3::{ffi::Py_uintptr_t, PyAny, PyObject, PyResult};
 //             }
 //             ChannelData::ArrayDFloat16(a) => {
 //                 let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-//                 Box::new(Tensor::new(
+//                 Box::new(Tensor::try_new(
 //                     DataType::Extension("Tensor".to_owned(), Box::new(DataType::Float32), None),
 //                     Buffer::<f32>::from(a.0),
 //                     Some(a.1 .0),
@@ -210,7 +211,7 @@ use pyo3::{ffi::Py_uintptr_t, PyAny, PyObject, PyResult};
 //             }
 //             ChannelData::ArrayDInt24(a) => {
 //                 let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-//                 Box::new(Tensor::new(
+//                 Box::new(Tensor::try_new(
 //                     DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int32), None),
 //                     Buffer::<i32>::from(a.0),
 //                     Some(a.1 .0),
@@ -221,7 +222,7 @@ use pyo3::{ffi::Py_uintptr_t, PyAny, PyObject, PyResult};
 //             }
 //             ChannelData::ArrayDUInt24(a) => {
 //                 let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-//                 Box::new(Tensor::new(
+//                 Box::new(Tensor::try_new(
 //                     DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt32), None),
 //                     Buffer::<u32>::from(a.0),
 //                     Some(a.1 .0),
@@ -232,7 +233,7 @@ use pyo3::{ffi::Py_uintptr_t, PyAny, PyObject, PyResult};
 //             }
 //             ChannelData::ArrayDInt32(a) => {
 //                 let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-//                 Box::new(Tensor::new(
+//                 Box::new(Tensor::try_new(
 //                     DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int32), None),
 //                     Buffer::<i32>::from(a.0),
 //                     Some(a.1 .0),
@@ -243,7 +244,7 @@ use pyo3::{ffi::Py_uintptr_t, PyAny, PyObject, PyResult};
 //             }
 //             ChannelData::ArrayDUInt32(a) => {
 //                 let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-//                 Box::new(Tensor::new(
+//                 Box::new(Tensor::try_new(
 //                     DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt32), None),
 //                     Buffer::<u32>::from(a.0),
 //                     Some(a.1 .0),
@@ -254,7 +255,7 @@ use pyo3::{ffi::Py_uintptr_t, PyAny, PyObject, PyResult};
 //             }
 //             ChannelData::ArrayDFloat32(a) => {
 //                 let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-//                 Box::new(Tensor::new(
+//                 Box::new(Tensor::try_new(
 //                     DataType::Extension("Tensor".to_owned(), Box::new(DataType::Float32), None),
 //                     Buffer::<f32>::from(a.0),
 //                     Some(a.1 .0),
@@ -265,7 +266,7 @@ use pyo3::{ffi::Py_uintptr_t, PyAny, PyObject, PyResult};
 //             }
 //             ChannelData::ArrayDInt48(a) => {
 //                 let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-//                 Box::new(Tensor::new(
+//                 Box::new(Tensor::try_new(
 //                     DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int64), None),
 //                     Buffer::<i64>::from(a.0),
 //                     Some(a.1 .0),
@@ -276,7 +277,7 @@ use pyo3::{ffi::Py_uintptr_t, PyAny, PyObject, PyResult};
 //             }
 //             ChannelData::ArrayDUInt48(a) => {
 //                 let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-//                 Box::new(Tensor::new(
+//                 Box::new(Tensor::try_new(
 //                     DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt64), None),
 //                     Buffer::<u64>::from(a.0),
 //                     Some(a.1 .0),
@@ -287,7 +288,7 @@ use pyo3::{ffi::Py_uintptr_t, PyAny, PyObject, PyResult};
 //             }
 //             ChannelData::ArrayDInt64(a) => {
 //                 let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-//                 Box::new(Tensor::new(
+//                 Box::new(Tensor::try_new(
 //                     DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int64), None),
 //                     Buffer::<i64>::from(a.0),
 //                     Some(a.1 .0),
@@ -298,7 +299,7 @@ use pyo3::{ffi::Py_uintptr_t, PyAny, PyObject, PyResult};
 //             }
 //             ChannelData::ArrayDUInt64(a) => {
 //                 let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-//                 Box::new(Tensor::new(
+//                 Box::new(Tensor::try_new(
 //                     DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt64), None),
 //                     Buffer::<u64>::from(a.0),
 //                     Some(a.1 .0),
@@ -309,7 +310,7 @@ use pyo3::{ffi::Py_uintptr_t, PyAny, PyObject, PyResult};
 //             }
 //             ChannelData::ArrayDFloat64(a) => {
 //                 let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-//                 Box::new(Tensor::new(
+//                 Box::new(Tensor::try_new(
 //                     DataType::Extension("Tensor".to_owned(), Box::new(DataType::Float64), None),
 //                     Buffer::<f64>::from(a.0),
 //                     Some(a.1 .0),
@@ -493,8 +494,10 @@ pub fn array_to_rust(arrow_array: &PyAny) -> PyResult<Box<dyn Array>> {
     )?;
 
     unsafe {
-        let field = ffi::import_field_from_c(schema.as_ref()).unwrap();
-        let array = ffi::import_array_from_c(*array, field.data_type).unwrap();
+        let field =
+            ffi::import_field_from_c(schema.as_ref()).context("field import from C failed")?;
+        let array = ffi::import_array_from_c(*array, field.data_type)
+            .context("array import from C failed")?;
         Ok(array)
     }
 }
@@ -1374,7 +1377,7 @@ fn to_bytes(array: Box<dyn Array>, data_type: &DataType) -> Vec<u8> {
         },
         DataType::Extension(ext_str, dtype, _) => match ext_str.as_str() {
             "Tensor" => to_bytes(array, dtype),
-            _ => panic!("unsupported type"),
+            _ => panic!("unsupported extension type Tensor"),
         },
         _ => panic!("unsupported type"),
     }
@@ -1386,7 +1389,7 @@ pub fn arrow_data_type_init(
     cn_data_type: u8,
     n_bytes: u32,
     is_array: bool,
-) -> Box<dyn Array> {
+) -> Result<Box<dyn Array>, Error> {
     if !is_array {
         // Not an array
         if cn_type != 3 || cn_type != 6 {
@@ -1395,257 +1398,238 @@ pub fn arrow_data_type_init(
                 0 | 1 => {
                     // unsigned int
                     if n_bytes <= 1 {
-                        PrimitiveArray::new(DataType::UInt8, Buffer::<u8>::new(), None).boxed()
+                        Ok(PrimitiveArray::new(DataType::UInt8, Buffer::<u8>::new(), None).boxed())
                     } else if n_bytes == 2 {
-                        PrimitiveArray::new(DataType::UInt16, Buffer::<u16>::new(), None).boxed()
-                    } else if n_bytes == 3 {
-                        PrimitiveArray::new(DataType::UInt32, Buffer::<u32>::new(), None).boxed()
-                    } else if n_bytes == 4 {
-                        PrimitiveArray::new(DataType::UInt32, Buffer::<u32>::new(), None).boxed()
-                    } else if n_bytes <= 6 {
-                        PrimitiveArray::new(DataType::UInt64, Buffer::<u64>::new(), None).boxed()
+                        Ok(
+                            PrimitiveArray::new(DataType::UInt16, Buffer::<u16>::new(), None)
+                                .boxed(),
+                        )
+                    } else if n_bytes <= 4 {
+                        Ok(
+                            PrimitiveArray::new(DataType::UInt32, Buffer::<u32>::new(), None)
+                                .boxed(),
+                        )
                     } else {
-                        PrimitiveArray::new(DataType::UInt64, Buffer::<u64>::new(), None).boxed()
+                        Ok(
+                            PrimitiveArray::new(DataType::UInt64, Buffer::<u64>::new(), None)
+                                .boxed(),
+                        )
                     }
                 }
                 2 | 3 => {
                     // signed int
                     if n_bytes <= 1 {
-                        PrimitiveArray::new(DataType::Int8, Buffer::<i8>::new(), None).boxed()
+                        Ok(PrimitiveArray::new(DataType::Int8, Buffer::<i8>::new(), None).boxed())
                     } else if n_bytes == 2 {
-                        PrimitiveArray::new(DataType::Int16, Buffer::<i16>::new(), None).boxed()
-                    } else if n_bytes == 3 {
-                        PrimitiveArray::new(DataType::Int32, Buffer::<i32>::new(), None).boxed()
-                    } else if n_bytes == 4 {
-                        PrimitiveArray::new(DataType::Int32, Buffer::<i32>::new(), None).boxed()
-                    } else if n_bytes <= 6 {
-                        PrimitiveArray::new(DataType::Int64, Buffer::<i64>::new(), None).boxed()
+                        Ok(
+                            PrimitiveArray::new(DataType::Int16, Buffer::<i16>::new(), None)
+                                .boxed(),
+                        )
+                    } else if n_bytes <= 4 {
+                        Ok(
+                            PrimitiveArray::new(DataType::Int32, Buffer::<i32>::new(), None)
+                                .boxed(),
+                        )
                     } else {
-                        PrimitiveArray::new(DataType::Int64, Buffer::<i64>::new(), None).boxed()
+                        Ok(
+                            PrimitiveArray::new(DataType::Int64, Buffer::<i64>::new(), None)
+                                .boxed(),
+                        )
                     }
                 }
                 4 | 5 => {
                     // float
                     if n_bytes <= 4 {
-                        PrimitiveArray::new(DataType::Float32, Buffer::<f32>::new(), None).boxed()
+                        Ok(
+                            PrimitiveArray::new(DataType::Float32, Buffer::<f32>::new(), None)
+                                .boxed(),
+                        )
                     } else {
-                        PrimitiveArray::new(DataType::Float64, Buffer::<f64>::new(), None).boxed()
+                        Ok(
+                            PrimitiveArray::new(DataType::Float64, Buffer::<f64>::new(), None)
+                                .boxed(),
+                        )
                     }
                 }
                 15 | 16 => {
                     // complex
                     if n_bytes <= 4 {
                         let field = Field::new("complex32", DataType::Float32, false);
-                        FixedSizeListArray::new(
+                        Ok(FixedSizeListArray::new(
                             DataType::FixedSizeList(Box::new(field), 2),
                             PrimitiveArray::new(DataType::Float32, Buffer::<f32>::new(), None)
                                 .boxed(),
                             None,
                         )
-                        .to_boxed()
+                        .to_boxed())
                     } else {
                         let field = Field::new("complex64", DataType::Float64, false);
-                        FixedSizeListArray::new(
+                        Ok(FixedSizeListArray::new(
                             DataType::FixedSizeList(Box::new(field), 2),
                             PrimitiveArray::new(DataType::Float64, Buffer::<f64>::new(), None)
                                 .boxed(),
                             None,
                         )
-                        .to_boxed()
+                        .to_boxed())
                     }
                 }
-                6 | 7 | 8 | 9 => {
-                    // SBC ISO-8859-1 to be converted into UTF8
-                    // String UTF8
-                    // String UTF16 to be converted into UTF8
-                    Utf8Array::<i64>::new(
+                6..=9 => {
+                    // 6: SBC ISO-8859-1 to be converted into UTF8
+                    // 7: String UTF8
+                    // 8 & 9:String UTF16 to be converted into UTF8
+                    Ok(Utf8Array::<i64>::new(
                         DataType::Utf8,
                         OffsetsBuffer::new(),
                         Buffer::<u8>::new(),
                         None,
                     )
-                    .boxed()
+                    .boxed())
                 }
                 _ => {
                     // bytearray
                     if cn_type == 1 {
                         // VLSD
-                        BinaryArray::<i64>::new(
+                        Ok(Utf8Array::<i64>::new(
                             DataType::Utf8,
                             OffsetsBuffer::new(),
                             Buffer::<u8>::new(),
                             None,
                         )
-                        .boxed()
+                        .boxed())
                     } else {
-                        FixedSizeBinaryArray::new(DataType::FixedSizeBinary(n_bytes as usize), Buffer::<u8>::new(), None).boxed()
+                        Ok(FixedSizeBinaryArray::new(
+                            DataType::FixedSizeBinary(n_bytes as usize),
+                            Buffer::<u8>::new(),
+                            None,
+                        )
+                        .boxed())
                     }
                 }
             }
         } else {
             // virtual channels, cn_bit_count = 0 -> n_bytes = 0, must be LE unsigned int
-            PrimitiveArray::new(DataType::UInt64, Buffer::<u64>::new(), None).boxed()
+            Ok(PrimitiveArray::new(DataType::UInt64, Buffer::<u64>::new(), None).boxed())
         }
     } else if cn_type != 3 && cn_type != 6 {
-        // Array not virtual
+        // Array, not virtual
         match cn_data_type {
             0 | 1 => {
                 // unsigned int
                 if n_bytes <= 1 {
-                    Tensor::new(
+                    Ok(Tensor::try_new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt8), None),
                         Buffer::<u8>::new(),
                         Some(Vec::new()),
                         Some(Order::RowMajor),
                         None,
                         None,
-                    )
-                    .to_boxed()
+                    )?
+                    .to_boxed())
                 } else if n_bytes == 2 {
-                    Tensor::new(
+                    Ok(Tensor::try_new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt16), None),
                         Buffer::<u16>::new(),
                         Some(Vec::new()),
                         Some(Order::RowMajor),
                         None,
                         None,
-                    )
-                    .to_boxed()
-                } else if n_bytes == 3 {
-                    Tensor::new(
+                    )?
+                    .to_boxed())
+                } else if n_bytes <= 4 {
+                    Ok(Tensor::try_new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt32), None),
                         Buffer::<u32>::new(),
                         Some(Vec::new()),
                         Some(Order::RowMajor),
                         None,
                         None,
-                    )
-                    .to_boxed()
-                } else if n_bytes == 4 {
-                    Tensor::new(
-                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt32), None),
-                        Buffer::<u32>::new(),
-                        Some(Vec::new()),
-                        Some(Order::RowMajor),
-                        None,
-                        None,
-                    )
-                    .to_boxed()
-                } else if n_bytes <= 6 {
-                    Tensor::new(
-                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt64), None),
-                        Buffer::<u64>::new(),
-                        Some(Vec::new()),
-                        Some(Order::RowMajor),
-                        None,
-                        None,
-                    )
-                    .to_boxed()
+                    )?
+                    .to_boxed())
                 } else {
-                    Tensor::new(
+                    Ok(Tensor::try_new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt64), None),
                         Buffer::<u64>::new(),
                         Some(Vec::new()),
                         Some(Order::RowMajor),
                         None,
                         None,
-                    )
-                    .to_boxed()
+                    )?
+                    .to_boxed())
                 }
             }
             2 | 3 => {
                 // signed int
                 if n_bytes <= 1 {
-                    Tensor::new(
+                    Ok(Tensor::try_new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int8), None),
                         Buffer::<i8>::new(),
                         Some(Vec::new()),
                         Some(Order::RowMajor),
                         None,
                         None,
-                    )
-                    .to_boxed()
+                    )?
+                    .to_boxed())
                 } else if n_bytes == 2 {
-                    Tensor::new(
+                    Ok(Tensor::try_new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int16), None),
                         Buffer::<i16>::new(),
                         Some(Vec::new()),
                         Some(Order::RowMajor),
                         None,
                         None,
-                    )
-                    .to_boxed()
-                } else if n_bytes == 3 {
-                    Tensor::new(
+                    )?
+                    .to_boxed())
+                } else if n_bytes <= 4 {
+                    Ok(Tensor::try_new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int32), None),
                         Buffer::<i32>::new(),
                         Some(Vec::new()),
                         Some(Order::RowMajor),
                         None,
                         None,
-                    )
-                    .to_boxed()
-                } else if n_bytes == 4 {
-                    Tensor::new(
-                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int32), None),
-                        Buffer::<i32>::new(),
-                        Some(Vec::new()),
-                        Some(Order::RowMajor),
-                        None,
-                        None,
-                    )
-                    .to_boxed()
-                } else if n_bytes <= 6 {
-                    Tensor::new(
-                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int64), None),
-                        Buffer::<i64>::new(),
-                        Some(Vec::new()),
-                        Some(Order::RowMajor),
-                        None,
-                        None,
-                    )
-                    .to_boxed()
+                    )?
+                    .to_boxed())
                 } else {
-                    Tensor::new(
+                    Ok(Tensor::try_new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int64), None),
                         Buffer::<i64>::new(),
                         Some(Vec::new()),
                         Some(Order::RowMajor),
                         None,
                         None,
-                    )
-                    .to_boxed()
+                    )?
+                    .to_boxed())
                 }
             }
             4 | 5 => {
                 // float
                 if n_bytes <= 4 {
-                    Tensor::new(
+                    Ok(Tensor::try_new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::Float32), None),
                         Buffer::<f32>::new(),
                         Some(Vec::new()),
                         Some(Order::RowMajor),
                         None,
                         None,
-                    )
-                    .to_boxed()
+                    )?
+                    .to_boxed())
                 } else {
-                    Tensor::new(
+                    Ok(Tensor::try_new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::Float64), None),
                         Buffer::<f64>::new(),
                         Some(Vec::new()),
                         Some(Order::RowMajor),
                         None,
                         None,
-                    )
-                    .to_boxed()
+                    )?
+                    .to_boxed())
                 }
             }
             15 | 16 => {
                 // complex
                 if n_bytes <= 4 {
                     let field = Field::new("complex32", DataType::Float32, false);
-                    Tensor::new(
+                    Ok(Tensor::try_new(
                         DataType::Extension(
                             "Tensor".to_owned(),
                             Box::new(DataType::FixedSizeList(Box::new(field), 2)),
@@ -1656,11 +1640,11 @@ pub fn arrow_data_type_init(
                         Some(Order::RowMajor),
                         None,
                         None,
-                    )
-                    .to_boxed()
+                    )?
+                    .to_boxed())
                 } else {
                     let field = Field::new("complex64", DataType::Float64, false);
-                    Tensor::new(
+                    Ok(Tensor::try_new(
                         DataType::Extension(
                             "Tensor".to_owned(),
                             Box::new(DataType::FixedSizeList(Box::new(field), 2)),
@@ -1671,324 +1655,306 @@ pub fn arrow_data_type_init(
                         Some(Order::RowMajor),
                         None,
                         None,
-                    )
-                    .to_boxed()
+                    )?
+                    .to_boxed())
                 }
             }
             _ => {
-                // strings or bytes arrays not implemented
-                todo!();
+                // strings or bytes arrays not implemented for tensors, theoritically not possible from spec
+                bail!("strings or bytes arrays not implemented for tensors, should it be ?");
             }
         }
     } else {
         // virtual channels arrays not implemented, can it even exists ?
-        todo!();
+        bail!("Virtual channel arrays not implemented, should it even exist ?");
     }
 }
 
 /// based on already existing type, rewrite the array filled with zeros at needed size based on cycle_count
-pub fn arrow_zeros(
+pub fn arrow_init_zeros(
+    data: &dyn Array,
     cn_type: u8,
-    cn_data_type: u8,
     cycle_count: u64,
-    n_bytes: u32,
-    dim: (Vec<usize>, Order),
-) -> Box<dyn Array> {
-    if dim.0.len() == 1 {
-        // Not an array
-        if cn_type != 3 || cn_type != 6 {
-            // not virtual channel or vlsd
-            match cn_data_type {
-                0 | 1 => {
-                    // unsigned int
-                    if n_bytes <= 1 {
-                        PrimitiveArray::from_vec(vec![0u8; cycle_count as usize]).boxed()
-                    } else if n_bytes == 2 {
-                        PrimitiveArray::from_vec(vec![0u16; cycle_count as usize]).boxed()
-                    } else if n_bytes == 3 {
-                        PrimitiveArray::from_vec(vec![0u32; cycle_count as usize]).boxed()
-                    } else if n_bytes == 4 {
-                        PrimitiveArray::from_vec(vec![0u32; cycle_count as usize]).boxed()
-                    } else if n_bytes <= 6 {
-                        PrimitiveArray::from_vec(vec![0u64; cycle_count as usize]).boxed()
-                    } else {
-                        PrimitiveArray::from_vec(vec![0u64; cycle_count as usize]).boxed()
-                    }
-                }
-                2 | 3 => {
-                    // signed int
-                    if n_bytes <= 1 {
-                        PrimitiveArray::from_vec(vec![0i8; cycle_count as usize]).boxed()
-                    } else if n_bytes == 2 {
-                        PrimitiveArray::from_vec(vec![0i16; cycle_count as usize]).boxed()
-                    } else if n_bytes == 3 {
-                        PrimitiveArray::from_vec(vec![0i32; cycle_count as usize]).boxed()
-                    } else if n_bytes == 4 {
-                        PrimitiveArray::from_vec(vec![0i32; cycle_count as usize]).boxed()
-                    } else if n_bytes <= 6 {
-                        PrimitiveArray::from_vec(vec![0i64; cycle_count as usize]).boxed()
-                    } else {
-                        PrimitiveArray::from_vec(vec![0i64; cycle_count as usize]).boxed()
-                    }
-                }
-                4 | 5 => {
-                    // float
-                    if n_bytes <= 4 {
-                        PrimitiveArray::from_vec(vec![0f32; cycle_count as usize]).boxed()
-                    } else {
-                        PrimitiveArray::from_vec(vec![0f64; cycle_count as usize]).boxed()
-                    }
-                }
-                15 | 16 => {
-                    // complex
-                    if n_bytes <= 4 {
-                        let field = Field::new("complex32", DataType::Float32, false);
-                        FixedSizeListArray::new(
-                            DataType::FixedSizeList(Box::new(field), 2),
-                            PrimitiveArray::from_vec(vec![0f32; cycle_count as usize]).boxed(),
-                            None,
-                        )
-                        .to_boxed()
-                    } else {
-                        let field = Field::new("complex64", DataType::Float64, false);
-                        FixedSizeListArray::new(
-                            DataType::FixedSizeList(Box::new(field), 2),
-                            PrimitiveArray::from_vec(vec![0f64; cycle_count as usize]).boxed(),
-                            None,
-                        )
-                        .to_boxed()
-                    }
-                }
-                6 | 7 | 8 | 9 => {
-                    // 6: SBC ISO-8859-1 to be converted into UTF8
-                    // 7: String UTF8
-                    // 8 | 9 :String UTF16 to be converted into UTF8
-                    Utf8Array::<i64>::new_null(DataType::LargeUtf8,cycle_count as usize).boxed()
-                }
-                _ => {
-                    // bytearray
-                    if cn_type == 1 {
-                        // VLSD
-                        BinaryArray::<i64>::new_null(DataType::UInt8, cycle_count as usize)
-                            .boxed()
-                    } else {
-                        FixedSizeBinaryArray::new_null(DataType::FixedSizeBinary(n_bytes as usize),
-                            cycle_count as usize
-                        )
-                        .boxed()
-                    }
-                }
-            }
-        } else {
-            // virtual channels, cn_bit_count = 0 -> n_bytes = 0, must be LE unsigned int
-            PrimitiveArray::from_vec(vec![0u64; cycle_count as usize]).boxed()
-        }
-    } else if cn_type != 3 && cn_type != 6 {
-        // Array not virtual
-        match cn_data_type {
-            0 | 1 => {
-                // unsigned int
-                if n_bytes <= 1 {
-                    Tensor::new(
-                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt8), None),
-                        Buffer::from(vec![0u8; (cycle_count as usize) * dim.0.iter().product::<usize>()]),
-                        Some(dim.0),
-                        Some(dim.1),
-                        None,
-                        None,
-                    )
-                    .to_boxed()
-                } else if n_bytes == 2 {
-                    Tensor::new(
-                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt16), None),
-                        Buffer::from(vec![0u16; (cycle_count as usize) * dim.0.iter().product::<usize>()]),
-                        Some(dim.0),
-                        Some(dim.1),
-                        None,
-                        None,
-                    )
-                    .to_boxed()
-                } else if n_bytes == 3 {
-                    Tensor::new(
-                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt32), None),
-                        Buffer::from(vec![0u32; (cycle_count as usize) * dim.0.iter().product::<usize>()]),
-                        Some(dim.0),
-                        Some(dim.1),
-                        None,
-                        None,
-                    )
-                    .to_boxed()
-                } else if n_bytes == 4 {
-                    Tensor::new(
-                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt32), None),
-                        Buffer::from(vec![0u32; (cycle_count as usize) * dim.0.iter().product::<usize>()]),
-                        Some(dim.0),
-                        Some(dim.1),
-                        None,
-                        None,
-                    )
-                    .to_boxed()
-                } else if n_bytes <= 6 {
-                    Tensor::new(
-                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt64), None),
-                        Buffer::from(vec![0u64; (cycle_count as usize) * dim.0.iter().product::<usize>()]),
-                        Some(dim.0),
-                        Some(dim.1),
-                        None,
-                        None,
-                    )
-                    .to_boxed()
-                } else {
-                    Tensor::new(
-                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt64), None),
-                        Buffer::from(vec![0u64; (cycle_count as usize) * dim.0.iter().product::<usize>()]),
-                        Some(dim.0),
-                        Some(dim.1),
-                        None,
-                        None,
-                    )
-                    .to_boxed()
-                }
-            }
-            2 | 3 => {
-                // signed int
-                if n_bytes <= 1 {
-                    Tensor::new(
-                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int8), None),
-                        Buffer::from(vec![0i8; (cycle_count as usize) * dim.0.iter().product::<usize>()]),
-                        Some(dim.0),
-                        Some(dim.1),
-                        None,
-                        None,
-                    )
-                    .to_boxed()
-                } else if n_bytes == 2 {
-                    Tensor::new(
-                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int16), None),
-                        Buffer::from(vec![0i16; (cycle_count as usize) * dim.0.iter().product::<usize>()]),
-                        Some(dim.0),
-                        Some(dim.1),
-                        None,
-                        None,
-                    )
-                    .to_boxed()
-                } else if n_bytes == 3 {
-                    Tensor::new(
-                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int32), None),
-                        Buffer::from(vec![0i32; (cycle_count as usize) * dim.0.iter().product::<usize>()]),
-                        Some(dim.0),
-                        Some(dim.1),
-                        None,
-                        None,
-                    )
-                    .to_boxed()
-                } else if n_bytes == 4 {
-                    Tensor::new(
-                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int32), None),
-                        Buffer::from(vec![0i32; (cycle_count as usize) * dim.0.iter().product::<usize>()]),
-                        Some(dim.0),
-                        Some(dim.1),
-                        None,
-                        None,
-                    )
-                    .to_boxed()
-                } else if n_bytes <= 6 {
-                    Tensor::new(
-                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int64), None),
-                        Buffer::from(vec![0i64; (cycle_count as usize) * dim.0.iter().product::<usize>()]),
-                        Some(dim.0),
-                        Some(dim.1),
-                        None,
-                        None,
-                    )
-                    .to_boxed()
-                } else {
-                    Tensor::new(
-                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int64), None),
-                        Buffer::from(vec![0i64; (cycle_count as usize) * dim.0.iter().product::<usize>()]),
-                        Some(dim.0),
-                        Some(dim.1),
-                        None,
-                        None,
-                    )
-                    .to_boxed()
-                }
-            }
-            4 | 5 => {
-                // float
-                if n_bytes <= 2 {
-                    Tensor::new(
-                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::Float32), None),
-                        Buffer::from(vec![0f32; cycle_count as usize]),
-                        Some(dim.0),
-                        Some(dim.1),
-                        None,
-                        None,
-                    )
-                    .to_boxed()
-                } else if n_bytes <= 4 {
-                    Tensor::new(
-                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::Float32), None),
-                        Buffer::from(vec![0f32; cycle_count as usize]),
-                        Some(dim.0),
-                        Some(dim.1),
-                        None,
-                        None,
-                    )
-                    .to_boxed()
-                } else {
-                    Tensor::new(
-                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::Float64), None),
-                        Buffer::from(vec![0f64; cycle_count as usize]),
-                        Some(dim.0),
-                        Some(dim.1),
-                        None,
-                        None,
-                    )
-                    .to_boxed()
-                }
-            }
-            15 | 16 => {
-                // complex
-                if n_bytes <= 4 {
-                    let field = Field::new("complex32", DataType::Float32, false);
-                    Tensor::new(
-                        DataType::Extension(
-                            "Tensor".to_owned(),
-                            Box::new(DataType::FixedSizeList(Box::new(field), 2)),
-                            None,
-                        ),
-                        Buffer::from(vec![0f32; (cycle_count as usize) * dim.0.iter().product::<usize>() * 2]),
-                        Some(dim.0),
-                        Some(dim.1),
-                        None,
-                        None,
-                    )
-                    .to_boxed()
-                } else {
-                    let field = Field::new("complex64", DataType::Float64, false);
-                    Tensor::new(
-                        DataType::Extension(
-                            "Tensor".to_owned(),
-                            Box::new(DataType::FixedSizeList(Box::new(field), 2)),
-                            None,
-                        ),
-                        Buffer::from(vec![0f64; (cycle_count as usize) * dim.0.iter().product::<usize>() * 2]),
-                        Some(dim.0),
-                        Some(dim.1),
-                        None,
-                        None,
-                    )
-                    .to_boxed()
-                }
-            }
-            _ => {
-                // strings or bytes arrays not implemented
-                todo!();
-            }
-        }
+    shape: (Vec<usize>, Order),
+) -> Result<Box<dyn Array>, Error> {
+    if cn_type == 3 || cn_type == 6 {
+        // virtual channels, cn_bit_count = 0 -> n_bytes = 0, must be LE unsigned int
+        Ok(PrimitiveArray::from_vec(vec![0u64; cycle_count as usize]).boxed())
     } else {
-        // virtual channels arrays not implemented, can it even exists ?
-        todo!();
+        match data.data_type() {
+            DataType::Int8 => Ok(PrimitiveArray::from_vec(vec![0i8; cycle_count as usize]).boxed()),
+            DataType::UInt8 => {
+                Ok(PrimitiveArray::from_vec(vec![0u8; cycle_count as usize]).boxed())
+            }
+            DataType::Int16 => {
+                Ok(PrimitiveArray::from_vec(vec![0i16; cycle_count as usize]).boxed())
+            }
+            DataType::UInt16 => {
+                Ok(PrimitiveArray::from_vec(vec![0u16; cycle_count as usize]).boxed())
+            }
+            DataType::Int32 => {
+                Ok(PrimitiveArray::from_vec(vec![0i32; cycle_count as usize]).boxed())
+            }
+            DataType::UInt32 => {
+                Ok(PrimitiveArray::from_vec(vec![0u32; cycle_count as usize]).boxed())
+            }
+            DataType::Int64 => {
+                Ok(PrimitiveArray::from_vec(vec![0i64; cycle_count as usize]).boxed())
+            }
+            DataType::UInt64 => {
+                Ok(PrimitiveArray::from_vec(vec![0u64; cycle_count as usize]).boxed())
+            }
+            DataType::Float32 => {
+                Ok(PrimitiveArray::from_vec(vec![0f32; cycle_count as usize]).boxed())
+            }
+            DataType::Float64 => {
+                Ok(PrimitiveArray::from_vec(vec![0f64; cycle_count as usize]).boxed())
+            }
+            DataType::FixedSizeBinary(size) => Ok(FixedSizeBinaryArray::new_null(
+                DataType::FixedSizeBinary(*size),
+                cycle_count as usize,
+            )
+            .boxed()),
+            DataType::FixedSizeList(field, size) => {
+                if field.name.eq(&"complex32".to_string()) {
+                    Ok(FixedSizeListArray::new(
+                        DataType::FixedSizeList(field.clone(), *size),
+                        PrimitiveArray::from_vec(vec![0f32; size * cycle_count as usize]).boxed(),
+                        None,
+                    )
+                    .to_boxed())
+                } else if field.name.eq(&"complex64".to_string()) {
+                    Ok(FixedSizeListArray::new(
+                        DataType::FixedSizeList(field.clone(), *size),
+                        PrimitiveArray::from_vec(vec![0f64; size * cycle_count as usize]).boxed(),
+                        None,
+                    )
+                    .to_boxed())
+                } else {
+                    bail!("fixed size list field name not understood")
+                }
+            }
+            DataType::LargeUtf8 => {
+                // 6: SBC ISO-8859-1 to be converted into UTF8
+                // 7: String UTF8
+                // 8 | 9 :String UTF16 to be converted into UTF8
+                Ok(Utf8Array::<i64>::new_null(DataType::LargeUtf8, cycle_count as usize).boxed())
+            }
+            DataType::Extension(extension_name, data_type, _) => {
+                if extension_name.eq(&"Tensor".to_string()) {
+                    match *data_type.clone() {
+                        DataType::Int8 => Ok(Tensor::try_new(
+                            DataType::Extension(
+                                "Tensor".to_owned(),
+                                Box::new(DataType::Int8),
+                                None,
+                            ),
+                            Buffer::from(vec![
+                                0i8;
+                                (cycle_count as usize)
+                                    * shape.0.iter().product::<usize>()
+                            ]),
+                            Some(shape.0),
+                            Some(shape.1),
+                            None,
+                            None,
+                        )?
+                        .to_boxed()),
+                        DataType::UInt8 => Ok(Tensor::try_new(
+                            DataType::Extension(
+                                "Tensor".to_owned(),
+                                Box::new(DataType::UInt8),
+                                None,
+                            ),
+                            Buffer::from(vec![
+                                0u8;
+                                (cycle_count as usize)
+                                    * shape.0.iter().product::<usize>()
+                            ]),
+                            Some(shape.0),
+                            Some(shape.1),
+                            None,
+                            None,
+                        )?
+                        .to_boxed()),
+                        DataType::Int16 => Ok(Tensor::try_new(
+                            DataType::Extension(
+                                "Tensor".to_owned(),
+                                Box::new(DataType::Int16),
+                                None,
+                            ),
+                            Buffer::from(vec![
+                                0i16;
+                                (cycle_count as usize)
+                                    * shape.0.iter().product::<usize>()
+                            ]),
+                            Some(shape.0),
+                            Some(shape.1),
+                            None,
+                            None,
+                        )?
+                        .to_boxed()),
+                        DataType::UInt16 => Ok(Tensor::try_new(
+                            DataType::Extension(
+                                "Tensor".to_owned(),
+                                Box::new(DataType::UInt16),
+                                None,
+                            ),
+                            Buffer::from(vec![
+                                0u16;
+                                (cycle_count as usize)
+                                    * shape.0.iter().product::<usize>()
+                            ]),
+                            Some(shape.0),
+                            Some(shape.1),
+                            None,
+                            None,
+                        )?
+                        .to_boxed()),
+                        DataType::Int32 => Ok(Tensor::try_new(
+                            DataType::Extension(
+                                "Tensor".to_owned(),
+                                Box::new(DataType::Int32),
+                                None,
+                            ),
+                            Buffer::from(vec![
+                                0i32;
+                                (cycle_count as usize)
+                                    * shape.0.iter().product::<usize>()
+                            ]),
+                            Some(shape.0),
+                            Some(shape.1),
+                            None,
+                            None,
+                        )?
+                        .to_boxed()),
+                        DataType::UInt32 => Ok(Tensor::try_new(
+                            DataType::Extension(
+                                "Tensor".to_owned(),
+                                Box::new(DataType::UInt32),
+                                None,
+                            ),
+                            Buffer::from(vec![
+                                0u32;
+                                (cycle_count as usize)
+                                    * shape.0.iter().product::<usize>()
+                            ]),
+                            Some(shape.0),
+                            Some(shape.1),
+                            None,
+                            None,
+                        )?
+                        .to_boxed()),
+                        DataType::Int64 => Ok(Tensor::try_new(
+                            DataType::Extension(
+                                "Tensor".to_owned(),
+                                Box::new(DataType::Int64),
+                                None,
+                            ),
+                            Buffer::from(vec![
+                                0i64;
+                                (cycle_count as usize)
+                                    * shape.0.iter().product::<usize>()
+                            ]),
+                            Some(shape.0),
+                            Some(shape.1),
+                            None,
+                            None,
+                        )?
+                        .to_boxed()),
+                        DataType::UInt64 => Ok(Tensor::try_new(
+                            DataType::Extension(
+                                "Tensor".to_owned(),
+                                Box::new(DataType::UInt64),
+                                None,
+                            ),
+                            Buffer::from(vec![
+                                0u64;
+                                (cycle_count as usize)
+                                    * shape.0.iter().product::<usize>()
+                            ]),
+                            Some(shape.0),
+                            Some(shape.1),
+                            None,
+                            None,
+                        )?
+                        .to_boxed()),
+                        DataType::Float32 => Ok(Tensor::try_new(
+                            DataType::Extension(
+                                "Tensor".to_owned(),
+                                Box::new(DataType::Float32),
+                                None,
+                            ),
+                            Buffer::from(vec![
+                                0f32;
+                                (cycle_count as usize)
+                                    * shape.0.iter().product::<usize>()
+                            ]),
+                            Some(shape.0),
+                            Some(shape.1),
+                            None,
+                            None,
+                        )?
+                        .to_boxed()),
+                        DataType::Float64 => Ok(Tensor::try_new(
+                            DataType::Extension(
+                                "Tensor".to_owned(),
+                                Box::new(DataType::Float64),
+                                None,
+                            ),
+                            Buffer::from(vec![
+                                0f64;
+                                (cycle_count as usize)
+                                    * shape.0.iter().product::<usize>()
+                            ]),
+                            Some(shape.0),
+                            Some(shape.1),
+                            None,
+                            None,
+                        )?
+                        .to_boxed()),
+                        DataType::FixedSizeList(field, size) => {
+                            if field.name.eq(&"complex32".to_string()) {
+                                Ok(FixedSizeListArray::new(
+                                    DataType::FixedSizeList(field.clone(), size),
+                                    PrimitiveArray::from_vec(vec![
+                                        0f32;
+                                        size * cycle_count as usize
+                                            * shape
+                                                .0
+                                                .iter()
+                                                .product::<usize>()
+                                    ])
+                                    .boxed(),
+                                    None,
+                                )
+                                .to_boxed())
+                            } else if field.name.eq(&"complex64".to_string()) {
+                                Ok(FixedSizeListArray::new(
+                                    DataType::FixedSizeList(field.clone(), size),
+                                    PrimitiveArray::from_vec(vec![
+                                        0f64;
+                                        size * cycle_count as usize
+                                            * shape
+                                                .0
+                                                .iter()
+                                                .product::<usize>()
+                                    ])
+                                    .boxed(),
+                                    None,
+                                )
+                                .to_boxed())
+                            } else {
+                                bail!("fixed size list field name not understood")
+                            }
+                        }
+                        _ => bail!("Tensor data type {:?} not properly initialised", data_type),
+                    }
+                } else {
+                    bail!("extension {} not properly initialised", extension_name)
+                }
+            }
+            _ => bail!("data type {:?} not properly initialised", data.data_type()),
+        }
     }
 }
