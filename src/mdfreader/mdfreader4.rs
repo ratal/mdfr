@@ -86,7 +86,7 @@ pub fn mdfreader4<'a>(
                         channel_group.process_all_channel_invalid_bits();
                     }
                     // conversion of all channels to physical values
-                    convert_all_channels(dg, &info.sharable);
+                    convert_all_channels(dg, &info.sharable)?;
                 }
             }
         }
@@ -1278,10 +1278,10 @@ fn apply_bit_mask_offset(
                                     .data
                                     .as_any_mut()
                                     .downcast_mut::<PrimitiveArray<i8>>()
-                                    .context("could not downcast to primitive array i8")?
+                                    .context("bit mask offset application could not downcast to primitive array i8")?
                                     .get_mut_values()
                                     .context(
-                                        "could not get mutable values for primitive array i8",
+                                        "bit mask offset application could not get mutable values for primitive array i8",
                                     )?;
                                 if left_shift > 0 {
                                     a.iter_mut().for_each(|x| *x <<= left_shift)
@@ -1295,10 +1295,10 @@ fn apply_bit_mask_offset(
                                     .data
                                     .as_any_mut()
                                     .downcast_mut::<PrimitiveArray<u8>>()
-                                    .context("could not downcast to primitive array u8")?
+                                    .context("bit mask offset application could not downcast to primitive array u8")?
                                     .get_mut_values()
                                     .context(
-                                        "could not get mutable values for primitive array u8",
+                                        "bit mask offset application could not get mutable values for primitive array u8",
                                     )?;
                                 if left_shift > 0 {
                                     a.iter_mut().for_each(|x| *x <<= left_shift)
@@ -1312,9 +1312,11 @@ fn apply_bit_mask_offset(
                                     .data
                                     .as_any_mut()
                                     .downcast_mut::<PrimitiveArray<i16>>()
-                                    .unwrap()
+                                    .context("bit mask offset application could not downcast to primitive array i16")?
                                     .get_mut_values()
-                                    .unwrap();
+                                    .context(
+                                        "bit mask offset application could not get mutable values for primitive array i16",
+                                    )?;
                                 if left_shift > 0 {
                                     a.iter_mut().for_each(|x| *x <<= left_shift)
                                 };
@@ -1327,9 +1329,11 @@ fn apply_bit_mask_offset(
                                     .data
                                     .as_any_mut()
                                     .downcast_mut::<PrimitiveArray<u16>>()
-                                    .unwrap()
+                                    .context("bit mask offset application could not downcast to primitive array u16")?
                                     .get_mut_values()
-                                    .unwrap();
+                                    .context(
+                                        "bit mask offset application could not get mutable values for primitive array u16",
+                                    )?;
                                 if left_shift > 0 {
                                     a.iter_mut().for_each(|x| *x <<= left_shift)
                                 };
@@ -1349,9 +1353,11 @@ fn apply_bit_mask_offset(
                                     .data
                                     .as_any_mut()
                                     .downcast_mut::<PrimitiveArray<i32>>()
-                                    .unwrap()
+                                    .context("bit mask offset application could not downcast to primitive array i32")?
                                     .get_mut_values()
-                                    .unwrap();
+                                    .context(
+                                        "bit mask offset application could not get mutable values for primitive array i32",
+                                    )?;
                                 if left_shift > 0 {
                                     a.iter_mut().for_each(|x| *x <<= left_shift)
                                 };
@@ -1370,9 +1376,11 @@ fn apply_bit_mask_offset(
                                     .data
                                     .as_any_mut()
                                     .downcast_mut::<PrimitiveArray<u32>>()
-                                    .unwrap()
+                                    .context("bit mask offset application could not downcast to primitive array u32")?
                                     .get_mut_values()
-                                    .unwrap();
+                                    .context(
+                                        "bit mask offset application could not get mutable values for primitive array u32",
+                                    )?;
                                 if left_shift > 0 {
                                     a.iter_mut().for_each(|x| *x <<= left_shift)
                                 };
@@ -1386,9 +1394,11 @@ fn apply_bit_mask_offset(
                                     .data
                                     .as_any_mut()
                                     .downcast_mut::<PrimitiveArray<i64>>()
-                                    .unwrap()
+                                    .context("bit mask offset application could not downcast to primitive array i64")?
                                     .get_mut_values()
-                                    .unwrap();
+                                    .context(
+                                        "bit mask offset application could not get mutable values for primitive array i64",
+                                    )?;
                                 left_shift =
                                     64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
                                 right_shift = left_shift + (cn.block.cn_bit_offset as u32);
@@ -1404,9 +1414,11 @@ fn apply_bit_mask_offset(
                                     .data
                                     .as_any_mut()
                                     .downcast_mut::<PrimitiveArray<u64>>()
-                                    .unwrap()
+                                    .context("bit mask offset application could not downcast to primitive array u64")?
                                     .get_mut_values()
-                                    .unwrap();
+                                    .context(
+                                        "bit mask offset application could not get mutable values for primitive array u64",
+                                    )?;
                                 left_shift =
                                     64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
                                 right_shift = left_shift + (cn.block.cn_bit_offset as u32);
@@ -1430,9 +1442,11 @@ fn apply_bit_mask_offset(
                                                 .data
                                                 .as_any_mut()
                                                 .downcast_mut::<PrimitiveArray<i8>>()
-                                                .unwrap()
+                                                .context("bit mask offset application could not downcast to primitive tensor array i8")?
                                                 .get_mut_values()
-                                                .unwrap();
+                                                .context(
+                                                    "bit mask offset application could not get mutable values for primitive tensor array i8",
+                                                )?;
                                             if left_shift > 0 {
                                                 a.iter_mut().for_each(|x| *x <<= left_shift)
                                             };
@@ -1445,9 +1459,11 @@ fn apply_bit_mask_offset(
                                                 .data
                                                 .as_any_mut()
                                                 .downcast_mut::<PrimitiveArray<u8>>()
-                                                .unwrap()
+                                                .context("bit mask offset application could not downcast to primitive tensor array u8")?
                                                 .get_mut_values()
-                                                .unwrap();
+                                                .context(
+                                                    "bit mask offset application could not get mutable values for primitive tensor array u8",
+                                                )?;
                                             if left_shift > 0 {
                                                 a.iter_mut().for_each(|x| *x <<= left_shift)
                                             };
@@ -1460,9 +1476,11 @@ fn apply_bit_mask_offset(
                                                 .data
                                                 .as_any_mut()
                                                 .downcast_mut::<PrimitiveArray<i16>>()
-                                                .unwrap()
+                                                .context("bit mask offset application could not downcast to primitive tensor array i16")?
                                                 .get_mut_values()
-                                                .unwrap();
+                                                .context(
+                                                    "bit mask offset application could not get mutable values for primitive tensor array i16",
+                                                )?;
                                             if left_shift > 0 {
                                                 a.iter_mut().for_each(|x| *x <<= left_shift)
                                             };
@@ -1475,9 +1493,11 @@ fn apply_bit_mask_offset(
                                                 .data
                                                 .as_any_mut()
                                                 .downcast_mut::<PrimitiveArray<u16>>()
-                                                .unwrap()
+                                                .context("bit mask offset application could not downcast to primitive tensor array u16")?
                                                 .get_mut_values()
-                                                .unwrap();
+                                                .context(
+                                                    "bit mask offset application could not get mutable values for primitive tensor array u16",
+                                                )?;
                                             if left_shift > 0 {
                                                 a.iter_mut().for_each(|x| *x <<= left_shift)
                                             };
@@ -1498,9 +1518,11 @@ fn apply_bit_mask_offset(
                                                 .data
                                                 .as_any_mut()
                                                 .downcast_mut::<PrimitiveArray<i32>>()
-                                                .unwrap()
+                                                .context("bit mask offset application could not downcast to primitive tensor array i32")?
                                                 .get_mut_values()
-                                                .unwrap();
+                                                .context(
+                                                    "bit mask offset application could not get mutable values for primitive tensor array i32",
+                                                )?;
                                             if left_shift > 0 {
                                                 a.iter_mut().for_each(|x| *x <<= left_shift)
                                             };
@@ -1520,9 +1542,11 @@ fn apply_bit_mask_offset(
                                                 .data
                                                 .as_any_mut()
                                                 .downcast_mut::<PrimitiveArray<u32>>()
-                                                .unwrap()
+                                                .context("bit mask offset application could not downcast to primitive tensor array u32")?
                                                 .get_mut_values()
-                                                .unwrap();
+                                                .context(
+                                                    "bit mask offset application could not get mutable values for primitive tensor array u32",
+                                                )?;
                                             if left_shift > 0 {
                                                 a.iter_mut().for_each(|x| *x <<= left_shift)
                                             };
@@ -1536,9 +1560,11 @@ fn apply_bit_mask_offset(
                                                 .data
                                                 .as_any_mut()
                                                 .downcast_mut::<PrimitiveArray<i64>>()
-                                                .unwrap()
+                                                .context("bit mask offset application could not downcast to primitive tensor array i64")?
                                                 .get_mut_values()
-                                                .unwrap();
+                                                .context(
+                                                    "bit mask offset application could not get mutable values for primitive tensor array i64",
+                                                )?;
                                             left_shift = 64
                                                 - (cn.block.cn_bit_offset as u32)
                                                 - cn.block.cn_bit_count;
@@ -1556,9 +1582,11 @@ fn apply_bit_mask_offset(
                                                 .data
                                                 .as_any_mut()
                                                 .downcast_mut::<PrimitiveArray<u64>>()
-                                                .unwrap()
+                                                .context("bit mask offset application could not downcast to primitive tensor array u64")?
                                                 .get_mut_values()
-                                                .unwrap();
+                                                .context(
+                                                    "bit mask offset application could not get mutable values for primitive tensor array u64",
+                                                )?;
                                             left_shift = 64
                                                 - (cn.block.cn_bit_offset as u32)
                                                 - cn.block.cn_bit_count;
@@ -1571,14 +1599,14 @@ fn apply_bit_mask_offset(
                                                 a.iter_mut().for_each(|x| *x >>= right_shift)
                                             };
                                         }
-                                        _ => warn!(
+                                        _ => bail!(
                                             "Unrecognised data type for tensor channel {}",
                                             cn.unique_name
                                         ),
                                     }
                                 }
                             }
-                            _ => warn!("Unrecognised data type for channel {}", cn.unique_name),
+                            _ => bail!("Unrecognised data type for channel {}", cn.unique_name),
                         }
                     }
                 }

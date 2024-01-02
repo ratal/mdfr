@@ -556,7 +556,7 @@ fn bit_count(array: Box<dyn Array>, data_type: &DataType) -> u32 {
             let array = array
                 .as_any()
                 .downcast_ref::<BinaryArray<i32>>()
-                .expect("could not downcast to utf8 array");
+                .expect("could not downcast to Binary array");
             array
                 .values_iter()
                 .map(|s| s.len() as u32)
@@ -569,7 +569,7 @@ fn bit_count(array: Box<dyn Array>, data_type: &DataType) -> u32 {
             let array = array
                 .as_any()
                 .downcast_ref::<BinaryArray<i64>>()
-                .expect("could not downcast to utf8 array");
+                .expect("could not downcast to LargeBinary array");
             array
                 .values_iter()
                 .map(|s| s.len() as u32)
@@ -593,7 +593,7 @@ fn bit_count(array: Box<dyn Array>, data_type: &DataType) -> u32 {
             let array = array
                 .as_any()
                 .downcast_ref::<Utf8Array<i64>>()
-                .expect("could not downcast to long utf8 array");
+                .expect("could not downcast to large utf8 array");
             array
                 .values_iter()
                 .map(|s| s.len() as u32)
@@ -643,7 +643,7 @@ fn byte_count(array: Box<dyn Array>, data_type: &DataType) -> u32 {
             let array = array
                 .as_any()
                 .downcast_ref::<BinaryArray<i32>>()
-                .expect("could not downcast to utf8 array");
+                .expect("could not downcast to binary array");
             array
                 .values_iter()
                 .map(|s| s.len() as u32)
@@ -655,7 +655,7 @@ fn byte_count(array: Box<dyn Array>, data_type: &DataType) -> u32 {
             let array = array
                 .as_any()
                 .downcast_ref::<BinaryArray<i64>>()
-                .expect("could not downcast to utf8 array");
+                .expect("could not downcast to large binary array");
             array
                 .values_iter()
                 .map(|s| s.len() as u32)
@@ -677,7 +677,7 @@ fn byte_count(array: Box<dyn Array>, data_type: &DataType) -> u32 {
             let array = array
                 .as_any()
                 .downcast_ref::<Utf8Array<i64>>()
-                .expect("could not downcast to long utf8 array");
+                .expect("could not downcast to large utf8 array");
             array
                 .values_iter()
                 .map(|s| s.len() as u32)
@@ -1478,7 +1478,7 @@ pub fn arrow_data_type_init(
                     // 7: String UTF8
                     // 8 & 9:String UTF16 to be converted into UTF8
                     Ok(Utf8Array::<i64>::new(
-                        DataType::Utf8,
+                        DataType::LargeUtf8,
                         OffsetsBuffer::new(),
                         Buffer::<u8>::new(),
                         None,
@@ -1490,7 +1490,7 @@ pub fn arrow_data_type_init(
                     if cn_type == 1 {
                         // VLSD
                         Ok(Utf8Array::<i64>::new(
-                            DataType::Utf8,
+                            DataType::LargeUtf8,
                             OffsetsBuffer::new(),
                             Buffer::<u8>::new(),
                             None,

@@ -292,7 +292,7 @@ impl MdfInfo {
             MdfInfo::V3(mdfinfo3) => {
                 let mut file_name = PathBuf::from(mdfinfo3.file_name.as_str());
                 file_name.set_extension("mf4");
-                let mut mdf4 = convert3to4(mdfinfo3, &file_name.to_string_lossy());
+                let mut mdf4 = convert3to4(mdfinfo3, &file_name.to_string_lossy())?;
                 mdf4.add_channel(channel_name, data, master, unit, description)?;
             }
             MdfInfo::V4(mdfinfo4) => {
@@ -305,7 +305,7 @@ impl MdfInfo {
     /// Require file name parameter but no file written
     pub fn convert3to4(&mut self, file_name: &str) -> Result<MdfInfo> {
         match self {
-            MdfInfo::V3(mdfinfo3) => Ok(MdfInfo::V4(Box::new(convert3to4(mdfinfo3, file_name)))),
+            MdfInfo::V3(mdfinfo3) => Ok(MdfInfo::V4(Box::new(convert3to4(mdfinfo3, file_name)?))),
             MdfInfo::V4(_) => bail!("file is already a mdf version 4.x"),
         }
     }
@@ -315,7 +315,7 @@ impl MdfInfo {
             MdfInfo::V3(mdfinfo3) => {
                 let mut file_name = PathBuf::from(mdfinfo3.file_name.as_str());
                 file_name.set_extension("mf4");
-                let mut mdf4 = convert3to4(mdfinfo3, &file_name.to_string_lossy());
+                let mut mdf4 = convert3to4(mdfinfo3, &file_name.to_string_lossy())?;
                 mdf4.set_channel_data(channel_name, data);
             }
             MdfInfo::V4(mdfinfo4) => mdfinfo4.set_channel_data(channel_name, data),
@@ -323,16 +323,17 @@ impl MdfInfo {
         Ok(())
     }
     /// Sets the channel's related master channel type in memory
-    pub fn set_channel_master_type(&mut self, master_name: &str, master_type: u8) {
+    pub fn set_channel_master_type(&mut self, master_name: &str, master_type: u8) -> Result<()> {
         match self {
             MdfInfo::V3(mdfinfo3) => {
                 let mut file_name = PathBuf::from(mdfinfo3.file_name.as_str());
                 file_name.set_extension("mf4");
-                let mut mdf4 = convert3to4(mdfinfo3, &file_name.to_string_lossy());
+                let mut mdf4 = convert3to4(mdfinfo3, &file_name.to_string_lossy())?;
                 mdf4.set_channel_master_type(master_name, master_type);
             }
             MdfInfo::V4(mdfinfo4) => mdfinfo4.set_channel_master_type(master_name, master_type),
         }
+        Ok(())
     }
     /// Removes a channel in memory (no file modification)
     pub fn remove_channel(&mut self, channel_name: &str) {

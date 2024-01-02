@@ -39,7 +39,7 @@ use super::mdfwriter3::convert3to4;
 /// writes mdf4.2 file
 pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> {
     let info: MdfInfo4 = match &mdf.mdf_info {
-        MdfInfo::V3(mdfinfo3) => convert3to4(mdfinfo3, file_name),
+        MdfInfo::V3(mdfinfo3) => convert3to4(mdfinfo3, file_name)?,
         MdfInfo::V4(mdfinfo4) => mdfinfo4.deref().clone(),
     };
     let n_channels = mdf.mdf_info.get_channel_names_set().len();

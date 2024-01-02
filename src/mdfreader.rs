@@ -104,7 +104,7 @@ impl Mdf {
         self.mdf_info.get_channel_master_type(channel_name)
     }
     /// Sets the channel's related master channel type in memory
-    pub fn set_channel_master_type(&mut self, master_name: &str, master_type: u8) {
+    pub fn set_channel_master_type(&mut self, master_name: &str, master_type: u8) -> Result<()> {
         self.mdf_info
             .set_channel_master_type(master_name, master_type)
     }
