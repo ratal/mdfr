@@ -227,10 +227,14 @@ impl Mdf {
 
         match &mut self.mdf_info {
             MdfInfo::V3(_mdfinfo3) => {
-                mdfreader3(&mut rdr, self, &channel_names)?;
+                mdfreader3(&mut rdr, self, &channel_names).with_context(|| {
+                    format!("failed reading data of file {}", self.get_file_name())
+                })?;
             }
             MdfInfo::V4(_mdfinfo4) => {
-                mdfreader4(&mut rdr, self, &channel_names)?;
+                mdfreader4(&mut rdr, self, &channel_names).with_context(|| {
+                    format!("failed reading data of file {}", self.get_file_name())
+                })?;
             }
         };
         info!("Loaded all channels data into memory");

@@ -86,11 +86,11 @@ pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) -> Result<(
                         },
                         9 => match &conv.cc_val {
                             CcVal::Real(cc_val) => {
-                                text_to_value(cn, cc_val, &conv.cc_ref, &cycle_count, sharable)
+                                text_to_value(cn, cc_val, &conv.cc_ref, &cycle_count, sharable)?
                             }
                             CcVal::Uint(_) => (),
                         },
-                        10 => text_to_text(cn, &conv.cc_ref, &cycle_count, sharable),
+                        10 => text_to_text(cn, &conv.cc_ref, &cycle_count, sharable)?,
                         11 => match &conv.cc_val {
                             CcVal::Real(_) => (),
                             CcVal::Uint(cc_val) => bitfield_text_table(
@@ -99,12 +99,13 @@ pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) -> Result<(
                                 &conv.cc_ref,
                                 &cycle_count,
                                 sharable,
-                            ),
+                            )?,
                         },
                         0 => (),
-                        _ => warn!(
+                        _ => bail!(
                             "conversion type not recognised for channel {} not possible, type {}",
-                            cn.unique_name, conv.cc_type,
+                            cn.unique_name,
+                            conv.cc_type,
                         ),
                     }
                 }
@@ -1777,12 +1778,12 @@ fn text_to_value(
     cc_ref: &[i64],
     cycle_count: &u64,
     sharable: &SharableBlocks,
-) {
+) -> Result<(), Error> {
     match cn.data.data_type() {
         DataType::LargeUtf8 => {
             let sarray = cn.data.as_any()
                 .downcast_ref::<Utf8Array::<i64>>()
-                .unwrap();
+                .context("text to value conversion could not downcast to Utf8 array")?;
             cn.data = text_to_value_calculation(
                 sarray,
                 cc_val,
@@ -1791,11 +1792,12 @@ fn text_to_value(
                 sharable,
             );
         }
-        _ => warn!(
+        _ => bail!(
             "text conversion into value of channel {} not possible, channel does not contain string",
             cn.unique_name
         ),
     }
+    Ok(())
 }
 
 /// Generic function calculating text to value
@@ -1839,10 +1841,19 @@ fn text_to_text_calculation(
 }
 
 /// Apply text to text conversion to get physical data
-fn text_to_text(cn: &mut Cn4, cc_ref: &[i64], cycle_count: &u64, sharable: &SharableBlocks) {
+fn text_to_text(
+    cn: &mut Cn4,
+    cc_ref: &[i64],
+    cycle_count: &u64,
+    sharable: &SharableBlocks,
+) -> Result<(), Error> {
     match cn.data.data_type() {
         DataType::LargeUtf8 => {
-            let sarray = cn.data.as_any().downcast_ref::<Utf8Array<i64>>().unwrap();
+            let sarray = cn
+                .data
+                .as_any()
+                .downcast_ref::<Utf8Array<i64>>()
+                .context("text to text conversion could not downcast to Utf8 array")?;
             cn.data = text_to_text_calculation(sarray, cc_ref, *cycle_count as usize, sharable);
         }
         _ => warn!(
@@ -1850,6 +1861,7 @@ fn text_to_text(cn: &mut Cn4, cc_ref: &[i64], cycle_count: &u64, sharable: &Shar
             cn.unique_name
         ),
     }
+    Ok(())
 }
 
 enum ValueOrValueRangeToText {
@@ -1872,7 +1884,7 @@ fn bitfield_text_table_calculation<T: Integer + NativeType + AsPrimitive<f64>>(
     cc_ref: &[i64],
     cycle_count: usize,
     sharable: &SharableBlocks,
-) -> Box<dyn Array> {
+) -> Result<Box<dyn Array>> {
     let mut table: Vec<(ValueOrValueRangeToText, Option<String>)> =
         Vec::with_capacity(cc_ref.len());
     for pointer in cc_ref.iter() {
@@ -1959,7 +1971,10 @@ fn bitfield_text_table_calculation<T: Integer + NativeType + AsPrimitive<f64>>(
             }
         }
     }
-    let parray = array.as_any().downcast_ref::<PrimitiveArray<T>>().unwrap();
+    let parray = array
+        .as_any()
+        .downcast_ref::<PrimitiveArray<T>>()
+        .context("bitfield text table conversion could not downcast to primitive array")?;
     let array_f64 = primitive_as_primitive::<T, f64>(parray, &DataType::Float64);
     let mut new_array = vec![String::new(); cycle_count];
     new_array.iter_mut().zip(array_f64).for_each(|(new_a, a)| {
@@ -2078,7 +2093,7 @@ fn bitfield_text_table_calculation<T: Integer + NativeType + AsPrimitive<f64>>(
             }
         }
     });
-    Utf8Array::<i64>::from_iter_values(new_array.iter()).boxed()
+    Ok(Utf8Array::<i64>::from_iter_values(new_array.iter()).boxed())
 }
 
 fn bitfield_text_table(
@@ -2087,7 +2102,7 @@ fn bitfield_text_table(
     cc_ref: &[i64],
     cycle_count: &u64,
     sharable: &SharableBlocks,
-) {
+) -> Result<(), Error> {
     match cn.data.data_type() {
         DataType::UInt8 => {
             cn.data = bitfield_text_table_calculation::<u8>(
@@ -2096,7 +2111,7 @@ fn bitfield_text_table(
                 cc_ref,
                 *cycle_count as usize,
                 sharable,
-            );
+            )?;
         }
         DataType::UInt16 => {
             cn.data = bitfield_text_table_calculation::<u16>(
@@ -2105,7 +2120,7 @@ fn bitfield_text_table(
                 cc_ref,
                 *cycle_count as usize,
                 sharable,
-            );
+            )?;
         }
         DataType::UInt32 => {
             cn.data = bitfield_text_table_calculation::<u32>(
@@ -2114,7 +2129,7 @@ fn bitfield_text_table(
                 cc_ref,
                 *cycle_count as usize,
                 sharable,
-            );
+            )?;
         }
         DataType::UInt64 => {
             cn.data = bitfield_text_table_calculation::<u64>(
@@ -2123,13 +2138,14 @@ fn bitfield_text_table(
                 cc_ref,
                 *cycle_count as usize,
                 sharable,
-            );
+            )?;
         }
         _ => {
-            warn!(
+            bail!(
                 "bitfield conversion into text of channel {} not possible, channel does not contain unsigned integer",
                 cn.unique_name
             )
         }
     }
+    Ok(())
 }

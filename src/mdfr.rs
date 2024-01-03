@@ -257,9 +257,10 @@ df=polars.DataFrame(series)
         })
     }
     /// Sets the channel's related master channel type in memory
-    pub fn set_channel_master_type(&mut self, master_name: &str, master_type: u8) {
+    pub fn set_channel_master_type(&mut self, master_name: &str, master_type: u8) -> PyResult<()> {
         let Mdfr(mdf) = self;
-        mdf.set_channel_master_type(master_name, master_type);
+        mdf.set_channel_master_type(master_name, master_type)?;
+        Ok(())
     }
     /// Removes a channel in memory (no file modification)
     pub fn remove_channel(&mut self, channel_name: &str) {

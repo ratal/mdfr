@@ -93,10 +93,10 @@ pub fn convert3to4(mdf3: &MdfInfo3, file_name: &str) -> Result<MdfInfo4> {
                         })
                         .context("Failed adding channels")?;
                     Ok(())
-                });
+                })?;
             Ok(())
         },
-    );
+    )?;
     Ok(mdf4)
 }
 
