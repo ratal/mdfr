@@ -10,11 +10,10 @@ use crate::mdfreader::conversions4::convert_all_channels;
 use crate::mdfreader::data_read4::read_channels_from_bytes;
 use crate::mdfreader::data_read4::read_one_channel_array;
 use anyhow::{bail, Context, Error, Ok, Result};
-use arrow2::array::{Array, MutableBinaryValuesArray, MutableUtf8ValuesArray, PrimitiveArray};
+use arrow2::array::{BinaryArray, MutableArray, PrimitiveArray, Utf8Array};
 use arrow2::datatypes::DataType;
 use binrw::BinReaderExt;
 use encoding_rs::{Decoder, UTF_16BE, UTF_16LE, WINDOWS_1252};
-use log::warn;
 use rayon::prelude::*;
 use std::fs::File;
 use std::io::Cursor;
@@ -417,11 +416,14 @@ fn read_vlsd_from_bytes(
     let mut nrecord: usize = 0;
     match cn.data.data_type() {
         DataType::LargeUtf8 => {
-            let array = cn
+            let mut array = cn
                 .data
                 .as_any_mut()
-                .downcast_mut::<MutableUtf8ValuesArray<i64>>()
-                .context("could not downcast to mutable Utf8 values array")?;
+                .downcast_mut::<Utf8Array<i64>>()
+                .context("could not downcast to Utf8 array for VLSD")?
+                .clone()
+                .into_mut()
+                .expect_right("failed converting UTF8 Array in mutableArray for VLSD");
             if cn.block.cn_data_type == 6 {
                 while remaining > 0 {
                     let len = &data[position..position + std::mem::size_of::<u32>()];
@@ -435,7 +437,8 @@ fn read_vlsd_from_bytes(
                         let (_result, _size, _replacement) = decoder
                             .windows_1252
                             .decode_to_string(record, &mut dst, false);
-                        array.push(dst);
+                        array.push(Some(dst));
+                        cn.data = array.as_box();
                         position += length;
                         remaining = data_length - position;
                         nrecord += 1;
@@ -457,11 +460,12 @@ fn read_vlsd_from_bytes(
                     if (position + length + 4) <= data_length {
                         position += std::mem::size_of::<u32>();
                         let record = &data[position..position + length];
-                        array.push(
+                        array.push(Some(
                             str::from_utf8(record)
                                 .context("Found invalid UTF-8")?
                                 .trim_end_matches('\0'),
-                        );
+                        ));
+                        cn.data = array.as_box();
                         position += length;
                         remaining = data_length - position;
                         nrecord += 1;
@@ -486,7 +490,8 @@ fn read_vlsd_from_bytes(
                         let mut dst = String::new();
                         let (_result, _size, _replacement) =
                             decoder.utf_16_be.decode_to_string(record, &mut dst, false);
-                        array.push(dst);
+                        array.push(Some(dst));
+                        cn.data = array.as_box();
                         position += length;
                         remaining = data_length - position;
                         nrecord += 1;
@@ -511,7 +516,8 @@ fn read_vlsd_from_bytes(
                         let mut dst = String::new();
                         let (_result, _size, _replacement) =
                             decoder.utf_16_le.decode_to_string(record, &mut dst, false);
-                        array.push(dst);
+                        array.push(Some(dst));
+                        cn.data = array.as_box();
                         position += length;
                         remaining = data_length - position;
                         nrecord += 1;
@@ -530,11 +536,14 @@ fn read_vlsd_from_bytes(
             }
         }
         DataType::LargeBinary => {
-            let array = cn
+            let mut array = cn
                 .data
                 .as_any_mut()
-                .downcast_mut::<MutableBinaryValuesArray<i64>>()
-                .context("could not downcast to mutable Binary values array")?;
+                .downcast_mut::<BinaryArray<i64>>()
+                .context("could not downcast to mutable Binary values array")?
+                .clone()
+                .into_mut()
+                .expect_right("failed converting Large Binary Array in mutableArray for VLSD");
             while remaining > 0 {
                 let len = &data[position..position + std::mem::size_of::<u32>()];
                 let length: usize =
@@ -542,7 +551,8 @@ fn read_vlsd_from_bytes(
                 if (position + length + 4) <= data_length {
                     position += std::mem::size_of::<u32>();
                     let record = &data[position..position + length];
-                    array.push(record);
+                    array.push(Some(record));
+                    cn.data = array.as_box();
                     position += length;
                     remaining = data_length - position;
                     nrecord += 1;
@@ -559,7 +569,7 @@ fn read_vlsd_from_bytes(
                 data.clear()
             }
         }
-        _ => warn!("data type is not suitbale for for VLSD"),
+        _ => bail!("data type is not suitbale for VLSD"),
     }
     Ok(nrecord + previous_index)
 }
@@ -1087,48 +1097,54 @@ fn read_all_channels_unsorted(
 
 /// stores a vlsd record into channel vect (ChannelData)
 #[inline]
-fn save_vlsd(
-    mut data: Box<dyn Array>,
-    record: &[u8],
-    decoder: &mut Dec,
-    cn_data_type: u8,
-) -> Result<()> {
-    match data.data_type() {
+fn save_vlsd(cn: &mut Cn4, record: &[u8], decoder: &mut Dec, cn_data_type: u8) -> Result<()> {
+    match cn.data.data_type() {
         DataType::LargeUtf8 => {
-            let array = data
+            let mut array = cn
+                .data
                 .as_any_mut()
-                .downcast_mut::<MutableUtf8ValuesArray<i64>>()
-                .context("could not downcast to mutable Utf8 values array")?;
+                .downcast_mut::<Utf8Array<i64>>()
+                .context("could not downcast to Utf8 values array")?
+                .clone()
+                .into_mut()
+                .expect_right("failed converting UTF8 Array in mutableArray when saving VLSD");
             let mut dst = String::new();
             if cn_data_type == 6 {
                 let (_result, _size, _replacement) = decoder
                     .windows_1252
                     .decode_to_string(record, &mut dst, false);
-                array.push(dst);
+                array.push(Some(dst));
             } else if cn_data_type == 7 {
-                array.push(str::from_utf8(record).context("Found invalid UTF-8")?);
+                array.push(Some(str::from_utf8(record).context("Found invalid UTF-8")?));
             } else if cn_data_type == 8 {
                 let (_result, _size, _replacement) =
                     decoder.utf_16_be.decode_to_string(record, &mut dst, false);
-                array.push(dst);
+                array.push(Some(dst));
             } else if cn_data_type == 9 {
                 let (_result, _size, _replacement) =
                     decoder.utf_16_le.decode_to_string(record, &mut dst, false);
-                array.push(dst);
+                array.push(Some(dst));
             };
+            cn.data = array.as_box();
             Ok(())
         }
         DataType::LargeBinary => {
-            let array = data
+            let mut array = cn
+                .data
                 .as_any_mut()
-                .downcast_mut::<MutableBinaryValuesArray<i64>>()
-                .context("could not downcast to mutable Binary values array")?;
-            array.push(record);
+                .downcast_mut::<BinaryArray<i64>>()
+                .context("could not downcast to Binary values array")?
+                .clone()
+                .into_mut()
+                .expect_right(
+                    "failed converting LargeBinary Array in mutableArray when saving VLSD",
+                );
+            array.push(Some(record));
+            cn.data = array.as_box();
             Ok(())
         }
         _ => {
-            warn!("data type of VLSD is not possible");
-            Ok(())
+            bail!("data type of VLSD is not possible");
         }
     }
 }
@@ -1185,7 +1201,7 @@ fn read_all_channels_unsorted_from_bytes(
                                 if let Some(target_cn) = target_cg.cn.get_mut(&target_rec_pos) {
                                     if let Some((nrecord, _)) = record_counter.get_mut(&rec_id) {
                                         save_vlsd(
-                                            target_cn.data.clone(),
+                                            target_cn,
                                             record,
                                             decoder,
                                             target_cn.block.cn_data_type,

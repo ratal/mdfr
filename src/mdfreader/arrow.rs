@@ -8,7 +8,8 @@ use anyhow::{bail, Context, Error};
 // use crate::mdfreader::channel_data::ChannelData;
 // use crate::mdfreader::Mdf;
 use arrow2::array::{
-    Array, BinaryArray, FixedSizeBinaryArray, FixedSizeListArray, PrimitiveArray, Utf8Array,
+    Array, BinaryArray, FixedSizeBinaryArray, FixedSizeListArray, MutableArray,
+    MutableFixedSizeBinaryArray, PrimitiveArray, Utf8Array,
 };
 use arrow2::bitmap::Bitmap;
 use arrow2::buffer::Buffer;
@@ -1497,12 +1498,7 @@ pub fn arrow_data_type_init(
                         )
                         .boxed())
                     } else {
-                        Ok(FixedSizeBinaryArray::new(
-                            DataType::FixedSizeBinary(n_bytes as usize),
-                            Buffer::<u8>::new(),
-                            None,
-                        )
-                        .boxed())
+                        Ok(MutableFixedSizeBinaryArray::new(n_bytes as usize).as_box())
                     }
                 }
             }
@@ -1710,10 +1706,12 @@ pub fn arrow_init_zeros(
             DataType::Float64 => {
                 Ok(PrimitiveArray::from_vec(vec![0f64; cycle_count as usize]).boxed())
             }
-            DataType::FixedSizeBinary(size) => Ok(FixedSizeBinaryArray::new_null(
+            DataType::FixedSizeBinary(size) => Ok(FixedSizeBinaryArray::try_new(
                 DataType::FixedSizeBinary(*size),
-                cycle_count as usize,
+                Buffer::<u8>::from(vec![0u8; cycle_count as usize * size]),
+                None,
             )
+            .context("failed initialising FixedSizeBinaryArray with zeros")?
             .boxed()),
             DataType::FixedSizeList(field, size) => {
                 if field.name.eq(&"complex32".to_string()) {

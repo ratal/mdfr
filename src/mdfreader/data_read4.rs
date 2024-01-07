@@ -1,16 +1,15 @@
 //! this module implements low level data reading for mdf4 files.
 use crate::mdfinfo::mdfinfo4::{Cn4, CnType, Compo};
-use anyhow::{Context, Error, Ok, Result};
+use anyhow::{bail, Context, Error, Ok, Result};
 use arrow2::array::{
-    FixedSizeBinaryArray, MutableArray, MutableBinaryValuesArray, MutableFixedSizeBinaryArray,
-    MutableUtf8ValuesArray, PrimitiveArray,
+    BinaryArray, FixedSizeBinaryArray, MutableArray, MutableBinaryValuesArray,
+    MutableUtf8ValuesArray, PrimitiveArray, Utf8Array,
 };
 use arrow2::buffer::Buffer;
 use arrow2::datatypes::DataType;
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
 use encoding_rs::{UTF_16BE, UTF_16LE, WINDOWS_1252};
 use half::f16;
-use log::warn;
 use rayon::prelude::*;
 use std::io::Cursor;
 use std::str;
@@ -810,14 +809,14 @@ pub fn read_one_channel_array(
                                 }
                             }
                         }
-                        _ => warn!(
+                        _ => bail!(
                             "channel {} type is not of valid type for a tensor to be read for a mdf",
                             cn.unique_name
                         ),
                     }
                 }
             }
-            _ => warn!(
+            _ => bail!(
                 "channel {} type is not of valid type to be read for a mdf",
                 cn.unique_name
             ),
@@ -842,7 +841,7 @@ pub fn read_channels_from_bytes(
     let vlsd_channels: Arc<Mutex<Vec<i32>>> = Arc::new(Mutex::new(Vec::new()));
     // iterates for each channel in parallel with rayon crate
     channels.par_iter_mut()
-        .filter(|(_cn_record_position, cn)| {channel_names_to_read_in_dg.contains(&cn.unique_name) && !cn.data.is_empty() && !cn.channel_data_valid})
+        .filter(|(_cn_record_position, cn)| {channel_names_to_read_in_dg.contains(&cn.unique_name) && !cn.channel_data_valid})
         .try_for_each(|(rec_pos, cn):(&i32, &mut Cn4)| -> Result<(), Error> {
         if cn.block.cn_type == 0
             || cn.block.cn_type == 2
@@ -1288,8 +1287,9 @@ pub fn read_channels_from_bytes(
                     }
                 }
                 DataType::LargeUtf8 => {
-                    let data = cn.data.as_any_mut().downcast_mut::<MutableUtf8ValuesArray<i64>>()
-                    .with_context(|| format!("Read channels from bytes function could not downcast to large Utf8, channel {}", cn.unique_name))?;
+                    let mut data = cn.data.as_any_mut().downcast_mut::<Utf8Array<i64>>()
+                    .with_context(|| format!("Read channels from bytes function could not downcast to large Utf8, channel {}", cn.unique_name))?.clone()
+                    .into_mut().expect_right("failed converting Utf8 channel Array in mutableArray");
                     let n_bytes = cn.n_bytes as usize;
                     if cn.block.cn_data_type == 6 {
                         // SBC ISO-8859-1 to be converted into UTF8
@@ -1299,14 +1299,14 @@ pub fn read_channels_from_bytes(
                             let mut dst = String::new();
                             let (_result, _size, _replacement) =
                                 decoder.decode_to_string(value, &mut dst, false);
-                            data.push(dst.trim_end_matches('\0'));
+                            data.push(Some(dst.trim_end_matches('\0')));
                         }
                     } else if cn.block.cn_data_type == 7 {
                         // 7: String UTF8
                         for record in data_chunk.chunks(record_length) {
                             value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                            data.push(str::from_utf8(value)
-                                .context("Found invalid UTF-8")?);
+                            data.push(Some(str::from_utf8(value)
+                                .context("Found invalid UTF-8")?));
                         }
                     } else if cn.block.cn_data_type == 8 || cn.block.cn_data_type == 9 {
                         // 8 | 9 :String UTF16 to be converted into UTF8
@@ -1320,7 +1320,7 @@ pub fn read_channels_from_bytes(
                                     &mut dst,
                                     false,
                                 );
-                                data.push(dst.trim_end_matches('\0'));
+                                data.push(Some(dst.trim_end_matches('\0')));
                             }
                         } else {
                             let mut decoder = UTF_16LE.new_decoder();
@@ -1332,23 +1332,28 @@ pub fn read_channels_from_bytes(
                                     &mut dst,
                                     false,
                                 );
-                                data.push(dst.trim_end_matches('\0'));
+                                data.push(Some(dst.trim_end_matches('\0')));
                             }
                         }
                     }
+                    cn.data = data.as_box();
                 }
                 DataType::LargeBinary => {
                     let n_bytes = cn.n_bytes as usize;
-                    let data = cn.data.as_any_mut().downcast_mut::<MutableBinaryValuesArray<i64>>()
-                    .with_context(|| format!("Read channels from bytes function could not downcast to mutable binary values array, channel {}", cn.unique_name))?;
+                    let mut data = cn.data.as_any().downcast_ref::<BinaryArray<i64>>()
+                    .with_context(|| format!("Read channels from bytes function could not downcast to mutable binary values array, channel {}", cn.unique_name))?.clone()
+                    .into_mut().expect_right("failed converting LargeBinary channel Array in mutableArray");
                     for record in data_chunk.chunks(record_length) {
-                        data.push(&record[pos_byte_beg..pos_byte_beg + n_bytes]);
+                        data.push(Some(&record[pos_byte_beg..pos_byte_beg + n_bytes]));
                     }
+                    cn.data = data.as_box();
                 }
                 DataType::FixedSizeBinary(_size) => {
                     let n_bytes = cn.n_bytes as usize;
-                    let data = cn.data.as_any_mut().downcast_mut::<MutableFixedSizeBinaryArray>()
-                    .with_context(|| format!("Read channels from bytes function could not downcast to fixed size binary array, channel {}", cn.unique_name))?.values_mut_slice();
+                    let d = cn.data.as_any_mut()
+                    .downcast_mut::<FixedSizeBinaryArray>()
+                    .with_context(|| format!("Read channels from bytes function could not downcast to fixed size binary array, channel {}", cn.unique_name))?;
+                    let data = d.get_mut_values().with_context(|| format!("failed creating MutableFixedSizeBinaryArray, channel {}", cn.unique_name))?;
                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
                         data[i*n_bytes+previous_index..(i+1)*n_bytes+previous_index].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + n_bytes]);
                     }
@@ -1960,11 +1965,11 @@ pub fn read_channels_from_bytes(
                                     }
                                 }
                             }
-                            _ => warn!("unrecognised tensor data type at data chunk reading from channel {}", cn.unique_name)
+                            _ => bail!("unrecognised tensor data type at data chunk reading from channel {}", cn.unique_name)
                         }
                     }
                 }
-                _ => warn!("unrecognised data type at data chunk reading from channel {}", cn.unique_name)
+                _ => bail!("unrecognised data type at data chunk reading from channel {}", cn.unique_name)
             }
         } else if cn.block.cn_type == 1 {
             // SD Block attached as data block is sorted
