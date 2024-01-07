@@ -954,10 +954,10 @@ mod tests {
                 array.values_iter().copied(),
             );
             new_data.set(0, Some(0.0f32));
-            mdf.set_channel_data(&ref_channel.to_string(), new_data.as_box());
+            mdf.set_channel_data(&ref_channel.to_string(), new_data.as_box())?;
             mdf.set_channel_desc(&ref_channel.to_string(), ref_desc);
             mdf.set_channel_unit(&ref_channel.to_string(), ref_unit);
-            mdf.set_channel_master_type(&ref_channel.to_string(), 1);
+            mdf.set_channel_master_type(&ref_channel.to_string(), 1)?;
         } else {
             panic!("channel not found");
         }
@@ -1006,7 +1006,7 @@ mod tests {
             master_flag,
             unit,
             desc,
-        );
+        )?;
 
         if let Some(data) = mdf.get_channel_data(&channel_name.to_string()) {
             let array = data
