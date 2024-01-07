@@ -17,7 +17,7 @@ use arrow2::array::{get_display, Array};
 use log::info;
 use pyo3::prelude::*;
 
-// use crate::export::parquet::export_to_parquet;
+use crate::export::parquet::export_to_parquet;
 use crate::export::tensor::Order;
 use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::mdfreader3::mdfreader3;
@@ -116,22 +116,10 @@ impl Mdf {
     pub fn get_master_channel_names_set(&self) -> HashMap<Option<String>, HashSet<String>> {
         self.mdf_info.get_master_channel_names_set()
     }
-    // /// return the tuple of chunk index and array index corresponding to the channel name
-    // pub(crate) fn get_channel_index(&self, channel_name: &str) -> Option<&ChannelIndexes> {
-    //     self.mdf_info.channel_names_set .get(channel_name)
-    // }
     /// returns channel's arrow2 Array.
     pub fn get_channel_data(&self, channel_name: &str) -> Option<Box<dyn Array>> {
         self.mdf_info.get_channel_data(channel_name)
     }
-    // /// returns channel's arrow2 Field.
-    // pub fn get_channel_field(&self, channel_name: &str) -> Option<&Field> {
-    //     if let Some(index) = self.get_channel_index(channel_name) {
-    //         Some(&self.arrow_schema.fields[index.field_index])
-    //     } else {
-    //         None
-    //     }
-    // }
     /// defines channel's data in memory
     pub fn set_channel_data(&mut self, channel_name: &str, data: Box<dyn Array>) -> Result<()> {
         self.mdf_info.set_channel_data(channel_name, data)
@@ -174,35 +162,6 @@ impl Mdf {
             unit,
             description,
         )?;
-        // add field
-        // let is_nullable: bool = data.clone().validity().is_some();
-        // let new_field = Field::new(
-        //     channel_name.clone(),
-        //     data.clone().data_type().clone(),
-        //     is_nullable,
-        // );
-        // let field_index = self.arrow_schema.fields.len();
-        // self.arrow_schema.fields.push(new_field);
-        // // add data
-        // let mut chunk_index: usize = self.arrow_data.len();
-        // if let Some(master) = &master_channel {
-        //     if let Some(master_index) = self.get_channel_index(master) {
-        //         chunk_index = master_index.chunk_index;
-        //         self.arrow_data[chunk_index].push(data);
-        //     } else {
-        //         // master channel not found
-        //         self.arrow_data.push(vec![data]);
-        //     }
-        // } else {
-        //     self.arrow_data.push(vec![data]);
-        // }
-        // // add index
-        // let index = ChannelIndexes {
-        //     chunk_index,
-        //     array_index: 0,
-        //     field_index,
-        // };
-        // self.channel_indexes.insert(channel_name, index);
         Ok(())
     }
     /// Removes a channel in memory (no file modification)
@@ -238,7 +197,6 @@ impl Mdf {
             }
         };
         info!("Loaded all channels data into memory");
-
         Ok(())
     }
     /// Clears all data arrays
@@ -251,7 +209,6 @@ impl Mdf {
             .clear_channel_data_from_memory(channel_names)?;
         Ok(())
     }
-
     /// Clears data arrays
     pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) -> Result<()> {
         // self.arrow_data = Vec::new();
@@ -261,15 +218,14 @@ impl Mdf {
             .clear_channel_data_from_memory(channel_names)?;
         Ok(())
     }
-
-    // /// export to Parquet file
-    // pub fn export_to_parquet(
-    //     &self,
-    //     file_name: &str,
-    //     compression: Option<&str>,
-    // ) -> arrow2::error::Result<()> {
-    //     export_to_parquet(self, file_name, compression)
-    // }
+    /// export to Parquet file
+    pub fn export_to_parquet(
+        &self,
+        file_name: &str,
+        compression: Option<&str>,
+    ) -> arrow2::error::Result<()> {
+        export_to_parquet(self, file_name, compression)
+    }
     /// Writes mdf4 file
     pub fn write(&mut self, file_name: &str, compression: bool) -> Result<Mdf> {
         mdfwriter4(self, file_name, compression)

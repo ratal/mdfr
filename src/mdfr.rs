@@ -446,12 +446,12 @@ pyplot.show()
             .expect("plot python script failed");
         })
     }
-    /// export to Parquet file
-    // pub fn export_to_parquet(&mut self, file_name: &str, compression_option: Option<&str>) {
-    //     let Mdfr(mdf) = self;
-    //     mdf.export_to_parquet(file_name, compression_option)
-    //         .expect("could not export to parquet")
-    // }
+    // export to Parquet file
+    pub fn export_to_parquet(&mut self, file_name: &str, compression_option: Option<&str>) {
+        let Mdfr(mdf) = self;
+        mdf.export_to_parquet(file_name, compression_option)
+            .expect("could not export to parquet")
+    }
     fn __repr__(&mut self) -> PyResult<String> {
         let mut output: String;
         match &mut self.0.mdf_info {
