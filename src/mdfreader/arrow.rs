@@ -1675,7 +1675,12 @@ pub fn arrow_init_zeros(
 ) -> Result<Box<dyn Array>, Error> {
     if cn_type == 3 || cn_type == 6 {
         // virtual channels, cn_bit_count = 0 -> n_bytes = 0, must be LE unsigned int
-        Ok(PrimitiveArray::from_vec(vec![0u64; cycle_count as usize]).boxed())
+        let mut array = vec![0u64; cycle_count as usize];
+        array
+            .iter_mut()
+            .enumerate()
+            .for_each(|(i, v)| *v = i as u64);
+        Ok(PrimitiveArray::from_vec(array).boxed())
     } else {
         match data.data_type() {
             DataType::Int8 => Ok(PrimitiveArray::from_vec(vec![0i8; cycle_count as usize]).boxed()),
