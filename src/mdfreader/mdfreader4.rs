@@ -1095,60 +1095,6 @@ fn read_all_channels_unsorted(
     Ok(())
 }
 
-/// stores a vlsd record into channel vect (ChannelData)
-#[inline]
-fn save_vlsd(cn: &mut Cn4, record: &[u8], decoder: &mut Dec, cn_data_type: u8) -> Result<()> {
-    match cn.data.data_type() {
-        DataType::LargeUtf8 => {
-            let mut array = cn
-                .data
-                .as_any_mut()
-                .downcast_mut::<Utf8Array<i64>>()
-                .context("could not downcast to Utf8 values array")?
-                .clone()
-                .into_mut()
-                .expect_right("failed converting UTF8 Array in mutableArray when saving VLSD");
-            let mut dst = String::new();
-            if cn_data_type == 6 {
-                let (_result, _size, _replacement) = decoder
-                    .windows_1252
-                    .decode_to_string(record, &mut dst, false);
-                array.push(Some(dst));
-            } else if cn_data_type == 7 {
-                array.push(Some(str::from_utf8(record).context("Found invalid UTF-8")?));
-            } else if cn_data_type == 8 {
-                let (_result, _size, _replacement) =
-                    decoder.utf_16_be.decode_to_string(record, &mut dst, false);
-                array.push(Some(dst));
-            } else if cn_data_type == 9 {
-                let (_result, _size, _replacement) =
-                    decoder.utf_16_le.decode_to_string(record, &mut dst, false);
-                array.push(Some(dst));
-            };
-            cn.data = array.as_box();
-            Ok(())
-        }
-        DataType::LargeBinary => {
-            let mut array = cn
-                .data
-                .as_any_mut()
-                .downcast_mut::<BinaryArray<i64>>()
-                .context("could not downcast to Binary values array")?
-                .clone()
-                .into_mut()
-                .expect_right(
-                    "failed converting LargeBinary Array in mutableArray when saving VLSD",
-                );
-            array.push(Some(record));
-            cn.data = array.as_box();
-            Ok(())
-        }
-        _ => {
-            bail!("data type of VLSD is not possible");
-        }
-    }
-}
-
 /// read record by record from unsorted data block into sorted data block, then copy data into channel arrays
 fn read_all_channels_unsorted_from_bytes(
     data: &mut Vec<u8>,
@@ -1200,13 +1146,68 @@ fn read_all_channels_unsorted_from_bytes(
                             if let Some(target_cg) = dg.cg.get_mut(&target_rec_id) {
                                 if let Some(target_cn) = target_cg.cn.get_mut(&target_rec_pos) {
                                     if let Some((nrecord, _)) = record_counter.get_mut(&rec_id) {
-                                        save_vlsd(
-                                            target_cn,
-                                            record,
-                                            decoder,
-                                            target_cn.block.cn_data_type,
-                                        )
-                                        .context("failed saving VLSD data")?;
+                                        match target_cn.data.data_type() {
+                                            DataType::LargeUtf8 => {
+                                                let array = target_cn
+                                                    .data
+                                                    .as_any_mut()
+                                                    .downcast_mut::<Utf8Array<i64>>()
+                                                    .context(
+                                                        "could not downcast to Utf8 values array",
+                                                    )?;
+                                                let mut values = array.get_mut_values().context("could not get mutable reference of UTF8 array values")?.to_vec();
+                                                let mut offsets = array.get_mut_offsets().context("could not get mutable reference of UTF8 array offsets")?.to_vec();
+                                                let mut dst = String::with_capacity(record.len());
+                                                if target_cn.block.cn_data_type == 6 {
+                                                    let (_result, _size, _replacement) = decoder
+                                                        .windows_1252
+                                                        .decode_to_string(record, &mut dst, false);
+                                                } else if target_cn.block.cn_data_type == 7 {
+                                                    dst = str::from_utf8(record)
+                                                        .context("Found invalid UTF-8")?
+                                                        .to_string();
+                                                } else if target_cn.block.cn_data_type == 8 {
+                                                    let (_result, _size, _replacement) = decoder
+                                                        .utf_16_be
+                                                        .decode_to_string(record, &mut dst, false);
+                                                } else if target_cn.block.cn_data_type == 9 {
+                                                    let (_result, _size, _replacement) = decoder
+                                                        .utf_16_le
+                                                        .decode_to_string(record, &mut dst, false);
+                                                };
+                                                values.extend_from_slice(
+                                                    dst.as_bytes().split_last().unwrap().1,
+                                                ); // do not take the terminated NULL character
+                                                let last_offset =
+                                                    offsets.last_mut().copied().unwrap()
+                                                        + record.len() as i64
+                                                        - 1; // NULL terminated
+                                                offsets.push(last_offset);
+                                                target_cn.data = Utf8Array::<i64>::try_new(
+                                                    DataType::LargeUtf8,
+                                                    offsets.try_into().context("failed converting vector into OffsetsBuffer")?,
+                                                    values.into(),
+                                                    None,
+                                                ).context("failed creating Utf8Array from muted offsets and values with VLSD record")?.boxed();
+                                            }
+                                            DataType::LargeBinary => {
+                                                let mut array = target_cn
+                                                .data
+                                                .as_any_mut()
+                                                .downcast_mut::<BinaryArray<i64>>()
+                                                .context("could not downcast to Binary values array")?
+                                                .clone()
+                                                .into_mut()
+                                                .expect_right(
+                                                    "failed converting LargeBinary Array in mutableArray when saving VLSD",
+                                                );
+                                                array.push(Some(record));
+                                                target_cn.data = array.as_box();
+                                            }
+                                            _ => {
+                                                bail!("data type of VLSD is not possible");
+                                            }
+                                        }
                                         *nrecord += 1;
                                     } else {
                                         bail!("could not find the record id");
@@ -1298,11 +1299,16 @@ fn initialise_arrays(
                         Compo::CN(_) => (),
                     }
                 }
-                cn.data =
-                    arrow_init_zeros(cn.data.as_ref(), cn.block.cn_type, *cg_cycle_count, shape)
-                        .with_context(|| {
-                            format!("Zeros initialisation of channel {} failed", cn.unique_name)
-                        })?;
+                cn.data = arrow_init_zeros(
+                    cn.data.as_ref(),
+                    cn.block.cn_type,
+                    *cg_cycle_count,
+                    cn.n_bytes,
+                    shape,
+                )
+                .with_context(|| {
+                    format!("Zeros initialisation of channel {} failed", cn.unique_name)
+                })?;
                 cn.channel_data_valid = false;
                 Ok(())
             },

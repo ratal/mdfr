@@ -2,6 +2,7 @@
 use crate::export::tensor::Order;
 use crate::export::tensor::Tensor;
 use anyhow::{bail, Context, Error};
+use arrow2::array::MutableUtf8ValuesArray;
 use arrow2::array::{
     Array, BinaryArray, FixedSizeBinaryArray, FixedSizeListArray, MutableArray,
     MutableFixedSizeBinaryArray, PrimitiveArray, Utf8Array,
@@ -1203,6 +1204,7 @@ pub fn arrow_init_zeros(
     data: &dyn Array,
     cn_type: u8,
     cycle_count: u64,
+    n_bytes: u32,
     shape: (Vec<usize>, Order),
 ) -> Result<Box<dyn Array>, Error> {
     if cn_type == 3 || cn_type == 6 {
@@ -1273,7 +1275,11 @@ pub fn arrow_init_zeros(
                 // 6: SBC ISO-8859-1 to be converted into UTF8
                 // 7: String UTF8
                 // 8 | 9 :String UTF16 to be converted into UTF8
-                Ok(Utf8Array::<i64>::new_null(DataType::LargeUtf8, cycle_count as usize).boxed())
+                Ok(MutableUtf8ValuesArray::<i64>::with_capacities(
+                    cycle_count as usize,
+                    n_bytes as usize,
+                )
+                .as_box())
             }
             DataType::Extension(extension_name, data_type, _) => {
                 if extension_name.eq(&"Tensor".to_string()) {
