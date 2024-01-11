@@ -220,14 +220,14 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
                                 cn.data = linear_conversion_calculation::<f64>(cn.data.as_ref(), p1, p2)?;
                             }
                         }
-                        _ => bail!(
+                        _ => warn!(
                             "linear conversion of tensor channel {} not possible, channel does not contain primitives",
                             cn.unique_name
                         ),
                     }
                 }
             }
-            _ => bail!(
+            _ => warn!(
                 "linear conversion of channel {} not possible, channel does not contain primitives",
                 cn.unique_name
             ),
@@ -345,16 +345,16 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
                             cn.data = rational_conversion_calculation::<f64>(cn.data.as_ref(), cc_val)?;
                         }
                     }
-                    _ => bail!(
+                    _ => warn!(
                         "rational conversion of tensor channel {} not possible, channel does not contain primitives",
                         cn.unique_name
                     ),
                 }
             }
         }
-        _ => bail!(
-            "rational conversion of channel {} not possible, channel does not contain primitives",
-            cn.unique_name
+        _ => warn!(
+            "rational conversion of channel {} of type {:?} not possible, channel does not contain primitives",
+            cn.unique_name, cn.data.data_type(),
         ),
     }
     Ok(())
@@ -602,14 +602,14 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                                     )?;
                                 }
                             }
-                            _=> bail!(
+                            _=> warn!(
                                 "algebraic conversion of tensor channel {} not possible, channel does not contain primitives",
                                 cn.unique_name
                             )
                         }
                     }
                 }
-                _=> bail!(
+                _=> warn!(
                     "algebraic conversion of channel {} not possible, channel does not contain primitives",
                     cn.unique_name
                 )
@@ -1012,14 +1012,14 @@ fn value_to_value_without_interpolation(
                             &(*cycle_count as usize),
                         )?;
                     }
-                    _ => bail!(
+                    _ => warn!(
                         "value to value without interpolation conversion of tensor channel {} not possible, channel does not contain primitive",
                         cn.unique_name
                     )
                 }
             }
         }
-        _ => bail!(
+        _ => warn!(
             "value to value without interpolation conversion of channel {} not possible, channel does not contain primitive",
             cn.unique_name
         )
@@ -1156,7 +1156,7 @@ fn value_range_to_value_table(
                 &(*cycle_count as usize),
             )?;
         }
-        _ => bail!(
+        _ => warn!(
             "value range to value conversion of channel {} not possible, channel does not contain primitive",
             cn.unique_name
         )
@@ -1465,7 +1465,7 @@ fn value_to_text(
             });
             cn.data = Utf8Array::<i64>::from_iter_values(new_array.iter()).boxed();
         }
-        _ => bail!(
+        _ => warn!(
             "value to text conversion of channel {} not possible, channel does not contain primitive",
             cn.unique_name
         ),
@@ -2141,7 +2141,7 @@ fn bitfield_text_table(
             )?;
         }
         _ => {
-            bail!(
+            warn!(
                 "bitfield conversion into text of channel {} not possible, channel does not contain unsigned integer",
                 cn.unique_name
             )
