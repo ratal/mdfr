@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use anyhow::Result;
-    use arrow2::array::BinaryArray;
+    use arrow2::array::FixedSizeBinaryArray;
     use arrow2::array::MutableArray;
     use arrow2::array::MutablePrimitiveArray;
     use arrow2::array::MutableUtf8Array;
@@ -237,18 +237,15 @@ mod tests {
             BASE_PATH_MDF4, list_of_paths[0], "Vector_ByteArrayFixedLength.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
-        let byte_array = BinaryArray::<i64>::from([
-            Some([255, 255, 255, 255, 255].as_ref()),
-            Some([18, 35, 52, 69, 86].as_ref()),
-            Some([0, 1, 2, 3, 4].as_ref()),
-            Some([4, 3, 2, 1, 0].as_ref()),
-            Some([255, 254, 253, 252, 251].as_ref()),
-            Some([250, 249, 248, 247, 246].as_ref()),
-            Some([245, 244, 243, 242, 241].as_ref()),
-            Some([240, 239, 238, 237, 236].as_ref()),
-            Some([235, 234, 233, 232, 231].as_ref()),
-            Some([255, 255, 255, 255, 255].as_ref()),
-        ])
+        let byte_array = FixedSizeBinaryArray::new(
+            DataType::FixedSizeBinary(5),
+            Buffer::<u8>::from(vec![
+                255, 255, 255, 255, 255, 18, 35, 52, 69, 86, 0, 1, 2, 3, 4, 4, 3, 2, 1, 0, 255,
+                254, 253, 252, 251, 250, 249, 248, 247, 246, 245, 244, 243, 242, 241, 240, 239,
+                238, 237, 236, 235, 234, 233, 232, 231, 255, 255, 255, 255, 255,
+            ]),
+            None,
+        )
         .boxed();
         mdf.load_all_channels_data_in_memory()?;
         if let Some(data) = mdf.get_channel_data(&"Time channel".to_string()) {

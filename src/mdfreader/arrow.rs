@@ -819,7 +819,7 @@ fn to_bytes(array: Box<dyn Array>, data_type: &DataType) -> Vec<u8> {
         DataType::FixedSizeBinary(_) => {
             let array = array
                 .as_any()
-                .downcast_ref::<BinaryArray<i64>>()
+                .downcast_ref::<FixedSizeBinaryArray>()
                 .expect("could not downcast large binary to bytes vect");
             array.values_iter().flat_map(|x| x.to_vec()).collect()
         }
