@@ -438,7 +438,7 @@ fn read_vlsd_from_bytes(
                     if (position + length + 4) <= data_length {
                         position += std::mem::size_of::<u32>();
                         let record = &data[position..position + length - 1]; // do not take null terminated character
-                        let mut dst = String::new();
+                        let mut dst = String::with_capacity(record.len());
                         let (_result, _size, _replacement) = decoder
                             .windows_1252
                             .decode_to_string(record, &mut dst, false);
@@ -493,7 +493,7 @@ fn read_vlsd_from_bytes(
                     if (position + length + 4) <= data_length {
                         position += std::mem::size_of::<u32>();
                         let record = &data[position..position + length - 1]; // do not take null terminated character
-                        let mut dst = String::new();
+                        let mut dst = String::with_capacity(record.len());
                         let (_result, _size, _replacement) =
                             decoder.utf_16_be.decode_to_string(record, &mut dst, false);
                         values.extend_from_slice(dst.as_bytes());
@@ -521,7 +521,7 @@ fn read_vlsd_from_bytes(
                     if (position + length + 4) <= data_length {
                         position += std::mem::size_of::<u32>();
                         let record = &data[position..position + length - 1]; // do not take null terminated character
-                        let mut dst = String::new();
+                        let mut dst = String::with_capacity(record.len());
                         let (_result, _size, _replacement) =
                             decoder.utf_16_le.decode_to_string(record, &mut dst, false);
                         values.extend_from_slice(dst.as_bytes());
