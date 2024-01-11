@@ -1287,26 +1287,35 @@ pub fn read_channels_from_bytes(
                     }
                 }
                 DataType::LargeUtf8 => {
-                    let mut data = cn.data.as_any_mut().downcast_mut::<Utf8Array<i64>>()
-                    .with_context(|| format!("Read channels from bytes function could not downcast to large Utf8, channel {}", cn.unique_name))?.clone()
-                    .into_mut().expect_right("failed converting Utf8 channel Array in mutableArray");
+                    let array = cn.data.as_any_mut().downcast_mut::<Utf8Array<i64>>()
+                    .with_context(|| format!("Read channels from bytes function could not downcast to large Utf8, channel {}", cn.unique_name))?;
+                    let mut values = array.get_mut_values().context("could not get mutable reference of UTF8 array values")?.to_vec();
+                    let mut offsets = array.get_mut_offsets().context("could not get mutable reference of UTF8 array offsets")?.to_vec();
                     let n_bytes = cn.n_bytes as usize;
                     if cn.block.cn_data_type == 6 {
                         // SBC ISO-8859-1 to be converted into UTF8
                         let mut decoder = WINDOWS_1252.new_decoder();
                         for record in data_chunk.chunks(record_length) {
                             value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                            let mut dst = String::new();
+                            let mut dst = String::with_capacity(value.len());
                             let (_result, _size, _replacement) =
                                 decoder.decode_to_string(value, &mut dst, false);
-                            data.push(Some(dst.trim_end_matches('\0')));
+                            dst = dst.trim_end_matches('\0').to_owned();
+                            values.extend_from_slice(dst.as_bytes());
+                            let last_offset =
+                                offsets.last_mut().copied().unwrap_or(0) + dst.len() as i64;
+                            offsets.push(last_offset);
                         }
                     } else if cn.block.cn_data_type == 7 {
                         // 7: String UTF8
                         for record in data_chunk.chunks(record_length) {
                             value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                            data.push(Some(str::from_utf8(value)
-                                .context("Found invalid UTF-8")?));
+                            let dst = str::from_utf8(value)
+                                .context("Found invalid UTF-8")?.trim_end_matches('\0');
+                            values.extend_from_slice(dst.as_bytes());
+                            let last_offset =
+                                offsets.last_mut().copied().unwrap_or(0) + dst.len() as i64;
+                            offsets.push(last_offset);
                         }
                     } else if cn.block.cn_data_type == 8 || cn.block.cn_data_type == 9 {
                         // 8 | 9 :String UTF16 to be converted into UTF8
@@ -1314,29 +1323,42 @@ pub fn read_channels_from_bytes(
                             let mut decoder = UTF_16BE.new_decoder();
                             for record in data_chunk.chunks(record_length) {
                                 value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                let mut dst = String::new();
+                                let mut dst = String::with_capacity(value.len());
                                 let (_result, _size, _replacement) = decoder.decode_to_string(
                                     value,
                                     &mut dst,
                                     false,
                                 );
-                                data.push(Some(dst.trim_end_matches('\0')));
+                                dst = dst.trim_end_matches('\0').to_owned();
+                                values.extend_from_slice(dst.as_bytes());
+                                let last_offset =
+                                    offsets.last_mut().copied().unwrap_or(0) + dst.len() as i64;
+                                offsets.push(last_offset);
                             }
                         } else {
                             let mut decoder = UTF_16LE.new_decoder();
                             for record in data_chunk.chunks(record_length) {
-                                value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                let mut dst = String::new();
+                                value = &record[pos_byte_beg..pos_byte_beg + n_bytes - 1];
+                                let mut dst = String::with_capacity(value.len());
                                 let (_result, _size, _replacement) = decoder.decode_to_string(
                                     value,
                                     &mut dst,
                                     false,
                                 );
-                                data.push(Some(dst.trim_end_matches('\0')));
+                                dst = dst.trim_end_matches('\0').to_owned();
+                                values.extend_from_slice(dst.as_bytes());
+                                let last_offset =
+                                    offsets.last_mut().copied().unwrap_or(0) + dst.len() as i64;
+                                offsets.push(last_offset);
                             }
                         }
                     }
-                    cn.data = data.as_box();
+                    cn.data = Utf8Array::<i64>::try_new(
+                        DataType::LargeUtf8,
+                        offsets.try_into().context("failed converting vector into OffsetsBuffer")?,
+                        values.into(),
+                        None,
+                    ).context("failed creating Utf8Array from muted offsets and values")?.boxed();
                 }
                 DataType::LargeBinary => {
                     let n_bytes = cn.n_bytes as usize;

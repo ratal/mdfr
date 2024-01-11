@@ -357,7 +357,7 @@ fn read_sd(
                         .context("could not read SD data buffer")?;
                     position += block_header.len as i64;
                     read_vlsd_from_bytes(&mut data, cn, 0, decoder)
-                        .context("failed readin VLSD from bytes")?;
+                        .context("failed reading VLSD from bytes")?;
                 } else if "##DZ".as_bytes() == id {
                     let (mut data, block_header) =
                         parse_dz(rdr).context("failed parsing DZ block")?;
@@ -416,14 +416,19 @@ fn read_vlsd_from_bytes(
     let mut nrecord: usize = 0;
     match cn.data.data_type() {
         DataType::LargeUtf8 => {
-            let mut array = cn
+            let array = cn
                 .data
                 .as_any_mut()
                 .downcast_mut::<Utf8Array<i64>>()
-                .context("could not downcast to Utf8 array for VLSD")?
-                .clone()
-                .into_mut()
-                .expect_right("failed converting UTF8 Array in mutableArray for VLSD");
+                .context("could not downcast to Utf8 values array")?;
+            let mut values = array
+                .get_mut_values()
+                .context("could not get mutable reference of UTF8 array values")?
+                .to_vec();
+            let mut offsets = array
+                .get_mut_offsets()
+                .context("could not get mutable reference of UTF8 array offsets")?
+                .to_vec();
             if cn.block.cn_data_type == 6 {
                 while remaining > 0 {
                     let len = &data[position..position + std::mem::size_of::<u32>()];
@@ -432,13 +437,15 @@ fn read_vlsd_from_bytes(
                             as usize;
                     if (position + length + 4) <= data_length {
                         position += std::mem::size_of::<u32>();
-                        let record = &data[position..position + length];
+                        let record = &data[position..position + length - 1]; // do not take null terminated character
                         let mut dst = String::new();
                         let (_result, _size, _replacement) = decoder
                             .windows_1252
                             .decode_to_string(record, &mut dst, false);
-                        array.push(Some(dst));
-                        cn.data = array.as_box();
+                        values.extend_from_slice(dst.as_bytes());
+                        let last_offset =
+                            offsets.last_mut().copied().unwrap_or(0) + record.len() as i64;
+                        offsets.push(last_offset);
                         position += length;
                         remaining = data_length - position;
                         nrecord += 1;
@@ -459,13 +466,12 @@ fn read_vlsd_from_bytes(
                             as usize;
                     if (position + length + 4) <= data_length {
                         position += std::mem::size_of::<u32>();
-                        let record = &data[position..position + length];
-                        array.push(Some(
-                            str::from_utf8(record)
-                                .context("Found invalid UTF-8")?
-                                .trim_end_matches('\0'),
-                        ));
-                        cn.data = array.as_box();
+                        let record = &data[position..position + length - 1]; // do not take null terminated character
+                        let dst = str::from_utf8(record).context("Found invalid UTF-8")?;
+                        values.extend_from_slice(dst.as_bytes());
+                        let last_offset =
+                            offsets.last_mut().copied().unwrap_or(0) + record.len() as i64;
+                        offsets.push(last_offset);
                         position += length;
                         remaining = data_length - position;
                         nrecord += 1;
@@ -486,12 +492,14 @@ fn read_vlsd_from_bytes(
                             as usize;
                     if (position + length + 4) <= data_length {
                         position += std::mem::size_of::<u32>();
-                        let record = &data[position..position + length];
+                        let record = &data[position..position + length - 1]; // do not take null terminated character
                         let mut dst = String::new();
                         let (_result, _size, _replacement) =
                             decoder.utf_16_be.decode_to_string(record, &mut dst, false);
-                        array.push(Some(dst));
-                        cn.data = array.as_box();
+                        values.extend_from_slice(dst.as_bytes());
+                        let last_offset =
+                            offsets.last_mut().copied().unwrap_or(0) + record.len() as i64;
+                        offsets.push(last_offset);
                         position += length;
                         remaining = data_length - position;
                         nrecord += 1;
@@ -512,12 +520,14 @@ fn read_vlsd_from_bytes(
                             as usize;
                     if (position + length + 4) <= data_length {
                         position += std::mem::size_of::<u32>();
-                        let record = &data[position..position + length];
+                        let record = &data[position..position + length - 1]; // do not take null terminated character
                         let mut dst = String::new();
                         let (_result, _size, _replacement) =
                             decoder.utf_16_le.decode_to_string(record, &mut dst, false);
-                        array.push(Some(dst));
-                        cn.data = array.as_box();
+                        values.extend_from_slice(dst.as_bytes());
+                        let last_offset =
+                            offsets.last_mut().copied().unwrap_or(0) + record.len() as i64;
+                        offsets.push(last_offset);
                         position += length;
                         remaining = data_length - position;
                         nrecord += 1;
@@ -531,6 +541,16 @@ fn read_vlsd_from_bytes(
                     }
                 }
             };
+            cn.data = Utf8Array::<i64>::try_new(
+                DataType::LargeUtf8,
+                offsets
+                    .try_into()
+                    .context("failed converting vector into OffsetsBuffer")?,
+                values.into(),
+                None,
+            )
+            .context("failed creating Utf8Array from muted offsets and values with VLSD record")?
+            .boxed();
             if remaining == 0 {
                 data.clear()
             }
@@ -1155,33 +1175,35 @@ fn read_all_channels_unsorted_from_bytes(
                                                     .context(
                                                         "could not downcast to Utf8 values array",
                                                     )?;
+                                                let (_null, rec) = record
+                                                    .split_last()
+                                                    .context("empty VLSD record")?; // do not take the terminated NULL character
                                                 let mut values = array.get_mut_values().context("could not get mutable reference of UTF8 array values")?.to_vec();
                                                 let mut offsets = array.get_mut_offsets().context("could not get mutable reference of UTF8 array offsets")?.to_vec();
-                                                let mut dst = String::with_capacity(record.len());
+                                                let mut dst = String::with_capacity(rec.len());
                                                 if target_cn.block.cn_data_type == 6 {
                                                     let (_result, _size, _replacement) = decoder
                                                         .windows_1252
-                                                        .decode_to_string(record, &mut dst, false);
+                                                        .decode_to_string(rec, &mut dst, false);
                                                 } else if target_cn.block.cn_data_type == 7 {
-                                                    dst = str::from_utf8(record)
-                                                        .context("Found invalid UTF-8")?
+                                                    dst = str::from_utf8(rec)
+                                                        .context(
+                                                            "Found invalid UTF-8 from VLSD record",
+                                                        )?
                                                         .to_string();
                                                 } else if target_cn.block.cn_data_type == 8 {
                                                     let (_result, _size, _replacement) = decoder
                                                         .utf_16_be
-                                                        .decode_to_string(record, &mut dst, false);
+                                                        .decode_to_string(rec, &mut dst, false);
                                                 } else if target_cn.block.cn_data_type == 9 {
                                                     let (_result, _size, _replacement) = decoder
                                                         .utf_16_le
-                                                        .decode_to_string(record, &mut dst, false);
+                                                        .decode_to_string(rec, &mut dst, false);
                                                 };
-                                                values.extend_from_slice(
-                                                    dst.as_bytes().split_last().unwrap().1,
-                                                ); // do not take the terminated NULL character
+                                                values.extend_from_slice(dst.as_bytes());
                                                 let last_offset =
-                                                    offsets.last_mut().copied().unwrap()
-                                                        + record.len() as i64
-                                                        - 1; // NULL terminated
+                                                    offsets.last_mut().copied().unwrap_or(0)
+                                                        + rec.len() as i64;
                                                 offsets.push(last_offset);
                                                 target_cn.data = Utf8Array::<i64>::try_new(
                                                     DataType::LargeUtf8,
