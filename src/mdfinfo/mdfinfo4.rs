@@ -1562,7 +1562,8 @@ pub fn parse_dg4(
             position,
             sharable,
             block.dg_rec_id_size,
-        )?;
+        )
+        .context("Failed reading first CG4 Block")?;
         n_cg += num_cg;
         n_cn += num_cn;
         identify_vlsd_cg(&mut cg);
@@ -1580,7 +1581,8 @@ pub fn parse_dg4(
                 position,
                 sharable,
                 block.dg_rec_id_size,
-            )?;
+            )
+            .context("Failed reading CG4 Block")?;
             n_cg += num_cg;
             n_cn += num_cn;
             identify_vlsd_cg(&mut cg);
@@ -1804,14 +1806,16 @@ fn parse_cg4_block(
     sharable: &mut SharableBlocks,
     record_id_size: u8,
 ) -> Result<(Cg4, i64, usize)> {
-    let (mut block, header, pos) = parse_block_short(rdr, target, position)?;
+    let (mut block, header, pos) =
+        parse_block_short(rdr, target, position).context("Failed reading CG4 short Block")?;
     position = pos;
     let cg: Cg4Block = block
         .read_le()
         .context("Could not read buffer into Cg4Block struct")?;
 
     // Reads MD
-    position = read_meta_data(rdr, sharable, cg.cg_md_comment, position, BlockType::CG)?;
+    position = read_meta_data(rdr, sharable, cg.cg_md_comment, position, BlockType::CG)
+        .context("Failed reading CG metadata")?;
     let record_layout = (record_id_size, cg.cg_data_bytes, cg.cg_inval_bytes);
 
     // reads CN (and other linked block behind like CC, SI, CA, etc.)
@@ -1822,22 +1826,32 @@ fn parse_cg4_block(
         sharable,
         record_layout,
         cg.cg_cycle_count,
-    )?;
+    )
+    .with_context(|| {
+        format!(
+            "Failed reading CN4 Block, target position {}",
+            cg.cg_cn_first
+        )
+    })?;
     position = pos;
 
     // Reads Acq Name
-    position = read_meta_data(rdr, sharable, cg.cg_tx_acq_name, position, BlockType::CG)?;
+    position = read_meta_data(rdr, sharable, cg.cg_tx_acq_name, position, BlockType::CG)
+        .context("Failed reading Acq name metadata")?;
 
     // Reads SI Acq name
     let si_pointer = cg.cg_si_acq_source;
     if (si_pointer != 0) && !sharable.si.contains_key(&si_pointer) {
-        let (mut si_block, _header, pos) = parse_block_short(rdr, si_pointer, position)?;
+        let (mut si_block, _header, pos) = parse_block_short(rdr, si_pointer, position)
+            .context("Failed reading CG SI4 short Block")?;
         position = pos;
         let si_block: Si4Block = si_block
             .read_le()
             .context("Could not read buffer into Si4block struct")?;
-        position = read_meta_data(rdr, sharable, si_block.si_tx_name, position, BlockType::SI)?;
-        position = read_meta_data(rdr, sharable, si_block.si_tx_path, position, BlockType::SI)?;
+        position = read_meta_data(rdr, sharable, si_block.si_tx_name, position, BlockType::SI)
+            .context("Failed reading CG SI name metadata")?;
+        position = read_meta_data(rdr, sharable, si_block.si_tx_path, position, BlockType::SI)
+            .context("Failed reading CG SI path metadata")?;
         sharable.si.insert(si_pointer, si_block);
     }
 
@@ -1949,7 +1963,8 @@ pub fn parse_cg4(
     let mut n_cn: usize = 0;
     if target != 0 {
         let (mut cg_struct, pos, num_cn) =
-            parse_cg4_block(rdr, target, position, sharable, record_id_size)?;
+            parse_cg4_block(rdr, target, position, sharable, record_id_size)
+                .context("Failed parsing CG4 Block")?;
         position = pos;
         let mut next_pointer = cg_struct.block.cg_cg_next;
         cg_struct.record_length += record_id_size as u32 + cg_struct.block.cg_inval_bytes;
@@ -1959,7 +1974,8 @@ pub fn parse_cg4(
 
         while next_pointer != 0 {
             let (mut cg_struct, pos, num_cn) =
-                parse_cg4_block(rdr, next_pointer, position, sharable, record_id_size)?;
+                parse_cg4_block(rdr, next_pointer, position, sharable, record_id_size)
+                    .context("Failed parsing CG4 Block")?;
             position = pos;
             cg_struct.record_length += record_id_size as u32 + cg_struct.block.cg_inval_bytes;
             next_pointer = cg_struct.block.cg_cg_next;
@@ -2173,7 +2189,8 @@ pub fn parse_cn4(
             sharable,
             record_layout,
             cg_cycle_count,
-        )?;
+        )
+        .context("Failed parsing CN4 Block")?;
         position = pos;
         n_cn += n_cns;
         cn.extend(cns);
@@ -2221,7 +2238,8 @@ pub fn parse_cn4(
                 sharable,
                 record_layout,
                 cg_cycle_count,
-            )?;
+            )
+            .context("Failed parsing CN4 Block")?;
             position = pos;
             n_cn += n_cns;
             cn.extend(cns);
@@ -2471,7 +2489,8 @@ fn parse_cn4_block(
     let (record_id_size, _cg_data_bytes, cg_inval_bytes) = record_layout;
     let mut n_cn: usize = 1;
     let mut cns: HashMap<i32, Cn4> = HashMap::new();
-    let (mut block, cnheader, pos) = parse_block_short(rdr, target, position)?;
+    let (mut block, cnheader, pos) =
+        parse_block_short(rdr, target, position).context("Failed reading CN4 short Block")?;
     position = pos;
     let block: Cn4Block = block
         .read_le()
@@ -2492,31 +2511,40 @@ fn parse_cn4_block(
     };
 
     // Reads TX name
-    position = read_meta_data(rdr, sharable, block.cn_tx_name, position, BlockType::CN)?;
-    let name: String = if let Some(n) = sharable.get_tx(block.cn_tx_name)? {
+    position = read_meta_data(rdr, sharable, block.cn_tx_name, position, BlockType::CN)
+        .context("Failed reading channel TX name")?;
+    let name: String = if let Some(n) = sharable
+        .get_tx(block.cn_tx_name)
+        .context("Failed getting TX name while reading CN4Block")?
+    {
         n
     } else {
         String::new()
     };
 
     // Reads unit
-    position = read_meta_data(rdr, sharable, block.cn_md_unit, position, BlockType::CN)?;
+    position = read_meta_data(rdr, sharable, block.cn_md_unit, position, BlockType::CN)
+        .context("Failed reading channel unit")?;
 
     // Reads CC
     let cc_pointer = block.cn_cc_conversion;
     if (cc_pointer != 0) && !sharable.cc.contains_key(&cc_pointer) {
-        let (cc_block, _header, pos) = parse_block_short(rdr, cc_pointer, position)?;
+        let (cc_block, _header, pos) = parse_block_short(rdr, cc_pointer, position)
+            .context("Failed reading CC4 short Block")?;
         position = pos;
-        position = read_cc(rdr, &cc_pointer, position, cc_block, sharable)?;
+        position = read_cc(rdr, &cc_pointer, position, cc_block, sharable)
+            .context("Failed reading CC4 Block")?;
     }
 
     // Reads MD
-    position = read_meta_data(rdr, sharable, block.cn_md_comment, position, BlockType::CN)?;
+    position = read_meta_data(rdr, sharable, block.cn_md_comment, position, BlockType::CN)
+        .context("Failed reading CN4 metadata")?;
 
     //Reads SI
     let si_pointer = block.cn_si_source;
     if (si_pointer != 0) && !sharable.si.contains_key(&si_pointer) {
-        let (mut si_block, _header, pos) = parse_block_short(rdr, si_pointer, position)?;
+        let (mut si_block, _header, pos) = parse_block_short(rdr, si_pointer, position)
+            .context("Failed reading channel SI4 source Block")?;
         position = pos;
         let si_block: Si4Block = si_block
             .read_le()
@@ -2537,7 +2565,8 @@ fn parse_cn4_block(
             sharable,
             record_layout,
             cg_cycle_count,
-        )?;
+        )
+        .context("Failed reading composition")?;
         is_array = array_flag;
         compo = Some(co);
         position = pos;
@@ -2575,7 +2604,8 @@ fn parse_cn4_block(
         pos_byte_beg,
         n_bytes,
         composition: compo,
-        data: arrow_data_type_init(cn_type, data_type, n_bytes, is_array)?,
+        data: arrow_data_type_init(cn_type, data_type, n_bytes, is_array)
+            .with_context(|| format!("Failed initialising arrow2 data_type {}, cn_type {}, is_array {} while reading CN4 Block fo channel {}", data_type, cn_type, is_array, name.clone()))?,
         endian,
         invalid_mask,
         channel_data_valid: false,
@@ -2595,22 +2625,27 @@ fn read_cc(
     let cc_block: Cc4Block = block
         .read_le()
         .context("Could nto read buffer into Cc4Block struct")?;
-    position = read_meta_data(rdr, sharable, cc_block.cc_md_unit, position, BlockType::CC)?;
-    position = read_meta_data(rdr, sharable, cc_block.cc_tx_name, position, BlockType::CC)?;
+    position = read_meta_data(rdr, sharable, cc_block.cc_md_unit, position, BlockType::CC)
+        .context("Failed reading CC Block unit metadata")?;
+    position = read_meta_data(rdr, sharable, cc_block.cc_tx_name, position, BlockType::CC)
+        .context("Failed reading CC Block name metadata")?;
 
     for pointer in &cc_block.cc_ref {
         if !sharable.cc.contains_key(pointer)
             && !sharable.md_tx.contains_key(pointer)
             && *pointer != 0
         {
-            let (ref_block, header, _pos) = parse_block_short(rdr, *pointer, position)?;
+            let (ref_block, header, _pos) = parse_block_short(rdr, *pointer, position)
+                .context("Failed reading CC short block")?;
             position = pointer + header.hdr_len as i64;
             if "##TX".as_bytes() == header.hdr_id {
                 // TX Block
-                position = read_meta_data(rdr, sharable, *pointer, position, BlockType::CC)?
+                position = read_meta_data(rdr, sharable, *pointer, position, BlockType::CC)
+                    .context("Failed reading CC Block TX metadata")?
             } else {
                 // CC Block
-                position = read_cc(rdr, pointer, position, ref_block, sharable)?;
+                position = read_cc(rdr, pointer, position, ref_block, sharable)
+                    .context("Failed reading CC Block")?;
             }
         }
     }
@@ -3023,7 +3058,8 @@ fn parse_composition(
     record_layout: RecordLayout,
     cg_cycle_count: u64,
 ) -> Result<(Composition, i64, bool, usize, CnType)> {
-    let (mut block, block_header, pos) = parse_block(rdr, target, position)?;
+    let (mut block, block_header, pos) =
+        parse_block(rdr, target, position).context("Failed parsing composition header block")?;
     position = pos;
     let is_array: bool;
     let mut cns: CnType;
@@ -3032,7 +3068,8 @@ fn parse_composition(
     if block_header.hdr_id == "##CA".as_bytes() {
         // Channel Array
         is_array = true;
-        let block = parse_ca_block(&mut block, block_header, cg_cycle_count)?;
+        let block = parse_ca_block(&mut block, block_header, cg_cycle_count)
+            .context("Failed parsing CA block")?;
         position = pos;
         let ca_compositon: Option<Box<Composition>>;
         if block.ca_composition != 0 {
@@ -3043,7 +3080,8 @@ fn parse_composition(
                 sharable,
                 record_layout,
                 cg_cycle_count,
-            )?;
+            )
+            .context("Failed parsing composition block")?;
             position = pos;
             cns = cnss;
             n_cn += n_cns;
@@ -3090,7 +3128,8 @@ fn parse_composition(
                 sharable,
                 record_layout,
                 cg_cycle_count,
-            )?;
+            )
+            .context("Failed parsing composition block")?;
             position = pos;
             n_cn += n_cns;
             cns.extend(cnss);
