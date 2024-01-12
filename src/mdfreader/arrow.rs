@@ -2,10 +2,9 @@
 use crate::export::tensor::Order;
 use crate::export::tensor::Tensor;
 use anyhow::{bail, Context, Error};
-use arrow2::array::MutableUtf8ValuesArray;
 use arrow2::array::{
     Array, BinaryArray, FixedSizeBinaryArray, FixedSizeListArray, MutableArray,
-    MutableFixedSizeBinaryArray, PrimitiveArray, Utf8Array,
+    MutableFixedSizeBinaryArray, MutableUtf8ValuesArray, PrimitiveArray, Utf8Array,
 };
 use arrow2::bitmap::Bitmap;
 use arrow2::buffer::Buffer;
@@ -1048,41 +1047,45 @@ pub fn arrow_data_type_init(
                     Ok(Tensor::try_new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt8), None),
                         Buffer::<u8>::new(),
-                        Some(Vec::new()),
-                        Some(Order::RowMajor),
                         None,
                         None,
-                    )?
+                        None,
+                        None,
+                    )
+                    .context("failed initialising u8 tensor")?
                     .to_boxed())
                 } else if n_bytes == 2 {
                     Ok(Tensor::try_new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt16), None),
-                        Buffer::<u16>::new(),
-                        Some(Vec::new()),
-                        Some(Order::RowMajor),
+                        vec![0u16].into(),
                         None,
                         None,
-                    )?
+                        None,
+                        None,
+                    )
+                    .context("failed initialising u16 tensor")?
                     .to_boxed())
                 } else if n_bytes <= 4 {
                     Ok(Tensor::try_new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt32), None),
                         Buffer::<u32>::new(),
-                        Some(Vec::new()),
-                        Some(Order::RowMajor),
                         None,
                         None,
-                    )?
+                        None,
+                        None,
+                    )
+                    .context("failed initialising u32 tensor")?
                     .to_boxed())
                 } else {
                     Ok(Tensor::try_new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt64), None),
                         Buffer::<u64>::new(),
-                        Some(Vec::new()),
-                        Some(Order::RowMajor),
                         None,
                         None,
-                    )?
+                        None,
+                        None,
+                    )
+                    .context("failed initialising u64 tensor")?
                     .to_boxed())
                 }
             }
@@ -1092,41 +1095,45 @@ pub fn arrow_data_type_init(
                     Ok(Tensor::try_new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int8), None),
                         Buffer::<i8>::new(),
-                        Some(Vec::new()),
-                        Some(Order::RowMajor),
                         None,
                         None,
-                    )?
+                        None,
+                        None,
+                    )
+                    .context("failed initialising i8 tensor")?
                     .to_boxed())
                 } else if n_bytes == 2 {
                     Ok(Tensor::try_new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int16), None),
                         Buffer::<i16>::new(),
-                        Some(Vec::new()),
-                        Some(Order::RowMajor),
                         None,
                         None,
-                    )?
+                        None,
+                        None,
+                    )
+                    .context("failed initialising i16 tensor")?
                     .to_boxed())
                 } else if n_bytes <= 4 {
                     Ok(Tensor::try_new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int32), None),
                         Buffer::<i32>::new(),
-                        Some(Vec::new()),
-                        Some(Order::RowMajor),
                         None,
                         None,
-                    )?
+                        None,
+                        None,
+                    )
+                    .context("failed initialising i32 tensor")?
                     .to_boxed())
                 } else {
                     Ok(Tensor::try_new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int64), None),
                         Buffer::<i64>::new(),
-                        Some(Vec::new()),
-                        Some(Order::RowMajor),
                         None,
                         None,
-                    )?
+                        None,
+                        None,
+                    )
+                    .context("failed initialising i64 tensor")?
                     .to_boxed())
                 }
             }
@@ -1136,21 +1143,23 @@ pub fn arrow_data_type_init(
                     Ok(Tensor::try_new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::Float32), None),
                         Buffer::<f32>::new(),
-                        Some(Vec::new()),
-                        Some(Order::RowMajor),
                         None,
                         None,
-                    )?
+                        None,
+                        None,
+                    )
+                    .context("failed initialising f32 tensor")?
                     .to_boxed())
                 } else {
                     Ok(Tensor::try_new(
                         DataType::Extension("Tensor".to_owned(), Box::new(DataType::Float64), None),
                         Buffer::<f64>::new(),
-                        Some(Vec::new()),
-                        Some(Order::RowMajor),
                         None,
                         None,
-                    )?
+                        None,
+                        None,
+                    )
+                    .context("failed initialising f64 tensor")?
                     .to_boxed())
                 }
             }
@@ -1165,11 +1174,12 @@ pub fn arrow_data_type_init(
                             None,
                         ),
                         Buffer::<f32>::new(),
-                        Some(Vec::new()),
-                        Some(Order::RowMajor),
                         None,
                         None,
-                    )?
+                        None,
+                        None,
+                    )
+                    .context("failed initialising f32 complex tensor")?
                     .to_boxed())
                 } else {
                     let field = Field::new("complex64", DataType::Float64, false);
@@ -1180,11 +1190,12 @@ pub fn arrow_data_type_init(
                             None,
                         ),
                         Buffer::<f64>::new(),
-                        Some(Vec::new()),
-                        Some(Order::RowMajor),
                         None,
                         None,
-                    )?
+                        None,
+                        None,
+                    )
+                    .context("failed initialising f64 complex tensor")?
                     .to_boxed())
                 }
             }
@@ -1290,11 +1301,7 @@ pub fn arrow_init_zeros(
                                 Box::new(DataType::Int8),
                                 None,
                             ),
-                            Buffer::from(vec![
-                                0i8;
-                                (cycle_count as usize)
-                                    * shape.0.iter().product::<usize>()
-                            ]),
+                            Buffer::from(vec![0i8; shape.0.iter().product::<usize>()]),
                             Some(shape.0),
                             Some(shape.1),
                             None,
@@ -1307,11 +1314,7 @@ pub fn arrow_init_zeros(
                                 Box::new(DataType::UInt8),
                                 None,
                             ),
-                            Buffer::from(vec![
-                                0u8;
-                                (cycle_count as usize)
-                                    * shape.0.iter().product::<usize>()
-                            ]),
+                            Buffer::from(vec![0u8; shape.0.iter().product::<usize>()]),
                             Some(shape.0),
                             Some(shape.1),
                             None,
@@ -1324,11 +1327,7 @@ pub fn arrow_init_zeros(
                                 Box::new(DataType::Int16),
                                 None,
                             ),
-                            Buffer::from(vec![
-                                0i16;
-                                (cycle_count as usize)
-                                    * shape.0.iter().product::<usize>()
-                            ]),
+                            Buffer::from(vec![0i16; shape.0.iter().product::<usize>()]),
                             Some(shape.0),
                             Some(shape.1),
                             None,
@@ -1341,11 +1340,7 @@ pub fn arrow_init_zeros(
                                 Box::new(DataType::UInt16),
                                 None,
                             ),
-                            Buffer::from(vec![
-                                0u16;
-                                (cycle_count as usize)
-                                    * shape.0.iter().product::<usize>()
-                            ]),
+                            Buffer::from(vec![0u16; shape.0.iter().product::<usize>()]),
                             Some(shape.0),
                             Some(shape.1),
                             None,
@@ -1358,11 +1353,7 @@ pub fn arrow_init_zeros(
                                 Box::new(DataType::Int32),
                                 None,
                             ),
-                            Buffer::from(vec![
-                                0i32;
-                                (cycle_count as usize)
-                                    * shape.0.iter().product::<usize>()
-                            ]),
+                            Buffer::from(vec![0i32; shape.0.iter().product::<usize>()]),
                             Some(shape.0),
                             Some(shape.1),
                             None,
@@ -1375,11 +1366,7 @@ pub fn arrow_init_zeros(
                                 Box::new(DataType::UInt32),
                                 None,
                             ),
-                            Buffer::from(vec![
-                                0u32;
-                                (cycle_count as usize)
-                                    * shape.0.iter().product::<usize>()
-                            ]),
+                            Buffer::from(vec![0u32; shape.0.iter().product::<usize>()]),
                             Some(shape.0),
                             Some(shape.1),
                             None,
@@ -1392,11 +1379,7 @@ pub fn arrow_init_zeros(
                                 Box::new(DataType::Int64),
                                 None,
                             ),
-                            Buffer::from(vec![
-                                0i64;
-                                (cycle_count as usize)
-                                    * shape.0.iter().product::<usize>()
-                            ]),
+                            Buffer::from(vec![0i64; shape.0.iter().product::<usize>()]),
                             Some(shape.0),
                             Some(shape.1),
                             None,
@@ -1409,11 +1392,7 @@ pub fn arrow_init_zeros(
                                 Box::new(DataType::UInt64),
                                 None,
                             ),
-                            Buffer::from(vec![
-                                0u64;
-                                (cycle_count as usize)
-                                    * shape.0.iter().product::<usize>()
-                            ]),
+                            Buffer::from(vec![0u64; shape.0.iter().product::<usize>()]),
                             Some(shape.0),
                             Some(shape.1),
                             None,
@@ -1426,11 +1405,7 @@ pub fn arrow_init_zeros(
                                 Box::new(DataType::Float32),
                                 None,
                             ),
-                            Buffer::from(vec![
-                                0f32;
-                                (cycle_count as usize)
-                                    * shape.0.iter().product::<usize>()
-                            ]),
+                            Buffer::from(vec![0f32; shape.0.iter().product::<usize>()]),
                             Some(shape.0),
                             Some(shape.1),
                             None,
@@ -1443,11 +1418,7 @@ pub fn arrow_init_zeros(
                                 Box::new(DataType::Float64),
                                 None,
                             ),
-                            Buffer::from(vec![
-                                0f64;
-                                (cycle_count as usize)
-                                    * shape.0.iter().product::<usize>()
-                            ]),
+                            Buffer::from(vec![0f64; shape.0.iter().product::<usize>()]),
                             Some(shape.0),
                             Some(shape.1),
                             None,
@@ -1460,11 +1431,10 @@ pub fn arrow_init_zeros(
                                     DataType::FixedSizeList(field.clone(), size),
                                     PrimitiveArray::from_vec(vec![
                                         0f32;
-                                        size * cycle_count as usize
-                                            * shape
-                                                .0
-                                                .iter()
-                                                .product::<usize>()
+                                        size * shape
+                                            .0
+                                            .iter()
+                                            .product::<usize>()
                                     ])
                                     .boxed(),
                                     None,
@@ -1475,11 +1445,10 @@ pub fn arrow_init_zeros(
                                     DataType::FixedSizeList(field.clone(), size),
                                     PrimitiveArray::from_vec(vec![
                                         0f64;
-                                        size * cycle_count as usize
-                                            * shape
-                                                .0
-                                                .iter()
-                                                .product::<usize>()
+                                        size * shape
+                                            .0
+                                            .iter()
+                                            .product::<usize>()
                                     ])
                                     .boxed(),
                                     None,
