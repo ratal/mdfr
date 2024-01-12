@@ -122,8 +122,10 @@ impl MdfInfo {
                 to_encoding(id.id_codepage).unwrap_or(encoding_rs::WINDOWS_1252);
 
             // Read HD Block
-            let (hd, position) = hd3_parser(&mut rdr, id.id_ver, encoding)?;
-            let (hd_comment, position) = hd3_comment_parser(&mut rdr, &hd, position, encoding)?;
+            let (hd, position) =
+                hd3_parser(&mut rdr, id.id_ver, encoding).context("Failed reading HD3 Block")?;
+            let (hd_comment, position) = hd3_comment_parser(&mut rdr, &hd, position, encoding)
+                .context("Failed reading HD3 comment Block")?;
 
             // Read DG Block
             let (mut dg, _, n_cg, n_cn) = parse_dg3(
@@ -133,7 +135,8 @@ impl MdfInfo {
                 &mut sharable,
                 id.id_default_byteorder,
                 encoding,
-            )?;
+            )
+            .context("Failed reading DG3 Block and related blocks including record data")?;
 
             // make channel names unique, list channels and create master dictionnary
             let channel_names_set = build_channel_db3(&mut dg, &sharable, n_cg, n_cn);
@@ -156,22 +159,28 @@ impl MdfInfo {
             };
 
             // Read HD block
-            let (hd, position) = hd4_parser(&mut rdr, &mut sharable)?;
+            let (hd, position) =
+                hd4_parser(&mut rdr, &mut sharable).context("Failed reading HD4 Block")?;
             // parse HD metadata
             sharable.parse_hd_comments(hd.hd_md_comment);
 
             // FH block
-            let (fh, position) = parse_fh(&mut rdr, &mut sharable, hd.hd_fh_first, position)?;
+            let (fh, position) = parse_fh(&mut rdr, &mut sharable, hd.hd_fh_first, position)
+                .context("Failed reading FH4 Blocks")?;
 
             // AT Block read
-            let (at, position) = parse_at4(&mut rdr, &mut sharable, hd.hd_at_first, position)?;
+            let (at, position) = parse_at4(&mut rdr, &mut sharable, hd.hd_at_first, position)
+                .context("Failed reading AT4 Blocks")?;
 
             // EV Block read
-            let (ev, position) = parse_ev4(&mut rdr, &mut sharable, hd.hd_ev_first, position)?;
+            let (ev, position) = parse_ev4(&mut rdr, &mut sharable, hd.hd_ev_first, position)
+                .context("Failed reading EV4 Blocks")?;
 
             // Read DG Block
             let (mut dg, _, n_cg, n_cn) =
-                parse_dg4(&mut rdr, hd.hd_dg_first, position, &mut sharable)?;
+                parse_dg4(&mut rdr, hd.hd_dg_first, position, &mut sharable).context(
+                    "Failed reading DG4 Blocks and related blocks including record data",
+                )?;
 
             // make channel names unique, list channels and create master dictionnary
             let channel_names_set = build_channel_db(&mut dg, &sharable, n_cg, n_cn);
