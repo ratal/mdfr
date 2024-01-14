@@ -39,19 +39,36 @@ pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) -> Result<(
                             CcVal::Uint(_) => (),
                         },
                         2 => match &conv.cc_val {
-                            CcVal::Real(cc_val) => rational_conversion(cn, cc_val)?,
+                            CcVal::Real(cc_val) => {
+                                rational_conversion(cn, cc_val).with_context(|| {
+                                    format!("rational conversion failed for {}", cn.unique_name)
+                                })?
+                            }
                             CcVal::Uint(_) => (),
                         },
                         3 => {
                             if !&conv.cc_ref.is_empty() {
                                 if let Ok(Some(conv)) = sharable.get_tx(conv.cc_ref[0]) {
-                                    algebraic_conversion(cn, &conv, &cycle_count)?
+                                    algebraic_conversion(cn, &conv, &cycle_count).with_context(
+                                        || {
+                                            format!(
+                                                "algebraic conversion failed for {}",
+                                                cn.unique_name
+                                            )
+                                        },
+                                    )?
                                 }
                             }
                         }
                         4 => match &conv.cc_val {
                             CcVal::Real(cc_val) => {
-                                value_to_value_with_interpolation(cn, cc_val.clone(), &cycle_count)?
+                                value_to_value_with_interpolation(cn, cc_val.clone(), &cycle_count)
+                                    .with_context(|| {
+                                        format!(
+                                    "value to value conversion with interpolation failed for {}",
+                                    cn.unique_name
+                                )
+                                    })?
                             }
                             CcVal::Uint(_) => (),
                         },
@@ -60,18 +77,36 @@ pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) -> Result<(
                                 cn,
                                 cc_val.clone(),
                                 &cycle_count,
-                            )?,
+                            )
+                            .with_context(|| {
+                                format!(
+                                    "value to value conversion without interpolation failed for {}",
+                                    cn.unique_name
+                                )
+                            })?,
                             CcVal::Uint(_) => (),
                         },
                         6 => match &conv.cc_val {
                             CcVal::Real(cc_val) => {
-                                value_range_to_value_table(cn, cc_val.clone(), &cycle_count)?
+                                value_range_to_value_table(cn, cc_val.clone(), &cycle_count)
+                                    .with_context(|| {
+                                        format!(
+                                            "value range to value table conversion failed for {}",
+                                            cn.unique_name
+                                        )
+                                    })?
                             }
                             CcVal::Uint(_) => (),
                         },
                         7 => match &conv.cc_val {
                             CcVal::Real(cc_val) => {
-                                value_to_text(cn, cc_val, &conv.cc_ref, &cycle_count, sharable)?
+                                value_to_text(cn, cc_val, &conv.cc_ref, &cycle_count, sharable)
+                                    .with_context(|| {
+                                        format!(
+                                            "value to text conversion failed for {}",
+                                            cn.unique_name
+                                        )
+                                    })?
                             }
                             CcVal::Uint(_) => (),
                         },
@@ -82,16 +117,30 @@ pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) -> Result<(
                                 &conv.cc_ref,
                                 &cycle_count,
                                 sharable,
-                            )?,
+                            )
+                            .with_context(|| {
+                                format!(
+                                    "value range to text conversion failed for {}",
+                                    cn.unique_name
+                                )
+                            })?,
                             CcVal::Uint(_) => (),
                         },
                         9 => match &conv.cc_val {
                             CcVal::Real(cc_val) => {
-                                text_to_value(cn, cc_val, &conv.cc_ref, &cycle_count, sharable)?
+                                text_to_value(cn, cc_val, &conv.cc_ref, &cycle_count, sharable)
+                                    .with_context(|| {
+                                        format!(
+                                            "text to value conversion failed for {}",
+                                            cn.unique_name
+                                        )
+                                    })?
                             }
                             CcVal::Uint(_) => (),
                         },
-                        10 => text_to_text(cn, &conv.cc_ref, &cycle_count, sharable)?,
+                        10 => text_to_text(cn, &conv.cc_ref, &cycle_count, sharable).with_context(
+                            || format!("text to text conversion failed for {}", cn.unique_name),
+                        )?,
                         11 => match &conv.cc_val {
                             CcVal::Real(_) => (),
                             CcVal::Uint(cc_val) => bitfield_text_table(
@@ -100,7 +149,13 @@ pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) -> Result<(
                                 &conv.cc_ref,
                                 &cycle_count,
                                 sharable,
-                            )?,
+                            )
+                            .with_context(|| {
+                                format!(
+                                    "bitfield text table conversion failed for {}",
+                                    cn.unique_name
+                                )
+                            })?,
                         },
                         0 => (),
                         _ => bail!(
@@ -142,7 +197,7 @@ fn linear_conversion_tensor<T: NativeType + AsPrimitive<f64>>(
     let parray = array
         .as_any()
         .downcast_ref::<Tensor<T>>()
-        .context("Linear conversion could not downcast to primitive array")?;
+        .context("Linear conversion could not downcast to tensor array")?;
     let mut array_f64 = tensor_as_tensor::<T, f64>(parray, &DataType::Float64);
     unary_assign(&mut array_f64, |x: f64| x * p2 + p1);
     Ok(array_f64.to_boxed())
@@ -313,7 +368,7 @@ fn rational_conversion_tensor<T: NativeType + AsPrimitive<f64>>(
     let parray = array
         .as_any()
         .downcast_ref::<Tensor<T>>()
-        .context("rational conversion could not downcast to primitive array")?;
+        .context("rational conversion could not downcast to tensor array")?;
     let mut array_f64 = tensor_as_tensor::<T, f64>(parray, &DataType::Float64);
     unary_assign(&mut array_f64, |x| {
         (x * x * p1 + x * p2 + p3) / (x * x * p4 + x * p5 + p6)
@@ -325,37 +380,48 @@ fn rational_conversion_tensor<T: NativeType + AsPrimitive<f64>>(
 fn rational_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
     match cn.data.data_type() {
         DataType::UInt8 => {
-            cn.data = rational_conversion_primitive::<u8>(cn.data.as_ref(), cc_val)?;
+            cn.data = rational_conversion_primitive::<u8>(cn.data.as_ref(), cc_val)
+            .context("failed rational conversion of u8 channel")?;
         }
         DataType::UInt16 => {
-            cn.data = rational_conversion_primitive::<u16>(cn.data.as_ref(), cc_val)?;
+            cn.data = rational_conversion_primitive::<u16>(cn.data.as_ref(), cc_val)
+            .context("failed rational conversion of u16 channel")?;
         }
         DataType::UInt32 => {
-            cn.data = rational_conversion_primitive::<u32>(cn.data.as_ref(), cc_val)?;
+            cn.data = rational_conversion_primitive::<u32>(cn.data.as_ref(), cc_val)
+            .context("failed rational conversion of u32 channel")?;
         }
         DataType::UInt64 => {
-            cn.data = rational_conversion_primitive::<u64>(cn.data.as_ref(), cc_val)?;
+            cn.data = rational_conversion_primitive::<u64>(cn.data.as_ref(), cc_val)
+            .context("failed rational conversion of u64 channel")?;
         }
         DataType::Int8 => {
-            cn.data = rational_conversion_primitive::<i8>(cn.data.as_ref(), cc_val)?;
+            cn.data = rational_conversion_primitive::<i8>(cn.data.as_ref(), cc_val)
+            .context("failed rational conversion of i8 channel")?;
         }
         DataType::Int16 => {
-            cn.data = rational_conversion_primitive::<i16>(cn.data.as_ref(), cc_val)?;
+            cn.data = rational_conversion_primitive::<i16>(cn.data.as_ref(), cc_val)
+            .context("failed rational conversion of i16 channel")?;
         }
         DataType::Int32 => {
-            cn.data = rational_conversion_primitive::<i32>(cn.data.as_ref(), cc_val)?;
+            cn.data = rational_conversion_primitive::<i32>(cn.data.as_ref(), cc_val)
+            .context("failed rational conversion of i32 channel")?;
         }
         DataType::Int64 => {
-            cn.data = rational_conversion_primitive::<i64>(cn.data.as_ref(), cc_val)?;
+            cn.data = rational_conversion_primitive::<i64>(cn.data.as_ref(), cc_val)
+            .context("failed rational conversion of i64 channel")?;
         }
         DataType::Float16 => {
-            cn.data = rational_conversion_primitive::<f32>(cn.data.as_ref(), cc_val)?;
+            cn.data = rational_conversion_primitive::<f32>(cn.data.as_ref(), cc_val)
+            .context("failed rational conversion of f16 channel")?;
         }
         DataType::Float32 => {
-            cn.data = rational_conversion_primitive::<f32>(cn.data.as_ref(), cc_val)?;
+            cn.data = rational_conversion_primitive::<f32>(cn.data.as_ref(), cc_val)
+            .context("failed rational conversion of f32 channel")?;
         }
         DataType::Float64 => {
-            cn.data = rational_conversion_primitive::<f64>(cn.data.as_ref(), cc_val)?;
+            cn.data = rational_conversion_primitive::<f64>(cn.data.as_ref(), cc_val)
+            .context("failed rational conversion of f64 channel")?;
         }
         DataType::FixedSizeList(field, _size) => {
             if field.name.eq(&"complex32".to_string()) {
@@ -368,37 +434,48 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
             if extension_name.eq(&"Tensor".to_string()) {
                 match *data_type.clone() {
                     DataType::UInt8 => {
-                        cn.data = rational_conversion_tensor::<u8>(cn.data.as_ref(), cc_val)?;
+                        cn.data = rational_conversion_tensor::<u8>(cn.data.as_ref(), cc_val)
+                            .context("failed rational conversion of u8 tensor channel")?;
                     }
                     DataType::UInt16 => {
-                        cn.data = rational_conversion_tensor::<u16>(cn.data.as_ref(), cc_val)?;
+                        cn.data = rational_conversion_tensor::<u16>(cn.data.as_ref(), cc_val)
+                            .context("failed rational conversion of u16 tensor channel")?;
                     }
                     DataType::UInt32 => {
-                        cn.data = rational_conversion_tensor::<u32>(cn.data.as_ref(), cc_val)?;
+                        cn.data = rational_conversion_tensor::<u32>(cn.data.as_ref(), cc_val)
+                            .context("failed rational conversion of u32 tensor channel")?;
                     }
                     DataType::UInt64 => {
-                        cn.data = rational_conversion_tensor::<u64>(cn.data.as_ref(), cc_val)?;
+                        cn.data = rational_conversion_tensor::<u64>(cn.data.as_ref(), cc_val)
+                            .context("failed rational conversion of u64 tensor channel")?;
                     }
                     DataType::Int8 => {
-                        cn.data = rational_conversion_tensor::<i8>(cn.data.as_ref(), cc_val)?;
+                        cn.data = rational_conversion_tensor::<i8>(cn.data.as_ref(), cc_val)
+                            .context("failed rational conversion of i8 tensor channel")?;
                     }
                     DataType::Int16 => {
-                        cn.data = rational_conversion_tensor::<i16>(cn.data.as_ref(), cc_val)?;
+                        cn.data = rational_conversion_tensor::<i16>(cn.data.as_ref(), cc_val)
+                            .context("failed rational conversion of i16 tensor channel")?;
                     }
                     DataType::Int32 => {
-                        cn.data = rational_conversion_tensor::<i32>(cn.data.as_ref(), cc_val)?;
+                        cn.data = rational_conversion_tensor::<i32>(cn.data.as_ref(), cc_val)
+                        .context("failed rational conversion of i32 tensor channel")?;
                     }
                     DataType::Int64 => {
-                        cn.data = rational_conversion_tensor::<i64>(cn.data.as_ref(), cc_val)?;
+                        cn.data = rational_conversion_tensor::<i64>(cn.data.as_ref(), cc_val)
+                        .context("failed rational conversion of i64 tensor channel")?;
                     }
                     DataType::Float16 => {
-                        cn.data = rational_conversion_tensor::<f32>(cn.data.as_ref(), cc_val)?;
+                        cn.data = rational_conversion_tensor::<f32>(cn.data.as_ref(), cc_val)
+                        .context("failed rational conversion of f16 tensor channel")?;
                     }
                     DataType::Float32 => {
-                        cn.data = rational_conversion_tensor::<f32>(cn.data.as_ref(), cc_val)?;
+                        cn.data = rational_conversion_tensor::<f32>(cn.data.as_ref(), cc_val)
+                        .context("failed rational conversion of f32 tensor channel")?;
                     }
                     DataType::Float64 => {
-                        cn.data = rational_conversion_tensor::<f64>(cn.data.as_ref(), cc_val)?;
+                        cn.data = rational_conversion_tensor::<f64>(cn.data.as_ref(), cc_val)
+                        .context("failed rational conversion of f64 tensor channel")?;
                     }
                     DataType::FixedSizeList(field, _size) => {
                         if field.name.eq(&"complex32".to_string()) {
@@ -469,7 +546,7 @@ fn alegbraic_conversion_tensor<T: NativeType + AsPrimitive<f64>>(
     let tarray = array
         .as_any()
         .downcast_ref::<Tensor<T>>()
-        .context("alegbraic conversion could not downcast to primitive array")?;
+        .context("alegbraic conversion could not downcast to tensor array")?;
     let array_f64 = tensor_as_tensor::<T, f64>(tarray, &DataType::Float64);
     let mut new_array = vec![0f64; *cycle_count];
     new_array
@@ -770,7 +847,7 @@ fn value_to_value_with_interpolation_tensor<T: NativeType + AsPrimitive<f64>>(
     cycle_count: &usize,
 ) -> Result<Box<dyn Array>, Error> {
     let tarray = array.as_any().downcast_ref::<Tensor<T>>().context(
-        "value to value with interpolation conversion could not downcast to primitive array",
+        "value to value with interpolation conversion could not downcast to tensor array",
     )?;
     let array_f64 = tensor_as_tensor::<T, f64>(tarray, &DataType::Float64);
     let mut new_array = vec![0f64; *cycle_count];
@@ -1012,7 +1089,7 @@ fn value_to_value_without_interpolation_tensor<T: NativeType + AsPrimitive<f64>>
     cycle_count: &usize,
 ) -> Result<Box<dyn Array>, Error> {
     let tarray = array.as_any().downcast_ref::<Tensor<T>>().context(
-        "value to value without interpolation conversion could not downcast to primitive array",
+        "value to value without interpolation conversion could not downcast to tensor array",
     )?;
     let array_f64 = tensor_as_tensor::<T, f64>(tarray, &DataType::Float64);
     let mut new_array = vec![0f64; *cycle_count];
