@@ -1,4 +1,5 @@
 //! this module implements low level data reading for mdf4 files.
+use crate::export::tensor::{Order, Tensor};
 use crate::mdfinfo::mdfinfo4::{Cn4, CnType, Compo};
 use anyhow::{bail, Context, Error, Ok, Result};
 use arrow2::array::{
@@ -25,6 +26,7 @@ pub fn read_one_channel_array(
     data_bytes: &Vec<u8>,
     cn: &mut Cn4,
     cycle_count: usize,
+    shape: Option<(Vec<usize>, Order)>,
 ) -> Result<(), Error> {
     if (cn.block.cn_type == 0
         || cn.block.cn_type == 2
@@ -425,7 +427,19 @@ pub fn read_one_channel_array(
                                         Cursor::new(data_bytes)
                                             .read_i8_into(&mut buf)
                                             .context("Could not read i8 array")?;
-                                        cn.data = PrimitiveArray::from_vec(buf).boxed();
+                                        cn.data = Tensor::try_new(
+                                            DataType::Extension(
+                                                "Tensor".to_owned(),
+                                                Box::new(DataType::Int8),
+                                                None,
+                                            ),
+                                            buf.into(),
+                                            shape.clone().map(|s| s.0.clone()),
+                                            shape.map(|o| o.1.clone()),
+                                            None,
+                                            None,
+                                        ).context("failed creating tensor i8 from one channel array")?
+                                        .boxed();
                                     }
                                     Compo::CN(_) => {}
                                 }
@@ -435,7 +449,19 @@ pub fn read_one_channel_array(
                             if let Some(compo) = &cn.composition {
                                 match &compo.block {
                                     Compo::CA(_) => {
-                                        cn.data = PrimitiveArray::from_vec(data_bytes.clone()).boxed();
+                                        cn.data = Tensor::try_new(
+                                            DataType::Extension(
+                                                "Tensor".to_owned(),
+                                                Box::new(DataType::UInt8),
+                                                None,
+                                            ),
+                                            data_bytes.clone().into(),
+                                            shape.clone().map(|s| s.0.clone()),
+                                            shape.map(|o| o.1.clone()),
+                                            None,
+                                            None,
+                                        ).context("failed creating tensor u8 from one channel array")?
+                                        .boxed();
                                     }
                                     Compo::CN(_) => {}
                                 }
@@ -455,7 +481,19 @@ pub fn read_one_channel_array(
                                                 .read_i16_into::<LittleEndian>(&mut buf)
                                                 .context("Could not read le i16 array")?;
                                         }
-                                        cn.data = PrimitiveArray::from_vec(buf).boxed();
+                                        cn.data = Tensor::try_new(
+                                            DataType::Extension(
+                                                "Tensor".to_owned(),
+                                                Box::new(DataType::Int16),
+                                                None,
+                                            ),
+                                            buf.into(),
+                                            shape.clone().map(|s| s.0.clone()),
+                                            shape.map(|o| o.1.clone()),
+                                            None,
+                                            None,
+                                        ).context("failed creating tensor i16 from one channel array")?
+                                        .boxed();
                                     }
                                     Compo::CN(_) => {}
                                 }
@@ -475,7 +513,19 @@ pub fn read_one_channel_array(
                                                 .read_u16_into::<LittleEndian>(&mut buf)
                                                 .context("Could not read le 16 array")?;
                                         }
-                                        cn.data = PrimitiveArray::from_vec(buf).boxed();
+                                        cn.data = Tensor::try_new(
+                                            DataType::Extension(
+                                                "Tensor".to_owned(),
+                                                Box::new(DataType::UInt16),
+                                                None,
+                                            ),
+                                            buf.into(),
+                                            shape.clone().map(|s| s.0.clone()),
+                                            shape.map(|o| o.1.clone()),
+                                            None,
+                                            None,
+                                        ).context("failed creating tensor u16 from one channel array")?
+                                        .boxed();
                                     }
                                     Compo::CN(_) => {}
                                 }
@@ -509,7 +559,19 @@ pub fn read_one_channel_array(
                                                 .read_i32_into::<LittleEndian>(&mut buf)
                                                 .context("Could not read le i32 array")?;
                                         }
-                                        cn.data = PrimitiveArray::from_vec(buf).boxed();
+                                        cn.data = Tensor::try_new(
+                                            DataType::Extension(
+                                                "Tensor".to_owned(),
+                                                Box::new(DataType::Int32),
+                                                None,
+                                            ),
+                                            buf.into(),
+                                            shape.clone().map(|s| s.0.clone()),
+                                            shape.map(|o| o.1.clone()),
+                                            None,
+                                            None,
+                                        ).context("failed creating tensor i32 from one channel array")?
+                                        .boxed();
                                     }
                                     Compo::CN(_) => {}
                                 }
@@ -543,7 +605,19 @@ pub fn read_one_channel_array(
                                                 .read_u32_into::<LittleEndian>(&mut buf)
                                                 .context("Could not read le u32 array")?;
                                         }
-                                        cn.data = PrimitiveArray::from_vec(buf).boxed();
+                                        cn.data = Tensor::try_new(
+                                            DataType::Extension(
+                                                "Tensor".to_owned(),
+                                                Box::new(DataType::UInt32),
+                                                None,
+                                            ),
+                                            buf.into(),
+                                            shape.clone().map(|s| s.0.clone()),
+                                            shape.map(|o| o.1.clone()),
+                                            None,
+                                            None,
+                                        ).context("failed creating tensor u32 from one channel array")?
+                                        .boxed();
                                     }
                                     Compo::CN(_) => {}
                                 }
@@ -583,7 +657,19 @@ pub fn read_one_channel_array(
                                                 .read_f32_into::<LittleEndian>(&mut buf)
                                                 .context("Could not read le f32 array")?;
                                         }
-                                        cn.data = PrimitiveArray::from_vec(buf).boxed();
+                                        cn.data = Tensor::try_new(
+                                            DataType::Extension(
+                                                "Tensor".to_owned(),
+                                                Box::new(DataType::Float32),
+                                                None,
+                                            ),
+                                            buf.into(),
+                                            shape.clone().map(|s| s.0.clone()),
+                                            shape.map(|o| o.1.clone()),
+                                            None,
+                                            None,
+                                        ).context("failed creating tensor f32 from one channel array")?
+                                        .boxed();
                                     }
                                     Compo::CN(_) => {}
                                 }
@@ -617,7 +703,19 @@ pub fn read_one_channel_array(
                                                     .context("Could not read le i48")?;
                                             }
                                         }
-                                        cn.data = PrimitiveArray::from_vec(buf).boxed();
+                                        cn.data = Tensor::try_new(
+                                            DataType::Extension(
+                                                "Tensor".to_owned(),
+                                                Box::new(DataType::Int64),
+                                                None,
+                                            ),
+                                            buf.into(),
+                                            shape.clone().map(|s| s.0.clone()),
+                                            shape.map(|o| o.1.clone()),
+                                            None,
+                                            None,
+                                        ).context("failed creating tensor i64 from one channel array")?
+                                        .boxed();
                                     }
                                     Compo::CN(_) => {}
                                 }
@@ -683,7 +781,19 @@ pub fn read_one_channel_array(
                                                 }
                                             }
                                         }
-                                        cn.data = PrimitiveArray::from_vec(buf).boxed();
+                                        cn.data = Tensor::try_new(
+                                            DataType::Extension(
+                                                "Tensor".to_owned(),
+                                                Box::new(DataType::UInt64),
+                                                None,
+                                            ),
+                                            buf.into(),
+                                            shape.clone().map(|s| s.0.clone()),
+                                            shape.map(|o| o.1.clone()),
+                                            None,
+                                            None,
+                                        ).context("failed creating tensor u64 from one channel array")?
+                                        .boxed();
                                     }
                                     Compo::CN(_) => {}
                                 }
@@ -703,7 +813,19 @@ pub fn read_one_channel_array(
                                                 .read_f64_into::<LittleEndian>(&mut buf)
                                                 .context("Could not read le f64 array")?;
                                         }
-                                        cn.data = PrimitiveArray::from_vec(buf).boxed();
+                                        cn.data = Tensor::try_new(
+                                            DataType::Extension(
+                                                "Tensor".to_owned(),
+                                                Box::new(DataType::Float64),
+                                                None,
+                                            ),
+                                            buf.into(),
+                                            shape.clone().map(|s| s.0.clone()),
+                                            shape.map(|o| o.1.clone()),
+                                            None,
+                                            None,
+                                        ).context("failed creating tensor f64 from one channel array")?
+                                        .boxed();
                                     }
                                     Compo::CN(_) => {}
                                 }
@@ -1362,13 +1484,22 @@ pub fn read_channels_from_bytes(
                 }
                 DataType::LargeBinary => {
                     let n_bytes = cn.n_bytes as usize;
-                    let mut data = cn.data.as_any().downcast_ref::<BinaryArray<i64>>()
-                    .with_context(|| format!("Read channels from bytes function could not downcast to mutable binary values array, channel {}", cn.unique_name))?.clone()
-                    .into_mut().expect_right("failed converting LargeBinary channel Array in mutableArray");
+                    let data = cn.data.as_any_mut().downcast_mut::<BinaryArray<i64>>()
+                    .with_context(|| format!("Read channels from bytes function could not downcast to mutable binary values array, channel {}", cn.unique_name))?;
+                    let mut values = data.get_mut_values().context("could not get mutable reference of Binary Array array values")?.to_vec();
+                    let mut offsets = data.get_mut_offsets().context("could not get mutable reference of Bianry Array array offsets")?.to_vec();
                     for record in data_chunk.chunks(record_length) {
-                        data.push(Some(&record[pos_byte_beg..pos_byte_beg + n_bytes]));
+                        values.extend_from_slice(&record[pos_byte_beg..pos_byte_beg + n_bytes]);
+                        let last_offset =
+                                offsets.last_mut().copied().unwrap_or(0) + n_bytes as i64;
+                        offsets.push(last_offset);
                     }
-                    cn.data = data.as_box();
+                    cn.data = BinaryArray::<i64>::try_new(
+                        DataType::LargeUtf8,
+                        offsets.try_into().context("failed converting vector into OffsetsBuffer")?,
+                        values.into(),
+                        None,
+                    ).context("failed creating BinaryArray from muted offsets and values")?.boxed();
                 }
                 DataType::FixedSizeBinary(_size) => {
                     let n_bytes = cn.n_bytes as usize;
@@ -1387,7 +1518,7 @@ pub fn read_channels_from_bytes(
                                 if let Some(compo) = &cn.composition {
                                     match &compo.block {
                                         Compo::CA(ca) => {
-                                            let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<i8>>()
+                                            let data = cn.data.as_any_mut().downcast_mut::<Tensor<i8>>()
                                             .with_context(|| format!("Read channels from bytes function could not downcast to primitive tensor array i8, channel {}", cn.unique_name))?
                                             .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor i8, channel {}", cn.unique_name))?;
                                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -1406,7 +1537,7 @@ pub fn read_channels_from_bytes(
                                 if let Some(compo) = &cn.composition {
                                     match &compo.block {
                                         Compo::CA(ca) => {
-                                            let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u8>>()
+                                            let data = cn.data.as_any_mut().downcast_mut::<Tensor<u8>>()
                                             .with_context(|| format!("Read channels from bytes function could not downcast to primitive tensor array u8, channel {}", cn.unique_name))?
                                             .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor u8, channel {}", cn.unique_name))?;
                                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -1425,7 +1556,7 @@ pub fn read_channels_from_bytes(
                                 if let Some(compo) = &cn.composition {
                                     match &compo.block {
                                         Compo::CA(ca) => {
-                                            let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<i16>>()
+                                            let data = cn.data.as_any_mut().downcast_mut::<Tensor<i16>>()
                                             .with_context(|| format!("Read channels from bytes function could not downcast to primitive tensor array i16, channel {}", cn.unique_name))?
                                             .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor i16, channel {}", cn.unique_name))?;
                                             if cn.endian {
@@ -1458,7 +1589,7 @@ pub fn read_channels_from_bytes(
                                 if let Some(compo) = &cn.composition {
                                     match &compo.block {
                                         Compo::CA(ca) => {
-                                            let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u16>>()
+                                            let data = cn.data.as_any_mut().downcast_mut::<Tensor<u16>>()
                                             .with_context(|| format!("Read channels from bytes function could not downcast to primitive tensor array u16, channel {}", cn.unique_name))?
                                             .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor u16, channel {}", cn.unique_name))?;
                                             if cn.endian {
@@ -1491,7 +1622,7 @@ pub fn read_channels_from_bytes(
                                 if let Some(compo) = &cn.composition {
                                     match &compo.block {
                                         Compo::CA(ca) => {
-                                            let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<i32>>()
+                                            let data = cn.data.as_any_mut().downcast_mut::<Tensor<i32>>()
                                             .with_context(|| format!("Read channels from bytes function could not downcast to primitive tensor array i32, channel {}", cn.unique_name))?
                                             .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor i32, channel {}", cn.unique_name))?;
                                             if cn.endian {
@@ -1546,7 +1677,7 @@ pub fn read_channels_from_bytes(
                                 if let Some(compo) = &cn.composition {
                                     match &compo.block {
                                         Compo::CA(ca) => {
-                                            let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u32>>()
+                                            let data = cn.data.as_any_mut().downcast_mut::<Tensor<u32>>()
                                             .with_context(|| format!("Read channels from bytes function could not downcast to primitive tensor array u32, channel {}", cn.unique_name))?
                                             .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor u32, channel {}", cn.unique_name))?;
                                             if cn.endian {
@@ -1600,7 +1731,7 @@ pub fn read_channels_from_bytes(
                                 if let Some(compo) = &cn.composition {
                                     match &compo.block {
                                         Compo::CA(ca) => {
-                                            let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<f32>>()
+                                            let data = cn.data.as_any_mut().downcast_mut::<Tensor<f32>>()
                                             .with_context(|| format!("Read channels from bytes function could not downcast to primitive tensor array f32, channel {}", cn.unique_name))?
                                             .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor f32, channel {}", cn.unique_name))?;
                                             if cn.endian {
@@ -1659,7 +1790,7 @@ pub fn read_channels_from_bytes(
                                 if let Some(compo) = &cn.composition {
                                     match &compo.block {
                                         Compo::CA(ca) => {
-                                            let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<i64>>()
+                                            let data = cn.data.as_any_mut().downcast_mut::<Tensor<i64>>()
                                             .with_context(|| format!("Read channels from bytes function could not downcast to primitive tensor array i64, channel {}", cn.unique_name))?
                                             .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor i64, channel {}", cn.unique_name))?;
                                             if cn.endian {
@@ -1710,7 +1841,7 @@ pub fn read_channels_from_bytes(
                                 if let Some(compo) = &cn.composition {
                                     match &compo.block {
                                         Compo::CA(ca) => {
-                                            let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u64>>()
+                                            let data = cn.data.as_any_mut().downcast_mut::<Tensor<u64>>()
                                             .with_context(|| format!("Read channels from bytes function could not downcast to primitive tensor array u64, channel {}", cn.unique_name))?
                                             .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor u64, channel {}", cn.unique_name))?;
                                             if cn.endian {
@@ -1799,7 +1930,7 @@ pub fn read_channels_from_bytes(
                                 if let Some(compo) = &cn.composition {
                                     match &compo.block {
                                         Compo::CA(ca) => {
-                                            let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<f64>>()
+                                            let data = cn.data.as_any_mut().downcast_mut::<Tensor<f64>>()
                                             .with_context(|| format!("Read channels from bytes function could not downcast to primitive tensor array f64, channel {}", cn.unique_name))?
                                             .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor f64, channel {}", cn.unique_name))?;
                                             if cn.endian {

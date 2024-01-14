@@ -1307,7 +1307,7 @@ pub fn arrow_init_zeros(
                             None,
                             None,
                         )?
-                        .to_boxed()),
+                        .boxed()),
                         DataType::UInt8 => Ok(Tensor::try_new(
                             DataType::Extension(
                                 "Tensor".to_owned(),
@@ -1320,7 +1320,7 @@ pub fn arrow_init_zeros(
                             None,
                             None,
                         )?
-                        .to_boxed()),
+                        .boxed()),
                         DataType::Int16 => Ok(Tensor::try_new(
                             DataType::Extension(
                                 "Tensor".to_owned(),
@@ -1333,7 +1333,7 @@ pub fn arrow_init_zeros(
                             None,
                             None,
                         )?
-                        .to_boxed()),
+                        .boxed()),
                         DataType::UInt16 => Ok(Tensor::try_new(
                             DataType::Extension(
                                 "Tensor".to_owned(),
@@ -1346,7 +1346,7 @@ pub fn arrow_init_zeros(
                             None,
                             None,
                         )?
-                        .to_boxed()),
+                        .boxed()),
                         DataType::Int32 => Ok(Tensor::try_new(
                             DataType::Extension(
                                 "Tensor".to_owned(),
@@ -1359,7 +1359,7 @@ pub fn arrow_init_zeros(
                             None,
                             None,
                         )?
-                        .to_boxed()),
+                        .boxed()),
                         DataType::UInt32 => Ok(Tensor::try_new(
                             DataType::Extension(
                                 "Tensor".to_owned(),
@@ -1372,7 +1372,7 @@ pub fn arrow_init_zeros(
                             None,
                             None,
                         )?
-                        .to_boxed()),
+                        .boxed()),
                         DataType::Int64 => Ok(Tensor::try_new(
                             DataType::Extension(
                                 "Tensor".to_owned(),
@@ -1385,7 +1385,7 @@ pub fn arrow_init_zeros(
                             None,
                             None,
                         )?
-                        .to_boxed()),
+                        .boxed()),
                         DataType::UInt64 => Ok(Tensor::try_new(
                             DataType::Extension(
                                 "Tensor".to_owned(),
@@ -1398,7 +1398,7 @@ pub fn arrow_init_zeros(
                             None,
                             None,
                         )?
-                        .to_boxed()),
+                        .boxed()),
                         DataType::Float32 => Ok(Tensor::try_new(
                             DataType::Extension(
                                 "Tensor".to_owned(),
@@ -1411,7 +1411,7 @@ pub fn arrow_init_zeros(
                             None,
                             None,
                         )?
-                        .to_boxed()),
+                        .boxed()),
                         DataType::Float64 => Ok(Tensor::try_new(
                             DataType::Extension(
                                 "Tensor".to_owned(),
@@ -1424,7 +1424,7 @@ pub fn arrow_init_zeros(
                             None,
                             None,
                         )?
-                        .to_boxed()),
+                        .boxed()),
                         DataType::FixedSizeList(field, size) => {
                             if field.name.eq(&"complex32".to_string()) {
                                 Ok(FixedSizeListArray::new(
@@ -1439,7 +1439,7 @@ pub fn arrow_init_zeros(
                                     .boxed(),
                                     None,
                                 )
-                                .to_boxed())
+                                .boxed())
                             } else if field.name.eq(&"complex64".to_string()) {
                                 Ok(FixedSizeListArray::new(
                                     DataType::FixedSizeList(field.clone(), size),
@@ -1453,7 +1453,7 @@ pub fn arrow_init_zeros(
                                     .boxed(),
                                     None,
                                 )
-                                .to_boxed())
+                                .boxed())
                             } else {
                                 bail!("fixed size list field name not understood")
                             }

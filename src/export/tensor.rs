@@ -90,12 +90,6 @@ impl<T: NativeType> Tensor<T> {
     ) -> Result<Self> {
         match shape {
             None => {
-                if values.len() != mem::size_of::<T>() {
-                    return Err(Error::InvalidArgumentError(
-                        "underlying buffer should only contain a single tensor element".to_string(),
-                    ));
-                }
-
                 if strides.is_some() {
                     return Err(Error::InvalidArgumentError(
                         "expected None strides for tensor with no shape".to_string(),
@@ -237,16 +231,6 @@ impl<T: NativeType> Tensor<T> {
     /// Returns a clone of this PrimitiveArray sliced by an offset and length.
     /// # Implementation
     /// This operation is `O(1)` as it amounts to increase two ref counts.
-    /// # Examples
-    /// ```
-    /// use arrow2::array::PrimitiveArray;
-    ///
-    /// let array = PrimitiveArray::from_vec(vec![1, 2, 3]);
-    /// assert_eq!(format!("{:?}", array), "Int32[1, 2, 3]");
-    /// let sliced = array.slice(1, 1);
-    /// assert_eq!(format!("{:?}", sliced), "Int32[2]");
-    /// // note: `sliced` and `array` share the same memory region.
-    /// ```
     /// # Panic
     /// This function panics iff `offset + length > self.len()`.
     #[inline]
@@ -298,6 +282,23 @@ impl<T: NativeType> Tensor<T> {
     #[inline]
     pub fn values(&self) -> &[T] {
         self.values.as_slice()
+    }
+
+    /// Update the values of this [`Tensor`].
+    /// # Panics
+    /// This function panics iff `values.len() != self.len()`.
+    pub fn set_values(&mut self, values: Buffer<T>) {
+        assert_eq!(
+            values.len(),
+            self.len(),
+            "values' length must be equal to this arrays' length"
+        );
+        self.values = values;
+    }
+
+    /// Returns an option of a mutable reference to the values of this [`PrimitiveArray`].
+    pub fn get_mut_values(&mut self) -> Option<&mut [T]> {
+        self.values.get_mut_slice()
     }
 
     /// Returns a reference to a value in the buffer
@@ -397,6 +398,25 @@ impl<T: NativeType> Tensor<T> {
         }
     }
 
+    /// Creates a (non-null) [`Tensor`] from a vector of values.
+    /// This function is `O(1)`.
+    pub fn from_vec(
+        values: Vec<T>,
+        shape: Option<Vec<usize>>,
+        order: Option<Order>,
+        strides: Option<Vec<usize>>,
+        names: Option<Vec<String>>,
+    ) -> Self {
+        Self::new(
+            T::PRIMITIVE.into(),
+            values.into(),
+            shape,
+            order,
+            strides,
+            names,
+        )
+    }
+
     /// Alias for `Self::try_new(..).unwrap()`.
     /// # Panics
     /// This function errors iff:
@@ -475,6 +495,70 @@ impl<T: NativeType> Array for Tensor<T> {
 
     fn is_valid(&self, i: usize) -> bool {
         !self.is_null(i)
+    }
+}
+
+/// Cast [`Tensor`] as a [`Tensor`]
+/// Same as `number as to_number_type` in rust
+pub fn tensor_as_tensor<I, O>(from: &Tensor<I>, to_type: &DataType) -> Tensor<O>
+where
+    I: NativeType + num_traits::AsPrimitive<O>,
+    O: NativeType,
+{
+    unary(from, num_traits::AsPrimitive::<O>::as_, to_type.clone())
+}
+
+/// Applies an unary and infallible function to a [`Tensor`]. This is the
+/// fastest way to perform an operation on a [`Tensor`] when the benefits
+/// of a vectorized operation outweighs the cost of branching nulls and
+/// non-nulls.
+///
+/// # Implementation
+/// This will apply the function for all values, including those on null slots.
+/// This implies that the operation must be infallible for any value of the
+/// corresponding type or this function may panic.
+#[inline]
+pub fn unary<I, F, O>(array: &Tensor<I>, op: F, data_type: DataType) -> Tensor<O>
+where
+    I: NativeType,
+    O: NativeType,
+    F: Fn(I) -> O,
+{
+    let values = array.values().iter().map(|v| op(*v)).collect::<Vec<_>>();
+
+    Tensor::<O>::new(
+        data_type,
+        values.into(),
+        Some(array.shape().clone()),
+        Some(array.order().clone()),
+        array.strides().cloned(),
+        array.names().cloned(),
+    )
+}
+
+/// Applies an unary function to a [`Tensor`], optionally in-place.
+///
+/// # Implementation
+/// This function tries to apply the function directly to the values of the array.
+/// If that region is shared, this function creates a new region and writes to it.
+///
+/// # Panics
+/// This function panics iff
+/// * the arrays have a different length.
+/// * the function itself panics.
+#[inline]
+pub fn unary_assign<I, F>(array: &mut Tensor<I>, op: F)
+where
+    I: NativeType,
+    F: Fn(I) -> I,
+{
+    if let Some(values) = array.get_mut_values() {
+        // mutate in place
+        values.iter_mut().for_each(|l| *l = op(*l));
+    } else {
+        // alloc and write to new region
+        let values = array.values().iter().map(|l| op(*l)).collect::<Vec<_>>();
+        array.set_values(values.into());
     }
 }
 

@@ -8,6 +8,7 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Display;
 
+use crate::export::tensor::{tensor_as_tensor, unary_assign, Tensor};
 use crate::mdfinfo::mdfinfo4::{Cc4Block, CcVal, Cn4, Dg4, SharableBlocks};
 use arrow2::array::{Array, PrimitiveArray, Utf8Array};
 use arrow2::compute::arity_assign;
@@ -115,9 +116,9 @@ pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) -> Result<(
     Ok(())
 }
 
-/// Generic function calculating linear expression
+/// Generic function calculating linear expression for a primitive
 #[inline]
-fn linear_conversion_calculation<T: NativeType + AsPrimitive<f64>>(
+fn linear_conversion_primitive<T: NativeType + AsPrimitive<f64>>(
     array: &dyn Array,
     p1: f64,
     p2: f64,
@@ -131,6 +132,22 @@ fn linear_conversion_calculation<T: NativeType + AsPrimitive<f64>>(
     Ok(array_f64.to_boxed())
 }
 
+/// Generic function calculating linear expression for a tensor
+#[inline]
+fn linear_conversion_tensor<T: NativeType + AsPrimitive<f64>>(
+    array: &dyn Array,
+    p1: f64,
+    p2: f64,
+) -> Result<Box<dyn Array>, Error> {
+    let parray = array
+        .as_any()
+        .downcast_ref::<Tensor<T>>()
+        .context("Linear conversion could not downcast to primitive array")?;
+    let mut array_f64 = tensor_as_tensor::<T, f64>(parray, &DataType::Float64);
+    unary_assign(&mut array_f64, |x: f64| x * p2 + p1);
+    Ok(array_f64.to_boxed())
+}
+
 /// Apply linear conversion to get physical data
 fn linear_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
     let p1 = cc_val[0];
@@ -138,86 +155,108 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
     if !(p1 == 0.0 && num::abs(p2 - 1.0) < 1e-12) {
         match &mut cn.data.data_type() {
             DataType::UInt8 => {
-                cn.data = linear_conversion_calculation::<u8>(cn.data.as_ref(), p1, p2)?;
+                cn.data = linear_conversion_primitive::<u8>(cn.data.as_ref(), p1, p2)
+                    .context("failed linear conversion of u8 channel")?;
             }
             DataType::UInt16 => {
-                cn.data = linear_conversion_calculation::<u16>(cn.data.as_ref(), p1, p2)?;
+                cn.data = linear_conversion_primitive::<u16>(cn.data.as_ref(), p1, p2)
+                    .context("failed linear conversion of u16 channel")?;
             }
             DataType::UInt32 => {
-                cn.data = linear_conversion_calculation::<u32>(cn.data.as_ref(), p1, p2)?;
+                cn.data = linear_conversion_primitive::<u32>(cn.data.as_ref(), p1, p2)
+                    .context("failed linear conversion of u32 channel")?;
             }
             DataType::UInt64 => {
-                cn.data = linear_conversion_calculation::<u64>(cn.data.as_ref(), p1, p2)?;
+                cn.data = linear_conversion_primitive::<u64>(cn.data.as_ref(), p1, p2)
+                    .context("failed linear conversion of u64 channel")?;
             }
             DataType::Int8 => {
-                cn.data = linear_conversion_calculation::<i8>(cn.data.as_ref(), p1, p2)?;
+                cn.data = linear_conversion_primitive::<i8>(cn.data.as_ref(), p1, p2)
+                    .context("failed linear conversion of i8 channel")?;
             }
             DataType::Int16 => {
-                cn.data = linear_conversion_calculation::<i16>(cn.data.as_ref(), p1, p2)?;
+                cn.data = linear_conversion_primitive::<i16>(cn.data.as_ref(), p1, p2)
+                    .context("failed linear conversion of i16 channel")?;
             }
             DataType::Int32 => {
-                cn.data = linear_conversion_calculation::<i32>(cn.data.as_ref(), p1, p2)?;
+                cn.data = linear_conversion_primitive::<i32>(cn.data.as_ref(), p1, p2)
+                    .context("failed linear conversion of i32 channel")?;
             }
             DataType::Int64 => {
-                cn.data = linear_conversion_calculation::<i64>(cn.data.as_ref(), p1, p2)?;
+                cn.data = linear_conversion_primitive::<i64>(cn.data.as_ref(), p1, p2)
+                    .context("failed linear conversion of i64 channel")?;
             }
             DataType::Float16 => {
-                cn.data = linear_conversion_calculation::<f32>(cn.data.as_ref(), p1, p2)?;
+                cn.data = linear_conversion_primitive::<f32>(cn.data.as_ref(), p1, p2)
+                    .context("failed linear conversion of f16 channel")?;
             }
             DataType::Float32 => {
-                cn.data = linear_conversion_calculation::<f32>(cn.data.as_ref(), p1, p2)?;
+                cn.data = linear_conversion_primitive::<f32>(cn.data.as_ref(), p1, p2)
+                    .context("failed linear conversion of f32 channel")?;
             }
             DataType::Float64 => {
-                cn.data = linear_conversion_calculation::<f64>(cn.data.as_ref(), p1, p2)?;
+                cn.data = linear_conversion_primitive::<f64>(cn.data.as_ref(), p1, p2)
+                    .context("failed linear conversion of f64 channel")?;
             }
             DataType::FixedSizeList(field, _size) => {
                 if field.name.eq(&"complex32".to_string()) {
-                    cn.data = linear_conversion_calculation::<f32>(cn.data.as_ref(), p1, p2)?;
+                    cn.data = linear_conversion_primitive::<f32>(cn.data.as_ref(), p1, p2)?;
                 } else if field.name.eq(&"complex64".to_string()) {
-                    cn.data = linear_conversion_calculation::<f64>(cn.data.as_ref(), p1, p2)?;
+                    cn.data = linear_conversion_primitive::<f64>(cn.data.as_ref(), p1, p2)?;
                 }
             }
             DataType::Extension(extension_name, data_type, _) => {
                 if extension_name.eq(&"Tensor".to_string()) {
                     match *data_type.clone() {
                         DataType::UInt8 => {
-                            cn.data = linear_conversion_calculation::<u8>(cn.data.as_ref(), p1, p2)?;
+                            cn.data = linear_conversion_tensor::<u8>(cn.data.as_ref(), p1, p2)
+                                .context("failed linear conversion of u8 tensor channel")?;
                         }
                         DataType::UInt16 => {
-                            cn.data = linear_conversion_calculation::<u16>(cn.data.as_ref(), p1, p2)?;
+                            cn.data = linear_conversion_tensor::<u16>(cn.data.as_ref(), p1, p2)
+                                .context("failed linear conversion of u16 tensor channel")?;
                         }
                         DataType::UInt32 => {
-                            cn.data = linear_conversion_calculation::<u32>(cn.data.as_ref(), p1, p2)?;
+                            cn.data = linear_conversion_tensor::<u32>(cn.data.as_ref(), p1, p2)
+                                .context("failed linear conversion of u32 tensor channel")?;
                         }
                         DataType::UInt64 => {
-                            cn.data = linear_conversion_calculation::<u64>(cn.data.as_ref(), p1, p2)?;
+                            cn.data = linear_conversion_tensor::<u64>(cn.data.as_ref(), p1, p2)
+                                .context("failed linear conversion of u64 tensor channel")?;
                         }
                         DataType::Int8 => {
-                            cn.data = linear_conversion_calculation::<i8>(cn.data.as_ref(), p1, p2)?;
+                            cn.data = linear_conversion_tensor::<i8>(cn.data.as_ref(), p1, p2)
+                                .context("failed linear conversion of i8 tensor channel")?;
                         }
                         DataType::Int16 => {
-                            cn.data = linear_conversion_calculation::<i16>(cn.data.as_ref(), p1, p2)?;
+                            cn.data = linear_conversion_tensor::<i16>(cn.data.as_ref(), p1, p2)
+                                .context("failed linear conversion of i16 tensor channel")?;
                         }
                         DataType::Int32 => {
-                            cn.data = linear_conversion_calculation::<i32>(cn.data.as_ref(), p1, p2)?;
+                            cn.data = linear_conversion_tensor::<i32>(cn.data.as_ref(), p1, p2)
+                                .context("failed linear conversion of i32 tensor channel")?;
                         }
                         DataType::Int64 => {
-                            cn.data = linear_conversion_calculation::<i64>(cn.data.as_ref(), p1, p2)?;
+                            cn.data = linear_conversion_tensor::<i64>(cn.data.as_ref(), p1, p2)
+                                .context("failed linear conversion of i64 tensor channel")?;
                         }
                         DataType::Float16 => {
-                            cn.data = linear_conversion_calculation::<f32>(cn.data.as_ref(), p1, p2)?;
+                            cn.data = linear_conversion_tensor::<f32>(cn.data.as_ref(), p1, p2)
+                            .context("failed linear conversion of f16 tensor channel")?;
                         }
                         DataType::Float32 => {
-                            cn.data = linear_conversion_calculation::<f32>(cn.data.as_ref(), p1, p2)?;
+                            cn.data = linear_conversion_tensor::<f32>(cn.data.as_ref(), p1, p2)
+                            .context("failed linear conversion of f32 tensor channel")?;
                         }
                         DataType::Float64 => {
-                            cn.data = linear_conversion_calculation::<f64>(cn.data.as_ref(), p1, p2)?;
+                            cn.data = linear_conversion_tensor::<f64>(cn.data.as_ref(), p1, p2)
+                            .context("failed linear conversion of f64 tensor channel")?;
                         }
                         DataType::FixedSizeList(field, _size) => {
                             if field.name.eq(&"complex32".to_string()) {
-                                cn.data = linear_conversion_calculation::<f32>(cn.data.as_ref(), p1, p2)?;
+                                cn.data = linear_conversion_tensor::<f32>(cn.data.as_ref(), p1, p2)?;
                             } else if field.name.eq(&"complex64".to_string()) {
-                                cn.data = linear_conversion_calculation::<f64>(cn.data.as_ref(), p1, p2)?;
+                                cn.data = linear_conversion_tensor::<f64>(cn.data.as_ref(), p1, p2)?;
                             }
                         }
                         _ => warn!(
@@ -236,9 +275,9 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
     Ok(())
 }
 
-/// Generic function calculating rational expression
+/// Generic function calculating rational expression for a primitive
 #[inline]
-fn rational_conversion_calculation<T: NativeType + AsPrimitive<f64>>(
+fn rational_conversion_primitive<T: NativeType + AsPrimitive<f64>>(
     array: &dyn Array,
     cc_val: &[f64],
 ) -> Result<Box<dyn Array>, Error> {
@@ -259,90 +298,113 @@ fn rational_conversion_calculation<T: NativeType + AsPrimitive<f64>>(
     Ok(array_f64.to_boxed())
 }
 
+/// Generic function calculating rational expression for a tensor
+#[inline]
+fn rational_conversion_tensor<T: NativeType + AsPrimitive<f64>>(
+    array: &dyn Array,
+    cc_val: &[f64],
+) -> Result<Box<dyn Array>, Error> {
+    let p1 = cc_val[0];
+    let p2 = cc_val[1];
+    let p3 = cc_val[2];
+    let p4 = cc_val[3];
+    let p5 = cc_val[4];
+    let p6 = cc_val[5];
+    let parray = array
+        .as_any()
+        .downcast_ref::<Tensor<T>>()
+        .context("rational conversion could not downcast to primitive array")?;
+    let mut array_f64 = tensor_as_tensor::<T, f64>(parray, &DataType::Float64);
+    unary_assign(&mut array_f64, |x| {
+        (x * x * p1 + x * p2 + p3) / (x * x * p4 + x * p5 + p6)
+    });
+    Ok(array_f64.to_boxed())
+}
+
 /// Apply rational conversion to get physical data
 fn rational_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
     match cn.data.data_type() {
         DataType::UInt8 => {
-            cn.data = rational_conversion_calculation::<u8>(cn.data.as_ref(), cc_val)?;
+            cn.data = rational_conversion_primitive::<u8>(cn.data.as_ref(), cc_val)?;
         }
         DataType::UInt16 => {
-            cn.data = rational_conversion_calculation::<u16>(cn.data.as_ref(), cc_val)?;
+            cn.data = rational_conversion_primitive::<u16>(cn.data.as_ref(), cc_val)?;
         }
         DataType::UInt32 => {
-            cn.data = rational_conversion_calculation::<u32>(cn.data.as_ref(), cc_val)?;
+            cn.data = rational_conversion_primitive::<u32>(cn.data.as_ref(), cc_val)?;
         }
         DataType::UInt64 => {
-            cn.data = rational_conversion_calculation::<u64>(cn.data.as_ref(), cc_val)?;
+            cn.data = rational_conversion_primitive::<u64>(cn.data.as_ref(), cc_val)?;
         }
         DataType::Int8 => {
-            cn.data = rational_conversion_calculation::<i8>(cn.data.as_ref(), cc_val)?;
+            cn.data = rational_conversion_primitive::<i8>(cn.data.as_ref(), cc_val)?;
         }
         DataType::Int16 => {
-            cn.data = rational_conversion_calculation::<i16>(cn.data.as_ref(), cc_val)?;
+            cn.data = rational_conversion_primitive::<i16>(cn.data.as_ref(), cc_val)?;
         }
         DataType::Int32 => {
-            cn.data = rational_conversion_calculation::<i32>(cn.data.as_ref(), cc_val)?;
+            cn.data = rational_conversion_primitive::<i32>(cn.data.as_ref(), cc_val)?;
         }
         DataType::Int64 => {
-            cn.data = rational_conversion_calculation::<i64>(cn.data.as_ref(), cc_val)?;
+            cn.data = rational_conversion_primitive::<i64>(cn.data.as_ref(), cc_val)?;
         }
         DataType::Float16 => {
-            cn.data = rational_conversion_calculation::<f32>(cn.data.as_ref(), cc_val)?;
+            cn.data = rational_conversion_primitive::<f32>(cn.data.as_ref(), cc_val)?;
         }
         DataType::Float32 => {
-            cn.data = rational_conversion_calculation::<f32>(cn.data.as_ref(), cc_val)?;
+            cn.data = rational_conversion_primitive::<f32>(cn.data.as_ref(), cc_val)?;
         }
         DataType::Float64 => {
-            cn.data = rational_conversion_calculation::<f64>(cn.data.as_ref(), cc_val)?;
+            cn.data = rational_conversion_primitive::<f64>(cn.data.as_ref(), cc_val)?;
         }
         DataType::FixedSizeList(field, _size) => {
             if field.name.eq(&"complex32".to_string()) {
-                cn.data = rational_conversion_calculation::<f32>(cn.data.as_ref(), cc_val)?;
+                cn.data = rational_conversion_primitive::<f32>(cn.data.as_ref(), cc_val)?;
             } else if field.name.eq(&"complex64".to_string()) {
-                cn.data = rational_conversion_calculation::<f64>(cn.data.as_ref(), cc_val)?;
+                cn.data = rational_conversion_primitive::<f64>(cn.data.as_ref(), cc_val)?;
             }
         }
         DataType::Extension(extension_name, data_type, _) => {
             if extension_name.eq(&"Tensor".to_string()) {
                 match *data_type.clone() {
                     DataType::UInt8 => {
-                        cn.data = rational_conversion_calculation::<u8>(cn.data.as_ref(), cc_val)?;
+                        cn.data = rational_conversion_tensor::<u8>(cn.data.as_ref(), cc_val)?;
                     }
                     DataType::UInt16 => {
-                        cn.data = rational_conversion_calculation::<u16>(cn.data.as_ref(), cc_val)?;
+                        cn.data = rational_conversion_tensor::<u16>(cn.data.as_ref(), cc_val)?;
                     }
                     DataType::UInt32 => {
-                        cn.data = rational_conversion_calculation::<u32>(cn.data.as_ref(), cc_val)?;
+                        cn.data = rational_conversion_tensor::<u32>(cn.data.as_ref(), cc_val)?;
                     }
                     DataType::UInt64 => {
-                        cn.data = rational_conversion_calculation::<u64>(cn.data.as_ref(), cc_val)?;
+                        cn.data = rational_conversion_tensor::<u64>(cn.data.as_ref(), cc_val)?;
                     }
                     DataType::Int8 => {
-                        cn.data = rational_conversion_calculation::<i8>(cn.data.as_ref(), cc_val)?;
+                        cn.data = rational_conversion_tensor::<i8>(cn.data.as_ref(), cc_val)?;
                     }
                     DataType::Int16 => {
-                        cn.data = rational_conversion_calculation::<i16>(cn.data.as_ref(), cc_val)?;
+                        cn.data = rational_conversion_tensor::<i16>(cn.data.as_ref(), cc_val)?;
                     }
                     DataType::Int32 => {
-                        cn.data = rational_conversion_calculation::<i32>(cn.data.as_ref(), cc_val)?;
+                        cn.data = rational_conversion_tensor::<i32>(cn.data.as_ref(), cc_val)?;
                     }
                     DataType::Int64 => {
-                        cn.data = rational_conversion_calculation::<i64>(cn.data.as_ref(), cc_val)?;
+                        cn.data = rational_conversion_tensor::<i64>(cn.data.as_ref(), cc_val)?;
                     }
                     DataType::Float16 => {
-                        cn.data = rational_conversion_calculation::<f32>(cn.data.as_ref(), cc_val)?;
+                        cn.data = rational_conversion_tensor::<f32>(cn.data.as_ref(), cc_val)?;
                     }
                     DataType::Float32 => {
-                        cn.data = rational_conversion_calculation::<f32>(cn.data.as_ref(), cc_val)?;
+                        cn.data = rational_conversion_tensor::<f32>(cn.data.as_ref(), cc_val)?;
                     }
                     DataType::Float64 => {
-                        cn.data = rational_conversion_calculation::<f64>(cn.data.as_ref(), cc_val)?;
+                        cn.data = rational_conversion_tensor::<f64>(cn.data.as_ref(), cc_val)?;
                     }
                     DataType::FixedSizeList(field, _size) => {
                         if field.name.eq(&"complex32".to_string()) {
-                            cn.data = rational_conversion_calculation::<f32>(cn.data.as_ref(), cc_val)?;
+                            cn.data = rational_conversion_tensor::<f32>(cn.data.as_ref(), cc_val)?;
                         } else if field.name.eq(&"complex64".to_string()) {
-                            cn.data = rational_conversion_calculation::<f64>(cn.data.as_ref(), cc_val)?;
+                            cn.data = rational_conversion_tensor::<f64>(cn.data.as_ref(), cc_val)?;
                         }
                     }
                     _ => warn!(
@@ -360,9 +422,9 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
     Ok(())
 }
 
-/// Generic function calculating algebraic expression
+/// Generic function calculating algebraic expression for a primitive
 #[inline]
-fn alegbraic_conversion_calculation<T: NativeType + AsPrimitive<f64>>(
+fn alegbraic_conversion_primitive<T: NativeType + AsPrimitive<f64>>(
     compiled: &Instruction,
     slab: &Slab,
     array: &dyn Array,
@@ -396,6 +458,48 @@ fn alegbraic_conversion_calculation<T: NativeType + AsPrimitive<f64>>(
     Ok(PrimitiveArray::from_vec(new_array).boxed())
 }
 
+/// Generic function calculating algebraic expression for a tensor
+#[inline]
+fn alegbraic_conversion_tensor<T: NativeType + AsPrimitive<f64>>(
+    compiled: &Instruction,
+    slab: &Slab,
+    array: &dyn Array,
+    cycle_count: &usize,
+) -> Result<Box<dyn Array>, Error> {
+    let tarray = array
+        .as_any()
+        .downcast_ref::<Tensor<T>>()
+        .context("alegbraic conversion could not downcast to primitive array")?;
+    let array_f64 = tensor_as_tensor::<T, f64>(tarray, &DataType::Float64);
+    let mut new_array = vec![0f64; *cycle_count];
+    new_array
+        .iter_mut()
+        .zip(array_f64.values().iter())
+        .for_each(|(new_a, a)| {
+            let mut map = BTreeMap::new();
+            map.insert("X".to_string(), *a);
+            let val = compiled.eval(slab, &mut map);
+            *new_a = match val {
+                Ok(val) => val,
+                Err(err) => {
+                    warn!(
+                        "could not compute the value {:?} with expression {:?}, error {}",
+                        *a, compiled, err
+                    );
+                    *a
+                }
+            }
+        });
+    Ok(Tensor::from_vec(
+        new_array,
+        Some(tarray.shape().clone()),
+        Some(tarray.order().clone()),
+        tarray.strides().cloned(),
+        tarray.names().cloned(),
+    )
+    .boxed())
+}
+
 /// Apply algebraic conversion to get physical data
 fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Result<(), Error> {
     let parser = fasteval::Parser::new();
@@ -406,7 +510,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
             let compiled = c.from(&slab.ps).compile(&slab.ps, &mut slab.cs);
             match cn.data.data_type() {
                 DataType::UInt8 => {
-                    cn.data = alegbraic_conversion_calculation::<u8>(
+                    cn.data = alegbraic_conversion_primitive::<u8>(
                         &compiled,
                         &slab,
                         cn.data.as_ref(),
@@ -414,7 +518,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                     )?;
                 }
                 DataType::Int8 => {
-                    cn.data = alegbraic_conversion_calculation::<i8>(
+                    cn.data = alegbraic_conversion_primitive::<i8>(
                         &compiled,
                         &slab,
                         cn.data.as_ref(),
@@ -422,7 +526,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                     )?;
                 }
                 DataType::Int16 => {
-                    cn.data = alegbraic_conversion_calculation::<i16>(
+                    cn.data = alegbraic_conversion_primitive::<i16>(
                         &compiled,
                         &slab,
                         cn.data.as_ref(),
@@ -430,7 +534,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                     )?;
                 }
                 DataType::UInt16 => {
-                    cn.data = alegbraic_conversion_calculation::<u16>(
+                    cn.data = alegbraic_conversion_primitive::<u16>(
                         &compiled,
                         &slab,
                         cn.data.as_ref(),
@@ -438,7 +542,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                     )?;
                 }
                 DataType::Int32 => {
-                    cn.data = alegbraic_conversion_calculation::<i32>(
+                    cn.data = alegbraic_conversion_primitive::<i32>(
                         &compiled,
                         &slab,
                         cn.data.as_ref(),
@@ -446,7 +550,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                     )?;
                 }
                 DataType::UInt32 => {
-                    cn.data = alegbraic_conversion_calculation::<u32>(
+                    cn.data = alegbraic_conversion_primitive::<u32>(
                         &compiled,
                         &slab,
                         cn.data.as_ref(),
@@ -454,7 +558,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                     )?;
                 }
                 DataType::Float32 => {
-                    cn.data = alegbraic_conversion_calculation::<f32>(
+                    cn.data = alegbraic_conversion_primitive::<f32>(
                         &compiled,
                         &slab,
                         cn.data.as_ref(),
@@ -462,7 +566,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                     )?;
                 }
                 DataType::Int64 => {
-                    cn.data = alegbraic_conversion_calculation::<i64>(
+                    cn.data = alegbraic_conversion_primitive::<i64>(
                         &compiled,
                         &slab,
                         cn.data.as_ref(),
@@ -470,7 +574,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                     )?;
                 }
                 DataType::UInt64 => {
-                    cn.data = alegbraic_conversion_calculation::<u64>(
+                    cn.data = alegbraic_conversion_primitive::<u64>(
                         &compiled,
                         &slab,
                         cn.data.as_ref(),
@@ -478,7 +582,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                     )?;
                 }
                 DataType::Float64 => {
-                    cn.data = alegbraic_conversion_calculation::<f64>(
+                    cn.data = alegbraic_conversion_primitive::<f64>(
                         &compiled,
                         &slab,
                         cn.data.as_ref(),
@@ -487,14 +591,14 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                 }
                 DataType::FixedSizeList(field, _size) => {
                     if field.name.eq(&"complex32".to_string()) {
-                        cn.data = alegbraic_conversion_calculation::<f32>(
+                        cn.data = alegbraic_conversion_primitive::<f32>(
                             &compiled,
                             &slab,
                             cn.data.as_ref(),
                             &(*cycle_count as usize),
                         )?;
                     } else if field.name.eq(&"complex64".to_string()) {
-                        cn.data = alegbraic_conversion_calculation::<f64>(
+                        cn.data = alegbraic_conversion_primitive::<f64>(
                             &compiled,
                             &slab,
                             cn.data.as_ref(),
@@ -506,7 +610,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                     if extension_name.eq(&"Tensor".to_string()) {
                         match *data_type.clone() {
                             DataType::UInt8 => {
-                                cn.data = alegbraic_conversion_calculation::<u8>(
+                                cn.data = alegbraic_conversion_tensor::<u8>(
                                     &compiled,
                                     &slab,
                                     cn.data.as_ref(),
@@ -514,7 +618,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                                 )?;
                             }
                             DataType::Int8 => {
-                                cn.data = alegbraic_conversion_calculation::<i8>(
+                                cn.data = alegbraic_conversion_tensor::<i8>(
                                     &compiled,
                                     &slab,
                                     cn.data.as_ref(),
@@ -522,7 +626,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                                 )?;
                             }
                             DataType::Int16 => {
-                                cn.data = alegbraic_conversion_calculation::<i16>(
+                                cn.data = alegbraic_conversion_tensor::<i16>(
                                     &compiled,
                                     &slab,
                                     cn.data.as_ref(),
@@ -530,7 +634,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                                 )?;
                             }
                             DataType::UInt16 => {
-                                cn.data = alegbraic_conversion_calculation::<u16>(
+                                cn.data = alegbraic_conversion_tensor::<u16>(
                                     &compiled,
                                     &slab,
                                     cn.data.as_ref(),
@@ -538,7 +642,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                                 )?;
                             }
                             DataType::Int32 => {
-                                cn.data = alegbraic_conversion_calculation::<i32>(
+                                cn.data = alegbraic_conversion_tensor::<i32>(
                                     &compiled,
                                     &slab,
                                     cn.data.as_ref(),
@@ -546,7 +650,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                                 )?;
                             }
                             DataType::UInt32 => {
-                                cn.data = alegbraic_conversion_calculation::<u32>(
+                                cn.data = alegbraic_conversion_tensor::<u32>(
                                     &compiled,
                                     &slab,
                                     cn.data.as_ref(),
@@ -554,7 +658,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                                 )?;
                             }
                             DataType::Float32 => {
-                                cn.data = alegbraic_conversion_calculation::<f32>(
+                                cn.data = alegbraic_conversion_tensor::<f32>(
                                     &compiled,
                                     &slab,
                                     cn.data.as_ref(),
@@ -562,7 +666,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                                 )?;
                             }
                             DataType::Int64 => {
-                                cn.data = alegbraic_conversion_calculation::<i64>(
+                                cn.data = alegbraic_conversion_tensor::<i64>(
                                     &compiled,
                                     &slab,
                                     cn.data.as_ref(),
@@ -570,7 +674,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                                 )?;
                             }
                             DataType::UInt64 => {
-                                cn.data = alegbraic_conversion_calculation::<u64>(
+                                cn.data = alegbraic_conversion_tensor::<u64>(
                                     &compiled,
                                     &slab,
                                     cn.data.as_ref(),
@@ -578,7 +682,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                                 )?;
                             }
                             DataType::Float64 => {
-                                cn.data = alegbraic_conversion_calculation::<f64>(
+                                cn.data = alegbraic_conversion_tensor::<f64>(
                                     &compiled,
                                     &slab,
                                     cn.data.as_ref(),
@@ -587,14 +691,14 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                             }
                             DataType::FixedSizeList(field, _size) => {
                                 if field.name.eq(&"complex32".to_string()) {
-                                    cn.data = alegbraic_conversion_calculation::<f32>(
+                                    cn.data = alegbraic_conversion_tensor::<f32>(
                                         &compiled,
                                         &slab,
                                         cn.data.as_ref(),
                                         &(*cycle_count as usize),
                                     )?;
                                 } else if field.name.eq(&"complex64".to_string()) {
-                                    cn.data = alegbraic_conversion_calculation::<f64>(
+                                    cn.data = alegbraic_conversion_tensor::<f64>(
                                         &compiled,
                                         &slab,
                                         cn.data.as_ref(),
@@ -625,9 +729,9 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
     Ok(())
 }
 
-/// Generic function calculating value to value interpolation
+/// Generic function calculating value to value interpolation for a primitive
 #[inline]
-fn value_to_value_with_interpolation_calculation<T: NativeType + AsPrimitive<f64>>(
+fn value_to_value_with_interpolation_primitive<T: NativeType + AsPrimitive<f64>>(
     array: &dyn Array,
     val: Vec<(&f64, &f64)>,
     cycle_count: &usize,
@@ -658,6 +762,45 @@ fn value_to_value_with_interpolation_calculation<T: NativeType + AsPrimitive<f64
     Ok(PrimitiveArray::from_vec(new_array).boxed())
 }
 
+/// Generic function calculating value to value interpolation for a tensor
+#[inline]
+fn value_to_value_with_interpolation_tensor<T: NativeType + AsPrimitive<f64>>(
+    array: &dyn Array,
+    val: Vec<(&f64, &f64)>,
+    cycle_count: &usize,
+) -> Result<Box<dyn Array>, Error> {
+    let tarray = array.as_any().downcast_ref::<Tensor<T>>().context(
+        "value to value with interpolation conversion could not downcast to primitive array",
+    )?;
+    let array_f64 = tensor_as_tensor::<T, f64>(tarray, &DataType::Float64);
+    let mut new_array = vec![0f64; *cycle_count];
+    new_array
+        .iter_mut()
+        .zip(array_f64.values().iter())
+        .for_each(|(new_array, a)| {
+            *new_array = match val
+                .binary_search_by(|&(xi, _)| xi.partial_cmp(&a).unwrap_or(Ordering::Equal))
+            {
+                Ok(idx) => *val[idx].1,
+                Err(0) => *val[0].1,
+                Err(idx) if idx >= val.len() => *val[idx - 1].1,
+                Err(idx) => {
+                    let (x0, y0) = val[idx - 1];
+                    let (x1, y1) = val[idx];
+                    (y0 * (x1 - a) + y1 * (a - x0)) / (x1 - x0)
+                }
+            };
+        });
+    Ok(Tensor::from_vec(
+        new_array,
+        Some(tarray.shape().clone()),
+        Some(tarray.order().clone()),
+        tarray.strides().cloned(),
+        tarray.names().cloned(),
+    )
+    .boxed())
+}
+
 /// Apply value to value with interpolation conversion to get physical data
 fn value_to_value_with_interpolation(
     cn: &mut Cn4,
@@ -667,70 +810,70 @@ fn value_to_value_with_interpolation(
     let val: Vec<(&f64, &f64)> = cc_val.iter().tuples().collect();
     match cn.data.data_type() {
         DataType::Int8 => {
-            cn.data = value_to_value_with_interpolation_calculation::<i8>(
+            cn.data = value_to_value_with_interpolation_primitive::<i8>(
                 cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::UInt8 => {
-            cn.data = value_to_value_with_interpolation_calculation::<u8>(
+            cn.data = value_to_value_with_interpolation_primitive::<u8>(
                 cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::Int16 => {
-            cn.data = value_to_value_with_interpolation_calculation::<i16>(
+            cn.data = value_to_value_with_interpolation_primitive::<i16>(
                 cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::UInt16 => {
-            cn.data = value_to_value_with_interpolation_calculation::<u16>(
+            cn.data = value_to_value_with_interpolation_primitive::<u16>(
                 cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::Int32 => {
-            cn.data = value_to_value_with_interpolation_calculation::<i32>(
+            cn.data = value_to_value_with_interpolation_primitive::<i32>(
                 cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::UInt32 => {
-            cn.data = value_to_value_with_interpolation_calculation::<u32>(
+            cn.data = value_to_value_with_interpolation_primitive::<u32>(
                 cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::Float32 => {
-            cn.data = value_to_value_with_interpolation_calculation::<f32>(
+            cn.data = value_to_value_with_interpolation_primitive::<f32>(
                 cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::Int64 => {
-            cn.data = value_to_value_with_interpolation_calculation::<i64>(
+            cn.data = value_to_value_with_interpolation_primitive::<i64>(
                 cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::UInt64 => {
-            cn.data = value_to_value_with_interpolation_calculation::<u64>(
+            cn.data = value_to_value_with_interpolation_primitive::<u64>(
                 cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::Float64 => {
-            cn.data = value_to_value_with_interpolation_calculation::<f64>(
+            cn.data = value_to_value_with_interpolation_primitive::<f64>(
                 cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
@@ -740,70 +883,70 @@ fn value_to_value_with_interpolation(
             if extension_name.eq(&"Tensor".to_string()) {
                 match *data_type.clone() {
                     DataType::Int8 => {
-                        cn.data = value_to_value_with_interpolation_calculation::<i8>(
+                        cn.data = value_to_value_with_interpolation_tensor::<i8>(
                             cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         )?;
                     }
                     DataType::UInt8 => {
-                        cn.data = value_to_value_with_interpolation_calculation::<u8>(
+                        cn.data = value_to_value_with_interpolation_tensor::<u8>(
                             cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         )?;
                     }
                     DataType::Int16 => {
-                        cn.data = value_to_value_with_interpolation_calculation::<i16>(
+                        cn.data = value_to_value_with_interpolation_tensor::<i16>(
                             cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         )?;
                     }
                     DataType::UInt16 => {
-                        cn.data = value_to_value_with_interpolation_calculation::<u16>(
+                        cn.data = value_to_value_with_interpolation_tensor::<u16>(
                             cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         )?;
                     }
                     DataType::Int32 => {
-                        cn.data = value_to_value_with_interpolation_calculation::<i32>(
+                        cn.data = value_to_value_with_interpolation_tensor::<i32>(
                             cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         )?;
                     }
                     DataType::UInt32 => {
-                        cn.data = value_to_value_with_interpolation_calculation::<u32>(
+                        cn.data = value_to_value_with_interpolation_tensor::<u32>(
                             cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         )?;
                     }
                     DataType::Float32 => {
-                        cn.data = value_to_value_with_interpolation_calculation::<f32>(
+                        cn.data = value_to_value_with_interpolation_tensor::<f32>(
                             cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         )?;
                     }
                     DataType::Int64 => {
-                        cn.data = value_to_value_with_interpolation_calculation::<i64>(
+                        cn.data = value_to_value_with_interpolation_tensor::<i64>(
                             cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         )?;
                     }
                     DataType::UInt64 => {
-                        cn.data = value_to_value_with_interpolation_calculation::<u64>(
+                        cn.data = value_to_value_with_interpolation_tensor::<u64>(
                             cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         )?;
                     }
                     DataType::Float64 => {
-                        cn.data = value_to_value_with_interpolation_calculation::<f64>(
+                        cn.data = value_to_value_with_interpolation_tensor::<f64>(
                             cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
@@ -824,9 +967,9 @@ fn value_to_value_with_interpolation(
     Ok(())
 }
 
-/// Generic function calculating value to value without interpolation
+/// Generic function calculating value to value without interpolation for a primitive
 #[inline]
-fn value_to_value_without_interpolation_calculation<T: NativeType + AsPrimitive<f64>>(
+fn value_to_value_without_interpolation_primitive<T: NativeType + AsPrimitive<f64>>(
     array: &dyn Array,
     val: Vec<(&f64, &f64)>,
     cycle_count: &usize,
@@ -861,6 +1004,49 @@ fn value_to_value_without_interpolation_calculation<T: NativeType + AsPrimitive<
     Ok(PrimitiveArray::from_vec(new_array).boxed())
 }
 
+/// Generic function calculating value to value without interpolation for a tensor
+#[inline]
+fn value_to_value_without_interpolation_tensor<T: NativeType + AsPrimitive<f64>>(
+    array: &dyn Array,
+    val: Vec<(&f64, &f64)>,
+    cycle_count: &usize,
+) -> Result<Box<dyn Array>, Error> {
+    let tarray = array.as_any().downcast_ref::<Tensor<T>>().context(
+        "value to value without interpolation conversion could not downcast to primitive array",
+    )?;
+    let array_f64 = tensor_as_tensor::<T, f64>(tarray, &DataType::Float64);
+    let mut new_array = vec![0f64; *cycle_count];
+    new_array
+        .iter_mut()
+        .zip(array_f64.values().iter())
+        .for_each(|(new_array, a)| {
+            *new_array = match val
+                .binary_search_by(|&(xi, _)| xi.partial_cmp(&a).unwrap_or(Ordering::Equal))
+            {
+                Ok(idx) => *val[idx].1,
+                Err(0) => *val[0].1,
+                Err(idx) if idx >= val.len() => *val[idx - 1].1,
+                Err(idx) => {
+                    let (x0, y0) = val[idx - 1];
+                    let (x1, y1) = val[idx];
+                    if (a - x0) > (x1 - a) {
+                        *y1
+                    } else {
+                        *y0
+                    }
+                }
+            };
+        });
+    Ok(Tensor::from_vec(
+        new_array,
+        Some(tarray.shape().clone()),
+        Some(tarray.order().clone()),
+        tarray.strides().cloned(),
+        tarray.names().cloned(),
+    )
+    .boxed())
+}
+
 /// Apply value to value without interpolation conversion to get physical data
 fn value_to_value_without_interpolation(
     cn: &mut Cn4,
@@ -870,70 +1056,70 @@ fn value_to_value_without_interpolation(
     let val: Vec<(&f64, &f64)> = cc_val.iter().tuples().collect();
     match cn.data.data_type() {
         DataType::Int8 => {
-            cn.data = value_to_value_without_interpolation_calculation::<i8>(
+            cn.data = value_to_value_without_interpolation_primitive::<i8>(
                 cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::UInt8 => {
-            cn.data = value_to_value_without_interpolation_calculation::<u8>(
+            cn.data = value_to_value_without_interpolation_primitive::<u8>(
                 cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::Int16 => {
-            cn.data = value_to_value_without_interpolation_calculation::<i16>(
+            cn.data = value_to_value_without_interpolation_primitive::<i16>(
                 cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::UInt16 => {
-            cn.data = value_to_value_without_interpolation_calculation::<u16>(
+            cn.data = value_to_value_without_interpolation_primitive::<u16>(
                 cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::Int32 => {
-            cn.data = value_to_value_without_interpolation_calculation::<i32>(
+            cn.data = value_to_value_without_interpolation_primitive::<i32>(
                 cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::UInt32 => {
-            cn.data = value_to_value_without_interpolation_calculation::<u32>(
+            cn.data = value_to_value_without_interpolation_primitive::<u32>(
                 cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::Float32 => {
-            cn.data = value_to_value_without_interpolation_calculation::<f32>(
+            cn.data = value_to_value_without_interpolation_primitive::<f32>(
                 cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::Int64 => {
-            cn.data = value_to_value_without_interpolation_calculation::<i64>(
+            cn.data = value_to_value_without_interpolation_primitive::<i64>(
                 cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::UInt64 => {
-            cn.data = value_to_value_without_interpolation_calculation::<u64>(
+            cn.data = value_to_value_without_interpolation_primitive::<u64>(
                 cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::Float64 => {
-            cn.data = value_to_value_without_interpolation_calculation::<f64>(
+            cn.data = value_to_value_without_interpolation_primitive::<f64>(
                 cn.data.as_ref(),
                 val,
                 &(*cycle_count as usize),
@@ -943,70 +1129,70 @@ fn value_to_value_without_interpolation(
             if extension_name.eq(&"Tensor".to_string()) {
                 match *data_type.clone() {
                     DataType::Int8 => {
-                        cn.data = value_to_value_without_interpolation_calculation::<i8>(
+                        cn.data = value_to_value_without_interpolation_tensor::<i8>(
                             cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         )?;
                     }
                     DataType::UInt8 => {
-                        cn.data = value_to_value_without_interpolation_calculation::<u8>(
+                        cn.data = value_to_value_without_interpolation_tensor::<u8>(
                             cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         )?;
                     }
                     DataType::Int16 => {
-                        cn.data = value_to_value_without_interpolation_calculation::<i16>(
+                        cn.data = value_to_value_without_interpolation_tensor::<i16>(
                             cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         )?;
                     }
                     DataType::UInt16 => {
-                        cn.data = value_to_value_without_interpolation_calculation::<u16>(
+                        cn.data = value_to_value_without_interpolation_tensor::<u16>(
                             cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         )?;
                     }
                     DataType::Int32 => {
-                        cn.data = value_to_value_without_interpolation_calculation::<i32>(
+                        cn.data = value_to_value_without_interpolation_tensor::<i32>(
                             cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         )?;
                     }
                     DataType::UInt32 => {
-                        cn.data = value_to_value_without_interpolation_calculation::<u32>(
+                        cn.data = value_to_value_without_interpolation_tensor::<u32>(
                             cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         )?;
                     }
                     DataType::Float32 => {
-                        cn.data = value_to_value_without_interpolation_calculation::<f32>(
+                        cn.data = value_to_value_without_interpolation_tensor::<f32>(
                             cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         )?;
                     }
                     DataType::Int64 => {
-                        cn.data = value_to_value_without_interpolation_calculation::<i64>(
+                        cn.data = value_to_value_without_interpolation_tensor::<i64>(
                             cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         )?;
                     }
                     DataType::UInt64 => {
-                        cn.data = value_to_value_without_interpolation_calculation::<u64>(
+                        cn.data = value_to_value_without_interpolation_tensor::<u64>(
                             cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
                         )?;
                     }
                     DataType::Float64 => {
-                        cn.data = value_to_value_without_interpolation_calculation::<f64>(
+                        cn.data = value_to_value_without_interpolation_tensor::<f64>(
                             cn.data.as_ref(),
                             val,
                             &(*cycle_count as usize),
