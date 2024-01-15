@@ -1460,7 +1460,7 @@ pub fn read_channels_from_bytes(
                         } else {
                             let mut decoder = UTF_16LE.new_decoder();
                             for record in data_chunk.chunks(record_length) {
-                                value = &record[pos_byte_beg..pos_byte_beg + n_bytes - 1];
+                                value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
                                 let mut dst = String::with_capacity(value.len());
                                 let (_result, _size, _replacement) = decoder.decode_to_string(
                                     value,
@@ -1495,7 +1495,7 @@ pub fn read_channels_from_bytes(
                         offsets.push(last_offset);
                     }
                     cn.data = BinaryArray::<i64>::try_new(
-                        DataType::LargeUtf8,
+                        DataType::LargeBinary,
                         offsets.try_into().context("failed converting vector into OffsetsBuffer")?,
                         values.into(),
                         None,
