@@ -2,6 +2,7 @@
 use crate::export::tensor::Order;
 use crate::export::tensor::Tensor;
 use anyhow::{bail, Context, Error};
+use arrow2::array::MutableBinaryValuesArray;
 use arrow2::array::{
     Array, BinaryArray, FixedSizeBinaryArray, FixedSizeListArray, MutableArray,
     MutableFixedSizeBinaryArray, MutableUtf8ValuesArray, PrimitiveArray, Utf8Array,
@@ -1022,8 +1023,8 @@ pub fn arrow_data_type_init(
                     // bytearray
                     if cn_type == 1 {
                         // VLSD
-                        Ok(Utf8Array::<i64>::new(
-                            DataType::LargeUtf8,
+                        Ok(BinaryArray::<i64>::new(
+                            DataType::LargeBinary,
                             OffsetsBuffer::new(),
                             Buffer::<u8>::new(),
                             None,
@@ -1292,6 +1293,11 @@ pub fn arrow_init_zeros(
                 )
                 .as_box())
             }
+            DataType::LargeBinary => Ok(MutableBinaryValuesArray::<i64>::with_capacities(
+                cycle_count as usize,
+                n_bytes as usize,
+            )
+            .as_box()),
             DataType::Extension(extension_name, data_type, _) => {
                 if extension_name.eq(&"Tensor".to_string()) {
                     match *data_type.clone() {
