@@ -216,6 +216,15 @@ mod tests {
         if let Some(data) = mdf2.get_channel_data(&"Data channel".to_string()) {
             assert_eq!(expected_string_result, data);
         }
+        let file_name = format!(
+            "{}{}{}",
+            BASE_PATH_MDF4, list_of_paths[4], "Vector_FixedLengthStringUTF16_LE.mf4"
+        );
+        let mut mdf = Mdf::new(&file_name)?;
+        mdf.load_all_channels_data_in_memory()?;
+        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+            assert_eq!(expected_string_result, data);
+        }
         //SBC
         let file_name = format!(
             "{}{}{}",
@@ -231,6 +240,7 @@ mod tests {
         if let Some(data) = mdf2.get_channel_data(&"Data channel".to_string()) {
             assert_eq!(expected_string_result, data);
         }
+
         // byteArray testing
         let file_name = format!(
             "{}{}{}",
@@ -289,7 +299,7 @@ mod tests {
         }
         let mut mdf2 = mdf.write(&writing_mdf_file, false)?;
         mdf2.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf2.get_channel_data(&"Counter_INT64_BE".to_string()) {
+        if let Some(data) = mdf2.get_channel_data(&"Counter_INT64_LE".to_string()) {
             assert_eq!(
                 PrimitiveArray::new(DataType::Int64, Buffer::from(vect), None).boxed(),
                 data
@@ -301,12 +311,13 @@ mod tests {
             *v -= counter;
             counter += 1
         });
-        if let Some(data) = mdf.get_channel_data(&"Counter_INT32_LE".to_string()) {
-            assert_eq!(
-                PrimitiveArray::new(DataType::Int32, Buffer::from(vect.clone()), None).boxed(),
-                data
-            );
-        }
+        // error in file, cn data type is 1 but should be 3
+        // if let Some(data) = mdf.get_channel_data(&"Counter_INT32_BE".to_string()) {
+        //     assert_eq!(
+        //         PrimitiveArray::new(DataType::Int32, Buffer::from(vect.clone()), None).boxed(),
+        //         data
+        //     );
+        // }
         if let Some(data) = mdf2.get_channel_data(&"Counter_INT32_LE".to_string()) {
             assert_eq!(
                 PrimitiveArray::new(DataType::Int32, Buffer::from(vect), None).boxed(),
@@ -319,7 +330,7 @@ mod tests {
             *v -= counter;
             counter += 1
         });
-        if let Some(data) = mdf.get_channel_data(&"Counter_INT16_LE".to_string()) {
+        if let Some(data) = mdf.get_channel_data(&"Counter_INT16_BE".to_string()) {
             assert_eq!(
                 PrimitiveArray::new(DataType::Int16, Buffer::from(vect.clone()), None).boxed(),
                 data
@@ -331,6 +342,26 @@ mod tests {
                 data
             );
         }
+        // Real types
+        // Integer testing
+        let file_name = format!(
+            "{}{}{}",
+            BASE_PATH_MDF4, list_of_paths[3], "Vector_RealTypes.MF4"
+        );
+        let mut mdf = Mdf::new(&file_name)?;
+        mdf.load_all_channels_data_in_memory()?;
+        let file_name = format!(
+            "{}{}{}",
+            BASE_PATH_MDF4, list_of_paths[3], "halffloat_sinus.mf4"
+        );
+        let mut mdf = Mdf::new(&file_name)?;
+        mdf.load_all_channels_data_in_memory()?;
+        let file_name = format!(
+            "{}{}{}",
+            BASE_PATH_MDF4, list_of_paths[3], "dSPACE_RealTypes.mf4"
+        );
+        let mut mdf = Mdf::new(&file_name)?;
+        mdf.load_all_channels_data_in_memory()?;
         Ok(())
     }
 
@@ -345,6 +376,14 @@ mod tests {
         ];
 
         // MasterTypes testing
+        let mut vect: Vec<f64> = vec![0.; 101];
+        let mut counter: f64 = 0.;
+        vect.iter_mut().for_each(|v| {
+            *v = counter.clone() * 0.03;
+            counter += 1.
+        });
+        let expected_master =
+            PrimitiveArray::new(DataType::Float64, Buffer::from(vect), None).boxed();
         let file_name = format!(
             "{}{}{}",
             BASE_PATH_MDF4, list_of_paths[0], "Vector_VirtualTimeMasterChannel.mf4"
@@ -352,24 +391,28 @@ mod tests {
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
         if let Some(data) = mdf.get_channel_data(&"Time channel".to_string()) {
-            let mut vect: Vec<f64> = vec![0.; 101];
-            let mut counter: f64 = 0.;
-            vect.iter_mut().for_each(|v| {
-                *v = counter.clone() * 0.03;
-                counter += 1.
-            });
-            assert_eq!(
-                PrimitiveArray::new(DataType::Float64, Buffer::from(vect), None).boxed(),
-                data
-            );
+            assert_eq!(expected_master, data);
         }
-        // MLSD testing
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[1], "Vector_MLSDStringUTF8.mf4"
+            BASE_PATH_MDF4, list_of_paths[0], "Vector_DifferentMasterChannels.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
+        if let Some(data) = mdf.get_channel_data(&"Time channel".to_string()) {
+            assert_eq!(expected_master, data);
+        }
+        let file_name = format!(
+            "{}{}{}",
+            BASE_PATH_MDF4, list_of_paths[0], "Vector_NoMasterChannel.mf4"
+        );
+        let mut mdf = Mdf::new(&file_name)?;
+        mdf.load_all_channels_data_in_memory()?;
+        if let Some(data) = mdf.get_channel_data(&"Time channel".to_string()) {
+            assert_eq!(expected_master, data);
+        }
+
+        // MLSD testing
         let expected_string_result = Utf8Array::<i64>::from([
             Some("zero"),
             Some("one"),
@@ -383,25 +426,88 @@ mod tests {
             Some("nine"),
         ])
         .boxed();
-        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
-            assert_eq!(expected_string_result, data);
-        }
-        // Virtual data testing
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[3], "Vector_VirtualDataChannelNoConversion.mf4"
+            BASE_PATH_MDF4, list_of_paths[1], "Vector_MLSDStringUTF8.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
+        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+            assert_eq!(expected_string_result, data);
+        }
+        let file_name = format!(
+            "{}{}{}",
+            BASE_PATH_MDF4, list_of_paths[1], "Vector_MLSDStringSBC.mf4"
+        );
+        let mut mdf = Mdf::new(&file_name)?;
+        mdf.load_all_channels_data_in_memory()?;
+        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+            assert_eq!(expected_string_result, data);
+        }
+        let file_name = format!(
+            "{}{}{}",
+            BASE_PATH_MDF4, list_of_paths[1], "Vector_MLSDStringUTF16_BE.mf4"
+        );
+        let mut mdf = Mdf::new(&file_name)?;
+        mdf.load_all_channels_data_in_memory()?;
+        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+            assert_eq!(expected_string_result, data);
+        }
+        let file_name = format!(
+            "{}{}{}",
+            BASE_PATH_MDF4, list_of_paths[1], "Vector_MLSDStringUTF16_LE.mf4"
+        );
+        let mut mdf = Mdf::new(&file_name)?;
+        mdf.load_all_channels_data_in_memory()?;
+        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+            assert_eq!(expected_string_result, data);
+        }
+
+        // Virtual data testing
         let mut vect: Vec<u64> = vec![0; 200];
         let mut counter: u64 = 0;
         vect.iter_mut().for_each(|v| {
             *v += counter;
             counter += 1
         });
-        //if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
-        //    assert_eq!(ChannelData::UInt64(vect), *data);
-        //}
+        let virtal_vect = PrimitiveArray::<u64>::from_vec(vect).boxed();
+        let file_name = format!(
+            "{}{}{}",
+            BASE_PATH_MDF4, list_of_paths[3], "Vector_VirtualDataChannelNoConversion.mf4"
+        );
+        let mut mdf = Mdf::new(&file_name)?;
+        mdf.load_all_channels_data_in_memory()?;
+        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+            assert_eq!(virtal_vect, *data);
+        }
+        let mut vect: Vec<f64> = vec![100.0f64; 200];
+        let mut counter: f64 = 0.0;
+        vect.iter_mut().for_each(|v| {
+            *v += counter;
+            counter -= 2.0
+        });
+        let virtal_linear_vect = PrimitiveArray::<f64>::from_vec(vect).boxed();
+        let file_name = format!(
+            "{}{}{}",
+            BASE_PATH_MDF4, list_of_paths[3], "Vector_VirtualDataChannelLinearConversion.mf4"
+        );
+        let mut mdf = Mdf::new(&file_name)?;
+        mdf.load_all_channels_data_in_memory()?;
+        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+            assert_eq!(virtal_linear_vect, *data);
+        }
+        let file_name = format!(
+            "{}{}{}",
+            BASE_PATH_MDF4, list_of_paths[3], "Vector_VirtualDataChannelConstantConversion.mf4"
+        );
+        let mut mdf = Mdf::new(&file_name)?;
+        mdf.load_all_channels_data_in_memory()?;
+        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+            assert_eq!(
+                PrimitiveArray::<f64>::from_vec(vec![42f64; 200]).boxed(),
+                *data
+            );
+        }
         // VLSD testing
         let file_name = format!(
             "{}{}{}",
@@ -412,6 +518,25 @@ mod tests {
         if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
             assert_eq!(expected_string_result, data);
         }
+        let file_name = format!(
+            "{}{}{}",
+            BASE_PATH_MDF4, list_of_paths[2], "Vector_VLSDStringUTF16_LE.mf4"
+        );
+        let mut mdf = Mdf::new(&file_name)?;
+        mdf.load_all_channels_data_in_memory()?;
+        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+            assert_eq!(expected_string_result, data);
+        }
+        let file_name = format!(
+            "{}{}{}",
+            BASE_PATH_MDF4, list_of_paths[2], "Vector_VLSDStringUTF16_BE.mf4"
+        );
+        let mut mdf = Mdf::new(&file_name)?;
+        mdf.load_all_channels_data_in_memory()?;
+        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+            assert_eq!(expected_string_result, data);
+        }
+
         // Synchronization
         let file_name = format!(
             "{}{}{}",
@@ -839,7 +964,6 @@ mod tests {
             &"CAN_DataFrame.ID CAN_DataFrame_101 CANReplay_7_5 Message".to_string(),
         ) {
             let vect: Vec<f64> = vec![101.; 79];
-            // assert!(ChannelData::Float64(target).compare_f64(data, 1e-9f64));
             assert_eq!(
                 PrimitiveArray::new(DataType::Float64, Buffer::from(vect), None).boxed(),
                 *data
