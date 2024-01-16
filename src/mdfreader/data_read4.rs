@@ -3,7 +3,7 @@ use crate::export::tensor::{Order, Tensor};
 use crate::mdfinfo::mdfinfo4::{Cn4, CnType, Compo};
 use anyhow::{bail, Context, Error, Ok, Result};
 use arrow2::array::{
-    BinaryArray, FixedSizeBinaryArray, MutableArray, MutableBinaryValuesArray,
+    BinaryArray, FixedSizeBinaryArray, FixedSizeListArray, MutableArray, MutableBinaryValuesArray,
     MutableUtf8ValuesArray, PrimitiveArray, Utf8Array,
 };
 use arrow2::buffer::Buffer;
@@ -292,9 +292,11 @@ pub fn read_one_channel_array(
             }
             DataType::FixedSizeList(field, _size) => {
                 if field.name.eq(&"complex32".to_string()) {
-                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<f32>>()
-                        .context("One channel array function could not downcast to primitive array f32 for complex32")?
-                        .get_mut_values().context("One channel array function could not get mutable values from primitive array f32 for complex32")?;
+                    let array = cn.data.as_any_mut().downcast_mut::<FixedSizeListArray>()
+                    .with_context(|| format!("Read channels from bytes function could not downcast to FixedSizeListArray, channel {}", cn.unique_name))?.mut_values();
+                    let data = array.as_any_mut().downcast_mut::<PrimitiveArray<f32>>()
+                    .with_context(|| format!("Read channels from bytes function could not downcast to primitive array complex f32, channel {}", cn.unique_name))?
+                    .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array complex f32, channel {}", cn.unique_name))?;
                     if n_bytes <= 2 {
                         // complex 16
                         if cn.endian {
@@ -338,9 +340,11 @@ pub fn read_one_channel_array(
                     }
                 } else if field.name.eq(&"complex64".to_string()) {
                     // complex 64
-                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<f64>>()
-                        .context("One channel array function could not downcast to primitive array f64 for complex64")?
-                        .get_mut_values().context("One channel array function could not get mutable values from primitive array f64 for complex64")?;
+                    let array = cn.data.as_any_mut().downcast_mut::<FixedSizeListArray>()
+                    .with_context(|| format!("Read channels from bytes function could not downcast to FixedSizeListArray, channel {}", cn.unique_name))?.mut_values();
+                    let data = array.as_any_mut().downcast_mut::<PrimitiveArray<f64>>()
+                    .with_context(|| format!("Read channels from bytes function could not downcast to primitive array complex f64, channel {}", cn.unique_name))?
+                    .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array complex f64, channel {}", cn.unique_name))?;
                     if cn.endian {
                         for (i, value) in data_bytes.chunks(std::mem::size_of::<f64>()).enumerate()
                         {
@@ -833,9 +837,11 @@ pub fn read_one_channel_array(
                         }
                         DataType::FixedSizeList(field, _size) => {
                             if field.name.eq(&"complex32".to_string()) {
-                                let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<f32>>()
-                                    .context("One channel array function could not downcast to primitive array f32 for array complex32")?
-                                    .get_mut_values().context("One channel array function could not get mutable values from primitive array f32 for array complex32")?;
+                                let array = cn.data.as_any_mut().downcast_mut::<FixedSizeListArray>()
+                                .with_context(|| format!("Read channels from bytes function could not downcast to FixedSizeListArray, channel {}", cn.unique_name))?.mut_values();
+                                let data = array.as_any_mut().downcast_mut::<PrimitiveArray<f32>>()
+                                .with_context(|| format!("Read channels from bytes function could not downcast to primitive tensor complex f32, channel {}", cn.unique_name))?
+                                .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive tensor complex f32, channel {}", cn.unique_name))?;
                                 if n_bytes <= 2 { // complex 16
                                     if let Some(compo) = &cn.composition {
                                         match &compo.block {
@@ -898,9 +904,11 @@ pub fn read_one_channel_array(
                                     }
                                 }
                             } else if field.name.eq(&"complex64".to_string())  {
-                                let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<f64>>()
-                                    .context("One channel array function could not downcast to primitive array f64 for array complex64")?.get_mut_values()
-                                    .context("One channel array function could not get mutable values from primitive array f64 for array complex64")?;
+                                let array = cn.data.as_any_mut().downcast_mut::<FixedSizeListArray>()
+                                .with_context(|| format!("Read channels from bytes function could not downcast to FixedSizeListArray, channel {}", cn.unique_name))?.mut_values();
+                                let data = array.as_any_mut().downcast_mut::<PrimitiveArray<f64>>()
+                                .with_context(|| format!("Read channels from bytes function could not downcast to primitive tensor complex f64, channel {}", cn.unique_name))?
+                                .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive tensor complex f64, channel {}", cn.unique_name))?;
                                 if let Some(compo) = &cn.composition {
                                     match &compo.block {
                                         Compo::CA(_) => {
@@ -1279,7 +1287,9 @@ pub fn read_channels_from_bytes(
                 }
                 DataType::FixedSizeList(field, _size) => {
                     if field.name.eq(&"complex32".to_string()) {
-                        let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<f32>>()
+                        let array = cn.data.as_any_mut().downcast_mut::<FixedSizeListArray>()
+                        .with_context(|| format!("Read channels from bytes function could not downcast to FixedSizeListArray, channel {}", cn.unique_name))?.mut_values();
+                        let data = array.as_any_mut().downcast_mut::<PrimitiveArray<f32>>()
                         .with_context(|| format!("Read channels from bytes function could not downcast to primitive array complex f32, channel {}", cn.unique_name))?
                         .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array complex f32, channel {}", cn.unique_name))?;
                         if n_bytes <= 2 {  // complex 16
@@ -1368,7 +1378,9 @@ pub fn read_channels_from_bytes(
                         // complex 64
                         let mut re_val: &[u8];
                         let mut im_val: &[u8];
-                        let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<f64>>()
+                        let array = cn.data.as_any_mut().downcast_mut::<FixedSizeListArray>()
+                        .with_context(|| format!("Read channels from bytes function could not downcast to FixedSizeListArray, channel {}", cn.unique_name))?.mut_values();
+                        let data = array.as_any_mut().downcast_mut::<PrimitiveArray<f64>>()
                         .with_context(|| format!("Read channels from bytes function could not downcast to primitive array complex f64, channel {}", cn.unique_name))?
                         .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array complex f64, channel {}", cn.unique_name))?;
                         if cn.endian {
@@ -1959,8 +1971,10 @@ pub fn read_channels_from_bytes(
                             }
                             DataType::FixedSizeList(field, _size) => {
                                 if field.name.eq(&"complex32".to_string()) {
-                                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<f32>>()
-                                    .with_context(|| format!("Read channels from bytes function could not downcast to primitive tensor array complex f32, channel {}", cn.unique_name))?
+                                    let array = cn.data.as_any_mut().downcast_mut::<FixedSizeListArray>()
+                                    .with_context(|| format!("Read channels from bytes function could not downcast to FixedSizeListArray, channel {}", cn.unique_name))?.mut_values();
+                                    let data = array.as_any_mut().downcast_mut::<PrimitiveArray<f32>>()
+                                    .with_context(|| format!("Read channels from bytes function could not downcast to primitive array tensor complex f32, channel {}", cn.unique_name))?
                                     .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor complex f32, channel {}", cn.unique_name))?;
                                     if n_bytes <= 2 {  // complex 16
                                         if let Some(compo) = &cn.composition {
@@ -2068,8 +2082,10 @@ pub fn read_channels_from_bytes(
                                     if let Some(compo) = &cn.composition {
                                         match &compo.block {
                                             Compo::CA(ca) => {
-                                                let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<f64>>()
-                                                .with_context(|| format!("Read channels from bytes function could not downcast to primitive tensor array complex f64, channel {}", cn.unique_name))?
+                                                let array = cn.data.as_any_mut().downcast_mut::<FixedSizeListArray>()
+                                                .with_context(|| format!("Read channels from bytes function could not downcast to FixedSizeListArray, channel {}", cn.unique_name))?.mut_values();
+                                                let data = array.as_any_mut().downcast_mut::<PrimitiveArray<f64>>()
+                                                .with_context(|| format!("Read channels from bytes function could not downcast to primitive array tensor complex f64, channel {}", cn.unique_name))?
                                                 .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor complex f64, channel {}", cn.unique_name))?;
                                                 let mut re_val: &[u8];
                                                 let mut im_val: &[u8];

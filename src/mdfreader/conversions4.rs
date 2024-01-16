@@ -10,7 +10,7 @@ use std::fmt::Display;
 
 use crate::export::tensor::{tensor_as_tensor, unary_assign, Tensor};
 use crate::mdfinfo::mdfinfo4::{Cc4Block, CcVal, Cn4, Dg4, SharableBlocks};
-use arrow2::array::{Array, PrimitiveArray, Utf8Array};
+use arrow2::array::{Array, FixedSizeListArray, PrimitiveArray, Utf8Array};
 use arrow2::compute::arity_assign;
 use arrow2::compute::cast::primitive_as_primitive;
 use arrow2::datatypes::DataType;
@@ -255,9 +255,20 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
             }
             DataType::FixedSizeList(field, _size) => {
                 if field.name.eq(&"complex32".to_string()) {
-                    cn.data = linear_conversion_primitive::<f32>(cn.data.as_ref(), p1, p2)?;
+                    let array = cn.data.as_any_mut().downcast_mut::<FixedSizeListArray>()
+                    .with_context(|| format!("Read channels from bytes function could not downcast to FixedSizeListArray, channel {}", cn.unique_name))?.mut_values();
+                    let data = array.as_any_mut().downcast_mut::<PrimitiveArray<f32>>()
+                    .with_context(|| format!("Read channels from bytes function could not downcast to primitive array complex f32, channel {}", cn.unique_name))?;
+                    let mut array_f64 =
+                        primitive_as_primitive::<f32, f64>(data, &DataType::Float64);
+                    arity_assign::unary(&mut array_f64, |x: f64| x * p2 + p1);
+                    cn.data = array_f64.to_boxed();
                 } else if field.name.eq(&"complex64".to_string()) {
-                    cn.data = linear_conversion_primitive::<f64>(cn.data.as_ref(), p1, p2)?;
+                    let array = cn.data.as_any_mut().downcast_mut::<FixedSizeListArray>()
+                    .with_context(|| format!("Read channels from bytes function could not downcast to FixedSizeListArray, channel {}", cn.unique_name))?.mut_values();
+                    let mut data = array.as_any_mut().downcast_mut::<PrimitiveArray<f64>>()
+                    .with_context(|| format!("Read channels from bytes function could not downcast to primitive array complex f32, channel {}", cn.unique_name))?;
+                    arity_assign::unary(&mut data, |x: f64| x * p2 + p1);
                 }
             }
             DataType::Extension(extension_name, data_type, _) => {
