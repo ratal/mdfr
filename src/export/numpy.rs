@@ -10,7 +10,8 @@ use numpy::{IntoPyArray, PyArray1, PyArrayDyn, ToPyArray};
 use pyo3::prelude::*;
 use pyo3::{PyAny, PyObject, PyResult};
 
-use crate::mdfreader::channel_data::{ArrowComplex, ChannelData, Order};
+use crate::export::tensor::Order;
+use crate::mdfreader::channel_data::{ArrowComplex, ChannelData};
 
 use crate::export::tensor::Order as TensorOrder;
 
@@ -383,15 +384,6 @@ impl ArrowComplex<f32> {
             output.push(v.im);
         });
         ArrowComplex::<f32>(output)
-    }
-}
-
-impl From<Order> for NPY_ORDER {
-    fn from(order: Order) -> Self {
-        match order {
-            Order::RowMajor => NPY_ORDER::NPY_CORDER,
-            Order::ColumnMajor => NPY_ORDER::NPY_FORTRANORDER,
-        }
     }
 }
 

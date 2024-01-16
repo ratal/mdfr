@@ -343,7 +343,6 @@ mod tests {
             );
         }
         // Real types
-        // Integer testing
         let file_name = format!(
             "{}{}{}",
             BASE_PATH_MDF4, list_of_paths[3], "Vector_RealTypes.MF4"

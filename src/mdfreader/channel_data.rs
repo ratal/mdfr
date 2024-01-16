@@ -5,7 +5,7 @@ use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::fmt;
 use std::iter::IntoIterator;
 
-use crate::export::tensor::Order as TensorOrder;
+use crate::export::tensor::Order;
 
 /// channel data type enum.
 /// most common data type is 1D ndarray for timeseries with element types numeric.
@@ -54,22 +54,6 @@ pub enum ChannelData {
     ArrayDComplex16((ArrowComplex<f32>, (Vec<usize>, Order))),
     ArrayDComplex32((ArrowComplex<f32>, (Vec<usize>, Order))),
     ArrayDComplex64((ArrowComplex<f64>, (Vec<usize>, Order))),
-}
-
-/// Order of the array, Row or Column Major (first)
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Order {
-    RowMajor,
-    ColumnMajor,
-}
-
-impl From<Order> for TensorOrder {
-    fn from(order: Order) -> Self {
-        match order {
-            Order::RowMajor => TensorOrder::RowMajor,
-            Order::ColumnMajor => TensorOrder::ColumnMajor,
-        }
-    }
 }
 
 /// structure to hold complex numbers according to arrow memory layout
