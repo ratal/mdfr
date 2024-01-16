@@ -6,7 +6,7 @@ use anyhow::{anyhow, Context, Error, Result};
 use arrow2::array::{Array, PrimitiveArray};
 use arrow2::bitmap::{Bitmap, MutableBitmap};
 use arrow2::buffer::Buffer;
-use arrow2::datatypes::{DataType, Field, Metadata};
+use arrow2::datatypes::DataType;
 use binrw::{binrw, BinReaderExt, BinWriterExt};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::naive::NaiveDateTime;
@@ -233,20 +233,21 @@ impl MdfInfo4 {
     pub fn add_channel(
         &mut self,
         channel_name: String,
-        data: DataSignature,
+        data: Box<dyn Array>,
+        data_signature: DataSignature,
         mut master: MasterSignature,
         unit: Option<String>,
         description: Option<String>,
     ) -> Result<(), Error> {
         let mut cg_block = Cg4Block {
-            cg_cycle_count: data.len as u64,
+            cg_cycle_count: data_signature.len as u64,
             ..Default::default()
         };
         // Basic channel block
         let mut cn_block = Cn4Block::default();
         let machine_endian: bool = cfg!(target_endian = "big");
-        cn_block.cn_data_type = data.data_type;
-        cn_block.cn_bit_count = data.bit_count;
+        cn_block.cn_data_type = data_signature.data_type;
+        cn_block.cn_bit_count = data_signature.bit_count;
         let cn_pos = position_generator();
         cn_block.cn_sync_type = master.master_type.unwrap_or(0);
 
@@ -256,15 +257,11 @@ impl MdfInfo4 {
         self.sharable
             .create_tx(channel_name_position, channel_name.to_string());
 
-        // field
-        let mut field = Field::new(channel_name.to_string(), DataType::UInt8, false);
-        let mut metadata = Metadata::new();
-
         // Channel array
-        let data_ndim = data.ndim - 1;
+        let data_ndim = data_signature.ndim - 1;
         let mut composition: Option<Composition> = None;
         if data_ndim > 0 {
-            let data_dim_size = data
+            let data_dim_size = data_signature
                 .shape
                 .0
                 .iter()
@@ -277,7 +274,7 @@ impl MdfInfo4 {
                 ca_block.snd += x as usize;
                 ca_block.pnd *= x as usize;
             }
-            cg_block.cg_data_bytes = ca_block.pnd as u32 * data.byte_count;
+            cg_block.cg_data_bytes = ca_block.pnd as u32 * data_signature.byte_count;
 
             let composition_position = position_generator();
             cn_block.cn_composition = composition_position;
@@ -309,7 +306,6 @@ impl MdfInfo4 {
                     cg_block.cg_links = 7; // with cg_cg_master
                                            // cg_block.cg_len = 112;
                     master.master_channel = m.clone();
-                    metadata.insert("master_channel".to_string(), m.clone().unwrap_or_default());
                 }
             }
         }
@@ -322,7 +318,6 @@ impl MdfInfo4 {
             let unit_position = position_generator();
             cn_block.cn_md_unit = unit_position;
             self.sharable.create_tx(unit_position, u.clone());
-            metadata.insert("unit".to_string(), u);
         }
 
         // description
@@ -330,23 +325,14 @@ impl MdfInfo4 {
             let md_comment = position_generator();
             cn_block.cn_md_comment = md_comment;
             self.sharable.create_tx(md_comment, d.clone());
-            metadata.insert("description".to_string(), d);
         }
 
         // CN
-        let n_bytes = data.byte_count;
-        field.data_type = arrow_data_type_init(
-            cn_block.cn_type,
-            cn_block.cn_data_type,
-            n_bytes,
-            data_ndim > 0,
-        )?
-        .data_type()
-        .clone();
+        let n_bytes = data_signature.byte_count;
         let cn = Cn4 {
             header: default_short_header(BlockType::CN),
             unique_name: channel_name.to_string(),
-            data: PrimitiveArray::new(DataType::UInt8, Buffer::<u8>::new(), None).to_boxed(),
+            data,
             block: cn_block,
             endian: machine_endian,
             block_position: cn_pos,

@@ -292,7 +292,8 @@ impl MdfInfo {
     pub fn add_channel(
         &mut self,
         channel_name: String,
-        data: DataSignature,
+        data: Box<dyn Array>,
+        data_signature: DataSignature,
         master: MasterSignature,
         unit: Option<String>,
         description: Option<String>,
@@ -302,10 +303,24 @@ impl MdfInfo {
                 let mut file_name = PathBuf::from(mdfinfo3.file_name.as_str());
                 file_name.set_extension("mf4");
                 let mut mdf4 = convert3to4(mdfinfo3, &file_name.to_string_lossy())?;
-                mdf4.add_channel(channel_name, data, master, unit, description)?;
+                mdf4.add_channel(
+                    channel_name,
+                    data,
+                    data_signature,
+                    master,
+                    unit,
+                    description,
+                )?;
             }
             MdfInfo::V4(mdfinfo4) => {
-                mdfinfo4.add_channel(channel_name, data, master, unit, description)?;
+                mdfinfo4.add_channel(
+                    channel_name,
+                    data,
+                    data_signature,
+                    master,
+                    unit,
+                    description,
+                )?;
             }
         }
         Ok(())

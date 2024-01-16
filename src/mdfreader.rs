@@ -157,6 +157,7 @@ impl Mdf {
         };
         self.mdf_info.add_channel(
             channel_name.clone(),
+            data,
             data_signature,
             master_signature,
             unit,

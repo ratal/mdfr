@@ -1,5 +1,4 @@
 //! Parsing of file metadata into MdfInfo3 struct
-use crate::mdfreader::channel_data::Order;
 use anyhow::{Context, Result};
 use binrw::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -12,6 +11,7 @@ use std::fmt;
 use std::fs::File;
 use std::io::{prelude::*, Cursor};
 
+use crate::export::tensor::Order;
 use crate::mdfinfo::IdBlock;
 use crate::mdfreader::channel_data::{data_type_init, ChannelData};
 
