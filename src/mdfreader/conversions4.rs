@@ -184,7 +184,7 @@ fn linear_conversion_primitive<T: NativeType + AsPrimitive<f64>>(
         .context("Linear conversion could not downcast to primitive array")?;
     let mut array_f64 = primitive_as_primitive::<T, f64>(parray, &DataType::Float64);
     arity_assign::unary(&mut array_f64, |x| x * p2 + p1);
-    Ok(array_f64.to_boxed())
+    Ok(array_f64.boxed())
 }
 
 /// Generic function calculating linear expression for a tensor
@@ -200,7 +200,7 @@ fn linear_conversion_tensor<T: NativeType + AsPrimitive<f64>>(
         .context("Linear conversion could not downcast to tensor array")?;
     let mut array_f64 = tensor_as_tensor::<T, f64>(parray, &DataType::Float64);
     unary_assign(&mut array_f64, |x: f64| x * p2 + p1);
-    Ok(array_f64.to_boxed())
+    Ok(array_f64.boxed())
 }
 
 /// Apply linear conversion to get physical data
@@ -262,7 +262,7 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
                     let mut array_f64 =
                         primitive_as_primitive::<f32, f64>(data, &DataType::Float64);
                     arity_assign::unary(&mut array_f64, |x: f64| x * p2 + p1);
-                    cn.data = array_f64.to_boxed();
+                    cn.data = array_f64.boxed();
                 } else if field.name.eq(&"complex64".to_string()) {
                     let array = cn.data.as_any_mut().downcast_mut::<FixedSizeListArray>()
                     .with_context(|| format!("Read channels from bytes function could not downcast to FixedSizeListArray, channel {}", cn.unique_name))?.mut_values();
@@ -361,7 +361,7 @@ fn rational_conversion_primitive<T: NativeType + AsPrimitive<f64>>(
     arity_assign::unary(&mut array_f64, |x| {
         (x * x * p1 + x * p2 + p3) / (x * x * p4 + x * p5 + p6)
     });
-    Ok(array_f64.to_boxed())
+    Ok(array_f64.boxed())
 }
 
 /// Generic function calculating rational expression for a tensor
@@ -384,7 +384,7 @@ fn rational_conversion_tensor<T: NativeType + AsPrimitive<f64>>(
     unary_assign(&mut array_f64, |x| {
         (x * x * p1 + x * p2 + p3) / (x * x * p4 + x * p5 + p6)
     });
-    Ok(array_f64.to_boxed())
+    Ok(array_f64.boxed())
 }
 
 /// Apply rational conversion to get physical data

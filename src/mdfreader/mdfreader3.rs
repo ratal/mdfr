@@ -2,15 +2,16 @@
 use rayon::prelude::*;
 
 use crate::export::tensor::Order;
-use crate::mdfinfo::mdfinfo3::{Cg3, Dg3};
+use crate::mdfinfo::mdfinfo3::{Cg3, Cn3, Dg3};
 use crate::mdfinfo::MdfInfo;
-use anyhow::{Context, Result};
+use anyhow::{Context, Error, Ok, Result};
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufReader, Read};
 
 use crate::mdfreader::data_read3::read_channels_from_bytes;
 
+use super::arrow::arrow_init_zeros;
 use super::Mdf;
 use crate::mdfreader::conversions3::convert_all_channels;
 
@@ -25,7 +26,7 @@ pub fn mdfreader3<'a>(
     rdr: &'a mut BufReader<&File>,
     mdf: &'a mut Mdf,
     channel_names: &HashSet<String>,
-) -> Result<()> {
+) -> Result<(), Error> {
     match &mut mdf.mdf_info {
         MdfInfo::V3(info) => {
             let mut position: i64 = 0;
@@ -67,7 +68,8 @@ pub fn mdfreader3<'a>(
                                 channel_group,
                                 &channel_group.block.cg_cycle_count.clone(),
                                 &channel_names_to_read_in_dg,
-                            );
+                            )
+                            .context("failed initialising arrays for unsorted data")?;
                             block_length += channel_group.record_length as i64
                                 * channel_group.block.cg_cycle_count as i64;
                         }
@@ -81,7 +83,8 @@ pub fn mdfreader3<'a>(
                     }
 
                     // conversion of all channels to physical values
-                    convert_all_channels(dg, &info.sharable);
+                    convert_all_channels(dg, &info.sharable)
+                        .context("failed converting all channels")?;
                 }
             }
         }
@@ -95,20 +98,32 @@ fn initialise_arrays(
     channel_group: &mut Cg3,
     cg_cycle_count: &u32,
     channel_names_to_read_in_dg: &HashSet<String>,
-) {
+) -> Result<(), Error> {
     // creates zeroed array in parallel for each channel contained in channel group
     channel_group
         .cn
         .par_iter_mut()
         .filter(|(_cn_position, cn)| channel_names_to_read_in_dg.contains(&cn.unique_name))
-        .for_each(|(_cn_position, cn)| {
-            cn.data = cn.data.zeros(
-                0,
-                *cg_cycle_count as u64,
-                cn.n_bytes as u32,
-                (Vec::new(), Order::RowMajor),
-            );
-        })
+        .try_for_each(
+            |(_cn_position, cn): (&u32, &mut Cn3)| -> Result<(), Error> {
+                cn.data = arrow_init_zeros(
+                    cn.data.as_ref(),
+                    0,
+                    *cg_cycle_count as u64,
+                    cn.n_bytes as u32,
+                    (Vec::new(), Order::RowMajor),
+                )
+                .with_context(|| {
+                    format!(
+                        "failed intialising with zeros the channel's array named {}",
+                        cn.unique_name
+                    )
+                })?;
+                Ok(())
+            },
+        )
+        .context("Failed initialising channel group with zeros arrays")?;
+    Ok(())
 }
 
 /// Returns chunk size and corresponding number of records from a channel group
@@ -139,7 +154,8 @@ fn read_all_channels_sorted(
         channel_group,
         &channel_group.block.cg_cycle_count.clone(),
         channel_names_to_read_in_dg,
-    );
+    )
+    .context("failed initialising arrays for sorted data")?;
     // read by chunks and store in channel array
     let mut previous_index: usize = 0;
     for (n_record_chunk, chunk_size) in chunks {
@@ -152,7 +168,8 @@ fn read_all_channels_sorted(
             channel_group.record_length as usize,
             previous_index,
             channel_names_to_read_in_dg,
-        );
+        )
+        .context("failed reading sorted channels from bytes")?;
         previous_index += n_record_chunk;
     }
     Ok(())
@@ -246,7 +263,8 @@ fn read_all_channels_unsorted_from_bytes(
                 channel_group.record_length as usize,
                 *index,
                 channel_names_to_read_in_dg,
-            );
+            )
+            .context("failed reading channels from bytes after sorting")?;
             record_data.clear(); // clears data for new block, keeping capacity
         }
     }

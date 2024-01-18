@@ -228,10 +228,10 @@ fn mdf_data_to_arrow(mdf: &Mdf) -> (Vec<Vec<Box<dyn Array>>>, Schema) {
                         if !cn.data.is_empty() {
                             let field = Field::new(
                                 cn.unique_name.clone(),
-                                DataType::Null, //cn.data.data_type().clone(), // to be put back later
+                                cn.data.data_type().clone(),
                                 false,
                             );
-                            // columns.push(cn.data); // to be put back later
+                            columns.push(cn.data.clone());
                             let mut metadata = Metadata::new();
                             if let Some(array) =
                                 mdfinfo3.sharable.cc.get(&cn.block1.cn_cc_conversion)
