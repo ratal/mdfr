@@ -1,6 +1,6 @@
 //! this module provides methods to get directly channelData into python
 
-use arrow2::array::{Array, BinaryArray, PrimitiveArray, Utf8Array};
+use arrow2::array::{Array, BinaryArray, FixedSizeBinaryArray, PrimitiveArray, Utf8Array};
 use arrow2::bitmap::Bitmap;
 use arrow2::datatypes::{DataType, PhysicalType, PrimitiveType};
 
@@ -155,12 +155,17 @@ pub fn arrow_to_numpy(py: Python, array: Box<dyn Array>) -> PyObject {
                 .expect("could not downcast binary array to bytes vect");
             array.values().to_pyarray(py).into_py(py)
         }
-        DataType::FixedSizeBinary(_) => {
+        DataType::FixedSizeBinary(size) => {
             let array = array
                 .as_any()
-                .downcast_ref::<BinaryArray<i64>>()
+                .downcast_ref::<FixedSizeBinaryArray>()
                 .expect("could not downcast large binary to bytes vect");
-            array.values().to_pyarray(py).into_py(py)
+            array
+                .values()
+                .to_pyarray(py)
+                .reshape([array.len() / size, *size])
+                .expect("failed reshaping the fixedsizebinaryarray")
+                .into_py(py)
         }
         DataType::LargeBinary => {
             let array = array
@@ -174,14 +179,22 @@ pub fn arrow_to_numpy(py: Python, array: Box<dyn Array>) -> PyObject {
                 .as_any()
                 .downcast_ref::<Utf8Array<i32>>()
                 .expect("could not downcast to utf8 array");
-            array.values().to_pyarray(py).into_py(py)
+            let mut vect_str = Vec::<PyObject>::with_capacity(array.len());
+            array
+                .values_iter()
+                .for_each(|x| vect_str.push(x.to_object(py)));
+            vect_str.to_pyarray(py).into_py(py)
         }
         DataType::LargeUtf8 => {
             let array = array
                 .as_any()
                 .downcast_ref::<Utf8Array<i64>>()
                 .expect("could not downcast to long utf8 array");
-            array.values().to_pyarray(py).into_py(py)
+            let mut vect_str = Vec::<PyObject>::with_capacity(array.len());
+            array
+                .values_iter()
+                .for_each(|x| vect_str.push(x.to_object(py)));
+            vect_str.to_pyarray(py).into_py(py)
         }
         DataType::FixedSizeList(field, _size) => match field.data_type.to_physical_type() {
             // Complex types
