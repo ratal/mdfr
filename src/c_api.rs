@@ -1,6 +1,6 @@
 //! C API
 use crate::mdfreader::Mdf;
-use arrow2::ffi::{export_array_to_c, export_field_to_c, ArrowArray, ArrowSchema};
+use arrow2::ffi::{export_array_to_c, ArrowArray};
 use libc::c_char;
 use std::ffi::{c_uchar, c_ushort, CStr, CString};
 
@@ -184,30 +184,6 @@ pub unsafe extern "C" fn get_channel_array(
                 array_ptr
             }
             None => std::ptr::null::<ArrowArray>(), // null pointers
-        }
-    } else {
-        panic!("Null pointer given for Mdf Rust object")
-    }
-}
-
-/// returns channel's arrow Schema.
-/// null pointer returned if not found
-#[no_mangle]
-pub unsafe extern "C" fn get_channel_schema(
-    mdf: *const Mdf,
-    channel_name: *const libc::c_char,
-) -> *const ArrowSchema {
-    let name = CStr::from_ptr(channel_name)
-        .to_str()
-        .expect("Could not convert into utf8 the file name string");
-    if let Some(mdf) = mdf.as_ref() {
-        match mdf.get_channel_field(name) {
-            Some(field) => {
-                let schema = Box::new(export_field_to_c(field));
-                let schema_ptr: *const ArrowSchema = &*schema;
-                schema_ptr
-            }
-            None => std::ptr::null::<ArrowSchema>(), // null pointers
         }
     } else {
         panic!("Null pointer given for Mdf Rust object")

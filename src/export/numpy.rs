@@ -4,23 +4,22 @@ use arrow2::array::{Array, BinaryArray, PrimitiveArray, Utf8Array};
 use arrow2::bitmap::Bitmap;
 use arrow2::datatypes::{DataType, PhysicalType, PrimitiveType};
 
-use num::Complex;
 use numpy::npyffi::types::NPY_ORDER;
 use numpy::{IntoPyArray, PyArray1, PyArrayDyn, ToPyArray};
 use pyo3::prelude::*;
 use pyo3::{PyAny, PyObject, PyResult};
 
-use crate::mdfreader::channel_data::{ArrowComplex, ChannelData, Order};
+use crate::mdfreader::channel_data::ChannelData;
 
-use crate::export::tensor::Order as TensorOrder;
+use crate::export::tensor::Order;
 
 use super::tensor::Tensor;
 
-impl From<TensorOrder> for NPY_ORDER {
-    fn from(order: TensorOrder) -> Self {
+impl From<Order> for NPY_ORDER {
+    fn from(order: Order) -> Self {
         match order {
-            TensorOrder::RowMajor => NPY_ORDER::NPY_CORDER,
-            TensorOrder::ColumnMajor => NPY_ORDER::NPY_FORTRANORDER,
+            Order::RowMajor => NPY_ORDER::NPY_CORDER,
+            Order::ColumnMajor => NPY_ORDER::NPY_FORTRANORDER,
         }
     }
 }
@@ -358,187 +357,96 @@ pub fn arrow_to_numpy(py: Python, array: Box<dyn Array>) -> PyObject {
     }
 }
 
-impl ArrowComplex<f64> {
-    pub fn to_ndarray(&self) -> Vec<Complex<f64>> {
-        Vec::<Complex<f64>>::from_iter(self.clone())
-    }
-    pub fn from_array(array: Vec<Complex<f64>>) -> Self {
-        let mut output = Vec::with_capacity(array.len() * 2);
-        array.iter().for_each(|v| {
-            output.push(v.re);
-            output.push(v.im);
-        });
-        ArrowComplex::<f64>(output)
-    }
-}
-
-impl ArrowComplex<f32> {
-    pub fn to_ndarray(&self) -> Vec<Complex<f32>> {
-        Vec::<Complex<f32>>::from_iter(self.clone())
-    }
-    pub fn from_array(array: Vec<Complex<f32>>) -> Self {
-        let mut output = Vec::with_capacity(array.len() * 2);
-        array.iter().for_each(|v| {
-            output.push(v.re);
-            output.push(v.im);
-        });
-        ArrowComplex::<f32>(output)
-    }
-}
-
-impl From<Order> for NPY_ORDER {
-    fn from(order: Order) -> Self {
-        match order {
-            Order::RowMajor => NPY_ORDER::NPY_CORDER,
-            Order::ColumnMajor => NPY_ORDER::NPY_FORTRANORDER,
-        }
-    }
-}
-
 impl IntoPy<PyObject> for ChannelData {
     /// IntoPy implementation to convert a ChannelData into a PyObject
     fn into_py(self, py: Python) -> PyObject {
         match self {
-            ChannelData::Int8(array) => array.into_pyarray(py).into_py(py),
-            ChannelData::UInt8(array) => array.into_pyarray(py).into_py(py),
-            ChannelData::Int16(array) => array.into_pyarray(py).into_py(py),
-            ChannelData::UInt16(array) => array.into_pyarray(py).into_py(py),
-            ChannelData::Float16(array) => array.into_pyarray(py).into_py(py),
-            ChannelData::Int24(array) => array.into_pyarray(py).into_py(py),
-            ChannelData::UInt24(array) => array.into_pyarray(py).into_py(py),
-            ChannelData::Int32(array) => array.into_pyarray(py).into_py(py),
-            ChannelData::UInt32(array) => array.into_pyarray(py).into_py(py),
-            ChannelData::Float32(array) => array.into_pyarray(py).into_py(py),
-            ChannelData::Int48(array) => array.into_pyarray(py).into_py(py),
-            ChannelData::UInt48(array) => array.into_pyarray(py).into_py(py),
-            ChannelData::Int64(array) => array.into_pyarray(py).into_py(py),
-            ChannelData::UInt64(array) => array.into_pyarray(py).into_py(py),
-            ChannelData::Float64(array) => array.into_pyarray(py).into_py(py),
-            ChannelData::Complex16(array) => array.to_ndarray().into_pyarray(py).into_py(py),
-            ChannelData::Complex32(array) => array.to_ndarray().into_pyarray(py).into_py(py),
-            ChannelData::Complex64(array) => array.to_ndarray().into_pyarray(py).into_py(py),
-            ChannelData::StringSBC(array) => array.into_py(py),
-            ChannelData::StringUTF8(array) => array.into_py(py),
-            ChannelData::StringUTF16(array) => array.into_py(py),
-            ChannelData::VariableSizeByteArray(array) => array.into_py(py),
+            ChannelData::Int8(array) => array.values().to_pyarray(py).into_py(py),
+            ChannelData::UInt8(array) => array.values().to_pyarray(py).into_py(py),
+            ChannelData::Int16(array) => array.values().to_pyarray(py).into_py(py),
+            ChannelData::UInt16(array) => array.values().to_pyarray(py).into_py(py),
+            ChannelData::Int32(array) => array.values().to_pyarray(py).into_py(py),
+            ChannelData::UInt32(array) => array.values().to_pyarray(py).into_py(py),
+            ChannelData::Float32(array) => array.values().to_pyarray(py).into_py(py),
+            ChannelData::Int64(array) => array.values().to_pyarray(py).into_py(py),
+            ChannelData::UInt64(array) => array.values().to_pyarray(py).into_py(py),
+            ChannelData::Float64(array) => array.values().to_pyarray(py).into_py(py),
+            ChannelData::Complex32(array) => {
+                array.values().to_ndarray().into_pyarray(py).into_py(py)
+            }
+            ChannelData::Complex64(array) => {
+                array.values().to_ndarray().into_pyarray(py).into_py(py)
+            }
+            ChannelData::VariableSizeByteArray(array) => array.values().into_py(py),
             ChannelData::FixedSizeByteArray(array) => {
-                let out: Vec<Vec<u8>> = array.0.chunks(array.1).map(|x| x.to_vec()).collect();
+                let out: Vec<Vec<u8>> = array
+                    .values()
+                    .chunks(array.size())
+                    .map(|x| x.to_vec())
+                    .collect();
                 out.into_py(py)
             }
             ChannelData::ArrayDInt8(array) => array
-                .0
-                .into_pyarray(py)
-                .reshape_with_order(array.1 .0, array.1 .1.into())
+                .values()
+                .to_pyarray(py)
+                .reshape_with_order(array.shape(), (*array.order()).into())
                 .expect("could not reshape i8")
                 .into_py(py),
             ChannelData::ArrayDUInt8(array) => array
-                .0
-                .into_pyarray(py)
+                .values()
+                .to_pyarray(py)
                 .reshape_with_order(array.1 .0, array.1 .1.into())
                 .expect("could not reshape u8")
                 .into_py(py),
             ChannelData::ArrayDInt16(array) => array
-                .0
-                .into_pyarray(py)
+                .values()
+                .to_pyarray(py)
                 .reshape_with_order(array.1 .0, array.1 .1.into())
                 .expect("could not reshape u16")
                 .into_py(py),
             ChannelData::ArrayDUInt16(array) => array
-                .0
-                .into_pyarray(py)
+                .values()
+                .to_pyarray(py)
                 .reshape_with_order(array.1 .0, array.1 .1.into())
                 .expect("could not reshape i16")
                 .into_py(py),
-            ChannelData::ArrayDFloat16(array) => array
-                .0
-                .into_pyarray(py)
-                .reshape_with_order(array.1 .0, array.1 .1.into())
-                .expect("could not reshape f16")
-                .into_py(py),
-            ChannelData::ArrayDInt24(array) => array
-                .0
-                .into_pyarray(py)
-                .reshape_with_order(array.1 .0, array.1 .1.into())
-                .expect("could not reshape i24")
-                .into_py(py),
-            ChannelData::ArrayDUInt24(array) => array
-                .0
-                .into_pyarray(py)
-                .reshape_with_order(array.1 .0, array.1 .1.into())
-                .expect("could not reshape u24")
-                .into_py(py),
             ChannelData::ArrayDInt32(array) => array
-                .0
-                .into_pyarray(py)
+                .values()
+                .to_pyarray(py)
                 .reshape_with_order(array.1 .0, array.1 .1.into())
                 .expect("could not reshape i32")
                 .into_py(py),
             ChannelData::ArrayDUInt32(array) => array
-                .0
-                .into_pyarray(py)
+                .values()
+                .to_pyarray(py)
                 .reshape_with_order(array.1 .0, array.1 .1.into())
                 .expect("could not reshape u32")
                 .into_py(py),
             ChannelData::ArrayDFloat32(array) => array
-                .0
-                .into_pyarray(py)
+                .values()
+                .to_pyarray(py)
                 .reshape_with_order(array.1 .0, array.1 .1.into())
                 .expect("could not reshape f32")
                 .into_py(py),
-            ChannelData::ArrayDInt48(array) => array
-                .0
-                .into_pyarray(py)
-                .reshape_with_order(array.1 .0, array.1 .1.into())
-                .expect("could not reshape i48")
-                .into_py(py),
-            ChannelData::ArrayDUInt48(array) => array
-                .0
-                .into_pyarray(py)
-                .reshape_with_order(array.1 .0, array.1 .1.into())
-                .expect("could not reshape u48")
-                .into_py(py),
             ChannelData::ArrayDInt64(array) => array
-                .0
-                .into_pyarray(py)
+                .values()
+                .to_pyarray(py)
                 .reshape_with_order(array.1 .0, array.1 .1.into())
                 .expect("could not reshape i64")
                 .into_py(py),
             ChannelData::ArrayDUInt64(array) => array
-                .0
-                .into_pyarray(py)
+                .values()
+                .to_pyarray(py)
                 .reshape_with_order(array.1 .0, array.1 .1.into())
                 .expect("could not reshape u64")
                 .into_py(py),
             ChannelData::ArrayDFloat64(array) => array
-                .0
-                .into_pyarray(py)
+                .values()
+                .to_pyarray(py)
                 .reshape_with_order(array.1 .0, array.1 .1.into())
                 .expect("could not reshape f64")
                 .into_py(py),
-            ChannelData::ArrayDComplex16(array) => array
-                .0
-                .into_iter()
-                .collect::<Vec<Complex<f32>>>()
-                .into_pyarray(py)
-                .reshape_with_order(array.1 .0, array.1 .1.into())
-                .expect("could not reshape complex16")
-                .into_py(py),
-            ChannelData::ArrayDComplex32(array) => array
-                .0
-                .into_iter()
-                .collect::<Vec<Complex<f32>>>()
-                .into_pyarray(py)
-                .reshape_with_order(array.1 .0, array.1 .1.into())
-                .expect("could not reshape complex32")
-                .into_py(py),
-            ChannelData::ArrayDComplex64(array) => array
-                .0
-                .into_iter()
-                .collect::<Vec<Complex<f64>>>()
-                .into_pyarray(py)
-                .reshape_with_order(array.1 .0, array.1 .1.into())
-                .expect("could not reshape complex64")
-                .into_py(py),
+            ChannelData::Utf8(array) => array.into_py(py),
         }
     }
 }
@@ -547,50 +455,40 @@ impl ToPyObject for ChannelData {
     /// ToPyObject implementation to convert a ChannelData into a PyObject
     fn to_object(&self, py: Python) -> PyObject {
         match self {
-            ChannelData::Int8(array) => array.to_pyarray(py).into_py(py),
-            ChannelData::UInt8(array) => array.to_pyarray(py).into_py(py),
-            ChannelData::Int16(array) => array.to_pyarray(py).into_py(py),
-            ChannelData::UInt16(array) => array.to_pyarray(py).into_py(py),
-            ChannelData::Float16(array) => array.to_pyarray(py).into_py(py),
-            ChannelData::Int24(array) => array.to_pyarray(py).into_py(py),
-            ChannelData::UInt24(array) => array.to_pyarray(py).into_py(py),
-            ChannelData::Int32(array) => array.to_pyarray(py).into_py(py),
-            ChannelData::UInt32(array) => array.to_pyarray(py).into_py(py),
-            ChannelData::Float32(array) => array.to_pyarray(py).into_py(py),
-            ChannelData::Int48(array) => array.to_pyarray(py).into_py(py),
-            ChannelData::UInt48(array) => array.to_pyarray(py).into_py(py),
-            ChannelData::Int64(array) => array.to_pyarray(py).into_py(py),
-            ChannelData::UInt64(array) => array.to_pyarray(py).into_py(py),
-            ChannelData::Float64(array) => array.to_pyarray(py).into_py(py),
-            ChannelData::Complex16(array) => array.to_ndarray().to_pyarray(py).into_py(py),
-            ChannelData::Complex32(array) => array.to_ndarray().to_pyarray(py).into_py(py),
-            ChannelData::Complex64(array) => array.to_ndarray().into_pyarray(py).into_py(py),
-            ChannelData::StringSBC(array) => array.to_object(py),
-            ChannelData::StringUTF8(array) => array.to_object(py),
-            ChannelData::StringUTF16(array) => array.to_object(py),
+            ChannelData::Int8(array) => array.values().to_pyarray(py).into_py(py),
+            ChannelData::UInt8(array) => array.values().to_pyarray(py).into_py(py),
+            ChannelData::Int16(array) => array.values().to_pyarray(py).into_py(py),
+            ChannelData::UInt16(array) => array.values().to_pyarray(py).into_py(py),
+            ChannelData::Int32(array) => array.values().to_pyarray(py).into_py(py),
+            ChannelData::UInt32(array) => array.values().to_pyarray(py).into_py(py),
+            ChannelData::Float32(array) => array.values().to_pyarray(py).into_py(py),
+            ChannelData::Int64(array) => array.values().to_pyarray(py).into_py(py),
+            ChannelData::UInt64(array) => array.values().to_pyarray(py).into_py(py),
+            ChannelData::Float64(array) => array.values().to_pyarray(py).into_py(py),
+            ChannelData::Complex32(array) => array.values().to_ndarray().to_pyarray(py).into_py(py),
+            ChannelData::Complex64(array) => {
+                array.values().to_ndarray().into_pyarray(py).into_py(py)
+            }
+            ChannelData::Utf8(array) => array.to_object(py),
             ChannelData::VariableSizeByteArray(array) => array.to_object(py),
             ChannelData::FixedSizeByteArray(array) => {
-                let out: Vec<Vec<u8>> = array.0.chunks(array.1).map(|x| x.to_vec()).collect();
+                let out: Vec<Vec<u8>> = array
+                    .values()
+                    .chunks(array.size())
+                    .map(|x| x.to_vec())
+                    .collect();
                 out.to_object(py)
             }
-            ChannelData::ArrayDInt8(array) => array.0.to_pyarray(py).into_py(py),
-            ChannelData::ArrayDUInt8(array) => array.0.to_pyarray(py).into_py(py),
-            ChannelData::ArrayDInt16(array) => array.0.to_pyarray(py).into_py(py),
-            ChannelData::ArrayDUInt16(array) => array.0.to_pyarray(py).into_py(py),
-            ChannelData::ArrayDFloat16(array) => array.0.to_pyarray(py).into_py(py),
-            ChannelData::ArrayDInt24(array) => array.0.to_pyarray(py).into_py(py),
-            ChannelData::ArrayDUInt24(array) => array.0.to_pyarray(py).into_py(py),
-            ChannelData::ArrayDInt32(array) => array.0.to_pyarray(py).into_py(py),
-            ChannelData::ArrayDUInt32(array) => array.0.to_pyarray(py).into_py(py),
-            ChannelData::ArrayDFloat32(array) => array.0.to_pyarray(py).into_py(py),
-            ChannelData::ArrayDInt48(array) => array.0.to_pyarray(py).into_py(py),
-            ChannelData::ArrayDUInt48(array) => array.0.to_pyarray(py).into_py(py),
-            ChannelData::ArrayDInt64(array) => array.0.to_pyarray(py).into_py(py),
-            ChannelData::ArrayDUInt64(array) => array.0.to_pyarray(py).into_py(py),
-            ChannelData::ArrayDFloat64(array) => array.0.to_pyarray(py).into_py(py),
-            ChannelData::ArrayDComplex16(array) => array.0 .0.to_pyarray(py).into_py(py),
-            ChannelData::ArrayDComplex32(array) => array.0 .0.to_pyarray(py).into_py(py),
-            ChannelData::ArrayDComplex64(array) => array.0 .0.to_pyarray(py).into_py(py),
+            ChannelData::ArrayDInt8(array) => array.values().to_pyarray(py).into_py(py),
+            ChannelData::ArrayDUInt8(array) => array.values().to_pyarray(py).into_py(py),
+            ChannelData::ArrayDInt16(array) => array.values().to_pyarray(py).into_py(py),
+            ChannelData::ArrayDUInt16(array) => array.values().to_pyarray(py).into_py(py),
+            ChannelData::ArrayDInt32(array) => array.values().to_pyarray(py).into_py(py),
+            ChannelData::ArrayDUInt32(array) => array.values().to_pyarray(py).into_py(py),
+            ChannelData::ArrayDFloat32(array) => array.values().to_pyarray(py).into_py(py),
+            ChannelData::ArrayDInt64(array) => array.values().to_pyarray(py).into_py(py),
+            ChannelData::ArrayDUInt64(array) => array.values().to_pyarray(py).into_py(py),
+            ChannelData::ArrayDFloat64(array) => array.values().to_pyarray(py).into_py(py),
         }
     }
 }
@@ -600,38 +498,38 @@ impl FromPyObject<'_> for ChannelData {
     fn extract(ob: &'_ PyAny) -> PyResult<Self> {
         let truc: NumpyArray = ob.extract()?;
         match truc {
-            NumpyArray::Boolean(array) => Ok(ChannelData::UInt8(
+            NumpyArray::Boolean(array) => Ok(ChannelData::UInt8(PrimitiveArray::<u8>::from_vec(
                 array.readonly().as_array().to_owned().to_vec(),
-            )),
-            NumpyArray::Int8(array) => Ok(ChannelData::Int8(
+            ))),
+            NumpyArray::Int8(array) => Ok(ChannelData::Int8(PrimitiveArray::<i8>::from_vec(
                 array.readonly().as_array().to_owned().to_vec(),
-            )),
-            NumpyArray::UInt8(array) => Ok(ChannelData::UInt8(
+            ))),
+            NumpyArray::UInt8(array) => Ok(ChannelData::UInt8(PrimitiveArray::<u8>::from_vec(
                 array.readonly().as_array().to_owned().to_vec(),
-            )),
-            NumpyArray::Int16(array) => Ok(ChannelData::Int16(
+            ))),
+            NumpyArray::Int16(array) => Ok(ChannelData::Int16(PrimitiveArray::<i16>::from_vec(
                 array.readonly().as_array().to_owned().to_vec(),
-            )),
-            NumpyArray::UInt16(array) => Ok(ChannelData::UInt16(
+            ))),
+            NumpyArray::UInt16(array) => Ok(ChannelData::UInt16(PrimitiveArray::<u16>::from_vec(
                 array.readonly().as_array().to_owned().to_vec(),
-            )),
-            NumpyArray::Int32(array) => Ok(ChannelData::Int32(
+            ))),
+            NumpyArray::Int32(array) => Ok(ChannelData::Int32(PrimitiveArray::<i32>::from_vec(
                 array.readonly().as_array().to_owned().to_vec(),
-            )),
-            NumpyArray::UInt32(array) => Ok(ChannelData::UInt32(
+            ))),
+            NumpyArray::UInt32(array) => Ok(ChannelData::UInt32(PrimitiveArray::<u32>::from_vec(
                 array.readonly().as_array().to_owned().to_vec().to_vec(),
-            )),
+            ))),
             NumpyArray::Float32(array) => Ok(ChannelData::Float32(
-                array.readonly().as_array().to_owned().to_vec(),
+                PrimitiveArray::<f32>::from_vec(array.readonly().as_array().to_owned().to_vec()),
             )),
-            NumpyArray::Int64(array) => Ok(ChannelData::Int64(
+            NumpyArray::Int64(array) => Ok(ChannelData::Int64(PrimitiveArray::<i64>::from_vec(
                 array.readonly().as_array().to_owned().to_vec(),
-            )),
-            NumpyArray::UInt64(array) => Ok(ChannelData::UInt64(
+            ))),
+            NumpyArray::UInt64(array) => Ok(ChannelData::UInt64(PrimitiveArray::<u64>::from_vec(
                 array.readonly().as_array().to_owned().to_vec(),
-            )),
+            ))),
             NumpyArray::Float64(array) => Ok(ChannelData::Float64(
-                array.readonly().as_array().to_owned().to_vec(),
+                PrimitiveArray::<f64>::from_vec(array.readonly().as_array().to_owned().to_vec()),
             )),
             NumpyArray::Complex32(array) => {
                 Ok(ChannelData::Complex32(ArrowComplex::<f32>::from_array(
@@ -753,32 +651,6 @@ impl FromPyObject<'_> for ChannelData {
                     (array.shape().to_vec(), order),
                 )))
             }
-            NumpyArray::ArrayDComplex32(array) => {
-                let order: Order = if array.is_c_contiguous() {
-                    Order::RowMajor
-                } else {
-                    Order::ColumnMajor
-                };
-                Ok(ChannelData::ArrayDComplex32((
-                    ArrowComplex::<f32>::from_array(
-                        array.readonly().as_array().to_owned().into_raw_vec(),
-                    ),
-                    (array.shape().to_vec(), order),
-                )))
-            }
-            NumpyArray::ArrayDComplex64(array) => {
-                let order: Order = if array.is_c_contiguous() {
-                    Order::RowMajor
-                } else {
-                    Order::ColumnMajor
-                };
-                Ok(ChannelData::ArrayDComplex64((
-                    ArrowComplex::<f64>::from_array(
-                        array.readonly().as_array().to_owned().into_raw_vec(),
-                    ),
-                    (array.shape().to_vec(), order),
-                )))
-            }
         }
     }
 }
@@ -809,6 +681,4 @@ enum NumpyArray<'a> {
     ArrayDInt64(&'a PyArrayDyn<i64>),
     ArrayDUInt64(&'a PyArrayDyn<u64>),
     ArrayDFloat64(&'a PyArrayDyn<f64>),
-    ArrayDComplex32(&'a PyArrayDyn<Complex<f32>>),
-    ArrayDComplex64(&'a PyArrayDyn<Complex<f64>>),
 }

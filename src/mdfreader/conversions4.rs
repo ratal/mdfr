@@ -1,7 +1,15 @@
 //! this modules implements functions to convert arrays into physical arrays using CCBlock
+use anyhow::{Context, Error, Result};
+use arrow2::array::{Array, MutableArray, MutableUtf8ValuesArray, PrimitiveArray};
+use arrow2::compute::arity_assign;
+use arrow2::compute::cast::primitive_as_primitive;
+use arrow2::datatypes::DataType;
+use arrow2::types::NativeType;
 use itertools::Itertools;
 use log::warn;
-use num::{Integer, ToPrimitive};
+use num_traits::cast::AsPrimitive;
+use num_traits::sign::abs;
+
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Display;
@@ -10,8 +18,6 @@ use crate::mdfinfo::mdfinfo4::{Cc4Block, CcVal, Cn4, Dg4, SharableBlocks};
 use crate::mdfreader::channel_data::ChannelData;
 use fasteval::{Compiler, Evaler, Instruction, Slab};
 use rayon::prelude::*;
-
-use crate::mdfreader::channel_data::ArrowComplex;
 
 /// convert all channel arrays into physical values as required by CCBlock content
 pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) {
@@ -105,7 +111,7 @@ pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) {
 
 /// Generic function calculating linear expression
 #[inline]
-fn linear_conversion_calculation<T: ToPrimitive>(
+fn linear_conversion_calculation<T: NativeType + AsPrimitive<f64> + Display>(
     array: &Vec<T>,
     p1: f64,
     p2: f64,
@@ -123,7 +129,7 @@ fn linear_conversion_calculation<T: ToPrimitive>(
 fn linear_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
     let p1 = cc_val[0];
     let p2 = cc_val[1];
-    if !(p1 == 0.0 && num::abs(p2 - 1.0) < 1e-12) {
+    if !(p1 == 0.0 && abs(p2 - 1.0) < 1e-12) {
         match &mut cn.data {
             ChannelData::UInt8(a) => {
                 cn.data = ChannelData::Float64(linear_conversion_calculation(
@@ -157,30 +163,6 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
                     &(*cycle_count as usize),
                 ));
             }
-            ChannelData::Float16(a) => {
-                cn.data = ChannelData::Float64(linear_conversion_calculation(
-                    a,
-                    p1,
-                    p2,
-                    &(*cycle_count as usize),
-                ));
-            }
-            ChannelData::Int24(a) => {
-                cn.data = ChannelData::Float64(linear_conversion_calculation(
-                    a,
-                    p1,
-                    p2,
-                    &(*cycle_count as usize),
-                ));
-            }
-            ChannelData::UInt24(a) => {
-                cn.data = ChannelData::Float64(linear_conversion_calculation(
-                    a,
-                    p1,
-                    p2,
-                    &(*cycle_count as usize),
-                ));
-            }
             ChannelData::Int32(a) => {
                 cn.data = ChannelData::Float64(linear_conversion_calculation(
                     a,
@@ -198,22 +180,6 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
                 ));
             }
             ChannelData::Float32(a) => {
-                cn.data = ChannelData::Float64(linear_conversion_calculation(
-                    a,
-                    p1,
-                    p2,
-                    &(*cycle_count as usize),
-                ));
-            }
-            ChannelData::Int48(a) => {
-                cn.data = ChannelData::Float64(linear_conversion_calculation(
-                    a,
-                    p1,
-                    p2,
-                    &(*cycle_count as usize),
-                ));
-            }
-            ChannelData::UInt48(a) => {
                 cn.data = ChannelData::Float64(linear_conversion_calculation(
                     a,
                     p1,
@@ -245,29 +211,13 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
                     &(*cycle_count as usize),
                 ));
             }
-            ChannelData::Complex16(a) => {
-                cn.data = ChannelData::Complex64(ArrowComplex(linear_conversion_calculation(
-                    &a.0,
-                    p1,
-                    p2,
-                    &a.0.len(),
-                )))
-            }
             ChannelData::Complex32(a) => {
-                cn.data = ChannelData::Complex64(ArrowComplex(linear_conversion_calculation(
-                    &a.0,
-                    p1,
-                    p2,
-                    &a.0.len(),
-                )))
+                cn.data =
+                    ChannelData::Complex64(linear_conversion_calculation(&a.0, p1, p2, &a.0.len()))
             }
             ChannelData::Complex64(a) => {
-                cn.data = ChannelData::Complex64(ArrowComplex(linear_conversion_calculation(
-                    &a.0,
-                    p1,
-                    p2,
-                    &a.0.len(),
-                )))
+                cn.data =
+                    ChannelData::Complex64(linear_conversion_calculation(&a.0, p1, p2, &a.0.len()))
             }
             ChannelData::ArrayDUInt8(a) => {
                 cn.data = ChannelData::ArrayDFloat64((
@@ -293,24 +243,6 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
                     a.1.clone(),
                 ))
             }
-            ChannelData::ArrayDFloat16(a) => {
-                cn.data = ChannelData::ArrayDFloat64((
-                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
-                    a.1.clone(),
-                ))
-            }
-            ChannelData::ArrayDInt24(a) => {
-                cn.data = ChannelData::ArrayDFloat64((
-                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
-                    a.1.clone(),
-                ))
-            }
-            ChannelData::ArrayDUInt24(a) => {
-                cn.data = ChannelData::ArrayDFloat64((
-                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
-                    a.1.clone(),
-                ))
-            }
             ChannelData::ArrayDInt32(a) => {
                 cn.data = ChannelData::ArrayDFloat64((
                     linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
@@ -324,18 +256,6 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
                 ))
             }
             ChannelData::ArrayDFloat32(a) => {
-                cn.data = ChannelData::ArrayDFloat64((
-                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
-                    a.1.clone(),
-                ))
-            }
-            ChannelData::ArrayDInt48(a) => {
-                cn.data = ChannelData::ArrayDFloat64((
-                    linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
-                    a.1.clone(),
-                ))
-            }
-            ChannelData::ArrayDUInt48(a) => {
                 cn.data = ChannelData::ArrayDFloat64((
                     linear_conversion_calculation(&a.0, p1, p2, &a.0.len()),
                     a.1.clone(),
@@ -359,24 +279,6 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
                     a.1.clone(),
                 ))
             }
-            ChannelData::ArrayDComplex16(a) => {
-                cn.data = ChannelData::ArrayDComplex64((
-                    ArrowComplex(linear_conversion_calculation(&a.0 .0, p1, p2, &a.0.len())),
-                    a.1.clone(),
-                ))
-            }
-            ChannelData::ArrayDComplex32(a) => {
-                cn.data = ChannelData::ArrayDComplex64((
-                    ArrowComplex(linear_conversion_calculation(&a.0 .0, p1, p2, &a.0.len())),
-                    a.1.clone(),
-                ))
-            }
-            ChannelData::ArrayDComplex64(a) => {
-                cn.data = ChannelData::ArrayDComplex64((
-                    ArrowComplex(linear_conversion_calculation(&a.0 .0, p1, p2, &a.0.len())),
-                    a.1.clone(),
-                ))
-            }
             _ => warn!(
                 "linear conversion of channel {} not possible, channel does not contain primitives",
                 cn.unique_name
@@ -387,7 +289,7 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
 
 /// Generic function calculating rational expression
 #[inline]
-fn rational_conversion_calculation<T: ToPrimitive>(
+fn rational_conversion_calculation<T: NativeType + AsPrimitive<f64> + Display>(
     array: &Vec<T>,
     cc_val: &[f64],
     cycle_count: &usize,
@@ -438,27 +340,6 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
                 &(*cycle_count as usize),
             ));
         }
-        ChannelData::Float16(a) => {
-            cn.data = ChannelData::Float64(rational_conversion_calculation(
-                a,
-                cc_val,
-                &(*cycle_count as usize),
-            ));
-        }
-        ChannelData::Int24(a) => {
-            cn.data = ChannelData::Float64(rational_conversion_calculation(
-                a,
-                cc_val,
-                &(*cycle_count as usize),
-            ));
-        }
-        ChannelData::UInt24(a) => {
-            cn.data = ChannelData::Float64(rational_conversion_calculation(
-                a,
-                cc_val,
-                &(*cycle_count as usize),
-            ));
-        }
         ChannelData::Int32(a) => {
             cn.data = ChannelData::Float64(rational_conversion_calculation(
                 a,
@@ -474,20 +355,6 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             ));
         }
         ChannelData::Float32(a) => {
-            cn.data = ChannelData::Float64(rational_conversion_calculation(
-                a,
-                cc_val,
-                &(*cycle_count as usize),
-            ));
-        }
-        ChannelData::Int48(a) => {
-            cn.data = ChannelData::Float64(rational_conversion_calculation(
-                a,
-                cc_val,
-                &(*cycle_count as usize),
-            ));
-        }
-        ChannelData::UInt48(a) => {
             cn.data = ChannelData::Float64(rational_conversion_calculation(
                 a,
                 cc_val,
@@ -515,26 +382,13 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
                 &(*cycle_count as usize),
             ));
         }
-        ChannelData::Complex16(a) => {
-            cn.data = ChannelData::Complex64(ArrowComplex(rational_conversion_calculation(
-                &a.0,
-                cc_val,
-                &a.0.len(),
-            )))
-        }
         ChannelData::Complex32(a) => {
-            cn.data = ChannelData::Complex64(ArrowComplex(rational_conversion_calculation(
-                &a.0,
-                cc_val,
-                &a.0.len(),
-            )))
+            cn.data =
+                ChannelData::Complex64(rational_conversion_calculation(&a.0, cc_val, &a.0.len()))
         }
         ChannelData::Complex64(a) => {
-            cn.data = ChannelData::Complex64(ArrowComplex(rational_conversion_calculation(
-                &a.0,
-                cc_val,
-                &a.0.len(),
-            )))
+            cn.data =
+                ChannelData::Complex64(rational_conversion_calculation(&a.0, cc_val, &a.0.len()))
         }
         ChannelData::ArrayDUInt8(a) => {
             cn.data = ChannelData::ArrayDFloat64((
@@ -560,24 +414,6 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
                 a.1.clone(),
             ))
         }
-        ChannelData::ArrayDFloat16(a) => {
-            cn.data = ChannelData::ArrayDFloat64((
-                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
-                a.1.clone(),
-            ))
-        }
-        ChannelData::ArrayDInt24(a) => {
-            cn.data = ChannelData::ArrayDFloat64((
-                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
-                a.1.clone(),
-            ))
-        }
-        ChannelData::ArrayDUInt24(a) => {
-            cn.data = ChannelData::ArrayDFloat64((
-                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
-                a.1.clone(),
-            ))
-        }
         ChannelData::ArrayDInt32(a) => {
             cn.data = ChannelData::ArrayDFloat64((
                 rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
@@ -591,18 +427,6 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
             ))
         }
         ChannelData::ArrayDFloat32(a) => {
-            cn.data = ChannelData::ArrayDFloat64((
-                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
-                a.1.clone(),
-            ))
-        }
-        ChannelData::ArrayDInt48(a) => {
-            cn.data = ChannelData::ArrayDFloat64((
-                rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
-                a.1.clone(),
-            ))
-        }
-        ChannelData::ArrayDUInt48(a) => {
             cn.data = ChannelData::ArrayDFloat64((
                 rational_conversion_calculation(&a.0, cc_val, &a.0.len()),
                 a.1.clone(),
@@ -626,24 +450,6 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
                 a.1.clone(),
             ))
         }
-        ChannelData::ArrayDComplex16(a) => {
-            cn.data = ChannelData::ArrayDComplex64((
-                ArrowComplex(rational_conversion_calculation(&a.0 .0, cc_val, &a.0.len())),
-                a.1.clone(),
-            ))
-        }
-        ChannelData::ArrayDComplex32(a) => {
-            cn.data = ChannelData::ArrayDComplex64((
-                ArrowComplex(rational_conversion_calculation(&a.0 .0, cc_val, &a.0.len())),
-                a.1.clone(),
-            ))
-        }
-        ChannelData::ArrayDComplex64(a) => {
-            cn.data = ChannelData::ArrayDComplex64((
-                ArrowComplex(rational_conversion_calculation(&a.0 .0, cc_val, &a.0.len())),
-                a.1.clone(),
-            ))
-        }
         _ => warn!(
             "rational conversion of channel {} not possible, channel does not contain primitives",
             cn.unique_name
@@ -653,7 +459,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64], cycle_count: &u64) {
 
 /// Generic function calculating algebraic expression
 #[inline]
-fn alegbraic_conversion_calculation<T: ToPrimitive>(
+fn alegbraic_conversion_calculation<T: NativeType + AsPrimitive<f64> + Display>(
     compiled: &Instruction,
     slab: &Slab,
     array: &Vec<T>,
@@ -720,30 +526,6 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                         &(*cycle_count as usize),
                     ));
                 }
-                ChannelData::Float16(a) => {
-                    cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
-                        &compiled,
-                        &slab,
-                        a,
-                        &(*cycle_count as usize),
-                    ));
-                }
-                ChannelData::Int24(a) => {
-                    cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
-                        &compiled,
-                        &slab,
-                        a,
-                        &(*cycle_count as usize),
-                    ));
-                }
-                ChannelData::UInt24(a) => {
-                    cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
-                        &compiled,
-                        &slab,
-                        a,
-                        &(*cycle_count as usize),
-                    ));
-                }
                 ChannelData::Int32(a) => {
                     cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
                         &compiled,
@@ -761,22 +543,6 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                     ));
                 }
                 ChannelData::Float32(a) => {
-                    cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
-                        &compiled,
-                        &slab,
-                        a,
-                        &(*cycle_count as usize),
-                    ));
-                }
-                ChannelData::Int48(a) => {
-                    cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
-                        &compiled,
-                        &slab,
-                        a,
-                        &(*cycle_count as usize),
-                    ));
-                }
-                ChannelData::UInt48(a) => {
                     cn.data = ChannelData::Float64(alegbraic_conversion_calculation(
                         &compiled,
                         &slab,
@@ -808,15 +574,15 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                         &(*cycle_count as usize),
                     ));
                 }
-                ChannelData::Complex16(a) => cn.data = ChannelData::Complex64(ArrowComplex(alegbraic_conversion_calculation(
+                ChannelData::Complex16(a) => cn.data = ChannelData::Complex64(alegbraic_conversion_calculation(
                     &compiled, &slab, &a.0, &a.0.len()
-                ))),
-                ChannelData::Complex32(a) => cn.data = ChannelData::Complex64(ArrowComplex(alegbraic_conversion_calculation(
+                )),
+                ChannelData::Complex32(a) => cn.data = ChannelData::Complex64(alegbraic_conversion_calculation(
                     &compiled, &slab, &a.0, &a.0.len()
-                ))),
-                ChannelData::Complex64(a) => cn.data = ChannelData::Complex64(ArrowComplex(alegbraic_conversion_calculation(
+                )),
+                ChannelData::Complex64(a) => cn.data = ChannelData::Complex64(alegbraic_conversion_calculation(
                     &compiled, &slab, &a.0, &a.0.len()
-                ))),
+                )),
                 ChannelData::ArrayDInt8(a) => {
                     cn.data = ChannelData::ArrayDFloat64((
                         alegbraic_conversion_calculation(&compiled, &slab, &a.0, &a.0.len()),
@@ -841,24 +607,6 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                         a.1.clone(),
                     ));
                 }
-                ChannelData::ArrayDFloat16(a) => {
-                    cn.data = ChannelData::ArrayDFloat64((
-                        alegbraic_conversion_calculation(&compiled, &slab, &a.0, &a.0.len()),
-                        a.1.clone(),
-                    ));
-                }
-                ChannelData::ArrayDInt24(a) => {
-                    cn.data = ChannelData::ArrayDFloat64((
-                        alegbraic_conversion_calculation(&compiled, &slab, &a.0, &a.0.len()),
-                        a.1.clone(),
-                    ));
-                }
-                ChannelData::ArrayDUInt24(a) => {
-                    cn.data = ChannelData::ArrayDFloat64((
-                        alegbraic_conversion_calculation(&compiled, &slab, &a.0, &a.0.len()),
-                        a.1.clone(),
-                    ));
-                }
                 ChannelData::ArrayDInt32(a) => {
                     cn.data = ChannelData::ArrayDFloat64((
                         alegbraic_conversion_calculation(&compiled, &slab, &a.0, &a.0.len()),
@@ -872,18 +620,6 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                     ));
                 }
                 ChannelData::ArrayDFloat32(a) => {
-                    cn.data = ChannelData::ArrayDFloat64((
-                        alegbraic_conversion_calculation(&compiled, &slab, &a.0, &a.0.len()),
-                        a.1.clone(),
-                    ));
-                }
-                ChannelData::ArrayDInt48(a) => {
-                    cn.data = ChannelData::ArrayDFloat64((
-                        alegbraic_conversion_calculation(&compiled, &slab, &a.0, &a.0.len()),
-                        a.1.clone(),
-                    ));
-                }
-                ChannelData::ArrayDUInt48(a) => {
                     cn.data = ChannelData::ArrayDFloat64((
                         alegbraic_conversion_calculation(&compiled, &slab, &a.0, &a.0.len()),
                         a.1.clone(),
@@ -907,24 +643,6 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
                         a.1.clone(),
                     ));
                 }
-                ChannelData::ArrayDComplex16(a) => {
-                    cn.data = ChannelData::ArrayDComplex64((
-                        ArrowComplex(alegbraic_conversion_calculation(&compiled, &slab, &a.0.0, &a.0.len())),
-                        a.1.clone(),
-                    ))
-                },
-                ChannelData::ArrayDComplex32(a) => {
-                    cn.data = ChannelData::ArrayDComplex64((
-                        ArrowComplex(alegbraic_conversion_calculation(&compiled, &slab, &a.0.0, &a.0.len())),
-                        a.1.clone(),
-                    ))
-                },
-                ChannelData::ArrayDComplex64(a) => {
-                    cn.data = ChannelData::ArrayDComplex64((
-                        ArrowComplex(alegbraic_conversion_calculation(&compiled, &slab, &a.0.0, &a.0.len())),
-                        a.1.clone(),
-                    ))
-                },
                 _=> warn!(
                     "algebraic conversion of channel {} not possible, channel does not contain primitives",
                     cn.unique_name
@@ -942,7 +660,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) {
 
 /// Generic function calculating value to value interpolation
 #[inline]
-fn value_to_value_with_interpolation_calculation<T: ToPrimitive>(
+fn value_to_value_with_interpolation_calculation<T: NativeType + AsPrimitive<f64> + Display>(
     a: &Vec<T>,
     val: Vec<(&f64, &f64)>,
     cycle_count: &usize,
@@ -998,27 +716,6 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
                 &(*cycle_count as usize),
             ));
         }
-        ChannelData::Float16(a) => {
-            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(
-                a,
-                val,
-                &(*cycle_count as usize),
-            ));
-        }
-        ChannelData::Int24(a) => {
-            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(
-                a,
-                val,
-                &(*cycle_count as usize),
-            ));
-        }
-        ChannelData::UInt24(a) => {
-            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(
-                a,
-                val,
-                &(*cycle_count as usize),
-            ));
-        }
         ChannelData::Int32(a) => {
             cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(
                 a,
@@ -1034,20 +731,6 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
             ));
         }
         ChannelData::Float32(a) => {
-            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(
-                a,
-                val,
-                &(*cycle_count as usize),
-            ));
-        }
-        ChannelData::Int48(a) => {
-            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(
-                a,
-                val,
-                &(*cycle_count as usize),
-            ));
-        }
-        ChannelData::UInt48(a) => {
             cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(
                 a,
                 val,
@@ -1099,24 +782,6 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
                 a.1.clone(),
             ));
         }
-        ChannelData::ArrayDFloat16(a) => {
-            cn.data = ChannelData::ArrayDFloat64((
-                value_to_value_with_interpolation_calculation(&a.0, val, &a.0.len()),
-                a.1.clone(),
-            ));
-        }
-        ChannelData::ArrayDInt24(a) => {
-            cn.data = ChannelData::ArrayDFloat64((
-                value_to_value_with_interpolation_calculation(&a.0, val, &a.0.len()),
-                a.1.clone(),
-            ));
-        }
-        ChannelData::ArrayDUInt24(a) => {
-            cn.data = ChannelData::ArrayDFloat64((
-                value_to_value_with_interpolation_calculation(&a.0, val, &a.0.len()),
-                a.1.clone(),
-            ));
-        }
         ChannelData::ArrayDInt32(a) => {
             cn.data = ChannelData::ArrayDFloat64((
                 value_to_value_with_interpolation_calculation(&a.0, val, &a.0.len()),
@@ -1130,24 +795,6 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
             ));
         }
         ChannelData::ArrayDFloat32(a) => {
-            cn.data = ChannelData::ArrayDFloat64((
-                value_to_value_with_interpolation_calculation(&a.0, val, &a.0.len()),
-                a.1.clone(),
-            ));
-        }
-        ChannelData::ArrayDInt48(a) => {
-            cn.data = ChannelData::ArrayDFloat64((
-                value_to_value_with_interpolation_calculation(&a.0, val, &a.0.len()),
-                a.1.clone(),
-            ));
-        }
-        ChannelData::ArrayDUInt48(a) => {
-            cn.data = ChannelData::ArrayDFloat64((
-                value_to_value_with_interpolation_calculation(&a.0, val, &a.0.len()),
-                a.1.clone(),
-            ));
-        }
-        ChannelData::ArrayDInt64(a) => {
             cn.data = ChannelData::ArrayDFloat64((
                 value_to_value_with_interpolation_calculation(&a.0, val, &a.0.len()),
                 a.1.clone(),
@@ -1174,7 +821,7 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_count
 
 /// Generic function calculating value to value without interpolation
 #[inline]
-fn value_to_value_without_interpolation_calculation<T: ToPrimitive>(
+fn value_to_value_without_interpolation_calculation<T: NativeType + AsPrimitive<f64> + Display>(
     a: &Vec<T>,
     val: Vec<(&f64, &f64)>,
     cycle_count: &usize,
@@ -1234,27 +881,6 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
                 &(*cycle_count as usize),
             ));
         }
-        ChannelData::Float16(a) => {
-            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(
-                a,
-                val,
-                &(*cycle_count as usize),
-            ));
-        }
-        ChannelData::Int24(a) => {
-            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(
-                a,
-                val,
-                &(*cycle_count as usize),
-            ));
-        }
-        ChannelData::UInt24(a) => {
-            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(
-                a,
-                val,
-                &(*cycle_count as usize),
-            ));
-        }
         ChannelData::Int32(a) => {
             cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(
                 a,
@@ -1270,20 +896,6 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
             ));
         }
         ChannelData::Float32(a) => {
-            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(
-                a,
-                val,
-                &(*cycle_count as usize),
-            ));
-        }
-        ChannelData::Int48(a) => {
-            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(
-                a,
-                val,
-                &(*cycle_count as usize),
-            ));
-        }
-        ChannelData::UInt48(a) => {
             cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(
                 a,
                 val,
@@ -1335,24 +947,6 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
                 a.1.clone(),
             ));
         }
-        ChannelData::ArrayDFloat16(a) => {
-            cn.data = ChannelData::ArrayDFloat64((
-                value_to_value_without_interpolation_calculation(&a.0, val, &a.0.len()),
-                a.1.clone(),
-            ));
-        }
-        ChannelData::ArrayDInt24(a) => {
-            cn.data = ChannelData::ArrayDFloat64((
-                value_to_value_without_interpolation_calculation(&a.0, val, &a.0.len()),
-                a.1.clone(),
-            ));
-        }
-        ChannelData::ArrayDUInt24(a) => {
-            cn.data = ChannelData::ArrayDFloat64((
-                value_to_value_without_interpolation_calculation(&a.0, val, &a.0.len()),
-                a.1.clone(),
-            ));
-        }
         ChannelData::ArrayDInt32(a) => {
             cn.data = ChannelData::ArrayDFloat64((
                 value_to_value_without_interpolation_calculation(&a.0, val, &a.0.len()),
@@ -1366,18 +960,6 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
             ));
         }
         ChannelData::ArrayDFloat32(a) => {
-            cn.data = ChannelData::ArrayDFloat64((
-                value_to_value_without_interpolation_calculation(&a.0, val, &a.0.len()),
-                a.1.clone(),
-            ));
-        }
-        ChannelData::ArrayDInt48(a) => {
-            cn.data = ChannelData::ArrayDFloat64((
-                value_to_value_without_interpolation_calculation(&a.0, val, &a.0.len()),
-                a.1.clone(),
-            ));
-        }
-        ChannelData::ArrayDUInt48(a) => {
             cn.data = ChannelData::ArrayDFloat64((
                 value_to_value_without_interpolation_calculation(&a.0, val, &a.0.len()),
                 a.1.clone(),
@@ -1410,7 +992,7 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>, cycle_co
 
 /// Generic function calculating value range to value table without interpolation
 #[inline]
-fn value_range_to_value_table_calculation<T: ToPrimitive>(
+fn value_range_to_value_table_calculation<T: NativeType + AsPrimitive<f64> + Display>(
     a: &Vec<T>,
     val: &[(f64, f64, f64)],
     default_value: &f64,
@@ -1680,7 +1262,7 @@ enum DefaultTextOrScaleConversion {
 
 /// Generic function calculating integer value range to text
 #[inline]
-fn value_to_text_calculation_int<T: Sized + Display + ToPrimitive>(
+fn value_to_text_calculation_int<T: Sized + Display + NativeType + AsPrimitive<f64> + Display>(
     a: &Vec<T>,
     cc_val: &[f64],
     cc_ref: &[i64],
@@ -2090,7 +1672,7 @@ struct KeyRange {
 
 /// Generic function calculating value range to text
 #[inline]
-fn value_range_to_text_calculation<T: Sized + Display + ToPrimitive>(
+fn value_range_to_text_calculation<T: Sized + Display + NativeType + AsPrimitive<f64> + Display>(
     array: &Vec<T>,
     cc_val: &[f64],
     cc_ref: &[i64],
@@ -2469,7 +2051,7 @@ enum ValueOrValueRangeToText {
 
 /// Generic function calculating text to value
 #[inline]
-fn bitfield_text_table_calculation<T: Integer + ToPrimitive>(
+fn bitfield_text_table_calculation<T: NativeType + AsPrimitive<f64> + Display>(
     array: &Vec<T>,
     cc_val: &[u64],
     cc_ref: &[i64],

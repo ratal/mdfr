@@ -1,9 +1,10 @@
 //! data read and load in memory based in MdfInfo3's metadata
 use rayon::prelude::*;
 
-use crate::mdfinfo::mdfinfo3::{Cg3, Dg3};
+use crate::export::tensor::Order;
+use crate::mdfinfo::mdfinfo3::{Cg3, Cn3, Dg3};
 use crate::mdfinfo::MdfInfo;
-use anyhow::{Context, Result};
+use anyhow::{Context, Error, Result};
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{BufReader, Read};
@@ -11,7 +12,6 @@ use std::io::{BufReader, Read};
 use crate::mdfreader::data_read3::read_channels_from_bytes;
 
 use super::Mdf;
-use crate::mdfreader::channel_data::Order;
 use crate::mdfreader::conversions3::convert_all_channels;
 
 /// The following constant represents the size of data chunk to be read and processed.
@@ -95,20 +95,33 @@ fn initialise_arrays(
     channel_group: &mut Cg3,
     cg_cycle_count: &u32,
     channel_names_to_read_in_dg: &HashSet<String>,
-) {
+) -> Result<(), Error> {
     // creates zeroed array in parallel for each channel contained in channel group
     channel_group
         .cn
         .par_iter_mut()
         .filter(|(_cn_position, cn)| channel_names_to_read_in_dg.contains(&cn.unique_name))
-        .for_each(|(_cn_position, cn)| {
-            cn.data = cn.data.zeros(
-                0,
-                *cg_cycle_count as u64,
-                cn.n_bytes as u32,
-                (Vec::new(), Order::RowMajor),
-            );
-        })
+        .try_for_each(
+            |(_cn_position, cn): (&u32, &mut Cn3)| -> Result<(), Error> {
+                cn.data = cn
+                    .data
+                    .zeros(
+                        0,
+                        *cg_cycle_count as u64,
+                        cn.n_bytes as u32,
+                        (Vec::new(), Order::RowMajor),
+                    )
+                    .with_context(|| {
+                        format!(
+                            "failed intialising with zeros the channel's array named {}",
+                            cn.unique_name
+                        )
+                    })?;
+                Ok(())
+            },
+        )
+        .context("Failed initialising channel group with zeros arrays")?;
+    Ok(())
 }
 
 /// Returns chunk size and corresponding number of records from a channel group

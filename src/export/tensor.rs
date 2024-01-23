@@ -294,6 +294,23 @@ impl<T: NativeType> Tensor<T> {
         self.values.as_slice()
     }
 
+    /// Update the values of this [`Tensor`].
+    /// # Panics
+    /// This function panics iff `values.len() != self.len()`.
+    pub fn set_values(&mut self, values: Buffer<T>) {
+        assert_eq!(
+            values.len(),
+            self.len(),
+            "values' length must be equal to this arrays' length"
+        );
+        self.values = values;
+    }
+
+    /// Returns an option of a mutable reference to the values of this [`PrimitiveArray`].
+    pub fn get_mut_values(&mut self) -> Option<&mut [T]> {
+        self.values.get_mut_slice()
+    }
+
     /// Returns a reference to a value in the buffer
     /// The value is accessed via an index of the same size
     /// as the strides vector

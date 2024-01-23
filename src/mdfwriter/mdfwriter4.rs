@@ -24,7 +24,7 @@ use crate::{
     },
 };
 use anyhow::{bail, Context, Error, Result};
-use arrow2::{array::Array, bitmap::Bitmap, datatypes::Schema};
+use arrow2::{array::Array, bitmap::Bitmap};
 use binrw::BinWriterExt;
 use crossbeam_channel::bounded;
 use parking_lot::Mutex;
@@ -37,7 +37,7 @@ use super::mdfwriter3::convert3to4;
 /// writes mdf4.2 file
 pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> {
     let info: MdfInfo4 = match &mdf.mdf_info {
-        MdfInfo::V3(mdfinfo3) => convert3to4(mdfinfo3, file_name),
+        MdfInfo::V3(mdfinfo3) => convert3to4(mdfinfo3, file_name)?,
         MdfInfo::V4(mdfinfo4) => mdfinfo4.deref().clone(),
     };
     let n_channels = mdf.mdf_info.get_channel_names_set().len();
@@ -289,9 +289,6 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
     writer.flush().context("Could not flush file")?;
     Ok(Mdf {
         mdf_info: MdfInfo::V4(Box::new(new_info)),
-        arrow_data: Vec::new(),
-        arrow_schema: Schema::default(),
-        channel_indexes: HashMap::new(),
     })
 }
 
@@ -618,7 +615,7 @@ fn create_blocks(
                 cn_block.cn_data_type,
                 cg_block.cg_data_bytes,
                 data_ndim > 0,
-            ),
+            )?,
             block: cn_block,
             endian: machine_endian,
             block_position: cn_position,

@@ -1,8 +1,11 @@
 //! Parsing of file metadata into MdfInfo4 struct
-use crate::mdfreader::channel_data::Order;
+use crate::export::tensor::Order;
 use crate::mdfreader::{DataSignature, MasterSignature};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Context, Error, Result};
+use arrow2::array::{Array, PrimitiveArray};
 use arrow2::bitmap::MutableBitmap;
+use arrow2::buffer::Buffer;
+use arrow2::datatypes::DataType;
 use binrw::{binrw, BinReaderExt, BinWriterExt};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::naive::NaiveDateTime;
@@ -197,7 +200,7 @@ impl MdfInfo4 {
         channel_master_list
     }
     /// empty the channels' ndarray
-    pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) {
+    pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) -> Result<()> {
         for channel_name in channel_names {
             if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
                 self.channel_names_set.get_mut(&channel_name)
@@ -211,13 +214,14 @@ impl MdfInfo4 {
                                     0,
                                     0,
                                     (Vec::new(), Order::RowMajor),
-                                );
+                                )?;
                             }
                         }
                     }
                 }
             }
         }
+        Ok(())
     }
     /// returns a new empty MdfInfo4 struct
     pub fn new(file_name: &str, n_channels: usize) -> MdfInfo4 {
@@ -237,20 +241,21 @@ impl MdfInfo4 {
     pub fn add_channel(
         &mut self,
         channel_name: String,
-        data: DataSignature,
+        data: ChannelData,
+        data_signature: DataSignature,
         mut master: MasterSignature,
         unit: Option<String>,
         description: Option<String>,
-    ) {
+    ) -> Result<(), Error> {
         let mut cg_block = Cg4Block {
-            cg_cycle_count: data.len as u64,
+            cg_cycle_count: data_signature.len as u64,
             ..Default::default()
         };
         // Basic channel block
         let mut cn_block = Cn4Block::default();
         let machine_endian: bool = cfg!(target_endian = "big");
-        cn_block.cn_data_type = data.data_type;
-        cn_block.cn_bit_count = data.bit_count;
+        cn_block.cn_data_type = data_signature.data_type;
+        cn_block.cn_bit_count = data_signature.bit_count;
         let cn_pos = position_generator();
         cn_block.cn_sync_type = master.master_type.unwrap_or(0);
 
@@ -261,11 +266,11 @@ impl MdfInfo4 {
             .create_tx(channel_name_position, channel_name.to_string());
 
         // Channel array
-        let data_ndim = data.ndim - 1;
+        let data_ndim = data_signature.ndim - 1;
         let mut composition: Option<Composition> = None;
         if data_ndim > 0 {
             let data_dim_size = data
-                .shape
+                .shape()
                 .0
                 .iter()
                 .skip(1)
@@ -277,7 +282,7 @@ impl MdfInfo4 {
                 ca_block.snd += x as usize;
                 ca_block.pnd *= x as usize;
             }
-            cg_block.cg_data_bytes = ca_block.pnd as u32 * data.byte_count;
+            cg_block.cg_data_bytes = ca_block.pnd as u32 * data_signature.byte_count;
 
             let composition_position = position_generator();
             cn_block.cn_composition = composition_position;
@@ -331,11 +336,11 @@ impl MdfInfo4 {
         }
 
         // CN
-        let n_bytes = data.byte_count;
+        let n_bytes = data_signature.byte_count;
         let cn = Cn4 {
             header: default_short_header(BlockType::CN),
             unique_name: channel_name.to_string(),
-            data: ChannelData::UInt8(vec![]),
+            data,
             block: cn_block,
             endian: machine_endian,
             block_position: cn_pos,
@@ -377,6 +382,7 @@ impl MdfInfo4 {
             channel_name,
             (master.master_channel, dg_pos, (cg_pos, 0), (cn_pos, 0)),
         );
+        Ok(())
     }
     /// Removes a channel in memory (no file modification)
     pub fn remove_channel(&mut self, channel_name: &str) {
@@ -427,7 +433,7 @@ impl MdfInfo4 {
         }
     }
     /// defines channel's data in memory
-    pub fn set_channel_data(&mut self, channel_name: &str, data: &ChannelData) {
+    pub fn set_channel_data(&mut self, channel_name: &str, data: Box<dyn Array>) {
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
             self.channel_names_set.get(channel_name)
         {
@@ -2254,7 +2260,11 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 2,
         composition: None,
-        data: ChannelData::UInt16(Vec::<u16>::new()),
+        data: ChannelData::UInt16(PrimitiveArray::new(
+            DataType::UInt16,
+            Buffer::<u16>::new(),
+            None,
+        )),
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
@@ -2273,7 +2283,11 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 1,
         composition: None,
-        data: ChannelData::UInt8(Vec::<u8>::new()),
+        data: ChannelData::UInt8(PrimitiveArray::new(
+            DataType::UInt8,
+            Buffer::<u8>::new(),
+            None,
+        )),
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
@@ -2292,7 +2306,11 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 1,
         composition: None,
-        data: ChannelData::UInt8(Vec::<u8>::new()),
+        data: ChannelData::UInt8(PrimitiveArray::new(
+            DataType::UInt8,
+            Buffer::<u8>::new(),
+            None,
+        )),
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
@@ -2311,7 +2329,11 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 1,
         composition: None,
-        data: ChannelData::UInt8(Vec::<u8>::new()),
+        data: ChannelData::UInt8(PrimitiveArray::new(
+            DataType::UInt8,
+            Buffer::<u8>::new(),
+            None,
+        )),
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
@@ -2330,7 +2352,11 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 1,
         composition: None,
-        data: ChannelData::UInt8(Vec::<u8>::new()),
+        data: ChannelData::UInt8(PrimitiveArray::new(
+            DataType::UInt8,
+            Buffer::<u8>::new(),
+            None,
+        )),
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
@@ -2349,7 +2375,11 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 1,
         composition: None,
-        data: ChannelData::UInt8(Vec::<u8>::new()),
+        data: ChannelData::UInt8(PrimitiveArray::new(
+            DataType::UInt8,
+            Buffer::<u8>::new(),
+            None,
+        )),
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
@@ -2373,7 +2403,11 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         pos_byte_beg,
         n_bytes: 4,
         composition: None,
-        data: ChannelData::UInt32(Vec::<u32>::new()),
+        data: ChannelData::UInt32(PrimitiveArray::new(
+            DataType::UInt32,
+            Buffer::<u32>::new(),
+            None,
+        )),
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
@@ -2392,7 +2426,11 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         pos_byte_beg,
         n_bytes: 2,
         composition: None,
-        data: ChannelData::UInt16(Vec::<u16>::new()),
+        data: ChannelData::UInt16(PrimitiveArray::new(
+            DataType::UInt16,
+            Buffer::<u16>::new(),
+            None,
+        )),
         endian: false,
         invalid_mask: None,
         channel_data_valid: false,
@@ -2544,7 +2582,7 @@ fn parse_cn4_block(
         pos_byte_beg,
         n_bytes,
         composition: compo,
-        data: data_type_init(cn_type, data_type, n_bytes, is_array),
+        data: data_type_init(cn_type, data_type, n_bytes, is_array)?,
         endian,
         invalid_mask,
         channel_data_valid: false,
