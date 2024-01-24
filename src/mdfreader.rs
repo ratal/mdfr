@@ -120,8 +120,8 @@ impl Mdf {
     /// returns channel's arrow2 Array.
     pub fn get_channel_data(&self, channel_name: &str) -> Option<Box<dyn Array>> {
         match &self.mdf_info {
-            MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_data(channel_name),
-            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_data(channel_name),
+            MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_data(channel_name).boxed(),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_data(channel_name).boxed(),
         }
     }
     /// defines channel's data in memory

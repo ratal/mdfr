@@ -77,12 +77,8 @@ impl MdfInfo4 {
         self.channel_names_set.get(channel_name)
     }
     /// Returns the channel's vector data if present in memory, otherwise None.
-    pub fn get_channel_data(
-        &self,
-        channel_name: &str,
-    ) -> (Option<&ChannelData>, Option<&MutableBitmap>) {
+    pub fn get_channel_data(&self, channel_name: &str) -> Option<&ChannelData> {
         let mut data: Option<&ChannelData> = None;
-        let mut bitmap: Option<&MutableBitmap> = None;
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
             self.get_channel_id(channel_name)
         {
@@ -92,16 +88,11 @@ impl MdfInfo4 {
                         if !cn.data.is_empty() {
                             data = Some(&cn.data);
                         }
-                        if let Some((bm, _invalid_byte_offset, _invalid_bit_position)) =
-                            &cn.invalid_mask
-                        {
-                            bitmap = Some(bm);
-                        }
                     }
                 }
             }
         }
-        (data, bitmap)
+        data
     }
     /// Returns the channel's unit string. If it does not exist, it is an empty string.
     pub fn get_channel_unit(&self, channel_name: &str) -> Result<Option<String>> {
@@ -440,7 +431,7 @@ impl MdfInfo4 {
             if let Some(dg) = self.dg.get_mut(dg_pos) {
                 if let Some(cg) = dg.cg.get_mut(rec_id) {
                     if let Some(cn) = cg.cn.get_mut(rec_pos) {
-                        cn.data = data.clone();
+                        cn.data = data.into();
                     }
                 }
             }

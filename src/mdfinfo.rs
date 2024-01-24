@@ -3,7 +3,6 @@
 
 use anyhow::{bail, Context, Result};
 use arrow2::array::Array;
-use arrow2::bitmap::MutableBitmap;
 use binrw::{binrw, BinReaderExt};
 use codepage::to_encoding;
 use encoding_rs::Encoding;
@@ -285,18 +284,11 @@ impl MdfInfo {
         Ok(())
     }
     /// returns channel's data ndarray.
-    pub fn get_channel_data<'a>(
-        &'a mut self,
-        channel_name: &'a str,
-    ) -> (Option<&ChannelData>, Option<&MutableBitmap>) {
-        let (data, mask) = match self {
-            MdfInfo::V3(mdfinfo3) => {
-                let dt = mdfinfo3.get_channel_data(channel_name);
-                (dt, None)
-            }
+    pub fn get_channel_data<'a>(&'a mut self, channel_name: &'a str) -> Option<&ChannelData> {
+        match self {
+            MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_data(channel_name),
             MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_data(channel_name),
-        };
-        (data, mask)
+        }
     }
     /// Adds a new channel in memory (no file modification)
     pub fn add_channel(

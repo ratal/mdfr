@@ -389,64 +389,64 @@ impl IntoPy<PyObject> for ChannelData {
             ChannelData::ArrayDInt8(array) => array
                 .values()
                 .to_pyarray(py)
-                .reshape_with_order(array.shape(), (*array.order()).into())
+                .reshape_with_order(array.shape().clone(), array.order().clone().into())
                 .expect("could not reshape i8")
                 .into_py(py),
             ChannelData::ArrayDUInt8(array) => array
                 .values()
                 .to_pyarray(py)
-                .reshape_with_order(array.1 .0, array.1 .1.into())
+                .reshape_with_order(array.shape().clone(), array.order().clone().into())
                 .expect("could not reshape u8")
                 .into_py(py),
             ChannelData::ArrayDInt16(array) => array
                 .values()
                 .to_pyarray(py)
-                .reshape_with_order(array.1 .0, array.1 .1.into())
+                .reshape_with_order(array.shape().clone(), array.order().clone().into())
                 .expect("could not reshape u16")
                 .into_py(py),
             ChannelData::ArrayDUInt16(array) => array
                 .values()
                 .to_pyarray(py)
-                .reshape_with_order(array.1 .0, array.1 .1.into())
+                .reshape_with_order(array.shape().clone(), array.order().clone().into())
                 .expect("could not reshape i16")
                 .into_py(py),
             ChannelData::ArrayDInt32(array) => array
                 .values()
                 .to_pyarray(py)
-                .reshape_with_order(array.1 .0, array.1 .1.into())
+                .reshape_with_order(array.shape().clone(), array.order().clone().into())
                 .expect("could not reshape i32")
                 .into_py(py),
             ChannelData::ArrayDUInt32(array) => array
                 .values()
                 .to_pyarray(py)
-                .reshape_with_order(array.1 .0, array.1 .1.into())
+                .reshape_with_order(array.shape().clone(), array.order().clone().into())
                 .expect("could not reshape u32")
                 .into_py(py),
             ChannelData::ArrayDFloat32(array) => array
                 .values()
                 .to_pyarray(py)
-                .reshape_with_order(array.1 .0, array.1 .1.into())
+                .reshape_with_order(array.shape().clone(), array.order().clone().into())
                 .expect("could not reshape f32")
                 .into_py(py),
             ChannelData::ArrayDInt64(array) => array
                 .values()
                 .to_pyarray(py)
-                .reshape_with_order(array.1 .0, array.1 .1.into())
+                .reshape_with_order(array.shape().clone(), array.order().clone().into())
                 .expect("could not reshape i64")
                 .into_py(py),
             ChannelData::ArrayDUInt64(array) => array
                 .values()
                 .to_pyarray(py)
-                .reshape_with_order(array.1 .0, array.1 .1.into())
+                .reshape_with_order(array.shape().clone(), array.order().clone().into())
                 .expect("could not reshape u64")
                 .into_py(py),
             ChannelData::ArrayDFloat64(array) => array
                 .values()
                 .to_pyarray(py)
-                .reshape_with_order(array.1 .0, array.1 .1.into())
+                .reshape_with_order(array.shape().clone(), array.order().clone().into())
                 .expect("could not reshape f64")
                 .into_py(py),
-            ChannelData::Utf8(array) => array.into_py(py),
+            ChannelData::Utf8(array) => array.iter().collect().into_py(py),
         }
     }
 }
@@ -469,8 +469,8 @@ impl ToPyObject for ChannelData {
             ChannelData::Complex64(array) => {
                 array.values().to_ndarray().into_pyarray(py).into_py(py)
             }
-            ChannelData::Utf8(array) => array.to_object(py),
-            ChannelData::VariableSizeByteArray(array) => array.to_object(py),
+            ChannelData::Utf8(array) => array.iter().collect().to_object(py),
+            ChannelData::VariableSizeByteArray(array) => array.iter().collect().to_object(py),
             ChannelData::FixedSizeByteArray(array) => {
                 let out: Vec<Vec<u8>> = array
                     .values()
@@ -547,9 +547,12 @@ impl FromPyObject<'_> for ChannelData {
                 } else {
                     Order::ColumnMajor
                 };
-                Ok(ChannelData::ArrayDInt8((
+                Ok(ChannelData::ArrayDInt8(Tensor::<i8>::from_vec(
                     array.readonly().as_array().to_owned().into_raw_vec(),
-                    (array.shape().to_vec(), order),
+                    Some(array.shape().to_vec()),
+                    Some(order),
+                    None,
+                    None,
                 )))
             }
             NumpyArray::ArrayDUInt8(array) => {
@@ -558,9 +561,12 @@ impl FromPyObject<'_> for ChannelData {
                 } else {
                     Order::ColumnMajor
                 };
-                Ok(ChannelData::ArrayDUInt8((
+                Ok(ChannelData::ArrayDUInt8(Tensor::<u8>::from_vec(
                     array.readonly().as_array().to_owned().into_raw_vec(),
-                    (array.shape().to_vec(), order),
+                    Some(array.shape().to_vec()),
+                    Some(order),
+                    None,
+                    None,
                 )))
             }
             NumpyArray::ArrayDInt16(array) => {
@@ -569,9 +575,12 @@ impl FromPyObject<'_> for ChannelData {
                 } else {
                     Order::ColumnMajor
                 };
-                Ok(ChannelData::ArrayDInt16((
+                Ok(ChannelData::ArrayDInt16(Tensor::<i16>::from_vec(
                     array.readonly().as_array().to_owned().into_raw_vec(),
-                    (array.shape().to_vec(), order),
+                    Some(array.shape().to_vec()),
+                    Some(order),
+                    None,
+                    None,
                 )))
             }
             NumpyArray::ArrayDUInt16(array) => {
@@ -580,9 +589,12 @@ impl FromPyObject<'_> for ChannelData {
                 } else {
                     Order::ColumnMajor
                 };
-                Ok(ChannelData::ArrayDUInt16((
+                Ok(ChannelData::ArrayDUInt16(Tensor::<u16>::from_vec(
                     array.readonly().as_array().to_owned().into_raw_vec(),
-                    (array.shape().to_vec(), order),
+                    Some(array.shape().to_vec()),
+                    Some(order),
+                    None,
+                    None,
                 )))
             }
             NumpyArray::ArrayDInt32(array) => {
@@ -591,9 +603,12 @@ impl FromPyObject<'_> for ChannelData {
                 } else {
                     Order::ColumnMajor
                 };
-                Ok(ChannelData::ArrayDInt32((
+                Ok(ChannelData::ArrayDInt32(Tensor::<i32>::from_vec(
                     array.readonly().as_array().to_owned().into_raw_vec(),
-                    (array.shape().to_vec(), order),
+                    Some(array.shape().to_vec()),
+                    Some(order),
+                    None,
+                    None,
                 )))
             }
             NumpyArray::ArrayDUInt32(array) => {
@@ -602,9 +617,12 @@ impl FromPyObject<'_> for ChannelData {
                 } else {
                     Order::ColumnMajor
                 };
-                Ok(ChannelData::ArrayDUInt32((
+                Ok(ChannelData::ArrayDUInt32(Tensor::<u32>::from_vec(
                     array.readonly().as_array().to_owned().into_raw_vec(),
-                    (array.shape().to_vec(), order),
+                    Some(array.shape().to_vec()),
+                    Some(order),
+                    None,
+                    None,
                 )))
             }
             NumpyArray::ArrayDFloat32(array) => {
@@ -613,9 +631,12 @@ impl FromPyObject<'_> for ChannelData {
                 } else {
                     Order::ColumnMajor
                 };
-                Ok(ChannelData::ArrayDFloat32((
+                Ok(ChannelData::ArrayDFloat32(Tensor::<f32>::from_vec(
                     array.readonly().as_array().to_owned().into_raw_vec(),
-                    (array.shape().to_vec(), order),
+                    Some(array.shape().to_vec()),
+                    Some(order),
+                    None,
+                    None,
                 )))
             }
             NumpyArray::ArrayDInt64(array) => {
@@ -624,9 +645,12 @@ impl FromPyObject<'_> for ChannelData {
                 } else {
                     Order::ColumnMajor
                 };
-                Ok(ChannelData::ArrayDInt64((
+                Ok(ChannelData::ArrayDInt64(Tensor::<i64>::from_vec(
                     array.readonly().as_array().to_owned().into_raw_vec(),
-                    (array.shape().to_vec(), order),
+                    Some(array.shape().to_vec()),
+                    Some(order),
+                    None,
+                    None,
                 )))
             }
             NumpyArray::ArrayDUInt64(array) => {
@@ -635,9 +659,12 @@ impl FromPyObject<'_> for ChannelData {
                 } else {
                     Order::ColumnMajor
                 };
-                Ok(ChannelData::ArrayDUInt64((
+                Ok(ChannelData::ArrayDUInt64(Tensor::<u64>::from_vec(
                     array.readonly().as_array().to_owned().into_raw_vec(),
-                    (array.shape().to_vec(), order),
+                    Some(array.shape().to_vec()),
+                    Some(order),
+                    None,
+                    None,
                 )))
             }
             NumpyArray::ArrayDFloat64(array) => {
@@ -646,9 +673,12 @@ impl FromPyObject<'_> for ChannelData {
                 } else {
                     Order::ColumnMajor
                 };
-                Ok(ChannelData::ArrayDFloat64((
+                Ok(ChannelData::ArrayDFloat64(Tensor::<f64>::from_vec(
                     array.readonly().as_array().to_owned().into_raw_vec(),
-                    (array.shape().to_vec(), order),
+                    Some(array.shape().to_vec()),
+                    Some(order),
+                    None,
+                    None,
                 )))
             }
         }
