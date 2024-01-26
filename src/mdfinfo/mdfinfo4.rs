@@ -25,7 +25,7 @@ use transpose;
 use yazi::{decompress, Adler32, Format};
 
 use crate::mdfinfo::IdBlock;
-use crate::mdfreader::channel_data::{data_type_init, ChannelData};
+use crate::mdfreader::channel_data::{data_type_init, try_from, ChannelData};
 
 use super::sym_buf_reader::SymBufReader;
 
@@ -424,18 +424,24 @@ impl MdfInfo4 {
         }
     }
     /// defines channel's data in memory
-    pub fn set_channel_data(&mut self, channel_name: &str, data: Box<dyn Array>) {
+    pub fn set_channel_data(
+        &mut self,
+        channel_name: &str,
+        data: Box<dyn Array>,
+    ) -> Result<(), Error> {
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
             self.channel_names_set.get(channel_name)
         {
             if let Some(dg) = self.dg.get_mut(dg_pos) {
                 if let Some(cg) = dg.cg.get_mut(rec_id) {
                     if let Some(cn) = cg.cn.get_mut(rec_pos) {
-                        cn.data = data.into();
+                        cn.data =
+                            try_from(data).context("failed converting dyn array to ChannelData")?;
                     }
                 }
             }
         }
+        Ok(())
     }
     /// Sets the channel unit in memory
     pub fn set_channel_unit(&mut self, channel_name: &str, unit: &str) {
@@ -1913,6 +1919,7 @@ impl Cg4 {
                                 );
                             },
                         );
+                        cn.data.set_validity(*mask);
                     }
                 });
             self.invalid_bytes = None; // Clears out invalid bytes channel

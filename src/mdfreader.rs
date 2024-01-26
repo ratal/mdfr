@@ -20,6 +20,7 @@ use pyo3::prelude::*;
 use crate::export::parquet::export_to_parquet;
 use crate::export::tensor::Order;
 use crate::mdfinfo::MdfInfo;
+use crate::mdfreader::channel_data::try_from;
 use crate::mdfreader::mdfreader3::mdfreader3;
 use crate::mdfreader::mdfreader4::mdfreader4;
 use crate::mdfwriter::mdfwriter4::mdfwriter4;
@@ -120,8 +121,8 @@ impl Mdf {
     /// returns channel's arrow2 Array.
     pub fn get_channel_data(&self, channel_name: &str) -> Option<Box<dyn Array>> {
         match &self.mdf_info {
-            MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_data(channel_name).boxed(),
-            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_data(channel_name).boxed(),
+            MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_data(channel_name).map(|x| x.boxed()),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_data(channel_name).map(|x| x.boxed()),
         }
     }
     /// defines channel's data in memory
@@ -161,7 +162,7 @@ impl Mdf {
         };
         self.mdf_info.add_channel(
             channel_name.clone(),
-            data,
+            try_from(data).context("failed converting ")?,
             data_signature,
             master_signature,
             unit,

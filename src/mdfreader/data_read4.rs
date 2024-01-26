@@ -3,7 +3,7 @@ use crate::export::tensor::{Order, Tensor};
 use crate::mdfinfo::mdfinfo4::{Cn4, CnType, Compo};
 use anyhow::{Context, Error, Ok, Result};
 use arrow2::array::{
-    FixedSizeListArray, MutableBinaryValuesArray,
+    MutableBinaryValuesArray,
     MutableFixedSizeBinaryArray, PrimitiveArray,
 };
 use arrow2::datatypes::DataType;
@@ -284,7 +284,9 @@ pub fn read_one_channel_array(
                 cn.data = ChannelData::Float64(PrimitiveArray::from_vec(buf));
             }
             ChannelData::Complex32(a) => {
-                let data = a.get_mut_values()
+                let data = a.values().as_any_mut().downcast_mut::<PrimitiveArray<f32>>()
+                .with_context(|| format!("Read channels from bytes function could not downcast to primitive array f32, channel {}", cn.unique_name))?
+                .get_mut_values()
                 .with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array complex f32, channel {}", cn.unique_name))?;
                 if n_bytes <= 2 {
                     // complex 16
@@ -325,7 +327,9 @@ pub fn read_one_channel_array(
                 }
             }
             ChannelData::Complex64(a) => {
-                let data = a.get_mut_values()
+                let data = a.values().as_any_mut().downcast_mut::<PrimitiveArray<f64>>()
+                .with_context(|| format!("Read channels from bytes function could not downcast to primitive array f64, channel {}", cn.unique_name))?
+                .get_mut_values()
                 .with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array complex f64, channel {}", cn.unique_name))?;
                 if cn.endian {
                     for (i, value) in data_bytes.chunks(std::mem::size_of::<f64>()).enumerate() {
@@ -388,14 +392,14 @@ pub fn read_one_channel_array(
                     data.push(value);
                 }
             }
-            ChannelData::FixedSizeByteArray(a) => {
-                a = &mut MutableFixedSizeBinaryArray::try_new(
+            ChannelData::FixedSizeByteArray(mut a) => {
+                a = MutableFixedSizeBinaryArray::try_new(
                     DataType::FixedSizeBinary(n_bytes),
                     data_bytes.to_vec(),
                     None,
                 ).context("failed creating new MutableFixedSizeBinary")?;
             }
-            ChannelData::ArrayDInt8(a) => {
+            ChannelData::ArrayDInt8(mut a) => {
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
@@ -403,7 +407,7 @@ pub fn read_one_channel_array(
                             Cursor::new(data_bytes)
                                 .read_i8_into(&mut buf)
                                 .context("Could not read i8 array")?;
-                            a = &mut Tensor::try_new(
+                            a = Tensor::try_new(
                                 DataType::Extension(
                                     "Tensor".to_owned(),
                                     Box::new(DataType::Int8),
@@ -421,11 +425,11 @@ pub fn read_one_channel_array(
                     }
                 }
             }
-            ChannelData::ArrayDUInt8(a) => {
+            ChannelData::ArrayDUInt8(mut a) => {
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(_) => {
-                            a = &mut Tensor::try_new(
+                            a = Tensor::try_new(
                                 DataType::Extension(
                                     "Tensor".to_owned(),
                                     Box::new(DataType::UInt8),
@@ -443,7 +447,7 @@ pub fn read_one_channel_array(
                     }
                 }
             }
-            ChannelData::ArrayDInt16(a) => {
+            ChannelData::ArrayDInt16(mut a) => {
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
@@ -457,7 +461,7 @@ pub fn read_one_channel_array(
                                     .read_i16_into::<LittleEndian>(&mut buf)
                                     .context("Could not read le i16 array")?;
                             }
-                            a = &mut Tensor::try_new(
+                            a = Tensor::try_new(
                                 DataType::Extension(
                                     "Tensor".to_owned(),
                                     Box::new(DataType::Int16),
@@ -475,7 +479,7 @@ pub fn read_one_channel_array(
                     }
                 }
             }
-            ChannelData::ArrayDUInt16(a) => {
+            ChannelData::ArrayDUInt16(mut a) => {
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
@@ -489,7 +493,7 @@ pub fn read_one_channel_array(
                                     .read_u16_into::<LittleEndian>(&mut buf)
                                     .context("Could not read le 16 array")?;
                             }
-                            a = &mut Tensor::try_new(
+                            a = Tensor::try_new(
                                 DataType::Extension(
                                     "Tensor".to_owned(),
                                     Box::new(DataType::UInt16),
@@ -507,7 +511,7 @@ pub fn read_one_channel_array(
                     }
                 }
             }
-            ChannelData::ArrayDInt32(a) => {
+            ChannelData::ArrayDInt32(mut a) => {
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
@@ -535,7 +539,7 @@ pub fn read_one_channel_array(
                                     .read_i32_into::<LittleEndian>(&mut buf)
                                     .context("Could not read le i32 array")?;
                             }
-                            a = &mut Tensor::try_new(
+                            a = Tensor::try_new(
                                 DataType::Extension(
                                     "Tensor".to_owned(),
                                     Box::new(DataType::Int32),
@@ -553,7 +557,7 @@ pub fn read_one_channel_array(
                     }
                 }
             }
-            ChannelData::ArrayDUInt32(a) => {
+            ChannelData::ArrayDUInt32(mut a) => {
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
@@ -581,7 +585,7 @@ pub fn read_one_channel_array(
                                     .read_u32_into::<LittleEndian>(&mut buf)
                                     .context("Could not read le u32 array")?;
                             }
-                            a = &mut Tensor::try_new(
+                            a = Tensor::try_new(
                                 DataType::Extension(
                                     "Tensor".to_owned(),
                                     Box::new(DataType::UInt32),
@@ -599,7 +603,7 @@ pub fn read_one_channel_array(
                     }
                 }
             }
-            ChannelData::ArrayDFloat32(a) => {
+            ChannelData::ArrayDFloat32(mut a) => {
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
@@ -633,7 +637,7 @@ pub fn read_one_channel_array(
                                     .read_f32_into::<LittleEndian>(&mut buf)
                                     .context("Could not read le f32 array")?;
                             }
-                            a = &mut Tensor::try_new(
+                            a = Tensor::try_new(
                                 DataType::Extension(
                                     "Tensor".to_owned(),
                                     Box::new(DataType::Float32),
@@ -651,7 +655,7 @@ pub fn read_one_channel_array(
                     }
                 }
             }
-            ChannelData::ArrayDInt64(a) => {
+            ChannelData::ArrayDInt64(mut a) => {
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
@@ -679,7 +683,7 @@ pub fn read_one_channel_array(
                                         .context("Could not read le i48")?;
                                 }
                             }
-                            a = &mut Tensor::try_new(
+                            a = Tensor::try_new(
                                 DataType::Extension(
                                     "Tensor".to_owned(),
                                     Box::new(DataType::Int64),
@@ -697,7 +701,7 @@ pub fn read_one_channel_array(
                     }
                 }
             }
-            ChannelData::ArrayDUInt64(a) => {
+            ChannelData::ArrayDUInt64(mut a) => {
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
@@ -757,7 +761,7 @@ pub fn read_one_channel_array(
                                     }
                                 }
                             }
-                            a = &mut Tensor::try_new(
+                            a = Tensor::try_new(
                                 DataType::Extension(
                                     "Tensor".to_owned(),
                                     Box::new(DataType::UInt64),
@@ -775,7 +779,7 @@ pub fn read_one_channel_array(
                     }
                 }
             }
-            ChannelData::ArrayDFloat64(a) => {
+            ChannelData::ArrayDFloat64(mut a) => {
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
@@ -789,7 +793,7 @@ pub fn read_one_channel_array(
                                     .read_f64_into::<LittleEndian>(&mut buf)
                                     .context("Could not read le f64 array")?;
                             }
-                            a = &mut Tensor::try_new(
+                            a = Tensor::try_new(
                                 DataType::Extension(
                                     "Tensor".to_owned(),
                                     Box::new(DataType::Float64),
@@ -902,8 +906,8 @@ pub fn read_channels_from_bytes(
                     }
                 }
                 ChannelData::Int32(a)  => {
-                    let data = a.get_mut_values()
-                    .with_context(|| format!("Read channels from bytes function could not downcast to primitive array i32, channel {}", cn.unique_name))?.get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array i32, channel {}", cn.unique_name))?;
+                    let data = a
+                    .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array i32, channel {}", cn.unique_name))?;
                     if  n_bytes == 3 {
                         if cn.endian {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -1137,10 +1141,8 @@ pub fn read_channels_from_bytes(
                     }
                 }
                 ChannelData::Complex32(a)  => {
-                    let array = cn.data.as_any_mut().downcast_mut::<FixedSizeListArray>()
-                    .with_context(|| format!("Read channels from bytes function could not downcast to FixedSizeListArray, channel {}", cn.unique_name))?.mut_values();
-                    let data = array.as_any_mut().downcast_mut::<PrimitiveArray<f32>>()
-                    .with_context(|| format!("Read channels from bytes function could not downcast to primitive array complex f32, channel {}", cn.unique_name))?
+                    let data = a.values().as_any_mut().downcast_mut::<PrimitiveArray<f32>>()
+                    .with_context(|| format!("Read channels from bytes function could not downcast to primitive array f32, channel {}", cn.unique_name))?
                     .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array complex f32, channel {}", cn.unique_name))?;
                     if n_bytes <= 2 {  // complex 16
                         let mut re_val: &[u8];
@@ -1225,15 +1227,14 @@ pub fn read_channels_from_bytes(
                         }
                     }
                 }
-                ChannelData::Complex64(a)  { 
+                ChannelData::Complex64(a) => { 
                     // complex 64
                     let mut re_val: &[u8];
                     let mut im_val: &[u8];
-                    let array = cn.data.as_any_mut().downcast_mut::<FixedSizeListArray>()
-                    .with_context(|| format!("Read channels from bytes function could not downcast to FixedSizeListArray, channel {}", cn.unique_name))?.mut_values();
-                    let data = array.as_any_mut().downcast_mut::<PrimitiveArray<f64>>()
-                    .with_context(|| format!("Read channels from bytes function could not downcast to primitive array complex f64, channel {}", cn.unique_name))?
-                    .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array complex f64, channel {}", cn.unique_name))?;
+                    let data = a.values().as_any_mut().downcast_mut::<PrimitiveArray<f64>>()
+                    .with_context(|| format!("Read channels from bytes function could not downcast to primitive array f64, channel {}", cn.unique_name))?
+                    .get_mut_values()
+                    .with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array complex f64, channel {}", cn.unique_name))?;
                     if cn.endian {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             re_val =
@@ -1330,627 +1331,443 @@ pub fn read_channels_from_bytes(
                 }
                 ChannelData::FixedSizeByteArray(a)  => {
                     let n_bytes = cn.n_bytes as usize;
-                    let data = a.get_mut_values().with_context(|| format!("failed creating MutableFixedSizeBinaryArray, channel {}", cn.unique_name))?;
                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                        data[i*n_bytes+previous_index..(i+1)*n_bytes+previous_index].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + n_bytes]);
+                        a.push(Some(&record[pos_byte_beg..pos_byte_beg + n_bytes]));
                     }
                 }
-                ChannelData::Extension(extension_name, data_type, _) => {
-                    if extension_name.eq(&"Tensor".to_string()) {
-                        match *data_type.clone() {
-                            ChannelData::Int8 => {
-                                if let Some(compo) = &cn.composition {
-                                    match &compo.block {
-                                        Compo::CA(ca) => {
-                                            let data = cn.data.as_any_mut().downcast_mut::<Tensor<i8>>()
-                                            .with_context(|| format!("Read channels from bytes function could not downcast to primitive tensor array i8, channel {}", cn.unique_name))?
-                                            .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor i8, channel {}", cn.unique_name))?;
-                                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                for j in 0..ca.pnd {
-                                                    value = &record[pos_byte_beg + j * std::mem::size_of::<i8>()..pos_byte_beg + (j + 1) * std::mem::size_of::<i8>()];
-                                                    data[(i + previous_index) * ca.pnd + j] =
-                                                        i8::from_le_bytes(value.try_into().context("Could not read i8 array")?);
-                                                }
-                                            }
-                                        }
-                                        Compo::CN(_) => {},
+                ChannelData::ArrayDInt8(a) => {
+                    if let Some(compo) = &cn.composition {
+                        match &compo.block {
+                            Compo::CA(ca) => {
+                                let data = a
+                                .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor i8, channel {}", cn.unique_name))?;
+                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                    for j in 0..ca.pnd {
+                                        value = &record[pos_byte_beg + j * std::mem::size_of::<i8>()..pos_byte_beg + (j + 1) * std::mem::size_of::<i8>()];
+                                        data[(i + previous_index) * ca.pnd + j] =
+                                            i8::from_le_bytes(value.try_into().context("Could not read i8 array")?);
                                     }
                                 }
                             }
-                            ChannelData::UInt8 => {
-                                if let Some(compo) = &cn.composition {
-                                    match &compo.block {
-                                        Compo::CA(ca) => {
-                                            let data = cn.data.as_any_mut().downcast_mut::<Tensor<u8>>()
-                                            .with_context(|| format!("Read channels from bytes function could not downcast to primitive tensor array u8, channel {}", cn.unique_name))?
-                                            .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor u8, channel {}", cn.unique_name))?;
-                                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                for j in 0..ca.pnd {
-                                                    value = &record[pos_byte_beg + j * std::mem::size_of::<u8>()..pos_byte_beg + (j + 1) * std::mem::size_of::<u8>()];
-                                                    data[(i + previous_index) * ca.pnd + j] =
-                                                        u8::from_le_bytes(value.try_into().context("Could not read u8 array")?);
-                                                }
-                                            }
-                                        }
-                                        Compo::CN(_) => {},
+                            Compo::CN(_) => {},
+                        }
+                    }
+                },
+                ChannelData::ArrayDUInt8(a) => {
+                    if let Some(compo) = &cn.composition {
+                        match &compo.block {
+                            Compo::CA(ca) => {
+                                let data = a
+                                .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor u8, channel {}", cn.unique_name))?;
+                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                    for j in 0..ca.pnd {
+                                        value = &record[pos_byte_beg + j * std::mem::size_of::<u8>()..pos_byte_beg + (j + 1) * std::mem::size_of::<u8>()];
+                                        data[(i + previous_index) * ca.pnd + j] =
+                                            u8::from_le_bytes(value.try_into().context("Could not read u8 array")?);
                                     }
                                 }
                             }
-                            ChannelData::Int16 => {
-                                if let Some(compo) = &cn.composition {
-                                    match &compo.block {
-                                        Compo::CA(ca) => {
-                                            let data = cn.data.as_any_mut().downcast_mut::<Tensor<i16>>()
-                                            .with_context(|| format!("Read channels from bytes function could not downcast to primitive tensor array i16, channel {}", cn.unique_name))?
-                                            .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor i16, channel {}", cn.unique_name))?;
-                                            if cn.endian {
-                                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                    for j in 0..ca.pnd {
-                                                        value =
-                                                            &record[pos_byte_beg + j * std::mem::size_of::<i16>()..pos_byte_beg + (j + 1) * std::mem::size_of::<i16>()];
-                                                        data[(i + previous_index) * ca.pnd + j] = i16::from_be_bytes(
-                                                            value.try_into().context("Could not read be i16 array")?,
-                                                        );
-                                                    }
-                                                }
-                                            } else {
-                                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                    for j in 0..ca.pnd {
-                                                        value =
-                                                        &record[pos_byte_beg + j * std::mem::size_of::<i16>()..pos_byte_beg + (j + 1) * std::mem::size_of::<i16>()];
-                                                        data[(i + previous_index) * ca.pnd + j] = i16::from_le_bytes(
-                                                            value.try_into().context("Could not read le i16 array")?,
-                                                        );
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        Compo::CN(_) => {},
-                                    }
-                                }
-                            }
-                            ChannelData::UInt16 => {
-                                if let Some(compo) = &cn.composition {
-                                    match &compo.block {
-                                        Compo::CA(ca) => {
-                                            let data = cn.data.as_any_mut().downcast_mut::<Tensor<u16>>()
-                                            .with_context(|| format!("Read channels from bytes function could not downcast to primitive tensor array u16, channel {}", cn.unique_name))?
-                                            .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor u16, channel {}", cn.unique_name))?;
-                                            if cn.endian {
-                                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                    for j in 0..ca.pnd {
-                                                        value =
-                                                            &record[pos_byte_beg + j * std::mem::size_of::<u16>()..pos_byte_beg + (j + 1) * std::mem::size_of::<u16>()];
-                                                        data[(i + previous_index) * ca.pnd + j] = u16::from_be_bytes(
-                                                            value.try_into().context("Could not read be u16 array")?,
-                                                        );
-                                                    }
-                                                }
-                                            } else {
-                                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                    for j in 0..ca.pnd {
-                                                        value =
-                                                        &record[pos_byte_beg + j * std::mem::size_of::<i16>()..pos_byte_beg + (j + 1) * std::mem::size_of::<u16>()];
-                                                        data[(i + previous_index) * ca.pnd + j] = u16::from_le_bytes(
-                                                            value.try_into().context("Could not read le u16 array")?,
-                                                        );
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        Compo::CN(_) => {},
-                                    }
-                                }
-                            }
-                            ChannelData::Int32 => {
-                                if let Some(compo) = &cn.composition {
-                                    match &compo.block {
-                                        Compo::CA(ca) => {
-                                            let data = cn.data.as_any_mut().downcast_mut::<Tensor<i32>>()
-                                            .with_context(|| format!("Read channels from bytes function could not downcast to primitive tensor array i32, channel {}", cn.unique_name))?
-                                            .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor i32, channel {}", cn.unique_name))?;
-                                            if cn.endian {
-                                                if n_bytes <=3 {
-                                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                        for j in 0..ca.pnd {
-                                                            value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
-                                                            data[(i + previous_index) * ca.pnd + j] = value
-                                                                .read_i24::<BigEndian>()
-                                                                .context("Could not read be i24 array")?;
-                                                        }
-                                                    }
-                                                }
-                                                else {
-                                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                        for j in 0..ca.pnd {
-                                                            value =
-                                                            &record[pos_byte_beg + j * std::mem::size_of::<i32>()..pos_byte_beg + (j + 1) * std::mem::size_of::<i32>()];
-                                                            data[(i + previous_index) * ca.pnd + j] = i32::from_be_bytes(
-                                                                value.try_into().context("Could not read be i32 array")?,
-                                                            );
-                                                        }
-                                                    }
-                                                }
-                                            } else if n_bytes <=3 {
-                                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                    for j in 0..ca.pnd {
-                                                        value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
-                                                        data[(i + previous_index) * ca.pnd + j] = value
-                                                            .read_i24::<LittleEndian>()
-                                                            .context("Could not read le i24 array")?;
-                                                    }
-                                                }
-                                            }
-                                            else {
-                                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                    for j in 0..ca.pnd {
-                                                        value =
-                                                        &record[pos_byte_beg + j * std::mem::size_of::<i32>()..pos_byte_beg + (j + 1) * std::mem::size_of::<i32>()];
-                                                        data[(i + previous_index) * ca.pnd + j] = i32::from_le_bytes(
-                                                            value.try_into().context("Could not read le i32 array")?,
-                                                        );
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        Compo::CN(_) => {},
-                                    }
-                                }
-                            }
-                            ChannelData::UInt32 => {
-                                if let Some(compo) = &cn.composition {
-                                    match &compo.block {
-                                        Compo::CA(ca) => {
-                                            let data = cn.data.as_any_mut().downcast_mut::<Tensor<u32>>()
-                                            .with_context(|| format!("Read channels from bytes function could not downcast to primitive tensor array u32, channel {}", cn.unique_name))?
-                                            .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor u32, channel {}", cn.unique_name))?;
-                                            if cn.endian {
-                                                if n_bytes <=3 {
-                                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                        for j in 0..ca.pnd {
-                                                            value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
-                                                            data[(i + previous_index) * ca.pnd + j] = value
-                                                                .read_u24::<BigEndian>()
-                                                                .context("Could not read be u24 array")?;
-                                                        }
-                                                    }
-                                                }
-                                                else {
-                                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                        for j in 0..ca.pnd {
-                                                            value =
-                                                            &record[pos_byte_beg + j * std::mem::size_of::<u32>()..pos_byte_beg + (j + 1) * std::mem::size_of::<u32>()];
-                                                            data[(i + previous_index) * ca.pnd + j] = u32::from_be_bytes(
-                                                                value.try_into().context("Could not read be u32 array")?,
-                                                            );
-                                                        }
-                                                    }
-                                                }
-                                            } else if n_bytes <=3 {
-                                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                    for j in 0..ca.pnd {
-                                                        value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
-                                                        data[(i + previous_index) * ca.pnd + j] = value
-                                                            .read_u24::<LittleEndian>()
-                                                            .context("Could not read le u24 array")?;
-                                                    }
-                                                }
-                                            } else {
-                                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                    for j in 0..ca.pnd {
-                                                        value =
-                                                        &record[pos_byte_beg + j * std::mem::size_of::<u32>()..pos_byte_beg + (j + 1) * std::mem::size_of::<u32>()];
-                                                        data[(i + previous_index) * ca.pnd + j] = u32::from_le_bytes(
-                                                            value.try_into().context("Could not read le u32 array")?,
-                                                        );
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        Compo::CN(_) => {},
-                                    }
-                                }
-                            }
-                            ChannelData::Float32 => {
-                                if let Some(compo) = &cn.composition {
-                                    match &compo.block {
-                                        Compo::CA(ca) => {
-                                            let data = cn.data.as_any_mut().downcast_mut::<Tensor<f32>>()
-                                            .with_context(|| format!("Read channels from bytes function could not downcast to primitive tensor array f32, channel {}", cn.unique_name))?
-                                            .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor f32, channel {}", cn.unique_name))?;
-                                            if cn.endian {
-                                                if n_bytes <= 2 {
-                                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                        for j in 0..ca.pnd {
-                                                            value =
-                                                            &record[pos_byte_beg + j * std::mem::size_of::<f16>()..pos_byte_beg + (j + 1) * std::mem::size_of::<f16>()];
-                                                            data[(i + previous_index) * ca.pnd + j] = f16::from_be_bytes(
-                                                                value.try_into().context("Could not read be f16 array")?,
-                                                            )
-                                                            .to_f32();
-                                                        }
-                                                    }
-                                                }
-                                                else {
-                                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                        for j in 0..ca.pnd {
-                                                            value =
-                                                            &record[pos_byte_beg + j * std::mem::size_of::<f32>()..pos_byte_beg + (j + 1) * std::mem::size_of::<f32>()];
-                                                            data[(i + previous_index) * ca.pnd + j] = f32::from_be_bytes(
-                                                                value.try_into().context("Could not read be f32 array")?,
-                                                            );
-                                                        }
-                                                    }
-                                                }
-                                            } else if n_bytes <= 2 {
-                                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                    for j in 0..ca.pnd {
-                                                        value =
-                                                        &record[pos_byte_beg + j * std::mem::size_of::<f16>()..pos_byte_beg + (j + 1) * std::mem::size_of::<f16>()];
-                                                        data[(i + previous_index) * ca.pnd + j] = f16::from_le_bytes(
-                                                            value.try_into().context("Could not read le f16 array")?,
-                                                        )
-                                                        .to_f32();
-                                                    }
-                                                }
-                                            }
-                                            else {
-                                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                    for j in 0..ca.pnd {
-                                                        value =
-                                                        &record[pos_byte_beg + j * std::mem::size_of::<f32>()..pos_byte_beg + (j + 1) * std::mem::size_of::<f32>()];
-                                                        data[(i + previous_index) * ca.pnd + j] = f32::from_le_bytes(
-                                                            value.try_into().context("Could not read le f32 array")?,
-                                                        );
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        Compo::CN(_) => {},
-                                    }
-                                }
-                            }
-                            ChannelData::Int64 => {
-                                if let Some(compo) = &cn.composition {
-                                    match &compo.block {
-                                        Compo::CA(ca) => {
-                                            let data = cn.data.as_any_mut().downcast_mut::<Tensor<i64>>()
-                                            .with_context(|| format!("Read channels from bytes function could not downcast to primitive tensor array i64, channel {}", cn.unique_name))?
-                                            .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor i64, channel {}", cn.unique_name))?;
-                                            if cn.endian {
-                                                if n_bytes == 8 {
-                                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                        for j in 0..ca.pnd {
-                                                            value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
-                                                            data[(i + previous_index) * ca.pnd + j] = i64::from_be_bytes(
-                                                                value.try_into().context("Could not read be i64 array")?,
-                                                            );
-                                                        }
-                                                    }
-                                                } else if n_bytes == 6 {
-                                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                        for j in 0..ca.pnd {
-                                                            value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
-                                                            data[(i + previous_index) * ca.pnd + j] = value
-                                                                .read_i48::<BigEndian>()
-                                                                .context("Could not read be i48 array")?;
-                                                        }
-                                                    }
-                                                }
-                                            } else if n_bytes == 8 {
-                                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                    for j in 0..ca.pnd {
-                                                        value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
-                                                        data[(i + previous_index) * ca.pnd + j] = i64::from_le_bytes(
-                                                            value.try_into().context("Could not read le i64 array")?,
-                                                        );
-                                                    }
-                                                }
-                                            } else if n_bytes == 6 {
-                                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                    for j in 0..ca.pnd {
-                                                        value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
-                                                        data[(i + previous_index) * ca.pnd + j] = value
-                                                            .read_i48::<LittleEndian>()
-                                                            .context("Could not read le i48 array")?;
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        Compo::CN(_) => {},
-                                    }
-                                }
-                            }
-                            ChannelData::UInt64 => {
-                                if let Some(compo) = &cn.composition {
-                                    match &compo.block {
-                                        Compo::CA(ca) => {
-                                            let data = cn.data.as_any_mut().downcast_mut::<Tensor<u64>>()
-                                            .with_context(|| format!("Read channels from bytes function could not downcast to primitive tensor array u64, channel {}", cn.unique_name))?
-                                            .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor u64, channel {}", cn.unique_name))?;
-                                            if cn.endian {
-                                                if n_bytes == 8 {
-                                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                        for j in 0..ca.pnd {
-                                                            value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
-                                                            data[(i + previous_index) * ca.pnd + j] = u64::from_le_bytes(
-                                                                value.try_into().context("Could not read be u64 array")?,
-                                                            );
-                                                        }
-                                                    }
-                                                } else if n_bytes == 7 {
-                                                    let mut buf = [0u8; std::mem::size_of::<u64>()];
-                                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                        for j in 0..ca.pnd {
-                                                            buf[0..7].copy_from_slice(&record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes]);
-                                                            data[(i + previous_index) * ca.pnd + j] = u64::from_le_bytes(buf);
-                                                        }
-                                                    }
-                                                } else if n_bytes == 6 {
-                                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                        for j in 0..ca.pnd {
-                                                            value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
-                                                            data[(i + previous_index) * ca.pnd + j] = value
-                                                                .read_u48::<BigEndian>()
-                                                                .context("Could not read be u48 array")?;
-                                                        }
-                                                    }
-                                                } else if n_bytes == 5 {
-                                                    let mut buf = [0u8; 6];
-                                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                        for j in 0..ca.pnd {
-                                                            buf[0..5]
-                                                                .copy_from_slice(&record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes]);
-                                                            data[(i + previous_index) * ca.pnd + j] = Cursor::new(buf)
-                                                                .read_u48::<BigEndian>()
-                                                                .context("Could not read be u48 from 5 bytes in array")?;
-                                                        }
-                                                    }
-                                                }
-                                            } else if n_bytes == 8 {
-                                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                    for j in 0..ca.pnd {
-                                                        value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
-                                                        data[(i + previous_index) * ca.pnd + j] = u64::from_le_bytes(
-                                                            value.try_into().context("Could not read le u64")?,
-                                                        );
-                                                    }
-                                                }
-                                            } else if n_bytes == 7 {
-                                                let mut buf = [0u8; std::mem::size_of::<u64>()];
-                                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                    for j in 0..ca.pnd {
-                                                        buf[0..7].copy_from_slice(&record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes]);
-                                                        data[(i + previous_index) * ca.pnd + j] = u64::from_le_bytes(buf);
-                                                    }
-                                                }
-                                            } else if n_bytes == 6 {
-                                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                    for j in 0..ca.pnd {
-                                                        value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
-                                                        data[(i + previous_index) * ca.pnd + j] = value
-                                                            .read_u48::<LittleEndian>()
-                                                            .context("Could not read le u48 array")?;
-                                                    }
-                                                }
-                                            } else {
-                                                // n_bytes = 5
-                                                let mut buf = [0u8; 6];
-                                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                    for j in 0..ca.pnd {
-                                                        buf[0..5].copy_from_slice(&record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes]);
-                                                        data[(i + previous_index) * ca.pnd + j] = Cursor::new(buf)
-                                                            .read_u48::<LittleEndian>()
-                                                            .context("Could not read le u48 from 5 bytes in array")?;
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        Compo::CN(_) => {},
-                                    }
-                                }
-                            }
-                            ChannelData::Float64 => {
-                                if let Some(compo) = &cn.composition {
-                                    match &compo.block {
-                                        Compo::CA(ca) => {
-                                            let data = cn.data.as_any_mut().downcast_mut::<Tensor<f64>>()
-                                            .with_context(|| format!("Read channels from bytes function could not downcast to primitive tensor array f64, channel {}", cn.unique_name))?
-                                            .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor f64, channel {}", cn.unique_name))?;
-                                            if cn.endian {
-                                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                    for j in 0..ca.pnd {
-                                                        value = &record[pos_byte_beg + j * std::mem::size_of::<u64>()..pos_byte_beg + (j + 1) * std::mem::size_of::<u64>()];
-                                                        data[(i + previous_index) * ca.pnd + j] = f64::from_be_bytes(
-                                                            value.try_into().context("Could not read be f64")?,
-                                                        );
-                                                    }
-                                                }
-                                            } else {
-                                                for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                    for j in 0..ca.pnd {
-                                                        value = &record[pos_byte_beg + j * std::mem::size_of::<u64>()..pos_byte_beg + (j + 1) * std::mem::size_of::<u64>()];
-                                                        data[(i + previous_index) * ca.pnd + j] = f64::from_le_bytes(
-                                                            value.try_into().context("Could not read le f64")?,
-                                                        );
-                                                    }
-                                                }
-                                            }
-                                        }
-                                        Compo::CN(_) => {},
-                                    }
-                                }
-                            }
-                            ChannelData::FixedSizeList(field, _size) => {
-                                if field.name.eq(&"complex32".to_string()) {
-                                    let array = cn.data.as_any_mut().downcast_mut::<FixedSizeListArray>()
-                                    .with_context(|| format!("Read channels from bytes function could not downcast to FixedSizeListArray, channel {}", cn.unique_name))?.mut_values();
-                                    let data = array.as_any_mut().downcast_mut::<PrimitiveArray<f32>>()
-                                    .with_context(|| format!("Read channels from bytes function could not downcast to primitive array tensor complex f32, channel {}", cn.unique_name))?
-                                    .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor complex f32, channel {}", cn.unique_name))?;
-                                    if n_bytes <= 2 {  // complex 16
-                                        if let Some(compo) = &cn.composition {
-                                            match &compo.block {
-                                                Compo::CA(ca) => {
-                                                    let mut re_val: &[u8];
-                                                    let mut im_val: &[u8];
-                                                    if cn.endian {
-                                                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                            for j in 0..ca.pnd {
-                                                                re_val =
-                                                                &record[pos_byte_beg + 2 * j * std::mem::size_of::<f16>()
-                                                                    ..pos_byte_beg + (j + 1) * 2 * std::mem::size_of::<f16>()];
-                                                                im_val = &record[pos_byte_beg + (j + 1) * 2 * std::mem::size_of::<f16>()
-                                                                    ..pos_byte_beg + (j + 2) * 2 * std::mem::size_of::<f16>()];
-                                                                data[(i*2 + previous_index) * ca.pnd + j] = f16::from_be_bytes(
-                                                                    re_val
-                                                                        .try_into()
-                                                                        .context("Could not read be real f16 complex array")?,
-                                                                ).to_f32();
-                                                                data[(i*2 + previous_index) * ca.pnd + j + 1] = f16::from_be_bytes(
-                                                                    im_val
-                                                                        .try_into()
-                                                                        .context("Could not read be img f16 complex array")?,
-                                                                ).to_f32();
-                                                            }
-                                                        }
-                                                    } else {
-                                                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                            for j in 0..ca.pnd {
-                                                                re_val =
-                                                                &record[pos_byte_beg + 2 * j * std::mem::size_of::<f16>()
-                                                                    ..pos_byte_beg + (j + 1) * 2 * std::mem::size_of::<f16>()];
-                                                                im_val = &record[pos_byte_beg + (j + 1) * 2 * std::mem::size_of::<f16>()
-                                                                    ..pos_byte_beg + (j + 2) * 2 * std::mem::size_of::<f16>()];
-                                                                data[(i*2 + previous_index) * ca.pnd + j] = f16::from_le_bytes(
-                                                                    re_val
-                                                                        .try_into()
-                                                                        .context("Could not read le real f16 complex array")?,
-                                                                ).to_f32();
-                                                                data[(i*2 + previous_index) * ca.pnd + j + 1] = f16::from_le_bytes(
-                                                                    im_val
-                                                                        .try_into()
-                                                                        .context("Could not read le img f16 complex array")?,
-                                                                ).to_f32();
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                                Compo::CN(_) => {},
-                                            }
-                                        }
-                                    } else if n_bytes <= 4 {
-                                        if let Some(compo) = &cn.composition {
-                                            match &compo.block {
-                                                Compo::CA(ca) => {
-                                                    let mut re_val: &[u8];
-                                                    let mut im_val: &[u8];
-                                                    if cn.endian {
-                                                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                            for j in 0..ca.pnd {
-                                                                re_val =
-                                                                    &record[pos_byte_beg + 2 * j * std::mem::size_of::<f32>()
-                                                                        ..pos_byte_beg + (j + 1) * 2 * std::mem::size_of::<f32>()];
-                                                                im_val = &record[pos_byte_beg + (j + 1) * 2 * std::mem::size_of::<f32>()
-                                                                    ..pos_byte_beg + (j + 2) * 2 * std::mem::size_of::<f32>()];
-                                                                data[(i*2 + previous_index) * ca.pnd + j] = f32::from_be_bytes(
-                                                                    re_val
-                                                                        .try_into()
-                                                                        .context("Could not read be real f32 complex array")?,
-                                                                );
-                                                                data[(i*2 + previous_index) * ca.pnd + j + 1] = f32::from_be_bytes(
-                                                                    im_val
-                                                                        .try_into()
-                                                                        .context("Could not read be img f32 complex array")?,
-                                                                );
-                                                            }
-                                                        }
-                                                    } else {
-                                                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                            for j in 0..ca.pnd {
-                                                                re_val = &record[pos_byte_beg + 2 * j * std::mem::size_of::<f32>()
-                                                                    ..pos_byte_beg + (j + 1) * 2 * std::mem::size_of::<f32>()];
-                                                                im_val = &record[pos_byte_beg + (j + 1) * 2 * std::mem::size_of::<f32>()
-                                                                    ..pos_byte_beg + (j + 2) * 2 * std::mem::size_of::<f32>()];
-                                                                data[(i*2 + previous_index) * ca.pnd + j] = f32::from_le_bytes(
-                                                                    re_val
-                                                                        .try_into()
-                                                                        .context("Could not read le real f32 complex array")?,
-                                                                );
-                                                                data[(i*2 + previous_index) * ca.pnd + j + 1] = f32::from_le_bytes(
-                                                                    im_val
-                                                                        .try_into()
-                                                                        .context("Could not read le img f32 complex array")?,
-                                                                );
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                                Compo::CN(_) => {},
-                                            }
+                            Compo::CN(_) => {},
+                        }
+                    }
+                },
+                ChannelData::ArrayDInt16(a) => {
+                    if let Some(compo) = &cn.composition {
+                        match &compo.block {
+                            Compo::CA(ca) => {
+                                let data = a
+                                .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor i16, channel {}", cn.unique_name))?;
+                                if cn.endian {
+                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                        for j in 0..ca.pnd {
+                                            value =
+                                                &record[pos_byte_beg + j * std::mem::size_of::<i16>()..pos_byte_beg + (j + 1) * std::mem::size_of::<i16>()];
+                                            data[(i + previous_index) * ca.pnd + j] = i16::from_be_bytes(
+                                                value.try_into().context("Could not read be i16 array")?,
+                                            );
                                         }
                                     }
-                                } else if field.name.eq(&"complex64".to_string())  { 
-                                    if let Some(compo) = &cn.composition {
-                                        match &compo.block {
-                                            Compo::CA(ca) => {
-                                                let array = cn.data.as_any_mut().downcast_mut::<FixedSizeListArray>()
-                                                .with_context(|| format!("Read channels from bytes function could not downcast to FixedSizeListArray, channel {}", cn.unique_name))?.mut_values();
-                                                let data = array.as_any_mut().downcast_mut::<PrimitiveArray<f64>>()
-                                                .with_context(|| format!("Read channels from bytes function could not downcast to primitive array tensor complex f64, channel {}", cn.unique_name))?
-                                                .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor complex f64, channel {}", cn.unique_name))?;
-                                                let mut re_val: &[u8];
-                                                let mut im_val: &[u8];
-                                                if cn.endian {
-                                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                        for j in 0..ca.pnd {
-                                                            re_val = &record[pos_byte_beg + 2 * j * std::mem::size_of::<f64>()
-                                                                ..pos_byte_beg + (j + 1) * 2 * std::mem::size_of::<f64>()];
-                                                            im_val = &record[pos_byte_beg + (j + 1) * 2 * std::mem::size_of::<f64>()
-                                                                ..pos_byte_beg + (j + 2) * 2 * std::mem::size_of::<f64>()];
-                                                            data[(i*2 + previous_index) * ca.pnd + j] = f64::from_be_bytes(
-                                                                re_val
-                                                                    .try_into()
-                                                                    .context("Could not read be real f64 complex")?,
-                                                            );
-                                                            data[(i*2 + previous_index) * ca.pnd + j + 1] = f64::from_be_bytes(
-                                                                im_val
-                                                                    .try_into()
-                                                                    .context("Could not read be img f64 complex")?,
-                                                            );
-                                                        }
-                                                    }
-                                                } else {
-                                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                                        for j in 0..ca.pnd {
-                                                            re_val = &record[pos_byte_beg + 2 * j * std::mem::size_of::<f64>()
-                                                                ..pos_byte_beg + (j + 1) * 2 * std::mem::size_of::<f64>()];
-                                                            im_val = &record[pos_byte_beg + (j + 1) * 2 * std::mem::size_of::<f64>()
-                                                                ..pos_byte_beg + (j + 2) * 2 * std::mem::size_of::<f64>()];
-                                                            data[(i*2 + previous_index) * ca.pnd + j] = f64::from_le_bytes(
-                                                                re_val
-                                                                    .try_into()
-                                                                    .context("Could not read le real f64 complex array")?,
-                                                            );
-                                                            data[(i*2 + previous_index) * ca.pnd + j + 1] = f64::from_le_bytes(
-                                                                im_val
-                                                                    .try_into()
-                                                                    .context("Could not read le img f64 complex array")?,
-                                                            );
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            Compo::CN(_) => todo!(),
+                                } else {
+                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                        for j in 0..ca.pnd {
+                                            value =
+                                            &record[pos_byte_beg + j * std::mem::size_of::<i16>()..pos_byte_beg + (j + 1) * std::mem::size_of::<i16>()];
+                                            data[(i + previous_index) * ca.pnd + j] = i16::from_le_bytes(
+                                                value.try_into().context("Could not read le i16 array")?,
+                                            );
                                         }
                                     }
                                 }
                             }
-                            _ => bail!("unrecognised tensor data type at data chunk reading from channel {}", cn.unique_name)
+                            Compo::CN(_) => {},
                         }
                     }
                 }
-                _ => bail!("unrecognised data type at data chunk reading from channel {}", cn.unique_name)
+                ChannelData::ArrayDUInt16(a) => {
+                    if let Some(compo) = &cn.composition {
+                        match &compo.block {
+                            Compo::CA(ca) => {
+                                let data = a
+                                .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor u16, channel {}", cn.unique_name))?;
+                                if cn.endian {
+                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                        for j in 0..ca.pnd {
+                                            value =
+                                                &record[pos_byte_beg + j * std::mem::size_of::<u16>()..pos_byte_beg + (j + 1) * std::mem::size_of::<u16>()];
+                                            data[(i + previous_index) * ca.pnd + j] = u16::from_be_bytes(
+                                                value.try_into().context("Could not read be u16 array")?,
+                                            );
+                                        }
+                                    }
+                                } else {
+                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                        for j in 0..ca.pnd {
+                                            value =
+                                            &record[pos_byte_beg + j * std::mem::size_of::<i16>()..pos_byte_beg + (j + 1) * std::mem::size_of::<u16>()];
+                                            data[(i + previous_index) * ca.pnd + j] = u16::from_le_bytes(
+                                                value.try_into().context("Could not read le u16 array")?,
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                            Compo::CN(_) => {},
+                        }
+                    }
+                }
+                ChannelData::ArrayDInt32(a) => {
+                    if let Some(compo) = &cn.composition {
+                        match &compo.block {
+                            Compo::CA(ca) => {
+                                let data = a
+                                .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor i32, channel {}", cn.unique_name))?;
+                                if cn.endian {
+                                    if n_bytes <=3 {
+                                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                            for j in 0..ca.pnd {
+                                                value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
+                                                data[(i + previous_index) * ca.pnd + j] = value
+                                                    .read_i24::<BigEndian>()
+                                                    .context("Could not read be i24 array")?;
+                                            }
+                                        }
+                                    }
+                                    else {
+                                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                            for j in 0..ca.pnd {
+                                                value =
+                                                &record[pos_byte_beg + j * std::mem::size_of::<i32>()..pos_byte_beg + (j + 1) * std::mem::size_of::<i32>()];
+                                                data[(i + previous_index) * ca.pnd + j] = i32::from_be_bytes(
+                                                    value.try_into().context("Could not read be i32 array")?,
+                                                );
+                                            }
+                                        }
+                                    }
+                                } else if n_bytes <=3 {
+                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                        for j in 0..ca.pnd {
+                                            value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
+                                            data[(i + previous_index) * ca.pnd + j] = value
+                                                .read_i24::<LittleEndian>()
+                                                .context("Could not read le i24 array")?;
+                                        }
+                                    }
+                                }
+                                else {
+                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                        for j in 0..ca.pnd {
+                                            value =
+                                            &record[pos_byte_beg + j * std::mem::size_of::<i32>()..pos_byte_beg + (j + 1) * std::mem::size_of::<i32>()];
+                                            data[(i + previous_index) * ca.pnd + j] = i32::from_le_bytes(
+                                                value.try_into().context("Could not read le i32 array")?,
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                            Compo::CN(_) => {},
+                        }
+                    }
+                }
+                ChannelData::ArrayDUInt32(a) => {
+                    if let Some(compo) = &cn.composition {
+                        match &compo.block {
+                            Compo::CA(ca) => {
+                                let data = a
+                                .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor u32, channel {}", cn.unique_name))?;
+                                if cn.endian {
+                                    if n_bytes <=3 {
+                                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                            for j in 0..ca.pnd {
+                                                value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
+                                                data[(i + previous_index) * ca.pnd + j] = value
+                                                    .read_u24::<BigEndian>()
+                                                    .context("Could not read be u24 array")?;
+                                            }
+                                        }
+                                    }
+                                    else {
+                                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                            for j in 0..ca.pnd {
+                                                value =
+                                                &record[pos_byte_beg + j * std::mem::size_of::<u32>()..pos_byte_beg + (j + 1) * std::mem::size_of::<u32>()];
+                                                data[(i + previous_index) * ca.pnd + j] = u32::from_be_bytes(
+                                                    value.try_into().context("Could not read be u32 array")?,
+                                                );
+                                            }
+                                        }
+                                    }
+                                } else if n_bytes <=3 {
+                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                        for j in 0..ca.pnd {
+                                            value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
+                                            data[(i + previous_index) * ca.pnd + j] = value
+                                                .read_u24::<LittleEndian>()
+                                                .context("Could not read le u24 array")?;
+                                        }
+                                    }
+                                } else {
+                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                        for j in 0..ca.pnd {
+                                            value =
+                                            &record[pos_byte_beg + j * std::mem::size_of::<u32>()..pos_byte_beg + (j + 1) * std::mem::size_of::<u32>()];
+                                            data[(i + previous_index) * ca.pnd + j] = u32::from_le_bytes(
+                                                value.try_into().context("Could not read le u32 array")?,
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                            Compo::CN(_) => {},
+                        }
+                    }
+                }
+                ChannelData::ArrayDFloat32(a) => {
+                    if let Some(compo) = &cn.composition {
+                        match &compo.block {
+                            Compo::CA(ca) => {
+                                let data = a
+                                .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor f32, channel {}", cn.unique_name))?;
+                                if cn.endian {
+                                    if n_bytes <= 2 {
+                                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                            for j in 0..ca.pnd {
+                                                value =
+                                                &record[pos_byte_beg + j * std::mem::size_of::<f16>()..pos_byte_beg + (j + 1) * std::mem::size_of::<f16>()];
+                                                data[(i + previous_index) * ca.pnd + j] = f16::from_be_bytes(
+                                                    value.try_into().context("Could not read be f16 array")?,
+                                                )
+                                                .to_f32();
+                                            }
+                                        }
+                                    }
+                                    else {
+                                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                            for j in 0..ca.pnd {
+                                                value =
+                                                &record[pos_byte_beg + j * std::mem::size_of::<f32>()..pos_byte_beg + (j + 1) * std::mem::size_of::<f32>()];
+                                                data[(i + previous_index) * ca.pnd + j] = f32::from_be_bytes(
+                                                    value.try_into().context("Could not read be f32 array")?,
+                                                );
+                                            }
+                                        }
+                                    }
+                                } else if n_bytes <= 2 {
+                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                        for j in 0..ca.pnd {
+                                            value =
+                                            &record[pos_byte_beg + j * std::mem::size_of::<f16>()..pos_byte_beg + (j + 1) * std::mem::size_of::<f16>()];
+                                            data[(i + previous_index) * ca.pnd + j] = f16::from_le_bytes(
+                                                value.try_into().context("Could not read le f16 array")?,
+                                            )
+                                            .to_f32();
+                                        }
+                                    }
+                                }
+                                else {
+                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                        for j in 0..ca.pnd {
+                                            value =
+                                            &record[pos_byte_beg + j * std::mem::size_of::<f32>()..pos_byte_beg + (j + 1) * std::mem::size_of::<f32>()];
+                                            data[(i + previous_index) * ca.pnd + j] = f32::from_le_bytes(
+                                                value.try_into().context("Could not read le f32 array")?,
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                            Compo::CN(_) => {},
+                        }
+                    }
+                }
+                ChannelData::ArrayDInt64(a) => {
+                    if let Some(compo) = &cn.composition {
+                        match &compo.block {
+                            Compo::CA(ca) => {
+                                let data = a
+                                .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor i64, channel {}", cn.unique_name))?;
+                                if cn.endian {
+                                    if n_bytes == 8 {
+                                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                            for j in 0..ca.pnd {
+                                                value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
+                                                data[(i + previous_index) * ca.pnd + j] = i64::from_be_bytes(
+                                                    value.try_into().context("Could not read be i64 array")?,
+                                                );
+                                            }
+                                        }
+                                    } else if n_bytes == 6 {
+                                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                            for j in 0..ca.pnd {
+                                                value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
+                                                data[(i + previous_index) * ca.pnd + j] = value
+                                                    .read_i48::<BigEndian>()
+                                                    .context("Could not read be i48 array")?;
+                                            }
+                                        }
+                                    }
+                                } else if n_bytes == 8 {
+                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                        for j in 0..ca.pnd {
+                                            value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
+                                            data[(i + previous_index) * ca.pnd + j] = i64::from_le_bytes(
+                                                value.try_into().context("Could not read le i64 array")?,
+                                            );
+                                        }
+                                    }
+                                } else if n_bytes == 6 {
+                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                        for j in 0..ca.pnd {
+                                            value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
+                                            data[(i + previous_index) * ca.pnd + j] = value
+                                                .read_i48::<LittleEndian>()
+                                                .context("Could not read le i48 array")?;
+                                        }
+                                    }
+                                }
+                            }
+                            Compo::CN(_) => {},
+                        }
+                    }
+                }
+                ChannelData::ArrayDUInt64(a) => {
+                    if let Some(compo) = &cn.composition {
+                        match &compo.block {
+                            Compo::CA(ca) => {
+                                let data = a
+                                .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor u64, channel {}", cn.unique_name))?;
+                                if cn.endian {
+                                    if n_bytes == 8 {
+                                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                            for j in 0..ca.pnd {
+                                                value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
+                                                data[(i + previous_index) * ca.pnd + j] = u64::from_le_bytes(
+                                                    value.try_into().context("Could not read be u64 array")?,
+                                                );
+                                            }
+                                        }
+                                    } else if n_bytes == 7 {
+                                        let mut buf = [0u8; std::mem::size_of::<u64>()];
+                                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                            for j in 0..ca.pnd {
+                                                buf[0..7].copy_from_slice(&record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes]);
+                                                data[(i + previous_index) * ca.pnd + j] = u64::from_le_bytes(buf);
+                                            }
+                                        }
+                                    } else if n_bytes == 6 {
+                                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                            for j in 0..ca.pnd {
+                                                value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
+                                                data[(i + previous_index) * ca.pnd + j] = value
+                                                    .read_u48::<BigEndian>()
+                                                    .context("Could not read be u48 array")?;
+                                            }
+                                        }
+                                    } else if n_bytes == 5 {
+                                        let mut buf = [0u8; 6];
+                                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                            for j in 0..ca.pnd {
+                                                buf[0..5]
+                                                    .copy_from_slice(&record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes]);
+                                                data[(i + previous_index) * ca.pnd + j] = Cursor::new(buf)
+                                                    .read_u48::<BigEndian>()
+                                                    .context("Could not read be u48 from 5 bytes in array")?;
+                                            }
+                                        }
+                                    }
+                                } else if n_bytes == 8 {
+                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                        for j in 0..ca.pnd {
+                                            value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
+                                            data[(i + previous_index) * ca.pnd + j] = u64::from_le_bytes(
+                                                value.try_into().context("Could not read le u64")?,
+                                            );
+                                        }
+                                    }
+                                } else if n_bytes == 7 {
+                                    let mut buf = [0u8; std::mem::size_of::<u64>()];
+                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                        for j in 0..ca.pnd {
+                                            buf[0..7].copy_from_slice(&record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes]);
+                                            data[(i + previous_index) * ca.pnd + j] = u64::from_le_bytes(buf);
+                                        }
+                                    }
+                                } else if n_bytes == 6 {
+                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                        for j in 0..ca.pnd {
+                                            value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
+                                            data[(i + previous_index) * ca.pnd + j] = value
+                                                .read_u48::<LittleEndian>()
+                                                .context("Could not read le u48 array")?;
+                                        }
+                                    }
+                                } else {
+                                    // n_bytes = 5
+                                    let mut buf = [0u8; 6];
+                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                        for j in 0..ca.pnd {
+                                            buf[0..5].copy_from_slice(&record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes]);
+                                            data[(i + previous_index) * ca.pnd + j] = Cursor::new(buf)
+                                                .read_u48::<LittleEndian>()
+                                                .context("Could not read le u48 from 5 bytes in array")?;
+                                        }
+                                    }
+                                }
+                            }
+                            Compo::CN(_) => {},
+                        }
+                    }
+                }
+                ChannelData::ArrayDFloat64(a) => {
+                    if let Some(compo) = &cn.composition {
+                        match &compo.block {
+                            Compo::CA(ca) => {
+                                let data = a
+                                .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor f64, channel {}", cn.unique_name))?;
+                                if cn.endian {
+                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                        for j in 0..ca.pnd {
+                                            value = &record[pos_byte_beg + j * std::mem::size_of::<u64>()..pos_byte_beg + (j + 1) * std::mem::size_of::<u64>()];
+                                            data[(i + previous_index) * ca.pnd + j] = f64::from_be_bytes(
+                                                value.try_into().context("Could not read be f64")?,
+                                            );
+                                        }
+                                    }
+                                } else {
+                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                        for j in 0..ca.pnd {
+                                            value = &record[pos_byte_beg + j * std::mem::size_of::<u64>()..pos_byte_beg + (j + 1) * std::mem::size_of::<u64>()];
+                                            data[(i + previous_index) * ca.pnd + j] = f64::from_le_bytes(
+                                                value.try_into().context("Could not read le f64")?,
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                            Compo::CN(_) => {},
+                        }
+                    }
+                }
             }
         } else if cn.block.cn_type == 1 {
             // SD Block attached as data block is sorted

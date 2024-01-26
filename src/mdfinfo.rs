@@ -1,6 +1,7 @@
 //! This module is reading the mdf file blocks (metadata)
 //! mdfinfo module
 
+use anyhow::Error;
 use anyhow::{bail, Context, Result};
 use arrow2::array::Array;
 use binrw::{binrw, BinReaderExt};
@@ -93,7 +94,7 @@ impl Default for IdBlock {
 #[allow(dead_code)]
 impl MdfInfo {
     /// creates new MdfInfo from file
-    pub fn new(file_name: &str) -> Result<MdfInfo> {
+    pub fn new(file_name: &str) -> Result<MdfInfo, Error> {
         let f: File = OpenOptions::new()
             .read(true)
             .write(false)
@@ -203,7 +204,9 @@ impl MdfInfo {
     pub fn get_channel_unit(&self, channel_name: &str) -> Result<Option<String>> {
         let unit: Option<String> = match self {
             MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_unit(channel_name),
-            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_unit(channel_name)?,
+            MdfInfo::V4(mdfinfo4) => mdfinfo4
+                .get_channel_unit(channel_name)
+                .context("failed getting channel unit")?,
         };
         Ok(unit)
     }
@@ -211,7 +214,9 @@ impl MdfInfo {
     pub fn get_channel_desc(&self, channel_name: &str) -> Result<Option<String>> {
         let desc: Option<String> = match self {
             MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_desc(channel_name),
-            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_desc(channel_name)?,
+            MdfInfo::V4(mdfinfo4) => mdfinfo4
+                .get_channel_desc(channel_name)
+                .context("failed getting channel description")?,
         };
         Ok(desc)
     }
@@ -299,7 +304,7 @@ impl MdfInfo {
         master: MasterSignature,
         unit: Option<String>,
         description: Option<String>,
-    ) -> Result<()> {
+    ) -> Result<(), Error> {
         match self {
             MdfInfo::V3(mdfinfo3) => {
                 let mut file_name = PathBuf::from(mdfinfo3.file_name.as_str());
@@ -330,27 +335,40 @@ impl MdfInfo {
     }
     /// Convert mdf verion 3.x to 4.2
     /// Require file name parameter but no file written
-    pub fn convert3to4(&mut self, file_name: &str) -> Result<MdfInfo> {
+    pub fn convert3to4(&mut self, file_name: &str) -> Result<MdfInfo, Error> {
         match self {
-            MdfInfo::V3(mdfinfo3) => Ok(MdfInfo::V4(Box::new(convert3to4(mdfinfo3, file_name)?))),
+            MdfInfo::V3(mdfinfo3) => Ok(MdfInfo::V4(Box::new(
+                convert3to4(mdfinfo3, file_name).context("failed converting mdf version 3 to 4")?,
+            ))),
             MdfInfo::V4(_) => bail!("file is already a mdf version 4.x"),
         }
     }
     /// defines channel's data in memory
-    pub fn set_channel_data(&mut self, channel_name: &str, data: Box<dyn Array>) -> Result<()> {
+    pub fn set_channel_data(
+        &mut self,
+        channel_name: &str,
+        data: Box<dyn Array>,
+    ) -> Result<(), Error> {
         match self {
             MdfInfo::V3(mdfinfo3) => {
                 let mut file_name = PathBuf::from(mdfinfo3.file_name.as_str());
                 file_name.set_extension("mf4");
                 let mut mdf4 = convert3to4(mdfinfo3, &file_name.to_string_lossy())?;
-                mdf4.set_channel_data(channel_name, data);
+                mdf4.set_channel_data(channel_name, data)
+                    .context("failed setting channel data")?;
             }
-            MdfInfo::V4(mdfinfo4) => mdfinfo4.set_channel_data(channel_name, data),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4
+                .set_channel_data(channel_name, data)
+                .context("failed setting channel data")?,
         }
         Ok(())
     }
     /// Sets the channel's related master channel type in memory
-    pub fn set_channel_master_type(&mut self, master_name: &str, master_type: u8) -> Result<()> {
+    pub fn set_channel_master_type(
+        &mut self,
+        master_name: &str,
+        master_type: u8,
+    ) -> Result<(), Error> {
         match self {
             MdfInfo::V3(mdfinfo3) => {
                 let mut file_name = PathBuf::from(mdfinfo3.file_name.as_str());

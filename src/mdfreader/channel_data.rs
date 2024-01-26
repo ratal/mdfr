@@ -5,9 +5,11 @@ use arrow2::array::{
     Array, FixedSizeListArray, MutableArray, MutableBinaryValuesArray, MutableFixedSizeBinaryArray,
     MutableUtf8ValuesArray, PrimitiveArray,
 };
+use arrow2::bitmap::MutableBitmap;
 use arrow2::buffer::Buffer;
-use arrow2::datatypes::{DataType, Field};
+use arrow2::datatypes::{DataType, Field, PhysicalType};
 use arrow2::offset::Offsets;
+use arrow2::types::PrimitiveType;
 use std::fmt;
 
 use crate::export::tensor::{Order, Tensor};
@@ -411,8 +413,16 @@ impl ChannelData {
             ChannelData::Int64(a) => a.values().iter().flat_map(|x| x.to_ne_bytes()).collect(),
             ChannelData::UInt64(a) => a.values().iter().flat_map(|x| x.to_ne_bytes()).collect(),
             ChannelData::Float64(a) => a.values().iter().flat_map(|x| x.to_ne_bytes()).collect(),
-            ChannelData::Complex32(a) => a.values().iter().flat_map(|x| x.to_ne_bytes()).collect(),
-            ChannelData::Complex64(a) => a.values().iter().flat_map(|x| x.to_ne_bytes()).collect(),
+            ChannelData::Complex32(a) => {
+                let mut af32 = a.values().as_any_mut().downcast_mut::<PrimitiveArray<f32>>()
+                .with_context(|| format!("Read channels from bytes function could not downcast to primitive array f32"))?;
+                af32.values().iter().flat_map(|x| x.to_ne_bytes()).collect()
+            }
+            ChannelData::Complex64(a) => {
+                let mut af64 = a.values().as_any_mut().downcast_mut::<PrimitiveArray<f64>>()
+                .with_context(|| format!("Read channels from bytes function could not downcast to primitive array f64"))?;
+                af64.values().iter().flat_map(|x| x.to_ne_bytes()).collect()
+            }
             ChannelData::Utf8(a) => {
                 let nbytes = self.byte_count() as usize;
                 a.iter()
@@ -657,6 +667,65 @@ impl ChannelData {
                 (min, max)
             }
             ChannelData::Utf8(_) => (None, None),
+        }
+    }
+    /// boxing channel arraow data
+    pub fn boxed(&self) -> Box<dyn Array> {
+        match &self {
+            ChannelData::Int8(a) => a.boxed(),
+            ChannelData::UInt8(a) => a.boxed(),
+            ChannelData::Int16(a) => a.boxed(),
+            ChannelData::UInt16(a) => a.boxed(),
+            ChannelData::Int32(a) => a.boxed(),
+            ChannelData::UInt32(a) => a.boxed(),
+            ChannelData::Float32(a) => a.boxed(),
+            ChannelData::Int64(a) => a.boxed(),
+            ChannelData::UInt64(a) => a.boxed(),
+            ChannelData::Float64(a) => a.boxed(),
+            ChannelData::Complex32(a) => a.boxed(),
+            ChannelData::Complex64(a) => a.boxed(),
+            ChannelData::Utf8(a) => a.as_box(),
+            ChannelData::VariableSizeByteArray(a) => a.as_box(),
+            ChannelData::FixedSizeByteArray(a) => a.as_box(),
+            ChannelData::ArrayDInt8(a) => a.boxed(),
+            ChannelData::ArrayDUInt8(a) => a.boxed(),
+            ChannelData::ArrayDInt16(a) => a.boxed(),
+            ChannelData::ArrayDUInt16(a) => a.boxed(),
+            ChannelData::ArrayDInt32(a) => a.boxed(),
+            ChannelData::ArrayDUInt32(a) => a.boxed(),
+            ChannelData::ArrayDFloat32(a) => a.boxed(),
+            ChannelData::ArrayDInt64(a) => a.boxed(),
+            ChannelData::ArrayDUInt64(a) => a.boxed(),
+            ChannelData::ArrayDFloat64(a) => a.boxed(),
+        }
+    }
+    pub fn set_validity(&mut self, mask: MutableBitmap) {
+        match self {
+            ChannelData::Int8(a) => a.set_validity(mask.into()),
+            ChannelData::UInt8(a) => a.set_validity(mask.into()),
+            ChannelData::Int16(a) => a.set_validity(mask.into()),
+            ChannelData::UInt16(a) => a.set_validity(mask.into()),
+            ChannelData::Int32(a) => a.set_validity(mask.into()),
+            ChannelData::UInt32(a) => a.set_validity(mask.into()),
+            ChannelData::Float32(a) => a.set_validity(mask.into()),
+            ChannelData::Int64(a) => a.set_validity(mask.into()),
+            ChannelData::UInt64(a) => a.set_validity(mask.into()),
+            ChannelData::Float64(a) => a.set_validity(mask.into()),
+            ChannelData::Complex32(a) => a.set_validity(mask.into()),
+            ChannelData::Complex64(a) => a.set_validity(mask.into()),
+            ChannelData::Utf8(a) => a.set_validity(mask.into()),
+            ChannelData::VariableSizeByteArray(a) => a.set_validity(mask.into()),
+            ChannelData::FixedSizeByteArray(a) => a.set_validity(mask.into()),
+            ChannelData::ArrayDInt8(_) => {}
+            ChannelData::ArrayDUInt8(_) => {}
+            ChannelData::ArrayDInt16(_) => {}
+            ChannelData::ArrayDUInt16(_) => {}
+            ChannelData::ArrayDInt32(_) => {}
+            ChannelData::ArrayDUInt32(_) => {}
+            ChannelData::ArrayDFloat32(_) => {}
+            ChannelData::ArrayDInt64(_) => {}
+            ChannelData::ArrayDUInt64(_) => {}
+            ChannelData::ArrayDFloat64(_) => {}
         }
     }
 }
@@ -1000,6 +1069,170 @@ pub fn data_type_init(
     } else {
         // virtual channels arrays not implemented, can it even exists ?
         bail!("Virtual channel arrays not implemented, should it even exist ?");
+    }
+}
+
+pub fn try_from(value: Box<dyn Array>) -> Result<ChannelData, Error> {
+    match value.data_type().to_physical_type() {
+        PhysicalType::Null => Ok(ChannelData::UInt8(
+            value
+                .as_any()
+                .downcast_ref::<PrimitiveArray<u8>>()
+                .context(
+                "Read channels from bytes function could not downcast Null type to primitive array u8",
+            )?.clone(),
+        )),
+        PhysicalType::Boolean => Ok(ChannelData::UInt8(
+            value
+                .as_any()
+                .downcast_ref::<PrimitiveArray<u8>>()
+                .context(
+                "Read channels from bytes function could not downcast Boolean type to primitive array u8",
+            )?.clone(),
+        )),
+        PhysicalType::Primitive(p) => {
+            match p {
+                PrimitiveType::Int8 => Ok(ChannelData::Int8(
+                    value
+                        .as_any()
+                        .downcast_ref::<PrimitiveArray<i8>>()
+                        .context(
+                        "Read channels from bytes function could not downcast to primitive array i8",
+                    )?.clone(),
+                )),
+                PrimitiveType::Int16 => Ok(ChannelData::Int16(
+                    value
+                        .as_any()
+                        .downcast_ref::<PrimitiveArray<i16>>()
+                        .context(
+                        "Read channels from bytes function could not downcast to primitive array i16",
+                    )?.clone(),
+                )),
+                PrimitiveType::Int32 => Ok(ChannelData::Int32(
+                    value
+                        .as_any()
+                        .downcast_ref::<PrimitiveArray<i32>>()
+                        .context(
+                        "Read channels from bytes function could not downcast to primitive array i32",
+                    )?.clone(),
+                )),
+                PrimitiveType::Int64 => Ok(ChannelData::Int64(
+                    value
+                        .as_any()
+                        .downcast_ref::<PrimitiveArray<i64>>()
+                        .context(
+                        "Read channels from bytes function could not downcast to primitive array i64",
+                    )?.clone(),
+                )),
+                PrimitiveType::UInt8 => Ok(ChannelData::UInt8(
+                    value
+                        .as_any()
+                        .downcast_ref::<PrimitiveArray<u8>>()
+                        .context(
+                        "Read channels from bytes function could not downcast to primitive array u8",
+                    )?.clone(),
+                )),
+                PrimitiveType::UInt16 => Ok(ChannelData::UInt16(
+                    value
+                        .as_any()
+                        .downcast_ref::<PrimitiveArray<u16>>()
+                        .context(
+                        "Read channels from bytes function could not downcast to primitive array u16",
+                    )?.clone(),
+                )),
+                PrimitiveType::UInt32 => Ok(ChannelData::UInt32(
+                    value
+                        .as_any()
+                        .downcast_ref::<PrimitiveArray<u32>>()
+                        .context(
+                        "Read channels from bytes function could not downcast to primitive array u32",
+                    )?.clone(),
+                )),
+                PrimitiveType::UInt64 => Ok(ChannelData::UInt32(
+                    value
+                        .as_any()
+                        .downcast_ref::<PrimitiveArray<u32>>()
+                        .context(
+                        "Read channels from bytes function could not downcast to primitive array u32",
+                    )?.clone(),
+                )),
+                PrimitiveType::Float16 => todo!(),
+                PrimitiveType::Float32 => Ok(ChannelData::Float32(
+                    value
+                        .as_any()
+                        .downcast_ref::<PrimitiveArray<f32>>()
+                        .context(
+                        "Read channels from bytes function could not downcast to primitive array f32",
+                    )?.clone(),
+                )),
+                PrimitiveType::Float64 => Ok(ChannelData::Float64(
+                    value
+                        .as_any()
+                        .downcast_ref::<PrimitiveArray<f64>>()
+                        .context(
+                        "Read channels from bytes function could not downcast to primitive array f64",
+                    )?.clone(),
+                )),
+                PrimitiveType::Int128 => todo!(),
+                PrimitiveType::Int256 => todo!(),
+                PrimitiveType::DaysMs => todo!(),
+                PrimitiveType::MonthDayNano => todo!(),
+            }
+        }
+        PhysicalType::Binary => Ok(ChannelData::VariableSizeByteArray(
+            value
+                .as_any()
+                .downcast_ref::<MutableBinaryValuesArray<i32>>()
+                .context(
+                "Read channels from bytes function could not downcast to Binary array",
+            )?.clone(),
+        )),
+        PhysicalType::FixedSizeBinary => Ok(ChannelData::FixedSizeByteArray(
+            value
+                .as_any()
+                .downcast_ref::<MutableFixedSizeBinaryArray>()
+                .context(
+                "Read channels from bytes function could not downcast to fixed size Binary array",
+            )?.clone(),
+        )),
+        PhysicalType::LargeBinary => Ok(ChannelData::VariableSizeByteArray(
+            value
+                .as_any()
+                .downcast_ref::<MutableBinaryValuesArray<i64>>()
+                .context(
+                "Read channels from bytes function could not downcast to Large Binary array",
+            )?.clone(),
+        )),
+        PhysicalType::Utf8 => Ok(ChannelData::Utf8(
+            value
+                .as_any()
+                .downcast_ref::<MutableUtf8ValuesArray<i32>>()
+                .context(
+                "Read channels from bytes function could not downcast to Utf8 array",
+            )?.clone(),
+        )),
+        PhysicalType::LargeUtf8 => Ok(ChannelData::Utf8(
+            value
+                .as_any()
+                .downcast_ref::<MutableUtf8ValuesArray<i64>>()
+                .context(
+                "Read channels from bytes function could not downcast to large Utf8 array",
+            )?.clone(),
+        )),
+        PhysicalType::List => todo!(),
+        PhysicalType::FixedSizeList => Ok(ChannelData::FixedSizeByteArray(
+            value
+                .as_any()
+                .downcast_ref::<FixedSizeListArray>()
+                .context(
+                "Read channels from bytes function could not downcast to fixed size list array, used for complex",
+            )?.clone(),
+        )),
+        PhysicalType::LargeList => todo!(),
+        PhysicalType::Struct => todo!(),
+        PhysicalType::Union => todo!(),
+        PhysicalType::Map => todo!(),
+        PhysicalType::Dictionary(_) => todo!(),
     }
 }
 
