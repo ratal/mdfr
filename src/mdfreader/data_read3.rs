@@ -30,22 +30,22 @@ pub fn read_channels_from_bytes(
             let mut value: &[u8]; // value of channel at record
             let pos_byte_beg = cn.pos_byte_beg as usize;
             let n_bytes = cn.n_bytes as usize;
-            match cn.data {
-                ChannelData::Int8(mut a)  => {
+            match &mut cn.data {
+                ChannelData::Int8(a)  => {
                     let data = a.get_mut_values().context("Read channels from bytes function could not get mutable values from primitive array i8")?;
                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
                         value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i8>()];
                         data[i + previous_index] = i8::from_le_bytes(value.try_into().context("Could not read i8")?);
                     }
                 }
-                ChannelData::UInt8(mut a)  => {
+                ChannelData::UInt8(a)  => {
                     let data = a.get_mut_values().context("Read channels from bytes function could not get mutable values from primitive array u8")?;
                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
                         value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u8>()];
                         data[i + previous_index] = u8::from_le_bytes(value.try_into().context("Could not read u8")?);
                     }
                 }
-                ChannelData::Int16(mut a)  => {
+                ChannelData::Int16(a)  => {
                     let data = a.get_mut_values().context("Read channels from bytes function could not get mutable values from primitive array i16")?;
                     if cn.endian {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -65,7 +65,7 @@ pub fn read_channels_from_bytes(
                         }
                     }
                 }
-                ChannelData::UInt16(mut a)  => {
+                ChannelData::UInt16(a)  => {
                     let data = a.get_mut_values().context("Read channels from bytes function could not get mutable values from primitive array u16")?;
                     if cn.endian {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -85,7 +85,7 @@ pub fn read_channels_from_bytes(
                         }
                     }
                 }
-                ChannelData::Int32(mut a)  => {
+                ChannelData::Int32(a)  => {
                     let data = a.get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array i32, channel {}", cn.unique_name))?;
                     if  n_bytes == 3 {
                         if cn.endian {
@@ -121,7 +121,7 @@ pub fn read_channels_from_bytes(
                         }
                     }
                 }
-                ChannelData::UInt32(mut a)  => {
+                ChannelData::UInt32(a)  => {
                     let data = a.get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array u32, channel {}", cn.unique_name))?;
                     if n_bytes == 3 {
                         if cn.endian {
@@ -157,7 +157,7 @@ pub fn read_channels_from_bytes(
                         }
                     }
                 }
-                ChannelData::Float32(mut a)  => {
+                ChannelData::Float32(a)  => {
                     let data = a.get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array f32, channel {}", cn.unique_name))?;
                     if cn.endian {
                         if n_bytes == 2 {
@@ -197,7 +197,7 @@ pub fn read_channels_from_bytes(
                         }
                     }
                 }
-                ChannelData::Int64(mut a)  => {
+                ChannelData::Int64(a)  => {
                     let data = a.get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array i64, channel {}", cn.unique_name))?;
                     if cn.endian {
                         if n_bytes == 8 {
@@ -231,7 +231,7 @@ pub fn read_channels_from_bytes(
                         }
                     }
                 }
-                ChannelData::UInt64(mut a)  => {
+                ChannelData::UInt64(a)  => {
                     let data = a.get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array u64, channel {}", cn.unique_name))?;
                     if cn.endian {
                         if n_bytes == 8 {
@@ -294,7 +294,7 @@ pub fn read_channels_from_bytes(
                         }
                     }
                 }
-                ChannelData::Float64(mut a)  => {
+                ChannelData::Float64(a)  => {
                     let data = a.get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array f64, channel {}", cn.unique_name))?;
                     if cn.endian {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -324,18 +324,18 @@ pub fn read_channels_from_bytes(
                         let (_result, _size, _replacement) =
                             decoder.decode_to_string(value, &mut dst, false);
                         dst = dst.trim_end_matches('\0').to_owned();
-                        array.push(dst);
+                        array.push(Some(dst));
                     }
                 }
                 ChannelData::VariableSizeByteArray(mut array)  => {
                     let n_bytes = cn.n_bytes as usize;
                     for record in data_chunk.chunks(record_length) {
-                        array.push(&record[pos_byte_beg..pos_byte_beg + n_bytes]);
+                        array.push(Some(&record[pos_byte_beg..pos_byte_beg + n_bytes]));
                     }
                 }
-                ChannelData::FixedSizeByteArray(mut a)  => {
+                ChannelData::FixedSizeByteArray(a)  => {
                     let n_bytes = cn.n_bytes as usize;
-                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                    for record in data_chunk.chunks(record_length) {
                         a.push(Some(&record[pos_byte_beg..pos_byte_beg + n_bytes]));
                     }
                 }

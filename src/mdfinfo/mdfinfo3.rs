@@ -225,9 +225,7 @@ impl MdfInfo3 {
         state
     }
     /// returns channel's data ndarray.
-    pub fn get_channel_data<'a>(&'a mut self, channel_name: &'a str) -> Option<&'a ChannelData> {
-        let mut channel_names: HashSet<String> = HashSet::new();
-        channel_names.insert(channel_name.to_string());
+    pub fn get_channel_data(&self, channel_name: &str) -> Option<&ChannelData> {
         self.get_channel_data_from_memory(channel_name)
     }
     /// Renames a channel's name in memory

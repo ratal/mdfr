@@ -63,7 +63,7 @@ pub struct MasterSignature {
 impl Mdf {
     /// returns Mdf with metadata but no data
     pub fn new(file_name: &str) -> Result<Mdf> {
-        let mut mdf = Mdf {
+        let mdf = Mdf {
             mdf_info: MdfInfo::new(file_name)?,
         };
         Ok(mdf)

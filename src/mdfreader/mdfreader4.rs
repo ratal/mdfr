@@ -429,7 +429,7 @@ fn read_vlsd_from_bytes(
                         let (_result, _size, _replacement) = decoder
                             .windows_1252
                             .decode_to_string(record, &mut dst, false);
-                        array.push(dst);
+                        array.push(Some(dst));
                         position += length;
                         remaining = data_length - position;
                         nrecord += 1;
@@ -452,7 +452,7 @@ fn read_vlsd_from_bytes(
                         position += std::mem::size_of::<u32>();
                         let record = &data[position..position + length - 1]; // do not take null terminated character
                         let dst = str::from_utf8(record).context("Found invalid UTF-8")?;
-                        array.push(dst);
+                        array.push(Some(dst));
                         position += length;
                         remaining = data_length - position;
                         nrecord += 1;
@@ -478,7 +478,7 @@ fn read_vlsd_from_bytes(
                         let (_result, _size, _replacement) =
                             decoder.utf_16_le.decode_to_string(record, &mut dst, false);
                         dst = dst.trim_end_matches('\0').to_owned();
-                        array.push(dst);
+                        array.push(Some(dst));
                         position += length;
                         remaining = data_length - position;
                         nrecord += 1;
@@ -504,7 +504,7 @@ fn read_vlsd_from_bytes(
                         let (_result, _size, _replacement) =
                             decoder.utf_16_be.decode_to_string(record, &mut dst, false);
                         dst = dst.trim_end_matches('\0').to_owned();
-                        array.push(dst);
+                        array.push(Some(dst));
                         position += length;
                         remaining = data_length - position;
                         nrecord += 1;
@@ -530,7 +530,7 @@ fn read_vlsd_from_bytes(
                 if (position + length + 4) <= data_length {
                     position += std::mem::size_of::<u32>();
                     let record = &data[position..position + length];
-                    array.push(record);
+                    array.push(Some(record));
                     position += length;
                     remaining = data_length - position;
                     nrecord += 1;
@@ -1148,8 +1148,8 @@ fn read_all_channels_unsorted_from_bytes(
                             if let Some(target_cg) = dg.cg.get_mut(&target_rec_id) {
                                 if let Some(target_cn) = target_cg.cn.get_mut(&target_rec_pos) {
                                     if let Some((nrecord, _)) = record_counter.get_mut(&rec_id) {
-                                        match target_cn.data {
-                                            ChannelData::Utf8(mut array) => {
+                                        match &mut target_cn.data {
+                                            ChannelData::Utf8(array) => {
                                                 let mut dst = String::with_capacity(record.len());
                                                 if target_cn.block.cn_data_type == 6 {
                                                     let (_result, _size, _replacement) = decoder
@@ -1173,10 +1173,10 @@ fn read_all_channels_unsorted_from_bytes(
                                                     bail!("channel data type is not correct for a text")
                                                 };
                                                 dst = dst.trim_end_matches('\0').to_owned();
-                                                array.push(dst);
+                                                array.push(Some(dst));
                                             }
-                                            ChannelData::VariableSizeByteArray(mut array) => {
-                                                array.push(record);
+                                            ChannelData::VariableSizeByteArray(array) => {
+                                                array.push(Some(record));
                                             }
                                             _ => {
                                                 bail!("data type of VLSD is not possible");

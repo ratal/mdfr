@@ -1,6 +1,6 @@
 //! this modules implements functions to convert arrays into physical arrays using CCBlock
 use anyhow::{Context, Error, Result};
-use arrow2::array::{MutableUtf8ValuesArray, PrimitiveArray};
+use arrow2::array::{MutableUtf8Array, PrimitiveArray};
 use arrow2::compute::arity_assign;
 use arrow2::compute::cast::primitive_as_primitive;
 use arrow2::datatypes::DataType;
@@ -954,13 +954,13 @@ fn value_to_text_calculation<T: NativeType + AsPrimitive<f64> + Display>(
     array: &PrimitiveArray<T>,
     cc_val_ref: &[(f64, String)],
     cycle_count: usize,
-) -> Result<MutableUtf8ValuesArray<i64>, Error> {
-    let mut new_array = MutableUtf8ValuesArray::<i64>::with_capacities(cycle_count, 32);
+) -> Result<MutableUtf8Array<i64>, Error> {
+    let mut new_array = MutableUtf8Array::<i64>::with_capacities(cycle_count, 32);
     let array_f64 = primitive_as_primitive::<T, f64>(array, &DataType::Float64);
     array_f64.values_iter().for_each(|val| {
         let matched_key = cc_val_ref.iter().find(|&x| x.0 == *val);
         if let Some(key) = matched_key {
-            new_array.push(key.1.clone());
+            new_array.push(Some(key.1.clone()));
         }
     });
     Ok(new_array)
@@ -1048,8 +1048,8 @@ fn value_range_to_text_calculation<T: NativeType + AsPrimitive<f64> + Display>(
     array: &PrimitiveArray<T>,
     cc_val_ref: &(Vec<(f64, f64, String)>, String),
     cycle_count: usize,
-) -> Result<MutableUtf8ValuesArray<i64>, Error> {
-    let mut new_array = MutableUtf8ValuesArray::<i64>::with_capacity(cycle_count);
+) -> Result<MutableUtf8Array<i64>, Error> {
+    let mut new_array = MutableUtf8Array::<i64>::with_capacity(cycle_count);
     let array_f64 = primitive_as_primitive::<T, f64>(array, &DataType::Float64);
     array_f64.values_iter().for_each(|a| {
         let matched_key = cc_val_ref
@@ -1058,9 +1058,9 @@ fn value_range_to_text_calculation<T: NativeType + AsPrimitive<f64> + Display>(
             .enumerate()
             .find(|&x| (x.1 .0 <= *a) && (*a < x.1 .1));
         if let Some(key) = matched_key {
-            new_array.push(key.1 .2.clone());
+            new_array.push(Some(key.1 .2.clone()));
         } else {
-            new_array.push(cc_val_ref.1.clone());
+            new_array.push(Some(cc_val_ref.1.clone()));
         }
     });
     Ok(new_array)

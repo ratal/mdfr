@@ -1919,7 +1919,7 @@ impl Cg4 {
                                 );
                             },
                         );
-                        cn.data.set_validity(*mask);
+                        cn.data.set_validity(mask.clone());
                     }
                 });
             self.invalid_bytes = None; // Clears out invalid bytes channel

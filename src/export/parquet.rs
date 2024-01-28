@@ -202,10 +202,10 @@ fn mdf_data_to_arrow(mdf: &Mdf) -> (Vec<Vec<Box<dyn Array>>>, Schema) {
                                 arrow_schema.fields.push(cn4_field(
                                     mdfinfo4,
                                     cn,
-                                    cn.data.data_type().clone(),
+                                    cn.data.arrow_data_type().clone(),
                                     is_nullable,
                                 ));
-                                columns.push(cn.data.clone());
+                                columns.push(cn.data.boxed());
                                 array_index += 1;
                                 field_index += 1;
                             }
@@ -228,10 +228,10 @@ fn mdf_data_to_arrow(mdf: &Mdf) -> (Vec<Vec<Box<dyn Array>>>, Schema) {
                         if !cn.data.is_empty() {
                             let field = Field::new(
                                 cn.unique_name.clone(),
-                                cn.data.data_type().clone(),
+                                cn.data.arrow_data_type().clone(),
                                 false,
                             );
-                            columns.push(cn.data.clone());
+                            columns.push(cn.data.boxed());
                             let mut metadata = Metadata::new();
                             if let Some(array) =
                                 mdfinfo3.sharable.cc.get(&cn.block1.cn_cc_conversion)

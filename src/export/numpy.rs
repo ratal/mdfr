@@ -1,8 +1,8 @@
 //! this module provides methods to get directly channelData into python
 
-use arrow2::array::{Array, BinaryArray, PrimitiveArray, Utf8Array};
+use arrow2::array::{Array, BinaryArray, FixedSizeListArray, PrimitiveArray, Utf8Array};
 use arrow2::bitmap::Bitmap;
-use arrow2::datatypes::{DataType, PhysicalType, PrimitiveType};
+use arrow2::datatypes::{DataType, Field, PhysicalType, PrimitiveType};
 
 use numpy::npyffi::types::NPY_ORDER;
 use numpy::{IntoPyArray, PyArray1, PyArrayDyn, ToPyArray};
@@ -371,11 +371,21 @@ impl IntoPy<PyObject> for ChannelData {
             ChannelData::Int64(array) => array.values().to_pyarray(py).into_py(py),
             ChannelData::UInt64(array) => array.values().to_pyarray(py).into_py(py),
             ChannelData::Float64(array) => array.values().to_pyarray(py).into_py(py),
-            ChannelData::Complex32(array) => {
-                array.values().to_ndarray().into_pyarray(py).into_py(py)
+            ChannelData::Complex32(a) => {
+                let array = a
+                    .values()
+                    .as_any_mut()
+                    .downcast_mut::<PrimitiveArray<f32>>()
+                    .expect("failed to convert complex f32 into primitive, channel");
+                array.values().to_pyarray(py).into_py(py)
             }
-            ChannelData::Complex64(array) => {
-                array.values().to_ndarray().into_pyarray(py).into_py(py)
+            ChannelData::Complex64(a) => {
+                let array = a
+                    .values()
+                    .as_any_mut()
+                    .downcast_mut::<PrimitiveArray<f64>>()
+                    .expect("failed to convert complex f64 into primitive, channel");
+                array.values().to_pyarray(py).into_py(py)
             }
             ChannelData::VariableSizeByteArray(array) => array.values().into_py(py),
             ChannelData::FixedSizeByteArray(array) => {
@@ -446,7 +456,7 @@ impl IntoPy<PyObject> for ChannelData {
                 .reshape_with_order(array.shape().clone(), array.order().clone().into())
                 .expect("could not reshape f64")
                 .into_py(py),
-            ChannelData::Utf8(array) => array.iter().collect().into_py(py),
+            ChannelData::Utf8(array) => array.iter().collect::<Option<String>>().into_py(py),
         }
     }
 }
@@ -465,12 +475,28 @@ impl ToPyObject for ChannelData {
             ChannelData::Int64(array) => array.values().to_pyarray(py).into_py(py),
             ChannelData::UInt64(array) => array.values().to_pyarray(py).into_py(py),
             ChannelData::Float64(array) => array.values().to_pyarray(py).into_py(py),
-            ChannelData::Complex32(array) => array.values().to_ndarray().to_pyarray(py).into_py(py),
-            ChannelData::Complex64(array) => {
-                array.values().to_ndarray().into_pyarray(py).into_py(py)
+            ChannelData::Complex32(a) => {
+                let array = a
+                    .values()
+                    .as_any_mut()
+                    .downcast_mut::<PrimitiveArray<f32>>()
+                    .expect("failed to convert complex f32 into primitive, channel");
+                array.values().to_pyarray(py).into_py(py)
             }
-            ChannelData::Utf8(array) => array.iter().collect().to_object(py),
-            ChannelData::VariableSizeByteArray(array) => array.iter().collect().to_object(py),
+            ChannelData::Complex64(a) => {
+                let array = a
+                    .values()
+                    .as_any_mut()
+                    .downcast_mut::<PrimitiveArray<f64>>()
+                    .expect("failed to convert complex f64 into primitive, channel");
+                array.values().to_pyarray(py).into_py(py)
+            }
+            ChannelData::Utf8(array) => array.iter().collect::<Option<String>>().to_object(py),
+            ChannelData::VariableSizeByteArray(array) => array
+                .values_iter()
+                .map(|x| x.to_vec())
+                .collect::<Vec<Vec<u8>>>()
+                .to_object(py),
             ChannelData::FixedSizeByteArray(array) => {
                 let out: Vec<Vec<u8>> = array
                     .values()
@@ -532,13 +558,21 @@ impl FromPyObject<'_> for ChannelData {
                 PrimitiveArray::<f64>::from_vec(array.readonly().as_array().to_owned().to_vec()),
             )),
             NumpyArray::Complex32(array) => {
-                Ok(ChannelData::Complex32(ArrowComplex::<f32>::from_array(
-                    array.readonly().as_array().to_owned().into_raw_vec(),
+                let field = Field::new("complex32", DataType::Float32, false);
+                Ok(ChannelData::Complex32(FixedSizeListArray::new(
+                    DataType::FixedSizeList(Box::new(field), 2),
+                    PrimitiveArray::from_vec(array.readonly().as_array().to_owned().into_raw_vec())
+                        .boxed(),
+                    None,
                 )))
             }
             NumpyArray::Complex64(array) => {
-                Ok(ChannelData::Complex64(ArrowComplex::<f64>::from_array(
-                    array.readonly().as_array().to_owned().into_raw_vec(),
+                let field = Field::new("complex64", DataType::Float64, false);
+                Ok(ChannelData::Complex64(FixedSizeListArray::new(
+                    DataType::FixedSizeList(Box::new(field), 2),
+                    PrimitiveArray::from_vec(array.readonly().as_array().to_owned().into_raw_vec())
+                        .boxed(),
+                    None,
                 )))
             }
             NumpyArray::ArrayDInt8(array) => {
@@ -699,8 +733,8 @@ enum NumpyArray<'a> {
     Int64(&'a PyArray1<i64>),
     UInt64(&'a PyArray1<u64>),
     Float64(&'a PyArray1<f64>),
-    Complex32(&'a PyArray1<Complex<f32>>),
-    Complex64(&'a PyArray1<Complex<f64>>),
+    Complex32(&'a PyArray1<f32>),
+    Complex64(&'a PyArray1<f64>),
     ArrayDInt8(&'a PyArrayDyn<i8>),
     ArrayDUInt8(&'a PyArrayDyn<u8>),
     ArrayDInt16(&'a PyArrayDyn<i16>),

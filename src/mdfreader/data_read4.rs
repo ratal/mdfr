@@ -46,7 +46,7 @@ pub fn read_one_channel_array(
                 Cursor::new(data_bytes)
                     .read_i8_into(&mut buf)
                     .context("Could not read i8 array")?;
-                cn.data = ChannelData::Int8(PrimitiveArray::from_vec(buf));
+                a = &mut PrimitiveArray::from_vec(buf);
             }
             ChannelData::UInt8(a) => {
                 cn.data = ChannelData::UInt8(PrimitiveArray::from_vec(data_bytes.clone()));
@@ -353,15 +353,15 @@ pub fn read_one_channel_array(
                         let mut dst = String::new();
                         let (_result, _size, _replacement) =
                             decoder.decode_to_string(value, &mut dst, false);
-                        data.push(dst.trim_end_matches('\0'));
+                        data.push(Some(dst.trim_end_matches('\0')));
                     }
                 } else if cn.block.cn_data_type == 7 {
                     // 7: String UTF8
                     for value in data_bytes.chunks(n_bytes) {
                         data.push(
-                            str::from_utf8(value)
+                            Some(str::from_utf8(value)
                                 .context("Found invalid UTF-8")?
-                                .trim_end_matches('\0'),
+                                .trim_end_matches('\0')),
                         );
                     }
                 } else if cn.block.cn_data_type == 8 || cn.block.cn_data_type == 9 {
@@ -372,7 +372,7 @@ pub fn read_one_channel_array(
                             let mut dst = String::new();
                             let (_result, _size, _replacement) =
                                 decoder.decode_to_string(record, &mut dst, false);
-                            data.push(dst.trim_end_matches('\0'));
+                            data.push(Some(dst.trim_end_matches('\0')));
                         }
                     } else {
                         let mut decoder = UTF_16LE.new_decoder();
@@ -380,7 +380,7 @@ pub fn read_one_channel_array(
                             let mut dst = String::new();
                             let (_result, _size, _replacement) =
                                 decoder.decode_to_string(record, &mut dst, false);
-                            data.push(dst.trim_end_matches('\0'));
+                            data.push(Some(dst.trim_end_matches('\0')));
                         }
                     }
                 }
@@ -1282,7 +1282,7 @@ pub fn read_channels_from_bytes(
                             let (_result, _size, _replacement) =
                                 decoder.decode_to_string(value, &mut dst, false);
                             dst = dst.trim_end_matches('\0').to_owned();
-                            array.push(dst);
+                            array.push(Some(dst));
                         }
                     } else if cn.block.cn_data_type == 7 {
                         // 7: String UTF8
@@ -1290,7 +1290,7 @@ pub fn read_channels_from_bytes(
                             value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
                             let dst = str::from_utf8(value)
                                 .context("Found invalid UTF-8")?.trim_end_matches('\0');
-                            array.push(dst);
+                            array.push(Some(dst));
                         }
                     } else if cn.block.cn_data_type == 8 || cn.block.cn_data_type == 9 {
                         // 8 | 9 :String UTF16 to be converted into UTF8
@@ -1305,7 +1305,7 @@ pub fn read_channels_from_bytes(
                                     false,
                                 );
                                 dst = dst.trim_end_matches('\0').to_owned();
-                                array.push(dst);
+                                array.push(Some(dst));
                             }
                         } else {
                             let mut decoder = UTF_16LE.new_decoder();
@@ -1318,7 +1318,7 @@ pub fn read_channels_from_bytes(
                                     false,
                                 );
                                 dst = dst.trim_end_matches('\0').to_owned();
-                                array.push(dst);
+                                array.push(Some(dst));
                             }
                         }
                     }
@@ -1326,12 +1326,12 @@ pub fn read_channels_from_bytes(
                 ChannelData::VariableSizeByteArray(array)  => {
                     let n_bytes = cn.n_bytes as usize;
                     for record in data_chunk.chunks(record_length) {
-                        array.push(&record[pos_byte_beg..pos_byte_beg + n_bytes]);
+                        array.push(Some(&record[pos_byte_beg..pos_byte_beg + n_bytes]));
                     }
                 }
                 ChannelData::FixedSizeByteArray(a)  => {
                     let n_bytes = cn.n_bytes as usize;
-                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                    for  record in data_chunk.chunks(record_length) {
                         a.push(Some(&record[pos_byte_beg..pos_byte_beg + n_bytes]));
                     }
                 }
