@@ -200,9 +200,13 @@ df=polars.DataFrame(series)
         Ok(())
     }
     /// clear channels from memory
-    pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) {
+    pub fn clear_channel_data_from_memory(
+        &mut self,
+        channel_names: HashSet<String>,
+    ) -> PyResult<()> {
         let Mdfr(mdf) = self;
-        mdf.clear_channel_data_from_memory(channel_names);
+        mdf.clear_channel_data_from_memory(channel_names)?;
+        Ok(())
     }
     /// load all channels in memory
     pub fn load_all_channels_data_in_memory(&mut self) -> PyResult<()> {
@@ -224,9 +228,9 @@ df=polars.DataFrame(series)
         master: MasterSignature,
         unit: Option<String>,
         description: Option<String>,
-    ) {
+    ) -> PyResult<()> {
         let Mdfr(mdf) = self;
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::with_gil(|py| -> Result<(), PyErr> {
             let array = array_to_rust(data.as_ref(py))
                 .expect("data modification failed, could not extract numpy array");
             mdf.add_channel(
@@ -237,22 +241,26 @@ df=polars.DataFrame(series)
                 master.master_flag,
                 unit,
                 description,
-            );
-        })
+            )?;
+            Ok(())
+        })?;
+        Ok(())
     }
     /// defines channel's data in memory
-    pub fn set_channel_data(&mut self, channel_name: &str, data: Py<PyAny>) {
+    pub fn set_channel_data(&mut self, channel_name: &str, data: Py<PyAny>) -> PyResult<()> {
         let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|py| {
             let array = array_to_rust(data.as_ref(py))
                 .expect("data modification failed, could not extract numpy array");
-            mdf.set_channel_data(channel_name, array);
+            mdf.set_channel_data(channel_name, array)?;
+            Ok(())
         })
     }
     /// Sets the channel's related master channel type in memory
-    pub fn set_channel_master_type(&mut self, master_name: &str, master_type: u8) {
+    pub fn set_channel_master_type(&mut self, master_name: &str, master_type: u8) -> PyResult<()> {
         let Mdfr(mdf) = self;
-        mdf.set_channel_master_type(master_name, master_type);
+        mdf.set_channel_master_type(master_name, master_type)?;
+        Ok(())
     }
     /// Removes a channel in memory (no file modification)
     pub fn remove_channel(&mut self, channel_name: &str) {

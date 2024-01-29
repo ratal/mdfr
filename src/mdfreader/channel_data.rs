@@ -7,7 +7,7 @@ use arrow2::array::{
 };
 use arrow2::bitmap::MutableBitmap;
 use arrow2::buffer::Buffer;
-use arrow2::datatypes::{DataType, Field, PhysicalType};
+use arrow2::datatypes::{DataType, PhysicalType};
 use arrow2::offset::Offsets;
 use arrow2::types::PrimitiveType;
 use std::fmt;
@@ -30,8 +30,8 @@ pub enum ChannelData {
     Int64(PrimitiveArray<i64>),
     UInt64(PrimitiveArray<u64>),
     Float64(PrimitiveArray<f64>),
-    Complex32(FixedSizeListArray),
-    Complex64(FixedSizeListArray),
+    Complex32(PrimitiveArray<f32>),
+    Complex64(PrimitiveArray<f64>),
     Utf8(MutableUtf8Array<i64>),
     VariableSizeByteArray(MutableBinaryArray<i64>),
     FixedSizeByteArray(MutableFixedSizeBinaryArray),
@@ -96,20 +96,18 @@ impl ChannelData {
                     vec![0f64; cycle_count as usize],
                 ))),
                 ChannelData::Complex32(_) => {
-                    let field = Field::new("complex32", DataType::Float32, false);
-                    Ok(ChannelData::Complex32(FixedSizeListArray::new(
-                        DataType::FixedSizeList(Box::new(field), 2),
-                        PrimitiveArray::from_vec(vec![0f32; 2 * cycle_count as usize]).boxed(),
-                        None,
-                    )))
+                    Ok(ChannelData::Float32(PrimitiveArray::from_vec(vec![
+                        0f32;
+                        cycle_count as usize
+                            * 2
+                    ])))
                 }
                 ChannelData::Complex64(_) => {
-                    let field = Field::new("complex64", DataType::Float32, false);
-                    Ok(ChannelData::Complex64(FixedSizeListArray::new(
-                        DataType::FixedSizeList(Box::new(field), 2),
-                        PrimitiveArray::from_vec(vec![0f64; 2 * cycle_count as usize]).boxed(),
-                        None,
-                    )))
+                    Ok(ChannelData::Float64(PrimitiveArray::from_vec(vec![
+                        0f64;
+                        cycle_count as usize
+                            * 2
+                    ])))
                 }
                 ChannelData::Utf8(_) => {
                     Ok(ChannelData::Utf8(MutableUtf8Array::<i64>::with_capacities(
@@ -483,20 +481,10 @@ impl ChannelData {
                 Ok(a.values().iter().flat_map(|x| x.to_ne_bytes()).collect())
             }
             ChannelData::Complex32(a) => {
-                let af32 = a
-                    .values()
-                    .as_any_mut()
-                    .downcast_mut::<PrimitiveArray<f32>>()
-                    .with_context(|| format!("could not downcast to primitive array f32"))?;
-                Ok(af32.values().iter().flat_map(|x| x.to_ne_bytes()).collect())
+                Ok(a.values().iter().flat_map(|x| x.to_ne_bytes()).collect())
             }
             ChannelData::Complex64(a) => {
-                let mut af64 = a
-                    .values()
-                    .as_any_mut()
-                    .downcast_mut::<PrimitiveArray<f64>>()
-                    .with_context(|| format!("could not downcast to primitive array f64"))?;
-                Ok(af64.values().iter().flat_map(|x| x.to_ne_bytes()).collect())
+                Ok(a.values().iter().flat_map(|x| x.to_ne_bytes()).collect())
             }
             ChannelData::Utf8(a) => {
                 let nbytes = self.byte_count() as usize;
@@ -779,7 +767,7 @@ impl ChannelData {
         }
     }
     pub fn set_validity(&mut self, mask: MutableBitmap) -> Result<(), Error> {
-        match &mut self {
+        match self {
             ChannelData::Int8(a) => a.set_validity(mask.into()),
             ChannelData::UInt8(a) => a.set_validity(mask.into()),
             ChannelData::Int16(a) => a.set_validity(mask.into()),
@@ -795,7 +783,7 @@ impl ChannelData {
             ChannelData::Utf8(a) => a.set_validity(mask.into()),
             ChannelData::VariableSizeByteArray(a) => a.set_validity(mask.into()),
             ChannelData::FixedSizeByteArray(a) => {
-                a = &mut MutableFixedSizeBinaryArray::try_new(
+                *a = MutableFixedSizeBinaryArray::try_new(
                     a.data_type().clone(),
                     a.values().to_vec(),
                     Some(mask),
@@ -915,19 +903,15 @@ pub fn data_type_init(
                 15 | 16 => {
                     // complex
                     if n_bytes <= 4 {
-                        let field = Field::new("complex32", DataType::Float32, false);
-                        Ok(ChannelData::Complex32(FixedSizeListArray::new(
-                            DataType::FixedSizeList(Box::new(field), 2),
-                            PrimitiveArray::new(DataType::Float32, Buffer::<f32>::new(), None)
-                                .boxed(),
+                        Ok(ChannelData::Float32(PrimitiveArray::new(
+                            DataType::Float32,
+                            Buffer::<f32>::new(),
                             None,
                         )))
                     } else {
-                        let field = Field::new("complex64", DataType::Float64, false);
-                        Ok(ChannelData::Complex64(FixedSizeListArray::new(
-                            DataType::FixedSizeList(Box::new(field), 2),
-                            PrimitiveArray::new(DataType::Float64, Buffer::<f64>::new(), None)
-                                .boxed(),
+                        Ok(ChannelData::Float64(PrimitiveArray::new(
+                            DataType::Float64,
+                            Buffer::<f64>::new(),
                             None,
                         )))
                     }
@@ -1335,8 +1319,20 @@ pub fn try_from(value: Box<dyn Array>) -> Result<ChannelData, Error> {
                 .clone();
             if array.size() == 2 {
                 match array.values().data_type() {
-                    DataType::Float32 => Ok(ChannelData::Complex32(array)),
-                    DataType::Float64 => Ok(ChannelData::Complex32(array)),
+                    DataType::Float32 => Ok(ChannelData::Complex32(
+                        array
+                            .as_any()
+                            .downcast_ref::<PrimitiveArray<f32>>()
+                            .context("could not downcast to primitive array f32")?
+                            .clone(),
+                    )),
+                    DataType::Float64 => Ok(ChannelData::Complex64(
+                        array
+                            .as_any()
+                            .downcast_ref::<PrimitiveArray<f64>>()
+                            .context("could not downcast to primitive array f64")?
+                            .clone(),
+                    )),
                     _ => bail!("FixedSizeList shall be either f23 or f64 to be used for complex"),
                 }
             } else {

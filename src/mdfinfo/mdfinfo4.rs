@@ -1898,14 +1898,14 @@ impl Cg4 {
     }
     /// Computes the validity mask for each channel in the group
     /// clears out the common invalid bytes vector for the group at the end
-    pub fn process_all_channel_invalid_bits(&mut self) {
+    pub fn process_all_channel_invalid_bits(&mut self) -> Result<(), Error> {
         if let Some(invalid_bytes) = &self.invalid_bytes {
             // get invalid bytes
             let cg_inval_bytes = self.block.cg_inval_bytes as usize;
             self.cn
                 .par_iter_mut()
                 .filter(|(_rec_pos, cn)| !cn.data.is_empty())
-                .for_each(|(_rec_pos, cn)| {
+                .try_for_each(|(_rec_pos, cn): (&i32, &mut Cn4)| -> Result<(), Error> {
                     if let Some((mask, invalid_byte_position, invalid_byte_mask)) =
                         &mut cn.invalid_mask
                     {
@@ -1919,11 +1919,18 @@ impl Cg4 {
                                 );
                             },
                         );
-                        cn.data.set_validity(mask.clone());
+                        cn.data.set_validity(mask.clone()).with_context(|| {
+                            format!(
+                                "failed applying invalid bits for channel {}",
+                                cn.unique_name
+                            )
+                        })?;
                     }
-                });
+                    Ok(())
+                })?;
             self.invalid_bytes = None; // Clears out invalid bytes channel
         }
+        Ok(())
     }
 }
 

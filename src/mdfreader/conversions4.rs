@@ -1,9 +1,9 @@
 //! this modules implements functions to convert arrays into physical arrays using CCBlock
 use anyhow::{bail, Context, Error, Result};
-use arrow2::array::{Array, FixedSizeListArray, MutableUtf8Array, PrimitiveArray};
+use arrow2::array::{Array, MutableUtf8Array, PrimitiveArray};
 use arrow2::compute::arity_assign;
 use arrow2::compute::cast::primitive_as_primitive;
-use arrow2::datatypes::{DataType, Field};
+use arrow2::datatypes::DataType;
 use arrow2::types::NativeType;
 use itertools::Itertools;
 use log::warn;
@@ -251,28 +251,16 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
                 );
             }
             ChannelData::Complex32(a) => {
-                let data = a.values().as_any_mut().downcast_mut::<PrimitiveArray<f32>>()
-                .with_context(|| format!("Read channels from bytes function could not downcast to primitive array f32, channel {}", cn.unique_name))?;
-                let field = Field::new("complex64", DataType::Float64, false);
-                cn.data = ChannelData::Complex64(FixedSizeListArray::new(
-                    DataType::FixedSizeList(Box::new(field), 2),
-                    linear_conversion_primitive::<f32>(data, p1, p2)
-                        .context("failed rational conversion of complex f32 channel")?
-                        .boxed(),
-                    None,
-                ))
+                cn.data = ChannelData::Complex64(
+                    linear_conversion_primitive(a, p1, p2)
+                        .context("failed linear conversion of complex f32 channel")?,
+                );
             }
             ChannelData::Complex64(a) => {
-                let data = a.values().as_any_mut().downcast_mut::<PrimitiveArray<f64>>()
-                .with_context(|| format!("Read channels from bytes function could not downcast to primitive array f64, channel {}", cn.unique_name))?;
-                let field = Field::new("complex64", DataType::Float64, false);
-                cn.data = ChannelData::Complex64(FixedSizeListArray::new(
-                    DataType::FixedSizeList(Box::new(field), 2),
-                    linear_conversion_primitive::<f64>(data, p1, p2)
-                        .context("failed rational conversion of complex f32 channel")?
-                        .boxed(),
-                    None,
-                ))
+                cn.data = ChannelData::Complex64(
+                    linear_conversion_primitive(a, p1, p2)
+                        .context("failed linear conversion of complex f64 channel")?,
+                );
             }
             ChannelData::ArrayDUInt8(a) => {
                 cn.data = ChannelData::ArrayDFloat64(
@@ -445,28 +433,16 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
             );
         }
         ChannelData::Complex32(a) => {
-            let data = a.values().as_any_mut().downcast_mut::<PrimitiveArray<f32>>()
-            .with_context(|| format!("Read channels from bytes function could not downcast to primitive array f32, channel {}", cn.unique_name))?;
-            let field = Field::new("complex64", DataType::Float64, false);
-            cn.data = ChannelData::Complex64(FixedSizeListArray::new(
-                DataType::FixedSizeList(Box::new(field), 2),
-                rational_conversion_primitive::<f32>(data, cc_val)
-                    .context("failed rational conversion of complex f32 channel")?
-                    .boxed(),
-                None,
-            ))
+            cn.data = ChannelData::Complex64(
+                rational_conversion_primitive::<f32>(a, cc_val)
+                    .context("failed rational conversion of complex f32 channel")?,
+            );
         }
         ChannelData::Complex64(a) => {
-            let data = a.values().as_any_mut().downcast_mut::<PrimitiveArray<f64>>()
-            .with_context(|| format!("Read channels from bytes function could not downcast to primitive array f64, channel {}", cn.unique_name))?;
-            let field = Field::new("complex64", DataType::Float64, false);
-            cn.data = ChannelData::Complex64(FixedSizeListArray::new(
-                DataType::FixedSizeList(Box::new(field), 2),
-                rational_conversion_primitive::<f64>(data, cc_val)
-                    .context("failed rational conversion of complex f32 channel")?
-                    .boxed(),
-                None,
-            ))
+            cn.data = ChannelData::Complex64(
+                rational_conversion_primitive::<f64>(a, cc_val)
+                    .context("failed rational conversion of complex f64 channel")?,
+            );
         }
         ChannelData::ArrayDUInt8(a) => {
             cn.data = ChannelData::ArrayDFloat64(
@@ -683,17 +659,19 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str) -> Result<(), Error> {
                     ).context("failed algebraic conversion of f64 channel")?);
                 }
                 ChannelData::Complex32(a) => {
-                    let data = a.values().as_any_mut().downcast_mut::<PrimitiveArray<f32>>()
-                    .with_context(|| format!("Read channels from bytes function could not downcast to primitive array f32, channel {}", cn.unique_name))?;
-                    let field = Field::new("complex64", DataType::Float64, false);
-                    cn.data = ChannelData::Complex64(FixedSizeListArray::new(DataType::FixedSizeList(Box::new(field), 2),
-                    alegbraic_conversion_primitive(&compiled, &slab, data).context("failed algebraic conversion of complex f32 channel")?.boxed(), None))},
+                    cn.data = ChannelData::Complex64(alegbraic_conversion_primitive(
+                        &compiled,
+                        &slab,
+                        a,
+                    ).context("failed algebraic conversion of complex f32 channel")?);
+                }
                 ChannelData::Complex64(a) => {
-                    let data = a.values().as_any_mut().downcast_mut::<PrimitiveArray<f64>>()
-                    .with_context(|| format!("Read channels from bytes function could not downcast to primitive array f64, channel {}", cn.unique_name))?;
-                    let field = Field::new("complex64", DataType::Float64, false);
-                    cn.data = ChannelData::Complex64(FixedSizeListArray::new(DataType::FixedSizeList(Box::new(field), 2),
-                    alegbraic_conversion_primitive(&compiled, &slab, data).context("failed algebraic conversion of complex f64 channel")?.boxed(), None))},
+                    cn.data = ChannelData::Complex64(alegbraic_conversion_primitive(
+                        &compiled,
+                        &slab,
+                        a,
+                    ).context("failed algebraic conversion of complex f64 channel")?);
+                }
                 ChannelData::ArrayDInt8(a) => {
                     cn.data = ChannelData::ArrayDFloat64(
                         alegbraic_conversion_tensor(&compiled, &slab, a)

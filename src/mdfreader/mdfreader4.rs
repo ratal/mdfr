@@ -77,13 +77,17 @@ pub fn mdfreader4<'a>(
                         &channel_names_to_read_in_dg,
                         &mut decoder,
                     )?;
-                    apply_bit_mask_offset(dg, &channel_names_to_read_in_dg);
+                    apply_bit_mask_offset(dg, &channel_names_to_read_in_dg)
+                        .context("failed applying bit mask offset")?;
                     // channel_group invalid bits calculation (only for DIBlocks)
                     for channel_group in dg.cg.values_mut() {
-                        channel_group.process_all_channel_invalid_bits();
+                        channel_group
+                            .process_all_channel_invalid_bits()
+                            .context("failed processing all channel invalid bits")?;
                     }
                     // conversion of all channels to physical values
-                    convert_all_channels(dg, &info.sharable);
+                    convert_all_channels(dg, &info.sharable)
+                        .context("failed converting all channels")?;
                 }
             }
         }
@@ -688,7 +692,7 @@ fn read_dv_di(
     channel_group: &mut Cg4,
     ld_blocks: Vec<Ld4Block>,
     channel_names_to_read_in_dg: &HashSet<String>,
-) -> Result<i64> {
+) -> Result<i64, Error> {
     let cg_cycle_count = channel_group.block.cg_cycle_count as usize;
     let cg_inval_bytes = channel_group.block.cg_inval_bytes as usize;
     // initialises the arrays
@@ -696,7 +700,8 @@ fn read_dv_di(
         channel_group,
         &channel_group.block.cg_cycle_count.clone(),
         channel_names_to_read_in_dg,
-    );
+    )
+    .context("failed initialising arrays for dv di blocks")?;
     for ld in &ld_blocks {
         if !ld.ld_invalid_data().is_empty() {
             // initialises the invalid bytes vector
@@ -742,7 +747,8 @@ fn read_dv_di(
                     previous_index,
                     channel_names_to_read_in_dg,
                     false,
-                );
+                )
+                .context("failed reading channels from dv di blocks")?;
             } else {
                 // Some implementation are pre allocating equal length blocks
                 read_channels_from_bytes(
@@ -752,7 +758,8 @@ fn read_dv_di(
                     previous_index,
                     channel_names_to_read_in_dg,
                     false,
-                );
+                )
+                .context("failed reading channels from from dv di blocks")?;
             }
             // drop what has ben copied and keep remaining to be extended
             let remaining = block_length % record_length;
@@ -841,7 +848,8 @@ fn parser_dl4_sorted(
         channel_group,
         &channel_group.block.cg_cycle_count.clone(),
         channel_names_to_read_in_dg,
-    );
+    )
+    .context("failed initialising arrays for sorted dl4 block")?;
     // Read all data blocks
     let mut data: Vec<u8> = Vec::new();
     let mut previous_index: usize = 0;
@@ -1104,7 +1112,7 @@ fn read_all_channels_unsorted_from_bytes(
     record_counter: &mut HashMap<u64, (usize, Vec<u8>)>,
     decoder: &mut Dec,
     channel_names_to_read_in_dg: &HashSet<String>,
-) -> Result<()> {
+) -> Result<(), Error> {
     let mut position: usize = 0;
     let data_length = data.len();
     let dg_rec_id_size = dg.block.dg_rec_id_size as usize;
@@ -1235,7 +1243,8 @@ fn read_all_channels_unsorted_from_bytes(
                 *index,
                 channel_names_to_read_in_dg,
                 true,
-            );
+            )
+            .context("failed reading channels from bytes after reading unsorted data")?;
             record_data.clear(); // clears data for new block, keeping capacity
             validate_channels_set(&mut channel_group.cn, channel_names_to_read_in_dg);
         }

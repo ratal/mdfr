@@ -25,7 +25,7 @@ pub fn mdfreader3<'a>(
     rdr: &'a mut BufReader<&File>,
     mdf: &'a mut Mdf,
     channel_names: &HashSet<String>,
-) -> Result<()> {
+) -> Result<(), Error> {
     match &mut mdf.mdf_info {
         MdfInfo::V3(info) => {
             let mut position: i64 = 0;
@@ -67,7 +67,8 @@ pub fn mdfreader3<'a>(
                                 channel_group,
                                 &channel_group.block.cg_cycle_count.clone(),
                                 &channel_names_to_read_in_dg,
-                            );
+                            )
+                            .context("failed initialising arrays for unsorted channels")?;
                             block_length += channel_group.record_length as i64
                                 * channel_group.block.cg_cycle_count as i64;
                         }
@@ -81,7 +82,8 @@ pub fn mdfreader3<'a>(
                     }
 
                     // conversion of all channels to physical values
-                    convert_all_channels(dg, &info.sharable);
+                    convert_all_channels(dg, &info.sharable)
+                        .context("failed converting all channels")?;
                 }
             }
         }
@@ -145,14 +147,15 @@ fn read_all_channels_sorted(
     rdr: &mut BufReader<&File>,
     channel_group: &mut Cg3,
     channel_names_to_read_in_dg: &HashSet<String>,
-) -> Result<()> {
+) -> Result<(), Error> {
     let chunks = generate_chunks(channel_group);
     // initialises the arrays
     initialise_arrays(
         channel_group,
         &channel_group.block.cg_cycle_count.clone(),
         channel_names_to_read_in_dg,
-    );
+    )
+    .context("failed initialising arrays for sorted channels")?;
     // read by chunks and store in channel array
     let mut previous_index: usize = 0;
     for (n_record_chunk, chunk_size) in chunks {
@@ -165,7 +168,8 @@ fn read_all_channels_sorted(
             channel_group.record_length as usize,
             previous_index,
             channel_names_to_read_in_dg,
-        );
+        )
+        .context("failed reading channels from bytes")?;
         previous_index += n_record_chunk;
     }
     Ok(())
@@ -206,7 +210,8 @@ fn read_all_channels_unsorted(
             dg,
             &mut record_counter,
             channel_names_to_read_in_dg,
-        )?;
+        )
+        .context("failed reading channels from bytes")?;
     }
     Ok(())
 }
@@ -217,7 +222,7 @@ fn read_all_channels_unsorted_from_bytes(
     dg: &mut Dg3,
     record_counter: &mut HashMap<u16, (usize, Vec<u8>)>,
     channel_names_to_read_in_dg: &HashSet<String>,
-) -> Result<()> {
+) -> Result<(), Error> {
     let mut position: usize = 0;
     let data_length = data.len();
     // unsort data into sorted data blocks, except for VLSD CG.
@@ -259,7 +264,8 @@ fn read_all_channels_unsorted_from_bytes(
                 channel_group.record_length as usize,
                 *index,
                 channel_names_to_read_in_dg,
-            );
+            )
+            .context("failed reading channels from bytes")?;
             record_data.clear(); // clears data for new block, keeping capacity
         }
     }

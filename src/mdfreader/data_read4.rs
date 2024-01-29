@@ -2,10 +2,7 @@
 use crate::export::tensor::{Order, Tensor};
 use crate::mdfinfo::mdfinfo4::{Cn4, CnType, Compo};
 use anyhow::{Context, Error, Ok, Result};
-use arrow2::array::{
-    MutableBinaryValuesArray,
-    MutableFixedSizeBinaryArray, PrimitiveArray,
-};
+use arrow2::array::{MutableBinaryValuesArray, MutableFixedSizeBinaryArray, PrimitiveArray};
 use arrow2::datatypes::DataType;
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
 use encoding_rs::{UTF_16BE, UTF_16LE, WINDOWS_1252};
@@ -46,10 +43,10 @@ pub fn read_one_channel_array(
                 Cursor::new(data_bytes)
                     .read_i8_into(&mut buf)
                     .context("Could not read i8 array")?;
-                a = &mut PrimitiveArray::from_vec(buf);
+                *a = PrimitiveArray::from_vec(buf);
             }
             ChannelData::UInt8(a) => {
-                cn.data = ChannelData::UInt8(PrimitiveArray::from_vec(data_bytes.clone()));
+                *a = PrimitiveArray::from_vec(data_bytes.clone());
             }
             ChannelData::Int16(a) => {
                 let mut buf = vec![0; cycle_count];
@@ -62,7 +59,7 @@ pub fn read_one_channel_array(
                         .read_i16_into::<LittleEndian>(&mut buf)
                         .context("Could not read le i16 array")?;
                 }
-                cn.data = ChannelData::Int16(PrimitiveArray::from_vec(buf));
+                *a = PrimitiveArray::from_vec(buf);
             }
             ChannelData::UInt16(a) => {
                 let mut buf = vec![0; cycle_count];
@@ -75,7 +72,7 @@ pub fn read_one_channel_array(
                         .read_u16_into::<LittleEndian>(&mut buf)
                         .context("Could not read le 16 array")?;
                 }
-                cn.data = ChannelData::UInt16(PrimitiveArray::from_vec(buf));
+                *a = PrimitiveArray::from_vec(buf);
             }
             ChannelData::Int32(a) => {
                 if n_bytes == 4 {
@@ -89,7 +86,7 @@ pub fn read_one_channel_array(
                             .read_i32_into::<LittleEndian>(&mut buf)
                             .context("Could not read le i32 array")?;
                     }
-                    cn.data = ChannelData::Int32(PrimitiveArray::from_vec(buf));
+                    *a = PrimitiveArray::from_vec(buf);
                 } else if n_bytes == 3 {
                     let data = a.get_mut_values()
                     .context("One channel array function could not get mutable values from primitive array i32")?;
@@ -120,7 +117,7 @@ pub fn read_one_channel_array(
                             .read_u32_into::<LittleEndian>(&mut buf)
                             .context("Could not read le u32 array")?;
                     }
-                    cn.data = ChannelData::UInt32(PrimitiveArray::from_vec(buf));
+                    *a = PrimitiveArray::from_vec(buf);
                 } else if n_bytes == 3 {
                     let data = a.get_mut_values()
                     .context("One channel array function could not get mutable values from primitive array u32")?;
@@ -151,7 +148,7 @@ pub fn read_one_channel_array(
                             .read_f32_into::<LittleEndian>(&mut buf)
                             .context("Could not read le f32 array")?;
                     }
-                    cn.data = ChannelData::Float32(PrimitiveArray::from_vec(buf));
+                    *a = PrimitiveArray::from_vec(buf);
                 } else if n_bytes == 2 {
                     let data = a.get_mut_values().context("One channel array function could not get mutable values from primitive array float32")?;
                     if cn.endian {
@@ -185,7 +182,7 @@ pub fn read_one_channel_array(
                             .read_i64_into::<LittleEndian>(&mut buf)
                             .context("Could not read le i64 array")?;
                     }
-                    cn.data = ChannelData::Int64(PrimitiveArray::from_vec(buf));
+                    *a = PrimitiveArray::from_vec(buf);
                 } else if n_bytes == 6 {
                     let data = a.get_mut_values()
                     .context("One channel array function could not get mutable values from primitive array i64")?;
@@ -216,7 +213,7 @@ pub fn read_one_channel_array(
                             .read_u64_into::<LittleEndian>(&mut buf)
                             .context("Could not read le u64 array")?;
                     }
-                    cn.data = ChannelData::UInt64(PrimitiveArray::from_vec(buf));
+                    *a = PrimitiveArray::from_vec(buf);
                 } else if n_bytes == 7 {
                     let mut temp = [0u8; std::mem::size_of::<u64>()];
                     let data = a.get_mut_values()
@@ -281,11 +278,10 @@ pub fn read_one_channel_array(
                         .read_f64_into::<LittleEndian>(&mut buf)
                         .context("Could not read le f64 array")?;
                 }
-                cn.data = ChannelData::Float64(PrimitiveArray::from_vec(buf));
+                *a = PrimitiveArray::from_vec(buf);
             }
             ChannelData::Complex32(a) => {
-                let data = a.values().as_any_mut().downcast_mut::<PrimitiveArray<f32>>()
-                .with_context(|| format!("Read channels from bytes function could not downcast to primitive array f32, channel {}", cn.unique_name))?
+                let data = a
                 .get_mut_values()
                 .with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array complex f32, channel {}", cn.unique_name))?;
                 if n_bytes <= 2 {
@@ -327,8 +323,7 @@ pub fn read_one_channel_array(
                 }
             }
             ChannelData::Complex64(a) => {
-                let data = a.values().as_any_mut().downcast_mut::<PrimitiveArray<f64>>()
-                .with_context(|| format!("Read channels from bytes function could not downcast to primitive array f64, channel {}", cn.unique_name))?
+                let data = a
                 .get_mut_values()
                 .with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array complex f64, channel {}", cn.unique_name))?;
                 if cn.endian {
@@ -358,11 +353,11 @@ pub fn read_one_channel_array(
                 } else if cn.block.cn_data_type == 7 {
                     // 7: String UTF8
                     for value in data_bytes.chunks(n_bytes) {
-                        data.push(
-                            Some(str::from_utf8(value)
+                        data.push(Some(
+                            str::from_utf8(value)
                                 .context("Found invalid UTF-8")?
-                                .trim_end_matches('\0')),
-                        );
+                                .trim_end_matches('\0'),
+                        ));
                     }
                 } else if cn.block.cn_data_type == 8 || cn.block.cn_data_type == 9 {
                     // 8 | 9 :String UTF16 to be converted into UTF8
@@ -385,21 +380,24 @@ pub fn read_one_channel_array(
                     }
                 }
             }
-            ChannelData::VariableSizeByteArray(data) => {
+            ChannelData::VariableSizeByteArray(a) => {
+                // no validity at this point
                 let mut data =
                     MutableBinaryValuesArray::<i64>::with_capacities(cycle_count, n_bytes);
                 for value in data_bytes.chunks(n_bytes) {
                     data.push(value);
                 }
+                *a = data.into();
             }
-            ChannelData::FixedSizeByteArray(mut a) => {
-                a = MutableFixedSizeBinaryArray::try_new(
+            ChannelData::FixedSizeByteArray(a) => {
+                *a = MutableFixedSizeBinaryArray::try_new(
                     DataType::FixedSizeBinary(n_bytes),
                     data_bytes.to_vec(),
                     None,
-                ).context("failed creating new MutableFixedSizeBinary")?;
+                )
+                .context("failed creating new MutableFixedSizeBinary")?;
             }
-            ChannelData::ArrayDInt8(mut a) => {
+            ChannelData::ArrayDInt8(a) => {
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
@@ -407,7 +405,7 @@ pub fn read_one_channel_array(
                             Cursor::new(data_bytes)
                                 .read_i8_into(&mut buf)
                                 .context("Could not read i8 array")?;
-                            a = Tensor::try_new(
+                            *a = Tensor::try_new(
                                 DataType::Extension(
                                     "Tensor".to_owned(),
                                     Box::new(DataType::Int8),
@@ -425,11 +423,11 @@ pub fn read_one_channel_array(
                     }
                 }
             }
-            ChannelData::ArrayDUInt8(mut a) => {
+            ChannelData::ArrayDUInt8(a) => {
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(_) => {
-                            a = Tensor::try_new(
+                            *a = Tensor::try_new(
                                 DataType::Extension(
                                     "Tensor".to_owned(),
                                     Box::new(DataType::UInt8),
@@ -447,7 +445,7 @@ pub fn read_one_channel_array(
                     }
                 }
             }
-            ChannelData::ArrayDInt16(mut a) => {
+            ChannelData::ArrayDInt16(a) => {
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
@@ -461,7 +459,7 @@ pub fn read_one_channel_array(
                                     .read_i16_into::<LittleEndian>(&mut buf)
                                     .context("Could not read le i16 array")?;
                             }
-                            a = Tensor::try_new(
+                            *a = Tensor::try_new(
                                 DataType::Extension(
                                     "Tensor".to_owned(),
                                     Box::new(DataType::Int16),
@@ -479,7 +477,7 @@ pub fn read_one_channel_array(
                     }
                 }
             }
-            ChannelData::ArrayDUInt16(mut a) => {
+            ChannelData::ArrayDUInt16(a) => {
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
@@ -493,7 +491,7 @@ pub fn read_one_channel_array(
                                     .read_u16_into::<LittleEndian>(&mut buf)
                                     .context("Could not read le 16 array")?;
                             }
-                            a = Tensor::try_new(
+                            *a = Tensor::try_new(
                                 DataType::Extension(
                                     "Tensor".to_owned(),
                                     Box::new(DataType::UInt16),
@@ -511,7 +509,7 @@ pub fn read_one_channel_array(
                     }
                 }
             }
-            ChannelData::ArrayDInt32(mut a) => {
+            ChannelData::ArrayDInt32(a) => {
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
@@ -539,7 +537,7 @@ pub fn read_one_channel_array(
                                     .read_i32_into::<LittleEndian>(&mut buf)
                                     .context("Could not read le i32 array")?;
                             }
-                            a = Tensor::try_new(
+                            *a = Tensor::try_new(
                                 DataType::Extension(
                                     "Tensor".to_owned(),
                                     Box::new(DataType::Int32),
@@ -557,7 +555,7 @@ pub fn read_one_channel_array(
                     }
                 }
             }
-            ChannelData::ArrayDUInt32(mut a) => {
+            ChannelData::ArrayDUInt32(a) => {
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
@@ -585,7 +583,7 @@ pub fn read_one_channel_array(
                                     .read_u32_into::<LittleEndian>(&mut buf)
                                     .context("Could not read le u32 array")?;
                             }
-                            a = Tensor::try_new(
+                            *a = Tensor::try_new(
                                 DataType::Extension(
                                     "Tensor".to_owned(),
                                     Box::new(DataType::UInt32),
@@ -603,7 +601,7 @@ pub fn read_one_channel_array(
                     }
                 }
             }
-            ChannelData::ArrayDFloat32(mut a) => {
+            ChannelData::ArrayDFloat32(a) => {
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
@@ -637,7 +635,7 @@ pub fn read_one_channel_array(
                                     .read_f32_into::<LittleEndian>(&mut buf)
                                     .context("Could not read le f32 array")?;
                             }
-                            a = Tensor::try_new(
+                            *a = Tensor::try_new(
                                 DataType::Extension(
                                     "Tensor".to_owned(),
                                     Box::new(DataType::Float32),
@@ -655,7 +653,7 @@ pub fn read_one_channel_array(
                     }
                 }
             }
-            ChannelData::ArrayDInt64(mut a) => {
+            ChannelData::ArrayDInt64(a) => {
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
@@ -683,7 +681,7 @@ pub fn read_one_channel_array(
                                         .context("Could not read le i48")?;
                                 }
                             }
-                            a = Tensor::try_new(
+                            *a = Tensor::try_new(
                                 DataType::Extension(
                                     "Tensor".to_owned(),
                                     Box::new(DataType::Int64),
@@ -701,7 +699,7 @@ pub fn read_one_channel_array(
                     }
                 }
             }
-            ChannelData::ArrayDUInt64(mut a) => {
+            ChannelData::ArrayDUInt64(a) => {
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
@@ -761,7 +759,7 @@ pub fn read_one_channel_array(
                                     }
                                 }
                             }
-                            a = Tensor::try_new(
+                            *a = Tensor::try_new(
                                 DataType::Extension(
                                     "Tensor".to_owned(),
                                     Box::new(DataType::UInt64),
@@ -779,7 +777,7 @@ pub fn read_one_channel_array(
                     }
                 }
             }
-            ChannelData::ArrayDFloat64(mut a) => {
+            ChannelData::ArrayDFloat64(a) => {
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
@@ -793,7 +791,7 @@ pub fn read_one_channel_array(
                                     .read_f64_into::<LittleEndian>(&mut buf)
                                     .context("Could not read le f64 array")?;
                             }
-                            a = Tensor::try_new(
+                            *a = Tensor::try_new(
                                 DataType::Extension(
                                     "Tensor".to_owned(),
                                     Box::new(DataType::Float64),
@@ -1141,9 +1139,8 @@ pub fn read_channels_from_bytes(
                     }
                 }
                 ChannelData::Complex32(a)  => {
-                    let data = a.values().as_any_mut().downcast_mut::<PrimitiveArray<f32>>()
-                    .with_context(|| format!("Read channels from bytes function could not downcast to primitive array f32, channel {}", cn.unique_name))?
-                    .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array complex f32, channel {}", cn.unique_name))?;
+                    let data = a
+                    .get_mut_values().context("Read channels from bytes function could not get mutable values from primitive array complex f32")?;
                     if n_bytes <= 2 {  // complex 16
                         let mut re_val: &[u8];
                         let mut im_val: &[u8];
@@ -1227,12 +1224,11 @@ pub fn read_channels_from_bytes(
                         }
                     }
                 }
-                ChannelData::Complex64(a) => { 
+                ChannelData::Complex64(a) => {
                     // complex 64
                     let mut re_val: &[u8];
                     let mut im_val: &[u8];
-                    let data = a.values().as_any_mut().downcast_mut::<PrimitiveArray<f64>>()
-                    .with_context(|| format!("Read channels from bytes function could not downcast to primitive array f64, channel {}", cn.unique_name))?
+                    let data = a
                     .get_mut_values()
                     .with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array complex f64, channel {}", cn.unique_name))?;
                     if cn.endian {
