@@ -228,6 +228,19 @@ impl<T: NativeType> Tensor<T> {
         }
     }
 
+    /// Returns a new empty (zero-length) [`Tensor`].
+    pub fn new_empty(data_type: DataType) -> Self {
+        Self {
+            data_type,
+            values: Buffer::new(),
+            shape: Vec::new(),
+            order: Order::default(),
+            strides: None,
+            names: None,
+            _marker: PhantomData,
+        }
+    }
+
     /// Returns a clone of this PrimitiveArray sliced by an offset and length.
     /// # Implementation
     /// This operation is `O(1)` as it amounts to increase two ref counts.

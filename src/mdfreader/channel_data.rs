@@ -60,9 +60,13 @@ impl ChannelData {
     ) -> Result<ChannelData, Error> {
         if cn_type == 3 || cn_type == 6 {
             // virtual channel
-            Ok(ChannelData::UInt64(PrimitiveArray::from_vec(
-                vec![0u64; cycle_count as usize],
-            )))
+            let mut vect = vec![0u64; cycle_count as usize];
+            let mut counter = 0u64;
+            vect.iter_mut().for_each(|v| {
+                *v = counter.clone();
+                counter += 1;
+            });
+            Ok(ChannelData::UInt64(PrimitiveArray::from_vec(vect)))
         } else {
             match self {
                 ChannelData::Int8(_) => Ok(ChannelData::Int8(PrimitiveArray::from_vec(
@@ -122,12 +126,10 @@ impl ChannelData {
                     ),
                 )),
                 ChannelData::FixedSizeByteArray(_) => Ok(ChannelData::FixedSizeByteArray(
-                    MutableFixedSizeBinaryArray::try_new(
-                        DataType::FixedSizeBinary(n_bytes as usize),
-                        vec![0u8; cycle_count as usize * n_bytes as usize],
-                        None,
-                    )
-                    .context("failed initialising FixedSizeBinaryArray with zeros")?,
+                    MutableFixedSizeBinaryArray::with_capacity(
+                        n_bytes as usize,
+                        cycle_count as usize,
+                    ),
                 )),
                 ChannelData::ArrayDInt8(_) => Ok(ChannelData::ArrayDInt8(Tensor::try_new(
                     DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int8), None),
@@ -790,7 +792,6 @@ impl ChannelData {
                 )
                 .context("failed creating new fixed size binary array with new validity")?
             }
-            // TODO MutableFixedSizeBinaryArray should have set_validity()},
             ChannelData::ArrayDInt8(_) => {}
             ChannelData::ArrayDUInt8(_) => {}
             ChannelData::ArrayDInt16(_) => {}
@@ -958,173 +959,53 @@ pub fn data_type_init(
             0 | 1 => {
                 // unsigned int
                 if n_bytes <= 1 {
-                    Ok(ChannelData::ArrayDUInt8(
-                        Tensor::try_new(
-                            DataType::Extension(
-                                "Tensor".to_owned(),
-                                Box::new(DataType::UInt8),
-                                None,
-                            ),
-                            Buffer::<u8>::new(),
-                            None,
-                            None,
-                            None,
-                            None,
-                        )
-                        .context("failed initialising u8 tensor")?,
-                    ))
+                    Ok(ChannelData::ArrayDUInt8(Tensor::new_empty(
+                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt8), None),
+                    )))
                 } else if n_bytes == 2 {
-                    Ok(ChannelData::ArrayDUInt16(
-                        Tensor::try_new(
-                            DataType::Extension(
-                                "Tensor".to_owned(),
-                                Box::new(DataType::UInt16),
-                                None,
-                            ),
-                            vec![0u16].into(),
-                            None,
-                            None,
-                            None,
-                            None,
-                        )
-                        .context("failed initialising u16 tensor")?,
-                    ))
+                    Ok(ChannelData::ArrayDUInt16(Tensor::new_empty(
+                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt16), None),
+                    )))
                 } else if n_bytes <= 4 {
-                    Ok(ChannelData::ArrayDUInt32(
-                        Tensor::try_new(
-                            DataType::Extension(
-                                "Tensor".to_owned(),
-                                Box::new(DataType::UInt32),
-                                None,
-                            ),
-                            Buffer::<u32>::new(),
-                            None,
-                            None,
-                            None,
-                            None,
-                        )
-                        .context("failed initialising u32 tensor")?,
-                    ))
+                    Ok(ChannelData::ArrayDUInt32(Tensor::new_empty(
+                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt32), None),
+                    )))
                 } else {
-                    Ok(ChannelData::ArrayDUInt64(
-                        Tensor::try_new(
-                            DataType::Extension(
-                                "Tensor".to_owned(),
-                                Box::new(DataType::UInt64),
-                                None,
-                            ),
-                            Buffer::<u64>::new(),
-                            None,
-                            None,
-                            None,
-                            None,
-                        )
-                        .context("failed initialising u64 tensor")?,
-                    ))
+                    Ok(ChannelData::ArrayDUInt64(Tensor::new_empty(
+                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt64), None),
+                    )))
                 }
             }
             2 | 3 => {
                 // signed int
                 if n_bytes <= 1 {
-                    Ok(ChannelData::ArrayDInt8(
-                        Tensor::try_new(
-                            DataType::Extension(
-                                "Tensor".to_owned(),
-                                Box::new(DataType::Int8),
-                                None,
-                            ),
-                            Buffer::<i8>::new(),
-                            None,
-                            None,
-                            None,
-                            None,
-                        )
-                        .context("failed initialising i8 tensor")?,
-                    ))
+                    Ok(ChannelData::ArrayDInt8(Tensor::new_empty(
+                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int8), None),
+                    )))
                 } else if n_bytes == 2 {
-                    Ok(ChannelData::ArrayDInt16(
-                        Tensor::try_new(
-                            DataType::Extension(
-                                "Tensor".to_owned(),
-                                Box::new(DataType::Int16),
-                                None,
-                            ),
-                            Buffer::<i16>::new(),
-                            None,
-                            None,
-                            None,
-                            None,
-                        )
-                        .context("failed initialising i16 tensor")?,
-                    ))
+                    Ok(ChannelData::ArrayDInt16(Tensor::new_empty(
+                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int16), None),
+                    )))
                 } else if n_bytes == 4 {
-                    Ok(ChannelData::ArrayDInt32(
-                        Tensor::try_new(
-                            DataType::Extension(
-                                "Tensor".to_owned(),
-                                Box::new(DataType::Int32),
-                                None,
-                            ),
-                            Buffer::<i32>::new(),
-                            None,
-                            None,
-                            None,
-                            None,
-                        )
-                        .context("failed initialising i32 tensor")?,
-                    ))
+                    Ok(ChannelData::ArrayDInt32(Tensor::new_empty(
+                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int32), None),
+                    )))
                 } else {
-                    Ok(ChannelData::ArrayDInt64(
-                        Tensor::try_new(
-                            DataType::Extension(
-                                "Tensor".to_owned(),
-                                Box::new(DataType::Int64),
-                                None,
-                            ),
-                            Buffer::<i64>::new(),
-                            None,
-                            None,
-                            None,
-                            None,
-                        )
-                        .context("failed initialising i64 tensor")?,
-                    ))
+                    Ok(ChannelData::ArrayDInt64(Tensor::new_empty(
+                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int64), None),
+                    )))
                 }
             }
             4 | 5 => {
                 // float
                 if n_bytes <= 4 {
-                    Ok(ChannelData::ArrayDFloat32(
-                        Tensor::try_new(
-                            DataType::Extension(
-                                "Tensor".to_owned(),
-                                Box::new(DataType::Float32),
-                                None,
-                            ),
-                            Buffer::<f32>::new(),
-                            None,
-                            None,
-                            None,
-                            None,
-                        )
-                        .context("failed initialising f32 tensor")?,
-                    ))
+                    Ok(ChannelData::ArrayDFloat32(Tensor::new_empty(
+                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::Float32), None),
+                    )))
                 } else {
-                    Ok(ChannelData::ArrayDFloat64(
-                        Tensor::try_new(
-                            DataType::Extension(
-                                "Tensor".to_owned(),
-                                Box::new(DataType::Float64),
-                                None,
-                            ),
-                            Buffer::<f64>::new(),
-                            None,
-                            None,
-                            None,
-                            None,
-                        )
-                        .context("failed initialising f64 tensor")?,
-                    ))
+                    Ok(ChannelData::ArrayDFloat64(Tensor::new_empty(
+                        DataType::Extension("Tensor".to_owned(), Box::new(DataType::Float64), None),
+                    )))
                 }
             }
             15 | 16 => {
