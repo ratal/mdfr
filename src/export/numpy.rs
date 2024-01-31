@@ -373,9 +373,7 @@ impl IntoPy<PyObject> for ChannelData {
             ChannelData::Float64(array) => array.values().to_pyarray(py).into_py(py),
             ChannelData::Complex32(array) => array.values().to_pyarray(py).into_py(py),
             ChannelData::Complex64(array) => array.values().to_pyarray(py).into_py(py),
-            ChannelData::VariableSizeByteArray(array) => {
-                <Vec<u8> as Clone>::clone(&array.values()).into_py(py)
-            }
+            ChannelData::VariableSizeByteArray(array) => array.values().clone().into_py(py),
             ChannelData::FixedSizeByteArray(array) => {
                 let out: Vec<Vec<u8>> = array
                     .values()

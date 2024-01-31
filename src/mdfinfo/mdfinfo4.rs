@@ -2097,6 +2097,7 @@ pub struct Cn4 {
     /// optional invalid mask array, invalid byte position in record, invalid byte mask
     pub invalid_mask: Option<(MutableBitmap, usize, u8)>,
     /// True if channel is valid = contains data converted
+    /// TODO remove this field, no need anymore
     pub channel_data_valid: bool,
 }
 

@@ -149,11 +149,11 @@ impl Mdf {
         let machine_endian: bool = cfg!(target_endian = "big");
         let data_signature = DataSignature {
             len: data.len(),
-            data_type: arrow_to_mdf_data_type(data.clone(), machine_endian),
-            bit_count: arrow_bit_count(data.clone()),
-            byte_count: arrow_byte_count(data.clone()),
-            ndim: ndim(data.clone()),
-            shape: shape(data.clone()),
+            data_type: arrow_to_mdf_data_type(data.as_ref(), machine_endian),
+            bit_count: arrow_bit_count(data.as_ref()),
+            byte_count: arrow_byte_count(data.as_ref()),
+            ndim: ndim(data.as_ref()),
+            shape: shape(data.as_ref()),
         };
         let master_signature = MasterSignature {
             master_channel: master_channel.clone(),

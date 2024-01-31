@@ -63,7 +63,7 @@ impl ChannelData {
             let mut vect = vec![0u64; cycle_count as usize];
             let mut counter = 0u64;
             vect.iter_mut().for_each(|v| {
-                *v = counter.clone();
+                *v = counter;
                 counter += 1;
             });
             Ok(ChannelData::UInt64(PrimitiveArray::from_vec(vect)))
@@ -657,12 +657,12 @@ impl ChannelData {
                     .iter()
                     .unwrap_required()
                     .reduce(|accum, item| if accum >= item { accum } else { item })
-                    .map(|v| *v as f64);
+                    .copied();
                 let min = a
                     .iter()
                     .unwrap_required()
                     .reduce(|accum, item| if accum <= item { accum } else { item })
-                    .map(|v| *v as f64);
+                    .copied();
                 (min, max)
             }
             ChannelData::Complex32(_) => (None, None),
@@ -919,12 +919,15 @@ pub fn data_type_init(
                 }
                 6..=9 => {
                     // String UTF8
-                    Ok(ChannelData::Utf8(MutableUtf8Array::<i64>::try_new(
-                        DataType::LargeUtf8,
-                        Offsets::<i64>::new(),
-                        Vec::<u8>::new(),
-                        None,
-                    )?))
+                    Ok(ChannelData::Utf8(
+                        MutableUtf8Array::<i64>::try_new(
+                            DataType::LargeUtf8,
+                            Offsets::<i64>::new(),
+                            Vec::<u8>::new(),
+                            None,
+                        )
+                        .context("failed initialising Utf8 mutable array")?,
+                    ))
                 }
                 _ => {
                     // bytearray
@@ -1013,7 +1016,7 @@ pub fn data_type_init(
                 if n_bytes <= 4 {
                     bail!("f32 complex tensors not implemented")
                 } else {
-                    bail!("f32 complex tensors not implemented")
+                    bail!("f64 complex tensors not implemented")
                 }
             }
             _ => {

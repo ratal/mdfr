@@ -37,7 +37,8 @@ use super::mdfwriter3::convert3to4;
 /// writes mdf4.2 file
 pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> {
     let info: MdfInfo4 = match &mdf.mdf_info {
-        MdfInfo::V3(mdfinfo3) => convert3to4(mdfinfo3, file_name)?,
+        MdfInfo::V3(mdfinfo3) => convert3to4(mdfinfo3, file_name)
+            .context("failed converting mdf version 3 into version 4")?,
         MdfInfo::V4(mdfinfo4) => mdfinfo4.deref().clone(),
     };
     let n_channels = mdf.mdf_info.get_channel_names_set().len();
@@ -128,7 +129,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
             .write(true)
             .create(true)
             .open(&*file)
-            .expect("Cannot create the file");
+            .context("Cannot create the file")?;
         let mut writer = BufWriter::new(&f);
 
         writer
@@ -137,7 +138,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
         for buffer in rx {
             writer
                 .write_all(&buffer)
-                .expect("Could not write data blocks buffer");
+                .context("Could not write data blocks buffer")?;
         }
         Ok(())
     });
@@ -152,7 +153,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
                     let dt = mdf.get_channel_data(&cn.unique_name);
                     if let Some(data) = dt {
                         let m = data.validity();
-                        if !data.is_empty() && arrow_bit_count(data.clone()) > 0 {
+                        if !data.is_empty() && arrow_bit_count(data.as_ref()) > 0 {
                             // empty strings are not written
                             let mut offset: i64 = 0;
                             let mut ld_block: Option<Ld4Block> = None;
@@ -161,7 +162,8 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
                             }
 
                             let data_block = if compression {
-                                create_dz_dv(data.clone(), &mut offset)?
+                                create_dz_dv(data.clone(), &mut offset)
+                                    .context("failed creating dz or dv block")?
                             } else {
                                 create_dv(data.clone(), &mut offset)?
                             };
@@ -169,14 +171,16 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
                             // invalid mask existing
                             let mut invalid_block: Option<(DataBlock, Vec<u8>)> = None;
                             if let Some(mask) = m {
-                                cg.block.cg_inval_bytes = 1; // on byte (u8) for invalid mask
+                                cg.block.cg_inval_bytes = 1; // one byte (u8) for invalid mask
                                 if let Some(ref mut ld) = ld_block {
                                     ld.ld_links.push(offset);
                                 }
                                 if compression {
-                                    invalid_block = create_dz_di(mask, &mut offset)?;
+                                    invalid_block = create_dz_di(mask, &mut offset)
+                                        .context("failed creating dz or di block")?;
                                 } else {
-                                    invalid_block = create_di(mask, &mut offset)?;
+                                    invalid_block = create_di(mask, &mut offset)
+                                        .context("failed creating di block")?;
                                 }
                             }
                             {
@@ -245,15 +249,21 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
                     .context("Could not write CNBlock")?;
                 // TX Block channel name
                 if let Some(tx_name_metadata) = new_info.sharable.md_tx.get(&cn.block.cn_tx_name) {
-                    tx_name_metadata.write(&mut buffer)?;
+                    tx_name_metadata
+                        .write(&mut buffer)
+                        .context("Failed writing tx name")?;
                 }
                 if let Some(tx_unit_metadata) = new_info.sharable.md_tx.get(&cn.block.cn_md_unit) {
-                    tx_unit_metadata.write(&mut buffer)?;
+                    tx_unit_metadata
+                        .write(&mut buffer)
+                        .context("Failed writing tx unit")?;
                 }
                 if let Some(tx_comment_metadata) =
                     new_info.sharable.md_tx.get(&cn.block.cn_md_comment)
                 {
-                    tx_comment_metadata.write(&mut buffer)?;
+                    tx_comment_metadata
+                        .write(&mut buffer)
+                        .context("Failed writing tx comment")?;
                 }
                 // channel array
                 if let Some(compo) = &cn.composition {
@@ -386,7 +396,8 @@ fn create_ld(m: Option<&Bitmap>, offset: &mut i64) -> Option<Ld4Block> {
 fn create_dv(data: Box<dyn Array>, offset: &mut i64) -> Result<(DataBlock, usize, Vec<u8>)> {
     let mut dv_block = Blockheader4::default();
     dv_block.hdr_id = [35, 35, 68, 86]; // ##DV
-    let data_bytes: Vec<u8> = arrow_to_bytes(data);
+    let data_bytes: Vec<u8> =
+        arrow_to_bytes(data).context("failed converting arraw data into bytes for dv block")?;
     let data_bytes_len = data_bytes.len();
     dv_block.hdr_len += data_bytes_len as u64;
     let byte_aligned = 8 - data_bytes_len % 8;
@@ -407,7 +418,8 @@ enum DataBlock {
 fn create_dz_dv(data: Box<dyn Array>, offset: &mut i64) -> Result<(DataBlock, usize, Vec<u8>)> {
     let mut dz_block = Dz4Block::default();
     let mut data_bytes = compress(
-        &arrow_to_bytes(data.clone()),
+        &arrow_to_bytes(data.clone())
+            .context("failed converting arraw data into bytes for dz or dv block")?,
         Format::Zlib,
         CompressionLevel::Default,
     )
@@ -416,7 +428,7 @@ fn create_dz_dv(data: Box<dyn Array>, offset: &mut i64) -> Result<(DataBlock, us
     let dv_dz_block: DataBlock;
     let byte_aligned: usize;
     let length = data.clone().len();
-    dz_block.dz_org_data_length = (length * arrow_byte_count(data.clone()) as usize) as u64;
+    dz_block.dz_org_data_length = (length * arrow_byte_count(data.as_ref()) as usize) as u64;
     if dz_block.dz_org_data_length < dz_block.dz_data_length {
         (dv_dz_block, byte_aligned, data_bytes) = create_dv(data.clone(), offset)?;
     } else {
@@ -480,9 +492,9 @@ fn create_blocks(
     cg_cg_master: &i64,
     master_flag: bool,
 ) -> Result<i64> {
-    let bit_count = arrow_bit_count(data.clone());
+    let bit_count = arrow_bit_count(data.as_ref());
     if !data.is_empty() && bit_count > 0 {
-        let byte_count = arrow_byte_count(data.clone());
+        let byte_count = arrow_byte_count(data.as_ref());
         // no empty strings
         let mut dg_block = Dg4Block::default();
         let mut cg_block_header = default_short_header(BlockType::CG);
@@ -525,7 +537,7 @@ fn create_blocks(
 
         let machine_endian: bool = cfg!(target_endian = "big");
 
-        cn_block.cn_data_type = arrow_to_mdf_data_type(data.clone(), machine_endian);
+        cn_block.cn_data_type = arrow_to_mdf_data_type(data.as_ref(), machine_endian);
 
         cn_block.cn_bit_count = bit_count;
 
@@ -571,7 +583,7 @@ fn create_blocks(
         }
 
         // Channel array
-        let data_ndim = ndim(data.clone()) - 1;
+        let data_ndim = ndim(data.as_ref()) - 1;
         let mut composition: Option<Composition> = None;
         if data_ndim > 0 {
             let data_dim_size = cn
@@ -615,7 +627,8 @@ fn create_blocks(
                 cn_block.cn_data_type,
                 cg_block.cg_data_bytes,
                 data_ndim > 0,
-            )?,
+            )
+            .with_context(|| format!("failed initilising array for channel {}", cn.unique_name))?,
             block: cn_block,
             endian: machine_endian,
             block_position: cn_position,

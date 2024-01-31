@@ -114,7 +114,7 @@ fn read_data(
             // ##DT
             let block_header: Dt4Block = rdr
                 .read_le()
-                .context("could not read into Dt4Blcok structure")?;
+                .context("could not read into Dt4Block structure")?;
             // simple data block
             if sorted {
                 // sorted data group
@@ -606,7 +606,7 @@ fn parser_ld4(
         )
         .context("failed initialising arrays")?;
         if id == "##DZ".as_bytes() {
-            let (mut dt, block_header) = parse_dz(rdr)?;
+            let (dt, block_header) = parse_dz(rdr)?;
             for (_rec_pos, cn) in channel_group.cn.iter_mut() {
                 let shape = if let Some(compo) = &cn.composition {
                     match &compo.block {
@@ -616,13 +616,8 @@ fn parser_ld4(
                 } else {
                     None
                 };
-                read_one_channel_array(
-                    &mut dt,
-                    cn,
-                    channel_group.block.cg_cycle_count as usize,
-                    shape,
-                )
-                .context("failed reading one channel array from DZ")?;
+                read_one_channel_array(&dt, cn, channel_group.block.cg_cycle_count as usize, shape)
+                    .context("failed reading one channel array from DZ")?;
             }
             position = ld_data + block_header.len as i64;
         } else {
@@ -640,7 +635,7 @@ fn parser_ld4(
                     None
                 };
                 read_one_channel_array(
-                    &mut buf,
+                    &buf,
                     cn,
                     channel_group.block.cg_cycle_count as usize,
                     shape,

@@ -1268,7 +1268,6 @@ pub fn read_channels_from_bytes(
                     }
                 }
                 ChannelData::Utf8(array)  => {
-                    let n_bytes = cn.n_bytes as usize;
                     if cn.block.cn_data_type == 6 {
                         // SBC ISO-8859-1 to be converted into UTF8
                         let mut decoder = WINDOWS_1252.new_decoder();
@@ -1320,13 +1319,11 @@ pub fn read_channels_from_bytes(
                     }
                 }
                 ChannelData::VariableSizeByteArray(array)  => {
-                    let n_bytes = cn.n_bytes as usize;
                     for record in data_chunk.chunks(record_length) {
                         array.push(Some(&record[pos_byte_beg..pos_byte_beg + n_bytes]));
                     }
                 }
                 ChannelData::FixedSizeByteArray(a)  => {
-                    let n_bytes = cn.n_bytes as usize;
                     for  record in data_chunk.chunks(record_length) {
                         a.push(Some(&record[pos_byte_beg..pos_byte_beg + n_bytes]));
                     }

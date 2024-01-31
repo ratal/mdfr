@@ -179,7 +179,7 @@ fn linear_conversion_tensor<T: NativeType + AsPrimitive<f64>>(
     p1: f64,
     p2: f64,
 ) -> Result<Tensor<f64>, Error> {
-    let mut array_f64 = tensor_as_tensor::<T, f64>(&array, &DataType::Float64);
+    let mut array_f64 = tensor_as_tensor::<T, f64>(array, &DataType::Float64);
     unary_assign(&mut array_f64, |x: f64| x * p2 + p1);
     Ok(array_f64)
 }
@@ -790,7 +790,7 @@ fn value_to_value_with_interpolation_tensor<T: NativeType + AsPrimitive<f64>>(
         .zip(array_f64.values().iter())
         .for_each(|(new_array, a)| {
             *new_array = match val
-                .binary_search_by(|&(xi, _)| xi.partial_cmp(&a).unwrap_or(Ordering::Equal))
+                .binary_search_by(|&(xi, _)| xi.partial_cmp(a).unwrap_or(Ordering::Equal))
             {
                 Ok(idx) => *val[idx].1,
                 Err(0) => *val[0].1,
@@ -974,7 +974,7 @@ fn value_to_value_without_interpolation_tensor<T: NativeType + AsPrimitive<f64>>
         .zip(array_f64.values().iter())
         .for_each(|(new_array, a)| {
             *new_array = match val
-                .binary_search_by(|&(xi, _)| xi.partial_cmp(&a).unwrap_or(Ordering::Equal))
+                .binary_search_by(|&(xi, _)| xi.partial_cmp(a).unwrap_or(Ordering::Equal))
             {
                 Ok(idx) => *val[idx].1,
                 Err(0) => *val[0].1,
@@ -1856,12 +1856,12 @@ fn text_to_text_calculation(
             if let Some(txt) = val.clone() {
                 new_array.push(Some(txt));
             } else {
-                new_array.push(a.clone());
+                new_array.push(a);
             }
         } else if let Some(tx) = default.clone() {
             new_array.push(Some(tx));
         } else {
-            new_array.push(a.clone());
+            new_array.push(a);
         }
     });
     new_array
