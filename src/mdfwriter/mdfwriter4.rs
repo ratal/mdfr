@@ -165,7 +165,8 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
                                 create_dz_dv(data.clone(), &mut offset)
                                     .context("failed creating dz or dv block")?
                             } else {
-                                create_dv(data.clone(), &mut offset)?
+                                create_dv(data.clone(), &mut offset)
+                                    .context("failed creating dv block")?
                             };
 
                             // invalid mask existing

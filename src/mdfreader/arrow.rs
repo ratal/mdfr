@@ -184,7 +184,7 @@ fn byte_count(array: &dyn Array, data_type: &DataType) -> u32 {
                 .max()
                 .unwrap_or(0)
         }
-        DataType::FixedSizeBinary(size) => 8 * *size as u32,
+        DataType::FixedSizeBinary(size) => *size as u32,
         DataType::LargeBinary => {
             let array = array
                 .as_any()
