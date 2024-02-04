@@ -5,7 +5,7 @@ use arrow2::array::{
     Array, BinaryArray, FixedSizeBinaryArray, FixedSizeListArray, MutableArray, MutableBinaryArray,
     MutableFixedSizeBinaryArray, MutableUtf8Array, PrimitiveArray, Utf8Array,
 };
-use arrow2::bitmap::MutableBitmap;
+use arrow2::bitmap::{Bitmap, MutableBitmap};
 use arrow2::buffer::Buffer;
 use arrow2::datatypes::{DataType, PhysicalType};
 use arrow2::offset::Offsets;
@@ -804,6 +804,68 @@ impl ChannelData {
             ChannelData::ArrayDFloat64(_) => {}
         }
         Ok(())
+    }
+    pub fn null_count(&self) -> usize {
+        match self {
+            ChannelData::Int8(a) => a.null_count(),
+            ChannelData::UInt8(a) => a.null_count(),
+            ChannelData::Int16(a) => a.null_count(),
+            ChannelData::UInt16(a) => a.null_count(),
+            ChannelData::Int32(a) => a.null_count(),
+            ChannelData::UInt32(a) => a.null_count(),
+            ChannelData::Float32(a) => a.null_count(),
+            ChannelData::Int64(a) => a.null_count(),
+            ChannelData::UInt64(a) => a.null_count(),
+            ChannelData::Float64(a) => a.null_count(),
+            ChannelData::Complex32(a) => a.null_count(),
+            ChannelData::Complex64(a) => a.null_count(),
+            ChannelData::Utf8(a) => a.validity().as_ref().map(|x| x.unset_bits()).unwrap_or(0),
+            ChannelData::VariableSizeByteArray(a) => {
+                a.validity().as_ref().map(|x| x.unset_bits()).unwrap_or(0)
+            }
+            ChannelData::FixedSizeByteArray(a) => {
+                a.validity().as_ref().map(|x| x.unset_bits()).unwrap_or(0)
+            }
+            ChannelData::ArrayDInt8(a) => a.null_count(),
+            ChannelData::ArrayDUInt8(a) => a.null_count(),
+            ChannelData::ArrayDInt16(a) => a.null_count(),
+            ChannelData::ArrayDUInt16(a) => a.null_count(),
+            ChannelData::ArrayDInt32(a) => a.null_count(),
+            ChannelData::ArrayDUInt32(a) => a.null_count(),
+            ChannelData::ArrayDFloat32(a) => a.null_count(),
+            ChannelData::ArrayDInt64(a) => a.null_count(),
+            ChannelData::ArrayDUInt64(a) => a.null_count(),
+            ChannelData::ArrayDFloat64(a) => a.null_count(),
+        }
+    }
+    pub fn validity(&self) -> Option<&Bitmap> {
+        match &self {
+            ChannelData::Int8(a) => a.validity(),
+            ChannelData::UInt8(a) => a.validity(),
+            ChannelData::Int16(a) => a.validity(),
+            ChannelData::UInt16(a) => a.validity(),
+            ChannelData::Int32(a) => a.validity(),
+            ChannelData::UInt32(a) => a.validity(),
+            ChannelData::Float32(a) => a.validity(),
+            ChannelData::Int64(a) => a.validity(),
+            ChannelData::UInt64(a) => a.validity(),
+            ChannelData::Float64(a) => a.validity(),
+            ChannelData::Complex32(a) => a.validity(),
+            ChannelData::Complex64(a) => a.validity(),
+            ChannelData::Utf8(_) => None,
+            ChannelData::VariableSizeByteArray(_) => None,
+            ChannelData::FixedSizeByteArray(_) => None,
+            ChannelData::ArrayDInt8(a) => a.validity(),
+            ChannelData::ArrayDUInt8(a) => a.validity(),
+            ChannelData::ArrayDInt16(a) => a.validity(),
+            ChannelData::ArrayDUInt16(a) => a.validity(),
+            ChannelData::ArrayDInt32(a) => a.validity(),
+            ChannelData::ArrayDUInt32(a) => a.validity(),
+            ChannelData::ArrayDFloat32(a) => a.validity(),
+            ChannelData::ArrayDInt64(a) => a.validity(),
+            ChannelData::ArrayDUInt64(a) => a.validity(),
+            ChannelData::ArrayDFloat64(a) => a.validity(),
+        }
     }
 }
 
