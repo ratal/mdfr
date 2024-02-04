@@ -339,7 +339,6 @@ impl MdfInfo4 {
             n_bytes,
             composition,
             invalid_mask: None,
-            channel_data_valid: true,
         };
 
         // CG
@@ -2119,9 +2118,6 @@ pub struct Cn4 {
     pub endian: bool,
     /// optional invalid mask array, invalid byte position in record, invalid byte mask
     pub invalid_mask: Option<(Option<MutableBitmap>, usize, u8)>,
-    /// True if channel is valid = contains data converted
-    /// TODO remove this field, no need anymore
-    pub channel_data_valid: bool,
 }
 
 impl Clone for Cn4 {
@@ -2137,7 +2133,6 @@ impl Clone for Cn4 {
             data: ChannelData::default(),
             endian: self.endian,
             invalid_mask: self.invalid_mask.clone(),
-            channel_data_valid: self.channel_data_valid,
         }
     }
 }
@@ -2147,14 +2142,6 @@ pub(crate) type CnType = HashMap<i32, Cn4>;
 
 /// record layout type : record_id_size: u8, cg_data_bytes: u32, cg_inval_bytes: u32
 type RecordLayout = (u8, u32, u32);
-
-/// Set flag for each channel in CnType indicating its owned data is valid
-pub fn validate_channels_set(channels: &mut CnType, channel_names: &HashSet<String>) {
-    channels
-        .iter_mut()
-        .filter(|(_, cn)| channel_names.contains(&cn.unique_name))
-        .for_each(|(_, cn)| cn.channel_data_valid = true);
-}
 
 /// creates recursively in the channel group the CN blocks and all its other linked blocks (CC, MD, TX, CA, etc.)
 pub fn parse_cn4(
@@ -2296,7 +2283,6 @@ fn can_open_date(
         )),
         endian: false,
         invalid_mask: None,
-        channel_data_valid: false,
     };
     let block = Cn4Block {
         cn_links: 8,
@@ -2319,7 +2305,6 @@ fn can_open_date(
         )),
         endian: false,
         invalid_mask: None,
-        channel_data_valid: false,
     };
     let block = Cn4Block {
         cn_links: 8,
@@ -2342,7 +2327,6 @@ fn can_open_date(
         )),
         endian: false,
         invalid_mask: None,
-        channel_data_valid: false,
     };
     let block = Cn4Block {
         cn_links: 8,
@@ -2365,7 +2349,6 @@ fn can_open_date(
         )),
         endian: false,
         invalid_mask: None,
-        channel_data_valid: false,
     };
     let block = Cn4Block {
         cn_links: 8,
@@ -2388,7 +2371,6 @@ fn can_open_date(
         )),
         endian: false,
         invalid_mask: None,
-        channel_data_valid: false,
     };
     let block = Cn4Block {
         cn_links: 8,
@@ -2411,7 +2393,6 @@ fn can_open_date(
         )),
         endian: false,
         invalid_mask: None,
-        channel_data_valid: false,
     };
     (date_ms, min, hour, day, month, year)
 }
@@ -2439,7 +2420,6 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         )),
         endian: false,
         invalid_mask: None,
-        channel_data_valid: false,
     };
     let block = Cn4Block {
         cn_links: 8,
@@ -2462,7 +2442,6 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         )),
         endian: false,
         invalid_mask: None,
-        channel_data_valid: false,
     };
     (ms, days)
 }
@@ -2614,7 +2593,6 @@ fn parse_cn4_block(
         data: data_type_init(cn_type, data_type, n_bytes, is_array)?,
         endian,
         invalid_mask,
-        channel_data_valid: false,
     };
 
     Ok((cn_struct, position, n_cn, cns))

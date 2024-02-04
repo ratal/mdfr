@@ -1,8 +1,7 @@
 //! data read and load in memory based in MdfInfo4's metadata
 use crate::export::tensor::Order;
 use crate::mdfinfo::mdfinfo4::{
-    parse_dz, parser_dl4_block, parser_ld4_block, validate_channels_set, Dl4Block, Dt4Block,
-    Hl4Block, Ld4Block,
+    parse_dz, parser_dl4_block, parser_ld4_block, Dl4Block, Dt4Block, Hl4Block, Ld4Block,
 };
 use crate::mdfinfo::mdfinfo4::{Blockheader4, Cg4, Cn4, Compo, Dg4};
 use crate::mdfinfo::MdfInfo;
@@ -76,7 +75,8 @@ pub fn mdfreader4<'a>(
                         sorted,
                         &channel_names_to_read_in_dg,
                         &mut decoder,
-                    ).with_context(|| format!("failed reading data for dg {:?}",dg))?;
+                    )
+                    .with_context(|| format!("failed reading data for dg {:?}", dg))?;
                     apply_bit_mask_offset(dg, &channel_names_to_read_in_dg)
                         .context("failed applying bit mask offset")?;
                     // channel_group invalid bits calculation (only for DIBlocks)
@@ -807,7 +807,6 @@ fn read_dv_di(
             invalid_data.clear();
         }
     }
-    validate_channels_set(&mut channel_group.cn, channel_names_to_read_in_dg);
     Ok(position)
 }
 
@@ -924,7 +923,6 @@ fn parser_dl4_sorted(
             }
         }
     }
-    validate_channels_set(&mut channel_group.cn, channel_names_to_read_in_dg);
     Ok((position, vlsd_channels))
 }
 
@@ -1028,7 +1026,6 @@ fn read_all_channels_sorted(
         .context("could not read channels from bytes")?;
         previous_index += n_record_chunk;
     }
-    validate_channels_set(&mut channel_group.cn, channel_names_to_read_in_dg);
     Ok(vlsd_channels)
 }
 
@@ -1054,7 +1051,6 @@ fn read_all_channels_sorted_from_bytes(
         true,
     )
     .context("failed initilising arrays")?;
-    validate_channels_set(&mut channel_group.cn, channel_names_to_read_in_dg);
     Ok(vlsd_channels)
 }
 
@@ -1246,7 +1242,6 @@ fn read_all_channels_unsorted_from_bytes(
             )
             .context("failed reading channels from bytes after reading unsorted data")?;
             record_data.clear(); // clears data for new block, keeping capacity
-            validate_channels_set(&mut channel_group.cn, channel_names_to_read_in_dg);
         }
     }
     Ok(())
@@ -1269,9 +1264,7 @@ fn initialise_arrays(
     channel_group
         .cn
         .par_iter_mut()
-        .filter(|(_cn_record_position, cn)| {
-            channel_names_to_read_in_dg.contains(&cn.unique_name) && !cn.channel_data_valid
-        })
+        .filter(|(_cn_record_position, cn)| channel_names_to_read_in_dg.contains(&cn.unique_name))
         .try_for_each(
             |(_cn_record_position, cn): (&i32, &mut Cn4)| -> Result<(), Error> {
                 let mut shape = (Vec::new(), Order::RowMajor);
@@ -1287,7 +1280,6 @@ fn initialise_arrays(
                     .with_context(|| {
                         format!("Zeros initialisation of channel {} failed", cn.unique_name)
                     })?;
-                cn.channel_data_valid = false;
                 Ok(())
             },
         )

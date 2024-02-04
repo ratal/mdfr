@@ -602,6 +602,7 @@ pub fn arrow_to_bytes(array: Box<dyn Array>) -> Result<Vec<u8>, Error> {
 
 #[inline]
 fn to_bytes(array: Box<dyn Array>, data_type: &DataType) -> Result<Vec<u8>, Error> {
+    // returns native endian as defined in channel block with arrow_to_mdf_data_type()
     match data_type {
         DataType::Null => Ok(Vec::new()),
         DataType::Boolean => {

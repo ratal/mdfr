@@ -634,7 +634,6 @@ fn create_blocks(
             n_bytes: cg_block.cg_data_bytes,
             composition,
             invalid_mask: None,
-            channel_data_valid: false,
         };
         let mut new_cg = Cg4 {
             header: cg_block_header,
