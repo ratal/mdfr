@@ -1775,7 +1775,7 @@ pub fn read_channels_from_bytes(
         // Other channel types : virtual channels cn_type 3 & 6 are handled at initialisation
         if record_with_invalid_data {
             // invalidation bits to store in bitmap.
-            if let Some((mask, invalid_byte_position, invalid_byte_mask)) = &mut cn.invalid_mask {
+            if let Some((Some(mask), invalid_byte_position, invalid_byte_mask)) = &mut cn.invalid_mask {
                 for (i, record) in data_chunk.chunks(record_length).enumerate() {
                     mask.set(i + previous_index, (*invalid_byte_mask & record[*invalid_byte_position]) == 0);
                 }

@@ -184,21 +184,20 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
                                         .context("failed creating di block")?;
                                 }
                             }
-                            {
-                                let data_pointer = Arc::clone(&data_pointer);
-                                let mut locked_data_pointer = data_pointer.lock();
-                                dg.block.dg_data = *locked_data_pointer;
-                                *locked_data_pointer += offset;
-                                let buffer = write_data_blocks(
-                                    dg.block.dg_data,
-                                    ld_block,
-                                    data_block,
-                                    invalid_block,
-                                    offset as usize,
-                                )?;
-                                tx.send(buffer).context("Channel disconnected")?;
-                                drop(locked_data_pointer);
-                            }
+
+                            let data_pointer = Arc::clone(&data_pointer);
+                            let mut locked_data_pointer = data_pointer.lock();
+                            dg.block.dg_data = *locked_data_pointer;
+                            *locked_data_pointer += offset;
+                            let buffer = write_data_blocks(
+                                dg.block.dg_data,
+                                ld_block,
+                                data_block,
+                                invalid_block,
+                                offset as usize,
+                            )?;
+                            tx.send(buffer).context("Channel disconnected")?;
+                            drop(locked_data_pointer);
                         }
                     }
                 }
@@ -318,10 +317,8 @@ fn write_data_blocks(
         buffer
             .write_le(&id_ld)
             .context("Could not write LDBlock id")?;
-        ld.ld_links
-            .iter_mut()
-            .skip(1) // spare ld_next for offset
-            .for_each(|x| *x += position);
+        ld.ld_links.iter_mut().for_each(|x| *x += position);
+        ld.ld_n_links = ld.ld_links.len() as u64 + 1;
         buffer.write_le(ld).context("Could not write LDBlock")?;
     }
 
@@ -518,7 +515,7 @@ fn create_blocks(
         cg_block.cg_cycle_count = cg.block.cg_cycle_count;
 
         cg_block.cg_data_bytes = byte_count;
-        if cg.block.cg_inval_bytes > 0 {
+        if data.validity().is_some() {
             // One byte for invalid data as only one channel per CG
             cg_block.cg_inval_bytes = 1;
         }

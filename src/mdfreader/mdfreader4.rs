@@ -38,7 +38,7 @@ pub fn mdfreader4<'a>(
     rdr: &'a mut BufReader<&File>,
     mdf: &'a mut Mdf,
     channel_names: &HashSet<String>,
-) -> Result<()> {
+) -> Result<(), Error> {
     match &mut mdf.mdf_info {
         MdfInfo::V4(info) => {
             let mut position: i64 = 0;
@@ -76,7 +76,7 @@ pub fn mdfreader4<'a>(
                         sorted,
                         &channel_names_to_read_in_dg,
                         &mut decoder,
-                    )?;
+                    ).with_context(|| format!("failed reading data for dg {:?}",dg))?;
                     apply_bit_mask_offset(dg, &channel_names_to_read_in_dg)
                         .context("failed applying bit mask offset")?;
                     // channel_group invalid bits calculation (only for DIBlocks)
@@ -232,7 +232,7 @@ fn read_data(
                 channel_names_to_read_in_dg,
                 decoder,
             )
-            .context("failed reading data")?;
+            .context("failed reading data from HL block")?;
         }
         [35, 35, 68, 76] => {
             // ##DL
@@ -646,7 +646,12 @@ fn parser_ld4(
         }
         if channel_group.block.cg_inval_bytes > 0 {
             // Reads invalid DI or DZ block
-            let ld_invalid_data = ld_blocks[0].ld_invalid_data()[0];
+            let ld_invalid_data_vec = ld_blocks[0].ld_invalid_data();
+            let ld_invalid_data = if !ld_invalid_data_vec.is_empty() {
+                ld_invalid_data_vec[0]
+            } else {
+                bail!("no invalid block pointer found in ld4 block")
+            };
             rdr.seek_relative(ld_invalid_data - position)
                 .context("Could not reach DI or DZ block position")?;
             let mut id = [0u8; 4];

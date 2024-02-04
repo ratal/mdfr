@@ -10,7 +10,7 @@ use crate::mdfinfo::{
 use anyhow::{Context, Error, Result};
 
 /// Converts mdfinfo3 into mdfinfo4
-pub fn convert3to4(mdf3: &MdfInfo3, file_name: &str) -> Result<MdfInfo4> {
+pub fn convert3to4(mdf3: &MdfInfo3, file_name: &str) -> Result<MdfInfo4, Error> {
     let n_channels = mdf3.get_channel_names_set().len();
     let mut mdf4 = MdfInfo4::new(file_name, n_channels);
     // FH

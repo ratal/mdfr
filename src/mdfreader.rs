@@ -12,7 +12,7 @@ use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::BufReader;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, Error};
 use arrow2::array::{get_display, Array};
 use log::info;
 use pyo3::prelude::*;
@@ -175,13 +175,14 @@ impl Mdf {
         self.mdf_info.remove_channel(channel_name);
     }
     /// load all channels data in memory
-    pub fn load_all_channels_data_in_memory(&mut self) -> Result<()> {
+    pub fn load_all_channels_data_in_memory(&mut self) -> Result<(), Error> {
         let channel_names = self.get_channel_names_set();
-        self.load_channels_data_in_memory(channel_names)?;
+        self.load_channels_data_in_memory(channel_names)
+            .context("failed loading channels data from file to memory")?;
         Ok(())
     }
     /// load a set of channels data in memory
-    pub fn load_channels_data_in_memory(&mut self, channel_names: HashSet<String>) -> Result<()> {
+    pub fn load_channels_data_in_memory(&mut self, channel_names: HashSet<String>) -> Result<(), Error> {
         let f: File = OpenOptions::new()
             .read(true)
             .write(false)
@@ -192,10 +193,12 @@ impl Mdf {
 
         match &mut self.mdf_info {
             MdfInfo::V3(_mdfinfo3) => {
-                mdfreader3(&mut rdr, self, &channel_names)?;
+                mdfreader3(&mut rdr, self, &channel_names)
+                    .with_context(|| format!("failed reading data from mdf3 file {}",self.get_file_name()))?;
             }
             MdfInfo::V4(_mdfinfo4) => {
-                mdfreader4(&mut rdr, self, &channel_names)?;
+                mdfreader4(&mut rdr, self, &channel_names)
+                    .with_context(|| format!("failed reading data from mdf4 file {}",self.get_file_name()))?;
             }
         };
         info!("Loaded all channels data into memory");

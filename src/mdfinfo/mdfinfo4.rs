@@ -1899,14 +1899,15 @@ impl Cg4 {
     /// Computes the validity mask for each channel in the group
     /// clears out the common invalid bytes vector for the group at the end
     pub fn process_all_channel_invalid_bits(&mut self) -> Result<(), Error> {
+        // get invalid bytes
+        let cg_inval_bytes = self.block.cg_inval_bytes as usize;
         if let Some(invalid_bytes) = &self.invalid_bytes {
-            // get invalid bytes
-            let cg_inval_bytes = self.block.cg_inval_bytes as usize;
+            // To extract invalidity for each channel from invalid_bytes
             self.cn
                 .par_iter_mut()
                 .filter(|(_rec_pos, cn)| !cn.data.is_empty())
                 .try_for_each(|(_rec_pos, cn): (&i32, &mut Cn4)| -> Result<(), Error> {
-                    if let Some((mask, invalid_byte_position, invalid_byte_mask)) =
+                    if let Some((Some(mask), invalid_byte_position, invalid_byte_mask)) =
                         &mut cn.invalid_mask
                     {
                         // mask is already initialised to all valid values.
@@ -1929,6 +1930,28 @@ impl Cg4 {
                     Ok(())
                 })?;
             self.invalid_bytes = None; // Clears out invalid bytes channel
+        } else if cg_inval_bytes > 0 {
+            // invalidity already stored in mask for each channel by read_channels_from_bytes()
+            // to set validity in arrow array
+            self.cn
+                .par_iter_mut()
+                .filter(|(_rec_pos, cn)| !cn.data.is_empty())
+                .try_for_each(|(_rec_pos, cn): (&i32, &mut Cn4)| -> Result<(), Error> {
+                    if let Some((validity, _invalid_byte_position, _invalid_byte_mask)) =
+                        &mut cn.invalid_mask
+                    {
+                        if let Some(mask) = validity {
+                            cn.data.set_validity(mask.clone()).with_context(|| {
+                                format!(
+                                    "failed applying invalid bits for channel {} from mask",
+                                    cn.unique_name
+                                )
+                            })?;
+                        }
+                        *validity = None; // clean bitmask from Cn4 as present in arrow array
+                    }
+                    Ok(())
+                })?;
         }
         Ok(())
     }
@@ -2095,7 +2118,7 @@ pub struct Cn4 {
     /// false = little endian
     pub endian: bool,
     /// optional invalid mask array, invalid byte position in record, invalid byte mask
-    pub invalid_mask: Option<(MutableBitmap, usize, u8)>,
+    pub invalid_mask: Option<(Option<MutableBitmap>, usize, u8)>,
     /// True if channel is valid = contains data converted
     /// TODO remove this field, no need anymore
     pub channel_data_valid: bool,
@@ -2492,11 +2515,11 @@ fn parse_cn4_block(
 
     let pos_byte_beg = block.cn_byte_offset + record_id_size as u32;
     let n_bytes = calc_n_bytes_not_aligned(block.cn_bit_count + (block.cn_bit_offset as u32));
-    let invalid_mask: Option<(MutableBitmap, usize, u8)> = if cg_inval_bytes != 0 {
+    let invalid_mask: Option<(Option<MutableBitmap>, usize, u8)> = if cg_inval_bytes != 0 {
         let invalid_byte_position = (block.cn_inval_bit_pos >> 3) as usize;
         let invalid_byte_mask = 1 << (block.cn_inval_bit_pos & 0x07);
         Some((
-            MutableBitmap::from_len_set(cg_cycle_count as usize),
+            Some(MutableBitmap::from_len_set(cg_cycle_count as usize)),
             invalid_byte_position,
             invalid_byte_mask,
         ))
@@ -3378,8 +3401,11 @@ pub struct Ld4Block {
     pub ld_len: u64,
     /// # of links
     pub ld_n_links: u64,
+    // links
+    /// next ld block
+    pub ld_next: i64,
     /// links
-    #[br(little, count = ld_n_links)]
+    #[br(if(ld_n_links > 1), little, count = ld_n_links - 1)]
     pub ld_links: Vec<i64>,
     // members
     /// Flags
@@ -3404,9 +3430,10 @@ impl Default for Ld4Block {
             reserved: [0; 4],
             ld_len: 56,
             ld_n_links: 2,
-            ld_links: vec![0],
+            ld_next: 0,
+            ld_links: vec![],
             ld_flags: 0,
-            ld_count: 0,
+            ld_count: 1,
             ld_equal_sample_count: None,
             ld_sample_offset: vec![],
             dl_time_values: vec![],
@@ -3418,12 +3445,12 @@ impl Default for Ld4Block {
 
 impl Ld4Block {
     pub fn ld_ld_next(&self) -> i64 {
-        self.ld_links[0]
+        self.ld_next
     }
     /// Data block positions
     pub fn ld_data(&self) -> Vec<i64> {
         if (1u32 << 31) & self.ld_flags > 0 {
-            self.ld_links.iter().skip(1).step_by(2).copied().collect()
+            self.ld_links.iter().step_by(2).copied().collect()
         } else {
             self.ld_links[1..].to_vec()
         }
@@ -3431,7 +3458,7 @@ impl Ld4Block {
     /// Invalid data block positions
     pub fn ld_invalid_data(&self) -> Vec<i64> {
         if (1u32 << 31) & self.ld_flags > 0 {
-            self.ld_links.iter().skip(2).step_by(2).copied().collect()
+            self.ld_links.iter().skip(1).step_by(2).copied().collect()
         } else {
             Vec::<i64>::new()
         }
