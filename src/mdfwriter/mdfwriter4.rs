@@ -30,7 +30,7 @@ use crossbeam_channel::bounded;
 use parking_lot::Mutex;
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 use std::fs::File;
-use yazi::{compress, CompressionLevel, Format};
+use yazi::{CompressionLevel, Encoder, Format};
 
 use super::mdfwriter3::convert3to4;
 
@@ -391,11 +391,11 @@ fn create_ld(m: Option<&Bitmap>, offset: &mut i64) -> Option<Ld4Block> {
 }
 
 /// Create a DV Block
-fn create_dv(data: Box<dyn Array>, offset: &mut i64) -> Result<(DataBlock, usize, Vec<u8>)> {
+fn create_dv(data: Box<dyn Array>, offset: &mut i64) -> Result<(DataBlock, usize, Vec<u8>), Error> {
     let mut dv_block = Blockheader4::default();
     dv_block.hdr_id = [35, 35, 68, 86]; // ##DV
-    let data_bytes: Vec<u8> =
-        arrow_to_bytes(data).context("failed converting arraw data into bytes for dv block")?;
+    let data_bytes: Vec<u8> = arrow_to_bytes(data.as_ref())
+        .context("failed converting arraw data into bytes for dv block")?;
     let data_bytes_len = data_bytes.len();
     dv_block.hdr_len += data_bytes_len as u64;
     let byte_aligned = 8 - data_bytes_len % 8;
@@ -413,25 +413,28 @@ enum DataBlock {
 }
 
 /// Create a DZ Block of DV type
-fn create_dz_dv(data: Box<dyn Array>, offset: &mut i64) -> Result<(DataBlock, usize, Vec<u8>)> {
+fn create_dz_dv(
+    data: Box<dyn Array>,
+    offset: &mut i64,
+) -> Result<(DataBlock, usize, Vec<u8>), Error> {
     let mut dz_block = Dz4Block::default();
-    let mut data_bytes = compress(
-        &arrow_to_bytes(data.clone())
-            .context("failed converting arraw data into bytes for dz or dv block")?,
-        Format::Zlib,
-        CompressionLevel::Default,
-    )
-    .expect("Could not compress invalid data");
-    dz_block.dz_data_length = data_bytes.len() as u64;
+    let mut encoder = Encoder::boxed();
+    encoder.set_format(Format::Zlib);
+    encoder.set_level(CompressionLevel::BestSize);
+    let mut data_bytes = Vec::new();
+    let mut stream = encoder.stream_into_vec(&mut data_bytes);
+    let bytes = arrow_to_bytes(data.as_ref())
+        .context("failed converting arraw data into bytes for dz or dv block")?;
+    stream.write(&bytes).expect("Could not compress data");
+    dz_block.dz_data_length = stream.finish().expect("failed finishing to compress data");
     let dv_dz_block: DataBlock;
     let byte_aligned: usize;
-    let length = data.clone().len();
+    let length = data.len();
     dz_block.dz_org_data_length = (length * arrow_byte_count(data.as_ref()) as usize) as u64;
     if dz_block.dz_org_data_length < dz_block.dz_data_length {
         (dv_dz_block, byte_aligned, data_bytes) = create_dv(data.clone(), offset)?;
     } else {
         byte_aligned = (8 - dz_block.dz_data_length % 8) as usize;
-        dz_block.dz_data_length = data_bytes.len() as u64;
         dz_block.len = dz_block.dz_data_length + 48;
         *offset += dz_block.len as i64 + byte_aligned as i64;
         dv_dz_block = DataBlock::DZ(dz_block);
@@ -456,21 +459,25 @@ fn create_di(mask: &Bitmap, offset: &mut i64) -> Result<Option<(DataBlock, Vec<u
 }
 
 /// Create a DZ Block of DI type
-fn create_dz_di(mask: &Bitmap, offset: &mut i64) -> Result<Option<(DataBlock, Vec<u8>)>> {
+fn create_dz_di(mask: &Bitmap, offset: &mut i64) -> Result<Option<(DataBlock, Vec<u8>)>, Error> {
     let mut dz_invalid_block = Dz4Block::default();
     dz_invalid_block.dz_org_data_length = mask.len() as u64;
-    let mut data_bytes = compress(
-        mask.iter().map(|v| v as u8).collect::<Vec<u8>>().as_slice(),
-        Format::Zlib,
-        CompressionLevel::Default,
-    )
-    .expect("Could not compress invalid data");
-    dz_invalid_block.dz_data_length = data_bytes.len() as u64;
+    let mut encoder = Encoder::boxed();
+    encoder.set_format(Format::Zlib);
+    encoder.set_level(CompressionLevel::BestSize);
+    let mut data_bytes = Vec::new();
+    let mut stream = encoder.stream_into_vec(&mut data_bytes);
+    stream
+        .write(mask.iter().map(|v| v as u8).collect::<Vec<u8>>().as_slice())
+        .expect("Could not compress invalid data");
+    dz_invalid_block.dz_data_length = stream
+        .finish()
+        .expect("failed finishing to compress invalid data");
     if dz_invalid_block.dz_org_data_length < dz_invalid_block.dz_data_length {
         Ok(create_di(mask, offset)?)
     } else {
-        dz_invalid_block.len = data_bytes.len() as u64 + 48;
-        let byte_aligned = 8 - data_bytes.len() % 8;
+        dz_invalid_block.len = dz_invalid_block.dz_data_length + 48;
+        let byte_aligned = 8 - dz_invalid_block.dz_data_length as usize % 8;
         data_bytes = [data_bytes, vec![0; byte_aligned]].concat();
         dz_invalid_block.dz_org_block_type = [68, 73]; // DI
         *offset += dz_invalid_block.len as i64 + byte_aligned as i64;

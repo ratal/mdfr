@@ -585,7 +585,8 @@ fn parser_ld4(
         let mut id = [0u8; 4];
         rdr.read_exact(&mut id)
             .context("could not read LD block id")?;
-        let (block, pos) = parser_ld4_block(rdr, position, position)?;
+        let (block, pos) =
+            parser_ld4_block(rdr, position, position).context("failed parsing ld4 block")?;
         position = pos;
         ld_blocks.push(block.clone());
         next_ld = block.ld_ld_next();
@@ -606,7 +607,8 @@ fn parser_ld4(
         )
         .context("failed initialising arrays")?;
         if id == "##DZ".as_bytes() {
-            let (dt, block_header) = parse_dz(rdr)?;
+            let (dt, block_header) =
+                parse_dz(rdr).context("failed parsing dz block pointed by ld4 block")?;
             for (_rec_pos, cn) in channel_group.cn.iter_mut() {
                 let shape = if let Some(compo) = &cn.composition {
                     match &compo.block {
@@ -650,7 +652,7 @@ fn parser_ld4(
             let ld_invalid_data = if !ld_invalid_data_vec.is_empty() {
                 ld_invalid_data_vec[0]
             } else {
-                bail!("no invalid block pointer found in ld4 block")
+                bail!("no invalid block (di or dz) pointer found in ld4 block")
             };
             rdr.seek_relative(ld_invalid_data - position)
                 .context("Could not reach DI or DZ block position")?;

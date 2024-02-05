@@ -6,7 +6,7 @@ mod export;
 mod mdfinfo;
 mod mdfreader;
 mod mdfwriter;
-use anyhow::Result;
+use anyhow::{Context, Error, Result};
 use env_logger::Env;
 use log::info;
 
@@ -16,7 +16,7 @@ fn init() {
         .try_init();
 }
 
-fn main() -> Result<()> {
+fn main() -> Result<(), Error> {
     init();
     let matches = Command::new("mdfr")
         .bin_name("mdfr")
@@ -75,9 +75,10 @@ fn main() -> Result<()> {
 
     let file_name = matches
         .get_one::<String>("file")
-        .expect("File name missing");
+        .context("File name missing")?;
 
-    let mut mdf_file = mdfreader::Mdf::new(file_name)?;
+    let mut mdf_file = mdfreader::Mdf::new(file_name)
+        .with_context(|| format!("failed reading metadata from file {}", file_name))?;
 
     if matches.get_flag("info") {
         println!("{:?}", mdf_file.get_master_channel_names_set());
@@ -87,7 +88,10 @@ fn main() -> Result<()> {
     let parquet_file_name = matches.get_one::<String>("export_to_parquet");
 
     if mdf4_file_name.is_some() || parquet_file_name.is_some() {
-        mdf_file.load_all_channels_data_in_memory()?;
+        mdf_file
+            .load_all_channels_data_in_memory()
+            .with_context(|| format!("failed reading channels data from file {}", file_name))?;
+        info!("loaded all channels data in memory from file {}", file_name);
     }
 
     let compression = matches.get_flag("compress");

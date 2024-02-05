@@ -595,13 +595,13 @@ pub fn shape(array: &dyn Array) -> (Vec<usize>, Order) {
 }
 
 /// returns the a vec<u8>, bytes vector of arrow array
-pub fn arrow_to_bytes(array: Box<dyn Array>) -> Result<Vec<u8>, Error> {
+pub fn arrow_to_bytes(array: &dyn Array) -> Result<Vec<u8>, Error> {
     let data_type = array.data_type();
-    to_bytes(array.clone(), data_type)
+    to_bytes(array, data_type)
 }
 
 #[inline]
-fn to_bytes(array: Box<dyn Array>, data_type: &DataType) -> Result<Vec<u8>, Error> {
+fn to_bytes(array: &dyn Array, data_type: &DataType) -> Result<Vec<u8>, Error> {
     // returns native endian as defined in channel block with arrow_to_mdf_data_type()
     match data_type {
         DataType::Null => Ok(Vec::new()),
@@ -866,7 +866,7 @@ fn to_bytes(array: Box<dyn Array>, data_type: &DataType) -> Result<Vec<u8>, Erro
                 .downcast_ref::<Utf8Array<i64>>()
                 .context("could not downcast to large utf8 array")?;
             let nbytes = array.values_iter().map(|s| s.len()).max().unwrap_or(0);
-            Ok(array
+            let bytes = array
                 .values_iter()
                 .flat_map(|x| {
                     let str_bytes = x.to_string().into_bytes();
@@ -877,7 +877,8 @@ fn to_bytes(array: Box<dyn Array>, data_type: &DataType) -> Result<Vec<u8>, Erro
                         str_bytes
                     }
                 })
-                .collect())
+                .collect();
+            Ok(bytes)
         }
         DataType::FixedSizeList(field, _size) => match field.data_type.to_physical_type() {
             PhysicalType::Primitive(PrimitiveType::Float32) => {

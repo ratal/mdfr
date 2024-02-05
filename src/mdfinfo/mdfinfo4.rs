@@ -3430,7 +3430,7 @@ impl Ld4Block {
         if (1u32 << 31) & self.ld_flags > 0 {
             self.ld_links.iter().step_by(2).copied().collect()
         } else {
-            self.ld_links[1..].to_vec()
+            self.ld_links.clone()
         }
     }
     /// Invalid data block positions

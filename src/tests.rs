@@ -980,8 +980,8 @@ mod tests {
         let ref_channel = r"NO";
         let mut mdf = Mdf::new(&file)?;
         mdf.load_all_channels_data_in_memory()?;
-        // with compression
-        let mut info2 = mdf.write(WRITING_MDF_FILE, true)?;
+        // without compression
+        let mut info2 = mdf.write(WRITING_MDF_FILE, false)?;
         info2.load_all_channels_data_in_memory()?;
         if let Some(data) = mdf.get_channel_data(&ref_channel.to_string()) {
             if let Some(data2) = info2.get_channel_data(&ref_channel.to_string()) {
@@ -992,8 +992,8 @@ mod tests {
         } else {
             panic!("Channel not found");
         }
-        // without compression
-        let mut info2 = mdf.write(WRITING_MDF_FILE, false)?;
+        // with compression
+        let mut info2 = mdf.write(WRITING_MDF_FILE, true)?;
         info2.load_all_channels_data_in_memory()?;
         if let Some(data) = mdf.get_channel_data(&ref_channel.to_string()) {
             if let Some(data2) = info2.get_channel_data(&ref_channel.to_string()) {
