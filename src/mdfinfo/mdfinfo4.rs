@@ -890,10 +890,41 @@ impl MetaData {
         Ok(())
     }
     /// Returns the text from TX Block or TX's tag text from MD Block
-    pub fn get_tx(&self) -> Result<Option<String>> {
+    pub fn get_tx(&self) -> Result<Option<String>, Error> {
         match self.block_type {
             MetaDataBlockType::MdParsed => Ok(self.comments.get("TX").cloned()),
-            _ => {
+            MetaDataBlockType::MdBlock => {
+                // extract TX tag from xml
+                let comment: String = self
+                    .get_data_string()
+                    .context("failed getting data string to extract TX tag")?
+                    .trim_end_matches(|c| c == '\n' || c == '\r' || c == ' ')
+                    .into(); // removes ending spaces
+                match roxmltree::Document::parse(&comment) {
+                    Ok(md) => {
+                        let mut tx: Option<String> = None;
+                        for node in md.root().descendants() {
+                            let text = match node.text() {
+                                Some(text) => text.to_string(),
+                                None => String::new(),
+                            };
+                            if node.is_element()
+                                && !text.is_empty()
+                                && node.tag_name().name().to_string() == r"TX"
+                            {
+                                tx = Some(text);
+                                break;
+                            }
+                        }
+                        Ok(tx)
+                    }
+                    Err(e) => {
+                        warn!("Error parsing comment : \n{}\n{}", comment, e);
+                        Ok(None)
+                    }
+                }
+            }
+            MetaDataBlockType::TX => {
                 let comment = str::from_utf8(&self.raw_data).with_context(|| {
                     format!("Invalid UTF-8 sequence in metadata: {:?}", self.raw_data)
                 })?;
