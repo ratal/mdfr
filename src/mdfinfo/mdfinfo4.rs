@@ -910,7 +910,7 @@ impl MetaData {
                             };
                             if node.is_element()
                                 && !text.is_empty()
-                                && node.tag_name().name().to_string() == r"TX"
+                                && node.tag_name().name() == r"TX"
                             {
                                 tx = Some(text);
                                 break;

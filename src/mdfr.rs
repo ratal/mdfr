@@ -78,7 +78,7 @@ impl Mdfr {
         pyo3::Python::with_gil(|py| {
             let mut py_serie = Ok(Python::None(py));
             if let Some(array) = mdf.get_channel_data(channel_name) {
-                py_serie = rust_arrow_to_py_series(array);
+                py_serie = rust_arrow_to_py_series(array, channel_name.to_string());
             };
             py_serie
         })
@@ -95,7 +95,7 @@ impl Mdfr {
                     series_dict
                         .set_item(
                             channel.clone(),
-                            rust_arrow_to_py_series(channel_data)
+                            rust_arrow_to_py_series(channel_data, channel)
                                 .expect("Could not convert to python series"),
                         )
                         .expect("could not store the serie in dict");
