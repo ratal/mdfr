@@ -1,479 +1,15 @@
 //! Converts ndarray data in into arrow.
-use crate::export::tensor::Order as TensorOrder;
+use crate::export::tensor::Order;
 use crate::export::tensor::Tensor;
-use crate::mdfinfo::MdfInfo;
-use crate::mdfreader::channel_data::ChannelData;
-use crate::mdfreader::{ChannelIndexes, Mdf};
-use arrow2::array::{
-    Array, BinaryArray, FixedSizeBinaryArray, FixedSizeListArray, PrimitiveArray, Utf8Array,
-};
+use anyhow::Context;
+use anyhow::Error;
+use arrow2::array::{Array, BinaryArray, FixedSizeBinaryArray, PrimitiveArray, Utf8Array};
 use arrow2::bitmap::Bitmap;
-use arrow2::buffer::Buffer;
-use arrow2::datatypes::{DataType, Field, Metadata, PhysicalType, PrimitiveType};
+use arrow2::datatypes::{DataType, Field, PhysicalType, PrimitiveType};
 use arrow2::ffi;
 use arrow2::types::f16;
-use codepage::to_encoding;
-use encoding_rs::Encoding;
 use pyo3::prelude::*;
 use pyo3::{ffi::Py_uintptr_t, PyAny, PyObject, PyResult};
-use rayon::iter::{IntoParallelIterator, ParallelExtend, ParallelIterator};
-use std::collections::HashSet;
-use std::mem;
-
-use super::channel_data::Order;
-
-impl ChannelData {
-    /// takes (or replace by default) the ChannelData array and returns an arrow array
-    pub fn take_to_arrow_array(&mut self, bitmap: Option<Bitmap>) -> Box<dyn Array> {
-        match self {
-            ChannelData::Int8(a) => Box::new(PrimitiveArray::new(
-                DataType::Int8,
-                mem::take(a).into(),
-                bitmap,
-            )),
-            ChannelData::UInt8(a) => Box::new(PrimitiveArray::new(
-                DataType::UInt8,
-                mem::take(a).into(),
-                bitmap,
-            )),
-            ChannelData::Int16(a) => Box::new(PrimitiveArray::new(
-                DataType::Int16,
-                mem::take(a).into(),
-                bitmap,
-            )),
-            ChannelData::UInt16(a) => Box::new(PrimitiveArray::new(
-                DataType::UInt16,
-                mem::take(a).into(),
-                bitmap,
-            )),
-            ChannelData::Float16(a) => Box::new(PrimitiveArray::new(
-                DataType::Float32,
-                mem::take(a).into(),
-                bitmap,
-            )),
-            ChannelData::Int24(a) => Box::new(PrimitiveArray::new(
-                DataType::Int32,
-                mem::take(a).into(),
-                bitmap,
-            )),
-            ChannelData::UInt24(a) => Box::new(PrimitiveArray::new(
-                DataType::UInt32,
-                mem::take(a).into(),
-                bitmap,
-            )),
-            ChannelData::Int32(a) => Box::new(PrimitiveArray::new(
-                DataType::Int32,
-                mem::take(a).into(),
-                bitmap,
-            )),
-            ChannelData::UInt32(a) => Box::new(PrimitiveArray::new(
-                DataType::UInt32,
-                mem::take(a).into(),
-                bitmap,
-            )),
-            ChannelData::Float32(a) => Box::new(PrimitiveArray::new(
-                DataType::Float32,
-                mem::take(a).into(),
-                bitmap,
-            )),
-            ChannelData::Int48(a) => Box::new(PrimitiveArray::new(
-                DataType::Int64,
-                mem::take(a).into(),
-                bitmap,
-            )),
-            ChannelData::UInt48(a) => Box::new(PrimitiveArray::new(
-                DataType::UInt64,
-                mem::take(a).into(),
-                bitmap,
-            )),
-            ChannelData::Int64(a) => Box::new(PrimitiveArray::new(
-                DataType::Int64,
-                mem::take(a).into(),
-                bitmap,
-            )),
-            ChannelData::UInt64(a) => Box::new(PrimitiveArray::new(
-                DataType::UInt64,
-                mem::take(a).into(),
-                bitmap,
-            )),
-            ChannelData::Float64(a) => Box::new(PrimitiveArray::new(
-                DataType::Float64,
-                mem::take(a).into(),
-                bitmap,
-            )),
-            ChannelData::Complex16(a) => {
-                let is_nullable = bitmap.is_some();
-                let array = Box::new(PrimitiveArray::from_vec(mem::take(&mut a.0)));
-                let field = Field::new("complex32", DataType::Float32, is_nullable);
-                Box::new(FixedSizeListArray::new(
-                    DataType::FixedSizeList(Box::new(field), 2),
-                    array as Box<dyn Array>,
-                    bitmap,
-                ))
-            }
-            ChannelData::Complex32(a) => {
-                let is_nullable = bitmap.is_some();
-                let array = Box::new(PrimitiveArray::from_vec(mem::take(&mut a.0)));
-                let field = Field::new("complex32", DataType::Float32, is_nullable);
-                Box::new(FixedSizeListArray::new(
-                    DataType::FixedSizeList(Box::new(field), 2),
-                    array as Box<dyn Array>,
-                    bitmap,
-                ))
-            }
-            ChannelData::Complex64(a) => {
-                let is_nullable = bitmap.is_some();
-                let array = Box::new(PrimitiveArray::from_vec(mem::take(&mut a.0)));
-                let field = Field::new("complex64", DataType::Float64, is_nullable);
-                Box::new(FixedSizeListArray::new(
-                    DataType::FixedSizeList(Box::new(field), 2),
-                    array as Box<dyn Array>,
-                    bitmap,
-                ))
-            }
-            ChannelData::StringSBC(a) => {
-                let array = Utf8Array::<i64>::from_slice(mem::take(a).as_slice());
-                Box::new(array.with_validity(bitmap))
-            }
-            ChannelData::StringUTF8(a) => {
-                let array = Utf8Array::<i64>::from_slice(mem::take(a).as_slice());
-                Box::new(array.with_validity(bitmap))
-            }
-            ChannelData::StringUTF16(a) => {
-                let array = Utf8Array::<i64>::from_slice(mem::take(a).as_slice());
-                Box::new(array.with_validity(bitmap))
-            }
-            ChannelData::VariableSizeByteArray(a) => {
-                let array = BinaryArray::<i64>::from_slice(mem::take(a).as_slice());
-                Box::new(array.with_validity(bitmap))
-            }
-            ChannelData::FixedSizeByteArray(a) => Box::new(FixedSizeBinaryArray::new(
-                DataType::FixedSizeBinary(a.1),
-                Buffer::<u8>::from(mem::take(a).0),
-                bitmap,
-            )),
-            ChannelData::ArrayDInt8(a) => {
-                let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-                Box::new(Tensor::new(
-                    DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int8), None),
-                    Buffer::<i8>::from(a.0),
-                    Some(a.1 .0),
-                    Some(a.1 .1.into()),
-                    None,
-                    None,
-                ))
-            }
-            ChannelData::ArrayDUInt8(a) => {
-                let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-                Box::new(Tensor::new(
-                    DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt8), None),
-                    Buffer::<u8>::from(a.0),
-                    Some(a.1 .0),
-                    Some(a.1 .1.into()),
-                    None,
-                    None,
-                ))
-            }
-            ChannelData::ArrayDInt16(a) => {
-                let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-                Box::new(Tensor::new(
-                    DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int16), None),
-                    Buffer::<i16>::from(a.0),
-                    Some(a.1 .0),
-                    Some(a.1 .1.into()),
-                    None,
-                    None,
-                ))
-            }
-            ChannelData::ArrayDUInt16(a) => {
-                let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-                Box::new(Tensor::new(
-                    DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt16), None),
-                    Buffer::<u16>::from(a.0),
-                    Some(a.1 .0),
-                    Some(a.1 .1.into()),
-                    None,
-                    None,
-                ))
-            }
-            ChannelData::ArrayDFloat16(a) => {
-                let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-                Box::new(Tensor::new(
-                    DataType::Extension("Tensor".to_owned(), Box::new(DataType::Float32), None),
-                    Buffer::<f32>::from(a.0),
-                    Some(a.1 .0),
-                    Some(a.1 .1.into()),
-                    None,
-                    None,
-                ))
-            }
-            ChannelData::ArrayDInt24(a) => {
-                let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-                Box::new(Tensor::new(
-                    DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int32), None),
-                    Buffer::<i32>::from(a.0),
-                    Some(a.1 .0),
-                    Some(a.1 .1.into()),
-                    None,
-                    None,
-                ))
-            }
-            ChannelData::ArrayDUInt24(a) => {
-                let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-                Box::new(Tensor::new(
-                    DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt32), None),
-                    Buffer::<u32>::from(a.0),
-                    Some(a.1 .0),
-                    Some(a.1 .1.into()),
-                    None,
-                    None,
-                ))
-            }
-            ChannelData::ArrayDInt32(a) => {
-                let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-                Box::new(Tensor::new(
-                    DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int32), None),
-                    Buffer::<i32>::from(a.0),
-                    Some(a.1 .0),
-                    Some(a.1 .1.into()),
-                    None,
-                    None,
-                ))
-            }
-            ChannelData::ArrayDUInt32(a) => {
-                let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-                Box::new(Tensor::new(
-                    DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt32), None),
-                    Buffer::<u32>::from(a.0),
-                    Some(a.1 .0),
-                    Some(a.1 .1.into()),
-                    None,
-                    None,
-                ))
-            }
-            ChannelData::ArrayDFloat32(a) => {
-                let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-                Box::new(Tensor::new(
-                    DataType::Extension("Tensor".to_owned(), Box::new(DataType::Float32), None),
-                    Buffer::<f32>::from(a.0),
-                    Some(a.1 .0),
-                    Some(a.1 .1.into()),
-                    None,
-                    None,
-                ))
-            }
-            ChannelData::ArrayDInt48(a) => {
-                let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-                Box::new(Tensor::new(
-                    DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int64), None),
-                    Buffer::<i64>::from(a.0),
-                    Some(a.1 .0),
-                    Some(a.1 .1.into()),
-                    None,
-                    None,
-                ))
-            }
-            ChannelData::ArrayDUInt48(a) => {
-                let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-                Box::new(Tensor::new(
-                    DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt64), None),
-                    Buffer::<u64>::from(a.0),
-                    Some(a.1 .0),
-                    Some(a.1 .1.into()),
-                    None,
-                    None,
-                ))
-            }
-            ChannelData::ArrayDInt64(a) => {
-                let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-                Box::new(Tensor::new(
-                    DataType::Extension("Tensor".to_owned(), Box::new(DataType::Int64), None),
-                    Buffer::<i64>::from(a.0),
-                    Some(a.1 .0),
-                    Some(a.1 .1.into()),
-                    None,
-                    None,
-                ))
-            }
-            ChannelData::ArrayDUInt64(a) => {
-                let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-                Box::new(Tensor::new(
-                    DataType::Extension("Tensor".to_owned(), Box::new(DataType::UInt64), None),
-                    Buffer::<u64>::from(a.0),
-                    Some(a.1 .0),
-                    Some(a.1 .1.into()),
-                    None,
-                    None,
-                ))
-            }
-            ChannelData::ArrayDFloat64(a) => {
-                let a = mem::replace(a, (Vec::new(), (Vec::new(), Order::RowMajor)));
-                Box::new(Tensor::new(
-                    DataType::Extension("Tensor".to_owned(), Box::new(DataType::Float64), None),
-                    Buffer::<f64>::from(a.0),
-                    Some(a.1 .0),
-                    Some(a.1 .1.into()),
-                    None,
-                    None,
-                ))
-            }
-            ChannelData::ArrayDComplex16(_) => todo!(),
-            ChannelData::ArrayDComplex32(_) => todo!(),
-            ChannelData::ArrayDComplex64(_) => todo!(),
-        }
-    }
-}
-
-/// takes data of channel set from MdfInfo structure and stores in mdf.arrow_data
-pub fn mdf_data_to_arrow(mdf: &mut Mdf, channel_names: &HashSet<String>) {
-    let mut chunk_index: usize = 0;
-    let mut array_index: usize = 0;
-    let mut field_index: usize = 0;
-    match &mut mdf.mdf_info {
-        MdfInfo::V4(mdfinfo4) => {
-            mdf.arrow_data = Vec::<Vec<Box<dyn Array>>>::with_capacity(mdfinfo4.dg.len());
-            mdf.arrow_schema.fields = Vec::<Field>::with_capacity(mdfinfo4.channel_names_set.len());
-            for (_dg_block_position, dg) in mdfinfo4.dg.iter_mut() {
-                let mut channel_names_present_in_dg = HashSet::new();
-                for channel_group in dg.cg.values() {
-                    let cn = channel_group.channel_names.clone();
-                    channel_names_present_in_dg.par_extend(cn);
-                }
-                let channel_names_to_read_in_dg: HashSet<_> = channel_names_present_in_dg
-                    .into_par_iter()
-                    .filter(|v| channel_names.contains(v))
-                    .collect();
-                if !channel_names_to_read_in_dg.is_empty() {
-                    dg.cg.iter_mut().for_each(|(_rec_id, cg)| {
-                        let is_nullable: bool = cg.block.cg_inval_bytes > 0;
-                        let mut columns =
-                            Vec::<Box<dyn Array>>::with_capacity(cg.channel_names.len());
-                        cg.cn.iter_mut().for_each(|(_rec_pos, cn)| {
-                            if !cn.data.is_empty() {
-                                let data: Box<dyn Array>;
-                                if let Some(bitmap) = mem::take(&mut cn.invalid_mask) {
-                                    data =
-                                        cn.data.take_to_arrow_array(Some(Bitmap::from(bitmap.0)));
-                                } else {
-                                    data = cn.data.take_to_arrow_array(None);
-                                }
-                                let field = Field::new(
-                                    cn.unique_name.clone(),
-                                    data.data_type().clone(),
-                                    is_nullable,
-                                );
-                                columns.push(data);
-                                let mut metadata = Metadata::new();
-                                if let Ok(Some(unit)) =
-                                    mdfinfo4.sharable.get_tx(cn.block.cn_md_unit)
-                                {
-                                    metadata.insert("unit".to_string(), unit);
-                                };
-                                if let Ok(Some(desc)) =
-                                    mdfinfo4.sharable.get_tx(cn.block.cn_md_comment)
-                                {
-                                    metadata.insert("description".to_string(), desc);
-                                };
-                                if let Some((
-                                    Some(master_channel_name),
-                                    _dg_pos,
-                                    (_cg_pos, _rec_idd),
-                                    (_cn_pos, _rec_pos),
-                                )) = mdfinfo4.channel_names_set.get(&cn.unique_name)
-                                {
-                                    metadata.insert(
-                                        "master_channel".to_string(),
-                                        master_channel_name.to_string(),
-                                    );
-                                }
-                                if cn.block.cn_type == 4 {
-                                    metadata.insert(
-                                        "sync_channel".to_string(),
-                                        cn.block.cn_sync_type.to_string(),
-                                    );
-                                }
-                                let field = field.with_metadata(metadata);
-                                mdf.arrow_schema.fields.push(field);
-                                mdf.channel_indexes.insert(
-                                    cn.unique_name.clone(),
-                                    ChannelIndexes {
-                                        chunk_index,
-                                        array_index,
-                                        field_index,
-                                    },
-                                );
-                                array_index += 1;
-                                field_index += 1;
-                            }
-                        });
-                        mdf.arrow_data.push(columns);
-                        chunk_index += 1;
-                        array_index = 0;
-                    });
-                }
-            }
-        }
-        MdfInfo::V3(mdfinfo3) => {
-            mdf.arrow_data = Vec::<Vec<Box<dyn Array>>>::with_capacity(mdfinfo3.dg.len());
-            mdf.arrow_schema.fields = Vec::<Field>::with_capacity(mdfinfo3.channel_names_set.len());
-            for (_dg_block_position, dg) in mdfinfo3.dg.iter_mut() {
-                for (_rec_id, cg) in dg.cg.iter_mut() {
-                    let mut columns = Vec::<Box<dyn Array>>::with_capacity(cg.channel_names.len());
-                    for (_rec_pos, cn) in cg.cn.iter_mut() {
-                        if !cn.data.is_empty() {
-                            let data = cn.data.take_to_arrow_array(None);
-                            let field =
-                                Field::new(cn.unique_name.clone(), data.data_type().clone(), false);
-                            columns.push(data);
-                            let mut metadata = Metadata::new();
-                            if let Some(array) =
-                                mdfinfo3.sharable.cc.get(&cn.block1.cn_cc_conversion)
-                            {
-                                let txt = array.0.cc_unit;
-                                let encoding: &'static Encoding =
-                                    to_encoding(mdfinfo3.id_block.id_codepage)
-                                        .unwrap_or(encoding_rs::WINDOWS_1252);
-                                let u: String = encoding.decode(&txt).0.into();
-                                metadata.insert(
-                                    "unit".to_string(),
-                                    u.trim_end_matches(char::from(0)).to_string(),
-                                );
-                            };
-                            metadata.insert("description".to_string(), cn.description.clone());
-                            if let Some((
-                                Some(master_channel_name),
-                                _dg_pos,
-                                (_cg_pos, _rec_idd),
-                                _cn_pos,
-                            )) = mdfinfo3.channel_names_set.get(&cn.unique_name)
-                            {
-                                metadata.insert(
-                                    "master_channel".to_string(),
-                                    master_channel_name.to_string(),
-                                );
-                            }
-                            let field = field.with_metadata(metadata);
-                            mdf.arrow_schema.fields.push(field);
-                            mdf.channel_indexes.insert(
-                                cn.unique_name.clone(),
-                                ChannelIndexes {
-                                    chunk_index,
-                                    array_index,
-                                    field_index,
-                                },
-                            );
-                            array_index += 1;
-                            field_index += 1;
-                        }
-                    }
-                    mdf.arrow_data.push(columns);
-                    chunk_index += 1;
-                    array_index = 0;
-                }
-            }
-        }
-    }
-}
 
 /// Take an arrow array from python and convert it to a rust arrow array.
 /// This operation does not copy data.
@@ -525,12 +61,12 @@ pub(crate) fn to_py_array(
 }
 
 /// returns the number of bits corresponding to the array's datatype
-pub fn arrow_bit_count(array: Box<dyn Array>) -> u32 {
+pub fn arrow_bit_count(array: &dyn Array) -> u32 {
     let data_type = array.data_type();
-    bit_count(array.clone(), data_type)
+    bit_count(array, data_type)
 }
 
-fn bit_count(array: Box<dyn Array>, data_type: &DataType) -> u32 {
+fn bit_count(array: &dyn Array, data_type: &DataType) -> u32 {
     match data_type {
         DataType::Null => 0,
         DataType::Boolean => 8,
@@ -613,11 +149,11 @@ fn bit_count(array: Box<dyn Array>, data_type: &DataType) -> u32 {
 }
 
 /// returns the number of bytes corresponding to the array's datatype
-pub fn arrow_byte_count(array: Box<dyn Array>) -> u32 {
+pub fn arrow_byte_count(array: &dyn Array) -> u32 {
     let data_type = array.data_type();
-    byte_count(array.clone(), data_type)
+    byte_count(array, data_type)
 }
-fn byte_count(array: Box<dyn Array>, data_type: &DataType) -> u32 {
+fn byte_count(array: &dyn Array, data_type: &DataType) -> u32 {
     match data_type {
         DataType::Null => 0,
         DataType::Boolean => 1,
@@ -648,7 +184,7 @@ fn byte_count(array: Box<dyn Array>, data_type: &DataType) -> u32 {
                 .max()
                 .unwrap_or(0)
         }
-        DataType::FixedSizeBinary(size) => 8 * *size as u32,
+        DataType::FixedSizeBinary(size) => *size as u32,
         DataType::LargeBinary => {
             let array = array
                 .as_any()
@@ -696,7 +232,7 @@ fn byte_count(array: Box<dyn Array>, data_type: &DataType) -> u32 {
 }
 
 /// returns mdf4 data type from arrow array
-pub fn arrow_to_mdf_data_type(array: Box<dyn Array>, endian: bool) -> u8 {
+pub fn arrow_to_mdf_data_type(array: &dyn Array, endian: bool) -> u8 {
     mdf_data_type(array.data_type(), endian)
 }
 
@@ -779,7 +315,7 @@ fn mdf_data_type(data_type: &DataType, endian: bool) -> u8 {
 }
 
 /// returns the number of dimensions of the channel
-pub fn ndim(array: Box<dyn Array>) -> usize {
+pub fn ndim(array: &dyn Array) -> usize {
     match array.data_type() {
         DataType::Extension(ext_str, dtype, _) => match ext_str.as_str() {
             "Tensor" => match &**dtype {
@@ -918,15 +454,8 @@ pub fn ndim(array: Box<dyn Array>) -> usize {
     }
 }
 
-fn order_convert(tensor_order: &TensorOrder) -> Order {
-    match tensor_order {
-        TensorOrder::RowMajor => Order::RowMajor,
-        TensorOrder::ColumnMajor => Order::ColumnMajor,
-    }
-}
-
 /// returns the number of dimensions of the channel
-pub fn shape(array: Box<dyn Array>) -> (Vec<usize>, Order) {
+pub fn shape(array: &dyn Array) -> (Vec<usize>, Order) {
     match array.data_type() {
         DataType::Extension(ext_str, dtype, _) => match ext_str.as_str() {
             "Tensor" => match &**dtype {
@@ -935,126 +464,126 @@ pub fn shape(array: Box<dyn Array>) -> (Vec<usize>, Order) {
                         .as_any()
                         .downcast_ref::<Tensor<i8>>()
                         .expect("could not downcast to i8 array");
-                    (array.shape().to_vec(), order_convert(array.order()))
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::Int16 => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<i16>>()
                         .expect("could not downcast to i16 array");
-                    (array.shape().to_vec(), order_convert(array.order()))
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::Int32 => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<i32>>()
                         .expect("could not downcast to i32 array");
-                    (array.shape().to_vec(), order_convert(array.order()))
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::Int64 => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<i64>>()
                         .expect("could not downcast to i64 array");
-                    (array.shape().to_vec(), order_convert(array.order()))
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::UInt8 => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<u8>>()
                         .expect("could not downcast to u8 array");
-                    (array.shape().to_vec(), order_convert(array.order()))
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::UInt16 => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<u16>>()
                         .expect("could not downcast to u16 array");
-                    (array.shape().to_vec(), order_convert(array.order()))
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::UInt32 => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<u32>>()
                         .expect("could not downcast to u32 array");
-                    (array.shape().to_vec(), order_convert(array.order()))
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::UInt64 => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<u64>>()
                         .expect("could not downcast to u64 array");
-                    (array.shape().to_vec(), order_convert(array.order()))
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::Float16 => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<f16>>()
                         .expect("could not downcast to f16 array");
-                    (array.shape().to_vec(), order_convert(array.order()))
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::Float32 => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<f32>>()
                         .expect("could not downcast to f32 array");
-                    (array.shape().to_vec(), order_convert(array.order()))
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::Float64 => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<f64>>()
                         .expect("could not downcast to f64 array");
-                    (array.shape().to_vec(), order_convert(array.order()))
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::Timestamp(_, _) => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<i64>>()
                         .expect("could not downcast to i64 array");
-                    (array.shape().to_vec(), order_convert(array.order()))
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::Date32 => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<i32>>()
                         .expect("could not downcast to i64 array");
-                    (array.shape().to_vec(), order_convert(array.order()))
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::Date64 => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<i64>>()
                         .expect("could not downcast to i64 array");
-                    (array.shape().to_vec(), order_convert(array.order()))
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::Time32(_) => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<i32>>()
                         .expect("could not downcast to i64 array");
-                    (array.shape().to_vec(), order_convert(array.order()))
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::Time64(_) => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<i64>>()
                         .expect("could not downcast to i64 array");
-                    (array.shape().to_vec(), order_convert(array.order()))
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::Duration(_) => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<i64>>()
                         .expect("could not downcast to i64 array");
-                    (array.shape().to_vec(), order_convert(array.order()))
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::Interval(_) => {
                     let array = array
                         .as_any()
                         .downcast_ref::<Tensor<i64>>()
                         .expect("could not downcast to i64 array");
-                    (array.shape().to_vec(), order_convert(array.order()))
+                    (array.shape().to_vec(), array.order().clone())
                 }
                 DataType::FixedSizeList(_, _) => todo!(),
                 _ => panic!("unsupported type"),
@@ -1066,208 +595,210 @@ pub fn shape(array: Box<dyn Array>) -> (Vec<usize>, Order) {
 }
 
 /// returns the a vec<u8>, bytes vector of arrow array
-pub fn arrow_to_bytes(array: Box<dyn Array>) -> Vec<u8> {
+pub fn arrow_to_bytes(array: &dyn Array) -> Result<Vec<u8>, Error> {
     let data_type = array.data_type();
-    to_bytes(array.clone(), data_type)
+    to_bytes(array, data_type)
 }
 
-fn to_bytes(array: Box<dyn Array>, data_type: &DataType) -> Vec<u8> {
+#[inline]
+fn to_bytes(array: &dyn Array, data_type: &DataType) -> Result<Vec<u8>, Error> {
+    // returns native endian as defined in channel block with arrow_to_mdf_data_type()
     match data_type {
-        DataType::Null => Vec::new(),
+        DataType::Null => Ok(Vec::new()),
         DataType::Boolean => {
             let array = array
                 .as_any()
                 .downcast_ref::<Bitmap>()
-                .expect("could not downcast to Bitmap");
-            array.iter().map(|v| v as u8).collect()
+                .context("could not downcast to Bitmap")?;
+            Ok(array.iter().map(|v| v as u8).collect())
         }
         DataType::Int8 => {
             let array = array
                 .as_any()
                 .downcast_ref::<PrimitiveArray<i8>>()
-                .expect("could not downcast to i8 array");
-            array
+                .context("could not downcast to i8 array")?;
+            Ok(array
                 .values()
                 .iter()
                 .flat_map(|v| v.to_ne_bytes())
-                .collect()
+                .collect())
         }
         DataType::Int16 => {
             let array = array
                 .as_any()
                 .downcast_ref::<PrimitiveArray<i16>>()
-                .expect("could not downcast to i16 array");
-            array
+                .context("could not downcast to i16 array")?;
+            Ok(array
                 .values()
                 .iter()
                 .flat_map(|v| v.to_ne_bytes())
-                .collect()
+                .collect())
         }
         DataType::Int32 => {
             let array = array
                 .as_any()
                 .downcast_ref::<PrimitiveArray<i32>>()
-                .expect("could not downcast to i32 array");
-            array
+                .context("could not downcast to i32 array")?;
+            Ok(array
                 .values()
                 .iter()
                 .flat_map(|v| v.to_ne_bytes())
-                .collect()
+                .collect())
         }
         DataType::Int64 => {
             let array = array
                 .as_any()
                 .downcast_ref::<PrimitiveArray<i64>>()
-                .expect("could not downcast to i64 array");
-            array
+                .context("could not downcast to i64 array")?;
+            Ok(array
                 .values()
                 .iter()
                 .flat_map(|v| v.to_ne_bytes())
-                .collect()
+                .collect())
         }
         DataType::UInt8 => {
             let array = array
                 .as_any()
                 .downcast_ref::<PrimitiveArray<u8>>()
-                .expect("could not downcast to u8 array");
-            array
+                .context("could not downcast to u8 array")?;
+            Ok(array
                 .values()
                 .iter()
                 .flat_map(|v| v.to_ne_bytes())
-                .collect()
+                .collect())
         }
         DataType::UInt16 => {
             let array = array
                 .as_any()
                 .downcast_ref::<PrimitiveArray<u16>>()
-                .expect("could not downcast to u16 array");
-            array
+                .context("could not downcast to u16 array")?;
+            Ok(array
                 .values()
                 .iter()
                 .flat_map(|v| v.to_ne_bytes())
-                .collect()
+                .collect())
         }
         DataType::UInt32 => {
             let array = array
                 .as_any()
                 .downcast_ref::<PrimitiveArray<u32>>()
-                .expect("could not downcast to u32 array");
-            array
+                .context("could not downcast to u32 array")?;
+            Ok(array
                 .values()
                 .iter()
                 .flat_map(|v| v.to_ne_bytes())
-                .collect()
+                .collect())
         }
         DataType::UInt64 => {
             let array = array
                 .as_any()
                 .downcast_ref::<PrimitiveArray<u64>>()
-                .expect("could not downcast to u64 array");
-            array
+                .context("could not downcast to u64 array")?;
+            Ok(array
                 .values()
                 .iter()
                 .flat_map(|v| v.to_ne_bytes())
-                .collect()
+                .collect())
         }
         DataType::Float16 => {
             let array = array
                 .as_any()
                 .downcast_ref::<PrimitiveArray<f32>>()
-                .expect("could not downcast f16 to f32 array");
-            array
+                .context("could not downcast f16 to f32 array")?;
+            Ok(array
                 .values()
                 .iter()
                 .flat_map(|v| v.to_ne_bytes())
-                .collect()
+                .collect())
         }
         DataType::Float32 => {
             let array = array
                 .as_any()
                 .downcast_ref::<PrimitiveArray<f32>>()
-                .expect("could not downcast to f32 array");
-            array
+                .context("could not downcast to f32 array")?;
+            Ok(array
                 .values()
                 .iter()
                 .flat_map(|v| v.to_ne_bytes())
-                .collect()
+                .collect())
         }
         DataType::Float64 => {
             let array = array
                 .as_any()
                 .downcast_ref::<PrimitiveArray<f64>>()
-                .expect("could not downcast to f64 array");
-            array
+                .context("could not downcast to f64 array")?;
+            Ok(array
                 .values()
                 .iter()
                 .flat_map(|v| v.to_ne_bytes())
-                .collect()
+                .collect())
         }
         DataType::Timestamp(_, _) => {
             let array = array
                 .as_any()
                 .downcast_ref::<PrimitiveArray<i64>>()
-                .expect("could not downcast timestamp to i64 array");
-            array
+                .context("could not downcast timestamp to i64 array")?;
+            Ok(array
                 .values()
                 .iter()
                 .flat_map(|v| v.to_ne_bytes())
-                .collect()
+                .collect())
         }
         DataType::Date32 => {
             let array = array
                 .as_any()
                 .downcast_ref::<PrimitiveArray<i32>>()
-                .expect("could not downcast date32 to i32 array");
-            array
+                .context("could not downcast date32 to i32 array")?;
+            Ok(array
                 .values()
                 .iter()
                 .flat_map(|v| v.to_ne_bytes())
-                .collect()
+                .collect())
         }
         DataType::Date64 => {
             let array = array
                 .as_any()
                 .downcast_ref::<PrimitiveArray<i64>>()
-                .expect("could not downcast date64 to i64 array");
-            array
+                .context("could not downcast date64 to i64 array")?;
+            Ok(array
                 .values()
                 .iter()
                 .flat_map(|v| v.to_ne_bytes())
-                .collect()
+                .collect())
         }
         DataType::Time32(_) => {
             let array = array
                 .as_any()
                 .downcast_ref::<PrimitiveArray<i32>>()
-                .expect("could not downcast time32 to i32 array");
-            array
+                .context("could not downcast time32 to i32 array")?;
+            Ok(array
                 .values()
                 .iter()
                 .flat_map(|v| v.to_ne_bytes())
-                .collect()
+                .collect())
         }
         DataType::Time64(_) => {
             let array = array
                 .as_any()
                 .downcast_ref::<PrimitiveArray<i64>>()
-                .expect("could not downcast time64 to i64 array");
-            array
+                .context("could not downcast time64 to i64 array")?;
+            Ok(array
                 .values()
                 .iter()
                 .flat_map(|v| v.to_ne_bytes())
-                .collect()
+                .collect())
         }
         DataType::Binary => {
             let array = array
                 .as_any()
                 .downcast_ref::<BinaryArray<i32>>()
-                .expect("could not downcast binary array to bytes vect");
+                .context("could not downcast binary array to bytes vect")?;
             let maxnbytes = array
                 .values_iter()
                 .map(|s| s.len() as u32)
                 .max()
                 .unwrap_or(0) as usize;
-            array
+            Ok(array
                 .values_iter()
                 .flat_map(|x| {
                     let bytes = x.to_vec();
@@ -1278,26 +809,26 @@ fn to_bytes(array: Box<dyn Array>, data_type: &DataType) -> Vec<u8> {
                         bytes
                     }
                 })
-                .collect()
+                .collect())
         }
         DataType::FixedSizeBinary(_) => {
             let array = array
                 .as_any()
-                .downcast_ref::<BinaryArray<i64>>()
-                .expect("could not downcast large binary to bytes vect");
-            array.values_iter().flat_map(|x| x.to_vec()).collect()
+                .downcast_ref::<FixedSizeBinaryArray>()
+                .context("could not downcast large binary to bytes vect")?;
+            Ok(array.values().to_vec())
         }
         DataType::LargeBinary => {
             let array = array
                 .as_any()
                 .downcast_ref::<BinaryArray<i64>>()
-                .expect("could not downcast large binary to bytes vect");
+                .context("could not downcast large binary to bytes vect")?;
             let maxnbytes = array
                 .values_iter()
                 .map(|s| s.len() as u32)
                 .max()
                 .unwrap_or(0) as usize;
-            array
+            Ok(array
                 .values_iter()
                 .flat_map(|x| {
                     let bytes = x.to_vec();
@@ -1308,19 +839,15 @@ fn to_bytes(array: Box<dyn Array>, data_type: &DataType) -> Vec<u8> {
                         bytes
                     }
                 })
-                .collect()
+                .collect())
         }
         DataType::Utf8 => {
             let array = array
                 .as_any()
                 .downcast_ref::<Utf8Array<i32>>()
-                .expect("could not downcast to utf8 array");
-            let nbytes = array
-                .values_iter()
-                .map(|s| s.len() as u32)
-                .max()
-                .unwrap_or(0) as usize;
-            array
+                .context("could not downcast to utf8 array")?;
+            let nbytes = array.values_iter().map(|s| s.len()).max().unwrap_or(0);
+            Ok(array
                 .values_iter()
                 .flat_map(|x| {
                     let str_bytes = x.to_string().into_bytes();
@@ -1331,19 +858,15 @@ fn to_bytes(array: Box<dyn Array>, data_type: &DataType) -> Vec<u8> {
                         str_bytes
                     }
                 })
-                .collect()
+                .collect())
         }
         DataType::LargeUtf8 => {
             let array = array
                 .as_any()
                 .downcast_ref::<Utf8Array<i64>>()
-                .expect("could not downcast to long utf8 array");
-            let nbytes = array
-                .values_iter()
-                .map(|s| s.len() as u32)
-                .max()
-                .unwrap_or(0) as usize;
-            array
+                .context("could not downcast to large utf8 array")?;
+            let nbytes = array.values_iter().map(|s| s.len()).max().unwrap_or(0);
+            let bytes = array
                 .values_iter()
                 .flat_map(|x| {
                     let str_bytes = x.to_string().into_bytes();
@@ -1354,22 +877,23 @@ fn to_bytes(array: Box<dyn Array>, data_type: &DataType) -> Vec<u8> {
                         str_bytes
                     }
                 })
-                .collect()
+                .collect();
+            Ok(bytes)
         }
         DataType::FixedSizeList(field, _size) => match field.data_type.to_physical_type() {
             PhysicalType::Primitive(PrimitiveType::Float32) => {
                 let array = array
                     .as_any()
                     .downcast_ref::<PrimitiveArray<f32>>()
-                    .expect("could not downcast to f32 array");
-                array.values_iter().flat_map(|x| x.to_ne_bytes()).collect()
+                    .context("could not downcast to f32 array")?;
+                Ok(array.values_iter().flat_map(|x| x.to_ne_bytes()).collect())
             }
             PhysicalType::Primitive(PrimitiveType::Float64) => {
                 let array = array
                     .as_any()
                     .downcast_ref::<PrimitiveArray<f64>>()
-                    .expect("could not downcast to f64 array");
-                array.values_iter().flat_map(|x| x.to_ne_bytes()).collect()
+                    .context("could not downcast to f64 array")?;
+                Ok(array.values_iter().flat_map(|x| x.to_ne_bytes()).collect())
             }
             _ => panic!("unsupported FixedSizeList physical type"),
         },

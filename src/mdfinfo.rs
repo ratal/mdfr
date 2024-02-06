@@ -1,8 +1,9 @@
 //! This module is reading the mdf file blocks (metadata)
 //! mdfinfo module
 
+use anyhow::Error;
 use anyhow::{bail, Context, Result};
-use arrow2::bitmap::MutableBitmap;
+use arrow2::array::Array;
 use binrw::{binrw, BinReaderExt};
 use codepage::to_encoding;
 use encoding_rs::Encoding;
@@ -93,7 +94,7 @@ impl Default for IdBlock {
 #[allow(dead_code)]
 impl MdfInfo {
     /// creates new MdfInfo from file
-    pub fn new(file_name: &str) -> Result<MdfInfo> {
+    pub fn new(file_name: &str) -> Result<MdfInfo, Error> {
         let f: File = OpenOptions::new()
             .read(true)
             .write(false)
@@ -123,8 +124,10 @@ impl MdfInfo {
                 to_encoding(id.id_codepage).unwrap_or(encoding_rs::WINDOWS_1252);
 
             // Read HD Block
-            let (hd, position) = hd3_parser(&mut rdr, id.id_ver, encoding)?;
-            let (hd_comment, position) = hd3_comment_parser(&mut rdr, &hd, position, encoding)?;
+            let (hd, position) =
+                hd3_parser(&mut rdr, id.id_ver, encoding).context("failed parsing HD3 block")?;
+            let (hd_comment, position) = hd3_comment_parser(&mut rdr, &hd, position, encoding)
+                .context("failed parsing HD3 block comments")?;
 
             // Read DG Block
             let (mut dg, _, n_cg, n_cn) = parse_dg3(
@@ -134,7 +137,8 @@ impl MdfInfo {
                 &mut sharable,
                 id.id_default_byteorder,
                 encoding,
-            )?;
+            )
+            .context("failed parsing mdf3 data")?;
 
             // make channel names unique, list channels and create master dictionnary
             let channel_names_set = build_channel_db3(&mut dg, &sharable, n_cg, n_cn);
@@ -157,22 +161,27 @@ impl MdfInfo {
             };
 
             // Read HD block
-            let (hd, position) = hd4_parser(&mut rdr, &mut sharable)?;
+            let (hd, position) =
+                hd4_parser(&mut rdr, &mut sharable).context("failed parsing HD4 block")?;
             // parse HD metadata
             sharable.parse_hd_comments(hd.hd_md_comment);
 
             // FH block
-            let (fh, position) = parse_fh(&mut rdr, &mut sharable, hd.hd_fh_first, position)?;
+            let (fh, position) = parse_fh(&mut rdr, &mut sharable, hd.hd_fh_first, position)
+                .context("failed parsing File History")?;
 
             // AT Block read
-            let (at, position) = parse_at4(&mut rdr, &mut sharable, hd.hd_at_first, position)?;
+            let (at, position) = parse_at4(&mut rdr, &mut sharable, hd.hd_at_first, position)
+                .context("failed parsing attachments")?;
 
             // EV Block read
-            let (ev, position) = parse_ev4(&mut rdr, &mut sharable, hd.hd_ev_first, position)?;
+            let (ev, position) = parse_ev4(&mut rdr, &mut sharable, hd.hd_ev_first, position)
+                .context("failed parsing events")?;
 
             // Read DG Block
             let (mut dg, _, n_cg, n_cn) =
-                parse_dg4(&mut rdr, hd.hd_dg_first, position, &mut sharable)?;
+                parse_dg4(&mut rdr, hd.hd_dg_first, position, &mut sharable)
+                    .context("failed parsing mdf4 data")?;
 
             // make channel names unique, list channels and create master dictionnary
             let channel_names_set = build_channel_db(&mut dg, &sharable, n_cg, n_cn);
@@ -203,7 +212,9 @@ impl MdfInfo {
     pub fn get_channel_unit(&self, channel_name: &str) -> Result<Option<String>> {
         let unit: Option<String> = match self {
             MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_unit(channel_name),
-            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_unit(channel_name)?,
+            MdfInfo::V4(mdfinfo4) => mdfinfo4
+                .get_channel_unit(channel_name)
+                .context("failed getting channel unit")?,
         };
         Ok(unit)
     }
@@ -211,7 +222,9 @@ impl MdfInfo {
     pub fn get_channel_desc(&self, channel_name: &str) -> Result<Option<String>> {
         let desc: Option<String> = match self {
             MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_desc(channel_name),
-            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_desc(channel_name)?,
+            MdfInfo::V4(mdfinfo4) => mdfinfo4
+                .get_channel_desc(channel_name)
+                .context("failed getting channel description")?,
         };
         Ok(desc)
     }
@@ -258,83 +271,124 @@ impl MdfInfo {
         channel_master_list
     }
     /// Clears all data arrays
-    pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) {
+    pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) -> Result<()> {
         match self {
             MdfInfo::V3(mdfinfo3) => {
-                mdfinfo3.clear_channel_data_from_memory(channel_names);
+                mdfinfo3
+                    .clear_channel_data_from_memory(channel_names.clone())
+                    .with_context(|| {
+                        format!(
+                            "failed clearing channel data from memory for {:?}",
+                            channel_names.clone(),
+                        )
+                    })?;
             }
             MdfInfo::V4(mdfinfo4) => {
-                mdfinfo4.clear_channel_data_from_memory(channel_names);
+                mdfinfo4
+                    .clear_channel_data_from_memory(channel_names.clone())
+                    .with_context(|| {
+                        format!(
+                            "failed clearing channel data from memory for {:?}",
+                            channel_names.clone(),
+                        )
+                    })?;
             }
         }
+        Ok(())
     }
     /// returns channel's data ndarray.
-    pub fn get_channel_data<'a>(
-        &'a mut self,
-        channel_name: &'a str,
-    ) -> (Option<&ChannelData>, Option<&MutableBitmap>) {
-        let (data, mask) = match self {
-            MdfInfo::V3(mdfinfo3) => {
-                let dt = mdfinfo3.get_channel_data(channel_name);
-                (dt, None)
-            }
+    pub fn get_channel_data<'a>(&'a mut self, channel_name: &'a str) -> Option<&ChannelData> {
+        match self {
+            MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_data(channel_name),
             MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_data(channel_name),
-        };
-        (data, mask)
+        }
     }
     /// Adds a new channel in memory (no file modification)
     pub fn add_channel(
         &mut self,
         channel_name: String,
-        data: DataSignature,
+        data: ChannelData,
+        data_signature: DataSignature,
         master: MasterSignature,
         unit: Option<String>,
         description: Option<String>,
-    ) {
+    ) -> Result<(), Error> {
         match self {
             MdfInfo::V3(mdfinfo3) => {
                 let mut file_name = PathBuf::from(mdfinfo3.file_name.as_str());
                 file_name.set_extension("mf4");
-                let mut mdf4 = convert3to4(mdfinfo3, &file_name.to_string_lossy());
-                mdf4.add_channel(channel_name, data, master, unit, description);
+                let mut mdf4 = convert3to4(mdfinfo3, &file_name.to_string_lossy())
+                    .context("failed converting mdf3 into mdf4 when adding new channel")?;
+                mdf4.add_channel(
+                    channel_name,
+                    data,
+                    data_signature,
+                    master,
+                    unit,
+                    description,
+                )?;
             }
             MdfInfo::V4(mdfinfo4) => {
-                mdfinfo4.add_channel(channel_name, data, master, unit, description);
+                mdfinfo4.add_channel(
+                    channel_name,
+                    data,
+                    data_signature,
+                    master,
+                    unit,
+                    description,
+                )?;
             }
         }
+        Ok(())
     }
     /// Convert mdf verion 3.x to 4.2
     /// Require file name parameter but no file written
-    pub fn convert3to4(&mut self, file_name: &str) -> Result<MdfInfo> {
+    pub fn convert3to4(&mut self, file_name: &str) -> Result<MdfInfo, Error> {
         match self {
-            MdfInfo::V3(mdfinfo3) => Ok(MdfInfo::V4(Box::new(convert3to4(mdfinfo3, file_name)))),
+            MdfInfo::V3(mdfinfo3) => Ok(MdfInfo::V4(Box::new(
+                convert3to4(mdfinfo3, file_name).context("failed converting mdf version 3 to 4")?,
+            ))),
             MdfInfo::V4(_) => bail!("file is already a mdf version 4.x"),
         }
     }
     /// defines channel's data in memory
-    pub fn set_channel_data(&mut self, channel_name: &str, data: &ChannelData) -> Result<()> {
+    pub fn set_channel_data(
+        &mut self,
+        channel_name: &str,
+        data: Box<dyn Array>,
+    ) -> Result<(), Error> {
         match self {
             MdfInfo::V3(mdfinfo3) => {
                 let mut file_name = PathBuf::from(mdfinfo3.file_name.as_str());
                 file_name.set_extension("mf4");
-                let mut mdf4 = convert3to4(mdfinfo3, &file_name.to_string_lossy());
-                mdf4.set_channel_data(channel_name, data);
+                let mut mdf4 = convert3to4(mdfinfo3, &file_name.to_string_lossy())?;
+                mdf4.set_channel_data(channel_name, data)
+                    .context("failed setting channel data")?;
             }
-            MdfInfo::V4(mdfinfo4) => mdfinfo4.set_channel_data(channel_name, data),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4
+                .set_channel_data(channel_name, data)
+                .context("failed setting channel data")?,
         }
         Ok(())
     }
     /// Sets the channel's related master channel type in memory
-    pub fn set_channel_master_type(&mut self, master_name: &str, master_type: u8) {
+    pub fn set_channel_master_type(
+        &mut self,
+        master_name: &str,
+        master_type: u8,
+    ) -> Result<(), Error> {
         match self {
             MdfInfo::V3(mdfinfo3) => {
                 let mut file_name = PathBuf::from(mdfinfo3.file_name.as_str());
                 file_name.set_extension("mf4");
-                let mut mdf4 = convert3to4(mdfinfo3, &file_name.to_string_lossy());
+                let mut mdf4 = convert3to4(mdfinfo3, &file_name.to_string_lossy()).context(
+                    "failed converting mdf3 into mdf4 when setting new channel master type",
+                )?;
                 mdf4.set_channel_master_type(master_name, master_type);
             }
             MdfInfo::V4(mdfinfo4) => mdfinfo4.set_channel_master_type(master_name, master_type),
         }
+        Ok(())
     }
     /// Removes a channel in memory (no file modification)
     pub fn remove_channel(&mut self, channel_name: &str) {

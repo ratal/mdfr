@@ -24,20 +24,21 @@ use crate::{
     },
 };
 use anyhow::{bail, Context, Error, Result};
-use arrow2::{array::Array, bitmap::Bitmap, datatypes::Schema};
+use arrow2::{array::Array, bitmap::Bitmap};
 use binrw::BinWriterExt;
 use crossbeam_channel::bounded;
 use parking_lot::Mutex;
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 use std::fs::File;
-use yazi::{compress, CompressionLevel, Format};
+use yazi::{CompressionLevel, Encoder, Format};
 
 use super::mdfwriter3::convert3to4;
 
 /// writes mdf4.2 file
 pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> {
     let info: MdfInfo4 = match &mdf.mdf_info {
-        MdfInfo::V3(mdfinfo3) => convert3to4(mdfinfo3, file_name),
+        MdfInfo::V3(mdfinfo3) => convert3to4(mdfinfo3, file_name)
+            .context("failed converting mdf version 3 into version 4")?,
         MdfInfo::V4(mdfinfo4) => mdfinfo4.deref().clone(),
     };
     let n_channels = mdf.mdf_info.get_channel_names_set().len();
@@ -128,7 +129,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
             .write(true)
             .create(true)
             .open(&*file)
-            .expect("Cannot create the file");
+            .context("Cannot create the file")?;
         let mut writer = BufWriter::new(&f);
 
         writer
@@ -137,7 +138,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
         for buffer in rx {
             writer
                 .write_all(&buffer)
-                .expect("Could not write data blocks buffer");
+                .context("Could not write data blocks buffer")?;
         }
         Ok(())
     });
@@ -152,7 +153,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
                     let dt = mdf.get_channel_data(&cn.unique_name);
                     if let Some(data) = dt {
                         let m = data.validity();
-                        if !data.is_empty() && arrow_bit_count(data.clone()) > 0 {
+                        if !data.is_empty() && arrow_bit_count(data.as_ref()) > 0 {
                             // empty strings are not written
                             let mut offset: i64 = 0;
                             let mut ld_block: Option<Ld4Block> = None;
@@ -161,39 +162,42 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
                             }
 
                             let data_block = if compression {
-                                create_dz_dv(data.clone(), &mut offset)?
+                                create_dz_dv(data.clone(), &mut offset)
+                                    .context("failed creating dz or dv block")?
                             } else {
-                                create_dv(data.clone(), &mut offset)?
+                                create_dv(data.clone(), &mut offset)
+                                    .context("failed creating dv block")?
                             };
 
                             // invalid mask existing
                             let mut invalid_block: Option<(DataBlock, Vec<u8>)> = None;
                             if let Some(mask) = m {
-                                cg.block.cg_inval_bytes = 1; // on byte (u8) for invalid mask
+                                cg.block.cg_inval_bytes = 1; // one byte (u8) for invalid mask
                                 if let Some(ref mut ld) = ld_block {
                                     ld.ld_links.push(offset);
                                 }
                                 if compression {
-                                    invalid_block = create_dz_di(mask, &mut offset)?;
+                                    invalid_block = create_dz_di(mask, &mut offset)
+                                        .context("failed creating dz or di block")?;
                                 } else {
-                                    invalid_block = create_di(mask, &mut offset)?;
+                                    invalid_block = create_di(mask, &mut offset)
+                                        .context("failed creating di block")?;
                                 }
                             }
-                            {
-                                let data_pointer = Arc::clone(&data_pointer);
-                                let mut locked_data_pointer = data_pointer.lock();
-                                dg.block.dg_data = *locked_data_pointer;
-                                *locked_data_pointer += offset;
-                                let buffer = write_data_blocks(
-                                    dg.block.dg_data,
-                                    ld_block,
-                                    data_block,
-                                    invalid_block,
-                                    offset as usize,
-                                )?;
-                                tx.send(buffer).context("Channel disconnected")?;
-                                drop(locked_data_pointer);
-                            }
+
+                            let data_pointer = Arc::clone(&data_pointer);
+                            let mut locked_data_pointer = data_pointer.lock();
+                            dg.block.dg_data = *locked_data_pointer;
+                            *locked_data_pointer += offset;
+                            let buffer = write_data_blocks(
+                                dg.block.dg_data,
+                                ld_block,
+                                data_block,
+                                invalid_block,
+                                offset as usize,
+                            )?;
+                            tx.send(buffer).context("Channel disconnected")?;
+                            drop(locked_data_pointer);
                         }
                     }
                 }
@@ -245,15 +249,21 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
                     .context("Could not write CNBlock")?;
                 // TX Block channel name
                 if let Some(tx_name_metadata) = new_info.sharable.md_tx.get(&cn.block.cn_tx_name) {
-                    tx_name_metadata.write(&mut buffer)?;
+                    tx_name_metadata
+                        .write(&mut buffer)
+                        .context("Failed writing tx name")?;
                 }
                 if let Some(tx_unit_metadata) = new_info.sharable.md_tx.get(&cn.block.cn_md_unit) {
-                    tx_unit_metadata.write(&mut buffer)?;
+                    tx_unit_metadata
+                        .write(&mut buffer)
+                        .context("Failed writing tx unit")?;
                 }
                 if let Some(tx_comment_metadata) =
                     new_info.sharable.md_tx.get(&cn.block.cn_md_comment)
                 {
-                    tx_comment_metadata.write(&mut buffer)?;
+                    tx_comment_metadata
+                        .write(&mut buffer)
+                        .context("Failed writing tx comment")?;
                 }
                 // channel array
                 if let Some(compo) = &cn.composition {
@@ -289,9 +299,6 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
     writer.flush().context("Could not flush file")?;
     Ok(Mdf {
         mdf_info: MdfInfo::V4(Box::new(new_info)),
-        arrow_data: Vec::new(),
-        arrow_schema: Schema::default(),
-        channel_indexes: HashMap::new(),
     })
 }
 
@@ -310,10 +317,8 @@ fn write_data_blocks(
         buffer
             .write_le(&id_ld)
             .context("Could not write LDBlock id")?;
-        ld.ld_links
-            .iter_mut()
-            .skip(1) // spare ld_next for offset
-            .for_each(|x| *x += position);
+        ld.ld_links.iter_mut().for_each(|x| *x += position);
+        ld.ld_n_links = ld.ld_links.len() as u64 + 1;
         buffer.write_le(ld).context("Could not write LDBlock")?;
     }
 
@@ -386,10 +391,11 @@ fn create_ld(m: Option<&Bitmap>, offset: &mut i64) -> Option<Ld4Block> {
 }
 
 /// Create a DV Block
-fn create_dv(data: Box<dyn Array>, offset: &mut i64) -> Result<(DataBlock, usize, Vec<u8>)> {
+fn create_dv(data: Box<dyn Array>, offset: &mut i64) -> Result<(DataBlock, usize, Vec<u8>), Error> {
     let mut dv_block = Blockheader4::default();
     dv_block.hdr_id = [35, 35, 68, 86]; // ##DV
-    let data_bytes: Vec<u8> = arrow_to_bytes(data);
+    let data_bytes: Vec<u8> = arrow_to_bytes(data.as_ref())
+        .context("failed converting arraw data into bytes for dv block")?;
     let data_bytes_len = data_bytes.len();
     dv_block.hdr_len += data_bytes_len as u64;
     let byte_aligned = 8 - data_bytes_len % 8;
@@ -407,24 +413,28 @@ enum DataBlock {
 }
 
 /// Create a DZ Block of DV type
-fn create_dz_dv(data: Box<dyn Array>, offset: &mut i64) -> Result<(DataBlock, usize, Vec<u8>)> {
+fn create_dz_dv(
+    data: Box<dyn Array>,
+    offset: &mut i64,
+) -> Result<(DataBlock, usize, Vec<u8>), Error> {
     let mut dz_block = Dz4Block::default();
-    let mut data_bytes = compress(
-        &arrow_to_bytes(data.clone()),
-        Format::Zlib,
-        CompressionLevel::Default,
-    )
-    .expect("Could not compress invalid data");
-    dz_block.dz_data_length = data_bytes.len() as u64;
+    let mut encoder = Encoder::boxed();
+    encoder.set_format(Format::Zlib);
+    encoder.set_level(CompressionLevel::BestSize);
+    let mut data_bytes = Vec::new();
+    let mut stream = encoder.stream_into_vec(&mut data_bytes);
+    let bytes = arrow_to_bytes(data.as_ref())
+        .context("failed converting arraw data into bytes for dz or dv block")?;
+    stream.write(&bytes).expect("Could not compress data");
+    dz_block.dz_data_length = stream.finish().expect("failed finishing to compress data");
     let dv_dz_block: DataBlock;
     let byte_aligned: usize;
-    let length = data.clone().len();
-    dz_block.dz_org_data_length = (length * arrow_byte_count(data.clone()) as usize) as u64;
+    let length = data.len();
+    dz_block.dz_org_data_length = (length * arrow_byte_count(data.as_ref()) as usize) as u64;
     if dz_block.dz_org_data_length < dz_block.dz_data_length {
         (dv_dz_block, byte_aligned, data_bytes) = create_dv(data.clone(), offset)?;
     } else {
         byte_aligned = (8 - dz_block.dz_data_length % 8) as usize;
-        dz_block.dz_data_length = data_bytes.len() as u64;
         dz_block.len = dz_block.dz_data_length + 48;
         *offset += dz_block.len as i64 + byte_aligned as i64;
         dv_dz_block = DataBlock::DZ(dz_block);
@@ -449,21 +459,25 @@ fn create_di(mask: &Bitmap, offset: &mut i64) -> Result<Option<(DataBlock, Vec<u
 }
 
 /// Create a DZ Block of DI type
-fn create_dz_di(mask: &Bitmap, offset: &mut i64) -> Result<Option<(DataBlock, Vec<u8>)>> {
+fn create_dz_di(mask: &Bitmap, offset: &mut i64) -> Result<Option<(DataBlock, Vec<u8>)>, Error> {
     let mut dz_invalid_block = Dz4Block::default();
     dz_invalid_block.dz_org_data_length = mask.len() as u64;
-    let mut data_bytes = compress(
-        mask.iter().map(|v| v as u8).collect::<Vec<u8>>().as_slice(),
-        Format::Zlib,
-        CompressionLevel::Default,
-    )
-    .expect("Could not compress invalid data");
-    dz_invalid_block.dz_data_length = data_bytes.len() as u64;
+    let mut encoder = Encoder::boxed();
+    encoder.set_format(Format::Zlib);
+    encoder.set_level(CompressionLevel::BestSize);
+    let mut data_bytes = Vec::new();
+    let mut stream = encoder.stream_into_vec(&mut data_bytes);
+    stream
+        .write(mask.iter().map(|v| v as u8).collect::<Vec<u8>>().as_slice())
+        .expect("Could not compress invalid data");
+    dz_invalid_block.dz_data_length = stream
+        .finish()
+        .expect("failed finishing to compress invalid data");
     if dz_invalid_block.dz_org_data_length < dz_invalid_block.dz_data_length {
         Ok(create_di(mask, offset)?)
     } else {
-        dz_invalid_block.len = data_bytes.len() as u64 + 48;
-        let byte_aligned = 8 - data_bytes.len() % 8;
+        dz_invalid_block.len = dz_invalid_block.dz_data_length + 48;
+        let byte_aligned = 8 - dz_invalid_block.dz_data_length as usize % 8;
         data_bytes = [data_bytes, vec![0; byte_aligned]].concat();
         dz_invalid_block.dz_org_block_type = [68, 73]; // DI
         *offset += dz_invalid_block.len as i64 + byte_aligned as i64;
@@ -483,9 +497,9 @@ fn create_blocks(
     cg_cg_master: &i64,
     master_flag: bool,
 ) -> Result<i64> {
-    let bit_count = arrow_bit_count(data.clone());
+    let bit_count = arrow_bit_count(data.as_ref());
     if !data.is_empty() && bit_count > 0 {
-        let byte_count = arrow_byte_count(data.clone());
+        let byte_count = arrow_byte_count(data.as_ref());
         // no empty strings
         let mut dg_block = Dg4Block::default();
         let mut cg_block_header = default_short_header(BlockType::CG);
@@ -508,7 +522,7 @@ fn create_blocks(
         cg_block.cg_cycle_count = cg.block.cg_cycle_count;
 
         cg_block.cg_data_bytes = byte_count;
-        if cg.block.cg_inval_bytes > 0 {
+        if data.validity().is_some() {
             // One byte for invalid data as only one channel per CG
             cg_block.cg_inval_bytes = 1;
         }
@@ -528,7 +542,7 @@ fn create_blocks(
 
         let machine_endian: bool = cfg!(target_endian = "big");
 
-        cn_block.cn_data_type = arrow_to_mdf_data_type(data.clone(), machine_endian);
+        cn_block.cn_data_type = arrow_to_mdf_data_type(data.as_ref(), machine_endian);
 
         cn_block.cn_bit_count = bit_count;
 
@@ -574,7 +588,7 @@ fn create_blocks(
         }
 
         // Channel array
-        let data_ndim = ndim(data.clone()) - 1;
+        let data_ndim = ndim(data.as_ref()) - 1;
         let mut composition: Option<Composition> = None;
         if data_ndim > 0 {
             let data_dim_size = cn
@@ -618,7 +632,8 @@ fn create_blocks(
                 cn_block.cn_data_type,
                 cg_block.cg_data_bytes,
                 data_ndim > 0,
-            ),
+            )
+            .with_context(|| format!("failed initilising array for channel {}", cn.unique_name))?,
             block: cn_block,
             endian: machine_endian,
             block_position: cn_position,
@@ -626,7 +641,6 @@ fn create_blocks(
             n_bytes: cg_block.cg_data_bytes,
             composition,
             invalid_mask: None,
-            channel_data_valid: false,
         };
         let mut new_cg = Cg4 {
             header: cg_block_header,

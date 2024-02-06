@@ -1,6 +1,8 @@
 //! Parsing of file metadata into MdfInfo3 struct
-use crate::mdfreader::channel_data::Order;
-use anyhow::{Context, Result};
+use anyhow::{Context, Error, Result};
+use arrow2::array::PrimitiveArray;
+use arrow2::buffer::Buffer;
+use arrow2::datatypes::DataType;
 use binrw::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::NaiveDate;
@@ -12,6 +14,7 @@ use std::fmt;
 use std::fs::File;
 use std::io::{prelude::*, Cursor};
 
+use crate::export::tensor::Order;
 use crate::mdfinfo::IdBlock;
 use crate::mdfreader::channel_data::{data_type_init, ChannelData};
 
@@ -152,7 +155,10 @@ impl MdfInfo3 {
         channel_master_list
     }
     // empty the channels' ndarray
-    pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) {
+    pub fn clear_channel_data_from_memory(
+        &mut self,
+        channel_names: HashSet<String>,
+    ) -> Result<(), Error> {
         for channel_name in channel_names {
             if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
                 self.channel_names_set.get_mut(&channel_name)
@@ -161,13 +167,14 @@ impl MdfInfo3 {
                     if let Some(cg) = dg.cg.get_mut(rec_id) {
                         if let Some(cn) = cg.cn.get_mut(cn_pos) {
                             if !cn.data.is_empty() {
-                                cn.data = cn.data.zeros(0, 0, 0, (Vec::new(), Order::RowMajor));
+                                cn.data = cn.data.zeros(0, 0, 0, (Vec::new(), Order::RowMajor))?;
                             }
                         }
                     }
                 }
             }
         }
+        Ok(())
     }
     /// Returns the channel's data ndarray if present in memory, otherwise None.
     pub fn get_channel_data_from_memory(&self, channel_name: &str) -> Option<&ChannelData> {
@@ -218,9 +225,7 @@ impl MdfInfo3 {
         state
     }
     /// returns channel's data ndarray.
-    pub fn get_channel_data<'a>(&'a mut self, channel_name: &'a str) -> Option<&'a ChannelData> {
-        let mut channel_names: HashSet<String> = HashSet::new();
-        channel_names.insert(channel_name.to_string());
+    pub fn get_channel_data(&self, channel_name: &str) -> Option<&ChannelData> {
         self.get_channel_data_from_memory(channel_name)
     }
     /// Renames a channel's name in memory
@@ -1066,7 +1071,7 @@ fn parse_cn3_block(
         unique_name,
         pos_byte_beg,
         n_bytes,
-        data: data_type_init(0, data_type, n_bytes as u32, false),
+        data: data_type_init(0, data_type, n_bytes as u32, false)?,
         endian,
         channel_data_valid: false,
     };
@@ -1117,7 +1122,11 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Milliseconds"),
         pos_byte_beg,
         n_bytes: 2,
-        data: ChannelData::UInt16(Vec::<u16>::new()),
+        data: ChannelData::UInt16(PrimitiveArray::new(
+            DataType::UInt16,
+            Buffer::<u16>::new(),
+            None,
+        )),
         endian: false,
         channel_data_valid: false,
     };
@@ -1136,7 +1145,11 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Minutes"),
         pos_byte_beg: pos_byte_beg + 2,
         n_bytes: 1,
-        data: ChannelData::UInt8(Vec::<u8>::new()),
+        data: ChannelData::UInt8(PrimitiveArray::new(
+            DataType::UInt8,
+            Buffer::<u8>::new(),
+            None,
+        )),
         endian: false,
         channel_data_valid: false,
     };
@@ -1155,7 +1168,11 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Hours"),
         pos_byte_beg: pos_byte_beg + 3,
         n_bytes: 1,
-        data: ChannelData::UInt8(Vec::<u8>::new()),
+        data: ChannelData::UInt8(PrimitiveArray::new(
+            DataType::UInt8,
+            Buffer::<u8>::new(),
+            None,
+        )),
         endian: false,
         channel_data_valid: false,
     };
@@ -1174,7 +1191,11 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Days"),
         pos_byte_beg: pos_byte_beg + 4,
         n_bytes: 1,
-        data: ChannelData::UInt8(Vec::<u8>::new()),
+        data: ChannelData::UInt8(PrimitiveArray::new(
+            DataType::UInt8,
+            Buffer::<u8>::new(),
+            None,
+        )),
         endian: false,
         channel_data_valid: false,
     };
@@ -1193,7 +1214,11 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Month"),
         pos_byte_beg: pos_byte_beg + 5,
         n_bytes: 1,
-        data: ChannelData::UInt8(Vec::<u8>::new()),
+        data: ChannelData::UInt8(PrimitiveArray::new(
+            DataType::UInt8,
+            Buffer::<u8>::new(),
+            None,
+        )),
         endian: false,
         channel_data_valid: false,
     };
@@ -1212,7 +1237,11 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Years"),
         pos_byte_beg: pos_byte_beg + 7,
         n_bytes: 1,
-        data: ChannelData::UInt8(Vec::<u8>::new()),
+        data: ChannelData::UInt8(PrimitiveArray::new(
+            DataType::UInt8,
+            Buffer::<u8>::new(),
+            None,
+        )),
         endian: false,
         channel_data_valid: false,
     };
@@ -1241,7 +1270,11 @@ fn can_open_time(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3) {
         description: String::from("Milliseconds"),
         pos_byte_beg,
         n_bytes: 4,
-        data: ChannelData::UInt32(Vec::<u32>::new()),
+        data: ChannelData::UInt32(PrimitiveArray::new(
+            DataType::UInt32,
+            Buffer::<u32>::new(),
+            None,
+        )),
         endian: false,
         channel_data_valid: false,
     };
@@ -1260,7 +1293,11 @@ fn can_open_time(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3) {
         description: String::from("Days"),
         pos_byte_beg: pos_byte_beg + 4,
         n_bytes: 2,
-        data: ChannelData::UInt16(Vec::<u16>::new()),
+        data: ChannelData::UInt16(PrimitiveArray::new(
+            DataType::UInt16,
+            Buffer::<u16>::new(),
+            None,
+        )),
         endian: false,
         channel_data_valid: false,
     };

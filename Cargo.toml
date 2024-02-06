@@ -1,6 +1,6 @@
 [package]
 name = "mdfr"
-version = "0.4.3"
+version = "0.5.0"
 description = "A package for reading and writing MDF files"
 authors = ["ratal <ratal@ratal.org>"]
 edition = "2021"
@@ -17,7 +17,7 @@ anyhow = { version = "1.0", features = ["backtrace"] } # error handling
 log = "0.4" # to log events
 byteorder = "1.4" # for bytes conversions
 binrw = "0.13" # to efficiently read blocks
-num = { version = "0.4", features = ["serde"] } # for complex numbers
+num-traits = "0.2"
 half = "2" # for f16 handling
 encoding_rs = "0.8" # for endian management and bytes to text conversion (utf8, SBC, UTF16)
 codepage = "0.1" # to convert code page into encoding
@@ -47,7 +47,7 @@ arrow2 = { version = "0.18", features = [
     "io_parquet",
     "io_parquet_compression",
 ] } # for efficient data storing in memory
-polars = { version = "0.35", features = [
+polars = { version = "0.37", features = [
     "dtype-full",
     "object",
     "fmt",
