@@ -212,7 +212,7 @@ impl Clone for ChannelData {
                                 .expect("failed appending new fixed binary value");
                         });
                 }
-                Self::VariableSizeByteArray(new_array)
+                Self::FixedSizeByteArray(new_array)
             }
             Self::ArrayDInt8((arg0, shape)) => Self::ArrayDInt8((
                 arg0.finish()
@@ -1448,12 +1448,7 @@ pub fn try_from(value: &dyn Array) -> Result<ChannelData, Error> {
                 .downcast_ref::<BinaryArray>()
                 .context("could not downcast to Binary array")?
                 .clone();
-            let array_i64 = LargeBinaryArray::try_new(
-                array.offsets().clone().into(),
-                array.values().clone(),
-                array.logical_nulls().clone(),
-            )
-            .context("failed creating binary array with offsets i64")?;
+            let array_i64 = LargeBinaryArray::from_opt_vec(array.iter().collect());
             Ok(ChannelData::VariableSizeByteArray(
                 array_i64
                     .into_builder()
@@ -1511,12 +1506,7 @@ pub fn try_from(value: &dyn Array) -> Result<ChannelData, Error> {
                 .downcast_ref::<StringArray>()
                 .context("could not downcast to Utf8 array")?
                 .clone();
-            let array_i64 = LargeStringArray::try_new(
-                array.offsets().into(),
-                array.values().clone(),
-                array.logical_nulls().clone(),
-            )
-            .context("failed creating utf8 array with offsets i64")?;
+            let array_i64 = LargeStringArray::from(array.iter().collect::<Vec<_>>());
             Ok(ChannelData::Utf8(
                 array_i64
                     .into_builder()

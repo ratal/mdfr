@@ -2162,10 +2162,12 @@ impl Clone for Cn4 {
             endian: self.endian,
             invalid_mask: self.invalid_mask.map(
                 |(mask, invalid_byte_position, invalid_byte_mask)| {
+                    let mut builder = BooleanBufferBuilder::new(0);
+                    if let Some(mask) = mask {
+                        builder.append_buffer(&mask.finish_cloned())
+                    }
                     (
-                        mask.map(|v| {
-                            BooleanBufferBuilder::new_from_buffer(v.finish_cloned().into(), v.len())
-                        }),
+                        mask.map(|v| builder),
                         invalid_byte_position.clone(),
                         invalid_byte_mask.clone(),
                     )
