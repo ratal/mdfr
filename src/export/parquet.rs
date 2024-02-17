@@ -1,5 +1,5 @@
 //! Exporting mdf to Parquet files.
-use arrow2::{
+use arrow::{
     array::Array,
     datatypes::DataType,
     datatypes::{Field, Metadata, Schema},
@@ -26,7 +26,7 @@ use crate::{
 };
 
 use std::collections::{HashSet, VecDeque};
-use std::{fs, path::Path};
+use std::path::Path;
 
 struct Bla {
     columns: VecDeque<CompressedPage>,
@@ -63,7 +63,7 @@ pub fn export_to_parquet(mdf: &Mdf, file_name: &str, compression: Option<&str>) 
     let path = Path::new(file_name);
 
     let options = WriteOptions {
-        write_statistics: false,
+        write_statistics: true,
         version: Version::V2,
         compression: parquet_compression_from_string(compression),
         data_pagesize_limit: None,
@@ -120,7 +120,7 @@ pub fn export_to_parquet(mdf: &Mdf, file_name: &str, compression: Option<&str>) 
         Result::Ok(row_group)
     });
 
-    let file = fs::File::create(path).expect("Failed to create file");
+    let file = std::io::BufWriter::new(std::fs::File::create(path).expect("Failed to create file"));
     let mut writer = FileWriter::try_new(file, arrow_schema.clone(), options)
         .expect("Failed to write parquet file");
 
@@ -154,18 +154,24 @@ fn cn4_field(mdfinfo4: &MdfInfo4, cn: &Cn4, data_type: DataType, is_nullable: bo
     let field = Field::new(cn.unique_name.clone(), data_type, is_nullable);
     let mut metadata = Metadata::new();
     if let Ok(Some(unit)) = mdfinfo4.sharable.get_tx(cn.block.cn_md_unit) {
-        metadata.insert("unit".to_string(), unit);
+        if !unit.is_empty() {
+            metadata.insert("unit".to_string(), unit);
+        }
     };
     if let Ok(Some(desc)) = mdfinfo4.sharable.get_tx(cn.block.cn_md_comment) {
-        metadata.insert("description".to_string(), desc);
+        if !desc.is_empty() {
+            metadata.insert("description".to_string(), desc);
+        }
     };
     if let Some((Some(master_channel_name), _dg_pos, (_cg_pos, _rec_idd), (_cn_pos, _rec_pos))) =
         mdfinfo4.channel_names_set.get(&cn.unique_name)
     {
-        metadata.insert(
-            "master_channel".to_string(),
-            master_channel_name.to_string(),
-        );
+        if !master_channel_name.is_empty() {
+            metadata.insert(
+                "master_channel".to_string(),
+                master_channel_name.to_string(),
+            );
+        }
     }
     if cn.block.cn_type == 4 {
         metadata.insert(
@@ -194,7 +200,6 @@ fn mdf_data_to_arrow(mdf: &Mdf) -> (Vec<Vec<Box<dyn Array>>>, Schema) {
                 }
                 if !channel_names_present_in_dg.is_empty() {
                     dg.cg.iter().for_each(|(_rec_id, cg)| {
-                        let is_nullable: bool = cg.block.cg_inval_bytes > 0;
                         let mut columns =
                             Vec::<Box<dyn Array>>::with_capacity(cg.channel_names.len());
                         cg.cn.iter().for_each(|(_rec_pos, cn)| {
@@ -203,7 +208,7 @@ fn mdf_data_to_arrow(mdf: &Mdf) -> (Vec<Vec<Box<dyn Array>>>, Schema) {
                                     mdfinfo4,
                                     cn,
                                     cn.data.arrow_data_type().clone(),
-                                    is_nullable,
+                                    cn.data.validity().is_some(),
                                 ));
                                 columns.push(cn.data.boxed());
                                 array_index += 1;

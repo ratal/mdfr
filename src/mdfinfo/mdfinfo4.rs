@@ -1,11 +1,7 @@
 //! Parsing of file metadata into MdfInfo4 struct
-use crate::export::tensor::Order;
 use crate::mdfreader::{DataSignature, MasterSignature};
 use anyhow::{anyhow, Context, Error, Result};
-use arrow2::array::{Array, PrimitiveArray};
-use arrow2::bitmap::MutableBitmap;
-use arrow2::buffer::Buffer;
-use arrow2::datatypes::DataType;
+use arrow::array::{Array, BooleanBufferBuilder, UInt16Builder, UInt32Builder, UInt8Builder};
 use binrw::{binrw, BinReaderExt, BinWriterExt};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::naive::NaiveDateTime;
@@ -20,12 +16,13 @@ use std::default::Default;
 use std::fmt::Debug;
 use std::fs::File;
 use std::io::{BufReader, Cursor, Read, Seek, Write};
+use std::sync::Arc;
 use std::{fmt, str};
 use transpose;
 use yazi::{decompress, Adler32, Format};
 
 use crate::mdfinfo::IdBlock;
-use crate::mdfreader::channel_data::{data_type_init, try_from, ChannelData};
+use crate::mdfreader::channel_data::{data_type_init, try_from, ChannelData, Order};
 
 use super::sym_buf_reader::SymBufReader;
 
@@ -426,7 +423,7 @@ impl MdfInfo4 {
     pub fn set_channel_data(
         &mut self,
         channel_name: &str,
-        data: Box<dyn Array>,
+        data: Arc<dyn Array>,
     ) -> Result<(), Error> {
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
             self.channel_names_set.get(channel_name)
@@ -434,8 +431,8 @@ impl MdfInfo4 {
             if let Some(dg) = self.dg.get_mut(dg_pos) {
                 if let Some(cg) = dg.cg.get_mut(rec_id) {
                     if let Some(cn) = cg.cn.get_mut(rec_pos) {
-                        cn.data =
-                            try_from(data).context("failed converting dyn array to ChannelData")?;
+                        cn.data = try_from(&data)
+                            .context("failed converting dyn array to ChannelData")?;
                     }
                 }
             }
@@ -1944,13 +1941,13 @@ impl Cg4 {
                         invalid_bytes.chunks(cg_inval_bytes).enumerate().for_each(
                             |(index, record)| {
                                 // arrow considers bit set as valid while mdf spec considers bit set as invalid
-                                mask.set(
+                                mask.set_bit(
                                     index,
                                     (record[*invalid_byte_position] & *invalid_byte_mask) == 0,
                                 );
                             },
                         );
-                        cn.data.set_validity(mask.clone()).with_context(|| {
+                        cn.data.set_validity(mask).with_context(|| {
                             format!(
                                 "failed applying invalid bits for channel {}",
                                 cn.unique_name
@@ -1971,7 +1968,7 @@ impl Cg4 {
                         &mut cn.invalid_mask
                     {
                         if let Some(mask) = validity {
-                            cn.data.set_validity(mask.clone()).with_context(|| {
+                            cn.data.set_validity(mask).with_context(|| {
                                 format!(
                                     "failed applying invalid bits for channel {} from mask",
                                     cn.unique_name
@@ -2148,7 +2145,7 @@ pub struct Cn4 {
     /// false = little endian
     pub endian: bool,
     /// optional invalid mask array, invalid byte position in record, invalid byte mask
-    pub invalid_mask: Option<(Option<MutableBitmap>, usize, u8)>,
+    pub invalid_mask: Option<(Option<BooleanBufferBuilder>, usize, u8)>,
 }
 
 impl Clone for Cn4 {
@@ -2163,7 +2160,17 @@ impl Clone for Cn4 {
             composition: self.composition.clone(),
             data: ChannelData::default(),
             endian: self.endian,
-            invalid_mask: self.invalid_mask.clone(),
+            invalid_mask: self.invalid_mask.map(
+                |(mask, invalid_byte_position, invalid_byte_mask)| {
+                    (
+                        mask.map(|v| {
+                            BooleanBufferBuilder::new_from_buffer(v.finish_cloned().into(), v.len())
+                        }),
+                        invalid_byte_position.clone(),
+                        invalid_byte_mask.clone(),
+                    )
+                },
+            ),
         }
     }
 }
@@ -2307,11 +2314,7 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 2,
         composition: None,
-        data: ChannelData::UInt16(PrimitiveArray::new(
-            DataType::UInt16,
-            Buffer::<u16>::new(),
-            None,
-        )),
+        data: ChannelData::UInt16(UInt16Builder::new()),
         endian: false,
         invalid_mask: None,
     };
@@ -2329,11 +2332,7 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 1,
         composition: None,
-        data: ChannelData::UInt8(PrimitiveArray::new(
-            DataType::UInt8,
-            Buffer::<u8>::new(),
-            None,
-        )),
+        data: ChannelData::UInt8(UInt8Builder::new()),
         endian: false,
         invalid_mask: None,
     };
@@ -2351,11 +2350,7 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 1,
         composition: None,
-        data: ChannelData::UInt8(PrimitiveArray::new(
-            DataType::UInt8,
-            Buffer::<u8>::new(),
-            None,
-        )),
+        data: ChannelData::UInt8(UInt8Builder::new()),
         endian: false,
         invalid_mask: None,
     };
@@ -2373,11 +2368,7 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 1,
         composition: None,
-        data: ChannelData::UInt8(PrimitiveArray::new(
-            DataType::UInt8,
-            Buffer::<u8>::new(),
-            None,
-        )),
+        data: ChannelData::UInt8(UInt8Builder::new()),
         endian: false,
         invalid_mask: None,
     };
@@ -2395,11 +2386,7 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 1,
         composition: None,
-        data: ChannelData::UInt8(PrimitiveArray::new(
-            DataType::UInt8,
-            Buffer::<u8>::new(),
-            None,
-        )),
+        data: ChannelData::UInt8(UInt8Builder::new()),
         endian: false,
         invalid_mask: None,
     };
@@ -2417,11 +2404,7 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 1,
         composition: None,
-        data: ChannelData::UInt8(PrimitiveArray::new(
-            DataType::UInt8,
-            Buffer::<u8>::new(),
-            None,
-        )),
+        data: ChannelData::UInt8(UInt8Builder::new()),
         endian: false,
         invalid_mask: None,
     };
@@ -2444,11 +2427,7 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         pos_byte_beg,
         n_bytes: 4,
         composition: None,
-        data: ChannelData::UInt32(PrimitiveArray::new(
-            DataType::UInt32,
-            Buffer::<u32>::new(),
-            None,
-        )),
+        data: ChannelData::UInt32(UInt32Builder::new()),
         endian: false,
         invalid_mask: None,
     };
@@ -2466,11 +2445,7 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         pos_byte_beg,
         n_bytes: 2,
         composition: None,
-        data: ChannelData::UInt16(PrimitiveArray::new(
-            DataType::UInt16,
-            Buffer::<u16>::new(),
-            None,
-        )),
+        data: ChannelData::UInt16(UInt16Builder::new()),
         endian: false,
         invalid_mask: None,
     };
@@ -2525,11 +2500,11 @@ fn parse_cn4_block(
 
     let pos_byte_beg = block.cn_byte_offset + record_id_size as u32;
     let n_bytes = calc_n_bytes_not_aligned(block.cn_bit_count + (block.cn_bit_offset as u32));
-    let invalid_mask: Option<(Option<MutableBitmap>, usize, u8)> = if cg_inval_bytes != 0 {
+    let invalid_mask: Option<(Option<BooleanBufferBuilder>, usize, u8)> = if cg_inval_bytes != 0 {
         let invalid_byte_position = (block.cn_inval_bit_pos >> 3) as usize;
         let invalid_byte_mask = 1 << (block.cn_inval_bit_pos & 0x07);
         Some((
-            Some(MutableBitmap::from_len_set(cg_cycle_count as usize)),
+            Some(BooleanBufferBuilder::new(cg_cycle_count as usize)),
             invalid_byte_position,
             invalid_byte_mask,
         ))

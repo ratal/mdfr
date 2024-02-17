@@ -2,13 +2,12 @@
 use std::collections::HashSet;
 use std::fmt::Write;
 
-use crate::export::numpy::arrow_to_numpy;
 use crate::export::polars::rust_arrow_to_py_series;
 use crate::mdfinfo::MdfInfo;
-use crate::mdfreader::arrow::array_to_rust;
+use crate::mdfreader::arrow_helpers::array_to_rust;
 use crate::mdfreader::MasterSignature;
 use crate::mdfreader::Mdf;
-use arrow2::array::get_display;
+use arrow::util::display::{ArrayFormatter, FormatOptions};
 use pyo3::exceptions::PyUnicodeDecodeError;
 use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyBytes, PyDict, PyList};
@@ -50,7 +49,7 @@ impl Mdfr {
             let mut py_array: Py<PyAny>;
             let dt = mdf.get_channel_data(&channel_name);
             if let Some(data) = dt {
-                py_array = arrow_to_numpy(py, data.clone());
+                py_array = data.into_py(py);
                 if let Some(m) = data.clone().validity() {
                     let mask: Py<PyAny> = m.iter().collect::<Vec<bool>>().into_py(py);
                     let locals = [("numpy", py.import("numpy").expect("could not import numpy"))]
@@ -78,7 +77,7 @@ impl Mdfr {
         pyo3::Python::with_gil(|py| {
             let mut py_serie = Ok(Python::None(py));
             if let Some(array) = mdf.get_channel_data(channel_name) {
-                py_serie = rust_arrow_to_py_series(array, channel_name.to_string());
+                py_serie = rust_arrow_to_py_series(array.as_ref(), channel_name.to_string());
             };
             py_serie
         })
@@ -95,7 +94,7 @@ impl Mdfr {
                     series_dict
                         .set_item(
                             channel.clone(),
-                            rust_arrow_to_py_series(channel_data, channel)
+                            rust_arrow_to_py_series(channel_data.as_ref(), channel)
                                 .expect("Could not convert to python series"),
                         )
                         .expect("could not store the serie in dict");
@@ -446,14 +445,15 @@ pyplot.show()
             .expect("plot python script failed");
         })
     }
-    /// export to Parquet file
-    pub fn export_to_parquet(&mut self, file_name: &str, compression_option: Option<&str>) {
-        let Mdfr(mdf) = self;
-        mdf.export_to_parquet(file_name, compression_option)
-            .expect("could not export to parquet")
-    }
+    // /// export to Parquet file
+    // pub fn export_to_parquet(&mut self, file_name: &str, compression_option: Option<&str>) {
+    //     let Mdfr(mdf) = self;
+    //     mdf.export_to_parquet(file_name, compression_option)
+    //         .expect("could not export to parquet")
+    // }
     fn __repr__(&mut self) -> PyResult<String> {
         let mut output: String;
+        let format_option = FormatOptions::new();
         match &mut self.0.mdf_info {
             MdfInfo::V3(mdfinfo3) => {
                 output = format!("Version : {}\n", mdfinfo3.id_block.id_ver);
@@ -490,11 +490,12 @@ pyplot.show()
                         write!(output, " {channel} ").expect("cannot print channel name");
                         if let Some(data) = self.0.get_channel_data(channel) {
                             if !data.is_empty() {
-                                let displayer = get_display(data.as_ref(), "null");
-                                displayer(&mut output, 0).expect("cannot channel data");
+                                let displayer =
+                                    ArrayFormatter::try_new(data.as_ref(), &format_option)
+                                        .expect("failed creating formatter for arrow array");
+                                write!(&mut output, "{}", displayer.value(0));
                                 write!(output, " ").expect("cannot print simple space character");
-                                displayer(&mut output, data.len() - 1)
-                                    .expect("cannot channel data");
+                                write!(&mut output, "{}", displayer.value(data.len() - 1));
                             }
                             writeln!(
                                 output,
@@ -531,11 +532,14 @@ pyplot.show()
                         write!(output, " {channel} ").expect("cannot print channel name");
                         if let Some(data) = self.0.get_channel_data(channel) {
                             if !data.is_empty() {
-                                let displayer = get_display(data.as_ref(), "null");
-                                displayer(&mut output, 0).expect("cannot print channel data");
+                                let displayer =
+                                    ArrayFormatter::try_new(data.as_ref(), &format_option)
+                                        .expect("failed creating formatter for arrow array");
+                                write!(&mut output, "{}", displayer.value(0))
+                                    .expect("cannot print channel data");
                                 write!(output, " .. ")
                                     .expect("cannot print simple space character");
-                                displayer(&mut output, data.len() - 1)
+                                write!(&mut output, "{}", displayer.value(data.len() - 1))
                                     .expect("cannot channel data");
                             }
                             writeln!(

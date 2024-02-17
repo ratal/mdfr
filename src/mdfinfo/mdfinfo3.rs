@@ -1,8 +1,6 @@
 //! Parsing of file metadata into MdfInfo3 struct
 use anyhow::{Context, Error, Result};
-use arrow2::array::PrimitiveArray;
-use arrow2::buffer::Buffer;
-use arrow2::datatypes::DataType;
+use arrow::array::{UInt16Builder, UInt32Builder, UInt8Builder};
 use binrw::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::NaiveDate;
@@ -14,9 +12,8 @@ use std::fmt;
 use std::fs::File;
 use std::io::{prelude::*, Cursor};
 
-use crate::export::tensor::Order;
 use crate::mdfinfo::IdBlock;
-use crate::mdfreader::channel_data::{data_type_init, ChannelData};
+use crate::mdfreader::channel_data::{data_type_init, ChannelData, Order};
 
 use super::sym_buf_reader::SymBufReader;
 
@@ -1122,11 +1119,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Milliseconds"),
         pos_byte_beg,
         n_bytes: 2,
-        data: ChannelData::UInt16(PrimitiveArray::new(
-            DataType::UInt16,
-            Buffer::<u16>::new(),
-            None,
-        )),
+        data: ChannelData::UInt16(UInt16Builder::new()),
         endian: false,
         channel_data_valid: false,
     };
@@ -1145,11 +1138,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Minutes"),
         pos_byte_beg: pos_byte_beg + 2,
         n_bytes: 1,
-        data: ChannelData::UInt8(PrimitiveArray::new(
-            DataType::UInt8,
-            Buffer::<u8>::new(),
-            None,
-        )),
+        data: ChannelData::UInt8(UInt8Builder::new()),
         endian: false,
         channel_data_valid: false,
     };
@@ -1168,11 +1157,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Hours"),
         pos_byte_beg: pos_byte_beg + 3,
         n_bytes: 1,
-        data: ChannelData::UInt8(PrimitiveArray::new(
-            DataType::UInt8,
-            Buffer::<u8>::new(),
-            None,
-        )),
+        data: ChannelData::UInt8(UInt8Builder::new()),
         endian: false,
         channel_data_valid: false,
     };
@@ -1191,11 +1176,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Days"),
         pos_byte_beg: pos_byte_beg + 4,
         n_bytes: 1,
-        data: ChannelData::UInt8(PrimitiveArray::new(
-            DataType::UInt8,
-            Buffer::<u8>::new(),
-            None,
-        )),
+        data: ChannelData::UInt8(UInt8Builder::new()),
         endian: false,
         channel_data_valid: false,
     };
@@ -1214,11 +1195,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Month"),
         pos_byte_beg: pos_byte_beg + 5,
         n_bytes: 1,
-        data: ChannelData::UInt8(PrimitiveArray::new(
-            DataType::UInt8,
-            Buffer::<u8>::new(),
-            None,
-        )),
+        data: ChannelData::UInt8(UInt8Builder::new()),
         endian: false,
         channel_data_valid: false,
     };
@@ -1237,11 +1214,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Years"),
         pos_byte_beg: pos_byte_beg + 7,
         n_bytes: 1,
-        data: ChannelData::UInt8(PrimitiveArray::new(
-            DataType::UInt8,
-            Buffer::<u8>::new(),
-            None,
-        )),
+        data: ChannelData::UInt8(UInt8Builder::new()),
         endian: false,
         channel_data_valid: false,
     };
@@ -1270,11 +1243,7 @@ fn can_open_time(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3) {
         description: String::from("Milliseconds"),
         pos_byte_beg,
         n_bytes: 4,
-        data: ChannelData::UInt32(PrimitiveArray::new(
-            DataType::UInt32,
-            Buffer::<u32>::new(),
-            None,
-        )),
+        data: ChannelData::UInt32(UInt32Builder::new()),
         endian: false,
         channel_data_valid: false,
     };
@@ -1293,11 +1262,7 @@ fn can_open_time(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3) {
         description: String::from("Days"),
         pos_byte_beg: pos_byte_beg + 4,
         n_bytes: 2,
-        data: ChannelData::UInt16(PrimitiveArray::new(
-            DataType::UInt16,
-            Buffer::<u16>::new(),
-            None,
-        )),
+        data: ChannelData::UInt16(UInt16Builder::new()),
         endian: false,
         channel_data_valid: false,
     };

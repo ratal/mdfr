@@ -3,7 +3,7 @@
 
 use anyhow::Error;
 use anyhow::{bail, Context, Result};
-use arrow2::array::Array;
+use arrow::array::Array;
 use binrw::{binrw, BinReaderExt};
 use codepage::to_encoding;
 use encoding_rs::Encoding;
@@ -15,6 +15,7 @@ use std::fs::{File, OpenOptions};
 use std::io::Read;
 use std::path::PathBuf;
 use std::str;
+use std::sync::Arc;
 
 pub mod mdfinfo3;
 pub mod mdfinfo4;
@@ -355,7 +356,7 @@ impl MdfInfo {
     pub fn set_channel_data(
         &mut self,
         channel_name: &str,
-        data: Box<dyn Array>,
+        data: Arc<dyn Array>,
     ) -> Result<(), Error> {
         match self {
             MdfInfo::V3(mdfinfo3) => {

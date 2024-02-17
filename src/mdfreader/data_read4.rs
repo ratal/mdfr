@@ -1,9 +1,10 @@
 //! this module implements low level data reading for mdf4 files.
-use crate::export::tensor::{Order, Tensor};
 use crate::mdfinfo::mdfinfo4::{Cn4, CnType, Compo};
 use anyhow::{Context, Error, Ok, Result};
-use arrow2::array::{MutableBinaryValuesArray, MutableFixedSizeBinaryArray, PrimitiveArray};
-use arrow2::datatypes::DataType;
+use arrow::array::{
+    Float32Builder, Float64Builder, Int16Builder, Int32Builder, Int64Builder, Int8Builder,
+    UInt16Builder, UInt32Builder, UInt64Builder, UInt8Builder,
+};
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
 use encoding_rs::{UTF_16BE, UTF_16LE, WINDOWS_1252};
 use half::f16;
@@ -17,7 +18,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use super::channel_data::ChannelData;
+use super::channel_data::{ChannelData, Order};
 
 /// converts raw data block containing only one channel into a ndarray
 pub fn read_one_channel_array(
@@ -43,10 +44,10 @@ pub fn read_one_channel_array(
                 Cursor::new(data_bytes)
                     .read_i8_into(&mut buf)
                     .context("Could not read i8 array")?;
-                *a = PrimitiveArray::from_vec(buf);
+                *a = Int8Builder::new_from_buffer(buf.into(), None);
             }
             ChannelData::UInt8(a) => {
-                *a = PrimitiveArray::from_vec(data_bytes.clone());
+                *a = UInt8Builder::new_from_buffer(data_bytes.clone().into(), None);
             }
             ChannelData::Int16(a) => {
                 let mut buf = vec![0; cycle_count];
@@ -59,7 +60,7 @@ pub fn read_one_channel_array(
                         .read_i16_into::<LittleEndian>(&mut buf)
                         .context("Could not read le i16 array")?;
                 }
-                *a = PrimitiveArray::from_vec(buf);
+                *a = Int16Builder::new_from_buffer(buf.into(), None);
             }
             ChannelData::UInt16(a) => {
                 let mut buf = vec![0; cycle_count];
@@ -72,7 +73,7 @@ pub fn read_one_channel_array(
                         .read_u16_into::<LittleEndian>(&mut buf)
                         .context("Could not read le 16 array")?;
                 }
-                *a = PrimitiveArray::from_vec(buf);
+                *a = UInt16Builder::new_from_buffer(buf.into(), None);
             }
             ChannelData::Int32(a) => {
                 if n_bytes == 4 {
@@ -86,10 +87,9 @@ pub fn read_one_channel_array(
                             .read_i32_into::<LittleEndian>(&mut buf)
                             .context("Could not read le i32 array")?;
                     }
-                    *a = PrimitiveArray::from_vec(buf);
+                    *a = Int32Builder::new_from_buffer(buf.into(), None);
                 } else if n_bytes == 3 {
-                    let data = a.get_mut_values()
-                    .context("One channel array function could not get mutable values from primitive array i32")?;
+                    let data = a.values_slice_mut();
                     if cn.endian {
                         for (i, mut value) in data_bytes.chunks(n_bytes).enumerate() {
                             data[i] = value
@@ -117,10 +117,9 @@ pub fn read_one_channel_array(
                             .read_u32_into::<LittleEndian>(&mut buf)
                             .context("Could not read le u32 array")?;
                     }
-                    *a = PrimitiveArray::from_vec(buf);
+                    *a = UInt32Builder::new_from_buffer(buf.into(), None);
                 } else if n_bytes == 3 {
-                    let data = a.get_mut_values()
-                    .context("One channel array function could not get mutable values from primitive array u32")?;
+                    let data = a.values_slice_mut();
                     if cn.endian {
                         for (i, mut value) in data_bytes.chunks(n_bytes).enumerate() {
                             data[i] = value
@@ -148,9 +147,9 @@ pub fn read_one_channel_array(
                             .read_f32_into::<LittleEndian>(&mut buf)
                             .context("Could not read le f32 array")?;
                     }
-                    *a = PrimitiveArray::from_vec(buf);
+                    *a = Float32Builder::new_from_buffer(buf.into(), None);
                 } else if n_bytes == 2 {
-                    let data = a.get_mut_values().context("One channel array function could not get mutable values from primitive array float32")?;
+                    let data = a.values_slice_mut();
                     if cn.endian {
                         for (i, value) in data_bytes.chunks(std::mem::size_of::<f16>()).enumerate()
                         {
@@ -182,10 +181,9 @@ pub fn read_one_channel_array(
                             .read_i64_into::<LittleEndian>(&mut buf)
                             .context("Could not read le i64 array")?;
                     }
-                    *a = PrimitiveArray::from_vec(buf);
+                    *a = Int64Builder::new_from_buffer(buf.into(), None);
                 } else if n_bytes == 6 {
-                    let data = a.get_mut_values()
-                    .context("One channel array function could not get mutable values from primitive array i64")?;
+                    let data = a.values_slice_mut();
                     if cn.endian {
                         for (i, mut value) in data_bytes.chunks(n_bytes).enumerate() {
                             data[i] = value
@@ -213,11 +211,10 @@ pub fn read_one_channel_array(
                             .read_u64_into::<LittleEndian>(&mut buf)
                             .context("Could not read le u64 array")?;
                     }
-                    *a = PrimitiveArray::from_vec(buf);
+                    *a = UInt64Builder::new_from_buffer(buf.into(), None);
                 } else if n_bytes == 7 {
                     let mut temp = [0u8; std::mem::size_of::<u64>()];
-                    let data = a.get_mut_values()
-                    .context("One channel array function could not get mutable values from primitive array u64")?;
+                    let data = a.values_slice_mut();
                     if cn.endian {
                         for (i, value) in data_bytes.chunks(n_bytes).enumerate() {
                             temp[0..7].copy_from_slice(&value[0..7]);
@@ -230,8 +227,7 @@ pub fn read_one_channel_array(
                         }
                     }
                 } else if n_bytes == 6 {
-                    let data = a.get_mut_values()
-                    .context("One channel array function could not get mutable values from primitive array u64")?;
+                    let data = a.values_slice_mut();
                     if cn.endian {
                         for (i, mut value) in data_bytes.chunks(n_bytes).enumerate() {
                             data[i] = value
@@ -248,8 +244,7 @@ pub fn read_one_channel_array(
                 } else {
                     // n_bytes = 5
                     let mut temp = [0u8; 6];
-                    let data = a.get_mut_values()
-                    .context("One channel array function could not get mutable values from primitive array u64")?;
+                    let data = a.values_slice_mut();
                     if cn.endian {
                         for (i, value) in data_bytes.chunks(n_bytes).enumerate() {
                             temp[0..5].copy_from_slice(&value[0..n_bytes]);
@@ -278,12 +273,10 @@ pub fn read_one_channel_array(
                         .read_f64_into::<LittleEndian>(&mut buf)
                         .context("Could not read le f64 array")?;
                 }
-                *a = PrimitiveArray::from_vec(buf);
+                *a = Float64Builder::new_from_buffer(buf.into(), None);
             }
             ChannelData::Complex32(a) => {
-                let data = a
-                .get_mut_values()
-                .with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array complex f32, channel {}", cn.unique_name))?;
+                let data = a.values_slice_mut();
                 if n_bytes <= 2 {
                     // complex 16
                     if cn.endian {
@@ -323,9 +316,7 @@ pub fn read_one_channel_array(
                 }
             }
             ChannelData::Complex64(a) => {
-                let data = a
-                .get_mut_values()
-                .with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array complex f64, channel {}", cn.unique_name))?;
+                let data = a.values_slice_mut();
                 if cn.endian {
                     for (i, value) in data_bytes.chunks(std::mem::size_of::<f64>()).enumerate() {
                         data[i] = f64::from_be_bytes(
@@ -348,16 +339,16 @@ pub fn read_one_channel_array(
                         let mut dst = String::new();
                         let (_result, _size, _replacement) =
                             decoder.decode_to_string(value, &mut dst, false);
-                        data.push(Some(dst.trim_end_matches('\0')));
+                        data.append_value(dst.trim_end_matches('\0'));
                     }
                 } else if cn.block.cn_data_type == 7 {
                     // 7: String UTF8
                     for value in data_bytes.chunks(n_bytes) {
-                        data.push(Some(
+                        data.append_value(
                             str::from_utf8(value)
                                 .context("Found invalid UTF-8")?
                                 .trim_end_matches('\0'),
-                        ));
+                        );
                     }
                 } else if cn.block.cn_data_type == 8 || cn.block.cn_data_type == 9 {
                     // 8 | 9 :String UTF16 to be converted into UTF8
@@ -367,7 +358,7 @@ pub fn read_one_channel_array(
                             let mut dst = String::new();
                             let (_result, _size, _replacement) =
                                 decoder.decode_to_string(record, &mut dst, false);
-                            data.push(Some(dst.trim_end_matches('\0')));
+                            data.append_value(dst.trim_end_matches('\0'));
                         }
                     } else {
                         let mut decoder = UTF_16LE.new_decoder();
@@ -375,29 +366,23 @@ pub fn read_one_channel_array(
                             let mut dst = String::new();
                             let (_result, _size, _replacement) =
                                 decoder.decode_to_string(record, &mut dst, false);
-                            data.push(Some(dst.trim_end_matches('\0')));
+                            data.append_value(dst.trim_end_matches('\0'));
                         }
                     }
                 }
             }
             ChannelData::VariableSizeByteArray(a) => {
                 // no validity at this point
-                let mut data =
-                    MutableBinaryValuesArray::<i64>::with_capacities(cycle_count, n_bytes);
                 for value in data_bytes.chunks(n_bytes) {
-                    data.push(value);
+                    a.append_value(value);
                 }
-                *a = data.into();
             }
             ChannelData::FixedSizeByteArray(a) => {
-                *a = MutableFixedSizeBinaryArray::try_new(
-                    DataType::FixedSizeBinary(n_bytes),
-                    data_bytes.to_vec(),
-                    None,
-                )
-                .context("failed creating new MutableFixedSizeBinary")?;
+                for value in data_bytes.chunks(n_bytes) {
+                    a.append_value(value);
+                }
             }
-            ChannelData::ArrayDInt8(a) => {
+            ChannelData::ArrayDInt8((a, _)) => {
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
@@ -405,47 +390,23 @@ pub fn read_one_channel_array(
                             Cursor::new(data_bytes)
                                 .read_i8_into(&mut buf)
                                 .context("Could not read i8 array")?;
-                            *a = Tensor::try_new(
-                                DataType::Extension(
-                                    "Tensor".to_owned(),
-                                    Box::new(DataType::Int8),
-                                    None,
-                                ),
-                                buf.into(),
-                                shape.clone().map(|s| s.0.clone()),
-                                shape.map(|o| o.1.clone()),
-                                None,
-                                None,
-                            )
-                            .context("failed creating tensor i8 from one channel array")?;
+                            *a = Int8Builder::new_from_buffer(buf.into(), None);
                         }
                         Compo::CN(_) => {}
                     }
                 }
             }
-            ChannelData::ArrayDUInt8(a) => {
+            ChannelData::ArrayDUInt8((a, _)) => {
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(_) => {
-                            *a = Tensor::try_new(
-                                DataType::Extension(
-                                    "Tensor".to_owned(),
-                                    Box::new(DataType::UInt8),
-                                    None,
-                                ),
-                                data_bytes.clone().into(),
-                                shape.clone().map(|s| s.0.clone()),
-                                shape.map(|o| o.1.clone()),
-                                None,
-                                None,
-                            )
-                            .context("failed creating tensor u8 from one channel array")?;
+                            *a = UInt8Builder::new_from_buffer(data_bytes.clone().into(), None);
                         }
                         Compo::CN(_) => {}
                     }
                 }
             }
-            ChannelData::ArrayDInt16(a) => {
+            ChannelData::ArrayDInt16((a, _)) => {
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
@@ -459,25 +420,13 @@ pub fn read_one_channel_array(
                                     .read_i16_into::<LittleEndian>(&mut buf)
                                     .context("Could not read le i16 array")?;
                             }
-                            *a = Tensor::try_new(
-                                DataType::Extension(
-                                    "Tensor".to_owned(),
-                                    Box::new(DataType::Int16),
-                                    None,
-                                ),
-                                buf.into(),
-                                shape.clone().map(|s| s.0.clone()),
-                                shape.map(|o| o.1.clone()),
-                                None,
-                                None,
-                            )
-                            .context("failed creating tensor i16 from one channel array")?;
+                            *a = Int16Builder::new_from_buffer(buf.into(), None);
                         }
                         Compo::CN(_) => {}
                     }
                 }
             }
-            ChannelData::ArrayDUInt16(a) => {
+            ChannelData::ArrayDUInt16((a, _)) => {
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
@@ -491,25 +440,13 @@ pub fn read_one_channel_array(
                                     .read_u16_into::<LittleEndian>(&mut buf)
                                     .context("Could not read le 16 array")?;
                             }
-                            *a = Tensor::try_new(
-                                DataType::Extension(
-                                    "Tensor".to_owned(),
-                                    Box::new(DataType::UInt16),
-                                    None,
-                                ),
-                                buf.into(),
-                                shape.clone().map(|s| s.0.clone()),
-                                shape.map(|o| o.1.clone()),
-                                None,
-                                None,
-                            )
-                            .context("failed creating tensor u16 from one channel array")?;
+                            *a = UInt16Builder::new_from_buffer(buf.into(), None);
                         }
                         Compo::CN(_) => {}
                     }
                 }
             }
-            ChannelData::ArrayDInt32(a) => {
+            ChannelData::ArrayDInt32((a, _)) => {
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
@@ -537,25 +474,13 @@ pub fn read_one_channel_array(
                                     .read_i32_into::<LittleEndian>(&mut buf)
                                     .context("Could not read le i32 array")?;
                             }
-                            *a = Tensor::try_new(
-                                DataType::Extension(
-                                    "Tensor".to_owned(),
-                                    Box::new(DataType::Int32),
-                                    None,
-                                ),
-                                buf.into(),
-                                shape.clone().map(|s| s.0.clone()),
-                                shape.map(|o| o.1.clone()),
-                                None,
-                                None,
-                            )
-                            .context("failed creating tensor i32 from one channel array")?;
+                            *a = Int32Builder::new_from_buffer(buf.into(), None);
                         }
                         Compo::CN(_) => {}
                     }
                 }
             }
-            ChannelData::ArrayDUInt32(a) => {
+            ChannelData::ArrayDUInt32((a, _)) => {
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
@@ -583,25 +508,13 @@ pub fn read_one_channel_array(
                                     .read_u32_into::<LittleEndian>(&mut buf)
                                     .context("Could not read le u32 array")?;
                             }
-                            *a = Tensor::try_new(
-                                DataType::Extension(
-                                    "Tensor".to_owned(),
-                                    Box::new(DataType::UInt32),
-                                    None,
-                                ),
-                                buf.into(),
-                                shape.clone().map(|s| s.0.clone()),
-                                shape.map(|o| o.1.clone()),
-                                None,
-                                None,
-                            )
-                            .context("failed creating tensor u32 from one channel array")?;
+                            *a = UInt32Builder::new_from_buffer(buf.into(), None);
                         }
                         Compo::CN(_) => {}
                     }
                 }
             }
-            ChannelData::ArrayDFloat32(a) => {
+            ChannelData::ArrayDFloat32((a, _)) => {
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
@@ -635,25 +548,13 @@ pub fn read_one_channel_array(
                                     .read_f32_into::<LittleEndian>(&mut buf)
                                     .context("Could not read le f32 array")?;
                             }
-                            *a = Tensor::try_new(
-                                DataType::Extension(
-                                    "Tensor".to_owned(),
-                                    Box::new(DataType::Float32),
-                                    None,
-                                ),
-                                buf.into(),
-                                shape.clone().map(|s| s.0.clone()),
-                                shape.map(|o| o.1.clone()),
-                                None,
-                                None,
-                            )
-                            .context("failed creating tensor f32 from one channel array")?;
+                            *a = Float32Builder::new_from_buffer(buf.into(), None);
                         }
                         Compo::CN(_) => {}
                     }
                 }
             }
-            ChannelData::ArrayDInt64(a) => {
+            ChannelData::ArrayDInt64((a, _)) => {
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
@@ -681,25 +582,13 @@ pub fn read_one_channel_array(
                                         .context("Could not read le i48")?;
                                 }
                             }
-                            *a = Tensor::try_new(
-                                DataType::Extension(
-                                    "Tensor".to_owned(),
-                                    Box::new(DataType::Int64),
-                                    None,
-                                ),
-                                buf.into(),
-                                shape.clone().map(|s| s.0.clone()),
-                                shape.map(|o| o.1.clone()),
-                                None,
-                                None,
-                            )
-                            .context("failed creating tensor i64 from one channel array")?;
+                            *a = Int64Builder::new_from_buffer(buf.into(), None);
                         }
                         Compo::CN(_) => {}
                     }
                 }
             }
-            ChannelData::ArrayDUInt64(a) => {
+            ChannelData::ArrayDUInt64((a, _)) => {
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
@@ -759,25 +648,13 @@ pub fn read_one_channel_array(
                                     }
                                 }
                             }
-                            *a = Tensor::try_new(
-                                DataType::Extension(
-                                    "Tensor".to_owned(),
-                                    Box::new(DataType::UInt64),
-                                    None,
-                                ),
-                                buf.into(),
-                                shape.clone().map(|s| s.0.clone()),
-                                shape.map(|o| o.1.clone()),
-                                None,
-                                None,
-                            )
-                            .context("failed creating tensor u64 from one channel array")?;
+                            *a = UInt64Builder::new_from_buffer(buf.into(), None);
                         }
                         Compo::CN(_) => {}
                     }
                 }
             }
-            ChannelData::ArrayDFloat64(a) => {
+            ChannelData::ArrayDFloat64((a, _)) => {
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(ca) => {
@@ -791,19 +668,7 @@ pub fn read_one_channel_array(
                                     .read_f64_into::<LittleEndian>(&mut buf)
                                     .context("Could not read le f64 array")?;
                             }
-                            *a = Tensor::try_new(
-                                DataType::Extension(
-                                    "Tensor".to_owned(),
-                                    Box::new(DataType::Float64),
-                                    None,
-                                ),
-                                buf.into(),
-                                shape.clone().map(|s| s.0.clone()),
-                                shape.map(|o| o.1.clone()),
-                                None,
-                                None,
-                            )
-                            .context("failed creating tensor f64 from one channel array")?;
+                            *a = Float64Builder::new_from_buffer(buf.into(), None);
                         }
                         Compo::CN(_) => {}
                     }
@@ -844,24 +709,21 @@ pub fn read_channels_from_bytes(
             let n_bytes = cn.n_bytes as usize;
             match &mut cn.data {
                 ChannelData::Int8(a)  => {
-                    let data = a.get_mut_values()
-                    .with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array i8, channel {}", cn.unique_name))?;
+                    let data = a.values_slice_mut();
                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
                         value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i8>()];
                         data[i + previous_index] = i8::from_le_bytes(value.try_into().context("Could not read i8")?);
                     }
                 }
                 ChannelData::UInt8(a)  => {
-                    let data = a.get_mut_values()
-                    .context("Read channels from bytes function could not get mutable values from primitive array u8")?;
+                    let data = a.values_slice_mut();
                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
                         value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u8>()];
                         data[i + previous_index] = u8::from_le_bytes(value.try_into().context("Could not read u8")?);
                     }
                 }
                 ChannelData::Int16(a)  => {
-                    let data = a.get_mut_values()
-                    .context("Read channels from bytes function could not get mutable values from primitive array i16")?;
+                    let data = a.values_slice_mut();
                     if cn.endian {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             value =
@@ -881,8 +743,7 @@ pub fn read_channels_from_bytes(
                     }
                 }
                 ChannelData::UInt16(a)  => {
-                    let data = a.get_mut_values()
-                    .context("Read channels from bytes function could not get mutable values from primitive array u16")?;
+                    let data = a.values_slice_mut();
                     if cn.endian {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             value =
@@ -903,7 +764,7 @@ pub fn read_channels_from_bytes(
                 }
                 ChannelData::Int32(a)  => {
                     let data = a
-                    .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array i32, channel {}", cn.unique_name))?;
+                    .values_slice_mut();
                     if  n_bytes == 3 {
                         if cn.endian {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -939,8 +800,7 @@ pub fn read_channels_from_bytes(
                     }
                 }
                 ChannelData::UInt32(a)  => {
-                    let data = a.get_mut_values()
-                    .with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array u32, channel {}", cn.unique_name))?;
+                    let data = a.values_slice_mut();
                     if n_bytes == 3 {
                         if cn.endian {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -976,8 +836,7 @@ pub fn read_channels_from_bytes(
                     }
                 }
                 ChannelData::Float32(a)  => {
-                    let data = a.get_mut_values()
-                    .with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array f32, channel {}", cn.unique_name))?;
+                    let data = a.values_slice_mut();
                     if cn.endian {
                         if n_bytes == 2 {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -1017,8 +876,7 @@ pub fn read_channels_from_bytes(
                     }
                 }
                 ChannelData::Int64(a)  => {
-                    let data = a.get_mut_values()
-                    .with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array i64, channel {}", cn.unique_name))?;
+                    let data = a.values_slice_mut();
                     if cn.endian {
                         if n_bytes == 8 {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -1052,8 +910,7 @@ pub fn read_channels_from_bytes(
                     }
                 }
                 ChannelData::UInt64(a)  => {
-                    let data = a.get_mut_values()
-                    .with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array u64, channel {}", cn.unique_name))?;
+                    let data = a.values_slice_mut();
                     if cn.endian {
                         if n_bytes == 8 {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -1116,8 +973,7 @@ pub fn read_channels_from_bytes(
                     }
                 }
                 ChannelData::Float64(a)  => {
-                    let data = a.get_mut_values()
-                    .with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array f64, channel {}", cn.unique_name))?;
+                    let data = a.values_slice_mut();
                     if cn.endian {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             value =
@@ -1138,7 +994,7 @@ pub fn read_channels_from_bytes(
                 }
                 ChannelData::Complex32(a)  => {
                     let data = a
-                    .get_mut_values().context("Read channels from bytes function could not get mutable values from primitive array complex f32")?;
+                    .values_slice_mut();
                     if n_bytes <= 2 {  // complex 16
                         let mut re_val: &[u8];
                         let mut im_val: &[u8];
@@ -1227,8 +1083,7 @@ pub fn read_channels_from_bytes(
                     let mut re_val: &[u8];
                     let mut im_val: &[u8];
                     let data = a
-                    .get_mut_values()
-                    .with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array complex f64, channel {}", cn.unique_name))?;
+                    .values_slice_mut();
                     if cn.endian {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             re_val =
@@ -1275,7 +1130,7 @@ pub fn read_channels_from_bytes(
                             let (_result, _size, _replacement) =
                                 decoder.decode_to_string(value, &mut dst, false);
                             dst = dst.trim_end_matches('\0').to_owned();
-                            array.push(Some(dst));
+                            array.append_value(dst);
                         }
                     } else if cn.block.cn_data_type == 7 {
                         // 7: String UTF8
@@ -1283,7 +1138,7 @@ pub fn read_channels_from_bytes(
                             value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
                             let dst = str::from_utf8(value)
                                 .context("Found invalid UTF-8")?.trim_end_matches('\0');
-                            array.push(Some(dst));
+                            array.append_value(dst);
                         }
                     } else if cn.block.cn_data_type == 8 || cn.block.cn_data_type == 9 {
                         // 8 | 9 :String UTF16 to be converted into UTF8
@@ -1298,7 +1153,7 @@ pub fn read_channels_from_bytes(
                                     false,
                                 );
                                 dst = dst.trim_end_matches('\0').to_owned();
-                                array.push(Some(dst));
+                                array.append_value(dst);
                             }
                         } else {
                             let mut decoder = UTF_16LE.new_decoder();
@@ -1311,27 +1166,26 @@ pub fn read_channels_from_bytes(
                                     false,
                                 );
                                 dst = dst.trim_end_matches('\0').to_owned();
-                                array.push(Some(dst));
+                                array.append_value(dst);
                             }
                         }
                     }
                 }
                 ChannelData::VariableSizeByteArray(array)  => {
                     for record in data_chunk.chunks(record_length) {
-                        array.push(Some(&record[pos_byte_beg..pos_byte_beg + n_bytes]));
+                        array.append_value(&record[pos_byte_beg..pos_byte_beg + n_bytes]);
                     }
                 }
                 ChannelData::FixedSizeByteArray(a)  => {
                     for  record in data_chunk.chunks(record_length) {
-                        a.push(Some(&record[pos_byte_beg..pos_byte_beg + n_bytes]));
+                        a.append_value(&record[pos_byte_beg..pos_byte_beg + n_bytes]);
                     }
                 }
                 ChannelData::ArrayDInt8(a) => {
                     if let Some(compo) = &cn.composition {
                         match &compo.block {
                             Compo::CA(ca) => {
-                                let data = a
-                                .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor i8, channel {}", cn.unique_name))?;
+                                let data = a.0.values_slice_mut();
                                 for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                     for j in 0..ca.pnd {
                                         value = &record[pos_byte_beg + j * std::mem::size_of::<i8>()..pos_byte_beg + (j + 1) * std::mem::size_of::<i8>()];
@@ -1348,8 +1202,8 @@ pub fn read_channels_from_bytes(
                     if let Some(compo) = &cn.composition {
                         match &compo.block {
                             Compo::CA(ca) => {
-                                let data = a
-                                .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor u8, channel {}", cn.unique_name))?;
+                                let data = a.0
+                                .values_slice_mut();
                                 for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                     for j in 0..ca.pnd {
                                         value = &record[pos_byte_beg + j * std::mem::size_of::<u8>()..pos_byte_beg + (j + 1) * std::mem::size_of::<u8>()];
@@ -1366,8 +1220,8 @@ pub fn read_channels_from_bytes(
                     if let Some(compo) = &cn.composition {
                         match &compo.block {
                             Compo::CA(ca) => {
-                                let data = a
-                                .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor i16, channel {}", cn.unique_name))?;
+                                let data = a.0
+                                .values_slice_mut();
                                 if cn.endian {
                                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                         for j in 0..ca.pnd {
@@ -1398,8 +1252,8 @@ pub fn read_channels_from_bytes(
                     if let Some(compo) = &cn.composition {
                         match &compo.block {
                             Compo::CA(ca) => {
-                                let data = a
-                                .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor u16, channel {}", cn.unique_name))?;
+                                let data = a.0
+                                .values_slice_mut();
                                 if cn.endian {
                                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                         for j in 0..ca.pnd {
@@ -1430,8 +1284,8 @@ pub fn read_channels_from_bytes(
                     if let Some(compo) = &cn.composition {
                         match &compo.block {
                             Compo::CA(ca) => {
-                                let data = a
-                                .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor i32, channel {}", cn.unique_name))?;
+                                let data = a.0
+                                .values_slice_mut();
                                 if cn.endian {
                                     if n_bytes <=3 {
                                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -1484,8 +1338,8 @@ pub fn read_channels_from_bytes(
                     if let Some(compo) = &cn.composition {
                         match &compo.block {
                             Compo::CA(ca) => {
-                                let data = a
-                                .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor u32, channel {}", cn.unique_name))?;
+                                let data = a.0
+                                .values_slice_mut();
                                 if cn.endian {
                                     if n_bytes <=3 {
                                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -1537,8 +1391,8 @@ pub fn read_channels_from_bytes(
                     if let Some(compo) = &cn.composition {
                         match &compo.block {
                             Compo::CA(ca) => {
-                                let data = a
-                                .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor f32, channel {}", cn.unique_name))?;
+                                let data = a.0
+                                .values_slice_mut();
                                 if cn.endian {
                                     if n_bytes <= 2 {
                                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -1595,8 +1449,8 @@ pub fn read_channels_from_bytes(
                     if let Some(compo) = &cn.composition {
                         match &compo.block {
                             Compo::CA(ca) => {
-                                let data = a
-                                .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor i64, channel {}", cn.unique_name))?;
+                                let data = a.0
+                                .values_slice_mut();
                                 if cn.endian {
                                     if n_bytes == 8 {
                                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -1645,8 +1499,8 @@ pub fn read_channels_from_bytes(
                     if let Some(compo) = &cn.composition {
                         match &compo.block {
                             Compo::CA(ca) => {
-                                let data = a
-                                .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor u64, channel {}", cn.unique_name))?;
+                                let data = a.0
+                                .values_slice_mut();
                                 if cn.endian {
                                     if n_bytes == 8 {
                                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -1733,8 +1587,8 @@ pub fn read_channels_from_bytes(
                     if let Some(compo) = &cn.composition {
                         match &compo.block {
                             Compo::CA(ca) => {
-                                let data = a
-                                .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array tensor f64, channel {}", cn.unique_name))?;
+                                let data = a.0
+                                .values_slice_mut();
                                 if cn.endian {
                                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                         for j in 0..ca.pnd {
@@ -1775,7 +1629,7 @@ pub fn read_channels_from_bytes(
             // invalidation bits to store in bitmap.
             if let Some((Some(mask), invalid_byte_position, invalid_byte_mask)) = &mut cn.invalid_mask {
                 for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                    mask.set(i + previous_index, (*invalid_byte_mask & record[*invalid_byte_position]) == 0);
+                    mask.set_bit(i + previous_index, (*invalid_byte_mask & record[*invalid_byte_position]) == 0);
                 }
             };
         }
