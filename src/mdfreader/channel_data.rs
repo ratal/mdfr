@@ -331,42 +331,68 @@ impl ChannelData {
             )))
         } else {
             match self {
-                ChannelData::Int8(_) => Ok(ChannelData::Int8(PrimitiveBuilder::with_capacity(
-                    cycle_count as usize,
+                ChannelData::Int8(_) => Ok(ChannelData::Int8(PrimitiveBuilder::new_from_buffer(
+                    vec![0i8; cycle_count as usize].into(),
+                    None,
                 ))),
-                ChannelData::UInt8(_) => Ok(ChannelData::UInt8(PrimitiveBuilder::with_capacity(
-                    cycle_count as usize,
+                ChannelData::UInt8(_) => Ok(ChannelData::UInt8(PrimitiveBuilder::new_from_buffer(
+                    vec![0u8; cycle_count as usize].into(),
+                    None,
                 ))),
-                ChannelData::Int16(_) => Ok(ChannelData::Int16(PrimitiveBuilder::with_capacity(
-                    cycle_count as usize,
+                ChannelData::Int16(_) => Ok(ChannelData::Int16(PrimitiveBuilder::new_from_buffer(
+                    vec![0i16; cycle_count as usize].into(),
+                    None,
                 ))),
-                ChannelData::UInt16(_) => Ok(ChannelData::UInt16(PrimitiveBuilder::with_capacity(
-                    cycle_count as usize,
+                ChannelData::UInt16(_) => {
+                    Ok(ChannelData::UInt16(PrimitiveBuilder::new_from_buffer(
+                        vec![0u16; cycle_count as usize].into(),
+                        None,
+                    )))
+                }
+                ChannelData::Int32(_) => Ok(ChannelData::Int32(PrimitiveBuilder::new_from_buffer(
+                    vec![0i32; cycle_count as usize].into(),
+                    None,
                 ))),
-                ChannelData::Int32(_) => Ok(ChannelData::Int32(PrimitiveBuilder::with_capacity(
-                    cycle_count as usize,
+                ChannelData::UInt32(_) => {
+                    Ok(ChannelData::UInt32(PrimitiveBuilder::new_from_buffer(
+                        vec![0u32; cycle_count as usize].into(),
+                        None,
+                    )))
+                }
+                ChannelData::Float32(_) => {
+                    Ok(ChannelData::Float32(PrimitiveBuilder::new_from_buffer(
+                        vec![0f32; cycle_count as usize].into(),
+                        None,
+                    )))
+                }
+                ChannelData::Int64(_) => Ok(ChannelData::Int64(PrimitiveBuilder::new_from_buffer(
+                    vec![0i64; cycle_count as usize].into(),
+                    None,
                 ))),
-                ChannelData::UInt32(_) => Ok(ChannelData::UInt32(PrimitiveBuilder::with_capacity(
-                    cycle_count as usize,
-                ))),
-                ChannelData::Float32(_) => Ok(ChannelData::Float32(
-                    PrimitiveBuilder::with_capacity(cycle_count as usize),
-                )),
-                ChannelData::Int64(_) => Ok(ChannelData::Int64(PrimitiveBuilder::with_capacity(
-                    cycle_count as usize,
-                ))),
-                ChannelData::UInt64(_) => Ok(ChannelData::UInt64(PrimitiveBuilder::with_capacity(
-                    cycle_count as usize,
-                ))),
-                ChannelData::Float64(_) => Ok(ChannelData::Float64(
-                    PrimitiveBuilder::with_capacity(cycle_count as usize),
-                )),
-                ChannelData::Complex32(_) => Ok(ChannelData::Float32(
-                    PrimitiveBuilder::with_capacity(cycle_count as usize * 2),
-                )),
-                ChannelData::Complex64(_) => Ok(ChannelData::Float64(
-                    PrimitiveBuilder::with_capacity(cycle_count as usize * 2),
-                )),
+                ChannelData::UInt64(_) => {
+                    Ok(ChannelData::UInt64(PrimitiveBuilder::new_from_buffer(
+                        vec![0u64; cycle_count as usize].into(),
+                        None,
+                    )))
+                }
+                ChannelData::Float64(_) => {
+                    Ok(ChannelData::Float64(PrimitiveBuilder::new_from_buffer(
+                        vec![0f64; cycle_count as usize].into(),
+                        None,
+                    )))
+                }
+                ChannelData::Complex32(_) => {
+                    Ok(ChannelData::Float32(PrimitiveBuilder::new_from_buffer(
+                        vec![0f32; cycle_count as usize * 2].into(),
+                        None,
+                    )))
+                }
+                ChannelData::Complex64(_) => {
+                    Ok(ChannelData::Float64(PrimitiveBuilder::new_from_buffer(
+                        vec![0f64; cycle_count as usize * 2].into(),
+                        None,
+                    )))
+                }
                 ChannelData::Utf8(_) => Ok(ChannelData::Utf8(LargeStringBuilder::with_capacity(
                     cycle_count as usize,
                     n_bytes as usize,
@@ -378,62 +404,72 @@ impl ChannelData {
                     FixedSizeBinaryBuilder::with_capacity(cycle_count as usize, n_bytes as i32),
                 )),
                 ChannelData::ArrayDInt8(_) => Ok(ChannelData::ArrayDInt8((
-                    PrimitiveBuilder::with_capacity(
-                        cycle_count as usize * shape.0.iter().product::<usize>(),
+                    PrimitiveBuilder::new_from_buffer(
+                        vec![0i8; shape.0.iter().product::<usize>()].into(),
+                        None,
                     ),
                     shape,
                 ))),
                 ChannelData::ArrayDUInt8(_) => Ok(ChannelData::ArrayDUInt8((
-                    PrimitiveBuilder::with_capacity(
-                        cycle_count as usize * shape.0.iter().product::<usize>(),
+                    PrimitiveBuilder::new_from_buffer(
+                        vec![0u8; shape.0.iter().product::<usize>()].into(),
+                        None,
                     ),
                     shape,
                 ))),
                 ChannelData::ArrayDInt16(_) => Ok(ChannelData::ArrayDInt16((
-                    PrimitiveBuilder::with_capacity(
-                        cycle_count as usize * shape.0.iter().product::<usize>(),
+                    PrimitiveBuilder::new_from_buffer(
+                        vec![0i16; shape.0.iter().product::<usize>()].into(),
+                        None,
                     ),
                     shape,
                 ))),
                 ChannelData::ArrayDUInt16(_) => Ok(ChannelData::ArrayDUInt16((
-                    PrimitiveBuilder::with_capacity(
-                        cycle_count as usize * shape.0.iter().product::<usize>(),
+                    PrimitiveBuilder::new_from_buffer(
+                        vec![0u16; shape.0.iter().product::<usize>()].into(),
+                        None,
                     ),
                     shape,
                 ))),
                 ChannelData::ArrayDInt32(_) => Ok(ChannelData::ArrayDInt32((
-                    PrimitiveBuilder::with_capacity(
-                        cycle_count as usize * shape.0.iter().product::<usize>(),
+                    PrimitiveBuilder::new_from_buffer(
+                        vec![0i32; shape.0.iter().product::<usize>()].into(),
+                        None,
                     ),
                     shape,
                 ))),
                 ChannelData::ArrayDUInt32(_) => Ok(ChannelData::ArrayDUInt32((
-                    PrimitiveBuilder::with_capacity(
-                        cycle_count as usize * shape.0.iter().product::<usize>(),
+                    PrimitiveBuilder::new_from_buffer(
+                        vec![0u32; shape.0.iter().product::<usize>()].into(),
+                        None,
                     ),
                     shape,
                 ))),
                 ChannelData::ArrayDFloat32(_) => Ok(ChannelData::ArrayDFloat32((
-                    PrimitiveBuilder::with_capacity(
-                        cycle_count as usize * shape.0.iter().product::<usize>(),
+                    PrimitiveBuilder::new_from_buffer(
+                        vec![0f32; shape.0.iter().product::<usize>()].into(),
+                        None,
                     ),
                     shape,
                 ))),
                 ChannelData::ArrayDInt64(_) => Ok(ChannelData::ArrayDInt64((
-                    PrimitiveBuilder::with_capacity(
-                        cycle_count as usize * shape.0.iter().product::<usize>(),
+                    PrimitiveBuilder::new_from_buffer(
+                        vec![0i64; shape.0.iter().product::<usize>()].into(),
+                        None,
                     ),
                     shape,
                 ))),
                 ChannelData::ArrayDUInt64(_) => Ok(ChannelData::ArrayDUInt64((
-                    PrimitiveBuilder::with_capacity(
-                        cycle_count as usize * shape.0.iter().product::<usize>(),
+                    PrimitiveBuilder::new_from_buffer(
+                        vec![0u64; shape.0.iter().product::<usize>()].into(),
+                        None,
                     ),
                     shape,
                 ))),
                 ChannelData::ArrayDFloat64(_) => Ok(ChannelData::ArrayDFloat64((
-                    PrimitiveBuilder::with_capacity(
-                        cycle_count as usize * shape.0.iter().product::<usize>(),
+                    PrimitiveBuilder::new_from_buffer(
+                        vec![0f64; shape.0.iter().product::<usize>()].into(),
+                        None,
                     ),
                     shape,
                 ))),
