@@ -281,9 +281,9 @@ impl fmt::Display for Mdf {
                         writeln!(f, " {channel} ").expect("cannot print channel name");
                         if let Some(data) = self.get_channel_data(channel) {
                             if !data.is_empty() {
-                                let displayer =
-                                    ArrayFormatter::try_new(data.as_ref(), &format_option)
-                                        .map_err(|_| std::fmt::Error)?;
+                                let array = &data.as_ref();
+                                let displayer = ArrayFormatter::try_new(array, &format_option)
+                                    .map_err(|_| std::fmt::Error)?;
                                 write!(f, "{}", displayer.value(0)).expect("cannot channel data");
                                 write!(f, " ").expect("cannot print simple space character");
                                 write!(f, "{}", displayer.value(data.len() - 1))
@@ -321,9 +321,9 @@ impl fmt::Display for Mdf {
                         writeln!(f, " {channel} ").expect("cannot print channel name");
                         if let Some(data) = self.get_channel_data(channel) {
                             if !data.is_empty() {
-                                let displayer =
-                                    ArrayFormatter::try_new(data.as_ref(), &format_option)
-                                        .map_err(|_| std::fmt::Error)?;
+                                let array = &data.as_ref();
+                                let displayer = ArrayFormatter::try_new(array, &format_option)
+                                    .map_err(|_| std::fmt::Error)?;
                                 write!(f, "{}", displayer.value(0)).expect("cannot channel data");
                                 write!(f, " ").expect("cannot print simple space character");
                                 write!(f, "{}", displayer.value(data.len() - 1))

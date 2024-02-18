@@ -7,6 +7,8 @@ use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::arrow_helpers::array_to_rust;
 use crate::mdfreader::MasterSignature;
 use crate::mdfreader::Mdf;
+use arrow::array::ArrayData;
+use arrow::pyarrow::PyArrowType;
 use arrow::util::display::{ArrayFormatter, FormatOptions};
 use pyo3::exceptions::PyUnicodeDecodeError;
 use pyo3::prelude::*;
@@ -49,7 +51,7 @@ impl Mdfr {
             let mut py_array: Py<PyAny>;
             let dt = mdf.get_channel_data(&channel_name);
             if let Some(data) = dt {
-                py_array = data.into_py(py);
+                py_array = data.clone().into_py(py);
                 if let Some(m) = data.clone().validity() {
                     let mask: Py<PyAny> = m.iter().collect::<Vec<bool>>().into_py(py);
                     let locals = [("numpy", py.import("numpy").expect("could not import numpy"))]
@@ -220,17 +222,18 @@ df=polars.DataFrame(series)
     }
     /// Adds a new channel in memory (no file modification)
     /// Master must be a dict with keys name, type and flag
+    /// Data  has to be a PyArrow
     pub fn add_channel(
         &mut self,
         channel_name: String,
-        data: Py<PyAny>,
+        data: PyArrowType<ArrayData>,
         master: MasterSignature,
         unit: Option<String>,
         description: Option<String>,
     ) -> PyResult<()> {
         let Mdfr(mdf) = self;
-        pyo3::Python::with_gil(|py| -> Result<(), PyErr> {
-            let array = array_to_rust(data.as_ref(py))
+        pyo3::Python::with_gil(|_| -> Result<(), PyErr> {
+            let array = array_to_rust(data)
                 .expect("data modification failed, could not extract numpy array");
             mdf.add_channel(
                 channel_name,
@@ -245,11 +248,15 @@ df=polars.DataFrame(series)
         })?;
         Ok(())
     }
-    /// defines channel's data in memory
-    pub fn set_channel_data(&mut self, channel_name: &str, data: Py<PyAny>) -> PyResult<()> {
+    /// defines channel's data in memory from PyArrow
+    pub fn set_channel_data(
+        &mut self,
+        channel_name: &str,
+        data: PyArrowType<ArrayData>,
+    ) -> PyResult<()> {
         let Mdfr(mdf) = self;
-        pyo3::Python::with_gil(|py| {
-            let array = array_to_rust(data.as_ref(py))
+        pyo3::Python::with_gil(|_| {
+            let array = array_to_rust(data)
                 .expect("data modification failed, could not extract numpy array");
             mdf.set_channel_data(channel_name, array)?;
             Ok(())
@@ -490,12 +497,14 @@ pyplot.show()
                         write!(output, " {channel} ").expect("cannot print channel name");
                         if let Some(data) = self.0.get_channel_data(channel) {
                             if !data.is_empty() {
-                                let displayer =
-                                    ArrayFormatter::try_new(data.as_ref(), &format_option)
-                                        .expect("failed creating formatter for arrow array");
-                                write!(&mut output, "{}", displayer.value(0));
+                                let array = &data.as_ref();
+                                let displayer = ArrayFormatter::try_new(array, &format_option)
+                                    .expect("failed creating formatter for arrow array");
+                                write!(&mut output, "{}", displayer.value(0))
+                                    .expect("failed writing first value of array");
                                 write!(output, " ").expect("cannot print simple space character");
-                                write!(&mut output, "{}", displayer.value(data.len() - 1));
+                                write!(&mut output, "{}", displayer.value(data.len() - 1))
+                                    .expect("failed writing last value of array");
                             }
                             writeln!(
                                 output,
@@ -532,9 +541,9 @@ pyplot.show()
                         write!(output, " {channel} ").expect("cannot print channel name");
                         if let Some(data) = self.0.get_channel_data(channel) {
                             if !data.is_empty() {
-                                let displayer =
-                                    ArrayFormatter::try_new(data.as_ref(), &format_option)
-                                        .expect("failed creating formatter for arrow array");
+                                let array = &data.as_ref();
+                                let displayer = ArrayFormatter::try_new(array, &format_option)
+                                    .expect("failed creating formatter for arrow array");
                                 write!(&mut output, "{}", displayer.value(0))
                                     .expect("cannot print channel data");
                                 write!(output, " .. ")

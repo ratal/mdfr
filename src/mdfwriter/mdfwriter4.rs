@@ -157,7 +157,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
                             let mut offset: i64 = 0;
                             let mut ld_block: Option<Ld4Block> = None;
                             if compression || m.is_some() {
-                                ld_block = create_ld(m, &mut offset);
+                                ld_block = create_ld(&m, &mut offset);
                             }
 
                             let data_block = if compression {
@@ -175,10 +175,10 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
                                     ld.ld_links.push(offset);
                                 }
                                 if compression {
-                                    invalid_block = create_dz_di(mask, &mut offset)
+                                    invalid_block = create_dz_di(&mask, &mut offset)
                                         .context("failed creating dz or di block")?;
                                 } else {
-                                    invalid_block = create_di(mask, &mut offset)
+                                    invalid_block = create_di(&mask, &mut offset)
                                         .context("failed creating di block")?;
                                 }
                             }
@@ -371,7 +371,7 @@ fn write_data_blocks(
 }
 
 /// Create a LDBlock
-fn create_ld(m: Option<NullBuffer>, offset: &mut i64) -> Option<Ld4Block> {
+fn create_ld(m: &Option<NullBuffer>, offset: &mut i64) -> Option<Ld4Block> {
     let mut ld_block = Ld4Block::default();
     ld_block.ld_count = 1;
     ld_block.ld_sample_offset.push(0);
@@ -443,7 +443,7 @@ fn create_dz_dv(
 }
 
 /// Create a DI Block
-fn create_di(mask: NullBuffer, offset: &mut i64) -> Result<Option<(DataBlock, Vec<u8>)>> {
+fn create_di(mask: &NullBuffer, offset: &mut i64) -> Result<Option<(DataBlock, Vec<u8>)>> {
     let mut dv_invalid_block = Blockheader4::default();
     dv_invalid_block.hdr_id = [35, 35, 68, 73]; // ##DI
     let mask_length = mask.len();
@@ -459,7 +459,10 @@ fn create_di(mask: NullBuffer, offset: &mut i64) -> Result<Option<(DataBlock, Ve
 }
 
 /// Create a DZ Block of DI type
-fn create_dz_di(mask: NullBuffer, offset: &mut i64) -> Result<Option<(DataBlock, Vec<u8>)>, Error> {
+fn create_dz_di(
+    mask: &NullBuffer,
+    offset: &mut i64,
+) -> Result<Option<(DataBlock, Vec<u8>)>, Error> {
     let mut dz_invalid_block = Dz4Block::default();
     dz_invalid_block.dz_org_data_length = mask.len() as u64;
     let mut encoder = Encoder::boxed();

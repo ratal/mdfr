@@ -2150,6 +2150,16 @@ pub struct Cn4 {
 
 impl Clone for Cn4 {
     fn clone(&self) -> Self {
+        let mut invalid_mask: Option<(Option<BooleanBufferBuilder>, usize, u8)> = None;
+        if let Some((boolean_buffer, byte_position, byte_mask)) = &self.invalid_mask {
+            let mut boolean_buffer_builder: Option<BooleanBufferBuilder> = None;
+            if let Some(buffer) = boolean_buffer {
+                let mut new_boolean_buffer_builder = BooleanBufferBuilder::new(buffer.len());
+                new_boolean_buffer_builder.append_buffer(&buffer.finish_cloned());
+                boolean_buffer_builder = Some(new_boolean_buffer_builder);
+            }
+            invalid_mask = Some((boolean_buffer_builder, *byte_position, *byte_mask));
+        }
         Self {
             header: self.header,
             block: self.block.clone(),
@@ -2160,19 +2170,7 @@ impl Clone for Cn4 {
             composition: self.composition.clone(),
             data: ChannelData::default(),
             endian: self.endian,
-            invalid_mask: self.invalid_mask.map(
-                |(mask, invalid_byte_position, invalid_byte_mask)| {
-                    let mut builder = BooleanBufferBuilder::new(0);
-                    if let Some(mask) = mask {
-                        builder.append_buffer(&mask.finish_cloned())
-                    }
-                    (
-                        mask.map(|v| builder),
-                        invalid_byte_position.clone(),
-                        invalid_byte_mask.clone(),
-                    )
-                },
-            ),
+            invalid_mask,
         }
     }
 }

@@ -37,7 +37,7 @@ impl IntoPy<PyObject> for ChannelData {
             ChannelData::Float64(array) => array.values_slice().to_pyarray(py).into_py(py),
             ChannelData::Complex32(array) => array.values_slice().to_pyarray(py).into_py(py),
             ChannelData::Complex64(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::VariableSizeByteArray(array) => array.values_slice().clone().into_py(py),
+            ChannelData::VariableSizeByteArray(array) => array.values_slice().into_py(py),
             ChannelData::FixedSizeByteArray(array) => {
                 let binary_array = array.finish_cloned();
                 let out: Vec<Vec<u8>> = binary_array
@@ -143,18 +143,18 @@ impl ToPyObject for ChannelData {
             ChannelData::Complex32(array) => array.values_slice().to_pyarray(py).into_py(py),
             ChannelData::Complex64(array) => array.values_slice().to_pyarray(py).into_py(py),
             ChannelData::Utf8(array) => array
-                .finish()
+                .finish_cloned()
                 .iter()
                 .collect::<Option<String>>()
                 .to_object(py),
             ChannelData::VariableSizeByteArray(array) => array
-                .finish()
+                .finish_cloned()
                 .iter()
                 .map(|x| x.unwrap_or_default().to_vec())
                 .collect::<Vec<Vec<u8>>>()
                 .to_object(py),
             ChannelData::FixedSizeByteArray(array) => {
-                let binary_array = array.finish();
+                let binary_array = array.finish_cloned();
                 let out: Vec<Vec<u8>> = binary_array
                     .values()
                     .chunks(binary_array.value_length() as usize)

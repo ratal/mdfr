@@ -163,7 +163,7 @@ pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) -> Result<(
 /// Generic function calculating linear expression
 #[inline]
 fn linear_conversion_primitive<T: ArrowPrimitiveType>(
-    array: &PrimitiveBuilder<T>,
+    array: &mut PrimitiveBuilder<T>,
     p1: f64,
     p2: f64,
 ) -> Result<PrimitiveBuilder<Float64Type>, Error>
@@ -172,10 +172,13 @@ where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
-    let mut array_f64: &Float64Array = cast(&array.finish(), &DataType::Float64)
+    let array_f64: Float64Array = cast(&(array.finish()), &DataType::Float64)
         .context("failed converting Array to f64 Array")?
-        .as_primitive::<Float64Type>();
-    array_f64.unary_mut(|x| x * p2 + p1);
+        .as_primitive::<Float64Type>()
+        .clone();
+    let array_f64 = array_f64
+        .unary_mut(|x| x * p2 + p1)
+        .expect("error applying linear conversion");
     Ok(array_f64
         .into_builder()
         .expect("failed converting to builder"))
@@ -263,70 +266,70 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
                 cn.data = ChannelData::ArrayDFloat64((
                     linear_conversion_primitive(a, p1, p2)
                         .context("failed linear conversion of tensor u8 channel")?,
-                    *shape,
+                    shape.clone(),
                 ))
             }
             ChannelData::ArrayDInt8((a, shape)) => {
                 cn.data = ChannelData::ArrayDFloat64((
                     linear_conversion_primitive(a, p1, p2)
                         .context("failed linear conversion of tensor i8 channel")?,
-                    *shape,
+                    shape.clone(),
                 ))
             }
             ChannelData::ArrayDInt16((a, shape)) => {
                 cn.data = ChannelData::ArrayDFloat64((
                     linear_conversion_primitive(a, p1, p2)
                         .context("failed linear conversion of tensor i16 channel")?,
-                    *shape,
+                    shape.clone(),
                 ))
             }
             ChannelData::ArrayDUInt16((a, shape)) => {
                 cn.data = ChannelData::ArrayDFloat64((
                     linear_conversion_primitive(a, p1, p2)
                         .context("failed linear conversion of tensor u16 channel")?,
-                    *shape,
+                    shape.clone(),
                 ))
             }
             ChannelData::ArrayDInt32((a, shape)) => {
                 cn.data = ChannelData::ArrayDFloat64((
                     linear_conversion_primitive(a, p1, p2)
                         .context("failed linear conversion of tensor i32 channel")?,
-                    *shape,
+                    shape.clone(),
                 ))
             }
             ChannelData::ArrayDUInt32((a, shape)) => {
                 cn.data = ChannelData::ArrayDFloat64((
                     linear_conversion_primitive(a, p1, p2)
                         .context("failed linear conversion of tensor u16 channel")?,
-                    *shape,
+                    shape.clone(),
                 ))
             }
             ChannelData::ArrayDFloat32((a, shape)) => {
                 cn.data = ChannelData::ArrayDFloat64((
                     linear_conversion_primitive(a, p1, p2)
                         .context("failed linear conversion of tensor f32 channel")?,
-                    *shape,
+                    shape.clone(),
                 ))
             }
             ChannelData::ArrayDInt64((a, shape)) => {
                 cn.data = ChannelData::ArrayDFloat64((
                     linear_conversion_primitive(a, p1, p2)
                         .context("failed linear conversion of tensor i64 channel")?,
-                    *shape,
+                    shape.clone(),
                 ))
             }
             ChannelData::ArrayDUInt64((a, shape)) => {
                 cn.data = ChannelData::ArrayDFloat64((
                     linear_conversion_primitive(a, p1, p2)
                         .context("failed linear conversion of tensor u64 channel")?,
-                    *shape,
+                    shape.clone(),
                 ))
             }
             ChannelData::ArrayDFloat64((a, shape)) => {
                 cn.data = ChannelData::ArrayDFloat64((
                     linear_conversion_primitive(a, p1, p2)
                         .context("failed linear conversion of tensor f64 channel")?,
-                    *shape,
+                    shape.clone(),
                 ))
             }
             _ => warn!(
@@ -355,10 +358,13 @@ where
     let p4 = cc_val[3];
     let p5 = cc_val[4];
     let p6 = cc_val[5];
-    let mut array_f64: &Float64Array = cast(&array.finish(), &DataType::Float64)
+    let array_f64: Float64Array = cast(&(array.finish_cloned()), &DataType::Float64)
         .context("failed converting Array to f64 Array")?
-        .as_primitive::<Float64Type>();
-    array_f64.unary_mut(|x| (x * x * p1 + x * p2 + p3) / (x * x * p4 + x * p5 + p6));
+        .as_primitive::<Float64Type>()
+        .clone();
+    let array_f64 = array_f64
+        .unary_mut(|x| (x * x * p1 + x * p2 + p3) / (x * x * p4 + x * p5 + p6))
+        .expect("error applying rational conversion");
     Ok(array_f64
         .into_builder()
         .expect("failed converting to builder"))
@@ -443,70 +449,70 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
             cn.data = ChannelData::ArrayDFloat64((
                 rational_conversion_primitive(a, cc_val)
                     .context("failed rational conversion of u8 tensor channel")?,
-                *shape,
+                shape.clone(),
             ))
         }
         ChannelData::ArrayDInt8((a, shape)) => {
             cn.data = ChannelData::ArrayDFloat64((
                 rational_conversion_primitive(a, cc_val)
                     .context("failed rational conversion of i8 tensor channel")?,
-                *shape,
+                shape.clone(),
             ))
         }
         ChannelData::ArrayDInt16((a, shape)) => {
             cn.data = ChannelData::ArrayDFloat64((
                 rational_conversion_primitive(a, cc_val)
                     .context("failed rational conversion of i16 tensor channel")?,
-                *shape,
+                shape.clone(),
             ))
         }
         ChannelData::ArrayDUInt16((a, shape)) => {
             cn.data = ChannelData::ArrayDFloat64((
                 rational_conversion_primitive(a, cc_val)
                     .context("failed rational conversion of u16 tensor channel")?,
-                *shape,
+                shape.clone(),
             ))
         }
         ChannelData::ArrayDInt32((a, shape)) => {
             cn.data = ChannelData::ArrayDFloat64((
                 rational_conversion_primitive(a, cc_val)
                     .context("failed rational conversion of i32 tensor channel")?,
-                *shape,
+                shape.clone(),
             ))
         }
         ChannelData::ArrayDUInt32((a, shape)) => {
             cn.data = ChannelData::ArrayDFloat64((
                 rational_conversion_primitive(a, cc_val)
                     .context("failed rational conversion of u32 tensor channel")?,
-                *shape,
+                shape.clone(),
             ))
         }
         ChannelData::ArrayDFloat32((a, shape)) => {
             cn.data = ChannelData::ArrayDFloat64((
                 rational_conversion_primitive(a, cc_val)
                     .context("failed rational conversion of f32 tensor channel")?,
-                *shape,
+                shape.clone(),
             ))
         }
         ChannelData::ArrayDInt64((a, shape)) => {
             cn.data = ChannelData::ArrayDFloat64((
                 rational_conversion_primitive(a, cc_val)
                     .context("failed rational conversion of i64 tensor channel")?,
-                *shape,
+                shape.clone(),
             ))
         }
         ChannelData::ArrayDUInt64((a, shape)) => {
             cn.data = ChannelData::ArrayDFloat64((
                 rational_conversion_primitive(a, cc_val)
                     .context("failed rational conversion of u64 tensor channel")?,
-                *shape,
+                shape.clone(),
             ))
         }
         ChannelData::ArrayDFloat64((a, shape)) => {
             cn.data = ChannelData::ArrayDFloat64((
                 rational_conversion_primitive(a, cc_val)
                     .context("failed rational conversion of f64 tensor channel")?,
-                *shape,
+                shape.clone(),
             ))
         }
         _ => warn!(
@@ -530,7 +536,7 @@ where
     T::Native: NumCast,
 {
     let array_f64: Float64Array = array
-        .finish()
+        .finish_cloned()
         .try_unary(|value| {
             num::cast::cast::<T::Native, f64>(value).ok_or_else(|| {
                 ArrowError::CastError(format!("Can't cast value {:?} to f64", value,))
@@ -664,61 +670,61 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str) -> Result<(), Error> {
                 ChannelData::ArrayDInt8((a, shape)) => {
                     cn.data = ChannelData::ArrayDFloat64((
                         alegbraic_conversion_primitive(&compiled, &slab, a)
-                        .context("failed algebraic conversion of tensor i8 channel")?, *shape)
+                        .context("failed algebraic conversion of tensor i8 channel")?, shape.clone())
                     );
                 }
                 ChannelData::ArrayDUInt8((a, shape)) => {
                     cn.data = ChannelData::ArrayDFloat64((
                         alegbraic_conversion_primitive(&compiled, &slab, a)
-                        .context("failed algebraic conversion of tensor u8 channel")?, *shape)
+                        .context("failed algebraic conversion of tensor u8 channel")?, shape.clone())
                     );
                 }
                 ChannelData::ArrayDInt16((a, shape)) => {
                     cn.data = ChannelData::ArrayDFloat64((
                         alegbraic_conversion_primitive(&compiled, &slab, a)
-                        .context("failed algebraic conversion of tensor i16 channel")?, *shape)
+                        .context("failed algebraic conversion of tensor i16 channel")?, shape.clone())
                     );
                 }
                 ChannelData::ArrayDUInt16((a, shape)) => {
                     cn.data = ChannelData::ArrayDFloat64((
                         alegbraic_conversion_primitive(&compiled, &slab, a)
-                        .context("failed algebraic conversion of tensor u16 channel")?, *shape)
+                        .context("failed algebraic conversion of tensor u16 channel")?, shape.clone())
                     );
                 }
                 ChannelData::ArrayDInt32((a, shape)) => {
                     cn.data = ChannelData::ArrayDFloat64((
                         alegbraic_conversion_primitive(&compiled, &slab, a)
-                        .context("failed algebraic conversion of tensor i32 channel")?, *shape)
+                        .context("failed algebraic conversion of tensor i32 channel")?, shape.clone())
                     );
                 }
                 ChannelData::ArrayDUInt32((a, shape)) => {
                     cn.data = ChannelData::ArrayDFloat64((
                         alegbraic_conversion_primitive(&compiled, &slab, a)
-                        .context("failed algebraic conversion of tensor u32 channel")?, *shape)
+                        .context("failed algebraic conversion of tensor u32 channel")?, shape.clone())
                     );
                 }
                 ChannelData::ArrayDFloat32((a, shape)) => {
                     cn.data = ChannelData::ArrayDFloat64((
                         alegbraic_conversion_primitive(&compiled, &slab, a)
-                        .context("failed algebraic conversion of tensor f32 channel")?, *shape)
+                        .context("failed algebraic conversion of tensor f32 channel")?, shape.clone())
                     );
                 }
                 ChannelData::ArrayDInt64((a, shape)) => {
                     cn.data = ChannelData::ArrayDFloat64((
                         alegbraic_conversion_primitive(&compiled, &slab, a)
-                        .context("failed algebraic conversion of tensor i64 channel")?, *shape)
+                        .context("failed algebraic conversion of tensor i64 channel")?, shape.clone())
                     );
                 }
                 ChannelData::ArrayDUInt64((a, shape)) => {
                     cn.data = ChannelData::ArrayDFloat64((
                         alegbraic_conversion_primitive(&compiled, &slab, a)
-                        .context("failed algebraic conversion of tensor u64 channel")?, *shape)
+                        .context("failed algebraic conversion of tensor u64 channel")?, shape.clone())
                     );
                 }
                 ChannelData::ArrayDFloat64((a, shape)) => {
                     cn.data = ChannelData::ArrayDFloat64((
                         alegbraic_conversion_primitive(&compiled, &slab, a)
-                        .context("failed algebraic conversion of tensor f64 channel")?, *shape)
+                        .context("failed algebraic conversion of tensor f64 channel")?, shape.clone())
                     );
                 }
                 _=> warn!(
@@ -749,7 +755,7 @@ where
     T::Native: NumCast,
 {
     let array_f64: Float64Array = array
-        .finish()
+        .finish_cloned()
         .try_unary(|value| {
             num::cast::cast::<T::Native, f64>(value).ok_or_else(|| {
                 ArrowError::CastError(format!("Can't cast value {:?} to f64", value,))
@@ -762,7 +768,7 @@ where
         .zip(array_f64.values())
         .for_each(|(new_array, a)| {
             *new_array = match val
-                .binary_search_by(|&(xi, _)| xi.partial_cmp(&a).unwrap_or(Ordering::Equal))
+                .binary_search_by(|&(xi, _)| xi.partial_cmp(a).unwrap_or(Ordering::Equal))
             {
                 Ok(idx) => *val[idx].1,
                 Err(0) => *val[0].1,
@@ -849,47 +855,47 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>) -> Result<(
         ChannelData::ArrayDInt8((a, shape)) => {
             cn.data = ChannelData::ArrayDFloat64((
                 value_to_value_with_interpolation_primitive(a, val
-            ).context("failed value to value with interpolation conversion of tensor i8 channel")?, *shape));
+            ).context("failed value to value with interpolation conversion of tensor i8 channel")?, shape.clone()));
         }
         ChannelData::ArrayDUInt8((a, shape)) => {
             cn.data = ChannelData::ArrayDFloat64((
                 value_to_value_with_interpolation_primitive(a, val
-            ).context("failed value to value with interpolation conversion of tensor u8 channel")?, *shape));
+            ).context("failed value to value with interpolation conversion of tensor u8 channel")?, shape.clone()));
         }
         ChannelData::ArrayDInt16((a, shape)) => {
             cn.data = ChannelData::ArrayDFloat64((
                 value_to_value_with_interpolation_primitive(a, val
-            ).context("failed value to value with interpolation conversion of tensor i16 channel")?, *shape));
+            ).context("failed value to value with interpolation conversion of tensor i16 channel")?, shape.clone()));
         }
         ChannelData::ArrayDUInt16((a, shape)) => {
             cn.data = ChannelData::ArrayDFloat64((
                 value_to_value_with_interpolation_primitive(a, val
-            ).context("failed value to value with interpolation conversion of tensor tensor u16 channel")?, *shape));
+            ).context("failed value to value with interpolation conversion of tensor tensor u16 channel")?, shape.clone()));
         }
         ChannelData::ArrayDInt32((a, shape)) => {
             cn.data = ChannelData::ArrayDFloat64((
                 value_to_value_with_interpolation_primitive(a, val
-            ).context("failed value to value with interpolation conversion of tensor i32 channel")?, *shape));
+            ).context("failed value to value with interpolation conversion of tensor i32 channel")?, shape.clone()));
         }
         ChannelData::ArrayDUInt32((a, shape)) => {
             cn.data = ChannelData::ArrayDFloat64((
                 value_to_value_with_interpolation_primitive(a, val
-            ).context("failed value to value with interpolation conversion of tensor u32 channel")?, *shape));
+            ).context("failed value to value with interpolation conversion of tensor u32 channel")?, shape.clone()));
         }
         ChannelData::ArrayDFloat32((a, shape)) => {
             cn.data = ChannelData::ArrayDFloat64((
                 value_to_value_with_interpolation_primitive(a, val
-            ).context("failed value to value with interpolation conversion of tensor f32 channel")?, *shape));
+            ).context("failed value to value with interpolation conversion of tensor f32 channel")?, shape.clone()));
         }
         ChannelData::ArrayDUInt64((a, shape)) => {
             cn.data = ChannelData::ArrayDFloat64((
                 value_to_value_with_interpolation_primitive(a, val
-            ).context("failed value to value with interpolation conversion of tensor u64 channel")?, *shape));
+            ).context("failed value to value with interpolation conversion of tensor u64 channel")?, shape.clone()));
         }
         ChannelData::ArrayDFloat64((a, shape)) => {
             cn.data = ChannelData::ArrayDFloat64((
                 value_to_value_with_interpolation_primitive(a, val
-            ).context("failed value to value with interpolation conversion of tensor f64 channel")?, *shape));
+            ).context("failed value to value with interpolation conversion of tensor f64 channel")?, shape.clone()));
         }
         _ => warn!(
             "value to value with interpolation conversion of channel {} not possible, channel does not contain primitive",
@@ -902,7 +908,7 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>) -> Result<(
 /// Generic function calculating value to value without interpolation for a primitive
 #[inline]
 fn value_to_value_without_interpolation_primitive<T: ArrowPrimitiveType>(
-    array: &PrimitiveBuilder<T>,
+    array: &mut PrimitiveBuilder<T>,
     val: Vec<(&f64, &f64)>,
 ) -> Result<PrimitiveBuilder<Float64Type>, Error>
 where
@@ -910,16 +916,17 @@ where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
-    let mut array_f64: &Float64Array = cast(&array.finish(), &DataType::Float64)
+    let array_f64: Float64Array = cast(&array.finish(), &DataType::Float64)
         .context("failed converting Array to f64 Array")?
-        .as_primitive::<Float64Type>();
+        .as_primitive::<Float64Type>()
+        .clone();
     let mut new_array = vec![0f64; array_f64.len()];
     new_array
         .iter_mut()
         .zip(array_f64.values())
         .for_each(|(new_array, a)| {
             *new_array = match val
-                .binary_search_by(|&(xi, _)| xi.partial_cmp(&a).unwrap_or(Ordering::Equal))
+                .binary_search_by(|&(xi, _)| xi.partial_cmp(a).unwrap_or(Ordering::Equal))
             {
                 Ok(idx) => *val[idx].1,
                 Err(0) => *val[0].1,
@@ -1010,52 +1017,52 @@ fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>) -> Resul
         ChannelData::ArrayDInt8((a, shape)) => {
             cn.data = ChannelData::ArrayDFloat64((
                 value_to_value_without_interpolation_primitive(a, val)
-            .context("failed value to value without interpolation conversion of tensor i8 channel")?, *shape));
+            .context("failed value to value without interpolation conversion of tensor i8 channel")?, shape.clone()));
         }
         ChannelData::ArrayDUInt8((a, shape)) => {
             cn.data = ChannelData::ArrayDFloat64((
                 value_to_value_without_interpolation_primitive(a, val)
-            .context("failed value to value without interpolation conversion of tensor u8 channel")?, *shape));
+            .context("failed value to value without interpolation conversion of tensor u8 channel")?, shape.clone()));
         }
         ChannelData::ArrayDInt16((a, shape)) => {
             cn.data = ChannelData::ArrayDFloat64((
                 value_to_value_without_interpolation_primitive(a, val)
-            .context("failed value to value without interpolation conversion of tensor i16 channel")?, *shape));
+            .context("failed value to value without interpolation conversion of tensor i16 channel")?, shape.clone()));
         }
         ChannelData::ArrayDUInt16((a, shape)) => {
             cn.data = ChannelData::ArrayDFloat64((
                 value_to_value_without_interpolation_primitive(a, val)
-            .context("failed value to value without interpolation conversion of tensor u16 channel")?, *shape));
+            .context("failed value to value without interpolation conversion of tensor u16 channel")?, shape.clone()));
         }
         ChannelData::ArrayDInt32((a, shape)) => {
             cn.data = ChannelData::ArrayDFloat64((
                 value_to_value_without_interpolation_primitive(a, val)
-            .context("failed value to value without interpolation conversion of tensor i32 channel")?, *shape));
+            .context("failed value to value without interpolation conversion of tensor i32 channel")?, shape.clone()));
         }
         ChannelData::ArrayDUInt32((a, shape)) => {
             cn.data = ChannelData::ArrayDFloat64((
                 value_to_value_without_interpolation_primitive(a, val)
-            .context("failed value to value without interpolation conversion of tensor u32 channel")?, *shape));
+            .context("failed value to value without interpolation conversion of tensor u32 channel")?, shape.clone()));
         }
         ChannelData::ArrayDFloat32((a, shape)) => {
             cn.data = ChannelData::ArrayDFloat64((
                 value_to_value_without_interpolation_primitive(a, val)
-            .context("failed value to value without interpolation conversion of tensor f32 channel")?, *shape));
+            .context("failed value to value without interpolation conversion of tensor f32 channel")?, shape.clone()));
         }
         ChannelData::ArrayDInt64((a, shape)) => {
             cn.data = ChannelData::ArrayDFloat64((
                 value_to_value_without_interpolation_primitive(a, val)
-            .context("failed value to value without interpolation conversion of tensor i64 channel")?, *shape));
+            .context("failed value to value without interpolation conversion of tensor i64 channel")?, shape.clone()));
         }
         ChannelData::ArrayDUInt64((a, shape)) => {
             cn.data = ChannelData::ArrayDFloat64((
                 value_to_value_without_interpolation_primitive(a, val)
-            .context("failed value to value without interpolation conversion of tensor u64 channel")?, *shape));
+            .context("failed value to value without interpolation conversion of tensor u64 channel")?, shape.clone()));
         }
         ChannelData::ArrayDFloat64((a, shape)) => {
             cn.data = ChannelData::ArrayDFloat64((
                 value_to_value_without_interpolation_primitive(a, val)
-            .context("failed value to value without interpolation conversion of tensor f64 channel")?, *shape));
+            .context("failed value to value without interpolation conversion of tensor f64 channel")?, shape.clone()));
         }
         _ => warn!(
             "value to value without interpolation conversion of channel {} not possible, channel does not contain primitive",
@@ -1077,23 +1084,23 @@ where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
-    let mut array_f64: &Float64Array = cast(&array.finish(), &DataType::Float64)
+    let array_f64: Float64Array = cast(&array.finish_cloned(), &DataType::Float64)
         .context("failed converting Array to f64 Array")?
-        .as_primitive::<Float64Type>();
+        .as_primitive::<Float64Type>()
+        .clone();
     let mut new_array = vec![0f64; array_f64.len()];
     new_array
         .iter_mut()
-        .zip(array_f64)
+        .zip(array_f64.values())
         .for_each(|(new_array, a)| {
-            let a64 = a.unwrap_or_default();
             *new_array = match val
-                .binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a64).unwrap_or(Ordering::Equal))
+                .binary_search_by(|&(xi, _, _)| xi.partial_cmp(a).unwrap_or(Ordering::Equal))
             {
                 Ok(idx) => val[idx].2,
                 Err(0) => *default_value,
-                Err(idx) if (idx >= val.len() && a64 <= val[idx - 1].1) => val[idx - 1].2,
+                Err(idx) if (idx >= val.len() && *a <= val[idx - 1].1) => val[idx - 1].2,
                 Err(idx) => {
-                    if a64 <= val[idx].1 {
+                    if *a <= val[idx].1 {
                         val[idx].2
                     } else {
                         *default_value
@@ -1214,7 +1221,7 @@ enum DefaultTextOrScaleConversion {
 /// Generic function calculating integer value range to text
 #[inline]
 fn value_to_text_calculation_int<T: ArrowPrimitiveType>(
-    array: &PrimitiveBuilder<T>,
+    array: &mut PrimitiveBuilder<T>,
     cc_val: &[f64],
     cc_ref: &[i64],
     def: &DefaultTextOrScaleConversion,
@@ -1236,42 +1243,47 @@ where
             table_int.insert(val_i64, TextOrScaleConversion::Nil);
         }
     }
-    let mut array_f64: &Float64Array = cast(&array.finish(), &DataType::Float64)
+    let array_f64: Float64Array = cast(&array.finish_cloned(), &DataType::Float64)
         .context("failed converting Array to f64 Array")?
-        .as_primitive::<Float64Type>();
-    let array_i64 = cast(&array.finish(), &DataType::Int64)
+        .as_primitive::<Float64Type>()
+        .clone();
+    let array_i64 = cast(&array.finish_cloned(), &DataType::Int64)
         .context("failed converting Array to Int64 Array")?
-        .as_primitive::<Int64Type>();
+        .as_primitive::<Int64Type>()
+        .clone();
     let mut new_array = LargeStringBuilder::with_capacity(array_f64.len(), 32);
-    array_f64.iter().zip(array_i64).for_each(|(a_f64, a_i64)| {
-        if let Some(tosc) = table_int.get(&a_i64.unwrap_or_default()) {
-            match tosc {
-                TextOrScaleConversion::Txt(txt) => {
-                    new_array.append_value(txt.clone());
+    array_f64
+        .iter()
+        .zip(array_i64.iter())
+        .for_each(|(a_f64, a_i64)| {
+            if let Some(tosc) = table_int.get(&a_i64.unwrap_or_default()) {
+                match tosc {
+                    TextOrScaleConversion::Txt(txt) => {
+                        new_array.append_value(txt.clone());
+                    }
+                    TextOrScaleConversion::Scale(conv) => {
+                        new_array.append_value(conv.eval_to_txt(a_f64.unwrap_or(0f64)));
+                    }
+                    _ => {
+                        new_array.append_value(a_f64.unwrap_or(0f64).to_string());
+                    }
                 }
-                TextOrScaleConversion::Scale(conv) => {
-                    new_array.append_value(conv.eval_to_txt(a_f64.unwrap_or(0f64)));
-                }
-                _ => {
-                    new_array.append_value(a_f64.unwrap_or(0f64).to_string());
+            } else {
+                match &def {
+                    DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                        new_array.append_value(txt.clone());
+                    }
+                    DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                        new_array.append_value(conv.eval_to_txt(a_f64.unwrap_or(0f64)));
+                    }
+                    _ => {
+                        new_array.append_value(a_f64.unwrap_or(0f64).to_string());
+                    }
                 }
             }
-        } else {
-            match &def {
-                DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                    new_array.append_value(txt.clone());
-                }
-                DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                    new_array.append_value(conv.eval_to_txt(a_f64.unwrap_or(0f64)));
-                }
-                _ => {
-                    new_array.append_value(a_f64.unwrap_or(0f64).to_string());
-                }
-            }
-        }
-    });
+        });
     if let Some(validity) = array.validity_slice_mut() {
-        new_array.validity_slice_mut().map(|v| validity);
+        let _ = new_array.validity_slice_mut().insert(validity);
     }
     Ok(new_array)
 }
@@ -1608,9 +1620,10 @@ fn value_range_to_text_calculation<T: ArrowPrimitiveType>(
         def = DefaultTextOrScaleConversion::Nil;
     }
     let mut new_array = LargeStringBuilder::with_capacity(array.len(), 32);
-    let array_f64: &Float64Array = cast(&array.finish(), &DataType::Float64)
+    let array_f64: Float64Array = cast(&array.finish_cloned(), &DataType::Float64)
         .expect("failed converting Array to f64 Array")
-        .as_primitive::<Float64Type>();
+        .as_primitive::<Float64Type>()
+        .clone();
     array_f64.values().iter().for_each(|a| {
         let matched_key = keys
             .iter()
@@ -1959,130 +1972,136 @@ fn bitfield_text_table_calculation<T: ArrowPrimitiveType>(
         }
     }
 
-    let array_f64 = cast(&array.finish(), &DataType::Float64)
+    let array_f64 = cast(&array.finish_cloned(), &DataType::Float64)
         .context("failed converting Array to f64 Array")?
-        .as_primitive::<Float64Type>();
-    let array_i64 = cast(&array.finish(), &DataType::Int64)
+        .as_primitive::<Float64Type>()
+        .clone();
+    let array_i64 = cast(&array.finish_cloned(), &DataType::Int64)
         .context("failed converting Array to Int64 Array")?
-        .as_primitive::<Int64Type>();
+        .as_primitive::<Int64Type>()
+        .clone();
     let mut new_array = LargeStringBuilder::with_capacity(array.len(), 32);
-    array_f64.iter().zip(array_i64).for_each(|(a, a_i64)| {
-        let mut new_a = String::new();
-        for (ind, val) in cc_val.iter().enumerate() {
-            match &table[ind] {
-                (ValueOrValueRangeToText::ValueToText(table_int, def), name) => {
-                    let ref_val = a_i64.unwrap_or_default() & (val.to_i64().unwrap_or_default());
-                    if let Some(tosc) = table_int.get(&ref_val) {
-                        match tosc {
-                            TextOrScaleConversion::Txt(txt) => {
-                                if let Some(n) = name {
-                                    new_a = format!("{} | {} = {}", new_a, n, txt.clone());
-                                } else {
-                                    new_a = format!("{} | {}", new_a, txt.clone());
+    array_f64
+        .iter()
+        .zip(array_i64.iter())
+        .for_each(|(a, a_i64)| {
+            let mut new_a = String::new();
+            for (ind, val) in cc_val.iter().enumerate() {
+                match &table[ind] {
+                    (ValueOrValueRangeToText::ValueToText(table_int, def), name) => {
+                        let ref_val =
+                            a_i64.unwrap_or_default() & (val.to_i64().unwrap_or_default());
+                        if let Some(tosc) = table_int.get(&ref_val) {
+                            match tosc {
+                                TextOrScaleConversion::Txt(txt) => {
+                                    if let Some(n) = name {
+                                        new_a = format!("{} | {} = {}", new_a, n, txt.clone());
+                                    } else {
+                                        new_a = format!("{} | {}", new_a, txt.clone());
+                                    }
+                                }
+                                TextOrScaleConversion::Scale(conv) => {
+                                    if let Some(n) = name {
+                                        new_a = format!(
+                                            "{} | {} = {}",
+                                            new_a,
+                                            n,
+                                            conv.eval_to_txt(a.unwrap_or_default())
+                                        );
+                                    } else {
+                                        new_a = format!(
+                                            "{} | {}",
+                                            new_a,
+                                            conv.eval_to_txt(a.unwrap_or_default())
+                                        );
+                                    }
+                                }
+                                _ => {
+                                    new_a = format!("{} | {}", new_a, "nothing");
                                 }
                             }
-                            TextOrScaleConversion::Scale(conv) => {
-                                if let Some(n) = name {
-                                    new_a = format!(
-                                        "{} | {} = {}",
-                                        new_a,
-                                        n,
-                                        conv.eval_to_txt(a.unwrap_or_default())
-                                    );
-                                } else {
-                                    new_a = format!(
-                                        "{} | {}",
-                                        new_a,
-                                        conv.eval_to_txt(a.unwrap_or_default())
-                                    );
+                        } else {
+                            match &def {
+                                DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                                    new_a = txt.clone();
                                 }
-                            }
-                            _ => {
-                                new_a = format!("{} | {}", new_a, "nothing");
-                            }
-                        }
-                    } else {
-                        match &def {
-                            DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                                new_a = txt.clone();
-                            }
-                            DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                                new_a = conv.eval_to_txt(a.unwrap_or(0f64));
-                            }
-                            _ => {
-                                new_a = format!("{} | {}", new_a, "nothing");
+                                DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                                    new_a = conv.eval_to_txt(a.unwrap_or(0f64));
+                                }
+                                _ => {
+                                    new_a = format!("{} | {}", new_a, "nothing");
+                                }
                             }
                         }
                     }
-                }
-                (ValueOrValueRangeToText::ValueRangeToText(txt, def, keys), name) => {
-                    let matched_key = keys.iter().enumerate().find(|&x| {
-                        (&x.1.min <= &a.unwrap_or_default()) && (&a.unwrap_or_default() <= &x.1.max)
-                    });
-                    if let Some(key) = matched_key {
-                        match &txt[key.0] {
-                            TextOrScaleConversion::Txt(txt) => {
-                                if let Some(n) = name {
-                                    new_a = format!("{} | {} = {}", new_a, n, txt.clone());
-                                } else {
-                                    new_a = format!("{} | {}", new_a, txt.clone());
+                    (ValueOrValueRangeToText::ValueRangeToText(txt, def, keys), name) => {
+                        let matched_key = keys.iter().enumerate().find(|&x| {
+                            (x.1.min <= a.unwrap_or_default()) && (a.unwrap_or_default() <= x.1.max)
+                        });
+                        if let Some(key) = matched_key {
+                            match &txt[key.0] {
+                                TextOrScaleConversion::Txt(txt) => {
+                                    if let Some(n) = name {
+                                        new_a = format!("{} | {} = {}", new_a, n, txt.clone());
+                                    } else {
+                                        new_a = format!("{} | {}", new_a, txt.clone());
+                                    }
+                                }
+                                TextOrScaleConversion::Scale(conv) => {
+                                    if let Some(n) = name {
+                                        new_a = format!(
+                                            "{} | {} = {}",
+                                            new_a,
+                                            n,
+                                            conv.eval_to_txt(a.unwrap_or_default())
+                                        );
+                                    } else {
+                                        new_a = format!(
+                                            "{} | {}",
+                                            new_a,
+                                            conv.eval_to_txt(a.unwrap_or_default())
+                                        );
+                                    }
+                                }
+                                _ => {
+                                    new_array.append_value(format!("{} | {}", new_a, "nothing"));
                                 }
                             }
-                            TextOrScaleConversion::Scale(conv) => {
-                                if let Some(n) = name {
-                                    new_a = format!(
-                                        "{} | {} = {}",
-                                        new_a,
-                                        n,
-                                        conv.eval_to_txt(a.unwrap_or_default())
-                                    );
-                                } else {
-                                    new_a = format!(
-                                        "{} | {}",
-                                        new_a,
-                                        conv.eval_to_txt(a.unwrap_or_default())
-                                    );
+                        } else {
+                            match &def {
+                                DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                                    if let Some(n) = name {
+                                        new_a = format!("{} | {} = {}", new_a, n, txt.clone());
+                                    } else {
+                                        new_a = format!("{} | {}", new_a, txt.clone());
+                                    }
                                 }
-                            }
-                            _ => {
-                                new_array.append_value(format!("{} | {}", new_a, "nothing"));
-                            }
-                        }
-                    } else {
-                        match &def {
-                            DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                                if let Some(n) = name {
-                                    new_a = format!("{} | {} = {}", new_a, n, txt.clone());
-                                } else {
-                                    new_a = format!("{} | {}", new_a, txt.clone());
+                                DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                                    if let Some(n) = name {
+                                        new_a = format!(
+                                            "{} | {} = {}",
+                                            new_a,
+                                            n,
+                                            conv.eval_to_txt(a.unwrap_or_default())
+                                        );
+                                    } else {
+                                        new_a = format!(
+                                            "{} | {}",
+                                            new_a,
+                                            conv.eval_to_txt(a.unwrap_or_default())
+                                        );
+                                    }
                                 }
-                            }
-                            DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                                if let Some(n) = name {
-                                    new_a = format!(
-                                        "{} | {} = {}",
-                                        new_a,
-                                        n,
-                                        conv.eval_to_txt(a.unwrap_or_default())
-                                    );
-                                } else {
-                                    new_a = format!(
-                                        "{} | {}",
-                                        new_a,
-                                        conv.eval_to_txt(a.unwrap_or_default())
-                                    );
+                                _ => {
+                                    new_a = format!("{} | {}", new_a, "nothing");
                                 }
-                            }
-                            _ => {
-                                new_a = format!("{} | {}", new_a, "nothing");
                             }
                         }
                     }
                 }
             }
-        }
-        new_array.append_value(new_a);
-    });
+            new_array.append_value(new_a);
+        });
     Ok(new_array)
 }
 

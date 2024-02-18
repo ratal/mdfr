@@ -17,14 +17,14 @@
 // under the License.
 use std::marker::PhantomData;
 use std::mem;
+use std::sync::Arc;
 
-use arrow2::array::Array;
-use arrow2::bitmap::Bitmap;
-use arrow2::buffer::Buffer;
-use arrow2::datatypes::*;
+use arrow::array::Array;
+use arrow::buffer::Buffer;
+use arrow::datatypes::*;
 
-use arrow2::error::{Error, Result};
-use arrow2::types::NativeType;
+use arrow::datatypes::ArrowPrimitiveType;
+use arrow::error::{ArrowError, Result};
 
 /// Computes the strides required assuming a row major memory layout
 fn compute_row_major_strides(shape: &[usize]) -> Result<Vec<usize>> {
@@ -50,7 +50,7 @@ fn compute_column_major_strides<T>(shape: &[usize]) -> Result<Vec<usize>> {
         if let Some(val) = remaining_bytes.checked_mul(*i) {
             remaining_bytes = val;
         } else {
-            return Err(Error::Overflow);
+            return Err(ArrowError::MemoryError("Overflow".to_owned()));
         }
     }
 
@@ -59,11 +59,15 @@ fn compute_column_major_strides<T>(shape: &[usize]) -> Result<Vec<usize>> {
 
 /// Tensor of primitive types
 #[derive(Debug, Clone, PartialEq)]
-pub struct Tensor<T: NativeType> {
+pub struct Tensor<T: ArrowPrimitiveType>
+where
+    T: Send,
+    T: Sync,
+    T: std::fmt::Debug,
+{
     data_type: DataType,
-    values: Buffer<T>,
+    buffer: Buffer,
     shape: Vec<usize>,
-    order: Order,
     strides: Option<Vec<usize>>,
     names: Option<Vec<String>>,
     _marker: PhantomData<T>,
@@ -78,32 +82,35 @@ pub enum Order {
 }
 
 #[allow(dead_code)]
-impl<T: NativeType> Tensor<T> {
+impl<T: ArrowPrimitiveType> Tensor<T>
+where
+    T: Send,
+    T: Sync,
+    T: std::fmt::Debug,
+{
     /// Creates a new `Tensor`
     pub fn try_new(
-        data_type: DataType,
-        values: Buffer<T>,
+        values: Buffer,
         shape: Option<Vec<usize>>,
-        order: Option<Order>,
         strides: Option<Vec<usize>>,
         names: Option<Vec<String>>,
     ) -> Result<Self> {
         match shape {
             None => {
                 if values.len() != mem::size_of::<T>() {
-                    return Err(Error::InvalidArgumentError(
+                    return Err(ArrowError::InvalidArgumentError(
                         "underlying buffer should only contain a single tensor element".to_string(),
                     ));
                 }
 
                 if strides.is_some() {
-                    return Err(Error::InvalidArgumentError(
+                    return Err(ArrowError::InvalidArgumentError(
                         "expected None strides for tensor with no shape".to_string(),
                     ));
                 }
 
                 if names.is_some() {
-                    return Err(Error::InvalidArgumentError(
+                    return Err(ArrowError::InvalidArgumentError(
                         "expected None names for tensor with no shape".to_string(),
                     ));
                 }
@@ -112,7 +119,7 @@ impl<T: NativeType> Tensor<T> {
             Some(ref s) => {
                 if let Some(ref st) = strides {
                     if st.len() != s.len() {
-                        return Err(Error::InvalidArgumentError(
+                        return Err(ArrowError::InvalidArgumentError(
                             "shape and stride dimensions differ".to_string(),
                         ));
                     }
@@ -120,7 +127,7 @@ impl<T: NativeType> Tensor<T> {
 
                 if let Some(ref n) = names {
                     if n.len() != s.len() {
-                        return Err(Error::InvalidArgumentError(
+                        return Err(ArrowError::InvalidArgumentError(
                             "number of dimensions and number of dimension names differ".to_string(),
                         ));
                     }
@@ -128,7 +135,7 @@ impl<T: NativeType> Tensor<T> {
 
                 let total_elements: usize = s.iter().product();
                 if total_elements != values.len() {
-                    return Err(Error::InvalidArgumentError(
+                    return Err(ArrowError::InvalidArgumentError(
                         "number of elements in buffer does not match dimensions".to_string(),
                     ));
                 }
@@ -145,7 +152,7 @@ impl<T: NativeType> Tensor<T> {
                     {
                         Some(st)
                     } else {
-                        return Err(Error::InvalidArgumentError(
+                        return Err(ArrowError::InvalidArgumentError(
                             "the input stride does not match the selected shape".to_string(),
                         ));
                     }
@@ -153,25 +160,18 @@ impl<T: NativeType> Tensor<T> {
                     Some(st)
                 }
             } else if let Some(ref s) = shape {
-                match order {
-                    Some(Order::RowMajor) => Some(compute_row_major_strides(s)?),
-                    Some(Order::ColumnMajor) => Some(compute_column_major_strides::<T>(s)?),
-                    None => Some(compute_row_major_strides(s)?),
-                }
+                Some(compute_row_major_strides(s)?)
             } else {
                 None
             }
         };
 
-        let order = order.unwrap_or_default();
-
         let shape = shape.unwrap_or_default();
 
         Ok(Self {
-            data_type,
-            values,
+            data_type: T::DATA_TYPE,
+            buffer: values,
             shape,
-            order,
             strides: tensor_strides,
             names,
             _marker: PhantomData,
@@ -181,23 +181,16 @@ impl<T: NativeType> Tensor<T> {
     /// Creates a new Tensor using row major memory layout
     pub fn new_row_major(
         data_type: DataType,
-        values: Buffer<T>,
+        values: Buffer,
         shape: Option<Vec<usize>>,
         names: Option<Vec<String>>,
     ) -> Result<Self> {
         if let Some(ref s) = shape {
             let strides = Some(compute_row_major_strides(s)?);
 
-            Self::try_new(
-                data_type,
-                values,
-                shape,
-                Some(Order::RowMajor),
-                strides,
-                names,
-            )
+            Self::try_new(values, shape, strides, names)
         } else {
-            Err(Error::InvalidArgumentError(
+            Err(ArrowError::InvalidArgumentError(
                 "shape required to create row major tensor".to_string(),
             ))
         }
@@ -206,23 +199,16 @@ impl<T: NativeType> Tensor<T> {
     /// Creates a new Tensor using column major memory layout
     pub fn new_column_major(
         data_type: DataType,
-        values: Buffer<T>,
+        values: Buffer,
         shape: Option<Vec<usize>>,
         names: Option<Vec<String>>,
     ) -> Result<Self> {
         if let Some(ref s) = shape {
             let strides = Some(compute_column_major_strides::<T>(s)?);
 
-            Self::try_new(
-                data_type,
-                values,
-                shape,
-                Some(Order::ColumnMajor),
-                strides,
-                names,
-            )
+            Self::try_new(values, shape, strides, names)
         } else {
-            Err(Error::InvalidArgumentError(
+            Err(ArrowError::InvalidArgumentError(
                 "shape required to create column major tensor".to_string(),
             ))
         }
@@ -232,61 +218,17 @@ impl<T: NativeType> Tensor<T> {
     pub fn new_empty(data_type: DataType) -> Self {
         Self {
             data_type,
-            values: Buffer::new(),
+            buffer: Buffer::new(),
             shape: Vec::new(),
-            order: Order::default(),
             strides: None,
             names: None,
             _marker: PhantomData,
         }
     }
 
-    /// Returns a clone of this PrimitiveArray sliced by an offset and length.
-    /// # Implementation
-    /// This operation is `O(1)` as it amounts to increase two ref counts.
-    /// # Examples
-    /// ```
-    /// use arrow2::array::PrimitiveArray;
-    ///
-    /// let array = PrimitiveArray::from_vec(vec![1, 2, 3]);
-    /// assert_eq!(format!("{:?}", array), "Int32[1, 2, 3]");
-    /// let sliced = array.slice(1, 1);
-    /// assert_eq!(format!("{:?}", sliced), "Int32[2]");
-    /// // note: `sliced` and `array` share the same memory region.
-    /// ```
-    /// # Panic
-    /// This function panics iff `offset + length > self.len()`.
-    #[inline]
-    pub fn slice(&mut self, offset: usize, length: usize) {
-        assert!(
-            offset + length <= self.len(),
-            "offset + length may not exceed length of array"
-        );
-        unsafe { self.values.slice_unchecked(offset, length) }
-    }
-
-    /// Returns a clone of this PrimitiveArray sliced by an offset and length.
-    /// # Implementation
-    /// This operation is `O(1)` as it amounts to increase two ref counts.
-    /// # Safety
-    /// The caller must ensure that `offset + length <= self.len()`.
-    #[inline]
-    pub unsafe fn slice_unchecked(&mut self, offset: usize, length: usize) {
-        self.values.slice_unchecked(offset, length);
-    }
-
-    #[must_use]
-    pub fn with_validity(&self, _validity: Option<Bitmap>) -> Self {
-        self.clone()
-    }
-
     /// The sizes of the dimensions
     pub fn shape(&self) -> &Vec<usize> {
         &self.shape
-    }
-
-    pub fn order(&self) -> &Order {
-        &self.order
     }
 
     /// Returns the arrays' [`DataType`].
@@ -297,31 +239,20 @@ impl<T: NativeType> Tensor<T> {
 
     /// Returns a reference to the underlying `Buffer`
     #[inline]
-    pub fn values_buffer(&self) -> &Buffer<T> {
-        &self.values
-    }
-
-    /// Returns a reference to the underlying `Buffer`
-    #[inline]
-    pub fn values(&self) -> &[T] {
-        self.values.as_slice()
+    pub fn values_buffer(&self) -> &Buffer {
+        &self.buffer
     }
 
     /// Update the values of this [`Tensor`].
     /// # Panics
     /// This function panics iff `values.len() != self.len()`.
-    pub fn set_values(&mut self, values: Buffer<T>) {
+    pub fn set_values(&mut self, values: Buffer) {
         assert_eq!(
             values.len(),
             self.len(),
             "values' length must be equal to this arrays' length"
         );
-        self.values = values;
-    }
-
-    /// Returns an option of a mutable reference to the values of this [`PrimitiveArray`].
-    pub fn get_mut_values(&mut self) -> Option<&mut [T]> {
-        self.values.get_mut_slice()
+        self.buffer = values;
     }
 
     /// Returns a reference to a value in the buffer
@@ -341,7 +272,7 @@ impl<T: NativeType> Tensor<T> {
         // Check if this tensor has strides. The 1x1 doesn't
         // have strides that define the tensor
         match self.strides.as_ref() {
-            None => Some(&self.values()[0]),
+            None => Some(&self.values_buffer()[0]),
             Some(strides) => {
                 // If the index doesn't have the same len as
                 // the strides vector then a None is returned
@@ -357,7 +288,7 @@ impl<T: NativeType> Tensor<T> {
                     .zip(index)
                     .fold(0usize, |acc, (s, i)| acc + (s * i));
 
-                Some(&self.values()[buf_index])
+                Some(&self.values_buffer()[buf_index])
             }
         }
     }
@@ -407,18 +338,12 @@ impl<T: NativeType> Tensor<T> {
 
     /// Indicates if the memory layout row major
     pub fn is_row_major(&self) -> bool {
-        match self.order {
-            Order::RowMajor => true,
-            Order::ColumnMajor => false,
-        }
+        compute_row_major_strides(self.shape())? == self.strides
     }
 
     /// Indicates if the memory layout column major
     pub fn is_column_major(&self) -> bool {
-        match self.order {
-            Order::RowMajor => false,
-            Order::ColumnMajor => true,
-        }
+        compute_column_major_strides::<T>(self.shape())? == self.strides
     }
 
     /// Creates a (non-null) [`Tensor`] from a vector of values.
@@ -430,14 +355,7 @@ impl<T: NativeType> Tensor<T> {
         strides: Option<Vec<usize>>,
         names: Option<Vec<String>>,
     ) -> Self {
-        Self::new(
-            T::PRIMITIVE.into(),
-            values.into(),
-            shape,
-            order,
-            strides,
-            names,
-        )
+        Self::new(T::PRIMITIVE.into(), values.into(), shape, strides, names)
     }
 
     /// Alias for `Self::try_new(..).unwrap()`.
@@ -447,52 +365,31 @@ impl<T: NativeType> Tensor<T> {
     /// * The `data_type`'s [`PhysicalType`] is not equal to [`PhysicalType::Primitive`].
     pub fn new(
         data_type: DataType,
-        values: Buffer<T>,
+        values: Buffer,
         shape: Option<Vec<usize>>,
-        order: Option<Order>,
         strides: Option<Vec<usize>>,
         names: Option<Vec<String>>,
     ) -> Self {
-        Self::try_new(data_type, values, shape, order, strides, names).unwrap()
+        Self::try_new(values, shape, strides, names).unwrap()
     }
 }
 
-impl<T: NativeType> Array for Tensor<T> {
+impl<T: ArrowPrimitiveType + std::fmt::Debug + std::marker::Sync + std::marker::Send> Array
+    for Tensor<T>
+{
     #[inline]
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
 
     #[inline]
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self
-    }
-
-    #[inline]
     fn len(&self) -> usize {
-        self.values.len()
+        self.buffer.len()
     }
 
     #[inline]
     fn data_type(&self) -> &DataType {
         self.data_type()
-    }
-
-    fn validity(&self) -> Option<&Bitmap> {
-        None
-    }
-
-    fn slice(&mut self, offset: usize, length: usize) {
-        self.values.slice(offset, length)
-    }
-    unsafe fn slice_unchecked(&mut self, offset: usize, length: usize) {
-        self.values.slice_unchecked(offset, length)
-    }
-    fn with_validity(&self, validity: Option<Bitmap>) -> Box<dyn Array> {
-        Box::new(self.with_validity(validity))
-    }
-    fn to_boxed(&self) -> Box<dyn Array> {
-        Box::new(self.clone())
     }
 
     fn is_empty(&self) -> bool {
@@ -519,14 +416,38 @@ impl<T: NativeType> Array for Tensor<T> {
     fn is_valid(&self, i: usize) -> bool {
         !self.is_null(i)
     }
+
+    fn to_data(&self) -> arrow::array::ArrayData {
+        todo!()
+    }
+
+    fn into_data(self) -> arrow::array::ArrayData {
+        todo!()
+    }
+
+    fn offset(&self) -> usize {
+        todo!()
+    }
+
+    fn nulls(&self) -> Option<&arrow::buffer::NullBuffer> {
+        todo!()
+    }
+
+    fn get_buffer_memory_size(&self) -> usize {
+        todo!()
+    }
+
+    fn get_array_memory_size(&self) -> usize {
+        todo!()
+    }
 }
 
 /// Cast [`Tensor`] as a [`Tensor`]
 /// Same as `number as to_number_type` in rust
 pub fn tensor_as_tensor<I, O>(from: &Tensor<I>, to_type: &DataType) -> Tensor<O>
 where
-    I: NativeType + num_traits::AsPrimitive<O>,
-    O: NativeType,
+    I: ArrowPrimitiveType + std::fmt::Debug + std::marker::Sync + std::marker::Send,
+    O: ArrowPrimitiveType + std::fmt::Debug + std::marker::Sync + std::marker::Send,
 {
     unary(from, num_traits::AsPrimitive::<O>::as_, to_type.clone())
 }
@@ -543,8 +464,8 @@ where
 #[inline]
 pub fn unary<I, F, O>(array: &Tensor<I>, op: F, data_type: DataType) -> Tensor<O>
 where
-    I: NativeType,
-    O: NativeType,
+    I: ArrowPrimitiveType + std::fmt::Debug + std::marker::Sync + std::marker::Send,
+    O: ArrowPrimitiveType + std::fmt::Debug + std::marker::Sync + std::marker::Send,
     F: Fn(I) -> O,
 {
     let values = array.values().iter().map(|v| op(*v)).collect::<Vec<_>>();
@@ -553,7 +474,6 @@ where
         data_type,
         values.into(),
         Some(array.shape().clone()),
-        Some(array.order().clone()),
         array.strides().cloned(),
         array.names().cloned(),
     )
@@ -572,7 +492,7 @@ where
 #[inline]
 pub fn unary_assign<I, F>(array: &mut Tensor<I>, op: F)
 where
-    I: NativeType,
+    I: ArrowPrimitiveType + std::fmt::Debug + std::marker::Sync + std::marker::Send,
     F: Fn(I) -> I,
 {
     if let Some(values) = array.get_mut_values() {
@@ -589,7 +509,7 @@ where
 mod tests {
     use super::*;
 
-    use arrow2::buffer::Buffer;
+    use arrow::buffer::Buffer;
 
     #[test]
     fn test_compute_row_major_strides() {
@@ -778,7 +698,7 @@ mod tests {
         let buffer: Buffer<i32> = vec![0i32, 1, 2, 3].into();
         let shape = Some(vec![2, 2]);
 
-        let tensor = Tensor::try_new(DataType::Int32, buffer, shape, None, None, None).unwrap();
+        let tensor = Tensor::try_new(buffer, shape, None, None).unwrap();
         let mut data = tensor.values().iter();
 
         assert_eq!(data.next(), Some(&0));
@@ -792,7 +712,7 @@ mod tests {
         let buffer: Buffer<i32> = vec![0i32, 1, 2, 3].into();
         let shape = Some(vec![2, 2]);
 
-        let tensor = Tensor::try_new(DataType::Int32, buffer, shape, None, None, None).unwrap();
+        let tensor = Tensor::try_new(buffer, shape, None, None).unwrap();
         assert_eq!(tensor.value(&[0, 0]), Some(&0));
         assert_eq!(tensor.value(&[0, 1]), Some(&1));
         assert_eq!(tensor.value(&[1, 0]), Some(&2));

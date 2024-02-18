@@ -340,7 +340,8 @@ pub fn read_channels_from_bytes(
                 ChannelData::FixedSizeByteArray(a) => {
                     let n_bytes = cn.n_bytes as usize;
                     for record in data_chunk.chunks(record_length) {
-                        a.append_value(&record[pos_byte_beg..pos_byte_beg + n_bytes]);
+                        a.append_value(&record[pos_byte_beg..pos_byte_beg + n_bytes])
+                            .context("failed appending new value")?;
                     }
                 }
                 _ => bail!("mdf3 data type array not possible"),

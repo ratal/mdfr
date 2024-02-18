@@ -9,6 +9,7 @@ mod tests {
     use arrow::array::Int32Builder;
     use arrow::array::Int64Builder;
     use arrow::array::LargeStringBuilder;
+    use arrow::array::PrimitiveArray;
     use arrow::array::UInt64Builder;
 
     use arrow::datatypes::Float32Type;
@@ -249,16 +250,16 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         let mut byte_array = FixedSizeBinaryBuilder::with_capacity(10, 5);
-        byte_array.append_value(vec![255, 255, 255, 255, 255]);
-        byte_array.append_value(vec![18, 35, 52, 69, 86]);
-        byte_array.append_value(vec![0, 1, 2, 3, 4]);
-        byte_array.append_value(vec![4, 3, 2, 1, 0]);
-        byte_array.append_value(vec![255, 254, 253, 252, 251]);
-        byte_array.append_value(vec![250, 249, 248, 247, 246]);
-        byte_array.append_value(vec![245, 244, 243, 242, 241]);
-        byte_array.append_value(vec![240, 239, 238, 237, 236]);
-        byte_array.append_value(vec![235, 234, 233, 232, 231]);
-        byte_array.append_value(vec![255, 255, 255, 255, 255]);
+        byte_array.append_value(vec![255, 255, 255, 255, 255])?;
+        byte_array.append_value(vec![18, 35, 52, 69, 86])?;
+        byte_array.append_value(vec![0, 1, 2, 3, 4])?;
+        byte_array.append_value(vec![4, 3, 2, 1, 0])?;
+        byte_array.append_value(vec![255, 254, 253, 252, 251])?;
+        byte_array.append_value(vec![250, 249, 248, 247, 246])?;
+        byte_array.append_value(vec![245, 244, 243, 242, 241])?;
+        byte_array.append_value(vec![240, 239, 238, 237, 236])?;
+        byte_array.append_value(vec![235, 234, 233, 232, 231])?;
+        byte_array.append_value(vec![255, 255, 255, 255, 255])?;
         mdf.load_all_channels_data_in_memory()?;
         if let Some(data) = mdf.get_channel_data(&"Time channel".to_string()) {
             assert_eq!(
@@ -275,6 +276,17 @@ mod tests {
         let mut mdf2 = mdf.write(&writing_mdf_file, false)?;
         mdf2.load_all_channels_data_in_memory()?;
         if let Some(data) = mdf2.get_channel_data(&"Data channel".to_string()) {
+            let mut byte_array = FixedSizeBinaryBuilder::with_capacity(10, 5);
+            byte_array.append_value(vec![255, 255, 255, 255, 255])?;
+            byte_array.append_value(vec![18, 35, 52, 69, 86])?;
+            byte_array.append_value(vec![0, 1, 2, 3, 4])?;
+            byte_array.append_value(vec![4, 3, 2, 1, 0])?;
+            byte_array.append_value(vec![255, 254, 253, 252, 251])?;
+            byte_array.append_value(vec![250, 249, 248, 247, 246])?;
+            byte_array.append_value(vec![245, 244, 243, 242, 241])?;
+            byte_array.append_value(vec![240, 239, 238, 237, 236])?;
+            byte_array.append_value(vec![235, 234, 233, 232, 231])?;
+            byte_array.append_value(vec![255, 255, 255, 255, 255])?;
             assert_eq!(&ChannelData::FixedSizeByteArray(byte_array), data);
         }
 
@@ -293,7 +305,7 @@ mod tests {
         });
         if let Some(data) = mdf.get_channel_data(&"Counter_INT64_BE".to_string()) {
             assert_eq!(
-                ChannelData::Int64(Int64Builder::new_from_buffer(vect.into(), None)),
+                ChannelData::Int64(Int64Builder::new_from_buffer(vect.clone().into(), None)),
                 data.clone()
             );
         }
@@ -332,7 +344,7 @@ mod tests {
         });
         if let Some(data) = mdf.get_channel_data(&"Counter_INT16_BE".to_string()) {
             assert_eq!(
-                ChannelData::Int16(Int16Builder::new_from_buffer(vect.into(), None)),
+                ChannelData::Int16(Int16Builder::new_from_buffer(vect.clone().into(), None)),
                 data.clone()
             );
         }
@@ -900,8 +912,13 @@ mod tests {
                     target.append_value((10.0 / (v - 10.0)).to_string())
                 }
             });
-            let data_values: Vec<_> = data.finish().as_string::<i64>().iter().collect();
-            let target_values: Vec<_> = target.finish().iter().collect();
+            let data_values = data.finish_cloned();
+            let data_values = data_values
+                .as_string::<i64>()
+                .iter()
+                .collect::<Vec<Option<&str>>>();
+            let target_values = target.finish_cloned();
+            let target_values = target_values.iter().collect::<Vec<Option<&str>>>();
             assert_eq!(target_values[0], data_values[0]);
             assert_eq!(target_values[299], data_values[299]);
             assert_eq!(target_values[101], data_values[101]);
@@ -1062,14 +1079,13 @@ mod tests {
         mdf.load_all_channels_data_in_memory()?;
         // modify data
         if let Some(data) = mdf.get_channel_data(&ref_channel.to_string()) {
-            let mut new_data = data
-                .clone()
-                .finish()
-                .as_primitive::<Float32Type>()
-                .into_builder()
-                .expect("failed getting builder");
+            let mut new_data = <PrimitiveArray<Float32Type> as Clone>::clone(
+                &data.finish_cloned().as_primitive::<Float32Type>(),
+            )
+            .into_builder()
+            .expect("failed getting builder");
             new_data.values_slice_mut()[0] = 0.0f32;
-            mdf.set_channel_data(&ref_channel.to_string(), Arc::new(&new_data.finish()))?;
+            mdf.set_channel_data(&ref_channel.to_string(), Arc::new(new_data.finish_cloned()))?;
             mdf.set_channel_desc(&ref_channel.to_string(), ref_desc);
             mdf.set_channel_unit(&ref_channel.to_string(), ref_unit);
             mdf.set_channel_master_type(&ref_channel.to_string(), 1)?;
@@ -1077,7 +1093,7 @@ mod tests {
             panic!("channel not found");
         }
         if let Some(data) = mdf.get_channel_data(&ref_channel.to_string()) {
-            let (minimum, maximum) = data.min_max();
+            let (minimum, _) = data.min_max();
             if let Some(min) = minimum {
                 assert!(min < 1000.0f64);
             }
@@ -1102,7 +1118,7 @@ mod tests {
         mdf.load_all_channels_data_in_memory()?;
         let channel_name = r"Fake_name".to_string();
         let new_channel_name = r"New fake_name".to_string();
-        let new_data = Arc::new(&Float64Array::try_new(vec![0f64; 3300].into(), None)?);
+        let new_data = Arc::new(Float64Array::try_new(vec![0f64; 3300].into(), None)?);
         let master_channel = mdf.get_channel_master(&ref_channel.to_string());
         let master_type = Some(0);
         let master_flag = false;
@@ -1119,7 +1135,7 @@ mod tests {
         )?;
 
         if let Some(data) = mdf.get_channel_data(&channel_name.to_string()) {
-            let (minimum, maximum) = data.min_max();
+            let (minimum, _) = data.min_max();
             if let Some(min) = minimum {
                 assert!(min == 0.0f64);
             }

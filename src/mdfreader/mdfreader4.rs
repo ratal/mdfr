@@ -610,15 +610,7 @@ fn parser_ld4(
             let (dt, block_header) =
                 parse_dz(rdr).context("failed parsing dz block pointed by ld4 block")?;
             for (_rec_pos, cn) in channel_group.cn.iter_mut() {
-                let shape = if let Some(compo) = &cn.composition {
-                    match &compo.block {
-                        Compo::CA(ca) => Some(ca.shape.clone()),
-                        Compo::CN(_) => None,
-                    }
-                } else {
-                    None
-                };
-                read_one_channel_array(&dt, cn, channel_group.block.cg_cycle_count as usize, shape)
+                read_one_channel_array(&dt, cn, channel_group.block.cg_cycle_count as usize)
                     .context("failed reading one channel array from DZ")?;
             }
             position = ld_data + block_header.len as i64;
@@ -628,21 +620,8 @@ fn parser_ld4(
             rdr.read_exact(&mut buf)
                 .context("Could not read Dt4 block")?;
             for (_rec_pos, cn) in channel_group.cn.iter_mut() {
-                let shape = if let Some(compo) = &cn.composition {
-                    match &compo.block {
-                        Compo::CA(ca) => Some(ca.shape.clone()),
-                        Compo::CN(_) => None,
-                    }
-                } else {
-                    None
-                };
-                read_one_channel_array(
-                    &buf,
-                    cn,
-                    channel_group.block.cg_cycle_count as usize,
-                    shape,
-                )
-                .context("failed reading one channel array")?;
+                read_one_channel_array(&buf, cn, channel_group.block.cg_cycle_count as usize)
+                    .context("failed reading one channel array")?;
             }
             position = ld_data + block_header.len as i64;
         }

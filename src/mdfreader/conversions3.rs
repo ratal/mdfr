@@ -89,7 +89,7 @@ pub fn convert_all_channels(dg: &mut Dg3, sharable: &SharableBlocks3) -> Result<
 /// Generic function calculating exponential conversion
 #[inline]
 fn linear_calculation<T: ArrowPrimitiveType>(
-    array: &PrimitiveBuilder<T>,
+    array: &mut PrimitiveBuilder<T>,
     cc_val: &[f64],
 ) -> Result<PrimitiveBuilder<Float64Type>, Error>
 where
@@ -195,7 +195,7 @@ fn linear_conversion(cn: &mut Cn3, cc_val: &[f64]) -> Result<(), Error> {
 /// Generic function calculating rational conversion
 #[inline]
 fn rational_calculation<T: ArrowPrimitiveType>(
-    array: &PrimitiveBuilder<T>,
+    array: &mut PrimitiveBuilder<T>,
     cc_val: &[f64],
 ) -> Result<PrimitiveBuilder<Float64Type>, Error>
 where
@@ -301,7 +301,7 @@ fn rational_conversion(cn: &mut Cn3, cc_val: &[f64]) -> Result<(), Error> {
 /// Generic function calculating polynomial conversion
 #[inline]
 fn polynomial_calculation<T: ArrowPrimitiveType>(
-    array: &PrimitiveBuilder<T>,
+    array: &mut PrimitiveBuilder<T>,
     cc_val: &[f64],
 ) -> Result<PrimitiveBuilder<Float64Type>, Error>
 where
@@ -407,7 +407,7 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64]) -> Result<(), Error> {
 /// Generic function calculating exponential conversion
 #[inline]
 fn exponential_calculation<T: ArrowPrimitiveType>(
-    array: &PrimitiveBuilder<T>,
+    array: &mut PrimitiveBuilder<T>,
     cc_val: &[f64],
 ) -> Result<Option<PrimitiveBuilder<Float64Type>>, Error>
 where
@@ -529,7 +529,7 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64]) -> Result<(), Error> {
 /// Generic function calculating value logarithmic conversion
 #[inline]
 fn logarithmic_calculation<T: ArrowPrimitiveType>(
-    array: &PrimitiveBuilder<T>,
+    array: &mut PrimitiveBuilder<T>,
     cc_val: &[f64],
 ) -> Result<Option<PrimitiveBuilder<Float64Type>>, Error>
 where
@@ -658,7 +658,7 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64]) -> Result<(), Error> {
 /// Generic function calculating algebraic expression conversion
 #[inline]
 fn alegbraic_conversion_calculation<T: ArrowPrimitiveType>(
-    array: &PrimitiveBuilder<T>,
+    array: &mut PrimitiveBuilder<T>,
     compiled: &Instruction,
     slab: &Slab,
     cycle_count: &usize,
@@ -857,7 +857,7 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) -> Resu
 /// Generic function calculating value to value with interpolation conversion
 #[inline]
 fn value_to_value_with_interpolation_calculation<T: ArrowPrimitiveType>(
-    array: &PrimitiveBuilder<T>,
+    array: &mut PrimitiveBuilder<T>,
     cc_val: Vec<f64>,
     cycle_count: usize,
 ) -> Result<PrimitiveBuilder<Float64Type>, Error>
@@ -881,7 +881,7 @@ where
         .zip(array_f64.values())
         .for_each(|(new_array, a)| {
             *new_array = match val
-                .binary_search_by(|&(xi, _)| xi.partial_cmp(&a).expect("Could not compare values"))
+                .binary_search_by(|&(xi, _)| xi.partial_cmp(a).expect("Could not compare values"))
             {
                 Ok(idx) => *val[idx].1,
                 Err(0) => *val[0].1,
@@ -964,7 +964,7 @@ fn value_to_value_with_interpolation(
 /// Generic function calculating algebraic expression
 #[inline]
 fn value_to_value_without_interpolation_calculation<T: ArrowPrimitiveType>(
-    array: &PrimitiveBuilder<T>,
+    array: &mut PrimitiveBuilder<T>,
     cc_val: Vec<f64>,
     cycle_count: usize,
 ) -> Result<PrimitiveBuilder<Float64Type>, Error>
@@ -988,7 +988,7 @@ where
         .zip(array_f64.values())
         .for_each(|(new_array, a)| {
             *new_array = match val
-                .binary_search_by(|&(xi, _)| xi.partial_cmp(&a).expect("Could not compare values"))
+                .binary_search_by(|&(xi, _)| xi.partial_cmp(a).expect("Could not compare values"))
             {
                 Ok(idx) => *val[idx].1,
                 Err(0) => *val[0].1,
@@ -1075,7 +1075,7 @@ fn value_to_value_without_interpolation(
 /// Generic function calculating value to text expression
 #[inline]
 fn value_to_text_calculation<T: ArrowPrimitiveType>(
-    array: &PrimitiveBuilder<T>,
+    array: &mut PrimitiveBuilder<T>,
     cc_val_ref: &[(f64, String)],
     cycle_count: usize,
 ) -> Result<LargeStringBuilder, Error>
@@ -1181,7 +1181,7 @@ fn value_to_text(
 /// Generic function calculating value range to text expression
 #[inline]
 fn value_range_to_text_calculation<T: ArrowPrimitiveType>(
-    array: &PrimitiveBuilder<T>,
+    array: &mut PrimitiveBuilder<T>,
     cc_val_ref: &(Vec<(f64, f64, String)>, String),
     cycle_count: usize,
 ) -> Result<LargeStringBuilder, Error>

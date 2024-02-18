@@ -18,14 +18,13 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use super::channel_data::{ChannelData, Order};
+use super::channel_data::ChannelData;
 
 /// converts raw data block containing only one channel into a ndarray
 pub fn read_one_channel_array(
     data_bytes: &Vec<u8>,
     cn: &mut Cn4,
     cycle_count: usize,
-    shape: Option<(Vec<usize>, Order)>,
 ) -> Result<(), Error> {
     if (cn.block.cn_type == 0
         || cn.block.cn_type == 2
@@ -379,7 +378,8 @@ pub fn read_one_channel_array(
             }
             ChannelData::FixedSizeByteArray(a) => {
                 for value in data_bytes.chunks(n_bytes) {
-                    a.append_value(value);
+                    a.append_value(value)
+                        .context("failed appending new value")?;
                 }
             }
             ChannelData::ArrayDInt8((a, _)) => {
@@ -1178,7 +1178,8 @@ pub fn read_channels_from_bytes(
                 }
                 ChannelData::FixedSizeByteArray(a)  => {
                     for  record in data_chunk.chunks(record_length) {
-                        a.append_value(&record[pos_byte_beg..pos_byte_beg + n_bytes]);
+                        a.append_value(&record[pos_byte_beg..pos_byte_beg + n_bytes])
+                            .context("failed appending new value")?;
                     }
                 }
                 ChannelData::ArrayDInt8(a) => {
