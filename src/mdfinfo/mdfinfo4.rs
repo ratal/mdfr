@@ -2503,11 +2503,9 @@ fn parse_cn4_block(
     let invalid_mask: Option<(Option<BooleanBufferBuilder>, usize, u8)> = if cg_inval_bytes != 0 {
         let invalid_byte_position = (block.cn_inval_bit_pos >> 3) as usize;
         let invalid_byte_mask = 1 << (block.cn_inval_bit_pos & 0x07);
-        Some((
-            Some(BooleanBufferBuilder::new(cg_cycle_count as usize)),
-            invalid_byte_position,
-            invalid_byte_mask,
-        ))
+        let mut buffer = BooleanBufferBuilder::new(cg_cycle_count as usize);
+        buffer.advance(cg_cycle_count as usize);
+        Some((Some(buffer), invalid_byte_position, invalid_byte_mask))
     } else {
         None
     };
