@@ -7,7 +7,7 @@ use arrow::array::{
     Float32Array, Float64Array, Int8Builder, LargeBinaryArray, LargeBinaryBuilder,
     LargeStringArray, LargeStringBuilder, PrimitiveBuilder, StringArray,
 };
-use arrow::buffer::NullBuffer;
+use arrow::buffer::{MutableBuffer, NullBuffer};
 use arrow::datatypes::{
     DataType, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, Int8Type, UInt16Type,
     UInt32Type, UInt64Type, UInt8Type,
@@ -15,6 +15,7 @@ use arrow::datatypes::{
 use itertools::Itertools;
 
 use std::fmt;
+use std::mem::size_of;
 use std::sync::Arc;
 
 /// channel data type enum.
@@ -112,79 +113,66 @@ impl Clone for ChannelData {
         match self {
             Self::Int8(arg0) => Self::Int8(
                 arg0.finish_cloned()
-                    .clone()
                     .into_builder()
                     .expect("failed getting back mutable array"),
             ),
             Self::UInt8(arg0) => Self::UInt8(
                 arg0.finish_cloned()
-                    .clone()
                     .into_builder()
                     .expect("failed getting back mutable array"),
             ),
             Self::Int16(arg0) => Self::Int16(
                 arg0.finish_cloned()
-                    .clone()
                     .into_builder()
                     .expect("failed getting back mutable array"),
             ),
             Self::UInt16(arg0) => Self::UInt16(
                 arg0.finish_cloned()
-                    .clone()
                     .into_builder()
                     .expect("failed getting back mutable array"),
             ),
             Self::Int32(arg0) => Self::Int32(
                 arg0.finish_cloned()
-                    .clone()
                     .into_builder()
                     .expect("failed getting back mutable array"),
             ),
             Self::UInt32(arg0) => Self::UInt32(
                 arg0.finish_cloned()
-                    .clone()
                     .into_builder()
                     .expect("failed getting back mutable array"),
             ),
             Self::Float32(arg0) => Self::Float32(
                 arg0.finish_cloned()
-                    .clone()
                     .into_builder()
                     .expect("failed getting back mutable array"),
             ),
             Self::Int64(arg0) => Self::Int64(
                 arg0.finish_cloned()
-                    .clone()
                     .into_builder()
                     .expect("failed getting back mutable array"),
             ),
             Self::UInt64(arg0) => Self::UInt64(
                 arg0.finish_cloned()
-                    .clone()
                     .into_builder()
                     .expect("failed getting back mutable array"),
             ),
             Self::Float64(arg0) => Self::Float64(
                 arg0.finish_cloned()
-                    .clone()
                     .into_builder()
                     .expect("failed getting back mutable array"),
             ),
             Self::Complex32(arg0) => Self::Complex32(
                 arg0.finish_cloned()
-                    .clone()
                     .into_builder()
                     .expect("failed getting back mutable array"),
             ),
             Self::Complex64(arg0) => Self::Complex64(
                 arg0.finish_cloned()
-                    .clone()
                     .into_builder()
                     .expect("failed getting back mutable array"),
             ),
             Self::Utf8(arg0) => Self::Utf8(
                 arg0.finish_cloned()
-                    .clone()
                     .into_builder()
                     .expect("failed getting back mutable array"),
             ),
@@ -226,70 +214,60 @@ impl Clone for ChannelData {
             }
             Self::ArrayDInt8((arg0, shape)) => Self::ArrayDInt8((
                 arg0.finish_cloned()
-                    .clone()
                     .into_builder()
                     .expect("failed getting back mutable array"),
                 shape.clone(),
             )),
             Self::ArrayDUInt8((arg0, shape)) => Self::ArrayDUInt8((
                 arg0.finish_cloned()
-                    .clone()
                     .into_builder()
                     .expect("failed getting back mutable array"),
                 shape.clone(),
             )),
             Self::ArrayDInt16((arg0, shape)) => Self::ArrayDInt16((
                 arg0.finish_cloned()
-                    .clone()
                     .into_builder()
                     .expect("failed getting back mutable array"),
                 shape.clone(),
             )),
             Self::ArrayDUInt16((arg0, shape)) => Self::ArrayDUInt16((
                 arg0.finish_cloned()
-                    .clone()
                     .into_builder()
                     .expect("failed getting back mutable array"),
                 shape.clone(),
             )),
             Self::ArrayDInt32((arg0, shape)) => Self::ArrayDInt32((
                 arg0.finish_cloned()
-                    .clone()
                     .into_builder()
                     .expect("failed getting back mutable array"),
                 shape.clone(),
             )),
             Self::ArrayDUInt32((arg0, shape)) => Self::ArrayDUInt32((
                 arg0.finish_cloned()
-                    .clone()
                     .into_builder()
                     .expect("failed getting back mutable array"),
                 shape.clone(),
             )),
             Self::ArrayDFloat32((arg0, shape)) => Self::ArrayDFloat32((
                 arg0.finish_cloned()
-                    .clone()
                     .into_builder()
                     .expect("failed getting back mutable array"),
                 shape.clone(),
             )),
             Self::ArrayDInt64((arg0, shape)) => Self::ArrayDInt64((
                 arg0.finish_cloned()
-                    .clone()
                     .into_builder()
                     .expect("failed getting back mutable array"),
                 shape.clone(),
             )),
             Self::ArrayDUInt64((arg0, shape)) => Self::ArrayDUInt64((
                 arg0.finish_cloned()
-                    .clone()
                     .into_builder()
                     .expect("failed getting back mutable array"),
                 shape.clone(),
             )),
             Self::ArrayDFloat64((arg0, shape)) => Self::ArrayDFloat64((
                 arg0.finish_cloned()
-                    .clone()
                     .into_builder()
                     .expect("failed getting back mutable array"),
                 shape.clone(),
@@ -332,52 +310,52 @@ impl ChannelData {
         } else {
             match self {
                 ChannelData::Int8(_) => Ok(ChannelData::Int8(PrimitiveBuilder::new_from_buffer(
-                    vec![0i8; cycle_count as usize].into(),
+                    MutableBuffer::from_len_zeroed(cycle_count as usize * size_of::<i8>()),
                     None,
                 ))),
                 ChannelData::UInt8(_) => Ok(ChannelData::UInt8(PrimitiveBuilder::new_from_buffer(
-                    vec![0u8; cycle_count as usize].into(),
+                    MutableBuffer::from_len_zeroed(cycle_count as usize * size_of::<u8>()),
                     None,
                 ))),
                 ChannelData::Int16(_) => Ok(ChannelData::Int16(PrimitiveBuilder::new_from_buffer(
-                    vec![0i16; cycle_count as usize].into(),
+                    MutableBuffer::from_len_zeroed(cycle_count as usize * size_of::<i16>()),
                     None,
                 ))),
                 ChannelData::UInt16(_) => {
                     Ok(ChannelData::UInt16(PrimitiveBuilder::new_from_buffer(
-                        vec![0u16; cycle_count as usize].into(),
+                        MutableBuffer::from_len_zeroed(cycle_count as usize * size_of::<u16>()),
                         None,
                     )))
                 }
                 ChannelData::Int32(_) => Ok(ChannelData::Int32(PrimitiveBuilder::new_from_buffer(
-                    vec![0i32; cycle_count as usize].into(),
+                    MutableBuffer::from_len_zeroed(cycle_count as usize * size_of::<i32>()),
                     None,
                 ))),
                 ChannelData::UInt32(_) => {
                     Ok(ChannelData::UInt32(PrimitiveBuilder::new_from_buffer(
-                        vec![0u32; cycle_count as usize].into(),
+                        MutableBuffer::from_len_zeroed(cycle_count as usize * size_of::<u32>()),
                         None,
                     )))
                 }
                 ChannelData::Float32(_) => {
                     Ok(ChannelData::Float32(PrimitiveBuilder::new_from_buffer(
-                        vec![0f32; cycle_count as usize].into(),
+                        MutableBuffer::from_len_zeroed(cycle_count as usize * size_of::<f32>()),
                         None,
                     )))
                 }
                 ChannelData::Int64(_) => Ok(ChannelData::Int64(PrimitiveBuilder::new_from_buffer(
-                    vec![0i64; cycle_count as usize].into(),
+                    MutableBuffer::from_len_zeroed(cycle_count as usize * size_of::<i64>()),
                     None,
                 ))),
                 ChannelData::UInt64(_) => {
                     Ok(ChannelData::UInt64(PrimitiveBuilder::new_from_buffer(
-                        vec![0u64; cycle_count as usize].into(),
+                        MutableBuffer::from_len_zeroed(cycle_count as usize * size_of::<u64>()),
                         None,
                     )))
                 }
                 ChannelData::Float64(_) => {
                     Ok(ChannelData::Float64(PrimitiveBuilder::new_from_buffer(
-                        vec![0f64; cycle_count as usize].into(),
+                        MutableBuffer::from_len_zeroed(cycle_count as usize * size_of::<f64>()),
                         None,
                     )))
                 }
