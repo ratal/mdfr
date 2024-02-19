@@ -104,14 +104,14 @@ fn main() -> Result<(), Error> {
         }
     }
 
-    let parquet_compression = matches.get_one::<String>("parquet_compression");
-    if let Some(file_name) = parquet_file_name {
-        mdf_file.export_to_parquet(file_name, parquet_compression.map(|x| &**x))?;
-        info!(
-            "Wrote parquet file {} with compression {:?}",
-            file_name, parquet_compression
-        );
-    }
+    // let parquet_compression = matches.get_one::<String>("parquet_compression");
+    // if let Some(file_name) = parquet_file_name {
+    //     mdf_file.export_to_parquet(file_name, parquet_compression.map(|x| &**x))?;
+    //     info!(
+    //         "Wrote parquet file {} with compression {:?}",
+    //         file_name, parquet_compression
+    //     );
+    // }
 
     Ok(())
 }
