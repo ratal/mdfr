@@ -1436,85 +1436,84 @@ pub fn data_type_init(
 
 pub fn try_from(value: &dyn Array) -> Result<ChannelData, Error> {
     match value.data_type() {
-        DataType::Null => Ok(ChannelData::UInt8(
-            as_primitive_array::<UInt8Type>(value)
-                .clone()
-                .into_builder()
-                .expect("could not downcast Null type to primitive array u8"),
-        )),
-        DataType::Boolean => Ok(ChannelData::UInt8(
-            as_primitive_array::<UInt8Type>(value)
-                .clone()
-                .into_builder()
-                .expect("could not downcast Boolean type to primitive array u8"),
-        )),
-        DataType::Int8 => Ok(ChannelData::Int8(
-            as_primitive_array::<Int8Type>(value)
-                .clone()
-                .into_builder()
-                .expect("could not downcast to primitive array i8"),
-        )),
-        DataType::Int16 => Ok(ChannelData::Int16(
-            as_primitive_array::<Int16Type>(value)
-                .clone()
-                .into_builder()
-                .expect("could not downcast to primitive array i16"),
-        )),
-        DataType::Int32 => Ok(ChannelData::Int32(
-            as_primitive_array::<Int32Type>(value)
-                .clone()
-                .into_builder()
-                .expect("could not downcast to primitive array i32"),
-        )),
-        DataType::Int64 => Ok(ChannelData::Int64(
-            as_primitive_array::<Int64Type>(value)
-                .clone()
-                .into_builder()
-                .expect("could not downcast to primitive array i64"),
-        )),
-        DataType::UInt8 => Ok(ChannelData::UInt8(
-            as_primitive_array::<UInt8Type>(value)
-                .clone()
-                .into_builder()
-                .expect("could not downcast to primitive array u8"),
-        )),
-        DataType::UInt16 => Ok(ChannelData::UInt16(
-            as_primitive_array::<UInt16Type>(value)
-                .clone()
-                .into_builder()
-                .expect("could not downcast to primitive array u16"),
-        )),
-        DataType::UInt32 => Ok(ChannelData::UInt32(
-            as_primitive_array::<UInt32Type>(value)
-                .clone()
-                .into_builder()
-                .expect("could not downcast to primitive array u32"),
-        )),
-        DataType::UInt64 => Ok(ChannelData::UInt64(
-            as_primitive_array::<UInt64Type>(value)
-                .clone()
-                .into_builder()
-                .expect("could not downcast to primitive array u32"),
-        )),
+        DataType::Null => {
+            let data = as_primitive_array::<UInt8Type>(value);
+            let mut new_data = PrimitiveBuilder::with_capacity(data.len());
+            data.iter().for_each(|v| new_data.append_option(v));
+            Ok(ChannelData::UInt8(new_data))
+        }
+        DataType::Boolean => {
+            let data = as_primitive_array::<UInt8Type>(value);
+            let mut new_data = PrimitiveBuilder::with_capacity(data.len());
+            data.iter().for_each(|v| new_data.append_option(v));
+            Ok(ChannelData::UInt8(new_data))
+        }
+        DataType::Int8 => {
+            let data = as_primitive_array::<Int8Type>(value);
+            let mut new_data = PrimitiveBuilder::with_capacity(data.len());
+            data.iter().for_each(|v| new_data.append_option(v));
+            Ok(ChannelData::Int8(new_data))
+        }
+        DataType::Int16 => {
+            let data = as_primitive_array::<Int16Type>(value);
+            let mut new_data = PrimitiveBuilder::with_capacity(data.len());
+            data.iter().for_each(|v| new_data.append_option(v));
+            Ok(ChannelData::Int16(new_data))
+        }
+        DataType::Int32 => {
+            let data = as_primitive_array::<Int32Type>(value);
+            let mut new_data = PrimitiveBuilder::with_capacity(data.len());
+            data.iter().for_each(|v| new_data.append_option(v));
+            Ok(ChannelData::Int32(new_data))
+        }
+        DataType::Int64 => {
+            let data = as_primitive_array::<Int64Type>(value);
+            let mut new_data = PrimitiveBuilder::with_capacity(data.len());
+            data.iter().for_each(|v| new_data.append_option(v));
+            Ok(ChannelData::Int64(new_data))
+        }
+        DataType::UInt8 => {
+            let data = as_primitive_array::<UInt8Type>(value);
+            let mut new_data = PrimitiveBuilder::with_capacity(data.len());
+            data.iter().for_each(|v| new_data.append_option(v));
+            Ok(ChannelData::UInt8(new_data))
+        }
+        DataType::UInt16 => {
+            let data = as_primitive_array::<UInt16Type>(value);
+            let mut new_data = PrimitiveBuilder::with_capacity(data.len());
+            data.iter().for_each(|v| new_data.append_option(v));
+            Ok(ChannelData::UInt16(new_data))
+        }
+        DataType::UInt32 => {
+            let data = as_primitive_array::<UInt32Type>(value);
+            let mut new_data = PrimitiveBuilder::with_capacity(data.len());
+            data.iter().for_each(|v| new_data.append_option(v));
+            Ok(ChannelData::UInt32(new_data))
+        }
+        DataType::UInt64 => {
+            let data = as_primitive_array::<UInt64Type>(value);
+            let mut new_data = PrimitiveBuilder::with_capacity(data.len());
+            data.iter().for_each(|v| new_data.append_option(v));
+            Ok(ChannelData::UInt64(new_data))
+        }
         DataType::Float16 => todo!(),
-        DataType::Float32 => Ok(ChannelData::Float32(
-            as_primitive_array::<Float32Type>(value)
-                .clone()
-                .into_builder()
-                .expect("could not downcast to primitive array f32"),
-        )),
-        DataType::Float64 => Ok(ChannelData::Float64(
-            as_primitive_array::<Float64Type>(value)
-                .clone()
-                .into_builder()
-                .expect("could not downcast to primitive array f64"),
-        )),
+        DataType::Float32 => {
+            let data = as_primitive_array::<Float32Type>(value);
+            let mut new_data = PrimitiveBuilder::with_capacity(data.len());
+            data.iter().for_each(|v| new_data.append_option(v));
+            Ok(ChannelData::Float32(new_data))
+        }
+        DataType::Float64 => {
+            let data = as_primitive_array::<Float64Type>(value);
+            let mut new_data = PrimitiveBuilder::with_capacity(data.len());
+            data.iter().for_each(|v| new_data.append_option(v));
+            Ok(ChannelData::Float64(new_data))
+        }
         DataType::Binary => {
             let array = value
                 .as_any()
                 .downcast_ref::<BinaryArray>()
-                .context("could not downcast to Binary array")?
-                .clone();
+                .context("could not downcast to Binary array")?;
             let array_i64 = LargeBinaryArray::from_opt_vec(array.iter().collect());
             Ok(ChannelData::VariableSizeByteArray(
                 array_i64
@@ -1526,8 +1525,7 @@ pub fn try_from(value: &dyn Array) -> Result<ChannelData, Error> {
             let array = value
                 .as_any()
                 .downcast_ref::<FixedSizeBinaryArray>()
-                .context("could not downcast to fixed size binary array")?
-                .clone();
+                .context("could not downcast to fixed size binary array")?;
             let mut new_array = FixedSizeBinaryBuilder::with_capacity(array.len(), *size);
             if let Some(validity) = array.logical_nulls() {
                 array
@@ -1559,10 +1557,9 @@ pub fn try_from(value: &dyn Array) -> Result<ChannelData, Error> {
             let array = value
                 .as_any()
                 .downcast_ref::<LargeBinaryArray>()
-                .context("could not downcast to Large Binary array")?
-                .clone();
+                .context("could not downcast to Large Binary array")?;
             Ok(ChannelData::VariableSizeByteArray(
-                array
+                LargeBinaryArray::from_opt_vec(array.iter().collect())
                     .into_builder()
                     .expect("could not convert binary i64 into mutable array"),
             ))
@@ -1571,8 +1568,7 @@ pub fn try_from(value: &dyn Array) -> Result<ChannelData, Error> {
             let array = value
                 .as_any()
                 .downcast_ref::<StringArray>()
-                .context("could not downcast to Utf8 array")?
-                .clone();
+                .context("could not downcast to Utf8 array")?;
             let array_i64 = LargeStringArray::from(array.iter().collect::<Vec<_>>());
             Ok(ChannelData::Utf8(
                 array_i64
@@ -1580,15 +1576,17 @@ pub fn try_from(value: &dyn Array) -> Result<ChannelData, Error> {
                     .expect("could not convert utf8 into mutable array"),
             ))
         }
-        DataType::LargeUtf8 => Ok(ChannelData::Utf8(
-            value
+        DataType::LargeUtf8 => {
+            let array = value
                 .as_any()
                 .downcast_ref::<LargeStringArray>()
-                .context("could not downcast to Large Utf8 array")?
-                .clone()
-                .into_builder()
-                .expect("could not convert large utf8 into mutable array"),
-        )),
+                .context("could not downcast to Large Utf8 array")?;
+            Ok(ChannelData::Utf8(
+                LargeStringArray::from(array.iter().collect::<Vec<_>>())
+                    .into_builder()
+                    .expect("could not convert large utf8 into mutable array"),
+            ))
+        }
         DataType::FixedSizeList(_, size) => {
             // used for complex number, size of 2
             let array = value
@@ -1597,26 +1595,18 @@ pub fn try_from(value: &dyn Array) -> Result<ChannelData, Error> {
                 .context("could not downcast to fixed size list array, used for complex")?;
             if *size == 2 {
                 match array.value_type() {
-                    DataType::Float32 => Ok(ChannelData::Complex32(
-                        array
-                            .values()
-                            .as_any()
-                            .downcast_ref::<Float32Array>()
-                            .context("could not downcast to primitive array f32")?
-                            .clone()
-                            .into_builder()
-                            .expect("could not downcast to primitive builder f32"),
-                    )),
-                    DataType::Float64 => Ok(ChannelData::Complex64(
-                        array
-                            .values()
-                            .as_any()
-                            .downcast_ref::<Float64Array>()
-                            .context("could not downcast to primitive array f64")?
-                            .clone()
-                            .into_builder()
-                            .expect("could not downcast to primitive builder f64"),
-                    )),
+                    DataType::Float32 => {
+                        let data = as_primitive_array::<Float32Type>(value);
+                        let mut new_data = PrimitiveBuilder::with_capacity(data.len());
+                        data.iter().for_each(|v| new_data.append_option(v));
+                        Ok(ChannelData::Float32(new_data))
+                    }
+                    DataType::Float64 => {
+                        let data = as_primitive_array::<Float64Type>(value);
+                        let mut new_data = PrimitiveBuilder::with_capacity(data.len());
+                        data.iter().for_each(|v| new_data.append_option(v));
+                        Ok(ChannelData::Float64(new_data))
+                    }
                     _ => bail!("FixedSizeList shall be either f23 or f64 to be used for complex"),
                 }
             } else {
