@@ -1,16 +1,10 @@
 #[cfg(test)]
 mod tests {
     use anyhow::Result;
-    use arrow::array::AsArray;
-    use arrow::array::FixedSizeBinaryBuilder;
-    use arrow::array::Float64Array;
-    use arrow::array::Float64Builder;
-    use arrow::array::Int16Builder;
-    use arrow::array::Int32Builder;
-    use arrow::array::Int64Builder;
-    use arrow::array::LargeStringBuilder;
-    use arrow::array::PrimitiveArray;
-    use arrow::array::UInt64Builder;
+    use arrow::array::{
+        AsArray, FixedSizeBinaryBuilder, Float64Array, Float64Builder, Int16Builder, Int32Builder,
+        Int64Builder, LargeStringBuilder, PrimitiveBuilder, UInt64Builder,
+    };
 
     use arrow::datatypes::Float32Type;
 
@@ -166,6 +160,90 @@ mod tests {
         ];
         let writing_mdf_file = format!("{}{}", WRITING_MDF_FILE, "_test".to_owned()).to_owned();
 
+        // Integer testing
+        let file_name = format!(
+            "{}{}{}",
+            BASE_PATH_MDF4, list_of_paths[2], "Vector_IntegerTypes.MF4"
+        );
+        let mut mdf = Mdf::new(&file_name)?;
+        mdf.load_all_channels_data_in_memory()?;
+        let mut vect: Vec<i64> = vec![100; 201];
+        let mut counter: i64 = 0;
+        vect.iter_mut().for_each(|v| {
+            *v -= counter;
+            counter += 1
+        });
+        if let Some(data) = mdf.get_channel_data(&"Counter_INT64_BE".to_string()) {
+            assert_eq!(
+                ChannelData::Int64(Int64Builder::new_from_buffer(vect.clone().into(), None)),
+                data.clone()
+            );
+        }
+        let mut mdf2 = mdf.write(&writing_mdf_file, false)?;
+        mdf2.load_all_channels_data_in_memory()?;
+        if let Some(data) = mdf2.get_channel_data(&"Counter_INT64_LE".to_string()) {
+            assert_eq!(
+                ChannelData::Int64(Int64Builder::new_from_buffer(vect.into(), None)),
+                data.clone()
+            );
+        }
+        let mut vect: Vec<i32> = vec![100; 201];
+        let mut counter: i32 = 0;
+        vect.iter_mut().for_each(|v| {
+            *v -= counter;
+            counter += 1
+        });
+        // error in file, cn data type is 1 but should be 3
+        // if let Some(data) = mdf.get_channel_data(&"Counter_INT32_BE".to_string()) {
+        //     assert_eq!(
+        //         PrimitiveArray::new(DataType::Int32, Buffer::from(vect.clone()), None).boxed(),
+        //         data
+        //     );
+        // }
+        if let Some(data) = mdf2.get_channel_data(&"Counter_INT32_LE".to_string()) {
+            assert_eq!(
+                ChannelData::Int32(Int32Builder::new_from_buffer(vect.into(), None)),
+                data.clone()
+            );
+        }
+        let mut vect: Vec<i16> = vec![100; 201];
+        let mut counter: i16 = 0;
+        vect.iter_mut().for_each(|v| {
+            *v -= counter;
+            counter += 1
+        });
+        if let Some(data) = mdf.get_channel_data(&"Counter_INT16_BE".to_string()) {
+            assert_eq!(
+                ChannelData::Int16(Int16Builder::new_from_buffer(vect.clone().into(), None)),
+                data.clone()
+            );
+        }
+        if let Some(data) = mdf2.get_channel_data(&"Counter_INT16_LE".to_string()) {
+            assert_eq!(
+                ChannelData::Int16(Int16Builder::new_from_buffer(vect.into(), None)),
+                data.clone()
+            );
+        }
+        // Real types
+        let file_name = format!(
+            "{}{}{}",
+            BASE_PATH_MDF4, list_of_paths[3], "Vector_RealTypes.MF4"
+        );
+        let mut mdf = Mdf::new(&file_name)?;
+        mdf.load_all_channels_data_in_memory()?;
+        let file_name = format!(
+            "{}{}{}",
+            BASE_PATH_MDF4, list_of_paths[3], "halffloat_sinus.mf4"
+        );
+        let mut mdf = Mdf::new(&file_name)?;
+        mdf.load_all_channels_data_in_memory()?;
+        let file_name = format!(
+            "{}{}{}",
+            BASE_PATH_MDF4, list_of_paths[3], "dSPACE_RealTypes.mf4"
+        );
+        let mut mdf = Mdf::new(&file_name)?;
+        mdf.load_all_channels_data_in_memory()?;
+
         // StringTypes testing
         // UTF8
         let mut expected_string_result = LargeStringBuilder::with_capacity(10, 6);
@@ -289,90 +367,6 @@ mod tests {
             byte_array.append_value(vec![255, 255, 255, 255, 255])?;
             assert_eq!(&ChannelData::FixedSizeByteArray(byte_array), data);
         }
-
-        // Integer testing
-        let file_name = format!(
-            "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[2], "Vector_IntegerTypes.MF4"
-        );
-        let mut mdf = Mdf::new(&file_name)?;
-        mdf.load_all_channels_data_in_memory()?;
-        let mut vect: Vec<i64> = vec![100; 201];
-        let mut counter: i64 = 0;
-        vect.iter_mut().for_each(|v| {
-            *v -= counter;
-            counter += 1
-        });
-        if let Some(data) = mdf.get_channel_data(&"Counter_INT64_BE".to_string()) {
-            assert_eq!(
-                ChannelData::Int64(Int64Builder::new_from_buffer(vect.clone().into(), None)),
-                data.clone()
-            );
-        }
-        let mut mdf2 = mdf.write(&writing_mdf_file, false)?;
-        mdf2.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf2.get_channel_data(&"Counter_INT64_LE".to_string()) {
-            assert_eq!(
-                ChannelData::Int64(Int64Builder::new_from_buffer(vect.into(), None)),
-                data.clone()
-            );
-        }
-        let mut vect: Vec<i32> = vec![100; 201];
-        let mut counter: i32 = 0;
-        vect.iter_mut().for_each(|v| {
-            *v -= counter;
-            counter += 1
-        });
-        // error in file, cn data type is 1 but should be 3
-        // if let Some(data) = mdf.get_channel_data(&"Counter_INT32_BE".to_string()) {
-        //     assert_eq!(
-        //         PrimitiveArray::new(DataType::Int32, Buffer::from(vect.clone()), None).boxed(),
-        //         data
-        //     );
-        // }
-        if let Some(data) = mdf2.get_channel_data(&"Counter_INT32_LE".to_string()) {
-            assert_eq!(
-                ChannelData::Int32(Int32Builder::new_from_buffer(vect.into(), None)),
-                data.clone()
-            );
-        }
-        let mut vect: Vec<i16> = vec![100; 201];
-        let mut counter: i16 = 0;
-        vect.iter_mut().for_each(|v| {
-            *v -= counter;
-            counter += 1
-        });
-        if let Some(data) = mdf.get_channel_data(&"Counter_INT16_BE".to_string()) {
-            assert_eq!(
-                ChannelData::Int16(Int16Builder::new_from_buffer(vect.clone().into(), None)),
-                data.clone()
-            );
-        }
-        if let Some(data) = mdf2.get_channel_data(&"Counter_INT16_LE".to_string()) {
-            assert_eq!(
-                ChannelData::Int16(Int16Builder::new_from_buffer(vect.into(), None)),
-                data.clone()
-            );
-        }
-        // Real types
-        let file_name = format!(
-            "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[3], "Vector_RealTypes.MF4"
-        );
-        let mut mdf = Mdf::new(&file_name)?;
-        mdf.load_all_channels_data_in_memory()?;
-        let file_name = format!(
-            "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[3], "halffloat_sinus.mf4"
-        );
-        let mut mdf = Mdf::new(&file_name)?;
-        mdf.load_all_channels_data_in_memory()?;
-        let file_name = format!(
-            "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[3], "dSPACE_RealTypes.mf4"
-        );
-        let mut mdf = Mdf::new(&file_name)?;
-        mdf.load_all_channels_data_in_memory()?;
         Ok(())
     }
 
@@ -1079,13 +1073,16 @@ mod tests {
         mdf.load_all_channels_data_in_memory()?;
         // modify data
         if let Some(data) = mdf.get_channel_data(&ref_channel.to_string()) {
-            let mut new_data = <PrimitiveArray<Float32Type> as Clone>::clone(
-                &data.finish_cloned().as_primitive::<Float32Type>(),
-            )
-            .into_builder()
-            .expect("failed getting builder");
+            let mut new_data = PrimitiveBuilder::with_capacity(data.len());
+            data.finish_cloned()
+                .as_primitive::<Float32Type>()
+                .iter()
+                .for_each(|v| new_data.append_option(v));
             new_data.values_slice_mut()[0] = 0.0f32;
-            mdf.set_channel_data(&ref_channel.to_string(), Arc::new(new_data.finish_cloned()))?;
+            mdf.set_channel_data(
+                &ref_channel.to_string(),
+                ChannelData::Float32(new_data).as_ref(),
+            )?;
             mdf.set_channel_desc(&ref_channel.to_string(), ref_desc);
             mdf.set_channel_unit(&ref_channel.to_string(), ref_unit);
             mdf.set_channel_master_type(&ref_channel.to_string(), 1)?;
