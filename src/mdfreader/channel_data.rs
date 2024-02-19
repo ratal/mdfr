@@ -1109,31 +1109,31 @@ impl ChannelData {
     }
     pub fn to_data(&self) -> ArrayData {
         match &self {
-            ChannelData::Int8(_a) => todo!(),
-            ChannelData::UInt8(_) => todo!(),
-            ChannelData::Int16(_) => todo!(),
-            ChannelData::UInt16(_) => todo!(),
-            ChannelData::Int32(_) => todo!(),
-            ChannelData::UInt32(_) => todo!(),
-            ChannelData::Float32(_) => todo!(),
-            ChannelData::Int64(_) => todo!(),
-            ChannelData::UInt64(_) => todo!(),
-            ChannelData::Float64(_) => todo!(),
-            ChannelData::Complex32(_) => todo!(),
-            ChannelData::Complex64(_) => todo!(),
-            ChannelData::Utf8(_) => todo!(),
-            ChannelData::VariableSizeByteArray(_) => todo!(),
-            ChannelData::FixedSizeByteArray(_) => todo!(),
-            ChannelData::ArrayDInt8(_) => todo!(),
-            ChannelData::ArrayDUInt8(_) => todo!(),
-            ChannelData::ArrayDInt16(_) => todo!(),
-            ChannelData::ArrayDUInt16(_) => todo!(),
-            ChannelData::ArrayDInt32(_) => todo!(),
-            ChannelData::ArrayDUInt32(_) => todo!(),
-            ChannelData::ArrayDFloat32(_) => todo!(),
-            ChannelData::ArrayDInt64(_) => todo!(),
-            ChannelData::ArrayDUInt64(_) => todo!(),
-            ChannelData::ArrayDFloat64(_) => todo!(),
+            ChannelData::Int8(a) => a.finish_cloned().to_data(),
+            ChannelData::UInt8(a) => a.finish_cloned().to_data(),
+            ChannelData::Int16(a) => a.finish_cloned().to_data(),
+            ChannelData::UInt16(a) => a.finish_cloned().to_data(),
+            ChannelData::Int32(a) => a.finish_cloned().to_data(),
+            ChannelData::UInt32(a) => a.finish_cloned().to_data(),
+            ChannelData::Float32(a) => a.finish_cloned().to_data(),
+            ChannelData::Int64(a) => a.finish_cloned().to_data(),
+            ChannelData::UInt64(a) => a.finish_cloned().to_data(),
+            ChannelData::Float64(a) => a.finish_cloned().to_data(),
+            ChannelData::Complex32(a) => a.finish_cloned().to_data(),
+            ChannelData::Complex64(a) => a.finish_cloned().to_data(),
+            ChannelData::Utf8(a) => a.finish_cloned().to_data(),
+            ChannelData::VariableSizeByteArray(a) => a.finish_cloned().to_data(),
+            ChannelData::FixedSizeByteArray(a) => a.finish_cloned().to_data(),
+            ChannelData::ArrayDInt8((a, _)) => a.finish_cloned().to_data(),
+            ChannelData::ArrayDUInt8((a, _)) => a.finish_cloned().to_data(),
+            ChannelData::ArrayDInt16((a, _)) => a.finish_cloned().to_data(),
+            ChannelData::ArrayDUInt16((a, _)) => a.finish_cloned().to_data(),
+            ChannelData::ArrayDInt32((a, _)) => a.finish_cloned().to_data(),
+            ChannelData::ArrayDUInt32((a, _)) => a.finish_cloned().to_data(),
+            ChannelData::ArrayDFloat32((a, _)) => a.finish_cloned().to_data(),
+            ChannelData::ArrayDInt64((a, _)) => a.finish_cloned().to_data(),
+            ChannelData::ArrayDUInt64((a, _)) => a.finish_cloned().to_data(),
+            ChannelData::ArrayDFloat64((a, _)) => a.finish_cloned().to_data(),
         }
     }
     pub fn set_validity(&mut self, mask: &mut BooleanBufferBuilder) -> Result<(), Error> {
@@ -1199,16 +1199,16 @@ impl ChannelData {
                     });
                 *a = new_array;
             }
-            ChannelData::ArrayDInt8(_) => {}
-            ChannelData::ArrayDUInt8(_) => {}
-            ChannelData::ArrayDInt16(_) => {}
-            ChannelData::ArrayDUInt16(_) => {}
-            ChannelData::ArrayDInt32(_) => {}
-            ChannelData::ArrayDUInt32(_) => {}
-            ChannelData::ArrayDFloat32(_) => {}
-            ChannelData::ArrayDInt64(_) => {}
-            ChannelData::ArrayDUInt64(_) => {}
-            ChannelData::ArrayDFloat64(_) => {}
+            ChannelData::ArrayDInt8((_a, _)) => {}
+            ChannelData::ArrayDUInt8((_a, _)) => {}
+            ChannelData::ArrayDInt16((_a, _)) => {}
+            ChannelData::ArrayDUInt16((_a, _)) => {}
+            ChannelData::ArrayDInt32((_a, _)) => {}
+            ChannelData::ArrayDUInt32((_a, _)) => {}
+            ChannelData::ArrayDFloat32((_a, _)) => {}
+            ChannelData::ArrayDInt64((_a, _)) => {}
+            ChannelData::ArrayDUInt64((_a, _)) => {}
+            ChannelData::ArrayDFloat64((_a, _)) => {}
         }
         Ok(())
     }
