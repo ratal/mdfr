@@ -1,7 +1,6 @@
 //! data read and load in memory based in MdfInfo3's metadata
 use rayon::prelude::*;
 
-use crate::export::tensor::Order;
 use crate::mdfinfo::mdfinfo3::{Cg3, Cn3, Dg3};
 use crate::mdfinfo::MdfInfo;
 use anyhow::{Context, Error, Ok, Result};
@@ -11,7 +10,7 @@ use std::io::{BufReader, Read};
 
 use crate::mdfreader::data_read3::read_channels_from_bytes;
 
-use super::arrow::arrow_init_zeros;
+use super::arrow_helpers::{arrow_init_zeros, Order};
 use super::Mdf;
 use crate::mdfreader::conversions3::convert_all_channels;
 

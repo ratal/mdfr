@@ -1,8 +1,6 @@
 //! data read and load in memory based in MdfInfo4's metadata
-use crate::export::tensor::Order;
 use crate::mdfinfo::mdfinfo4::{
-    parse_dz, parser_dl4_block, parser_ld4_block, validate_channels_set, Dl4Block, Dt4Block,
-    Hl4Block, Ld4Block,
+    parse_dz, parser_dl4_block, parser_ld4_block, Dl4Block, Dt4Block, Hl4Block, Ld4Block,
 };
 use crate::mdfinfo::mdfinfo4::{Blockheader4, Cg4, Cn4, Compo, Dg4};
 use crate::mdfinfo::MdfInfo;
@@ -10,8 +8,8 @@ use crate::mdfreader::conversions4::convert_all_channels;
 use crate::mdfreader::data_read4::read_channels_from_bytes;
 use crate::mdfreader::data_read4::read_one_channel_array;
 use anyhow::{bail, Context, Error, Ok, Result};
-use arrow2::array::{BinaryArray, PrimitiveArray, Utf8Array};
-use arrow2::datatypes::DataType;
+use arrow::array::{LargeBinaryBuilder, LargeStringBuilder, PrimitiveArray};
+use arrow::datatypes::DataType;
 use binrw::BinReaderExt;
 use encoding_rs::{Decoder, UTF_16BE, UTF_16LE, WINDOWS_1252};
 use rayon::prelude::*;
@@ -26,7 +24,7 @@ use std::{
     usize,
 };
 
-use super::arrow::arrow_init_zeros;
+use super::arrow_helpers::{arrow_init_zeros, Order};
 use super::Mdf;
 
 /// The following constant represents the size of data chunk to be read and processed.
@@ -419,7 +417,7 @@ fn read_vlsd_from_bytes(
             let array = cn
                 .data
                 .as_any_mut()
-                .downcast_mut::<Utf8Array<i64>>()
+                .downcast_mut::<LargeStringBuilder>()
                 .context("could not downcast to Utf8 values array")?;
             let mut values = array
                 .get_mut_values()
@@ -543,7 +541,7 @@ fn read_vlsd_from_bytes(
                     }
                 }
             };
-            cn.data = Utf8Array::<i64>::try_new(
+            cn.data = LargeStringBuilder::try_new(
                 DataType::LargeUtf8,
                 offsets
                     .try_into()
@@ -561,7 +559,7 @@ fn read_vlsd_from_bytes(
             let array = cn
                 .data
                 .as_any_mut()
-                .downcast_mut::<BinaryArray<i64>>()
+                .downcast_mut::<LargeBinaryBuilder>()
                 .context("could not downcast to mutable Binary values array")?;
             let mut values = array
                 .get_mut_values()
@@ -594,8 +592,7 @@ fn read_vlsd_from_bytes(
                     break;
                 }
             }
-            cn.data = BinaryArray::<i64>::try_new(
-                DataType::LargeBinary,
+            cn.data = LargeBinaryBuilder::try_new(
                 offsets
                     .try_into()
                     .context("failed converting vector into OffsetsBuffer")?,
@@ -852,7 +849,6 @@ fn read_dv_di(
             invalid_data.clear();
         }
     }
-    validate_channels_set(&mut channel_group.cn, channel_names_to_read_in_dg);
     Ok(position)
 }
 
@@ -972,7 +968,6 @@ fn parser_dl4_sorted(
             }
         }
     }
-    validate_channels_set(&mut channel_group.cn, channel_names_to_read_in_dg);
     Ok((position, vlsd_channels))
 }
 
@@ -1077,7 +1072,6 @@ fn read_all_channels_sorted(
         .context("could not read channels from bytes")?;
         previous_index += n_record_chunk;
     }
-    validate_channels_set(&mut channel_group.cn, channel_names_to_read_in_dg);
     Ok(vlsd_channels)
 }
 
@@ -1103,7 +1097,6 @@ fn read_all_channels_sorted_from_bytes(
         true,
     )
     .context("failed parsing channels data from bytes")?;
-    validate_channels_set(&mut channel_group.cn, channel_names_to_read_in_dg);
     Ok(vlsd_channels)
 }
 
@@ -1211,7 +1204,7 @@ fn read_all_channels_unsorted_from_bytes(
                                                 let array = target_cn
                                                     .data
                                                     .as_any_mut()
-                                                    .downcast_mut::<Utf8Array<i64>>()
+                                                    .downcast_mut::<LargeStringBuilder>()
                                                     .context(
                                                         "could not downcast to Utf8 values array",
                                                     )?;
@@ -1245,7 +1238,7 @@ fn read_all_channels_unsorted_from_bytes(
                                                     offsets.last_mut().copied().unwrap_or(0)
                                                         + dst.len() as i64;
                                                 offsets.push(last_offset);
-                                                target_cn.data = Utf8Array::<i64>::try_new(
+                                                target_cn.data = LargeStringBuilder::try_new(
                                                     DataType::LargeUtf8,
                                                     offsets.try_into().context("failed converting vector into OffsetsBuffer")?,
                                                     values.into(),
@@ -1256,7 +1249,7 @@ fn read_all_channels_unsorted_from_bytes(
                                                 let array = target_cn
                                                     .data
                                                     .as_any_mut()
-                                                    .downcast_mut::<BinaryArray<i64>>()
+                                                    .downcast_mut::<LargeBinaryBuilder>()
                                                     .context(
                                                         "could not downcast to Binary values array",
                                                     )?;
@@ -1267,7 +1260,7 @@ fn read_all_channels_unsorted_from_bytes(
                                                     offsets.last_mut().copied().unwrap_or(0)
                                                         + record.len() as i64;
                                                 offsets.push(last_offset);
-                                                target_cn.data = BinaryArray::<i64>::try_new(
+                                                target_cn.data = LargeStringBuilder::try_new(
                                                     DataType::LargeBinary,
                                                     offsets.try_into().context("failed converting vector into OffsetsBuffer")?,
                                                     values.into(),
@@ -1334,7 +1327,6 @@ fn read_all_channels_unsorted_from_bytes(
             )
             .context("failed reading channels from bytes")?;
             record_data.clear(); // clears data for new block, keeping capacity
-            validate_channels_set(&mut channel_group.cn, channel_names_to_read_in_dg);
         }
     }
     Ok(())

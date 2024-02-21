@@ -1,12 +1,12 @@
 //! Parsing of file metadata into MdfInfo4 struct
-use crate::export::tensor::Order;
-use crate::mdfreader::arrow::{arrow_data_type_init, ndim};
+use crate::mdfreader::arrow_helpers::{arrow_data_type_init, Order};
 use crate::mdfreader::{DataSignature, MasterSignature};
 use anyhow::{anyhow, Context, Error, Result};
-use arrow2::array::{Array, PrimitiveArray};
-use arrow2::bitmap::{Bitmap, MutableBitmap};
-use arrow2::buffer::Buffer;
-use arrow2::datatypes::DataType;
+use arrow::array::{
+    Array, ArrayBuilder, BooleanBufferBuilder, PrimitiveBuilder, UInt16Builder, UInt32Builder,
+    UInt8Builder,
+};
+use arrow::datatypes::UInt8Type;
 use binrw::{binrw, BinReaderExt, BinWriterExt};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::naive::NaiveDateTime;
@@ -204,7 +204,7 @@ impl MdfInfo4 {
                                     cn.block.cn_type,
                                     cn.block.cn_data_type,
                                     cn.n_bytes,
-                                    ndim(cn.data.clone()) > 1,
+                                    cn.list_size,
                                 )?
                                 .to_boxed();
                             }
@@ -258,6 +258,11 @@ impl MdfInfo4 {
             .create_tx(channel_name_position, channel_name.to_string());
 
         // Channel array
+        let mut list_size = 1; // primitive list size is 1
+        if data_signature = 15 | 16 {
+            //complex
+            list_size = 2;
+        }
         let data_ndim = data_signature.ndim - 1;
         let mut composition: Option<Composition> = None;
         if data_ndim > 0 {
@@ -275,6 +280,12 @@ impl MdfInfo4 {
                 ca_block.pnd *= x as usize;
             }
             cg_block.cg_data_bytes = ca_block.pnd as u32 * data_signature.byte_count;
+            if data_signature = 15 | 16 {
+                //complex
+                list_size = ca_block.pnd * 2;
+            } else {
+                list_size = ca_block.pnd;
+            }
 
             let composition_position = position_generator();
             cn_block.cn_composition = composition_position;
@@ -334,13 +345,13 @@ impl MdfInfo4 {
             unique_name: channel_name.to_string(),
             data,
             block: cn_block,
+            list_size,
             endian: machine_endian,
             block_position: cn_pos,
             pos_byte_beg: 0,
             n_bytes,
             composition,
             invalid_mask: None,
-            channel_data_valid: true,
         };
 
         // CG
@@ -1928,7 +1939,9 @@ impl Cg4 {
                                 );
                             },
                         );
-                        cn.data = cn.data.with_validity(Some(Bitmap::from(mask.clone())));
+                        cn.data = cn
+                            .data
+                            .with_validity(Some(BooleanBufferBuilder::from(mask.clone())));
                     }
                 });
             self.invalid_bytes = None; // Clears out invalid bytes channel
@@ -2079,7 +2092,7 @@ impl Default for Cn4Block {
 
 /// Cn4 structure containing block but also unique_name, ndarray data, composition
 /// and other attributes frequently needed and computed
-#[derive(Debug)]
+#[derive(Debug, Default, Clone)]
 #[repr(C)]
 pub struct Cn4 {
     /// short header
@@ -2095,13 +2108,13 @@ pub struct Cn4 {
     pub n_bytes: u32,
     pub composition: Option<Composition>,
     /// channel data
-    pub data: Box<dyn Array>,
+    pub data: Box<dyn ArrayBuilder>,
     /// false = little endian
     pub endian: bool,
+    /// List size: 1 for normal primitive, 2 for complex, pnd for arrays
+    pub list_size: usize,
     /// optional invalid mask array, invalid byte position in record, invalid byte mask
-    pub invalid_mask: Option<(MutableBitmap, usize, u8)>,
-    /// True if channel is valid = contains data converted
-    pub channel_data_valid: bool,
+    pub invalid_mask: Option<(BooleanBufferBuilder, usize, u8)>,
 }
 
 impl Default for Cn4 {
@@ -2114,10 +2127,10 @@ impl Default for Cn4 {
             pos_byte_beg: Default::default(),
             n_bytes: Default::default(),
             composition: Default::default(),
-            data: PrimitiveArray::new(DataType::UInt8, Buffer::<u8>::new(), None).to_boxed(),
+            data: PrimitiveBuilder::<UInt8Type>::new().into_box_any(),
             endian: Default::default(),
+            list_size: Default::default(),
             invalid_mask: Default::default(),
-            channel_data_valid: Default::default(),
         }
     }
 }
@@ -2134,8 +2147,8 @@ impl Clone for Cn4 {
             composition: self.composition.clone(),
             data: self.data.clone(),
             endian: self.endian,
+            list_size: self.list_size,
             invalid_mask: self.invalid_mask.clone(),
-            channel_data_valid: self.channel_data_valid,
         }
     }
 }
@@ -2145,14 +2158,6 @@ pub(crate) type CnType = HashMap<i32, Cn4>;
 
 /// record layout type : record_id_size: u8, cg_data_bytes: u32, cg_inval_bytes: u32
 type RecordLayout = (u8, u32, u32);
-
-/// Set flag for each channel in CnType indicating its owned data is valid
-pub fn validate_channels_set(channels: &mut CnType, channel_names: &HashSet<String>) {
-    channels
-        .iter_mut()
-        .filter(|(_, cn)| channel_names.contains(&cn.unique_name))
-        .for_each(|(_, cn)| cn.channel_data_valid = true);
-}
 
 /// creates recursively in the channel group the CN blocks and all its other linked blocks (CC, MD, TX, CA, etc.)
 pub fn parse_cn4(
@@ -2289,10 +2294,10 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 2,
         composition: None,
-        data: PrimitiveArray::new(DataType::UInt16, Buffer::<u16>::new(), None).to_boxed(),
+        data: UInt16Builder::new().into_box_any(),
         endian: false,
+        list_size: 1,
         invalid_mask: None,
-        channel_data_valid: false,
     };
     let block = Cn4Block {
         cn_links: 8,
@@ -2308,10 +2313,10 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 1,
         composition: None,
-        data: PrimitiveArray::new(DataType::UInt8, Buffer::<u8>::new(), None).to_boxed(),
+        data: UInt8Builder::new().into_box_any(),
         endian: false,
+        list_size: 1,
         invalid_mask: None,
-        channel_data_valid: false,
     };
     let block = Cn4Block {
         cn_links: 8,
@@ -2327,10 +2332,10 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 1,
         composition: None,
-        data: PrimitiveArray::new(DataType::UInt8, Buffer::<u8>::new(), None).to_boxed(),
+        data: UInt8Builder::new().into_box_any(),
         endian: false,
+        list_size: 1,
         invalid_mask: None,
-        channel_data_valid: false,
     };
     let block = Cn4Block {
         cn_links: 8,
@@ -2346,10 +2351,10 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 1,
         composition: None,
-        data: PrimitiveArray::new(DataType::UInt8, Buffer::<u8>::new(), None).to_boxed(),
+        data: UInt8Builder::new().into_box_any(),
         endian: false,
+        list_size: 1,
         invalid_mask: None,
-        channel_data_valid: false,
     };
     let block = Cn4Block {
         cn_links: 8,
@@ -2365,10 +2370,10 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 1,
         composition: None,
-        data: PrimitiveArray::new(DataType::UInt8, Buffer::<u8>::new(), None).to_boxed(),
+        data: UInt8Builder::new().into_box_any(),
         endian: false,
+        list_size: 1,
         invalid_mask: None,
-        channel_data_valid: false,
     };
     let block = Cn4Block {
         cn_links: 8,
@@ -2384,10 +2389,10 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 1,
         composition: None,
-        data: PrimitiveArray::new(DataType::UInt8, Buffer::<u8>::new(), None).to_boxed(),
+        data: UInt8Builder::new().into_box_any(),
         endian: false,
+        list_size: 1,
         invalid_mask: None,
-        channel_data_valid: false,
     };
     (date_ms, min, hour, day, month, year)
 }
@@ -2408,10 +2413,10 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         pos_byte_beg,
         n_bytes: 4,
         composition: None,
-        data: PrimitiveArray::new(DataType::UInt32, Buffer::<u32>::new(), None).to_boxed(),
+        data: UInt32Builder::new().into_box_any(),
         endian: false,
+        list_size: 1,
         invalid_mask: None,
-        channel_data_valid: false,
     };
     let block = Cn4Block {
         cn_links: 8,
@@ -2427,10 +2432,10 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         pos_byte_beg,
         n_bytes: 2,
         composition: None,
-        data: PrimitiveArray::new(DataType::UInt16, Buffer::<u16>::new(), None).to_boxed(),
+        data: UInt16Builder::new().into_box_any(),
         endian: false,
+        list_size: 1,
         invalid_mask: None,
-        channel_data_valid: false,
     };
     (ms, days)
 }
@@ -2484,14 +2489,12 @@ fn parse_cn4_block(
 
     let pos_byte_beg = block.cn_byte_offset + record_id_size as u32;
     let n_bytes = calc_n_bytes_not_aligned(block.cn_bit_count + (block.cn_bit_offset as u32));
-    let invalid_mask: Option<(MutableBitmap, usize, u8)> = if cg_inval_bytes != 0 {
+    let invalid_mask: Option<(BooleanBufferBuilder, usize, u8)> = if cg_inval_bytes != 0 {
         let invalid_byte_position = (block.cn_inval_bit_pos >> 3) as usize;
         let invalid_byte_mask = 1 << (block.cn_inval_bit_pos & 0x07);
-        Some((
-            MutableBitmap::from_len_set(cg_cycle_count as usize),
-            invalid_byte_position,
-            invalid_byte_mask,
-        ))
+        let mut buffer = BooleanBufferBuilder::new(cg_cycle_count as usize);
+        buffer.advance(cg_cycle_count as usize);
+        Some((Some(buffer), invalid_byte_position, invalid_byte_mask))
     } else {
         None
     };
@@ -2542,9 +2545,9 @@ fn parse_cn4_block(
 
     //Reads CA or composition
     let compo: Option<Composition>;
-    let is_array: bool;
+    let mut list_size: usize;
     if block.cn_composition != 0 {
-        let (co, pos, array_flag, n_cns, cnss) = parse_composition(
+        let (co, pos, array_size, n_cns, cnss) = parse_composition(
             rdr,
             block.cn_composition,
             position,
@@ -2553,14 +2556,26 @@ fn parse_cn4_block(
             cg_cycle_count,
         )
         .context("Failed reading composition")?;
-        is_array = array_flag;
+        // list size calculation
+        if block.cn_data_type = 15 | 16 {
+            //complex
+            list_size = 2 * array_size;
+        } else {
+            list_size = array_size;
+        }
         compo = Some(co);
         position = pos;
         n_cn += n_cns;
         cns = cnss;
     } else {
         compo = None;
-        is_array = false;
+        // list size calculation
+        if block.cn_data_type = 15 | 16 {
+            //complex
+            list_size = 2;
+        } else {
+            list_size = 1;
+        }
     }
 
     let mut endian: bool = false; // Little endian by default
@@ -2590,11 +2605,11 @@ fn parse_cn4_block(
         pos_byte_beg,
         n_bytes,
         composition: compo,
-        data: arrow_data_type_init(cn_type, data_type, n_bytes, is_array)
-            .with_context(|| format!("Failed initialising arrow2 data_type {}, cn_type {}, is_array {} while reading CN4 Block fo channel {}", data_type, cn_type, is_array, name.clone()))?,
+        data: arrow_data_type_init(cn_type, data_type, n_bytes, list_size)
+            .with_context(|| format!("Failed initialising arrow2 data_type {}, cn_type {}, list size {} while reading CN4 Block fo channel {}", data_type, cn_type, list_size, name.clone()))?,
         endian,
+        list_size,
         invalid_mask,
-        channel_data_valid: false,
     };
 
     Ok((cn_struct, position, n_cn, cns))
@@ -3043,20 +3058,20 @@ fn parse_composition(
     sharable: &mut SharableBlocks,
     record_layout: RecordLayout,
     cg_cycle_count: u64,
-) -> Result<(Composition, i64, bool, usize, CnType)> {
+) -> Result<(Composition, i64, usize, usize, CnType)> {
     let (mut block, block_header, pos) =
         parse_block(rdr, target, position).context("Failed parsing composition header block")?;
     position = pos;
-    let is_array: bool;
+    let array_size: usize;
     let mut cns: CnType;
     let mut n_cn: usize = 0;
 
     if block_header.hdr_id == "##CA".as_bytes() {
         // Channel Array
-        is_array = true;
         let block = parse_ca_block(&mut block, block_header, cg_cycle_count)
             .context("Failed parsing CA block")?;
         position = pos;
+        array_size = block.pnd;
         let ca_compositon: Option<Box<Composition>>;
         if block.ca_composition != 0 {
             let (ca, pos, _is_array, n_cns, cnss) = parse_composition(
@@ -3082,13 +3097,13 @@ fn parse_composition(
                 compo: ca_compositon,
             },
             position,
-            is_array,
+            array_size,
             n_cn,
             cns,
         ))
     } else {
         // Channel structure
-        is_array = false;
+        array_size = 1;
         let (cnss, pos, n_cns, first_rec_pos) = parse_cn4(
             rdr,
             target,
@@ -3129,7 +3144,7 @@ fn parse_composition(
                 compo: cn_composition,
             },
             position,
-            is_array,
+            array_size,
             n_cn,
             cns,
         ))
@@ -3391,7 +3406,9 @@ pub struct Ld4Block {
     /// # of links
     pub ld_n_links: u64,
     /// links
-    #[br(little, count = ld_n_links)]
+    /// next ld block
+    pub ld_next: i64,
+    #[br(if(ld_n_links > 1), little, count = ld_n_links - 1)]
     pub ld_links: Vec<i64>,
     // members
     /// Flags
@@ -3416,6 +3433,7 @@ impl Default for Ld4Block {
             reserved: [0; 4],
             ld_len: 56,
             ld_n_links: 2,
+            ld_next: 0,
             ld_links: vec![0],
             ld_flags: 0,
             ld_count: 0,
@@ -3435,15 +3453,15 @@ impl Ld4Block {
     /// Data block positions
     pub fn ld_data(&self) -> Vec<i64> {
         if (1u32 << 31) & self.ld_flags > 0 {
-            self.ld_links.iter().skip(1).step_by(2).copied().collect()
+            self.ld_links.iter().step_by(2).copied().collect()
         } else {
-            self.ld_links[1..].to_vec()
+            self.ld_links.clone()
         }
     }
     /// Invalid data block positions
     pub fn ld_invalid_data(&self) -> Vec<i64> {
         if (1u32 << 31) & self.ld_flags > 0 {
-            self.ld_links.iter().skip(2).step_by(2).copied().collect()
+            self.ld_links.iter().skip(1).step_by(2).copied().collect()
         } else {
             Vec::<i64>::new()
         }

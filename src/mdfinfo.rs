@@ -2,7 +2,7 @@
 //! mdfinfo module
 
 use anyhow::{bail, Context, Result};
-use arrow2::array::Array;
+use arrow::array::ArrayBuilder;
 use binrw::{binrw, BinReaderExt};
 use codepage::to_encoding;
 use encoding_rs::Encoding;
@@ -296,7 +296,7 @@ impl MdfInfo {
         Ok(())
     }
     /// returns channel's data ndarray.
-    pub fn get_channel_data(&self, channel_name: &str) -> Option<Box<dyn Array>> {
+    pub fn get_channel_data(&self, channel_name: &str) -> Option<Box<dyn ArrayBuilder>> {
         let data = match self {
             MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_data(channel_name),
             MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_data(channel_name),
@@ -307,7 +307,7 @@ impl MdfInfo {
     pub fn add_channel(
         &mut self,
         channel_name: String,
-        data: Box<dyn Array>,
+        data: Box<dyn ArrayBuilder>,
         data_signature: DataSignature,
         master: MasterSignature,
         unit: Option<String>,
@@ -350,7 +350,11 @@ impl MdfInfo {
         }
     }
     /// defines channel's data in memory
-    pub fn set_channel_data(&mut self, channel_name: &str, data: Box<dyn Array>) -> Result<()> {
+    pub fn set_channel_data(
+        &mut self,
+        channel_name: &str,
+        data: Box<dyn ArrayBuilder>,
+    ) -> Result<()> {
         match self {
             MdfInfo::V3(mdfinfo3) => {
                 let mut file_name = PathBuf::from(mdfinfo3.file_name.as_str());

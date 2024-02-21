@@ -1,8 +1,7 @@
 //! Parsing of file metadata into MdfInfo3 struct
 use anyhow::{Context, Result};
-use arrow2::array::{Array, PrimitiveArray};
-use arrow2::buffer::Buffer;
-use arrow2::datatypes::DataType;
+use arrow::array::{Array, ArrayBuilder, PrimitiveArray, PrimitiveBuilder};
+use arrow::datatypes::{DataType, UInt8Type};
 use binrw::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::NaiveDate;
@@ -15,7 +14,7 @@ use std::fs::File;
 use std::io::{prelude::*, Cursor};
 
 use crate::mdfinfo::IdBlock;
-use crate::mdfreader::arrow::{arrow_data_type_init, ndim};
+use crate::mdfreader::arrow_helpers::arrow_data_type_init;
 
 use super::sym_buf_reader::SymBufReader;
 
@@ -167,7 +166,7 @@ impl MdfInfo3 {
                                     0,
                                     convert_data_type_3to4(cn.block1.cn_type),
                                     0,
-                                    ndim(cn.data.clone()) > 1,
+                                    1,
                                 )
                                 .context("failed initialisating array")?;
                             }
@@ -869,11 +868,9 @@ pub struct Cn3 {
     /// number of bytes taken by channel in record
     pub n_bytes: u16,
     /// channel data
-    pub data: Box<dyn Array>,
+    pub data: Box<dyn ArrayBuilder>,
     /// false = little endian
     pub endian: bool,
-    /// True if channel is valid = contains data converted
-    pub channel_data_valid: bool,
 }
 
 impl Default for Cn3 {
@@ -886,9 +883,8 @@ impl Default for Cn3 {
             description: Default::default(),
             pos_byte_beg: Default::default(),
             n_bytes: Default::default(),
-            data: PrimitiveArray::new(DataType::UInt8, Buffer::<u8>::new(), None).to_boxed(),
+            data: PrimitiveBuilder::<UInt8Type>::new().into_box_any(),
             endian: Default::default(),
-            channel_data_valid: Default::default(),
         }
     }
 }
@@ -1094,7 +1090,6 @@ fn parse_cn3_block(
         n_bytes,
         data: arrow_data_type_init(0, data_type, n_bytes as u32, false)?,
         endian,
-        channel_data_valid: false,
     };
 
     Ok((cn_struct, position))
@@ -1139,7 +1134,6 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         n_bytes: 2,
         data: PrimitiveArray::<u16>::new_empty(DataType::UInt16).boxed(),
         endian: false,
-        channel_data_valid: false,
     };
     let block2 = Cn3Block2 {
         cn_data_type: 13,
@@ -1158,7 +1152,6 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         n_bytes: 1,
         data: PrimitiveArray::<u8>::new_empty(DataType::UInt8).boxed(),
         endian: false,
-        channel_data_valid: false,
     };
     let block2 = Cn3Block2 {
         cn_data_type: 13,
@@ -1177,7 +1170,6 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         n_bytes: 1,
         data: PrimitiveArray::<u8>::new_empty(DataType::UInt8).boxed(),
         endian: false,
-        channel_data_valid: false,
     };
     let block2 = Cn3Block2 {
         cn_data_type: 13,
@@ -1196,7 +1188,6 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         n_bytes: 1,
         data: PrimitiveArray::<u8>::new_empty(DataType::UInt8).boxed(),
         endian: false,
-        channel_data_valid: false,
     };
     let block2 = Cn3Block2 {
         cn_data_type: 13,
@@ -1215,7 +1206,6 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         n_bytes: 1,
         data: PrimitiveArray::<u8>::new_empty(DataType::UInt8).boxed(),
         endian: false,
-        channel_data_valid: false,
     };
     let block2 = Cn3Block2 {
         cn_data_type: 13,
@@ -1234,7 +1224,6 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         n_bytes: 1,
         data: PrimitiveArray::<u8>::new_empty(DataType::UInt8).boxed(),
         endian: false,
-        channel_data_valid: false,
     };
     (date_ms, min, hour, day, month, year)
 }
@@ -1263,7 +1252,6 @@ fn can_open_time(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3) {
         n_bytes: 4,
         data: PrimitiveArray::<u32>::new_empty(DataType::UInt32).boxed(),
         endian: false,
-        channel_data_valid: false,
     };
     let block2 = Cn3Block2 {
         cn_data_type: 13,
@@ -1282,7 +1270,6 @@ fn can_open_time(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3) {
         n_bytes: 2,
         data: PrimitiveArray::<u16>::new_empty(DataType::UInt16).boxed(),
         endian: false,
-        channel_data_valid: false,
     };
     (ms, days)
 }

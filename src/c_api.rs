@@ -1,6 +1,6 @@
 //! C API
 use crate::mdfreader::Mdf;
-use arrow2::ffi::{export_array_to_c, ArrowArray};
+use arrow::ffi::{to_ffi, FFI_ArrowArray};
 use libc::c_char;
 use std::ffi::{c_uchar, c_ushort, CStr, CString};
 
@@ -172,18 +172,19 @@ pub unsafe extern "C" fn load_all_channels_data_in_memory(mdf: *mut Mdf) {
 pub unsafe extern "C" fn get_channel_array(
     mdf: *const Mdf,
     channel_name: *const libc::c_char,
-) -> *const ArrowArray {
+) -> *const FFI_ArrowArray {
     let name = CStr::from_ptr(channel_name)
         .to_str()
         .expect("Could not convert into utf8 the file name string");
     if let Some(mdf) = mdf.as_ref() {
         match mdf.get_channel_data(name) {
             Some(data) => {
-                let array = Box::new(export_array_to_c(data.clone()));
-                let array_ptr: *const ArrowArray = &*array;
+                let (array, _) =
+                    to_ffi(&data.to_data()).expect("ffi failed converting arrow array into C");
+                let array_ptr: *const FFI_ArrowArray = &*array;
                 array_ptr
             }
-            None => std::ptr::null::<ArrowArray>(), // null pointers
+            None => std::ptr::null::<FFI_ArrowArray>(), // null pointers
         }
     } else {
         panic!("Null pointer given for Mdf Rust object")

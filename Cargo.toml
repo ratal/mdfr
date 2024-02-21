@@ -18,7 +18,6 @@ log = "0.4" # to log events
 byteorder = "1.4" # for bytes conversions
 binrw = "0.13" # to efficiently read blocks
 num = { version = "0.4", features = ["serde"] } # for complex numbers
-num-traits = "0.2"
 half = "2" # for f16 handling
 encoding_rs = "0.8" # for endian management and bytes to text conversion (utf8, SBC, UTF16)
 codepage = "0.1" # to convert code page into encoding
@@ -36,25 +35,29 @@ roxmltree = "0.19" # for xml parsing
 yazi = "0.2" # for DZ block data deflate
 md-5 = "0.10" # md5sum of attachments
 transpose = "0.2" # for DZBlock transpose
-numpy = "0.20" # export rust ndarrays into numpy
 fasteval = "0.2" # for algebraic conversion
 itertools = "0.12"
 serde = { version = "1.0", features = ["derive"] } # for serialization
 whoami = "1.2" # to get user nam for writing file
 rand = "0.8" # for random numbers
-parquet2 = "0.17" # for export to parquet file format
-arrow2 = { version = "0.18", features = [
-    "compute",
-    "io_parquet",
-    "io_parquet_compression",
+libc = "0.2" # for the C api
+env_logger = "*"
+arrow = { version = "50.0.0", features = [
+    "pyarrow",
+    "prettyprint",
+    "ffi",
 ] } # for efficient data storing in memory
-polars = { version = "0.36", features = [
+parquet = "50.0" # for export to parquet file format
+polars = { version = "0.37", features = [
     "dtype-full",
     "object",
     "fmt",
 ] } # for python dataframe
-libc = "0.2" # for the C api
-env_logger = "*"
+numpy = "0.20" # export rust ndarrays into numpy
+
+[dependencies.pyo3]
+version = "0.20"
+features = ["extension-module", "num-complex", "anyhow"]
 
 [dev-dependencies]
 criterion = "0.5" # for benchmark
@@ -66,10 +69,6 @@ cbindgen = "0.26" # to generate C api headers
 [lib]
 name = "mdfr"
 crate-type = ["rlib", "cdylib"]
-
-[dependencies.pyo3]
-version = "0.20"
-features = ["extension-module", "num-complex", "anyhow"]
 
 [[bench]]
 name = "mdf_benchmark"

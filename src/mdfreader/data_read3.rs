@@ -1,8 +1,10 @@
 //! this module implements low level data reading for mdf3 files.
 use crate::mdfinfo::mdfinfo3::Cn3;
 use anyhow::{bail, Context, Error, Result};
-use arrow2::array::{BinaryArray, FixedSizeBinaryArray, PrimitiveArray, Utf8Array};
-use arrow2::datatypes::DataType;
+use arrow::array::{
+    BinaryArray, FixedSizeBinaryArray, LargeBinaryBuilder, LargeStringBuilder, PrimitiveBuilder,
+};
+use arrow::datatypes::DataType;
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
 use encoding_rs::WINDOWS_1252;
 use half::f16;
@@ -32,7 +34,7 @@ pub fn read_channels_from_bytes(
             let n_bytes = cn.n_bytes as usize;
             match cn.data.data_type() {
                 DataType::Int8 => {
-                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<i8>>()
+                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveBuilder<i8>>()
                         .with_context(|| format!("Read channels from bytes function could not downcast to primitive array i8, channel {}", cn.unique_name))?
                         .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array i8, channel {}", cn.unique_name))?;
                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -41,7 +43,7 @@ pub fn read_channels_from_bytes(
                     }
                 }
                 DataType::UInt8 => {
-                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u8>>()
+                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveBuilder<u8>>()
                         .context("Read channels from bytes function could not downcast to primitive array u8")?
                         .get_mut_values().context("Read channels from bytes function could not get mutable values from primitive array u8")?;
                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -50,7 +52,7 @@ pub fn read_channels_from_bytes(
                     }
                 }
                 DataType::Int16 => {
-                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<i16>>()
+                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveBuilder<i16>>()
                         .context("Read channels from bytes function could not downcast to primitive array i16")?
                         .get_mut_values().context("Read channels from bytes function could not get mutable values from primitive array i16")?;
                     if cn.endian {
@@ -72,7 +74,7 @@ pub fn read_channels_from_bytes(
                     }
                 }
                 DataType::UInt16 => {
-                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u16>>()
+                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveBuilder<u16>>()
                     .context("Read channels from bytes function could not downcast to primitive array u16")?
                     .get_mut_values().context("Read channels from bytes function could not get mutable values from primitive array u16")?;
                     if cn.endian {
@@ -94,7 +96,7 @@ pub fn read_channels_from_bytes(
                     }
                 }
                 DataType::Int32 => {
-                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<i32>>()
+                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveBuilder<i32>>()
                     .with_context(|| format!("Read channels from bytes function could not downcast to primitive array i32, channel {}", cn.unique_name))?.get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array i32, channel {}", cn.unique_name))?;
                     if  n_bytes == 3 {
                         if cn.endian {
@@ -131,7 +133,7 @@ pub fn read_channels_from_bytes(
                     }
                 }
                 DataType::UInt32 => {
-                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u32>>().with_context(|| format!("Read channels from bytes function could not downcast to primitive array u32, channel {}", cn.unique_name))?.get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array u32, channel {}", cn.unique_name))?;
+                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveBuilder<u32>>().with_context(|| format!("Read channels from bytes function could not downcast to primitive array u32, channel {}", cn.unique_name))?.get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array u32, channel {}", cn.unique_name))?;
                     if n_bytes == 3 {
                         if cn.endian {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -167,7 +169,7 @@ pub fn read_channels_from_bytes(
                     }
                 }
                 DataType::Float32 => {
-                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<f32>>().with_context(|| format!("Read channels from bytes function could not downcast to primitive array f32, channel {}", cn.unique_name))?
+                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveBuilder<f32>>().with_context(|| format!("Read channels from bytes function could not downcast to primitive array f32, channel {}", cn.unique_name))?
                     .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array f32, channel {}", cn.unique_name))?;
                     if cn.endian {
                         if n_bytes == 2 {
@@ -208,7 +210,7 @@ pub fn read_channels_from_bytes(
                     }
                 }
                 DataType::Int64 => {
-                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<i64>>()
+                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveBuilder<i64>>()
                     .with_context(|| format!("Read channels from bytes function could not downcast to primitive array i64, channel {}", cn.unique_name))?
                     .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array i64, channel {}", cn.unique_name))?;
                     if cn.endian {
@@ -244,7 +246,7 @@ pub fn read_channels_from_bytes(
                     }
                 }
                 DataType::UInt64 => {
-                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<u64>>()
+                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveBuilder<u64>>()
                     .with_context(|| format!("Read channels from bytes function could not downcast to primitive array u64, channel {}", cn.unique_name))?
                     .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array u64, channel {}", cn.unique_name))?;
                     if cn.endian {
@@ -309,7 +311,7 @@ pub fn read_channels_from_bytes(
                     }
                 }
                 DataType::Float64 => {
-                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveArray<f64>>()
+                    let data = cn.data.as_any_mut().downcast_mut::<PrimitiveBuilder<f64>>()
                     .with_context(|| format!("Read channels from bytes function could not downcast to primitive array f64, channel {}", cn.unique_name))?
                     .get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array f64, channel {}", cn.unique_name))?;
                     if cn.endian {
@@ -331,7 +333,7 @@ pub fn read_channels_from_bytes(
                     }
                 }
                 DataType::LargeUtf8 => {
-                    let array = cn.data.as_any_mut().downcast_mut::<Utf8Array<i64>>()
+                    let array = cn.data.as_any_mut().downcast_mut::<LargeStringBuilder>()
                     .with_context(|| format!("Read channels from bytes function could not downcast to large Utf8, channel {}", cn.unique_name))?;
                     let mut values = array.get_mut_values().context("could not get mutable reference of UTF8 array values")?.to_vec();
                     let mut offsets = array.get_mut_offsets().context("could not get mutable reference of UTF8 array offsets")?.to_vec();
@@ -349,8 +351,7 @@ pub fn read_channels_from_bytes(
                             offsets.last_mut().copied().unwrap_or(0) + dst.len() as i64;
                         offsets.push(last_offset);
                     }
-                    cn.data = Utf8Array::<i64>::try_new(
-                        DataType::LargeUtf8,
+                    cn.data = LargeStringBuilder::try_new(
                         offsets.try_into().context("failed converting vector into OffsetsBuffer")?,
                         values.into(),
                         None,
@@ -368,7 +369,7 @@ pub fn read_channels_from_bytes(
                                 offsets.last_mut().copied().unwrap_or(0) + n_bytes as i64;
                         offsets.push(last_offset);
                     }
-                    cn.data = BinaryArray::<i64>::try_new(
+                    cn.data = LargeBinaryBuilder::<i64>::try_new(
                         DataType::LargeBinary,
                         offsets.try_into().context("failed converting vector into OffsetsBuffer")?,
                         values.into(),

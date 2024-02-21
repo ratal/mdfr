@@ -1,5 +1,5 @@
 //! This module contains the data reading features
-pub mod arrow;
+pub mod arrow_helpers;
 pub mod conversions3;
 pub mod conversions4;
 pub mod data_read3;
@@ -12,18 +12,19 @@ use std::fs::{File, OpenOptions};
 use std::io::BufReader;
 
 use anyhow::{Context, Result};
-use arrow2::array::{get_display, Array};
+use arrow::array::{Array, ArrayBuilder};
+//use arrow::error::Result as ArrowResult;
+use arrow::util::display::{ArrayFormatter, FormatOptions};
 use log::info;
 use pyo3::prelude::*;
 
-use crate::export::parquet::export_to_parquet;
-use crate::export::tensor::Order;
+//use crate::export::parquet::export_to_parquet;
 use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::mdfreader3::mdfreader3;
 use crate::mdfreader::mdfreader4::mdfreader4;
 use crate::mdfwriter::mdfwriter4::mdfwriter4;
 
-use self::arrow::{arrow_bit_count, arrow_byte_count, arrow_to_mdf_data_type, ndim, shape};
+use self::arrow_helpers::{arrow_bit_count, arrow_byte_count, arrow_to_mdf_data_type, Order};
 
 /// Main Mdf struct holding mdfinfo, arrow data and schema
 #[derive(Debug)]
@@ -116,7 +117,7 @@ impl Mdf {
         self.mdf_info.get_master_channel_names_set()
     }
     /// returns channel's arrow2 Array.
-    pub fn get_channel_data(&self, channel_name: &str) -> Option<Box<dyn Array>> {
+    pub fn get_channel_data(&self, channel_name: &str) -> Option<Box<dyn ArrayBuilder>> {
         self.mdf_info.get_channel_data(channel_name)
     }
     /// defines channel's data in memory
@@ -132,7 +133,7 @@ impl Mdf {
     pub fn add_channel(
         &mut self,
         channel_name: String,
-        data: Box<dyn Array>,
+        data: Box<dyn ArrayBuilder>,
         master_channel: Option<String>,
         master_type: Option<u8>,
         master_flag: bool,
@@ -218,14 +219,10 @@ impl Mdf {
             .clear_channel_data_from_memory(channel_names)?;
         Ok(())
     }
-    /// export to Parquet file
-    pub fn export_to_parquet(
-        &self,
-        file_name: &str,
-        compression: Option<&str>,
-    ) -> arrow2::error::Result<()> {
-        export_to_parquet(self, file_name, compression)
-    }
+    // /// export to Parquet file
+    // pub fn export_to_parquet(&self, file_name: &str, compression: Option<&str>) -> ArrowResult<()> {
+    //     export_to_parquet(self, file_name, compression)
+    // }
     /// Writes mdf4 file
     pub fn write(&mut self, file_name: &str, compression: bool) -> Result<Mdf> {
         mdfwriter4(self, file_name, compression)
@@ -234,6 +231,7 @@ impl Mdf {
 
 impl fmt::Display for Mdf {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let format_option = FormatOptions::new();
         match &self.mdf_info {
             MdfInfo::V3(mdfinfo3) => {
                 writeln!(f, "Version : {}\n", mdfinfo3.id_block.id_ver)?;
@@ -265,10 +263,13 @@ impl fmt::Display for Mdf {
                         writeln!(f, " {channel} ").expect("cannot print channel name");
                         if let Some(data) = self.get_channel_data(channel) {
                             if !data.is_empty() {
-                                let displayer = get_display(data.as_ref(), "null");
-                                displayer(f, 0).expect("cannot channel data");
-                                writeln!(f, " ").expect("cannot print simple space character");
-                                displayer(f, data.len() - 1).expect("cannot channel data");
+                                let array = &data.as_ref();
+                                let displayer = ArrayFormatter::try_new(array, &format_option)
+                                    .map_err(|_| std::fmt::Error)?;
+                                write!(f, "{}", displayer.value(0)).expect("cannot channel data");
+                                write!(f, " ").expect("cannot print simple space character");
+                                write!(f, "{}", displayer.value(data.len() - 1))
+                                    .expect("cannot channel data");
                             }
                         }
                         if let Ok(Some(unit)) = self.get_channel_unit(channel) {
@@ -302,10 +303,13 @@ impl fmt::Display for Mdf {
                         writeln!(f, " {channel} ").expect("cannot print channel name");
                         if let Some(data) = self.get_channel_data(channel) {
                             if !data.is_empty() {
-                                let displayer = get_display(data.as_ref(), "null");
-                                displayer(f, 0).expect("cannot channel data");
-                                writeln!(f, " ").expect("cannot print simple space character");
-                                displayer(f, data.len() - 1).expect("cannot channel data");
+                                let array = &data.as_ref();
+                                let displayer = ArrayFormatter::try_new(array, &format_option)
+                                    .map_err(|_| std::fmt::Error)?;
+                                write!(f, "{}", displayer.value(0)).expect("cannot channel data");
+                                write!(f, " ").expect("cannot print simple space character");
+                                write!(f, "{}", displayer.value(data.len() - 1))
+                                    .expect("cannot channel data");
                             }
                         }
                         if let Ok(Some(unit)) = self.get_channel_unit(channel) {
