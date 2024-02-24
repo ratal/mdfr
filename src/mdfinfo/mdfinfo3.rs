@@ -1,11 +1,12 @@
 //! Parsing of file metadata into MdfInfo3 struct
 use anyhow::{Context, Result};
-use arrow::array::{Array, ArrayBuilder, PrimitiveArray, PrimitiveBuilder};
-use arrow::datatypes::{DataType, UInt8Type};
+use arrow::array::{Array, ArrayBuilder, PrimitiveBuilder};
+use arrow::datatypes::{DataType, UInt16Type, UInt32Type, UInt8Type};
 use binrw::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::NaiveDate;
 use encoding_rs::Encoding;
+use std::any::Any;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::default::Default;
@@ -208,22 +209,6 @@ impl MdfInfo3 {
                 }
             }
         }
-    }
-    /// True if channel contains data
-    pub fn get_channel_data_validity(&self, channel_name: &str) -> bool {
-        let mut state: bool = false;
-        if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
-            self.get_channel_id(channel_name)
-        {
-            if let Some(dg) = self.dg.get(dg_pos) {
-                if let Some(cg) = dg.cg.get(rec_id) {
-                    if let Some(cn) = cg.cn.get(cn_pos) {
-                        state = cn.channel_data_valid
-                    }
-                }
-            }
-        }
-        state
     }
     /// returns channel's data array.
     pub fn get_channel_data(&self, channel_name: &str) -> Option<Box<dyn Array>> {
@@ -868,7 +853,7 @@ pub struct Cn3 {
     /// number of bytes taken by channel in record
     pub n_bytes: u16,
     /// channel data
-    pub data: Box<dyn ArrayBuilder>,
+    pub data: Box<dyn Array>,
     /// false = little endian
     pub endian: bool,
 }
@@ -883,7 +868,7 @@ impl Default for Cn3 {
             description: Default::default(),
             pos_byte_beg: Default::default(),
             n_bytes: Default::default(),
-            data: PrimitiveBuilder::<UInt8Type>::new().into_box_any(),
+            data: Box::new(PrimitiveBuilder::<UInt8Type>::new()),
             endian: Default::default(),
         }
     }
@@ -1088,7 +1073,7 @@ fn parse_cn3_block(
         unique_name,
         pos_byte_beg,
         n_bytes,
-        data: arrow_data_type_init(0, data_type, n_bytes as u32, false)?,
+        data: arrow_data_type_init(0, data_type, n_bytes as u32, 1)?,
         endian,
     };
 
@@ -1132,7 +1117,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Milliseconds"),
         pos_byte_beg,
         n_bytes: 2,
-        data: PrimitiveArray::<u16>::new_empty(DataType::UInt16).boxed(),
+        data: PrimitiveBuilder::<UInt16Type>::new_empty(DataType::UInt16).boxed(),
         endian: false,
     };
     let block2 = Cn3Block2 {
@@ -1150,7 +1135,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Minutes"),
         pos_byte_beg: pos_byte_beg + 2,
         n_bytes: 1,
-        data: PrimitiveArray::<u8>::new_empty(DataType::UInt8).boxed(),
+        data: PrimitiveBuilder::<UInt8Type>::new_empty(DataType::UInt8).boxed(),
         endian: false,
     };
     let block2 = Cn3Block2 {
@@ -1168,7 +1153,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Hours"),
         pos_byte_beg: pos_byte_beg + 3,
         n_bytes: 1,
-        data: PrimitiveArray::<u8>::new_empty(DataType::UInt8).boxed(),
+        data: PrimitiveBuilder::<UInt8Type>::new_empty(DataType::UInt8).boxed(),
         endian: false,
     };
     let block2 = Cn3Block2 {
@@ -1186,7 +1171,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Days"),
         pos_byte_beg: pos_byte_beg + 4,
         n_bytes: 1,
-        data: PrimitiveArray::<u8>::new_empty(DataType::UInt8).boxed(),
+        data: PrimitiveBuilder::<UInt8Type>::new_empty(DataType::UInt8).boxed(),
         endian: false,
     };
     let block2 = Cn3Block2 {
@@ -1204,7 +1189,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Month"),
         pos_byte_beg: pos_byte_beg + 5,
         n_bytes: 1,
-        data: PrimitiveArray::<u8>::new_empty(DataType::UInt8).boxed(),
+        data: PrimitiveBuilder::<UInt8Type>::new_empty(DataType::UInt8).boxed(),
         endian: false,
     };
     let block2 = Cn3Block2 {
@@ -1222,7 +1207,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Years"),
         pos_byte_beg: pos_byte_beg + 7,
         n_bytes: 1,
-        data: PrimitiveArray::<u8>::new_empty(DataType::UInt8).boxed(),
+        data: PrimitiveBuilder::<UInt8Type>::new_empty(DataType::UInt8).boxed(),
         endian: false,
     };
     (date_ms, min, hour, day, month, year)
@@ -1250,7 +1235,7 @@ fn can_open_time(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3) {
         description: String::from("Milliseconds"),
         pos_byte_beg,
         n_bytes: 4,
-        data: PrimitiveArray::<u32>::new_empty(DataType::UInt32).boxed(),
+        data: PrimitiveBuilder::<UInt32Type>::new_empty(DataType::UInt32).boxed(),
         endian: false,
     };
     let block2 = Cn3Block2 {
@@ -1268,7 +1253,7 @@ fn can_open_time(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3) {
         description: String::from("Days"),
         pos_byte_beg: pos_byte_beg + 4,
         n_bytes: 2,
-        data: PrimitiveArray::<u16>::new_empty(DataType::UInt16).boxed(),
+        data: PrimitiveBuilder::<UInt16Type>::new_empty(DataType::UInt16).boxed(),
         endian: false,
     };
     (ms, days)

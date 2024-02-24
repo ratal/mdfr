@@ -2,19 +2,17 @@
 use anyhow::{bail, Context, Error, Result};
 use itertools::Itertools;
 use log::warn;
-use num::{Integer, ToPrimitive};
-use num_traits::cast::AsPrimitive;
+use num::cast::AsPrimitive;
+use num::{Integer, NumCast, ToPrimitive};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap};
 use std::fmt::Display;
 
-use crate::export::tensor::{tensor_as_tensor, unary_assign, Tensor};
 use crate::mdfinfo::mdfinfo4::{Cc4Block, CcVal, Cn4, Dg4, SharableBlocks};
-use arrow2::array::{Array, FixedSizeListArray, PrimitiveArray, Utf8Array};
-use arrow2::compute::arity_assign;
-use arrow2::compute::cast::primitive_as_primitive;
-use arrow2::datatypes::DataType;
-use arrow2::types::NativeType;
+use arrow::array::{Array, ArrayBuilder, Float64Builder, FixedSizeListArray, PrimitiveBuilder, LargeStringBuilder};
+use arrow::datatypes::{ArrowPrimitiveType, DataType, Float32Type};
+use arrow::buffer::MutableBuffer;
+use arrow::compute::{cast,unary};
 use fasteval::{Compiler, Evaler, Instruction, Slab};
 use rayon::prelude::*;
 
@@ -173,34 +171,27 @@ pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) -> Result<(
 
 /// Generic function calculating linear expression for a primitive
 #[inline]
-fn linear_conversion_primitive<T: NativeType + AsPrimitive<f64>>(
-    array: &dyn Array,
+fn linear_conversion_primitive<T: ArrowPrimitiveType>(
+    array: &dyn ArrayBuilder,
     p1: f64,
     p2: f64,
-) -> Result<Box<dyn Array>, Error> {
-    let parray = array
-        .as_any()
-        .downcast_ref::<PrimitiveArray<T>>()
-        .context("Linear conversion could not downcast to primitive array")?;
-    let mut array_f64 = primitive_as_primitive::<T, f64>(parray, &DataType::Float64);
-    arity_assign::unary(&mut array_f64, |x| x * p2 + p1);
-    Ok(array_f64.boxed())
-}
-
-/// Generic function calculating linear expression for a tensor
-#[inline]
-fn linear_conversion_tensor<T: NativeType + AsPrimitive<f64>>(
-    array: &dyn Array,
-    p1: f64,
-    p2: f64,
-) -> Result<Box<dyn Array>, Error> {
-    let parray = array
-        .as_any()
-        .downcast_ref::<Tensor<T>>()
-        .context("Linear conversion could not downcast to tensor array")?;
-    let mut array_f64 = tensor_as_tensor::<T, f64>(parray, &DataType::Float64);
-    unary_assign(&mut array_f64, |x: f64| x * p2 + p1);
-    Ok(array_f64.boxed())
+) -> Result<Box<dyn ArrayBuilder>, Error>
+where
+    T: ArrowPrimitiveType,
+    <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
+    T::Native: NumCast,
+{
+    let mut out = Float64Builder::new_from_buffer(
+        MutableBuffer::from_len_zeroed(array.capacity() * 8),
+        None,
+    );
+    out.slice_mut()
+        .iter_mut()
+        .zip(array.values())
+        .for_each(|(y, x)| {
+            *y = *x as f64 * p2 + p1;
+        });
+    Ok(out.into_box_any())
 }
 
 /// Apply linear conversion to get physical data
@@ -210,126 +201,66 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
     if !(p1 == 0.0 && num::abs(p2 - 1.0) < 1e-12) {
         match &mut cn.data.data_type() {
             DataType::UInt8 => {
-                cn.data = linear_conversion_primitive::<u8>(cn.data.as_ref(), p1, p2)
+                cn.data = linear_conversion_primitive::<u8>(cn.data, p1, p2)
                     .context("failed linear conversion of u8 channel")?;
             }
             DataType::UInt16 => {
-                cn.data = linear_conversion_primitive::<u16>(cn.data.as_ref(), p1, p2)
+                cn.data = linear_conversion_primitive::<u16>(cn.data, p1, p2)
                     .context("failed linear conversion of u16 channel")?;
             }
             DataType::UInt32 => {
-                cn.data = linear_conversion_primitive::<u32>(cn.data.as_ref(), p1, p2)
+                cn.data = linear_conversion_primitive::<u32>(cn.data, p1, p2)
                     .context("failed linear conversion of u32 channel")?;
             }
             DataType::UInt64 => {
-                cn.data = linear_conversion_primitive::<u64>(cn.data.as_ref(), p1, p2)
+                cn.data = linear_conversion_primitive::<u64>(cn.data, p1, p2)
                     .context("failed linear conversion of u64 channel")?;
             }
             DataType::Int8 => {
-                cn.data = linear_conversion_primitive::<i8>(cn.data.as_ref(), p1, p2)
+                cn.data = linear_conversion_primitive::<i8>(cn.data, p1, p2)
                     .context("failed linear conversion of i8 channel")?;
             }
             DataType::Int16 => {
-                cn.data = linear_conversion_primitive::<i16>(cn.data.as_ref(), p1, p2)
+                cn.data = linear_conversion_primitive::<i16>(cn.data, p1, p2)
                     .context("failed linear conversion of i16 channel")?;
             }
             DataType::Int32 => {
-                cn.data = linear_conversion_primitive::<i32>(cn.data.as_ref(), p1, p2)
+                cn.data = linear_conversion_primitive::<i32>(cn.data, p1, p2)
                     .context("failed linear conversion of i32 channel")?;
             }
             DataType::Int64 => {
-                cn.data = linear_conversion_primitive::<i64>(cn.data.as_ref(), p1, p2)
+                cn.data = linear_conversion_primitive::<i64>(cn.data, p1, p2)
                     .context("failed linear conversion of i64 channel")?;
             }
             DataType::Float16 => {
-                cn.data = linear_conversion_primitive::<f32>(cn.data.as_ref(), p1, p2)
+                cn.data = linear_conversion_primitive::<f32>(cn.data, p1, p2)
                     .context("failed linear conversion of f16 channel")?;
             }
             DataType::Float32 => {
-                cn.data = linear_conversion_primitive::<f32>(cn.data.as_ref(), p1, p2)
+                cn.data = linear_conversion_primitive::<f32>(cn.data, p1, p2)
                     .context("failed linear conversion of f32 channel")?;
             }
             DataType::Float64 => {
-                cn.data = linear_conversion_primitive::<f64>(cn.data.as_ref(), p1, p2)
+                cn.data = linear_conversion_primitive::<f64>(cn.data, p1, p2)
                     .context("failed linear conversion of f64 channel")?;
             }
-            DataType::FixedSizeList(field, _size) => {
-                if field.name.eq(&"complex32".to_string()) {
+            DataType::FixedSizeList(field, _size) => match cn.data.values().data_type() {
+                DataType::Float32 => {
                     let array = cn.data.as_any_mut().downcast_mut::<FixedSizeListArray>()
                     .with_context(|| format!("Read channels from bytes function could not downcast to FixedSizeListArray, channel {}", cn.unique_name))?.mut_values();
-                    let data = array.as_any_mut().downcast_mut::<PrimitiveArray<f32>>()
+                    let data = array.as_any_mut().downcast_mut::<PrimitiveBuilder<f32>>()
                     .with_context(|| format!("Read channels from bytes function could not downcast to primitive array complex f32, channel {}", cn.unique_name))?;
                     let mut array_f64 =
-                        primitive_as_primitive::<f32, f64>(data, &DataType::Float64);
-                    arity_assign::unary(&mut array_f64, |x: f64| x * p2 + p1);
+                        cast(data, &DataType::Float64);
+                    unary(&mut array_f64, |x: f64| x * p2 + p1);
                     cn.data = array_f64.boxed();
-                } else if field.name.eq(&"complex64".to_string()) {
+                }
+                DataType::Float64 => {
                     let array = cn.data.as_any_mut().downcast_mut::<FixedSizeListArray>()
                     .with_context(|| format!("Read channels from bytes function could not downcast to FixedSizeListArray, channel {}", cn.unique_name))?.mut_values();
-                    let mut data = array.as_any_mut().downcast_mut::<PrimitiveArray<f64>>()
+                    let mut data = array.as_any_mut().downcast_mut::<PrimitiveBuilder<f64>>()
                     .with_context(|| format!("Read channels from bytes function could not downcast to primitive array complex f32, channel {}", cn.unique_name))?;
-                    arity_assign::unary(&mut data, |x: f64| x * p2 + p1);
-                }
-            }
-            DataType::Extension(extension_name, data_type, _) => {
-                if extension_name.eq(&"Tensor".to_string()) {
-                    match *data_type.clone() {
-                        DataType::UInt8 => {
-                            cn.data = linear_conversion_tensor::<u8>(cn.data.as_ref(), p1, p2)
-                                .context("failed linear conversion of u8 tensor channel")?;
-                        }
-                        DataType::UInt16 => {
-                            cn.data = linear_conversion_tensor::<u16>(cn.data.as_ref(), p1, p2)
-                                .context("failed linear conversion of u16 tensor channel")?;
-                        }
-                        DataType::UInt32 => {
-                            cn.data = linear_conversion_tensor::<u32>(cn.data.as_ref(), p1, p2)
-                                .context("failed linear conversion of u32 tensor channel")?;
-                        }
-                        DataType::UInt64 => {
-                            cn.data = linear_conversion_tensor::<u64>(cn.data.as_ref(), p1, p2)
-                                .context("failed linear conversion of u64 tensor channel")?;
-                        }
-                        DataType::Int8 => {
-                            cn.data = linear_conversion_tensor::<i8>(cn.data.as_ref(), p1, p2)
-                                .context("failed linear conversion of i8 tensor channel")?;
-                        }
-                        DataType::Int16 => {
-                            cn.data = linear_conversion_tensor::<i16>(cn.data.as_ref(), p1, p2)
-                                .context("failed linear conversion of i16 tensor channel")?;
-                        }
-                        DataType::Int32 => {
-                            cn.data = linear_conversion_tensor::<i32>(cn.data.as_ref(), p1, p2)
-                                .context("failed linear conversion of i32 tensor channel")?;
-                        }
-                        DataType::Int64 => {
-                            cn.data = linear_conversion_tensor::<i64>(cn.data.as_ref(), p1, p2)
-                                .context("failed linear conversion of i64 tensor channel")?;
-                        }
-                        DataType::Float16 => {
-                            cn.data = linear_conversion_tensor::<f32>(cn.data.as_ref(), p1, p2)
-                            .context("failed linear conversion of f16 tensor channel")?;
-                        }
-                        DataType::Float32 => {
-                            cn.data = linear_conversion_tensor::<f32>(cn.data.as_ref(), p1, p2)
-                            .context("failed linear conversion of f32 tensor channel")?;
-                        }
-                        DataType::Float64 => {
-                            cn.data = linear_conversion_tensor::<f64>(cn.data.as_ref(), p1, p2)
-                            .context("failed linear conversion of f64 tensor channel")?;
-                        }
-                        DataType::FixedSizeList(field, _size) => {
-                            if field.name.eq(&"complex32".to_string()) {
-                                cn.data = linear_conversion_tensor::<f32>(cn.data.as_ref(), p1, p2)?;
-                            } else if field.name.eq(&"complex64".to_string()) {
-                                cn.data = linear_conversion_tensor::<f64>(cn.data.as_ref(), p1, p2)?;
-                            }
-                        }
-                        _ => warn!(
-                            "linear conversion of tensor channel {} not possible, channel does not contain primitives",
-                            cn.unique_name
-                        ),
-                    }
+                    unary(&mut data, |x: f64| x * p2 + p1);
                 }
             }
             _ => warn!(
@@ -343,163 +274,82 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
 
 /// Generic function calculating rational expression for a primitive
 #[inline]
-fn rational_conversion_primitive<T: NativeType + AsPrimitive<f64>>(
-    array: &dyn Array,
+fn rational_conversion_primitive<T: ArrowPrimitiveType>(
+    array: &dyn ArrayBuilder,
     cc_val: &[f64],
-) -> Result<Box<dyn Array>, Error> {
+) -> Result<Box<dyn ArrayBuilder>, Error> {
     let p1 = cc_val[0];
     let p2 = cc_val[1];
     let p3 = cc_val[2];
     let p4 = cc_val[3];
     let p5 = cc_val[4];
     let p6 = cc_val[5];
-    let parray = array
-        .as_any()
-        .downcast_ref::<PrimitiveArray<T>>()
-        .context("rational conversion could not downcast to primitive array")?;
-    let mut array_f64 = primitive_as_primitive::<T, f64>(parray, &DataType::Float64);
-    arity_assign::unary(&mut array_f64, |x| {
-        (x * x * p1 + x * p2 + p3) / (x * x * p4 + x * p5 + p6)
-    });
-    Ok(array_f64.boxed())
-}
-
-/// Generic function calculating rational expression for a tensor
-#[inline]
-fn rational_conversion_tensor<T: NativeType + AsPrimitive<f64>>(
-    array: &dyn Array,
-    cc_val: &[f64],
-) -> Result<Box<dyn Array>, Error> {
-    let p1 = cc_val[0];
-    let p2 = cc_val[1];
-    let p3 = cc_val[2];
-    let p4 = cc_val[3];
-    let p5 = cc_val[4];
-    let p6 = cc_val[5];
-    let parray = array
-        .as_any()
-        .downcast_ref::<Tensor<T>>()
-        .context("rational conversion could not downcast to tensor array")?;
-    let mut array_f64 = tensor_as_tensor::<T, f64>(parray, &DataType::Float64);
-    unary_assign(&mut array_f64, |x| {
-        (x * x * p1 + x * p2 + p3) / (x * x * p4 + x * p5 + p6)
-    });
-    Ok(array_f64.boxed())
+    let mut out = Float64Builder::new_from_buffer(
+        MutableBuffer::from_len_zeroed(array.capacity() * 8),
+        None,
+    );
+    out.slice_mut()
+        .iter_mut()
+        .zip(array.values())
+        .for_each(|(y, x)| {
+            let x_64 = x as f64;
+            *y = (x_64 * x_64 * p1 + x_64 * p2 + p3) / (x_64 * x_64 * p4 + x_64 * p5 + p6)
+        });
+    Ok(out.into_box_any())
 }
 
 /// Apply rational conversion to get physical data
 fn rational_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
     match cn.data.data_type() {
         DataType::UInt8 => {
-            cn.data = rational_conversion_primitive::<u8>(cn.data.as_ref(), cc_val)
+            cn.data = rational_conversion_primitive::<u8>(cn.data, cc_val)
             .context("failed rational conversion of u8 channel")?;
         }
         DataType::UInt16 => {
-            cn.data = rational_conversion_primitive::<u16>(cn.data.as_ref(), cc_val)
+            cn.data = rational_conversion_primitive::<u16>(cn.data, cc_val)
             .context("failed rational conversion of u16 channel")?;
         }
         DataType::UInt32 => {
-            cn.data = rational_conversion_primitive::<u32>(cn.data.as_ref(), cc_val)
+            cn.data = rational_conversion_primitive::<u32>(cn.data, cc_val)
             .context("failed rational conversion of u32 channel")?;
         }
         DataType::UInt64 => {
-            cn.data = rational_conversion_primitive::<u64>(cn.data.as_ref(), cc_val)
+            cn.data = rational_conversion_primitive::<u64>(cn.data, cc_val)
             .context("failed rational conversion of u64 channel")?;
         }
         DataType::Int8 => {
-            cn.data = rational_conversion_primitive::<i8>(cn.data.as_ref(), cc_val)
+            cn.data = rational_conversion_primitive::<i8>(cn.data, cc_val)
             .context("failed rational conversion of i8 channel")?;
         }
         DataType::Int16 => {
-            cn.data = rational_conversion_primitive::<i16>(cn.data.as_ref(), cc_val)
+            cn.data = rational_conversion_primitive::<i16>(cn.data, cc_val)
             .context("failed rational conversion of i16 channel")?;
         }
         DataType::Int32 => {
-            cn.data = rational_conversion_primitive::<i32>(cn.data.as_ref(), cc_val)
+            cn.data = rational_conversion_primitive::<i32>(cn.data, cc_val)
             .context("failed rational conversion of i32 channel")?;
         }
         DataType::Int64 => {
-            cn.data = rational_conversion_primitive::<i64>(cn.data.as_ref(), cc_val)
+            cn.data = rational_conversion_primitive::<i64>(cn.data, cc_val)
             .context("failed rational conversion of i64 channel")?;
         }
         DataType::Float16 => {
-            cn.data = rational_conversion_primitive::<f32>(cn.data.as_ref(), cc_val)
+            cn.data = rational_conversion_primitive::<f32>(cn.data, cc_val)
             .context("failed rational conversion of f16 channel")?;
         }
         DataType::Float32 => {
-            cn.data = rational_conversion_primitive::<f32>(cn.data.as_ref(), cc_val)
+            cn.data = rational_conversion_primitive::<f32>(cn.data, cc_val)
             .context("failed rational conversion of f32 channel")?;
         }
         DataType::Float64 => {
-            cn.data = rational_conversion_primitive::<f64>(cn.data.as_ref(), cc_val)
+            cn.data = rational_conversion_primitive::<f64>(cn.data, cc_val)
             .context("failed rational conversion of f64 channel")?;
         }
         DataType::FixedSizeList(field, _size) => {
             if field.name.eq(&"complex32".to_string()) {
-                cn.data = rational_conversion_primitive::<f32>(cn.data.as_ref(), cc_val)?;
+                cn.data = rational_conversion_primitive::<f32>(cn.data, cc_val)?;
             } else if field.name.eq(&"complex64".to_string()) {
-                cn.data = rational_conversion_primitive::<f64>(cn.data.as_ref(), cc_val)?;
-            }
-        }
-        DataType::Extension(extension_name, data_type, _) => {
-            if extension_name.eq(&"Tensor".to_string()) {
-                match *data_type.clone() {
-                    DataType::UInt8 => {
-                        cn.data = rational_conversion_tensor::<u8>(cn.data.as_ref(), cc_val)
-                            .context("failed rational conversion of u8 tensor channel")?;
-                    }
-                    DataType::UInt16 => {
-                        cn.data = rational_conversion_tensor::<u16>(cn.data.as_ref(), cc_val)
-                            .context("failed rational conversion of u16 tensor channel")?;
-                    }
-                    DataType::UInt32 => {
-                        cn.data = rational_conversion_tensor::<u32>(cn.data.as_ref(), cc_val)
-                            .context("failed rational conversion of u32 tensor channel")?;
-                    }
-                    DataType::UInt64 => {
-                        cn.data = rational_conversion_tensor::<u64>(cn.data.as_ref(), cc_val)
-                            .context("failed rational conversion of u64 tensor channel")?;
-                    }
-                    DataType::Int8 => {
-                        cn.data = rational_conversion_tensor::<i8>(cn.data.as_ref(), cc_val)
-                            .context("failed rational conversion of i8 tensor channel")?;
-                    }
-                    DataType::Int16 => {
-                        cn.data = rational_conversion_tensor::<i16>(cn.data.as_ref(), cc_val)
-                            .context("failed rational conversion of i16 tensor channel")?;
-                    }
-                    DataType::Int32 => {
-                        cn.data = rational_conversion_tensor::<i32>(cn.data.as_ref(), cc_val)
-                        .context("failed rational conversion of i32 tensor channel")?;
-                    }
-                    DataType::Int64 => {
-                        cn.data = rational_conversion_tensor::<i64>(cn.data.as_ref(), cc_val)
-                        .context("failed rational conversion of i64 tensor channel")?;
-                    }
-                    DataType::Float16 => {
-                        cn.data = rational_conversion_tensor::<f32>(cn.data.as_ref(), cc_val)
-                        .context("failed rational conversion of f16 tensor channel")?;
-                    }
-                    DataType::Float32 => {
-                        cn.data = rational_conversion_tensor::<f32>(cn.data.as_ref(), cc_val)
-                        .context("failed rational conversion of f32 tensor channel")?;
-                    }
-                    DataType::Float64 => {
-                        cn.data = rational_conversion_tensor::<f64>(cn.data.as_ref(), cc_val)
-                        .context("failed rational conversion of f64 tensor channel")?;
-                    }
-                    DataType::FixedSizeList(field, _size) => {
-                        if field.name.eq(&"complex32".to_string()) {
-                            cn.data = rational_conversion_tensor::<f32>(cn.data.as_ref(), cc_val)?;
-                        } else if field.name.eq(&"complex64".to_string()) {
-                            cn.data = rational_conversion_tensor::<f64>(cn.data.as_ref(), cc_val)?;
-                        }
-                    }
-                    _ => warn!(
-                        "rational conversion of tensor channel {} not possible, channel does not contain primitives",
-                        cn.unique_name
-                    ),
-                }
+                cn.data = rational_conversion_primitive::<f64>(cn.data, cc_val)?;
             }
         }
         _ => warn!(
@@ -512,17 +362,17 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
 
 /// Generic function calculating algebraic expression for a primitive
 #[inline]
-fn alegbraic_conversion_primitive<T: NativeType + AsPrimitive<f64>>(
+fn alegbraic_conversion_primitive<T: ArrowPrimitiveType>(
     compiled: &Instruction,
     slab: &Slab,
-    array: &dyn Array,
+    array: &dyn ArrayBuilder,
     cycle_count: &usize,
-) -> Result<Box<dyn Array>, Error> {
+) -> Result<Box<dyn ArrayBuilder>, Error> {
     let parray = array
         .as_any()
-        .downcast_ref::<PrimitiveArray<T>>()
+        .downcast_ref::<PrimitiveBuilder<T>>()
         .context("alegbraic conversion could not downcast to primitive array")?;
-    let array_f64 = primitive_as_primitive::<T, f64>(parray, &DataType::Float64);
+    let array_f64 = cast(parray, &DataType::Float64);
     let mut new_array = vec![0f64; *cycle_count];
     new_array
         .iter_mut()
@@ -543,49 +393,7 @@ fn alegbraic_conversion_primitive<T: NativeType + AsPrimitive<f64>>(
                 }
             }
         });
-    Ok(PrimitiveArray::from_vec(new_array).boxed())
-}
-
-/// Generic function calculating algebraic expression for a tensor
-#[inline]
-fn alegbraic_conversion_tensor<T: NativeType + AsPrimitive<f64>>(
-    compiled: &Instruction,
-    slab: &Slab,
-    array: &dyn Array,
-    cycle_count: &usize,
-) -> Result<Box<dyn Array>, Error> {
-    let tarray = array
-        .as_any()
-        .downcast_ref::<Tensor<T>>()
-        .context("alegbraic conversion could not downcast to tensor array")?;
-    let array_f64 = tensor_as_tensor::<T, f64>(tarray, &DataType::Float64);
-    let mut new_array = vec![0f64; *cycle_count];
-    new_array
-        .iter_mut()
-        .zip(array_f64.values().iter())
-        .for_each(|(new_a, a)| {
-            let mut map = BTreeMap::new();
-            map.insert("X".to_string(), *a);
-            let val = compiled.eval(slab, &mut map);
-            *new_a = match val {
-                Ok(val) => val,
-                Err(err) => {
-                    warn!(
-                        "could not compute the value {:?} with expression {:?}, error {}",
-                        *a, compiled, err
-                    );
-                    *a
-                }
-            }
-        });
-    Ok(Tensor::from_vec(
-        new_array,
-        Some(tarray.shape().clone()),
-        Some(tarray.order().clone()),
-        tarray.strides().cloned(),
-        tarray.names().cloned(),
-    )
-    .boxed())
+    Ok(PrimitiveBuilder::from_vec(new_array).boxed())
 }
 
 /// Apply algebraic conversion to get physical data
@@ -601,7 +409,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                     cn.data = alegbraic_conversion_primitive::<u8>(
                         &compiled,
                         &slab,
-                        cn.data.as_ref(),
+                        cn.data,
                         &(*cycle_count as usize),
                     )?;
                 }
@@ -609,7 +417,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                     cn.data = alegbraic_conversion_primitive::<i8>(
                         &compiled,
                         &slab,
-                        cn.data.as_ref(),
+                        cn.data,
                         &(*cycle_count as usize),
                     )?;
                 }
@@ -617,7 +425,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                     cn.data = alegbraic_conversion_primitive::<i16>(
                         &compiled,
                         &slab,
-                        cn.data.as_ref(),
+                        cn.data,
                         &(*cycle_count as usize),
                     )?;
                 }
@@ -625,7 +433,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                     cn.data = alegbraic_conversion_primitive::<u16>(
                         &compiled,
                         &slab,
-                        cn.data.as_ref(),
+                        cn.data,
                         &(*cycle_count as usize),
                     )?;
                 }
@@ -633,7 +441,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                     cn.data = alegbraic_conversion_primitive::<i32>(
                         &compiled,
                         &slab,
-                        cn.data.as_ref(),
+                        cn.data,
                         &(*cycle_count as usize),
                     )?;
                 }
@@ -641,7 +449,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                     cn.data = alegbraic_conversion_primitive::<u32>(
                         &compiled,
                         &slab,
-                        cn.data.as_ref(),
+                        cn.data,
                         &(*cycle_count as usize),
                     )?;
                 }
@@ -649,7 +457,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                     cn.data = alegbraic_conversion_primitive::<f32>(
                         &compiled,
                         &slab,
-                        cn.data.as_ref(),
+                        cn.data,
                         &(*cycle_count as usize),
                     )?;
                 }
@@ -657,7 +465,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                     cn.data = alegbraic_conversion_primitive::<i64>(
                         &compiled,
                         &slab,
-                        cn.data.as_ref(),
+                        cn.data,
                         &(*cycle_count as usize),
                     )?;
                 }
@@ -665,7 +473,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                     cn.data = alegbraic_conversion_primitive::<u64>(
                         &compiled,
                         &slab,
-                        cn.data.as_ref(),
+                        cn.data,
                         &(*cycle_count as usize),
                     )?;
                 }
@@ -673,7 +481,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                     cn.data = alegbraic_conversion_primitive::<f64>(
                         &compiled,
                         &slab,
-                        cn.data.as_ref(),
+                        cn.data,
                         &(*cycle_count as usize),
                     )?;
                 }
@@ -682,123 +490,16 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
                         cn.data = alegbraic_conversion_primitive::<f32>(
                             &compiled,
                             &slab,
-                            cn.data.as_ref(),
+                            cn.data,
                             &(*cycle_count as usize),
                         )?;
                     } else if field.name.eq(&"complex64".to_string()) {
                         cn.data = alegbraic_conversion_primitive::<f64>(
                             &compiled,
                             &slab,
-                            cn.data.as_ref(),
+                            cn.data,
                             &(*cycle_count as usize),
                         )?;
-                    }
-                }
-                DataType::Extension(extension_name, data_type, _) => {
-                    if extension_name.eq(&"Tensor".to_string()) {
-                        match *data_type.clone() {
-                            DataType::UInt8 => {
-                                cn.data = alegbraic_conversion_tensor::<u8>(
-                                    &compiled,
-                                    &slab,
-                                    cn.data.as_ref(),
-                                    &(*cycle_count as usize),
-                                )?;
-                            }
-                            DataType::Int8 => {
-                                cn.data = alegbraic_conversion_tensor::<i8>(
-                                    &compiled,
-                                    &slab,
-                                    cn.data.as_ref(),
-                                    &(*cycle_count as usize),
-                                )?;
-                            }
-                            DataType::Int16 => {
-                                cn.data = alegbraic_conversion_tensor::<i16>(
-                                    &compiled,
-                                    &slab,
-                                    cn.data.as_ref(),
-                                    &(*cycle_count as usize),
-                                )?;
-                            }
-                            DataType::UInt16 => {
-                                cn.data = alegbraic_conversion_tensor::<u16>(
-                                    &compiled,
-                                    &slab,
-                                    cn.data.as_ref(),
-                                    &(*cycle_count as usize),
-                                )?;
-                            }
-                            DataType::Int32 => {
-                                cn.data = alegbraic_conversion_tensor::<i32>(
-                                    &compiled,
-                                    &slab,
-                                    cn.data.as_ref(),
-                                    &(*cycle_count as usize),
-                                )?;
-                            }
-                            DataType::UInt32 => {
-                                cn.data = alegbraic_conversion_tensor::<u32>(
-                                    &compiled,
-                                    &slab,
-                                    cn.data.as_ref(),
-                                    &(*cycle_count as usize),
-                                )?;
-                            }
-                            DataType::Float32 => {
-                                cn.data = alegbraic_conversion_tensor::<f32>(
-                                    &compiled,
-                                    &slab,
-                                    cn.data.as_ref(),
-                                    &(*cycle_count as usize),
-                                )?;
-                            }
-                            DataType::Int64 => {
-                                cn.data = alegbraic_conversion_tensor::<i64>(
-                                    &compiled,
-                                    &slab,
-                                    cn.data.as_ref(),
-                                    &(*cycle_count as usize),
-                                )?;
-                            }
-                            DataType::UInt64 => {
-                                cn.data = alegbraic_conversion_tensor::<u64>(
-                                    &compiled,
-                                    &slab,
-                                    cn.data.as_ref(),
-                                    &(*cycle_count as usize),
-                                )?;
-                            }
-                            DataType::Float64 => {
-                                cn.data = alegbraic_conversion_tensor::<f64>(
-                                    &compiled,
-                                    &slab,
-                                    cn.data.as_ref(),
-                                    &(*cycle_count as usize),
-                                )?;
-                            }
-                            DataType::FixedSizeList(field, _size) => {
-                                if field.name.eq(&"complex32".to_string()) {
-                                    cn.data = alegbraic_conversion_tensor::<f32>(
-                                        &compiled,
-                                        &slab,
-                                        cn.data.as_ref(),
-                                        &(*cycle_count as usize),
-                                    )?;
-                                } else if field.name.eq(&"complex64".to_string()) {
-                                    cn.data = alegbraic_conversion_tensor::<f64>(
-                                        &compiled,
-                                        &slab,
-                                        cn.data.as_ref(),
-                                        &(*cycle_count as usize),
-                                    )?;
-                                }
-                            }
-                            _=> warn!(
-                                "algebraic conversion of tensor channel {} not possible, channel does not contain primitives",
-                                cn.unique_name
-                            )
-                        }
                     }
                 }
                 _=> warn!(
@@ -819,15 +520,15 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str, cycle_count: &u64) -> Resu
 
 /// Generic function calculating value to value interpolation for a primitive
 #[inline]
-fn value_to_value_with_interpolation_primitive<T: NativeType + AsPrimitive<f64>>(
-    array: &dyn Array,
+fn value_to_value_with_interpolation_primitive<T: ArrowPrimitiveType>(
+    array: &dyn ArrayBuilder,
     val: Vec<(&f64, &f64)>,
     cycle_count: &usize,
-) -> Result<Box<dyn Array>, Error> {
-    let parray = array.as_any().downcast_ref::<PrimitiveArray<T>>().context(
+) -> Result<Box<dyn ArrayBuilder>, Error> {
+    let parray = array.as_any().downcast_ref::<PrimitiveBuilder<T>>().context(
         "value to value with interpolation conversion could not downcast to primitive array",
     )?;
-    let array_f64 = primitive_as_primitive::<T, f64>(parray, &DataType::Float64);
+    let array_f64 = cast(parray, &DataType::Float64);
     let mut new_array = vec![0f64; *cycle_count];
     new_array
         .iter_mut()
@@ -847,46 +548,7 @@ fn value_to_value_with_interpolation_primitive<T: NativeType + AsPrimitive<f64>>
                 }
             };
         });
-    Ok(PrimitiveArray::from_vec(new_array).boxed())
-}
-
-/// Generic function calculating value to value interpolation for a tensor
-#[inline]
-fn value_to_value_with_interpolation_tensor<T: NativeType + AsPrimitive<f64>>(
-    array: &dyn Array,
-    val: Vec<(&f64, &f64)>,
-    cycle_count: &usize,
-) -> Result<Box<dyn Array>, Error> {
-    let tarray = array.as_any().downcast_ref::<Tensor<T>>().context(
-        "value to value with interpolation conversion could not downcast to tensor array",
-    )?;
-    let array_f64 = tensor_as_tensor::<T, f64>(tarray, &DataType::Float64);
-    let mut new_array = vec![0f64; *cycle_count];
-    new_array
-        .iter_mut()
-        .zip(array_f64.values().iter())
-        .for_each(|(new_array, a)| {
-            *new_array = match val
-                .binary_search_by(|&(xi, _)| xi.partial_cmp(&a).unwrap_or(Ordering::Equal))
-            {
-                Ok(idx) => *val[idx].1,
-                Err(0) => *val[0].1,
-                Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                Err(idx) => {
-                    let (x0, y0) = val[idx - 1];
-                    let (x1, y1) = val[idx];
-                    (y0 * (x1 - a) + y1 * (a - x0)) / (x1 - x0)
-                }
-            };
-        });
-    Ok(Tensor::from_vec(
-        new_array,
-        Some(tarray.shape().clone()),
-        Some(tarray.order().clone()),
-        tarray.strides().cloned(),
-        tarray.names().cloned(),
-    )
-    .boxed())
+    Ok(PrimitiveBuilder::from_vec(new_array).boxed())
 }
 
 /// Apply value to value with interpolation conversion to get physical data
@@ -899,153 +561,73 @@ fn value_to_value_with_interpolation(
     match cn.data.data_type() {
         DataType::Int8 => {
             cn.data = value_to_value_with_interpolation_primitive::<i8>(
-                cn.data.as_ref(),
+                cn.data,
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::UInt8 => {
             cn.data = value_to_value_with_interpolation_primitive::<u8>(
-                cn.data.as_ref(),
+                cn.data,
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::Int16 => {
             cn.data = value_to_value_with_interpolation_primitive::<i16>(
-                cn.data.as_ref(),
+                cn.data,
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::UInt16 => {
             cn.data = value_to_value_with_interpolation_primitive::<u16>(
-                cn.data.as_ref(),
+                cn.data,
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::Int32 => {
             cn.data = value_to_value_with_interpolation_primitive::<i32>(
-                cn.data.as_ref(),
+                cn.data,
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::UInt32 => {
             cn.data = value_to_value_with_interpolation_primitive::<u32>(
-                cn.data.as_ref(),
+                cn.data,
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::Float32 => {
             cn.data = value_to_value_with_interpolation_primitive::<f32>(
-                cn.data.as_ref(),
+                cn.data,
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::Int64 => {
             cn.data = value_to_value_with_interpolation_primitive::<i64>(
-                cn.data.as_ref(),
+                cn.data,
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::UInt64 => {
             cn.data = value_to_value_with_interpolation_primitive::<u64>(
-                cn.data.as_ref(),
+                cn.data,
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::Float64 => {
             cn.data = value_to_value_with_interpolation_primitive::<f64>(
-                cn.data.as_ref(),
+                cn.data,
                 val,
                 &(*cycle_count as usize),
             )?;
-        }
-        DataType::Extension(extension_name, data_type, _) => {
-            if extension_name.eq(&"Tensor".to_string()) {
-                match *data_type.clone() {
-                    DataType::Int8 => {
-                        cn.data = value_to_value_with_interpolation_tensor::<i8>(
-                            cn.data.as_ref(),
-                            val,
-                            &(*cycle_count as usize),
-                        )?;
-                    }
-                    DataType::UInt8 => {
-                        cn.data = value_to_value_with_interpolation_tensor::<u8>(
-                            cn.data.as_ref(),
-                            val,
-                            &(*cycle_count as usize),
-                        )?;
-                    }
-                    DataType::Int16 => {
-                        cn.data = value_to_value_with_interpolation_tensor::<i16>(
-                            cn.data.as_ref(),
-                            val,
-                            &(*cycle_count as usize),
-                        )?;
-                    }
-                    DataType::UInt16 => {
-                        cn.data = value_to_value_with_interpolation_tensor::<u16>(
-                            cn.data.as_ref(),
-                            val,
-                            &(*cycle_count as usize),
-                        )?;
-                    }
-                    DataType::Int32 => {
-                        cn.data = value_to_value_with_interpolation_tensor::<i32>(
-                            cn.data.as_ref(),
-                            val,
-                            &(*cycle_count as usize),
-                        )?;
-                    }
-                    DataType::UInt32 => {
-                        cn.data = value_to_value_with_interpolation_tensor::<u32>(
-                            cn.data.as_ref(),
-                            val,
-                            &(*cycle_count as usize),
-                        )?;
-                    }
-                    DataType::Float32 => {
-                        cn.data = value_to_value_with_interpolation_tensor::<f32>(
-                            cn.data.as_ref(),
-                            val,
-                            &(*cycle_count as usize),
-                        )?;
-                    }
-                    DataType::Int64 => {
-                        cn.data = value_to_value_with_interpolation_tensor::<i64>(
-                            cn.data.as_ref(),
-                            val,
-                            &(*cycle_count as usize),
-                        )?;
-                    }
-                    DataType::UInt64 => {
-                        cn.data = value_to_value_with_interpolation_tensor::<u64>(
-                            cn.data.as_ref(),
-                            val,
-                            &(*cycle_count as usize),
-                        )?;
-                    }
-                    DataType::Float64 => {
-                        cn.data = value_to_value_with_interpolation_tensor::<f64>(
-                            cn.data.as_ref(),
-                            val,
-                            &(*cycle_count as usize),
-                        )?;
-                    }
-                    _ => warn!(
-                        "value to value with interpolation conversion of tensor channel {} not possible, channel does not contain primitive",
-                        cn.unique_name
-                    )
-                }
-            }
         }
         _ => warn!(
             "value to value with interpolation conversion of channel {} not possible, channel does not contain primitive",
@@ -1057,15 +639,15 @@ fn value_to_value_with_interpolation(
 
 /// Generic function calculating value to value without interpolation for a primitive
 #[inline]
-fn value_to_value_without_interpolation_primitive<T: NativeType + AsPrimitive<f64>>(
-    array: &dyn Array,
+fn value_to_value_without_interpolation_primitive<T: ArrowPrimitiveType>(
+    array: &dyn ArrayBuilder,
     val: Vec<(&f64, &f64)>,
     cycle_count: &usize,
-) -> Result<Box<dyn Array>, Error> {
-    let parray = array.as_any().downcast_ref::<PrimitiveArray<T>>().context(
+) -> Result<Box<dyn ArrayBuilder>, Error> {
+    let parray = array.as_any().downcast_ref::<PrimitiveBuilder<T>>().context(
         "value to value without interpolation conversion could not downcast to primitive array",
     )?;
-    let array_f64 = primitive_as_primitive::<T, f64>(parray, &DataType::Float64);
+    let array_f64 = cast(parray, &DataType::Float64);
     let mut new_array = vec![0f64; *cycle_count];
     new_array
         .iter_mut()
@@ -1089,50 +671,7 @@ fn value_to_value_without_interpolation_primitive<T: NativeType + AsPrimitive<f6
                 }
             };
         });
-    Ok(PrimitiveArray::from_vec(new_array).boxed())
-}
-
-/// Generic function calculating value to value without interpolation for a tensor
-#[inline]
-fn value_to_value_without_interpolation_tensor<T: NativeType + AsPrimitive<f64>>(
-    array: &dyn Array,
-    val: Vec<(&f64, &f64)>,
-    cycle_count: &usize,
-) -> Result<Box<dyn Array>, Error> {
-    let tarray = array.as_any().downcast_ref::<Tensor<T>>().context(
-        "value to value without interpolation conversion could not downcast to tensor array",
-    )?;
-    let array_f64 = tensor_as_tensor::<T, f64>(tarray, &DataType::Float64);
-    let mut new_array = vec![0f64; *cycle_count];
-    new_array
-        .iter_mut()
-        .zip(array_f64.values().iter())
-        .for_each(|(new_array, a)| {
-            *new_array = match val
-                .binary_search_by(|&(xi, _)| xi.partial_cmp(&a).unwrap_or(Ordering::Equal))
-            {
-                Ok(idx) => *val[idx].1,
-                Err(0) => *val[0].1,
-                Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                Err(idx) => {
-                    let (x0, y0) = val[idx - 1];
-                    let (x1, y1) = val[idx];
-                    if (a - x0) > (x1 - a) {
-                        *y1
-                    } else {
-                        *y0
-                    }
-                }
-            };
-        });
-    Ok(Tensor::from_vec(
-        new_array,
-        Some(tarray.shape().clone()),
-        Some(tarray.order().clone()),
-        tarray.strides().cloned(),
-        tarray.names().cloned(),
-    )
-    .boxed())
+    Ok(PrimitiveBuilder::from_vec(new_array).boxed())
 }
 
 /// Apply value to value without interpolation conversion to get physical data
@@ -1145,153 +684,73 @@ fn value_to_value_without_interpolation(
     match cn.data.data_type() {
         DataType::Int8 => {
             cn.data = value_to_value_without_interpolation_primitive::<i8>(
-                cn.data.as_ref(),
+                cn.data,
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::UInt8 => {
             cn.data = value_to_value_without_interpolation_primitive::<u8>(
-                cn.data.as_ref(),
+                cn.data,
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::Int16 => {
             cn.data = value_to_value_without_interpolation_primitive::<i16>(
-                cn.data.as_ref(),
+                cn.data,
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::UInt16 => {
             cn.data = value_to_value_without_interpolation_primitive::<u16>(
-                cn.data.as_ref(),
+                cn.data,
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::Int32 => {
             cn.data = value_to_value_without_interpolation_primitive::<i32>(
-                cn.data.as_ref(),
+                cn.data,
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::UInt32 => {
             cn.data = value_to_value_without_interpolation_primitive::<u32>(
-                cn.data.as_ref(),
+                cn.data,
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::Float32 => {
             cn.data = value_to_value_without_interpolation_primitive::<f32>(
-                cn.data.as_ref(),
+                cn.data,
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::Int64 => {
             cn.data = value_to_value_without_interpolation_primitive::<i64>(
-                cn.data.as_ref(),
+                cn.data,
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::UInt64 => {
             cn.data = value_to_value_without_interpolation_primitive::<u64>(
-                cn.data.as_ref(),
+                cn.data,
                 val,
                 &(*cycle_count as usize),
             )?;
         }
         DataType::Float64 => {
             cn.data = value_to_value_without_interpolation_primitive::<f64>(
-                cn.data.as_ref(),
+                cn.data,
                 val,
                 &(*cycle_count as usize),
             )?;
-        }
-        DataType::Extension(extension_name, data_type, _) => {
-            if extension_name.eq(&"Tensor".to_string()) {
-                match *data_type.clone() {
-                    DataType::Int8 => {
-                        cn.data = value_to_value_without_interpolation_tensor::<i8>(
-                            cn.data.as_ref(),
-                            val,
-                            &(*cycle_count as usize),
-                        )?;
-                    }
-                    DataType::UInt8 => {
-                        cn.data = value_to_value_without_interpolation_tensor::<u8>(
-                            cn.data.as_ref(),
-                            val,
-                            &(*cycle_count as usize),
-                        )?;
-                    }
-                    DataType::Int16 => {
-                        cn.data = value_to_value_without_interpolation_tensor::<i16>(
-                            cn.data.as_ref(),
-                            val,
-                            &(*cycle_count as usize),
-                        )?;
-                    }
-                    DataType::UInt16 => {
-                        cn.data = value_to_value_without_interpolation_tensor::<u16>(
-                            cn.data.as_ref(),
-                            val,
-                            &(*cycle_count as usize),
-                        )?;
-                    }
-                    DataType::Int32 => {
-                        cn.data = value_to_value_without_interpolation_tensor::<i32>(
-                            cn.data.as_ref(),
-                            val,
-                            &(*cycle_count as usize),
-                        )?;
-                    }
-                    DataType::UInt32 => {
-                        cn.data = value_to_value_without_interpolation_tensor::<u32>(
-                            cn.data.as_ref(),
-                            val,
-                            &(*cycle_count as usize),
-                        )?;
-                    }
-                    DataType::Float32 => {
-                        cn.data = value_to_value_without_interpolation_tensor::<f32>(
-                            cn.data.as_ref(),
-                            val,
-                            &(*cycle_count as usize),
-                        )?;
-                    }
-                    DataType::Int64 => {
-                        cn.data = value_to_value_without_interpolation_tensor::<i64>(
-                            cn.data.as_ref(),
-                            val,
-                            &(*cycle_count as usize),
-                        )?;
-                    }
-                    DataType::UInt64 => {
-                        cn.data = value_to_value_without_interpolation_tensor::<u64>(
-                            cn.data.as_ref(),
-                            val,
-                            &(*cycle_count as usize),
-                        )?;
-                    }
-                    DataType::Float64 => {
-                        cn.data = value_to_value_without_interpolation_tensor::<f64>(
-                            cn.data.as_ref(),
-                            val,
-                            &(*cycle_count as usize),
-                        )?;
-                    }
-                    _ => warn!(
-                        "value to value without interpolation conversion of tensor channel {} not possible, channel does not contain primitive",
-                        cn.unique_name
-                    )
-                }
-            }
         }
         _ => warn!(
             "value to value without interpolation conversion of channel {} not possible, channel does not contain primitive",
@@ -1303,17 +762,17 @@ fn value_to_value_without_interpolation(
 
 /// Generic function calculating value range to value table without interpolation
 #[inline]
-fn value_range_to_value_table_calculation<T: NativeType + AsPrimitive<f64>>(
-    array: &dyn Array,
+fn value_range_to_value_table_calculation<T: ArrowPrimitiveType>(
+    array: &dyn ArrayBuilder,
     val: &[(f64, f64, f64)],
     default_value: &f64,
     cycle_count: &usize,
-) -> Result<Box<dyn Array>, Error> {
+) -> Result<Box<dyn ArrayBuilder>, Error> {
     let parray = array
         .as_any()
-        .downcast_ref::<PrimitiveArray<T>>()
+        .downcast_ref::<PrimitiveBuilder<T>>()
         .context("value range to value table conversion could not downcast to primitive array")?;
-    let array_f64 = primitive_as_primitive::<T, f64>(parray, &DataType::Float64);
+    let array_f64 = cast(parray, &DataType::Float64);
     let mut new_array = vec![0f64; *cycle_count];
     new_array
         .iter_mut()
@@ -1335,7 +794,7 @@ fn value_range_to_value_table_calculation<T: NativeType + AsPrimitive<f64>>(
                 }
             };
         });
-    Ok(PrimitiveArray::from_vec(new_array).boxed())
+    Ok(PrimitiveBuilder::from_vec(new_array).boxed())
 }
 
 /// Apply value range to value table without interpolation conversion to get physical data
@@ -1352,7 +811,7 @@ fn value_range_to_value_table(
     match cn.data.data_type() {
         DataType::Int8 => {
             cn.data = value_range_to_value_table_calculation::<i8>(
-                cn.data.as_ref(),
+                cn.data,
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1360,7 +819,7 @@ fn value_range_to_value_table(
         }
         DataType::UInt8 => {
             cn.data = value_range_to_value_table_calculation::<u8>(
-                cn.data.as_ref(),
+                cn.data,
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1368,7 +827,7 @@ fn value_range_to_value_table(
         }
         DataType::Int16 => {
             cn.data = value_range_to_value_table_calculation::<i16>(
-                cn.data.as_ref(),
+                cn.data,
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1376,7 +835,7 @@ fn value_range_to_value_table(
         }
         DataType::UInt16 => {
             cn.data = value_range_to_value_table_calculation::<u16>(
-                cn.data.as_ref(),
+                cn.data,
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1384,7 +843,7 @@ fn value_range_to_value_table(
         }
         DataType::Int32 => {
             cn.data = value_range_to_value_table_calculation::<i32>(
-                cn.data.as_ref(),
+                cn.data,
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1392,7 +851,7 @@ fn value_range_to_value_table(
         }
         DataType::UInt32 => {
             cn.data = value_range_to_value_table_calculation::<u32>(
-                cn.data.as_ref(),
+                cn.data,
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1400,7 +859,7 @@ fn value_range_to_value_table(
         }
         DataType::Float32 => {
             cn.data = value_range_to_value_table_calculation::<f32>(
-                cn.data.as_ref(),
+                cn.data,
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1408,7 +867,7 @@ fn value_range_to_value_table(
         }
         DataType::Int64 => {
             cn.data = value_range_to_value_table_calculation::<i64>(
-                cn.data.as_ref(),
+                cn.data,
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1416,7 +875,7 @@ fn value_range_to_value_table(
         }
         DataType::UInt64 => {
             cn.data = value_range_to_value_table_calculation::<u64>(
-                cn.data.as_ref(),
+                cn.data,
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1424,7 +883,7 @@ fn value_range_to_value_table(
         }
         DataType::Float64 => {
             cn.data = value_range_to_value_table_calculation::<f64>(
-                cn.data.as_ref(),
+                cn.data,
                 &val,
                 &default_value,
                 &(*cycle_count as usize),
@@ -1456,14 +915,14 @@ enum DefaultTextOrScaleConversion {
 
 /// Generic function calculating integer value range to text
 #[inline]
-fn value_to_text_calculation_int<T: Sized + Display + Integer + NativeType + AsPrimitive<f64>>(
-    array: &dyn Array,
+fn value_to_text_calculation_int<T: Sized + Display + Integer + ArrowPrimitiveType>(
+    array: &dyn ArrayBuilder,
     cc_val: &[f64],
     cc_ref: &[i64],
     def: &DefaultTextOrScaleConversion,
     cycle_count: &usize,
     sharable: &SharableBlocks,
-) -> Result<Box<dyn Array>, Error> {
+) -> Result<Box<dyn ArrayBuilder>, Error> {
     // table applicable only to integers, no canonization
     let mut table_int: HashMap<i64, TextOrScaleConversion> = HashMap::with_capacity(cc_val.len());
     for (ind, val) in cc_val.iter().enumerate() {
@@ -1479,9 +938,9 @@ fn value_to_text_calculation_int<T: Sized + Display + Integer + NativeType + AsP
     }
     let parray = array
         .as_any()
-        .downcast_ref::<PrimitiveArray<T>>()
+        .downcast_ref::<PrimitiveBuilder<T>>()
         .context("value text conversion could not downcast to primitive array")?;
-    let array_f64 = primitive_as_primitive::<T, f64>(parray, &DataType::Float64);
+    let array_f64 = cast(parray, &DataType::Float64);
     let mut new_array = vec![String::new(); *cycle_count];
     new_array
         .iter_mut()
@@ -1514,13 +973,13 @@ fn value_to_text_calculation_int<T: Sized + Display + Integer + NativeType + AsP
                 }
             }
         });
-    Ok(Utf8Array::<i64>::from_iter_values(new_array.iter()).boxed())
+    Ok(LargeStringBuilder::from_iter_values(new_array.iter()).boxed())
 }
 
 /// Generic function calculating float value range to text
 #[inline]
 fn value_to_text_calculation_f32(
-    a: &PrimitiveArray<f32>,
+    a: &PrimitiveBuilder<Float32Type>,
     cc_val: &[f64],
     cc_ref: &[i64],
     canonization_value: f64,
@@ -1575,7 +1034,7 @@ fn value_to_text_calculation_f32(
             }
         }
     });
-    Utf8Array::<i64>::from_iter_values(new_array.iter()).boxed()
+    LargeStringBuilder::from_iter_values(new_array.iter()).boxed()
 }
 
 /// Apply value to text or scale conversion to get physical data
@@ -1598,7 +1057,7 @@ fn value_to_text(
     match cn.data.data_type() {
         DataType::Int8 => {
             cn.data = value_to_text_calculation_int::<i8>(
-                cn.data.as_ref(),
+                cn.data,
                 cc_val,
                 cc_ref,
                 &def,
@@ -1608,7 +1067,7 @@ fn value_to_text(
         }
         DataType::UInt8 => {
             cn.data = value_to_text_calculation_int::<u8>(
-                cn.data.as_ref(),
+                cn.data,
                 cc_val,
                 cc_ref,
                 &def,
@@ -1618,7 +1077,7 @@ fn value_to_text(
         }
         DataType::Int16 => {
             cn.data = value_to_text_calculation_int::<i16>(
-                cn.data.as_ref(),
+                cn.data,
                 cc_val,
                 cc_ref,
                 &def,
@@ -1628,7 +1087,7 @@ fn value_to_text(
         }
         DataType::UInt16 => {
             cn.data = value_to_text_calculation_int::<u16>(
-                cn.data.as_ref(),
+                cn.data,
                 cc_val,
                 cc_ref,
                 &def,
@@ -1638,7 +1097,7 @@ fn value_to_text(
         }
         DataType::Int32 => {
             cn.data = value_to_text_calculation_int::<i32>(
-                cn.data.as_ref(),
+                cn.data,
                 cc_val,
                 cc_ref,
                 &def,
@@ -1648,7 +1107,7 @@ fn value_to_text(
         }
         DataType::UInt32 => {
             cn.data = value_to_text_calculation_int::<u32>(
-                cn.data.as_ref(),
+                cn.data,
                 cc_val,
                 cc_ref,
                 &def,
@@ -1658,7 +1117,7 @@ fn value_to_text(
         }
         DataType::Float32 => {
             let farray = cn.data.as_any()
-                .downcast_ref::<PrimitiveArray<f32>>()
+                .downcast_ref::<PrimitiveBuilder<f32>>()
                 .context("value text conversion could not downcast to primitive array f32")?;
             cn.data = value_to_text_calculation_f32(
                 farray,
@@ -1672,7 +1131,7 @@ fn value_to_text(
         }
         DataType::Int64 => {
             cn.data = value_to_text_calculation_int::<i64>(
-                cn.data.as_ref(),
+                cn.data,
                 cc_val,
                 cc_ref,
                 &def,
@@ -1682,7 +1141,7 @@ fn value_to_text(
         }
         DataType::UInt64 => {
             cn.data = value_to_text_calculation_int::<u64>(
-                cn.data.as_ref(),
+                cn.data,
                 cc_val,
                 cc_ref,
                 &def,
@@ -1706,7 +1165,7 @@ fn value_to_text(
                 }
             }
             let farray = cn.data.as_any()
-                .downcast_ref::<PrimitiveArray<f64>>()
+                .downcast_ref::<PrimitiveBuilder<f64>>()
                 .context("value text conversion could not downcast to primitive array f64")?;
             let mut new_array = vec![String::new(); *cycle_count as usize];
             new_array.iter_mut().zip(farray).for_each(|(new_array, a)| {
@@ -1737,7 +1196,7 @@ fn value_to_text(
                     }
                 }
             });
-            cn.data = Utf8Array::<i64>::from_iter_values(new_array.iter()).boxed();
+            cn.data = LargeStringBuilder::from_iter_values(new_array.iter()).boxed();
         }
         _ => warn!(
             "value to text conversion of channel {} not possible, channel does not contain primitive",
@@ -1832,13 +1291,13 @@ struct KeyRange {
 
 /// Generic function calculating value range to text
 #[inline]
-fn value_range_to_text_calculation<T: Sized + Display + NativeType + AsPrimitive<f64>>(
-    array: &dyn Array,
+fn value_range_to_text_calculation<T: Sized + Display + ArrowPrimitiveType>(
+    array: &dyn ArrayBuilder,
     cc_val: &[f64],
     cc_ref: &[i64],
     cycle_count: usize,
     sharable: &SharableBlocks,
-) -> Result<Box<dyn Array>, Error> {
+) -> Result<Box<dyn ArrayBuilder>, Error> {
     let n_keys = cc_val.len() / 2;
     let mut keys: Vec<KeyRange> = Vec::with_capacity(n_keys);
     for (key_min, key_max) in cc_val.iter().tuples() {
@@ -1870,9 +1329,9 @@ fn value_range_to_text_calculation<T: Sized + Display + NativeType + AsPrimitive
     }
     let parray = array
         .as_any()
-        .downcast_ref::<PrimitiveArray<T>>()
+        .downcast_ref::<PrimitiveBuilder<T>>()
         .context("value range to text conversion could not downcast to primitive array")?;
-    let array_f64 = primitive_as_primitive::<T, f64>(parray, &DataType::Float64);
+    let array_f64 = cast(parray, &DataType::Float64);
     let mut new_array = vec![String::new(); cycle_count];
     new_array
         .iter_mut()
@@ -1908,7 +1367,7 @@ fn value_range_to_text_calculation<T: Sized + Display + NativeType + AsPrimitive
                 }
             }
         });
-    Ok(Utf8Array::<i64>::from_iter_values(new_array.iter()).boxed())
+    Ok(LargeStringBuilder::<i64>::from_iter_values(new_array.iter()).boxed())
 }
 
 /// Apply value range to text or scale conversion to get physical data
@@ -1922,7 +1381,7 @@ fn value_range_to_text(
     match cn.data.data_type() {
         DataType::Int8 => {
             cn.data = value_range_to_text_calculation::<i8>(
-                cn.data.as_ref(),
+                cn.data,
                 cc_val,
                 cc_ref,
                 *cycle_count as usize,
@@ -1931,7 +1390,7 @@ fn value_range_to_text(
         }
         DataType::UInt8 => {
             cn.data = value_range_to_text_calculation::<u8>(
-                cn.data.as_ref(),
+                cn.data,
                 cc_val,
                 cc_ref,
                 *cycle_count as usize,
@@ -1940,7 +1399,7 @@ fn value_range_to_text(
         }
         DataType::Int16 => {
             cn.data = value_range_to_text_calculation::<i16>(
-                cn.data.as_ref(),
+                cn.data,
                 cc_val,
                 cc_ref,
                 *cycle_count as usize,
@@ -1949,7 +1408,7 @@ fn value_range_to_text(
         }
         DataType::UInt16 => {
             cn.data = value_range_to_text_calculation::<u16>(
-                cn.data.as_ref(),
+                cn.data,
                 cc_val,
                 cc_ref,
                 *cycle_count as usize,
@@ -1958,7 +1417,7 @@ fn value_range_to_text(
         }
         DataType::Int32 => {
             cn.data = value_range_to_text_calculation::<i32>(
-                cn.data.as_ref(),
+                cn.data,
                 cc_val,
                 cc_ref,
                 *cycle_count as usize,
@@ -1967,7 +1426,7 @@ fn value_range_to_text(
         }
         DataType::UInt32 => {
             cn.data = value_range_to_text_calculation::<u32>(
-                cn.data.as_ref(),
+                cn.data,
                 cc_val,
                 cc_ref,
                 *cycle_count as usize,
@@ -1976,7 +1435,7 @@ fn value_range_to_text(
         }
         DataType::Float32 => {
             cn.data = value_range_to_text_calculation::<f32>(
-                cn.data.as_ref(),
+                cn.data,
                 cc_val,
                 cc_ref,
                 *cycle_count as usize,
@@ -1985,7 +1444,7 @@ fn value_range_to_text(
         }
         DataType::Int64 => {
             cn.data = value_range_to_text_calculation::<i64>(
-                cn.data.as_ref(),
+                cn.data,
                 cc_val,
                 cc_ref,
                 *cycle_count as usize,
@@ -1994,7 +1453,7 @@ fn value_range_to_text(
         }
         DataType::UInt64 => {
             cn.data = value_range_to_text_calculation::<u64>(
-                cn.data.as_ref(),
+                cn.data,
                 cc_val,
                 cc_ref,
                 *cycle_count as usize,
@@ -2003,7 +1462,7 @@ fn value_range_to_text(
         }
         DataType::Float64 => {
             cn.data = value_range_to_text_calculation::<f64>(
-                cn.data.as_ref(),
+                cn.data,
                 cc_val,
                 cc_ref,
                 *cycle_count as usize,
@@ -2021,7 +1480,7 @@ fn value_range_to_text(
 /// Generic function calculating text to value
 #[inline]
 fn text_to_value_calculation(
-    array: &Utf8Array<i64>,
+    array: &LargeStringBuilder,
     cc_val: &[f64],
     cc_ref: &[i64],
     cycle_count: usize,
@@ -2042,7 +1501,7 @@ fn text_to_value_calculation(
             *new_a = default;
         }
     });
-    PrimitiveArray::<f64>::from_vec(new_array).boxed()
+    PrimitiveBuilder::<f64>::from_vec(new_array).boxed()
 }
 
 /// Apply text to value conversion to get physical data
@@ -2056,7 +1515,7 @@ fn text_to_value(
     match cn.data.data_type() {
         DataType::LargeUtf8 => {
             let sarray = cn.data.as_any()
-                .downcast_ref::<Utf8Array::<i64>>()
+                .downcast_ref::<LargeStringBuilder>()
                 .context("text to value conversion could not downcast to Utf8 array")?;
             cn.data = text_to_value_calculation(
                 sarray,
@@ -2077,7 +1536,7 @@ fn text_to_value(
 /// Generic function calculating text to value
 #[inline]
 fn text_to_text_calculation(
-    array: &Utf8Array<i64>,
+    array: &LargeStringBuilder,
     cc_ref: &[i64],
     cycle_count: usize,
     sharable: &SharableBlocks,
@@ -2111,7 +1570,7 @@ fn text_to_text_calculation(
             *new_a = a.unwrap_or_default().to_string();
         }
     });
-    Utf8Array::<i64>::from_iter_values(new_array.iter()).boxed()
+    LargeStringBuilder::from_iter_values(new_array.iter()).boxed()
 }
 
 /// Apply text to text conversion to get physical data
@@ -2126,7 +1585,7 @@ fn text_to_text(
             let sarray = cn
                 .data
                 .as_any()
-                .downcast_ref::<Utf8Array<i64>>()
+                .downcast_ref::<LargeStringBuilder>()
                 .context("text to text conversion could not downcast to Utf8 array")?;
             cn.data = text_to_text_calculation(sarray, cc_ref, *cycle_count as usize, sharable);
         }
@@ -2152,8 +1611,8 @@ enum ValueOrValueRangeToText {
 
 /// Generic function calculating text to value
 #[inline]
-fn bitfield_text_table_calculation<T: Integer + NativeType + AsPrimitive<f64>>(
-    array: &dyn Array,
+fn bitfield_text_table_calculation<T: Integer + ArrowPrimitiveType>(
+    array: &dyn ArrayBuilder,
     cc_val: &[u64],
     cc_ref: &[i64],
     cycle_count: usize,
@@ -2247,9 +1706,9 @@ fn bitfield_text_table_calculation<T: Integer + NativeType + AsPrimitive<f64>>(
     }
     let parray = array
         .as_any()
-        .downcast_ref::<PrimitiveArray<T>>()
+        .downcast_ref::<PrimitiveBuilder<T>>()
         .context("bitfield text table conversion could not downcast to primitive array")?;
-    let array_f64 = primitive_as_primitive::<T, f64>(parray, &DataType::Float64);
+    let array_f64 = cast(parray, &DataType::Float64);
     let mut new_array = vec![String::new(); cycle_count];
     new_array.iter_mut().zip(array_f64).for_each(|(new_a, a)| {
         for (ind, val) in cc_val.iter().enumerate() {
@@ -2367,7 +1826,7 @@ fn bitfield_text_table_calculation<T: Integer + NativeType + AsPrimitive<f64>>(
             }
         }
     });
-    Ok(Utf8Array::<i64>::from_iter_values(new_array.iter()).boxed())
+    Ok(LargeStringBuilder::from_iter_values(new_array.iter()).boxed())
 }
 
 fn bitfield_text_table(
@@ -2380,7 +1839,7 @@ fn bitfield_text_table(
     match cn.data.data_type() {
         DataType::UInt8 => {
             cn.data = bitfield_text_table_calculation::<u8>(
-                cn.data.as_ref(),
+                cn.data,
                 cc_val,
                 cc_ref,
                 *cycle_count as usize,
@@ -2389,7 +1848,7 @@ fn bitfield_text_table(
         }
         DataType::UInt16 => {
             cn.data = bitfield_text_table_calculation::<u16>(
-                cn.data.as_ref(),
+                cn.data,
                 cc_val,
                 cc_ref,
                 *cycle_count as usize,
@@ -2398,7 +1857,7 @@ fn bitfield_text_table(
         }
         DataType::UInt32 => {
             cn.data = bitfield_text_table_calculation::<u32>(
-                cn.data.as_ref(),
+                cn.data,
                 cc_val,
                 cc_ref,
                 *cycle_count as usize,
@@ -2407,7 +1866,7 @@ fn bitfield_text_table(
         }
         DataType::UInt64 => {
             cn.data = bitfield_text_table_calculation::<u64>(
-                cn.data.as_ref(),
+                cn.data,
                 cc_val,
                 cc_ref,
                 *cycle_count as usize,

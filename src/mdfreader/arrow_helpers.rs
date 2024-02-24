@@ -478,7 +478,7 @@ fn to_bytes(array: Box<dyn ArrayBuilder>, data_type: &DataType) -> Vec<u8> {
         DataType::Binary => {
             let array = array
                 .as_any()
-                .downcast_ref::<BinaryArray<i32>>()
+                .downcast_ref::<BinaryBuilder>()
                 .expect("could not downcast binary array to bytes vect");
             let maxnbytes = array
                 .values_iter()
@@ -575,10 +575,6 @@ fn to_bytes(array: Box<dyn ArrayBuilder>, data_type: &DataType) -> Vec<u8> {
                 .collect()
         }
         DataType::FixedSizeList(field, _size) => to_bytes(array.values(), data_type),
-        DataType::Extension(ext_str, dtype, _) => match ext_str.as_str() {
-            "Tensor" => to_bytes(array, dtype),
-            _ => panic!("unsupported extension type Tensor"),
-        },
         _ => panic!("unsupported type"),
     }
 }
@@ -767,7 +763,7 @@ pub fn arrow_data_type_init(
 
 /// based on already existing type, rewrite the array filled with zeros at needed size based on cycle_count
 pub fn arrow_init_zeros(
-    data: &dyn Array,
+    data: Box<dyn ArrayBuilder>,
     cn_type: u8,
     cycle_count: u64,
     n_bytes: u32,

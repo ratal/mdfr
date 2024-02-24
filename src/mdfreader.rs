@@ -122,7 +122,7 @@ impl Mdf {
     }
     /// defines channel's data in memory
     pub fn set_channel_data(&mut self, channel_name: &str, data: Box<dyn Array>) -> Result<()> {
-        self.mdf_info.set_channel_data(channel_name, data)
+        self.mdf_info.set_channel_data(channel_name, data.into_builder())
     }
     /// Renames a channel's name in memory
     pub fn rename_channel(&mut self, channel_name: &str, new_name: &str) {

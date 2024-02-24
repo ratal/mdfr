@@ -106,7 +106,7 @@ fn initialise_arrays(
         .try_for_each(
             |(_cn_position, cn): (&u32, &mut Cn3)| -> Result<(), Error> {
                 cn.data = arrow_init_zeros(
-                    cn.data.as_ref(),
+                    cn.data,
                     0,
                     *cg_cycle_count as u64,
                     cn.n_bytes as u32,

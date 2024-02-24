@@ -18,13 +18,11 @@
 use std::marker::PhantomData;
 use std::mem;
 
-use arrow2::array::Array;
-use arrow2::bitmap::Bitmap;
-use arrow2::buffer::Buffer;
-use arrow2::datatypes::*;
+use arrow::array::Array;
+use arrow::buffer::Buffer;
+use arrow::datatypes::*;
 
-use arrow2::error::{Error, Result};
-use arrow2::types::NativeType;
+use arrow::error::Result;
 
 /// Computes the strides required assuming a row major memory layout
 fn compute_row_major_strides(shape: &[usize]) -> Result<Vec<usize>> {

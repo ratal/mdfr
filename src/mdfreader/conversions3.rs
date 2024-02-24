@@ -1,14 +1,12 @@
 //! this modules implements functions to convert arrays into physical arrays using CCBlock
 use anyhow::{Context, Error, Result};
-use arrow2::array::{Array, MutableArray, MutableUtf8ValuesArray, PrimitiveArray};
-use arrow2::compute::arity_assign;
-use arrow2::compute::cast::primitive_as_primitive;
-use arrow2::datatypes::DataType;
-use arrow2::types::NativeType;
+use arrow::array::{Array, ArrayBuilder, Float64Builder, PrimitiveBuilder, LargeStringBuilder};
+use arrow::datatypes::{ArrowPrimitiveType, DataType};
+use arrow::buffer::MutableBuffer;
 use itertools::Itertools;
-use num_traits::cast::AsPrimitive;
+use num::cast::AsPrimitive;
+use num::NumCast;
 use std::collections::BTreeMap;
-use std::fmt::Display;
 
 use crate::mdfinfo::mdfinfo3::{Cn3, Conversion, Dg3, SharableBlocks3};
 use fasteval::Evaler;
@@ -88,18 +86,27 @@ pub fn convert_all_channels(dg: &mut Dg3, sharable: &SharableBlocks3) -> Result<
 
 /// Generic function calculating exponential conversion
 #[inline]
-fn linear_calculation<T: NativeType + AsPrimitive<f64> + Display>(
-    array: &dyn Array,
+fn linear_calculation<T: ArrowPrimitiveType>(
+    array: &dyn ArrayBuilder,
     p1: f64,
     p2: f64,
-) -> Result<Box<dyn Array>, Error> {
-    let parray = array
-        .as_any()
-        .downcast_ref::<PrimitiveArray<T>>()
-        .context("Linear conversion could not downcast to primitive array")?;
-    let mut array_f64 = primitive_as_primitive::<T, f64>(parray, &DataType::Float64);
-    arity_assign::unary(&mut array_f64, |x| x * p2 + p1);
-    Ok(array_f64.to_boxed())
+) -> Result<Box<dyn ArrayBuilder>, Error>
+where
+    T: ArrowPrimitiveType,
+    <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
+    T::Native: NumCast,
+{
+    let mut out = Float64Builder::new_from_buffer(
+        MutableBuffer::from_len_zeroed(array.capacity() * 8),
+        None,
+    );
+    out.slice_mut()
+        .iter_mut()
+        .zip(array.values())
+        .for_each(|(y, x)| {
+            *y = *x as f64 * p2 + p1;
+        });
+    Ok(out.into_box_any())
 }
 
 /// Apply linear conversion to get physical data
@@ -109,47 +116,47 @@ fn linear_conversion(cn: &mut Cn3, cc_val: &[f64]) -> Result<(), Error> {
     if !(p1 == 0.0 && num::abs(p2 - 1.0) < 1e-12) {
         match cn.data.data_type() {
             DataType::UInt8 => {
-                cn.data = linear_calculation::<u8>(cn.data.as_ref(), p1, p2)
+                cn.data = linear_calculation(cn.data.as_ref(), p1, p2)
                     .context("failed linear conversion of u8 channel")?;
             }
             DataType::UInt16 => {
-                cn.data = linear_calculation::<u16>(cn.data.as_ref(), p1, p2)
+                cn.data = linear_calculation(cn.data.as_ref(), p1, p2)
                     .context("failed linear conversion of u16 channel")?;
             }
             DataType::UInt32 => {
-                cn.data = linear_calculation::<u32>(cn.data.as_ref(), p1, p2)
+                cn.data = linear_calculation(cn.data.as_ref(), p1, p2)
                     .context("failed linear conversion of u32 channel")?;
             }
             DataType::UInt64 => {
-                cn.data = linear_calculation::<u64>(cn.data.as_ref(), p1, p2)
+                cn.data = linear_calculation(cn.data.as_ref(), p1, p2)
                     .context("failed linear conversion of u64 channel")?;
             }
             DataType::Int8 => {
-                cn.data = linear_calculation::<i8>(cn.data.as_ref(), p1, p2)
+                cn.data = linear_calculation(cn.data.as_ref(), p1, p2)
                     .context("failed linear conversion of i8 channel")?;
             }
             DataType::Int16 => {
-                cn.data = linear_calculation::<i16>(cn.data.as_ref(), p1, p2)
+                cn.data = linear_calculation(cn.data.as_ref(), p1, p2)
                     .context("failed linear conversion of i16 channel")?;
             }
             DataType::Int32 => {
-                cn.data = linear_calculation::<i32>(cn.data.as_ref(), p1, p2)
+                cn.data = linear_calculation(cn.data.as_ref(), p1, p2)
                     .context("failed linear conversion of i32 channel")?;
             }
             DataType::Int64 => {
-                cn.data = linear_calculation::<i64>(cn.data.as_ref(), p1, p2)
+                cn.data = linear_calculation(cn.data.as_ref(), p1, p2)
                     .context("failed linear conversion of i64 channel")?;
             }
             DataType::Float16 => {
-                cn.data = linear_calculation::<f32>(cn.data.as_ref(), p1, p2)
+                cn.data = linear_calculation(cn.data.as_ref(), p1, p2)
                     .context("failed linear conversion of f16 channel")?;
             }
             DataType::Float32 => {
-                cn.data = linear_calculation::<f32>(cn.data.as_ref(), p1, p2)
+                cn.data = linear_calculation(cn.data.as_ref(), p1, p2)
                     .context("failed linear conversion of f32 channel")?;
             }
             DataType::Float64 => {
-                cn.data = linear_calculation::<f64>(cn.data.as_ref(), p1, p2)
+                cn.data = linear_calculation(cn.data.as_ref(), p1, p2)
                     .context("failed linear conversion of f64 channel")?;
             }
             _ => warn!(
@@ -163,25 +170,33 @@ fn linear_conversion(cn: &mut Cn3, cc_val: &[f64]) -> Result<(), Error> {
 
 /// Generic function calculating rational conversion
 #[inline]
-fn rational_calculation<T: NativeType + AsPrimitive<f64> + Display>(
-    array: &dyn Array,
+fn rational_calculation<T: ArrowPrimitiveType>(
+    array: &dyn ArrayBuilder,
     cc_val: &[f64],
-) -> Result<Box<dyn Array>, Error> {
+) -> Result<Box<dyn ArrayBuilder>, Error>
+where
+    T: ArrowPrimitiveType,
+    <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
+    T::Native: NumCast,
+{
     let p1 = cc_val[0];
     let p2 = cc_val[1];
     let p3 = cc_val[2];
     let p4 = cc_val[3];
     let p5 = cc_val[4];
     let p6 = cc_val[5];
-    let parray = array
-        .as_any()
-        .downcast_ref::<PrimitiveArray<T>>()
-        .context("rational conversion could not downcast to primitive array")?;
-    let mut array_f64 = primitive_as_primitive::<T, f64>(parray, &DataType::Float64);
-    arity_assign::unary(&mut array_f64, |x| {
-        (x * x * p1 + x * p2 + p3) / (x * x * p4 + x * p5 + p6)
-    });
-    Ok(array_f64.to_boxed())
+    let mut out = Float64Builder::new_from_buffer(
+        MutableBuffer::from_len_zeroed(array.capacity() * 8),
+        None,
+    );
+    out.slice_mut()
+        .iter_mut()
+        .zip(array.values())
+        .for_each(|(y, x)| {
+            let x_64 = x as f64;
+            *y = (x_64 * x_64 * p1 + x_64 * p2 + p3) / (x_64 * x_64 * p4 + x_64 * p5 + p6)
+        });
+    Ok(out.into_box_any())
 }
 
 /// Apply rational conversion to get physical data
@@ -241,25 +256,33 @@ fn rational_conversion(cn: &mut Cn3, cc_val: &[f64]) -> Result<(), Error> {
 
 /// Generic function calculating polynomial conversion
 #[inline]
-fn polynomial_calculation<T: NativeType + AsPrimitive<f64> + Display>(
-    array: &dyn Array,
+fn polynomial_calculation<T: ArrowPrimitiveType>(
+    array: &dyn ArrayBuilder,
     cc_val: &[f64],
-) -> Result<Box<dyn Array>, Error> {
+) -> Result<Box<dyn ArrayBuilder>, Error>
+where
+    T: ArrowPrimitiveType,
+    <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
+    T::Native: NumCast,
+{
     let p1 = cc_val[0];
     let p2 = cc_val[1];
     let p3 = cc_val[2];
     let p4 = cc_val[3];
     let p5 = cc_val[4];
     let p6 = cc_val[5];
-    let parray = array
-        .as_any()
-        .downcast_ref::<PrimitiveArray<T>>()
-        .context("rational conversion could not downcast to primitive array")?;
-    let mut array_f64 = primitive_as_primitive::<T, f64>(parray, &DataType::Float64);
-    arity_assign::unary(&mut array_f64, |x| {
-        (p2 - (p4 * (x - p5 - p6))) / (p3 * (x - p5 - p6) - p1)
-    });
-    Ok(array_f64.to_boxed())
+    let mut out = Float64Builder::new_from_buffer(
+        MutableBuffer::from_len_zeroed(array.capacity() * 8),
+        None,
+    );
+    out.values_slice_mut()
+        .iter_mut()
+        .zip(array.values())
+        .for_each(|(y, x)| {
+            let x_64 = x as f64;
+            *y =  (p2 - (p4 * (x_64 - p5 - p6))) / (p3 * (x_64 - p5 - p6) - p1)
+        });
+    Ok(out.into_box_any())
 }
 
 /// Apply polynomial conversion to get physical data
@@ -319,10 +342,10 @@ fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64]) -> Result<(), Error> {
 
 /// Generic function calculating exponential conversion
 #[inline]
-fn exponential_calculation<T: NativeType + AsPrimitive<f64> + Display>(
-    array: &dyn Array,
+fn exponential_calculation<ArrowPrimitiveType>(
+    array: &dyn ArrayBuilder,
     cc_val: &[f64],
-) -> Result<Option<Box<dyn Array>>, Error> {
+) -> Result<Option<Box<dyn ArrayBuilder>>, Error> {
     let p1 = cc_val[0];
     let p2 = cc_val[1];
     let p3 = cc_val[2];
@@ -330,17 +353,28 @@ fn exponential_calculation<T: NativeType + AsPrimitive<f64> + Display>(
     let p5 = cc_val[4];
     let p6 = cc_val[5];
     let p7 = cc_val[6];
-    let parray = array
-        .as_any()
-        .downcast_ref::<PrimitiveArray<T>>()
-        .context("rational conversion could not downcast to primitive array")?;
-    let mut new_array = primitive_as_primitive::<T, f64>(parray, &DataType::Float64);
+    let mut new_array = Float64Builder::new_from_buffer(
+        MutableBuffer::from_len_zeroed(array.capacity() * 8),
+        None,
+    );
     if p4 == 0.0 {
-        arity_assign::unary(&mut new_array, |x| (((x - p7) * p6 - p3) / p1).ln() / p2);
-        Ok(Some(new_array.boxed()))
+        new_array.values_slice_mut()
+            .iter_mut()
+            .zip(array.values())
+            .for_each(|(y, x)| {
+                let x_64 = x as f64;
+                *y =  (((x - p7) * p6 - p3) / p1).ln() / p2;
+            });
+        Ok(Some(new_array.into_box_any()))
     } else if p1 == 0.0 {
-        arity_assign::unary(&mut new_array, |x| ((p3 / (x - p7) - p6) / p4).ln() / p5);
-        Ok(Some(new_array.boxed()))
+        new_array.values_slice_mut()
+            .iter_mut()
+            .zip(array.values())
+            .for_each(|(y, x)| {
+                let x_64 = x as f64;
+                *y =  ((p3 / (x - p7) - p6) / p4).ln() / p5;
+            });
+        Ok(Some(new_array.into_box_any()))
     } else {
         Ok(None)
     }
@@ -436,10 +470,10 @@ fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64]) -> Result<(), Error> {
 
 /// Generic function calculating value logarithmic conversion
 #[inline]
-fn logarithmic_calculation<T: NativeType + AsPrimitive<f64> + Display>(
-    array: &dyn Array,
+fn logarithmic_calculation<ArrowPrimitiveType>(
+    array: &dyn ArrayBuilder,
     cc_val: &[f64],
-) -> Result<Option<Box<dyn Array>>, Error> {
+) -> Result<Option<Box<dyn ArrayBuilder>>, Error> {
     let p1 = cc_val[0];
     let p2 = cc_val[1];
     let p3 = cc_val[2];
@@ -447,17 +481,28 @@ fn logarithmic_calculation<T: NativeType + AsPrimitive<f64> + Display>(
     let p5 = cc_val[4];
     let p6 = cc_val[5];
     let p7 = cc_val[6];
-    let parray = array
-        .as_any()
-        .downcast_ref::<PrimitiveArray<T>>()
-        .context("rational conversion could not downcast to primitive array")?;
-    let mut new_array = primitive_as_primitive::<T, f64>(parray, &DataType::Float64);
+    let mut new_array = Float64Builder::new_from_buffer(
+        MutableBuffer::from_len_zeroed(array.capacity() * 8),
+        None,
+    );
     if p4 == 0.0 {
-        arity_assign::unary(&mut new_array, |x| (((x - p7) * p6 - p3) / p1).exp() / p2);
-        Ok(Some(new_array.boxed()))
+        new_array.slice_mut()
+            .iter_mut()
+            .zip(array.values())
+            .for_each(|(y, x)| {
+                let x_64 = x as f64;
+                *y = (((x - p7) * p6 - p3) / p1).exp() / p2;
+            });
+        Ok(Some(new_array.into_box_any()))
     } else if p1 == 0.0 {
-        arity_assign::unary(&mut new_array, |x| ((p3 / (x - p7) - p6) / p4).exp() / p5);
-        Ok(Some(new_array.boxed()))
+        new_array.slice_mut()
+            .iter_mut()
+            .zip(array.values())
+            .for_each(|(y, x)| {
+                let x_64 = x as f64;
+                *y = ((p3 / (x - p7) - p6) / p4).exp() / p5;
+            });
+        Ok(Some(new_array.into_box_any()))
     } else {
         Ok(None)
     }
@@ -553,23 +598,21 @@ fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64]) -> Result<(), Error> {
 
 /// Generic function calculating algebraic expression conversion
 #[inline]
-fn alegbraic_conversion_calculation<T: NativeType + AsPrimitive<f64> + Display>(
-    array: &dyn Array,
+fn alegbraic_conversion_calculation<ArrowPrimitiveType>(
+    array: &dyn ArrayBuilder,
     compiled: &Instruction,
     slab: &Slab,
     cycle_count: &usize,
     formulae: &str,
     name: &str,
-) -> Result<Box<dyn Array>, Error> {
-    let parray = array
-        .as_any()
-        .downcast_ref::<PrimitiveArray<T>>()
-        .context("rational conversion could not downcast to primitive array")?;
-    let array_f64 = primitive_as_primitive::<T, f64>(parray, &DataType::Float64);
-    let mut new_array = vec![0f64; *cycle_count];
+) -> Result<Box<dyn ArrayBuilder>, Error> {
+    let mut new_array = Float64Builder::new_from_buffer(
+        MutableBuffer::from_len_zeroed(array.capacity() * 8),
+        None,
+    );
     new_array
         .iter_mut()
-        .zip(array_f64)
+        .zip(array)
         .for_each(|(new_array, a)| {
             let mut map = BTreeMap::new();
             map.insert("X".to_string(), a.unwrap_or_default());
@@ -587,7 +630,7 @@ fn alegbraic_conversion_calculation<T: NativeType + AsPrimitive<f64> + Display>(
                 }
             }
         });
-    Ok(PrimitiveArray::<f64>::from_vec(new_array).boxed())
+    Ok(PrimitiveBuilder::<f64>::from_vec(new_array).boxed())
 }
 
 /// Apply algebraic conversion to get physical data
@@ -738,21 +781,16 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str, cycle_count: &u32) -> Resu
 
 /// Generic function calculating value to value with interpolation conversion
 #[inline]
-fn value_to_value_with_interpolation_calculation<T: NativeType + AsPrimitive<f64> + Display>(
-    array: &dyn Array,
+fn value_to_value_with_interpolation_calculation<ArrowPrimitiveType>(
+    array: &dyn ArrayBuilder,
     cc_val: Vec<f64>,
     cycle_count: &usize,
-) -> Result<Box<dyn Array>, Error> {
+) -> Result<Box<dyn ArrayBuilder>, Error> {
     let val: Vec<(&f64, &f64)> = cc_val.iter().tuples().collect();
-    let parray = array
-        .as_any()
-        .downcast_ref::<PrimitiveArray<T>>()
-        .context("rational conversion could not downcast to primitive array")?;
-    let array_f64 = primitive_as_primitive::<T, f64>(parray, &DataType::Float64);
     let mut new_array = vec![0f64; *cycle_count];
     new_array
         .iter_mut()
-        .zip(array_f64)
+        .zip(array)
         .for_each(|(new_array, a)| {
             *new_array = match val.binary_search_by(|&(xi, _)| {
                 let a64 = a.unwrap_or_default();
@@ -769,7 +807,7 @@ fn value_to_value_with_interpolation_calculation<T: NativeType + AsPrimitive<f64
                 }
             };
         });
-    Ok(PrimitiveArray::<f64>::from_vec(new_array).boxed())
+    Ok(PrimitiveBuilder::<f64>::from_vec(new_array).boxed())
 }
 
 /// Apply value to value with interpolation conversion to get physical data
@@ -833,21 +871,16 @@ fn value_to_value_with_interpolation(
 
 /// Generic function calculating algebraic expression
 #[inline]
-fn value_to_value_without_interpolation_calculation<T: NativeType + AsPrimitive<f64> + Display>(
-    array: &dyn Array,
+fn value_to_value_without_interpolation_calculation<ArrowPrimitiveType>(
+    array: &dyn ArrayBuilder,
     cc_val: Vec<f64>,
     cycle_count: &usize,
-) -> Result<Box<dyn Array>, Error> {
+) -> Result<Box<dyn ArrayBuilder>, Error> {
     let val: Vec<(&f64, &f64)> = cc_val.iter().tuples().collect();
-    let parray = array
-        .as_any()
-        .downcast_ref::<PrimitiveArray<T>>()
-        .context("rational conversion could not downcast to primitive array")?;
-    let array_f64 = primitive_as_primitive::<T, f64>(parray, &DataType::Float64);
     let mut new_array = vec![0f64; *cycle_count];
     new_array
         .iter_mut()
-        .zip(array_f64)
+        .zip(array)
         .for_each(|(new_array, a)| {
             let a64 = a.unwrap_or_default();
             *new_array = match val.binary_search_by(|&(xi, _)| {
@@ -867,7 +900,7 @@ fn value_to_value_without_interpolation_calculation<T: NativeType + AsPrimitive<
                 }
             };
         });
-    Ok(PrimitiveArray::<f64>::from_vec(new_array).boxed())
+    Ok(PrimitiveBuilder::<f64>::from_vec(new_array).boxed())
 }
 
 /// Apply value to value without interpolation conversion to get physical data
@@ -931,18 +964,13 @@ fn value_to_value_without_interpolation(
 
 /// Generic function calculating value to text expression
 #[inline]
-fn value_to_text_calculation<T: NativeType + AsPrimitive<f64> + Display>(
-    array: &dyn Array,
+fn value_to_text_calculation<ArrowPrimitiveType>(
+    array: &dyn ArrayBuilder,
     cc_val_ref: &[(f64, String)],
     cycle_count: &usize,
-) -> Result<Box<dyn Array>, Error> {
-    let mut new_array = MutableUtf8ValuesArray::<i64>::with_capacities(*cycle_count, 32);
-    let parray = array
-        .as_any()
-        .downcast_ref::<PrimitiveArray<T>>()
-        .context("rational conversion could not downcast to primitive array")?;
-    let array_f64 = primitive_as_primitive::<T, f64>(parray, &DataType::Float64);
-    array_f64.values_iter().for_each(|val| {
+) -> Result<Box<dyn ArrayBuilder>, Error> {
+    let mut new_array = LargeStringBuilder::with_capacities(*cycle_count, 32);
+    array.values_iter().for_each(|val| {
         let matched_key = cc_val_ref.iter().find(|&x| x.0 == *val);
         if let Some(key) = matched_key {
             new_array.push(key.1.clone());
@@ -1057,18 +1085,13 @@ fn value_to_text(
 
 /// Generic function calculating value range to text expression
 #[inline]
-fn value_range_to_text_calculation<T: NativeType + AsPrimitive<f64> + Display>(
-    array: &dyn Array,
+fn value_range_to_text_calculation<ArrowPrimitiveType>(
+    array: &dyn ArrayBuilder,
     cc_val_ref: &(Vec<(f64, f64, String)>, String),
     cycle_count: usize,
-) -> Result<Box<dyn Array>, Error> {
-    let mut new_array = MutableUtf8ValuesArray::<i64>::with_capacity(cycle_count);
-    let parray = array
-        .as_any()
-        .downcast_ref::<PrimitiveArray<T>>()
-        .context("rational conversion could not downcast to primitive array")?;
-    let array_f64 = primitive_as_primitive::<T, f64>(parray, &DataType::Float64);
-    array_f64.values_iter().for_each(|a| {
+) -> Result<Box<dyn ArrayBuilder>, Error> {
+    let mut new_array = LargeStringBuilder::with_capacity(cycle_count);
+    array.values_iter().for_each(|a| {
         let matched_key = cc_val_ref
             .0
             .iter()

@@ -1,15 +1,9 @@
 //! Exporting mdf to Parquet files.
-use arrow2::{
+use arrow::{
     array::Array,
     datatypes::DataType,
-    datatypes::{Field, Metadata, Schema},
-    error::{Error, Result},
-    io::parquet::write::{
-        array_to_columns, compress, to_parquet_schema, CompressedPage, CompressionOptions, DynIter,
-        DynStreamingIterator, Encoding, FallibleStreamingIterator, FileWriter, Version,
-        WriteOptions,
-    },
-    io::parquet::{read::ParquetError, write::transverse},
+    datatypes::{Field, Schema},
+    error::Result,
 };
 use codepage::to_encoding;
 use encoding_rs::Encoding as EncodingRs;

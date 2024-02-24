@@ -448,11 +448,11 @@ pyplot.show()
         })
     }
     // export to Parquet file
-    pub fn export_to_parquet(&mut self, file_name: &str, compression_option: Option<&str>) {
-        let Mdfr(mdf) = self;
-        mdf.export_to_parquet(file_name, compression_option)
-            .expect("could not export to parquet")
-    }
+    // pub fn export_to_parquet(&mut self, file_name: &str, compression_option: Option<&str>) {
+    //     let Mdfr(mdf) = self;
+    //     mdf.export_to_parquet(file_name, compression_option)
+    //         .expect("could not export to parquet")
+    // }
     fn __repr__(&mut self) -> PyResult<String> {
         let mut output: String;
         let format_option = FormatOptions::new();
@@ -493,7 +493,7 @@ pyplot.show()
                         if let Some(data) = self.0.get_channel_data(channel) {
                             if !data.is_empty() {
                                 let array = &data.as_ref();
-                                let displayer = ArrayFormatter::try_new(array, &format_option)
+                                let displayer = ArrayFormatter::try_new(&array.finish_cloned(), &format_option)
                                     .expect("failed creating formatter for arrow array");
                                 write!(&mut output, "{}", displayer.value(0))
                                     .expect("failed writing first value of array");
@@ -537,7 +537,7 @@ pyplot.show()
                         if let Some(data) = self.0.get_channel_data(channel) {
                             if !data.is_empty() {
                                 let array = &data.as_ref();
-                                let displayer = ArrayFormatter::try_new(array, &format_option)
+                                let displayer = ArrayFormatter::try_new(&array.finish_cloned(), &format_option)
                                     .expect("failed creating formatter for arrow array");
                                 write!(&mut output, "{}", displayer.value(0))
                                     .expect("cannot print channel data");

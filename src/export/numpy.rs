@@ -9,7 +9,7 @@ use arrow::buffer::NullBuffer;
 use arrow::datatypes::DataType;
 
 use numpy::npyffi::types::NPY_ORDER;
-use numpy::{IntoPyArray, ToPyArray};
+use numpy::ToPyArray;
 use pyo3::prelude::*;
 use pyo3::PyObject;
 
@@ -26,7 +26,7 @@ impl From<Order> for NPY_ORDER {
 
 /// returns a numpy array from an arrow array
 #[allow(dead_code)]
-pub fn arrow_to_numpy(py: Python, array: Box<dyn ArrayBuilder>) -> PyObject {
+pub fn arrow_to_numpy(py: Python, array: Box<dyn Array>) -> PyObject {
     match array.data_type() {
         DataType::Null => Python::None(py),
         DataType::Boolean => {
@@ -41,7 +41,7 @@ pub fn arrow_to_numpy(py: Python, array: Box<dyn ArrayBuilder>) -> PyObject {
                 .as_any()
                 .downcast_ref::<PrimitiveBuilder<i8>>()
                 .expect("could not downcast to i8 array");
-            array.values().to_pyarray(py).into_py(py)
+            array.values_slice().to_pyarray(py).into_py(py)
         }
         DataType::Int16 => {
             let array = array

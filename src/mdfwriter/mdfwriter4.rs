@@ -18,15 +18,15 @@ use crate::{
         MdfInfo,
     },
     mdfreader::{
-        arrow::{
+        arrow_helpers::{
             arrow_bit_count, arrow_byte_count, arrow_data_type_init, arrow_to_bytes,
-            arrow_to_mdf_data_type, ndim, shape,
+            arrow_to_mdf_data_type,
         },
         Mdf,
     },
 };
 use anyhow::{bail, Context, Error, Result};
-use arrow2::{array::Array, bitmap::Bitmap};
+use arrow::{array::Array, buffer::NullBuffer};
 use binrw::BinWriterExt;
 use crossbeam_channel::bounded;
 use parking_lot::Mutex;
@@ -73,7 +73,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
                 )) = info.get_channel_id(master_channel_name)
                 {
                     if let Some(cn_master) = cg.cn.get(cn_master_record_position) {
-                        if let Some(data) = mdf.get_channel_data(&cn_master.unique_name) {
+                        if let Some(data) = mdf.get_chadatannel_data(&cn_master.unique_name) {
                             // Writing master channel
                             cg_cg_master = pointer + 64; // after DGBlock
                             last_dg_pointer = pointer;
@@ -370,7 +370,7 @@ fn write_data_blocks(
 }
 
 /// Create a LDBlock
-fn create_ld(m: Option<&Bitmap>, offset: &mut i64) -> Option<Ld4Block> {
+fn create_ld(m: Option<&NullBuffer>, offset: &mut i64) -> Option<Ld4Block> {
     let mut ld_block = Ld4Block::default();
     ld_block.ld_count = 1;
     ld_block.ld_sample_offset.push(0);
@@ -435,7 +435,7 @@ fn create_dz_dv(data: Box<dyn Array>, offset: &mut i64) -> Result<(DataBlock, us
 }
 
 /// Create a DI Block
-fn create_di(mask: &Bitmap, offset: &mut i64) -> Result<Option<(DataBlock, Vec<u8>)>> {
+fn create_di(mask: &NullBuffer, offset: &mut i64) -> Result<Option<(DataBlock, Vec<u8>)>> {
     let mut dv_invalid_block = Blockheader4::default();
     dv_invalid_block.hdr_id = [35, 35, 68, 73]; // ##DI
     let mask_length = mask.len();
@@ -451,7 +451,7 @@ fn create_di(mask: &Bitmap, offset: &mut i64) -> Result<Option<(DataBlock, Vec<u
 }
 
 /// Create a DZ Block of DI type
-fn create_dz_di(mask: &Bitmap, offset: &mut i64) -> Result<Option<(DataBlock, Vec<u8>)>> {
+fn create_dz_di(mask: &NullBuffer, offset: &mut i64) -> Result<Option<(DataBlock, Vec<u8>)>> {
     let mut dz_invalid_block = Dz4Block::default();
     dz_invalid_block.dz_org_data_length = mask.len() as u64;
     let mut data_bytes = compress(
@@ -576,10 +576,10 @@ fn create_blocks(
         }
 
         // Channel array
-        let data_ndim = ndim(data.clone()) - 1;
+        let data_ndim = cn.shape.0.len();
         let mut composition: Option<Composition> = None;
         if data_ndim > 0 {
-            let data_dim_size = shape(cn.data.clone())
+            let data_dim_size = cn.shape
                 .0
                 .iter()
                 .skip(1)
@@ -625,8 +625,9 @@ fn create_blocks(
             pos_byte_beg: 0,
             n_bytes: cg_block.cg_data_bytes,
             composition,
+            list_size: cn.list_size,
+            shape: cn.shape,
             invalid_mask: None,
-            channel_data_valid: false,
         };
         let mut new_cg = Cg4 {
             header: cg_block_header,

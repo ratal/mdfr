@@ -662,7 +662,7 @@ fn parser_ld4(
                 } else {
                     None
                 };
-                read_one_channel_array(&dt, cn, channel_group.block.cg_cycle_count as usize, shape)
+                read_one_channel_array(&dt, cn, channel_group.block.cg_cycle_count as usize)
                     .context("failed reading one channel array from DZ")?;
             }
             position = ld_data + block_header.len as i64;
@@ -680,19 +680,19 @@ fn parser_ld4(
                 } else {
                     None
                 };
-                read_one_channel_array(
-                    &buf,
-                    cn,
-                    channel_group.block.cg_cycle_count as usize,
-                    shape,
-                )
-                .context("failed reading one channel array")?;
+                read_one_channel_array(&buf, cn, channel_group.block.cg_cycle_count as usize)
+                    .context("failed reading one channel array")?;
             }
             position = ld_data + block_header.len as i64;
         }
         if channel_group.block.cg_inval_bytes > 0 {
             // Reads invalid DI or DZ block
-            let ld_invalid_data = ld_blocks[0].ld_invalid_data()[0];
+            let ld_invalid_data_vec = ld_blocks[0].ld_invalid_data();
+            let ld_invalid_data = if !ld_invalid_data_vec.is_empty() {
+                ld_invalid_data_vec[0]
+            } else {
+                bail!("no invalid block (di or dz) pointer found in ld4 block")
+            };
             rdr.seek_relative(ld_invalid_data - position)
                 .context("Could not reach DI or DZ block position")?;
             let mut id = [0u8; 4];
