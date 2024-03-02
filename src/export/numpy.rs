@@ -35,8 +35,12 @@ impl IntoPy<PyObject> for ChannelData {
             ChannelData::Int64(array) => array.values_slice().to_pyarray(py).into_py(py),
             ChannelData::UInt64(array) => array.values_slice().to_pyarray(py).into_py(py),
             ChannelData::Float64(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::Complex32(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::Complex64(array) => array.values_slice().to_pyarray(py).into_py(py),
+            ChannelData::Complex32(array) => {
+                array.values().values_slice().to_pyarray(py).into_py(py)
+            }
+            ChannelData::Complex64(array) => {
+                array.values().values_slice().to_pyarray(py).into_py(py)
+            }
             ChannelData::VariableSizeByteArray(array) => array.values_slice().into_py(py),
             ChannelData::FixedSizeByteArray(array) => {
                 let binary_array = array.finish_cloned();

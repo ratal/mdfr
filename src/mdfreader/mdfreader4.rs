@@ -2,7 +2,7 @@
 use crate::mdfinfo::mdfinfo4::{
     parse_dz, parser_dl4_block, parser_ld4_block, Dl4Block, Dt4Block, Hl4Block, Ld4Block,
 };
-use crate::mdfinfo::mdfinfo4::{Blockheader4, Cg4, Cn4, Compo, Dg4};
+use crate::mdfinfo::mdfinfo4::{Blockheader4, Cg4, Cn4, Dg4};
 use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::channel_data::ChannelData;
 use crate::mdfreader::conversions4::convert_all_channels;
@@ -23,7 +23,6 @@ use std::{
     usize,
 };
 
-use super::channel_data::Order;
 use super::Mdf;
 
 /// The following constant represents the size of data chunk to be read and processed.
@@ -1248,16 +1247,9 @@ fn initialise_arrays(
         .filter(|(_cn_record_position, cn)| channel_names_to_read_in_dg.contains(&cn.unique_name))
         .try_for_each(
             |(_cn_record_position, cn): (&i32, &mut Cn4)| -> Result<(), Error> {
-                let mut shape = (Vec::new(), Order::RowMajor);
-                if let Some(compo) = &cn.composition {
-                    match &compo.block {
-                        Compo::CA(ca) => shape = ca.shape.clone(),
-                        Compo::CN(_) => (),
-                    }
-                }
                 cn.data = cn
                     .data
-                    .zeros(cn.block.cn_type, *cg_cycle_count, cn.n_bytes, shape)
+                    .zeros(cn.block.cn_type, *cg_cycle_count, cn.n_bytes, cn.shape)
                     .with_context(|| {
                         format!("Zeros initialisation of channel {} failed", cn.unique_name)
                     })?;

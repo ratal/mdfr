@@ -604,19 +604,11 @@ fn create_blocks(
                 .collect::<Vec<_>>();
             // data_dim_size.remove(0);
             let mut ca_block = Ca4Block::default();
-            for x in data_dim_size.clone() {
-                ca_block.snd += x as usize;
-                ca_block.pnd *= x as usize;
-            }
-            cg_block.cg_data_bytes = ca_block.pnd as u32 * byte_count;
+            cg_block.cg_data_bytes = cn.list_size as u32 * byte_count;
 
             cn_block.cn_composition = pointer;
             ca_block.ca_ndim = data_ndim as u16;
             ca_block.ca_dim_size = data_dim_size.clone();
-            ca_block.shape.0 = data_dim_size
-                .iter()
-                .map(|x| *x as usize)
-                .collect::<Vec<_>>();
             ca_block.ca_len = 48 + 8 * data_ndim as u64;
             pointer += ca_block.ca_len as i64;
             composition = Some(Composition {
@@ -634,7 +626,7 @@ fn create_blocks(
                 cn_block.cn_type,
                 cn_block.cn_data_type,
                 cg_block.cg_data_bytes,
-                data_ndim > 0,
+                cn.list_size,
             )
             .with_context(|| format!("failed initilising array for channel {}", cn.unique_name))?,
             block: cn_block,
@@ -643,6 +635,8 @@ fn create_blocks(
             pos_byte_beg: 0,
             n_bytes: cg_block.cg_data_bytes,
             composition,
+            list_size: cn.list_size,
+            shape: cn.shape,
             invalid_mask: None,
         };
         let mut new_cg = Cg4 {

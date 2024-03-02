@@ -254,6 +254,11 @@ impl MdfInfo4 {
             .create_tx(channel_name_position, channel_name.to_string());
 
         // Channel array
+        let mut list_size = data_signature.shape.0.iter().product(); // primitive list size is 1
+        if data_signature.data_type == 15 | 16 {
+            //complex
+            list_size = 2;
+        }
         let data_ndim = data_signature.ndim - 1;
         let mut composition: Option<Composition> = None;
         if data_ndim > 0 {
@@ -266,20 +271,18 @@ impl MdfInfo4 {
                 .collect::<Vec<_>>();
             // data_dim_size.remove(0);
             let mut ca_block = Ca4Block::default();
-            for x in data_dim_size.clone() {
-                ca_block.snd += x as usize;
-                ca_block.pnd *= x as usize;
+            if data_signature.data_type == 15 | 16 {
+                //complex
+                list_size = list_size * 2;
+            } else {
+                list_size = list_size;
             }
-            cg_block.cg_data_bytes = ca_block.pnd as u32 * data_signature.byte_count;
+            cg_block.cg_data_bytes = list_size as u32 * data_signature.byte_count;
 
             let composition_position = position_generator();
             cn_block.cn_composition = composition_position;
             ca_block.ca_ndim = data_ndim as u16;
             ca_block.ca_dim_size = data_dim_size.clone();
-            ca_block.shape.0 = data_dim_size
-                .iter()
-                .map(|x| *x as usize)
-                .collect::<Vec<_>>();
             ca_block.ca_len = 48 + 8 * data_ndim as u64;
             composition = Some(Composition {
                 block: Compo::CA(Box::new(ca_block)),
@@ -335,6 +338,8 @@ impl MdfInfo4 {
             pos_byte_beg: 0,
             n_bytes,
             composition,
+            list_size,
+            shape: data_signature.shape,
             invalid_mask: None,
         };
 
@@ -2144,6 +2149,10 @@ pub struct Cn4 {
     pub data: ChannelData,
     /// false = little endian
     pub endian: bool,
+    /// List size: 1 for normal primitive, 2 for complex, pnd for arrays
+    pub list_size: usize,
+    // Shape of array
+    pub shape: (Vec<usize>, Order),
     /// optional invalid mask array, invalid byte position in record, invalid byte mask
     pub invalid_mask: Option<(Option<BooleanBufferBuilder>, usize, u8)>,
 }
@@ -2170,6 +2179,8 @@ impl Clone for Cn4 {
             composition: self.composition.clone(),
             data: ChannelData::default(),
             endian: self.endian,
+            list_size: self.list_size,
+            shape: self.shape.clone(),
             invalid_mask,
         }
     }
@@ -2316,6 +2327,8 @@ fn can_open_date(
         composition: None,
         data: ChannelData::UInt16(UInt16Builder::new()),
         endian: false,
+        list_size: 1,
+        shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
     };
     let block = Cn4Block {
@@ -2334,6 +2347,8 @@ fn can_open_date(
         composition: None,
         data: ChannelData::UInt8(UInt8Builder::new()),
         endian: false,
+        list_size: 1,
+        shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
     };
     let block = Cn4Block {
@@ -2352,6 +2367,8 @@ fn can_open_date(
         composition: None,
         data: ChannelData::UInt8(UInt8Builder::new()),
         endian: false,
+        list_size: 1,
+        shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
     };
     let block = Cn4Block {
@@ -2370,6 +2387,8 @@ fn can_open_date(
         composition: None,
         data: ChannelData::UInt8(UInt8Builder::new()),
         endian: false,
+        list_size: 1,
+        shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
     };
     let block = Cn4Block {
@@ -2388,6 +2407,8 @@ fn can_open_date(
         composition: None,
         data: ChannelData::UInt8(UInt8Builder::new()),
         endian: false,
+        list_size: 1,
+        shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
     };
     let block = Cn4Block {
@@ -2406,6 +2427,8 @@ fn can_open_date(
         composition: None,
         data: ChannelData::UInt8(UInt8Builder::new()),
         endian: false,
+        list_size: 1,
+        shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
     };
     (date_ms, min, hour, day, month, year)
@@ -2429,6 +2452,8 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         composition: None,
         data: ChannelData::UInt32(UInt32Builder::new()),
         endian: false,
+        list_size: 1,
+        shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
     };
     let block = Cn4Block {
@@ -2447,6 +2472,8 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         composition: None,
         data: ChannelData::UInt16(UInt16Builder::new()),
         endian: false,
+        list_size: 1,
+        shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
     };
     (ms, days)
@@ -2547,24 +2574,39 @@ fn parse_cn4_block(
 
     //Reads CA or composition
     let compo: Option<Composition>;
-    let is_array: bool;
+    let mut list_size: usize;
+    let mut shape: (Vec<usize>, Order);
     if block.cn_composition != 0 {
-        let (co, pos, array_flag, n_cns, cnss) = parse_composition(
+        let (co, pos, array_size, shape, n_cns, cnss) = parse_composition(
             rdr,
             block.cn_composition,
             position,
             sharable,
             record_layout,
             cg_cycle_count,
-        )?;
-        is_array = array_flag;
+        )
+        .context("Failed reading composition")?;
+        // list size calculation
+        if block.cn_data_type == 15 | 16 {
+            //complex
+            list_size = 2 * array_size;
+        } else {
+            list_size = array_size;
+        }
         compo = Some(co);
         position = pos;
         n_cn += n_cns;
         cns = cnss;
     } else {
         compo = None;
-        is_array = false;
+        shape = (vec![1], Order::RowMajor);
+        // list size calculation
+        if block.cn_data_type == 15 | 16 {
+            //complex
+            list_size = 2;
+        } else {
+            list_size = 1;
+        }
     }
 
     let mut endian: bool = false; // Little endian by default
@@ -2594,8 +2636,10 @@ fn parse_cn4_block(
         pos_byte_beg,
         n_bytes,
         composition: compo,
-        data: data_type_init(cn_type, data_type, n_bytes, is_array)?,
+        data: data_type_init(cn_type, data_type, n_bytes, list_size)?,
         endian,
+        list_size,
+        shape,
         invalid_mask,
     };
 
@@ -2780,9 +2824,6 @@ pub struct Ca4Block {
     pub ca_dim_size: Vec<u64>,
     pub ca_axis_value: Option<Vec<f64>>,
     pub ca_cycle_count: Option<Vec<u64>>,
-    pub snd: usize,
-    pub pnd: usize,
-    pub shape: (Vec<usize>, Order),
 }
 
 impl Default for Ca4Block {
@@ -2809,9 +2850,6 @@ impl Default for Ca4Block {
             ca_dim_size: vec![],
             ca_axis_value: None,
             ca_cycle_count: None,
-            snd: 0,
-            pnd: 1,
-            shape: (vec![], Order::RowMajor),
         }
     }
 }
@@ -2857,7 +2895,7 @@ fn parse_ca_block(
     ca_block: &mut Cursor<Vec<u8>>,
     block_header: Blockheader4,
     cg_cycle_count: u64,
-) -> Result<Ca4Block> {
+) -> Result<(Ca4Block, (Vec<usize>, Order), usize, usize), Error> {
     //Reads members first
     ca_block.set_position(block_header.hdr_links * 8); // change buffer position after links section
     let ca_members: Ca4BlockMembers = ca_block
@@ -2986,32 +3024,34 @@ fn parse_ca_block(
             None
         };
 
-    Ok(Ca4Block {
-        ca_id: block_header.hdr_id,
-        reserved: block_header.hdr_gap,
-        ca_len: block_header.hdr_len,
-        ca_links: block_header.hdr_links,
-        ca_composition,
-        ca_data,
-        ca_dynamic_size,
-        ca_input_quantity,
-        ca_output_quantity,
-        ca_comparison_quantity,
-        ca_cc_axis_conversion,
-        ca_axis,
-        ca_type: ca_members.ca_type,
-        ca_storage: ca_members.ca_storage,
-        ca_ndim: ca_members.ca_ndim,
-        ca_flags: ca_members.ca_flags,
-        ca_byte_offset_base: ca_members.ca_byte_offset_base,
-        ca_inval_bit_pos_base: ca_members.ca_inval_bit_pos_base,
-        ca_dim_size: ca_members.ca_dim_size,
-        ca_axis_value,
-        ca_cycle_count,
+    Ok((
+        Ca4Block {
+            ca_id: block_header.hdr_id,
+            reserved: block_header.hdr_gap,
+            ca_len: block_header.hdr_len,
+            ca_links: block_header.hdr_links,
+            ca_composition,
+            ca_data,
+            ca_dynamic_size,
+            ca_input_quantity,
+            ca_output_quantity,
+            ca_comparison_quantity,
+            ca_cc_axis_conversion,
+            ca_axis,
+            ca_type: ca_members.ca_type,
+            ca_storage: ca_members.ca_storage,
+            ca_ndim: ca_members.ca_ndim,
+            ca_flags: ca_members.ca_flags,
+            ca_byte_offset_base: ca_members.ca_byte_offset_base,
+            ca_inval_bit_pos_base: ca_members.ca_inval_bit_pos_base,
+            ca_dim_size: ca_members.ca_dim_size,
+            ca_axis_value,
+            ca_cycle_count,
+        },
+        shape,
         snd,
         pnd,
-        shape,
-    })
+    ))
 }
 
 /// contains composition blocks (CN or CA)
@@ -3040,28 +3080,32 @@ fn parse_composition(
     sharable: &mut SharableBlocks,
     record_layout: RecordLayout,
     cg_cycle_count: u64,
-) -> Result<(Composition, i64, bool, usize, CnType)> {
-    let (mut block, block_header, pos) = parse_block(rdr, target, position)?;
+) -> Result<(Composition, i64, usize, (Vec<usize>, Order), usize, CnType)> {
+    let (mut block, block_header, pos) =
+        parse_block(rdr, target, position).context("Failed parsing composition header block")?;
     position = pos;
-    let is_array: bool;
+    let array_size: usize;
+    let mut shape = (vec![1], Order::RowMajor);
     let mut cns: CnType;
     let mut n_cn: usize = 0;
 
     if block_header.hdr_id == "##CA".as_bytes() {
         // Channel Array
-        is_array = true;
-        let block = parse_ca_block(&mut block, block_header, cg_cycle_count)?;
+        let (block, shape, snd, array_size) =
+            parse_ca_block(&mut block, block_header, cg_cycle_count)
+                .context("Failed parsing CA block")?;
         position = pos;
         let ca_compositon: Option<Box<Composition>>;
         if block.ca_composition != 0 {
-            let (ca, pos, _is_array, n_cns, cnss) = parse_composition(
+            let (ca, pos, _array_size, shape, n_cns, cnss) = parse_composition(
                 rdr,
                 block.ca_composition,
                 position,
                 sharable,
                 record_layout,
                 cg_cycle_count,
-            )?;
+            )
+            .context("Failed parsing composition block")?;
             position = pos;
             cns = cnss;
             n_cn += n_cns;
@@ -3076,13 +3120,14 @@ fn parse_composition(
                 compo: ca_compositon,
             },
             position,
-            is_array,
+            array_size,
+            shape,
             n_cn,
             cns,
         ))
     } else {
         // Channel structure
-        is_array = false;
+        array_size = 1;
         let (cnss, pos, n_cns, first_rec_pos) = parse_cn4(
             rdr,
             target,
@@ -3101,7 +3146,7 @@ fn parse_composition(
             Cn4::default()
         };
         if cn_struct.block.cn_composition != 0 {
-            let (cn, pos, _is_array, n_cns, cnss) = parse_composition(
+            let (cn, pos, _array_size, shape, n_cns, cnss) = parse_composition(
                 rdr,
                 cn_struct.block.cn_composition,
                 position,
@@ -3122,7 +3167,8 @@ fn parse_composition(
                 compo: cn_composition,
             },
             position,
-            is_array,
+            array_size,
+            shape,
             n_cn,
             cns,
         ))

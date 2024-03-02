@@ -4,8 +4,8 @@ use anyhow::{bail, Context, Error, Result};
 use arrow::array::{
     as_primitive_array, Array, ArrayBuilder, ArrayData, ArrayRef, BinaryArray,
     BooleanBufferBuilder, FixedSizeBinaryArray, FixedSizeBinaryBuilder, FixedSizeListArray,
-    Float32Array, Float64Array, Int8Builder, LargeBinaryArray, LargeBinaryBuilder,
-    LargeStringArray, LargeStringBuilder, PrimitiveBuilder, StringArray,
+    FixedSizeListBuilder, Int8Builder, LargeBinaryArray, LargeBinaryBuilder, LargeStringArray,
+    LargeStringBuilder, PrimitiveBuilder, StringArray,
 };
 use arrow::buffer::{MutableBuffer, NullBuffer};
 use arrow::datatypes::{
@@ -34,8 +34,8 @@ pub enum ChannelData {
     Int64(PrimitiveBuilder<Int64Type>),
     UInt64(PrimitiveBuilder<UInt64Type>),
     Float64(PrimitiveBuilder<Float64Type>),
-    Complex32(PrimitiveBuilder<Float32Type>),
-    Complex64(PrimitiveBuilder<Float64Type>),
+    Complex32(FixedSizeListBuilder<PrimitiveBuilder<Float32Type>>),
+    Complex64(FixedSizeListBuilder<PrimitiveBuilder<Float64Type>>),
     Utf8(LargeStringBuilder),
     VariableSizeByteArray(LargeBinaryBuilder),
     FixedSizeByteArray(FixedSizeBinaryBuilder),
@@ -161,16 +161,20 @@ impl Clone for ChannelData {
                     .into_builder()
                     .expect("failed getting back mutable array"),
             ),
-            Self::Complex32(arg0) => Self::Complex32(
-                arg0.finish_cloned()
+            Self::Complex32(arg0) => Self::Complex32(FixedSizeListBuilder::new(
+                arg0.values()
+                    .finish_cloned()
                     .into_builder()
                     .expect("failed getting back mutable array"),
-            ),
-            Self::Complex64(arg0) => Self::Complex64(
-                arg0.finish_cloned()
+                arg0.value_length(),
+            )),
+            Self::Complex64(arg0) => Self::Complex64(FixedSizeListBuilder::new(
+                arg0.values()
+                    .finish_cloned()
                     .into_builder()
                     .expect("failed getting back mutable array"),
-            ),
+                arg0.value_length(),
+            )),
             Self::Utf8(arg0) => Self::Utf8(
                 arg0.finish_cloned()
                     .into_builder()
@@ -757,11 +761,13 @@ impl ChannelData {
                 .flat_map(|x| x.to_ne_bytes())
                 .collect()),
             ChannelData::Complex32(a) => Ok(a
+                .values()
                 .values_slice()
                 .iter()
                 .flat_map(|x| x.to_ne_bytes())
                 .collect()),
             ChannelData::Complex64(a) => Ok(a
+                .values()
                 .values_slice()
                 .iter()
                 .flat_map(|x| x.to_ne_bytes())
@@ -1169,7 +1175,7 @@ impl ChannelData {
                 let _ = a.validity_slice_mut().insert(mask.as_slice_mut());
             }
             ChannelData::Complex32(a) => {
-                let _ = a.validity_slice_mut().insert(mask.as_slice_mut());
+                let _ = a.nulls(mask.as_slice_mut());
             }
             ChannelData::Complex64(a) => {
                 let _ = a.validity_slice_mut().insert(mask.as_slice_mut());
@@ -1283,9 +1289,9 @@ pub fn data_type_init(
     cn_type: u8,
     cn_data_type: u8,
     n_bytes: u32,
-    is_array: bool,
+    list_size: usize,
 ) -> Result<ChannelData, Error> {
-    if !is_array {
+    if list_size == 1 {
         // Not an array
         if cn_type != 3 || cn_type != 6 {
             // not virtual channel or vlsd
@@ -1323,11 +1329,17 @@ pub fn data_type_init(
                     }
                 }
                 15 | 16 => {
-                    // complex
+                    // complex, should not happen here
                     if n_bytes <= 4 {
-                        Ok(ChannelData::Float32(PrimitiveBuilder::new()))
+                        Ok(ChannelData::Complex32(FixedSizeListBuilder::new(
+                            PrimitiveBuilder::new(),
+                            2,
+                        )))
                     } else {
-                        Ok(ChannelData::Float64(PrimitiveBuilder::new()))
+                        Ok(ChannelData::Complex64(FixedSizeListBuilder::new(
+                            PrimitiveBuilder::new(),
+                            2,
+                        )))
                     }
                 }
                 6..=9 => {
@@ -1417,10 +1429,31 @@ pub fn data_type_init(
             }
             15 | 16 => {
                 // complex
-                if n_bytes <= 4 {
-                    bail!("f32 complex tensors not implemented")
+                if list_size == 2 {
+                    if n_bytes <= 4 {
+                        Ok(ChannelData::Complex32(FixedSizeListBuilder::new(
+                            PrimitiveBuilder::new(),
+                            2,
+                        )))
+                    } else {
+                        Ok(ChannelData::Complex64(FixedSizeListBuilder::new(
+                            PrimitiveBuilder::new(),
+                            2,
+                        )))
+                    }
                 } else {
-                    bail!("f64 complex tensors not implemented")
+                    // tensor of complex
+                    if n_bytes <= 4 {
+                        Ok(ChannelData::ArrayDFloat32(FixedSizeListBuilder::new(
+                            PrimitiveBuilder::new(),
+                            list_size,
+                        )))
+                    } else {
+                        Ok(ChannelData::ArrayDFloat64(FixedSizeListBuilder::new(
+                            PrimitiveBuilder::new(),
+                            list_size,
+                        )))
+                    }
                 }
             }
             _ => {

@@ -1068,7 +1068,7 @@ fn parse_cn3_block(
         unique_name,
         pos_byte_beg,
         n_bytes,
-        data: data_type_init(0, data_type, n_bytes as u32, false)?,
+        data: data_type_init(0, data_type, n_bytes as u32, 1)?,
         endian,
         channel_data_valid: false,
     };

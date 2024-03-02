@@ -1,7 +1,8 @@
 //! this modules implements functions to convert arrays into physical arrays using CCBlock
 use anyhow::{bail, Context, Error, Result};
 use arrow::array::{
-    Array, ArrayBuilder, AsArray, Float64Array, LargeStringBuilder, PrimitiveBuilder,
+    Array, ArrayBuilder, AsArray, FixedSizeListBuilder, Float64Array, Float64Builder,
+    LargeStringBuilder, PrimitiveBuilder,
 };
 use arrow::compute::cast;
 use arrow::datatypes::{ArrowPrimitiveType, Float32Type, Float64Type};
@@ -172,16 +173,20 @@ where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
-    let array_f64: Float64Array = cast(&(array.finish()), &DataType::Float64)
-        .context("failed converting Array to f64 Array")?
-        .as_primitive::<Float64Type>()
-        .clone();
-    let array_f64 = array_f64
-        .unary_mut(|x| x * p2 + p1)
-        .expect("error applying linear conversion");
-    Ok(array_f64
+    let mut array_f64: Float64Builder = array
+        .finish()
+        .try_unary(|value| {
+            num::cast::cast::<T::Native, f64>(value).ok_or_else(|| {
+                ArrowError::CastError(format!("Can't cast value {:?} to f64", value,))
+            })
+        })
+        .context("failed converting array to f64")?
         .into_builder()
-        .expect("failed converting to builder"))
+        .expect("Failed getting mutable F64");
+    array_f64.values_slice_mut().iter_mut().for_each(|x| {
+        *x = *x * p2 + p1;
+    });
+    Ok(array_f64)
 }
 
 /// Apply linear conversion to get physical data
@@ -251,16 +256,18 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
                 );
             }
             ChannelData::Complex32(a) => {
-                cn.data = ChannelData::Complex64(
-                    linear_conversion_primitive(a, p1, p2)
+                cn.data = ChannelData::Complex64(FixedSizeListBuilder::new(
+                    linear_conversion_primitive(a.values(), p1, p2)
                         .context("failed linear conversion of complex f32 channel")?,
-                );
+                    a.value_length(),
+                ));
             }
             ChannelData::Complex64(a) => {
-                cn.data = ChannelData::Complex64(
-                    linear_conversion_primitive(a, p1, p2)
+                cn.data = ChannelData::Complex64(FixedSizeListBuilder::new(
+                    linear_conversion_primitive(a.values(), p1, p2)
                         .context("failed linear conversion of complex f64 channel")?,
-                );
+                    a.value_length(),
+                ));
             }
             ChannelData::ArrayDUInt8((a, shape)) => {
                 cn.data = ChannelData::ArrayDFloat64((
@@ -434,16 +441,18 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
             );
         }
         ChannelData::Complex32(a) => {
-            cn.data = ChannelData::Complex64(
-                rational_conversion_primitive(a, cc_val)
+            cn.data = ChannelData::Complex64(FixedSizeListBuilder::new(
+                rational_conversion_primitive(a.values(), cc_val)
                     .context("failed rational conversion of complex f32 channel")?,
-            );
+                a.value_length(),
+            ));
         }
         ChannelData::Complex64(a) => {
-            cn.data = ChannelData::Complex64(
-                rational_conversion_primitive(a, cc_val)
+            cn.data = ChannelData::Complex64(FixedSizeListBuilder::new(
+                rational_conversion_primitive(a.values(), cc_val)
                     .context("failed rational conversion of complex f64 channel")?,
-            );
+                a.value_length(),
+            ));
         }
         ChannelData::ArrayDUInt8((a, shape)) => {
             cn.data = ChannelData::ArrayDFloat64((
@@ -654,18 +663,24 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str) -> Result<(), Error> {
                     ).context("failed algebraic conversion of f64 channel")?);
                 }
                 ChannelData::Complex32(a) => {
-                    cn.data = ChannelData::Complex64(alegbraic_conversion_primitive(
+                    cn.data = ChannelData::Complex64(FixedSizeListBuilder::new(
+                        alegbraic_conversion_primitive(
                         &compiled,
                         &slab,
-                        a,
-                    ).context("failed algebraic conversion of complex f32 channel")?);
+                        a.values(),
+                    ).context("failed algebraic conversion of complex f32 channel")?,
+                    a.value_length(),
+                ));
                 }
                 ChannelData::Complex64(a) => {
-                    cn.data = ChannelData::Complex64(alegbraic_conversion_primitive(
+                    cn.data = ChannelData::Complex64(FixedSizeListBuilder::new(
+                        alegbraic_conversion_primitive(
                         &compiled,
                         &slab,
-                        a,
-                    ).context("failed algebraic conversion of complex f64 channel")?);
+                        a.values(),
+                    ).context("failed algebraic conversion of complex f64 channel")?,
+                    a.value_length(),
+                ));
                 }
                 ChannelData::ArrayDInt8((a, shape)) => {
                     cn.data = ChannelData::ArrayDFloat64((
