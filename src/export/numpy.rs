@@ -2,7 +2,7 @@
 
 use arrow::array::{
     Float32Builder, Float64Builder, Int16Builder, Int32Builder, Int64Builder, Int8Builder,
-    UInt16Builder, UInt32Builder, UInt64Builder, UInt8Builder,
+    UInt16Builder, UInt32Builder, UInt64Builder, UInt8Builder, 
 };
 
 use numpy::npyffi::types::NPY_ORDER;
@@ -36,10 +36,12 @@ impl IntoPy<PyObject> for ChannelData {
             ChannelData::UInt64(array) => array.values_slice().to_pyarray(py).into_py(py),
             ChannelData::Float64(array) => array.values_slice().to_pyarray(py).into_py(py),
             ChannelData::Complex32(array) => {
-                array.values().values_slice().to_pyarray(py).into_py(py)
+                let a = array.finish_cloned().values();
+                a.as_any().downcast_ref::<Float32Builder>().expect("Failed downcasting to Float32 primitive").values_slice().to_pyarray(py).into_py(py)
             }
             ChannelData::Complex64(array) => {
-                array.values().values_slice().to_pyarray(py).into_py(py)
+                let a = array.finish_cloned().values();
+                a.as_any().downcast_ref::<Float64Builder>().expect("Failed downcasting to Float64 primitive").values_slice().to_pyarray(py).into_py(py)
             }
             ChannelData::VariableSizeByteArray(array) => array.values_slice().into_py(py),
             ChannelData::FixedSizeByteArray(array) => {
@@ -144,8 +146,14 @@ impl ToPyObject for ChannelData {
             ChannelData::Int64(array) => array.values_slice().to_pyarray(py).into_py(py),
             ChannelData::UInt64(array) => array.values_slice().to_pyarray(py).into_py(py),
             ChannelData::Float64(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::Complex32(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::Complex64(array) => array.values_slice().to_pyarray(py).into_py(py),
+            ChannelData::Complex32(array) => {
+                let a = array.finish_cloned().values();
+                a.as_any().downcast_ref::<Float32Builder>().expect("Failed downcasting to Float32 primitive").values_slice().to_pyarray(py).into_py(py)
+            }
+            ChannelData::Complex64(array) => {
+                let a = array.finish_cloned().values();
+                a.as_any().downcast_ref::<Float64Builder>().expect("Failed downcasting to Float64 primitive").values_slice().to_pyarray(py).into_py(py)
+            },
             ChannelData::Utf8(array) => array
                 .finish_cloned()
                 .iter()
