@@ -1249,7 +1249,7 @@ fn initialise_arrays(
             |(_cn_record_position, cn): (&i32, &mut Cn4)| -> Result<(), Error> {
                 cn.data = cn
                     .data
-                    .zeros(cn.block.cn_type, *cg_cycle_count, cn.n_bytes, cn.shape)
+                    .zeros(cn.block.cn_type, *cg_cycle_count, cn.n_bytes, cn.shape.clone())
                     .with_context(|| {
                         format!("Zeros initialisation of channel {} failed", cn.unique_name)
                     })?;

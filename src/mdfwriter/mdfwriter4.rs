@@ -636,7 +636,7 @@ fn create_blocks(
             n_bytes: cg_block.cg_data_bytes,
             composition,
             list_size: cn.list_size,
-            shape: cn.shape,
+            shape: cn.shape.clone(),
             invalid_mask: None,
         };
         let mut new_cg = Cg4 {

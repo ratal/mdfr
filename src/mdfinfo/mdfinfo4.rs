@@ -2574,10 +2574,10 @@ fn parse_cn4_block(
 
     //Reads CA or composition
     let compo: Option<Composition>;
-    let mut list_size: usize;
-    let mut shape: (Vec<usize>, Order);
+    let list_size: usize;
+    let shape: (Vec<usize>, Order);
     if block.cn_composition != 0 {
-        let (co, pos, array_size, shape, n_cns, cnss) = parse_composition(
+        let (co, pos, array_size, s, n_cns, cnss) = parse_composition(
             rdr,
             block.cn_composition,
             position,
@@ -2586,6 +2586,7 @@ fn parse_cn4_block(
             cg_cycle_count,
         )
         .context("Failed reading composition")?;
+        shape = s;
         // list size calculation
         if block.cn_data_type == 15 | 16 {
             //complex
@@ -3085,27 +3086,26 @@ fn parse_composition(
         parse_block(rdr, target, position).context("Failed parsing composition header block")?;
     position = pos;
     let array_size: usize;
-    let mut shape = (vec![1], Order::RowMajor);
     let mut cns: CnType;
     let mut n_cn: usize = 0;
 
     if block_header.hdr_id == "##CA".as_bytes() {
         // Channel Array
-        let (block, shape, snd, array_size) =
+        let (block, mut shape, _snd, array_size) =
             parse_ca_block(&mut block, block_header, cg_cycle_count)
                 .context("Failed parsing CA block")?;
         position = pos;
         let ca_compositon: Option<Box<Composition>>;
         if block.ca_composition != 0 {
-            let (ca, pos, _array_size, shape, n_cns, cnss) = parse_composition(
+            let (ca, pos, _array_size, s, n_cns, cnss) = parse_composition(
                 rdr,
                 block.ca_composition,
                 position,
                 sharable,
                 record_layout,
                 cg_cycle_count,
-            )
-            .context("Failed parsing composition block")?;
+            ).context("Failed parsing composition block")?;
+            shape = s;
             position = pos;
             cns = cnss;
             n_cn += n_cns;
@@ -3145,8 +3145,9 @@ fn parse_composition(
         } else {
             Cn4::default()
         };
+        let shape : (Vec<usize>, Order);
         if cn_struct.block.cn_composition != 0 {
-            let (cn, pos, _array_size, shape, n_cns, cnss) = parse_composition(
+            let (cn, pos, _array_size, s, n_cns, cnss) = parse_composition(
                 rdr,
                 cn_struct.block.cn_composition,
                 position,
@@ -3154,12 +3155,14 @@ fn parse_composition(
                 record_layout,
                 cg_cycle_count,
             )?;
+            shape = s;
             position = pos;
             n_cn += n_cns;
             cns.extend(cnss);
             cn_composition = Some(Box::new(cn));
         } else {
-            cn_composition = None
+            cn_composition = None;
+            shape = (vec![1], Order::RowMajor);
         }
         Ok((
             Composition {
