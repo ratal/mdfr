@@ -1,5 +1,5 @@
 //! this module implements low level data reading for mdf4 files.
-use crate::mdfinfo::mdfinfo4::{Cn4, CnType, Compo};
+use crate::mdfinfo::mdfinfo4::{Cn4, CnType};
 use anyhow::{Context, Error, Ok, Result};
 use arrow::array::{
     Float32Builder, Float64Builder, Int16Builder, Int32Builder, Int64Builder, Int8Builder,
@@ -1181,335 +1181,293 @@ pub fn read_channels_from_bytes(
                     }
                 }
                 ChannelData::ArrayDInt32(a) => {
-                    if let Some(compo) = &cn.composition {
-                        match &compo.block {
-                            Compo::CA(ca) => {
-                                let data = a.0
-                                .values_slice_mut();
-                                if cn.endian {
-                                    if n_bytes <=3 {
-                                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                            for j in 0..cn.list_size {
-                                                value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
-                                                data[(i + previous_index) * cn.list_size + j] = value
-                                                    .read_i24::<BigEndian>()
-                                                    .context("Could not read be i24 array")?;
-                                            }
-                                        }
-                                    }
-                                    else {
-                                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                            for j in 0..cn.list_size {
-                                                value =
-                                                &record[pos_byte_beg + j * std::mem::size_of::<i32>()..pos_byte_beg + (j + 1) * std::mem::size_of::<i32>()];
-                                                data[(i + previous_index) * cn.list_size + j] = i32::from_be_bytes(
-                                                    value.try_into().context("Could not read be i32 array")?,
-                                                );
-                                            }
-                                        }
-                                    }
-                                } else if n_bytes <=3 {
-                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                        for j in 0..cn.list_size {
-                                            value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
-                                            data[(i + previous_index) * cn.list_size + j] = value
-                                                .read_i24::<LittleEndian>()
-                                                .context("Could not read le i24 array")?;
-                                        }
-                                    }
-                                }
-                                else {
-                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                        for j in 0..cn.list_size {
-                                            value =
-                                            &record[pos_byte_beg + j * std::mem::size_of::<i32>()..pos_byte_beg + (j + 1) * std::mem::size_of::<i32>()];
-                                            data[(i + previous_index) * cn.list_size + j] = i32::from_le_bytes(
-                                                value.try_into().context("Could not read le i32 array")?,
-                                            );
-                                        }
-                                    }
+                    let data = a.0
+                    .values_slice_mut();
+                    if cn.endian {
+                        if n_bytes <=3 {
+                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                for j in 0..cn.list_size {
+                                    value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
+                                    data[(i + previous_index) * cn.list_size + j] = value
+                                        .read_i24::<BigEndian>()
+                                        .context("Could not read be i24 array")?;
                                 }
                             }
-                            Compo::CN(_) => {},
+                        }
+                        else {
+                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                for j in 0..cn.list_size {
+                                    value =
+                                    &record[pos_byte_beg + j * std::mem::size_of::<i32>()..pos_byte_beg + (j + 1) * std::mem::size_of::<i32>()];
+                                    data[(i + previous_index) * cn.list_size + j] = i32::from_be_bytes(
+                                        value.try_into().context("Could not read be i32 array")?,
+                                    );
+                                }
+                            }
+                        }
+                    } else if n_bytes <=3 {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            for j in 0..cn.list_size {
+                                value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
+                                data[(i + previous_index) * cn.list_size + j] = value
+                                    .read_i24::<LittleEndian>()
+                                    .context("Could not read le i24 array")?;
+                            }
+                        }
+                    }
+                    else {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            for j in 0..cn.list_size {
+                                value =
+                                &record[pos_byte_beg + j * std::mem::size_of::<i32>()..pos_byte_beg + (j + 1) * std::mem::size_of::<i32>()];
+                                data[(i + previous_index) * cn.list_size + j] = i32::from_le_bytes(
+                                    value.try_into().context("Could not read le i32 array")?,
+                                );
+                            }
                         }
                     }
                 }
                 ChannelData::ArrayDUInt32(a) => {
-                    if let Some(compo) = &cn.composition {
-                        match &compo.block {
-                            Compo::CA(ca) => {
-                                let data = a.0
-                                .values_slice_mut();
-                                if cn.endian {
-                                    if n_bytes <=3 {
-                                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                            for j in 0..cn.list_size {
-                                                value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
-                                                data[(i + previous_index) * cn.list_size + j] = value
-                                                    .read_u24::<BigEndian>()
-                                                    .context("Could not read be u24 array")?;
-                                            }
-                                        }
-                                    }
-                                    else {
-                                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                            for j in 0..cn.list_size {
-                                                value =
-                                                &record[pos_byte_beg + j * std::mem::size_of::<u32>()..pos_byte_beg + (j + 1) * std::mem::size_of::<u32>()];
-                                                data[(i + previous_index) * cn.list_size + j] = u32::from_be_bytes(
-                                                    value.try_into().context("Could not read be u32 array")?,
-                                                );
-                                            }
-                                        }
-                                    }
-                                } else if n_bytes <=3 {
-                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                        for j in 0..cn.list_size {
-                                            value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
-                                            data[(i + previous_index) * cn.list_size + j] = value
-                                                .read_u24::<LittleEndian>()
-                                                .context("Could not read le u24 array")?;
-                                        }
-                                    }
-                                } else {
-                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                        for j in 0..cn.list_size {
-                                            value =
-                                            &record[pos_byte_beg + j * std::mem::size_of::<u32>()..pos_byte_beg + (j + 1) * std::mem::size_of::<u32>()];
-                                            data[(i + previous_index) * cn.list_size + j] = u32::from_le_bytes(
-                                                value.try_into().context("Could not read le u32 array")?,
-                                            );
-                                        }
-                                    }
+                    let data = a.0
+                    .values_slice_mut();
+                    if cn.endian {
+                        if n_bytes <=3 {
+                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                for j in 0..cn.list_size {
+                                    value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
+                                    data[(i + previous_index) * cn.list_size + j] = value
+                                        .read_u24::<BigEndian>()
+                                        .context("Could not read be u24 array")?;
                                 }
                             }
-                            Compo::CN(_) => {},
+                        }
+                        else {
+                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                for j in 0..cn.list_size {
+                                    value =
+                                    &record[pos_byte_beg + j * std::mem::size_of::<u32>()..pos_byte_beg + (j + 1) * std::mem::size_of::<u32>()];
+                                    data[(i + previous_index) * cn.list_size + j] = u32::from_be_bytes(
+                                        value.try_into().context("Could not read be u32 array")?,
+                                    );
+                                }
+                            }
+                        }
+                    } else if n_bytes <=3 {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            for j in 0..cn.list_size {
+                                value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
+                                data[(i + previous_index) * cn.list_size + j] = value
+                                    .read_u24::<LittleEndian>()
+                                    .context("Could not read le u24 array")?;
+                            }
+                        }
+                    } else {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            for j in 0..cn.list_size {
+                                value =
+                                &record[pos_byte_beg + j * std::mem::size_of::<u32>()..pos_byte_beg + (j + 1) * std::mem::size_of::<u32>()];
+                                data[(i + previous_index) * cn.list_size + j] = u32::from_le_bytes(
+                                    value.try_into().context("Could not read le u32 array")?,
+                                );
+                            }
                         }
                     }
                 }
                 ChannelData::ArrayDFloat32(a) => {
-                    if let Some(compo) = &cn.composition {
-                        match &compo.block {
-                            Compo::CA(ca) => {
-                                let data = a.0
-                                .values_slice_mut();
-                                if cn.endian {
-                                    if n_bytes <= 2 {
-                                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                            for j in 0..cn.list_size {
-                                                value =
-                                                &record[pos_byte_beg + j * std::mem::size_of::<f16>()..pos_byte_beg + (j + 1) * std::mem::size_of::<f16>()];
-                                                data[(i + previous_index) * cn.list_size + j] = f16::from_be_bytes(
-                                                    value.try_into().context("Could not read be f16 array")?,
-                                                )
-                                                .to_f32();
-                                            }
-                                        }
-                                    }
-                                    else {
-                                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                            for j in 0..cn.list_size {
-                                                value =
-                                                &record[pos_byte_beg + j * std::mem::size_of::<f32>()..pos_byte_beg + (j + 1) * std::mem::size_of::<f32>()];
-                                                data[(i + previous_index) * cn.list_size + j] = f32::from_be_bytes(
-                                                    value.try_into().context("Could not read be f32 array")?,
-                                                );
-                                            }
-                                        }
-                                    }
-                                } else if n_bytes <= 2 {
-                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                        for j in 0..cn.list_size {
-                                            value =
-                                            &record[pos_byte_beg + j * std::mem::size_of::<f16>()..pos_byte_beg + (j + 1) * std::mem::size_of::<f16>()];
-                                            data[(i + previous_index) * cn.list_size + j] = f16::from_le_bytes(
-                                                value.try_into().context("Could not read le f16 array")?,
-                                            )
-                                            .to_f32();
-                                        }
-                                    }
-                                }
-                                else {
-                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                        for j in 0..cn.list_size {
-                                            value =
-                                            &record[pos_byte_beg + j * std::mem::size_of::<f32>()..pos_byte_beg + (j + 1) * std::mem::size_of::<f32>()];
-                                            data[(i + previous_index) * cn.list_size + j] = f32::from_le_bytes(
-                                                value.try_into().context("Could not read le f32 array")?,
-                                            );
-                                        }
-                                    }
+                    let data = a.0
+                    .values_slice_mut();
+                    if cn.endian {
+                        if n_bytes <= 2 {
+                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                for j in 0..cn.list_size {
+                                    value =
+                                    &record[pos_byte_beg + j * std::mem::size_of::<f16>()..pos_byte_beg + (j + 1) * std::mem::size_of::<f16>()];
+                                    data[(i + previous_index) * cn.list_size + j] = f16::from_be_bytes(
+                                        value.try_into().context("Could not read be f16 array")?,
+                                    )
+                                    .to_f32();
                                 }
                             }
-                            Compo::CN(_) => {},
+                        }
+                        else {
+                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                for j in 0..cn.list_size {
+                                    value =
+                                    &record[pos_byte_beg + j * std::mem::size_of::<f32>()..pos_byte_beg + (j + 1) * std::mem::size_of::<f32>()];
+                                    data[(i + previous_index) * cn.list_size + j] = f32::from_be_bytes(
+                                        value.try_into().context("Could not read be f32 array")?,
+                                    );
+                                }
+                            }
+                        }
+                    } else if n_bytes <= 2 {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            for j in 0..cn.list_size {
+                                value =
+                                &record[pos_byte_beg + j * std::mem::size_of::<f16>()..pos_byte_beg + (j + 1) * std::mem::size_of::<f16>()];
+                                data[(i + previous_index) * cn.list_size + j] = f16::from_le_bytes(
+                                    value.try_into().context("Could not read le f16 array")?,
+                                )
+                                .to_f32();
+                            }
+                        }
+                    }
+                    else {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            for j in 0..cn.list_size {
+                                value =
+                                &record[pos_byte_beg + j * std::mem::size_of::<f32>()..pos_byte_beg + (j + 1) * std::mem::size_of::<f32>()];
+                                data[(i + previous_index) * cn.list_size + j] = f32::from_le_bytes(
+                                    value.try_into().context("Could not read le f32 array")?,
+                                );
+                            }
                         }
                     }
                 }
                 ChannelData::ArrayDInt64(a) => {
-                    if let Some(compo) = &cn.composition {
-                        match &compo.block {
-                            Compo::CA(ca) => {
-                                let data = a.0
-                                .values_slice_mut();
-                                if cn.endian {
-                                    if n_bytes == 8 {
-                                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                            for j in 0..cn.list_size {
-                                                value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
-                                                data[(i + previous_index) * cn.list_size + j] = i64::from_be_bytes(
-                                                    value.try_into().context("Could not read be i64 array")?,
-                                                );
-                                            }
-                                        }
-                                    } else if n_bytes == 6 {
-                                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                            for j in 0..cn.list_size {
-                                                value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
-                                                data[(i + previous_index) * cn.list_size + j] = value
-                                                    .read_i48::<BigEndian>()
-                                                    .context("Could not read be i48 array")?;
-                                            }
-                                        }
-                                    }
-                                } else if n_bytes == 8 {
-                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                        for j in 0..cn.list_size {
-                                            value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
-                                            data[(i + previous_index) * cn.list_size + j] = i64::from_le_bytes(
-                                                value.try_into().context("Could not read le i64 array")?,
-                                            );
-                                        }
-                                    }
-                                } else if n_bytes == 6 {
-                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                        for j in 0..cn.list_size {
-                                            value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
-                                            data[(i + previous_index) * cn.list_size + j] = value
-                                                .read_i48::<LittleEndian>()
-                                                .context("Could not read le i48 array")?;
-                                        }
-                                    }
+                    let data = a.0
+                    .values_slice_mut();
+                    if cn.endian {
+                        if n_bytes == 8 {
+                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                for j in 0..cn.list_size {
+                                    value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
+                                    data[(i + previous_index) * cn.list_size + j] = i64::from_be_bytes(
+                                        value.try_into().context("Could not read be i64 array")?,
+                                    );
                                 }
                             }
-                            Compo::CN(_) => {},
+                        } else if n_bytes == 6 {
+                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                for j in 0..cn.list_size {
+                                    value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
+                                    data[(i + previous_index) * cn.list_size + j] = value
+                                        .read_i48::<BigEndian>()
+                                        .context("Could not read be i48 array")?;
+                                }
+                            }
+                        }
+                    } else if n_bytes == 8 {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            for j in 0..cn.list_size {
+                                value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
+                                data[(i + previous_index) * cn.list_size + j] = i64::from_le_bytes(
+                                    value.try_into().context("Could not read le i64 array")?,
+                                );
+                            }
+                        }
+                    } else if n_bytes == 6 {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            for j in 0..cn.list_size {
+                                value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
+                                data[(i + previous_index) * cn.list_size + j] = value
+                                    .read_i48::<LittleEndian>()
+                                    .context("Could not read le i48 array")?;
+                            }
                         }
                     }
                 }
                 ChannelData::ArrayDUInt64(a) => {
-                    if let Some(compo) = &cn.composition {
-                        match &compo.block {
-                            Compo::CA(ca) => {
-                                let data = a.0
-                                .values_slice_mut();
-                                if cn.endian {
-                                    if n_bytes == 8 {
-                                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                            for j in 0..cn.list_size {
-                                                value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
-                                                data[(i + previous_index) * cn.list_size + j] = u64::from_le_bytes(
-                                                    value.try_into().context("Could not read be u64 array")?,
-                                                );
-                                            }
-                                        }
-                                    } else if n_bytes == 7 {
-                                        let mut buf = [0u8; std::mem::size_of::<u64>()];
-                                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                            for j in 0..cn.list_size {
-                                                buf[0..7].copy_from_slice(&record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes]);
-                                                data[(i + previous_index) * cn.list_size + j] = u64::from_le_bytes(buf);
-                                            }
-                                        }
-                                    } else if n_bytes == 6 {
-                                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                            for j in 0..cn.list_size {
-                                                value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
-                                                data[(i + previous_index) * cn.list_size + j] = value
-                                                    .read_u48::<BigEndian>()
-                                                    .context("Could not read be u48 array")?;
-                                            }
-                                        }
-                                    } else if n_bytes == 5 {
-                                        let mut buf = [0u8; 6];
-                                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                            for j in 0..cn.list_size {
-                                                buf[0..5]
-                                                    .copy_from_slice(&record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes]);
-                                                data[(i + previous_index) * cn.list_size + j] = Cursor::new(buf)
-                                                    .read_u48::<BigEndian>()
-                                                    .context("Could not read be u48 from 5 bytes in array")?;
-                                            }
-                                        }
-                                    }
-                                } else if n_bytes == 8 {
-                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                        for j in 0..cn.list_size {
-                                            value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
-                                            data[(i + previous_index) * cn.list_size + j] = u64::from_le_bytes(
-                                                value.try_into().context("Could not read le u64")?,
-                                            );
-                                        }
-                                    }
-                                } else if n_bytes == 7 {
-                                    let mut buf = [0u8; std::mem::size_of::<u64>()];
-                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                        for j in 0..cn.list_size {
-                                            buf[0..7].copy_from_slice(&record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes]);
-                                            data[(i + previous_index) * cn.list_size + j] = u64::from_le_bytes(buf);
-                                        }
-                                    }
-                                } else if n_bytes == 6 {
-                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                        for j in 0..cn.list_size {
-                                            value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
-                                            data[(i + previous_index) * cn.list_size + j] = value
-                                                .read_u48::<LittleEndian>()
-                                                .context("Could not read le u48 array")?;
-                                        }
-                                    }
-                                } else {
-                                    // n_bytes = 5
-                                    let mut buf = [0u8; 6];
-                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                        for j in 0..cn.list_size {
-                                            buf[0..5].copy_from_slice(&record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes]);
-                                            data[(i + previous_index) * cn.list_size + j] = Cursor::new(buf)
-                                                .read_u48::<LittleEndian>()
-                                                .context("Could not read le u48 from 5 bytes in array")?;
-                                        }
-                                    }
+                    let data = a.0
+                    .values_slice_mut();
+                    if cn.endian {
+                        if n_bytes == 8 {
+                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                for j in 0..cn.list_size {
+                                    value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
+                                    data[(i + previous_index) * cn.list_size + j] = u64::from_le_bytes(
+                                        value.try_into().context("Could not read be u64 array")?,
+                                    );
                                 }
                             }
-                            Compo::CN(_) => {},
+                        } else if n_bytes == 7 {
+                            let mut buf = [0u8; std::mem::size_of::<u64>()];
+                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                for j in 0..cn.list_size {
+                                    buf[0..7].copy_from_slice(&record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes]);
+                                    data[(i + previous_index) * cn.list_size + j] = u64::from_le_bytes(buf);
+                                }
+                            }
+                        } else if n_bytes == 6 {
+                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                for j in 0..cn.list_size {
+                                    value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
+                                    data[(i + previous_index) * cn.list_size + j] = value
+                                        .read_u48::<BigEndian>()
+                                        .context("Could not read be u48 array")?;
+                                }
+                            }
+                        } else if n_bytes == 5 {
+                            let mut buf = [0u8; 6];
+                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                for j in 0..cn.list_size {
+                                    buf[0..5]
+                                        .copy_from_slice(&record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes]);
+                                    data[(i + previous_index) * cn.list_size + j] = Cursor::new(buf)
+                                        .read_u48::<BigEndian>()
+                                        .context("Could not read be u48 from 5 bytes in array")?;
+                                }
+                            }
+                        }
+                    } else if n_bytes == 8 {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            for j in 0..cn.list_size {
+                                value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
+                                data[(i + previous_index) * cn.list_size + j] = u64::from_le_bytes(
+                                    value.try_into().context("Could not read le u64")?,
+                                );
+                            }
+                        }
+                    } else if n_bytes == 7 {
+                        let mut buf = [0u8; std::mem::size_of::<u64>()];
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            for j in 0..cn.list_size {
+                                buf[0..7].copy_from_slice(&record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes]);
+                                data[(i + previous_index) * cn.list_size + j] = u64::from_le_bytes(buf);
+                            }
+                        }
+                    } else if n_bytes == 6 {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            for j in 0..cn.list_size {
+                                value = &record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes];
+                                data[(i + previous_index) * cn.list_size + j] = value
+                                    .read_u48::<LittleEndian>()
+                                    .context("Could not read le u48 array")?;
+                            }
+                        }
+                    } else {
+                        // n_bytes = 5
+                        let mut buf = [0u8; 6];
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            for j in 0..cn.list_size {
+                                buf[0..5].copy_from_slice(&record[pos_byte_beg + j * n_bytes..pos_byte_beg + (j + 1) * n_bytes]);
+                                data[(i + previous_index) * cn.list_size + j] = Cursor::new(buf)
+                                    .read_u48::<LittleEndian>()
+                                    .context("Could not read le u48 from 5 bytes in array")?;
+                            }
                         }
                     }
                 }
                 ChannelData::ArrayDFloat64(a) => {
-                    if let Some(compo) = &cn.composition {
-                        match &compo.block {
-                            Compo::CA(ca) => {
-                                let data = a.0
-                                .values_slice_mut();
-                                if cn.endian {
-                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                        for j in 0..cn.list_size {
-                                            value = &record[pos_byte_beg + j * std::mem::size_of::<u64>()..pos_byte_beg + (j + 1) * std::mem::size_of::<u64>()];
-                                            data[(i + previous_index) * cn.list_size + j] = f64::from_be_bytes(
-                                                value.try_into().context("Could not read be f64")?,
-                                            );
-                                        }
-                                    }
-                                } else {
-                                    for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                        for j in 0..cn.list_size {
-                                            value = &record[pos_byte_beg + j * std::mem::size_of::<u64>()..pos_byte_beg + (j + 1) * std::mem::size_of::<u64>()];
-                                            data[(i + previous_index) * cn.list_size + j] = f64::from_le_bytes(
-                                                value.try_into().context("Could not read le f64")?,
-                                            );
-                                        }
-                                    }
-                                }
+                    let data = a.0
+                    .values_slice_mut();
+                    if cn.endian {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            for j in 0..cn.list_size {
+                                value = &record[pos_byte_beg + j * std::mem::size_of::<u64>()..pos_byte_beg + (j + 1) * std::mem::size_of::<u64>()];
+                                data[(i + previous_index) * cn.list_size + j] = f64::from_be_bytes(
+                                    value.try_into().context("Could not read be f64")?,
+                                );
                             }
-                            Compo::CN(_) => {},
+                        }
+                    } else {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            for j in 0..cn.list_size {
+                                value = &record[pos_byte_beg + j * std::mem::size_of::<u64>()..pos_byte_beg + (j + 1) * std::mem::size_of::<u64>()];
+                                data[(i + previous_index) * cn.list_size + j] = f64::from_le_bytes(
+                                    value.try_into().context("Could not read le f64")?,
+                                );
+                            }
                         }
                     }
                 }
