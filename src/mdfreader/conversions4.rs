@@ -1,8 +1,8 @@
 //! this modules implements functions to convert arrays into physical arrays using CCBlock
 use anyhow::{bail, Context, Error, Result};
 use arrow::array::{
-    Array, ArrayBuilder, AsArray, FixedSizeListBuilder, Float64Array, Float64Builder,
-    LargeStringBuilder, PrimitiveBuilder,
+    Array, ArrayBuilder, AsArray, Float64Array, Float64Builder, LargeStringBuilder,
+    PrimitiveBuilder,
 };
 use arrow::compute::cast;
 use arrow::datatypes::{ArrowPrimitiveType, Float32Type, Float64Type};
@@ -21,6 +21,8 @@ use crate::mdfinfo::mdfinfo4::{Cc4Block, CcVal, Cn4, Dg4, SharableBlocks};
 use crate::mdfreader::channel_data::ChannelData;
 use fasteval::{Compiler, Evaler, Instruction, Slab};
 use rayon::prelude::*;
+
+use super::complex_arrow::ComplexArrow;
 
 /// convert all channel arrays into physical values as required by CCBlock content
 pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) -> Result<(), Error> {
@@ -256,17 +258,17 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
                 );
             }
             ChannelData::Complex32(a) => {
-                cn.data = ChannelData::Complex64(FixedSizeListBuilder::new(
+                cn.data = ChannelData::Complex64(ComplexArrow::new_from_primitive(
                     linear_conversion_primitive(a.values(), p1, p2)
                         .context("failed linear conversion of complex f32 channel")?,
-                    a.value_length(),
+                    a.nulls(),
                 ));
             }
             ChannelData::Complex64(a) => {
-                cn.data = ChannelData::Complex64(FixedSizeListBuilder::new(
+                cn.data = ChannelData::Complex64(ComplexArrow::new_from_primitive(
                     linear_conversion_primitive(a.values(), p1, p2)
                         .context("failed linear conversion of complex f64 channel")?,
-                    a.value_length(),
+                    a.nulls(),
                 ));
             }
             ChannelData::ArrayDUInt8((a, shape)) => {
@@ -441,17 +443,17 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
             );
         }
         ChannelData::Complex32(a) => {
-            cn.data = ChannelData::Complex64(FixedSizeListBuilder::new(
+            cn.data = ChannelData::Complex64(ComplexArrow::new_from_primitive(
                 rational_conversion_primitive(a.values(), cc_val)
                     .context("failed rational conversion of complex f32 channel")?,
-                a.value_length(),
+                a.nulls(),
             ));
         }
         ChannelData::Complex64(a) => {
-            cn.data = ChannelData::Complex64(FixedSizeListBuilder::new(
+            cn.data = ChannelData::Complex64(ComplexArrow::new_from_primitive(
                 rational_conversion_primitive(a.values(), cc_val)
                     .context("failed rational conversion of complex f64 channel")?,
-                a.value_length(),
+                a.nulls(),
             ));
         }
         ChannelData::ArrayDUInt8((a, shape)) => {
@@ -663,23 +665,23 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str) -> Result<(), Error> {
                     ).context("failed algebraic conversion of f64 channel")?);
                 }
                 ChannelData::Complex32(a) => {
-                    cn.data = ChannelData::Complex64(FixedSizeListBuilder::new(
+                    cn.data = ChannelData::Complex64(ComplexArrow::new_from_primitive(
                         alegbraic_conversion_primitive(
                         &compiled,
                         &slab,
                         a.values(),
                     ).context("failed algebraic conversion of complex f32 channel")?,
-                    a.value_length(),
+                    a.nulls(),
                 ));
                 }
                 ChannelData::Complex64(a) => {
-                    cn.data = ChannelData::Complex64(FixedSizeListBuilder::new(
+                    cn.data = ChannelData::Complex64(ComplexArrow::new_from_primitive(
                         alegbraic_conversion_primitive(
                         &compiled,
                         &slab,
                         a.values(),
                     ).context("failed algebraic conversion of complex f64 channel")?,
-                    a.value_length(),
+                    a.nulls(),
                 ));
                 }
                 ChannelData::ArrayDInt8((a, shape)) => {

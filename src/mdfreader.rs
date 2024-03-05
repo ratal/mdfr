@@ -1,6 +1,7 @@
 //! This module contains the data reading features
 pub mod arrow_helpers;
 pub mod channel_data;
+pub mod complex_arrow;
 pub mod conversions3;
 pub mod conversions4;
 pub mod data_read3;
