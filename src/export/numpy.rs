@@ -10,8 +10,8 @@ use numpy::{PyArray1, PyArrayDyn, ToPyArray};
 use pyo3::prelude::*;
 use pyo3::{PyAny, PyObject, PyResult};
 
-use crate::channel_data::channel_data::ChannelData;
-use crate::channel_data::tensor_arrow::{Order, TensorArrow};
+use crate::data_holder::channel_data::ChannelData;
+use crate::data_holder::tensor_arrow::{Order, TensorArrow};
 
 impl From<Order> for NPY_ORDER {
     fn from(order: Order) -> Self {

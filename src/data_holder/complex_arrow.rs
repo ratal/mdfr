@@ -4,8 +4,7 @@ use arrow::{
     datatypes::{ArrowPrimitiveType, Float32Type, Float64Type},
 };
 
-/// Complex
-
+/// Complex struct
 #[derive(Debug)]
 pub struct ComplexArrow<T: ArrowPrimitiveType> {
     null_buffer_builder: Option<BooleanBuffer>,
@@ -13,6 +12,7 @@ pub struct ComplexArrow<T: ArrowPrimitiveType> {
     len: usize,
 }
 
+// Complex implementation
 impl<T: ArrowPrimitiveType> ComplexArrow<T> {
     pub fn new() -> Self {
         Self::with_capacity(1024)
@@ -38,13 +38,10 @@ impl<T: ArrowPrimitiveType> ComplexArrow<T> {
         null_buffer: Option<&BooleanBuffer>,
     ) -> Self {
         let length = primitive_builder.len() / 2;
-        match null_buffer {
-            Some(null_buffer_builder) => {
-                assert_eq!(null_buffer_builder.len() * 2, primitive_builder.len())
-            }
-            None => {}
+        if let Some(null_buffer_builder) = null_buffer {
+            assert_eq!(null_buffer_builder.len() * 2, primitive_builder.len())
         };
-        let null_buffer_builder = null_buffer.map(|buffer| buffer.clone());
+        let null_buffer_builder = null_buffer.cloned();
         Self {
             null_buffer_builder,
             values_builder: primitive_builder,
@@ -91,21 +88,11 @@ impl PartialEq for ComplexArrow<Float32Type> {
                     Some(other_buffer) => buffer == other_buffer,
                     None => false,
                 },
-                None => {
-                    if other.null_buffer_builder.is_none() {
-                        true
-                    } else {
-                        false
-                    }
-                }
+                None => other.null_buffer_builder.is_none(),
             }
         } else {
             false
         }
-    }
-
-    fn ne(&self, other: &Self) -> bool {
-        !self.eq(other)
     }
 }
 
@@ -117,21 +104,11 @@ impl PartialEq for ComplexArrow<Float64Type> {
                     Some(other_buffer) => buffer == other_buffer,
                     None => false,
                 },
-                None => {
-                    if other.null_buffer_builder.is_none() {
-                        true
-                    } else {
-                        false
-                    }
-                }
+                None => other.null_buffer_builder.is_none(),
             }
         } else {
             false
         }
-    }
-
-    fn ne(&self, other: &Self) -> bool {
-        !self.eq(other)
     }
 }
 
@@ -144,7 +121,7 @@ impl Clone for ComplexArrow<Float32Type> {
                 .finish_cloned()
                 .into_builder()
                 .expect("failed getting builder from Primitive array"),
-            len: self.len.clone(),
+            len: self.len,
         }
     }
 }
@@ -158,7 +135,7 @@ impl Clone for ComplexArrow<Float64Type> {
                 .finish_cloned()
                 .into_builder()
                 .expect("failed getting builder from Primitive array"),
-            len: self.len.clone(),
+            len: self.len,
         }
     }
 }

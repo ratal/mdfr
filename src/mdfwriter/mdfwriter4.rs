@@ -9,7 +9,7 @@ use std::{
 };
 
 use crate::{
-    channel_data::channel_data::{data_type_init, ChannelData},
+    data_holder::channel_data::{data_type_init, ChannelData},
     mdfinfo::{
         mdfinfo4::{
             default_short_header, BlockType, Blockheader4, Ca4Block, Ca4BlockMembers, Cg4,

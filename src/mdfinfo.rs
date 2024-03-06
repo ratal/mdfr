@@ -28,7 +28,7 @@ use mdfinfo4::{
     SharableBlocks,
 };
 
-use crate::channel_data::channel_data::ChannelData;
+use crate::data_holder::channel_data::ChannelData;
 use crate::mdfwriter::mdfwriter3::convert3to4;
 
 use self::mdfinfo3::build_channel_db3;

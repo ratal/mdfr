@@ -21,8 +21,8 @@ use std::{fmt, str};
 use transpose;
 use yazi::{decompress, Adler32, Format};
 
-use crate::channel_data::channel_data::{data_type_init, try_from, ChannelData};
-use crate::channel_data::tensor_arrow::Order;
+use crate::data_holder::channel_data::{data_type_init, try_from, ChannelData};
+use crate::data_holder::tensor_arrow::Order;
 use crate::mdfinfo::IdBlock;
 
 use super::sym_buf_reader::SymBufReader;
@@ -258,7 +258,7 @@ impl MdfInfo4 {
         let mut list_size = data_signature.shape.0.iter().product(); // primitive list size is 1
         if data_signature.data_type == 15 | 16 {
             //complex
-            list_size = 2;
+            list_size *= 2;
         }
         let data_ndim = data_signature.ndim - 1;
         let mut composition: Option<Composition> = None;
@@ -272,12 +272,6 @@ impl MdfInfo4 {
                 .collect::<Vec<_>>();
             // data_dim_size.remove(0);
             let mut ca_block = Ca4Block::default();
-            if data_signature.data_type == 15 | 16 {
-                //complex
-                list_size = list_size * 2;
-            } else {
-                list_size = list_size;
-            }
             cg_block.cg_data_bytes = list_size as u32 * data_signature.byte_count;
 
             let composition_position = position_generator();

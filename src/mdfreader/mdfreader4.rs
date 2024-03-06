@@ -1,5 +1,5 @@
 //! data read and load in memory based in MdfInfo4's metadata
-use crate::channel_data::channel_data::ChannelData;
+use crate::data_holder::channel_data::ChannelData;
 use crate::mdfinfo::mdfinfo4::{
     parse_dz, parser_dl4_block, parser_ld4_block, Dl4Block, Dt4Block, Hl4Block, Ld4Block,
 };

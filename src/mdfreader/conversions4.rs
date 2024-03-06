@@ -17,13 +17,13 @@ use num::{NumCast, ToPrimitive};
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap};
 
-use crate::channel_data::channel_data::ChannelData;
-use crate::channel_data::tensor_arrow::TensorArrow;
+use crate::data_holder::channel_data::ChannelData;
+use crate::data_holder::tensor_arrow::TensorArrow;
 use crate::mdfinfo::mdfinfo4::{Cc4Block, CcVal, Cn4, Dg4, SharableBlocks};
 use fasteval::{Compiler, Evaler, Instruction, Slab};
 use rayon::prelude::*;
 
-use crate::channel_data::complex_arrow::ComplexArrow;
+use crate::data_holder::complex_arrow::ComplexArrow;
 
 /// convert all channel arrays into physical values as required by CCBlock content
 pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) -> Result<(), Error> {

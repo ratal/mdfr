@@ -1,5 +1,5 @@
 //! Converter of mdf version 3.x into mdf version 4.2
-use crate::channel_data::tensor_arrow::Order;
+use crate::data_holder::tensor_arrow::Order;
 use crate::mdfinfo::mdfinfo3::{convert_data_type_3to4, Cg3, Cn3, Dg3};
 use crate::mdfreader::{DataSignature, MasterSignature};
 

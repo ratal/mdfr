@@ -18,7 +18,7 @@ use std::fmt;
 use std::mem::size_of;
 use std::sync::Arc;
 
-use crate::channel_data::complex_arrow::ComplexArrow;
+use crate::data_holder::complex_arrow::ComplexArrow;
 
 use super::tensor_arrow::{Order, TensorArrow};
 

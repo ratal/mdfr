@@ -1,5 +1,5 @@
 //! this module implements low level data reading for mdf4 files.
-use crate::channel_data::tensor_arrow::TensorArrow;
+use crate::data_holder::tensor_arrow::TensorArrow;
 use crate::mdfinfo::mdfinfo4::{Cn4, CnType};
 use anyhow::{Context, Error, Ok, Result};
 use arrow::array::{
@@ -19,7 +19,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::channel_data::channel_data::ChannelData;
+use crate::data_holder::channel_data::ChannelData;
 
 /// converts raw data block containing only one channel into a ndarray
 pub fn read_one_channel_array(

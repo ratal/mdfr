@@ -18,17 +18,17 @@ use log::info;
 use pyo3::prelude::*;
 
 //use crate::export::parquet::export_to_parquet;
-use crate::channel_data::channel_data::try_from;
+use crate::data_holder::channel_data::try_from;
 use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::mdfreader3::mdfreader3;
 use crate::mdfreader::mdfreader4::mdfreader4;
 use crate::mdfwriter::mdfwriter4::mdfwriter4;
 
-use crate::channel_data::arrow_helpers::{
+use crate::data_holder::arrow_helpers::{
     arrow_bit_count, arrow_byte_count, arrow_to_mdf_data_type,
 };
-use crate::channel_data::channel_data::ChannelData;
-use crate::channel_data::tensor_arrow::Order;
+use crate::data_holder::channel_data::ChannelData;
+use crate::data_holder::tensor_arrow::Order;
 
 /// Main Mdf struct holding mdfinfo, arrow data and schema
 #[derive(Debug)]

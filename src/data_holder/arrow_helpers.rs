@@ -1,4 +1,4 @@
-//! Converts ndarray data in into arrow.
+//! helpers for arrow
 use std::sync::Arc;
 
 use arrow::array::{

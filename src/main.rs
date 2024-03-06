@@ -2,7 +2,7 @@
 extern crate clap;
 
 use clap::{Arg, Command};
-mod channel_data;
+mod data_holder;
 mod export;
 mod mdfinfo;
 mod mdfreader;

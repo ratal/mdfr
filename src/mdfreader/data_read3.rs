@@ -10,7 +10,7 @@ use std::io::Cursor;
 use std::string::String;
 use std::{collections::HashSet, convert::TryInto};
 
-use crate::channel_data::channel_data::ChannelData;
+use crate::data_holder::channel_data::ChannelData;
 
 /// copies data from data_chunk into each channel array
 pub fn read_channels_from_bytes(

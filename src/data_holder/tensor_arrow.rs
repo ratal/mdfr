@@ -57,16 +57,13 @@ impl<T: ArrowPrimitiveType> TensorArrow<T> {
         order: Order,
     ) -> Self {
         let length = primitive_builder.len() / shape.iter().product::<usize>();
-        match null_buffer {
-            Some(null_buffer_builder) => {
-                assert_eq!(
-                    null_buffer_builder.len() * shape.iter().product::<usize>(),
-                    primitive_builder.len()
-                )
-            }
-            None => {}
+        if let Some(null_buffer_builder) = null_buffer {
+            assert_eq!(
+                null_buffer_builder.len() * shape.iter().product::<usize>(),
+                primitive_builder.len()
+            )
         };
-        let null_buffer_builder = null_buffer.map(|buffer| buffer.clone());
+        let null_buffer_builder = null_buffer.cloned();
         Self {
             null_buffer_builder,
             values_builder: primitive_builder,
@@ -130,21 +127,11 @@ macro_rules! tensor_arrow_peq {
                             Some(other_buffer) => buffer == other_buffer,
                             None => false,
                         },
-                        None => {
-                            if other.null_buffer_builder.is_none() {
-                                true
-                            } else {
-                                false
-                            }
-                        }
+                        None => other.null_buffer_builder.is_none(),
                     }
                 } else {
                     false
                 }
-            }
-
-            fn ne(&self, other: &Self) -> bool {
-                !self.eq(other)
             }
         }
     };
@@ -173,7 +160,7 @@ macro_rules! tensor_arrow_clone {
                         .finish_cloned()
                         .into_builder()
                         .expect("failed getting builder from Primitive array"),
-                    len: self.len.clone(),
+                    len: self.len,
                     shape: self.shape.clone(),
                     order: self.order.clone(),
                 }

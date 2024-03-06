@@ -8,7 +8,7 @@ mod tests {
 
     use arrow::datatypes::Float32Type;
 
-    use crate::channel_data::channel_data::ChannelData;
+    use crate::data_holder::channel_data::ChannelData;
     use crate::mdfreader::Mdf;
     use std::fs;
     use std::io;
