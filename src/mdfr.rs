@@ -2,8 +2,8 @@
 use std::collections::HashSet;
 use std::fmt::Write;
 
-use crate::data_holder::arrow_helpers::array_to_rust;
 use crate::export::polars::rust_arrow_to_py_series;
+use crate::export::python_arrow_helpers::array_to_rust;
 use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::MasterSignature;
 use crate::mdfreader::Mdf;
