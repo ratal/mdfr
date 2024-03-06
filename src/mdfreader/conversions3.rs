@@ -9,8 +9,8 @@ use num::cast::AsPrimitive;
 use num::NumCast;
 use std::collections::BTreeMap;
 
+use crate::channel_data::channel_data::ChannelData;
 use crate::mdfinfo::mdfinfo3::{Cn3, Conversion, Dg3, SharableBlocks3};
-use crate::mdfreader::channel_data::ChannelData;
 use fasteval::Evaler;
 use fasteval::{Compiler, Instruction, Slab};
 use log::warn;

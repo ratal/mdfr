@@ -1,7 +1,7 @@
 use arrow::{
     array::{ArrayBuilder, BooleanBufferBuilder, PrimitiveArray, PrimitiveBuilder},
     buffer::{BooleanBuffer, MutableBuffer},
-    datatypes::{ArrowPrimitiveType, DataType, Float32Type, Float64Type},
+    datatypes::{ArrowPrimitiveType, Float32Type, Float64Type},
 };
 
 /// Complex
@@ -10,7 +10,6 @@ use arrow::{
 pub struct ComplexArrow<T: ArrowPrimitiveType> {
     null_buffer_builder: Option<BooleanBuffer>,
     values_builder: PrimitiveBuilder<T>,
-    data_type: DataType,
     len: usize,
 }
 
@@ -22,7 +21,6 @@ impl<T: ArrowPrimitiveType> ComplexArrow<T> {
         Self {
             null_buffer_builder: None,
             values_builder: PrimitiveBuilder::with_capacity(capacity * 2),
-            data_type: T::DATA_TYPE,
             len: 0,
         }
     }
@@ -32,7 +30,6 @@ impl<T: ArrowPrimitiveType> ComplexArrow<T> {
         Self {
             null_buffer_builder: None,
             values_builder,
-            data_type: T::DATA_TYPE,
             len: length,
         }
     }
@@ -51,7 +48,6 @@ impl<T: ArrowPrimitiveType> ComplexArrow<T> {
         Self {
             null_buffer_builder,
             values_builder: primitive_builder,
-            data_type: T::DATA_TYPE,
             len: length,
         }
     }
@@ -64,15 +60,8 @@ impl<T: ArrowPrimitiveType> ComplexArrow<T> {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
-    pub fn data_type(&self) -> DataType {
-        self.data_type.clone()
-    }
     pub fn values_slice(&self) -> &[T::Native] {
         self.values_builder.values_slice()
-    }
-    /// Returns the current values buffer as a mutable slice
-    pub fn values_slice_mut(&mut self) -> &mut [T::Native] {
-        self.values_builder.values_slice_mut()
     }
     pub fn nulls(&self) -> Option<&BooleanBuffer> {
         self.null_buffer_builder.as_ref()
@@ -155,7 +144,6 @@ impl Clone for ComplexArrow<Float32Type> {
                 .finish_cloned()
                 .into_builder()
                 .expect("failed getting builder from Primitive array"),
-            data_type: self.data_type.clone(),
             len: self.len.clone(),
         }
     }
@@ -170,7 +158,6 @@ impl Clone for ComplexArrow<Float64Type> {
                 .finish_cloned()
                 .into_builder()
                 .expect("failed getting builder from Primitive array"),
-            data_type: self.data_type.clone(),
             len: self.len.clone(),
         }
     }

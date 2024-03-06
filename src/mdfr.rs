@@ -2,9 +2,9 @@
 use std::collections::HashSet;
 use std::fmt::Write;
 
+use crate::channel_data::arrow_helpers::array_to_rust;
 use crate::export::polars::rust_arrow_to_py_series;
 use crate::mdfinfo::MdfInfo;
-use crate::mdfreader::arrow_helpers::array_to_rust;
 use crate::mdfreader::MasterSignature;
 use crate::mdfreader::Mdf;
 use arrow::array::ArrayData;

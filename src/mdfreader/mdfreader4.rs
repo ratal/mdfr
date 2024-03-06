@@ -1,10 +1,10 @@
 //! data read and load in memory based in MdfInfo4's metadata
+use crate::channel_data::channel_data::ChannelData;
 use crate::mdfinfo::mdfinfo4::{
     parse_dz, parser_dl4_block, parser_ld4_block, Dl4Block, Dt4Block, Hl4Block, Ld4Block,
 };
 use crate::mdfinfo::mdfinfo4::{Blockheader4, Cg4, Cn4, Dg4};
 use crate::mdfinfo::MdfInfo;
-use crate::mdfreader::channel_data::ChannelData;
 use crate::mdfreader::conversions4::convert_all_channels;
 use crate::mdfreader::data_read4::read_channels_from_bytes;
 use crate::mdfreader::data_read4::read_one_channel_array;
@@ -1249,7 +1249,12 @@ fn initialise_arrays(
             |(_cn_record_position, cn): (&i32, &mut Cn4)| -> Result<(), Error> {
                 cn.data = cn
                     .data
-                    .zeros(cn.block.cn_type, *cg_cycle_count, cn.n_bytes, cn.shape.clone())
+                    .zeros(
+                        cn.block.cn_type,
+                        *cg_cycle_count,
+                        cn.n_bytes,
+                        cn.shape.clone(),
+                    )
                     .with_context(|| {
                         format!("Zeros initialisation of channel {} failed", cn.unique_name)
                     })?;
@@ -1371,7 +1376,7 @@ fn apply_bit_mask_offset(
                             ChannelData::VariableSizeByteArray(_) => (),
                             ChannelData::FixedSizeByteArray(_) => (),
                             ChannelData::ArrayDInt8(array) => {
-                                let a = array.0.values_slice_mut();
+                                let a = array.values_slice_mut();
                                 if left_shift > 0 {
                                     a.iter_mut().for_each(|x| *x <<= left_shift)
                                 };
@@ -1380,7 +1385,7 @@ fn apply_bit_mask_offset(
                                 };
                             }
                             ChannelData::ArrayDUInt8(array) => {
-                                let a = array.0.values_slice_mut();
+                                let a = array.values_slice_mut();
                                 if left_shift > 0 {
                                     a.iter_mut().for_each(|x| *x <<= left_shift)
                                 };
@@ -1389,7 +1394,7 @@ fn apply_bit_mask_offset(
                                 };
                             }
                             ChannelData::ArrayDInt16(array) => {
-                                let a = array.0.values_slice_mut();
+                                let a = array.values_slice_mut();
                                 if left_shift > 0 {
                                     a.iter_mut().for_each(|x| *x <<= left_shift)
                                 };
@@ -1398,7 +1403,7 @@ fn apply_bit_mask_offset(
                                 };
                             }
                             ChannelData::ArrayDUInt16(array) => {
-                                let a = array.0.values_slice_mut();
+                                let a = array.values_slice_mut();
                                 if left_shift > 0 {
                                     a.iter_mut().for_each(|x| *x <<= left_shift)
                                 };
@@ -1407,7 +1412,7 @@ fn apply_bit_mask_offset(
                                 };
                             }
                             ChannelData::ArrayDInt32(array) => {
-                                let a = array.0.values_slice_mut();
+                                let a = array.values_slice_mut();
                                 if left_shift > 0 {
                                     a.iter_mut().for_each(|x| *x <<= left_shift)
                                 };
@@ -1416,7 +1421,7 @@ fn apply_bit_mask_offset(
                                 };
                             }
                             ChannelData::ArrayDUInt32(array) => {
-                                let a = array.0.values_slice_mut();
+                                let a = array.values_slice_mut();
                                 if left_shift > 0 {
                                     a.iter_mut().for_each(|x| *x <<= left_shift)
                                 };
@@ -1426,7 +1431,7 @@ fn apply_bit_mask_offset(
                             }
                             ChannelData::ArrayDFloat32(_) => (),
                             ChannelData::ArrayDInt64(array) => {
-                                let a = array.0.values_slice_mut();
+                                let a = array.values_slice_mut();
                                 let left_shift =
                                     64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
                                 let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
@@ -1438,7 +1443,7 @@ fn apply_bit_mask_offset(
                                 };
                             }
                             ChannelData::ArrayDUInt64(array) => {
-                                let a = array.0.values_slice_mut();
+                                let a = array.values_slice_mut();
                                 let left_shift =
                                     64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
                                 let right_shift = left_shift + (cn.block.cn_bit_offset as u32);

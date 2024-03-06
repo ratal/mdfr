@@ -9,6 +9,7 @@ use std::{
 };
 
 use crate::{
+    channel_data::channel_data::{data_type_init, ChannelData},
     mdfinfo::{
         mdfinfo4::{
             default_short_header, BlockType, Blockheader4, Ca4Block, Ca4BlockMembers, Cg4,
@@ -17,10 +18,7 @@ use crate::{
         },
         MdfInfo,
     },
-    mdfreader::{
-        channel_data::{data_type_init, ChannelData},
-        Mdf,
-    },
+    mdfreader::Mdf,
 };
 use anyhow::{bail, Context, Error, Result};
 use arrow::buffer::NullBuffer;

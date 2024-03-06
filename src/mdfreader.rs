@@ -1,7 +1,4 @@
 //! This module contains the data reading features
-pub mod arrow_helpers;
-pub mod channel_data;
-pub mod complex_arrow;
 pub mod conversions3;
 pub mod conversions4;
 pub mod data_read3;
@@ -21,14 +18,17 @@ use log::info;
 use pyo3::prelude::*;
 
 //use crate::export::parquet::export_to_parquet;
+use crate::channel_data::channel_data::try_from;
 use crate::mdfinfo::MdfInfo;
-use crate::mdfreader::channel_data::try_from;
 use crate::mdfreader::mdfreader3::mdfreader3;
 use crate::mdfreader::mdfreader4::mdfreader4;
 use crate::mdfwriter::mdfwriter4::mdfwriter4;
 
-use self::arrow_helpers::{arrow_bit_count, arrow_byte_count, arrow_to_mdf_data_type};
-use self::channel_data::{ChannelData, Order};
+use crate::channel_data::arrow_helpers::{
+    arrow_bit_count, arrow_byte_count, arrow_to_mdf_data_type,
+};
+use crate::channel_data::channel_data::ChannelData;
+use crate::channel_data::tensor_arrow::Order;
 
 /// Main Mdf struct holding mdfinfo, arrow data and schema
 #[derive(Debug)]

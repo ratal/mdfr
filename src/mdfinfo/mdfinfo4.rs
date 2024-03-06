@@ -21,8 +21,9 @@ use std::{fmt, str};
 use transpose;
 use yazi::{decompress, Adler32, Format};
 
+use crate::channel_data::channel_data::{data_type_init, try_from, ChannelData};
+use crate::channel_data::tensor_arrow::Order;
 use crate::mdfinfo::IdBlock;
-use crate::mdfreader::channel_data::{data_type_init, try_from, ChannelData, Order};
 
 use super::sym_buf_reader::SymBufReader;
 
@@ -3104,7 +3105,8 @@ fn parse_composition(
                 sharable,
                 record_layout,
                 cg_cycle_count,
-            ).context("Failed parsing composition block")?;
+            )
+            .context("Failed parsing composition block")?;
             shape = s;
             position = pos;
             cns = cnss;
@@ -3145,7 +3147,7 @@ fn parse_composition(
         } else {
             Cn4::default()
         };
-        let shape : (Vec<usize>, Order);
+        let shape: (Vec<usize>, Order);
         if cn_struct.block.cn_composition != 0 {
             let (cn, pos, _array_size, s, n_cns, cnss) = parse_composition(
                 rdr,

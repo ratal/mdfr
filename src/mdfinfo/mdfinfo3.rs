@@ -12,8 +12,9 @@ use std::fmt;
 use std::fs::File;
 use std::io::{prelude::*, Cursor};
 
+use crate::channel_data::channel_data::{data_type_init, ChannelData};
+use crate::channel_data::tensor_arrow::Order;
 use crate::mdfinfo::IdBlock;
-use crate::mdfreader::channel_data::{data_type_init, ChannelData, Order};
 
 use super::sym_buf_reader::SymBufReader;
 

@@ -18,7 +18,9 @@ use std::fmt;
 use std::mem::size_of;
 use std::sync::Arc;
 
-use crate::mdfreader::complex_arrow::ComplexArrow;
+use crate::channel_data::complex_arrow::ComplexArrow;
+
+use super::tensor_arrow::{Order, TensorArrow};
 
 /// channel data type enum.
 /// most common data type is 1D ndarray for timeseries with element types numeric.
@@ -41,16 +43,16 @@ pub enum ChannelData {
     Utf8(LargeStringBuilder),
     VariableSizeByteArray(LargeBinaryBuilder),
     FixedSizeByteArray(FixedSizeBinaryBuilder),
-    ArrayDInt8((PrimitiveBuilder<Int8Type>, (Vec<usize>, Order))),
-    ArrayDUInt8((PrimitiveBuilder<UInt8Type>, (Vec<usize>, Order))),
-    ArrayDInt16((PrimitiveBuilder<Int16Type>, (Vec<usize>, Order))),
-    ArrayDUInt16((PrimitiveBuilder<UInt16Type>, (Vec<usize>, Order))),
-    ArrayDInt32((PrimitiveBuilder<Int32Type>, (Vec<usize>, Order))),
-    ArrayDUInt32((PrimitiveBuilder<UInt32Type>, (Vec<usize>, Order))),
-    ArrayDFloat32((PrimitiveBuilder<Float32Type>, (Vec<usize>, Order))),
-    ArrayDInt64((PrimitiveBuilder<Int64Type>, (Vec<usize>, Order))),
-    ArrayDUInt64((PrimitiveBuilder<UInt64Type>, (Vec<usize>, Order))),
-    ArrayDFloat64((PrimitiveBuilder<Float64Type>, (Vec<usize>, Order))),
+    ArrayDInt8(TensorArrow<Int8Type>),
+    ArrayDUInt8(TensorArrow<UInt8Type>),
+    ArrayDInt16(TensorArrow<Int16Type>),
+    ArrayDUInt16(TensorArrow<UInt16Type>),
+    ArrayDInt32(TensorArrow<Int32Type>),
+    ArrayDUInt32(TensorArrow<UInt32Type>),
+    ArrayDFloat32(TensorArrow<Float32Type>),
+    ArrayDInt64(TensorArrow<Int64Type>),
+    ArrayDUInt64(TensorArrow<UInt64Type>),
+    ArrayDFloat64(TensorArrow<Float64Type>),
 }
 
 impl PartialEq for ChannelData {
@@ -75,36 +77,16 @@ impl PartialEq for ChannelData {
             (Self::FixedSizeByteArray(l0), Self::FixedSizeByteArray(r0)) => {
                 l0.finish_cloned() == r0.finish_cloned()
             }
-            (Self::ArrayDInt8((l0, _)), Self::ArrayDInt8((r0, _))) => {
-                l0.finish_cloned() == r0.finish_cloned()
-            }
-            (Self::ArrayDUInt8((l0, _)), Self::ArrayDUInt8((r0, _))) => {
-                l0.finish_cloned() == r0.finish_cloned()
-            }
-            (Self::ArrayDInt16((l0, _)), Self::ArrayDInt16((r0, _))) => {
-                l0.finish_cloned() == r0.finish_cloned()
-            }
-            (Self::ArrayDUInt16((l0, _)), Self::ArrayDUInt16((r0, _))) => {
-                l0.finish_cloned() == r0.finish_cloned()
-            }
-            (Self::ArrayDInt32((l0, _)), Self::ArrayDInt32((r0, _))) => {
-                l0.finish_cloned() == r0.finish_cloned()
-            }
-            (Self::ArrayDUInt32((l0, _)), Self::ArrayDUInt32((r0, _))) => {
-                l0.finish_cloned() == r0.finish_cloned()
-            }
-            (Self::ArrayDFloat32((l0, _)), Self::ArrayDFloat32((r0, _))) => {
-                l0.finish_cloned() == r0.finish_cloned()
-            }
-            (Self::ArrayDInt64((l0, _)), Self::ArrayDInt64((r0, _))) => {
-                l0.finish_cloned() == r0.finish_cloned()
-            }
-            (Self::ArrayDUInt64((l0, _)), Self::ArrayDUInt64((r0, _))) => {
-                l0.finish_cloned() == r0.finish_cloned()
-            }
-            (Self::ArrayDFloat64((l0, _)), Self::ArrayDFloat64((r0, _))) => {
-                l0.finish_cloned() == r0.finish_cloned()
-            }
+            (Self::ArrayDInt8(l0), Self::ArrayDInt8(r0)) => l0 == r0,
+            (Self::ArrayDUInt8(l0), Self::ArrayDUInt8(r0)) => l0 == r0,
+            (Self::ArrayDInt16(l0), Self::ArrayDInt16(r0)) => l0 == r0,
+            (Self::ArrayDUInt16(l0), Self::ArrayDUInt16(r0)) => l0 == r0,
+            (Self::ArrayDInt32(l0), Self::ArrayDInt32(r0)) => l0 == r0,
+            (Self::ArrayDUInt32(l0), Self::ArrayDUInt32(r0)) => l0 == r0,
+            (Self::ArrayDFloat32(l0), Self::ArrayDFloat32(r0)) => l0 == r0,
+            (Self::ArrayDInt64(l0), Self::ArrayDInt64(r0)) => l0 == r0,
+            (Self::ArrayDUInt64(l0), Self::ArrayDUInt64(r0)) => l0 == r0,
+            (Self::ArrayDFloat64(l0), Self::ArrayDFloat64(r0)) => l0 == r0,
             _ => false,
         }
     }
@@ -206,76 +188,18 @@ impl Clone for ChannelData {
                 }
                 Self::FixedSizeByteArray(new_array)
             }
-            Self::ArrayDInt8((arg0, shape)) => Self::ArrayDInt8((
-                arg0.finish_cloned()
-                    .into_builder()
-                    .expect("failed getting back mutable array"),
-                shape.clone(),
-            )),
-            Self::ArrayDUInt8((arg0, shape)) => Self::ArrayDUInt8((
-                arg0.finish_cloned()
-                    .into_builder()
-                    .expect("failed getting back mutable array"),
-                shape.clone(),
-            )),
-            Self::ArrayDInt16((arg0, shape)) => Self::ArrayDInt16((
-                arg0.finish_cloned()
-                    .into_builder()
-                    .expect("failed getting back mutable array"),
-                shape.clone(),
-            )),
-            Self::ArrayDUInt16((arg0, shape)) => Self::ArrayDUInt16((
-                arg0.finish_cloned()
-                    .into_builder()
-                    .expect("failed getting back mutable array"),
-                shape.clone(),
-            )),
-            Self::ArrayDInt32((arg0, shape)) => Self::ArrayDInt32((
-                arg0.finish_cloned()
-                    .into_builder()
-                    .expect("failed getting back mutable array"),
-                shape.clone(),
-            )),
-            Self::ArrayDUInt32((arg0, shape)) => Self::ArrayDUInt32((
-                arg0.finish_cloned()
-                    .into_builder()
-                    .expect("failed getting back mutable array"),
-                shape.clone(),
-            )),
-            Self::ArrayDFloat32((arg0, shape)) => Self::ArrayDFloat32((
-                arg0.finish_cloned()
-                    .into_builder()
-                    .expect("failed getting back mutable array"),
-                shape.clone(),
-            )),
-            Self::ArrayDInt64((arg0, shape)) => Self::ArrayDInt64((
-                arg0.finish_cloned()
-                    .into_builder()
-                    .expect("failed getting back mutable array"),
-                shape.clone(),
-            )),
-            Self::ArrayDUInt64((arg0, shape)) => Self::ArrayDUInt64((
-                arg0.finish_cloned()
-                    .into_builder()
-                    .expect("failed getting back mutable array"),
-                shape.clone(),
-            )),
-            Self::ArrayDFloat64((arg0, shape)) => Self::ArrayDFloat64((
-                arg0.finish_cloned()
-                    .into_builder()
-                    .expect("failed getting back mutable array"),
-                shape.clone(),
-            )),
+            Self::ArrayDInt8(arg0) => Self::ArrayDInt8(arg0.clone()),
+            Self::ArrayDUInt8(arg0) => Self::ArrayDUInt8(arg0.clone()),
+            Self::ArrayDInt16(arg0) => Self::ArrayDInt16(arg0.clone()),
+            Self::ArrayDUInt16(arg0) => Self::ArrayDUInt16(arg0.clone()),
+            Self::ArrayDInt32(arg0) => Self::ArrayDInt32(arg0.clone()),
+            Self::ArrayDUInt32(arg0) => Self::ArrayDUInt32(arg0.clone()),
+            Self::ArrayDFloat32(arg0) => Self::ArrayDFloat32(arg0.clone()),
+            Self::ArrayDInt64(arg0) => Self::ArrayDInt64(arg0.clone()),
+            Self::ArrayDUInt64(arg0) => Self::ArrayDUInt64(arg0.clone()),
+            Self::ArrayDFloat64(arg0) => Self::ArrayDFloat64(arg0.clone()),
         }
     }
-}
-
-/// Order of the array, Row or Column Major (first)
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub enum Order {
-    #[default]
-    RowMajor,
-    ColumnMajor,
 }
 
 /// ChannelData implementation
@@ -369,76 +293,76 @@ impl ChannelData {
                 ChannelData::FixedSizeByteArray(_) => Ok(ChannelData::FixedSizeByteArray(
                     FixedSizeBinaryBuilder::with_capacity(cycle_count as usize, n_bytes as i32),
                 )),
-                ChannelData::ArrayDInt8(_) => Ok(ChannelData::ArrayDInt8((
-                    PrimitiveBuilder::new_from_buffer(
+                ChannelData::ArrayDInt8(_) => {
+                    Ok(ChannelData::ArrayDInt8(TensorArrow::new_from_buffer(
                         vec![0i8; shape.0.iter().product::<usize>()].into(),
-                        None,
-                    ),
-                    shape,
-                ))),
-                ChannelData::ArrayDUInt8(_) => Ok(ChannelData::ArrayDUInt8((
-                    PrimitiveBuilder::new_from_buffer(
+                        shape.0,
+                        shape.1,
+                    )))
+                }
+                ChannelData::ArrayDUInt8(_) => {
+                    Ok(ChannelData::ArrayDUInt8(TensorArrow::new_from_buffer(
                         vec![0u8; shape.0.iter().product::<usize>()].into(),
-                        None,
-                    ),
-                    shape,
-                ))),
-                ChannelData::ArrayDInt16(_) => Ok(ChannelData::ArrayDInt16((
-                    PrimitiveBuilder::new_from_buffer(
+                        shape.0,
+                        shape.1,
+                    )))
+                }
+                ChannelData::ArrayDInt16(_) => {
+                    Ok(ChannelData::ArrayDInt16(TensorArrow::new_from_buffer(
                         vec![0i16; shape.0.iter().product::<usize>()].into(),
-                        None,
-                    ),
-                    shape,
-                ))),
-                ChannelData::ArrayDUInt16(_) => Ok(ChannelData::ArrayDUInt16((
-                    PrimitiveBuilder::new_from_buffer(
+                        shape.0,
+                        shape.1,
+                    )))
+                }
+                ChannelData::ArrayDUInt16(_) => {
+                    Ok(ChannelData::ArrayDUInt16(TensorArrow::new_from_buffer(
                         vec![0u16; shape.0.iter().product::<usize>()].into(),
-                        None,
-                    ),
-                    shape,
-                ))),
-                ChannelData::ArrayDInt32(_) => Ok(ChannelData::ArrayDInt32((
-                    PrimitiveBuilder::new_from_buffer(
+                        shape.0,
+                        shape.1,
+                    )))
+                }
+                ChannelData::ArrayDInt32(_) => {
+                    Ok(ChannelData::ArrayDInt32(TensorArrow::new_from_buffer(
                         vec![0i32; shape.0.iter().product::<usize>()].into(),
-                        None,
-                    ),
-                    shape,
-                ))),
-                ChannelData::ArrayDUInt32(_) => Ok(ChannelData::ArrayDUInt32((
-                    PrimitiveBuilder::new_from_buffer(
+                        shape.0,
+                        shape.1,
+                    )))
+                }
+                ChannelData::ArrayDUInt32(_) => {
+                    Ok(ChannelData::ArrayDUInt32(TensorArrow::new_from_buffer(
                         vec![0u32; shape.0.iter().product::<usize>()].into(),
-                        None,
-                    ),
-                    shape,
-                ))),
-                ChannelData::ArrayDFloat32(_) => Ok(ChannelData::ArrayDFloat32((
-                    PrimitiveBuilder::new_from_buffer(
+                        shape.0,
+                        shape.1,
+                    )))
+                }
+                ChannelData::ArrayDFloat32(_) => {
+                    Ok(ChannelData::ArrayDFloat32(TensorArrow::new_from_buffer(
                         vec![0f32; shape.0.iter().product::<usize>()].into(),
-                        None,
-                    ),
-                    shape,
-                ))),
-                ChannelData::ArrayDInt64(_) => Ok(ChannelData::ArrayDInt64((
-                    PrimitiveBuilder::new_from_buffer(
+                        shape.0,
+                        shape.1,
+                    )))
+                }
+                ChannelData::ArrayDInt64(_) => {
+                    Ok(ChannelData::ArrayDInt64(TensorArrow::new_from_buffer(
                         vec![0i64; shape.0.iter().product::<usize>()].into(),
-                        None,
-                    ),
-                    shape,
-                ))),
-                ChannelData::ArrayDUInt64(_) => Ok(ChannelData::ArrayDUInt64((
-                    PrimitiveBuilder::new_from_buffer(
+                        shape.0,
+                        shape.1,
+                    )))
+                }
+                ChannelData::ArrayDUInt64(_) => {
+                    Ok(ChannelData::ArrayDUInt64(TensorArrow::new_from_buffer(
                         vec![0u64; shape.0.iter().product::<usize>()].into(),
-                        None,
-                    ),
-                    shape,
-                ))),
-                ChannelData::ArrayDFloat64(_) => Ok(ChannelData::ArrayDFloat64((
-                    PrimitiveBuilder::new_from_buffer(
-                        vec![0f64; shape.0.iter().product::<usize>()].into(),
-                        None,
-                    ),
-                    shape,
-                ))),
+                        shape.0,
+                        shape.1,
+                    )))
+                }
+                ChannelData::ArrayDFloat64(_) => {
+                    Ok(ChannelData::ArrayDFloat64(TensorArrow::new_from_buffer(
+                        vec![0f64; cycle_count as usize * shape.0.iter().product::<usize>()].into(),
+                        shape.0,
+                        shape.1,
+                    )))
+                }
             }
         }
     }
@@ -460,16 +384,16 @@ impl ChannelData {
             ChannelData::Utf8(data) => data.is_empty(),
             ChannelData::VariableSizeByteArray(data) => data.is_empty(),
             ChannelData::FixedSizeByteArray(data) => data.is_empty(),
-            ChannelData::ArrayDInt8(data) => data.0.is_empty(),
-            ChannelData::ArrayDUInt8(data) => data.0.is_empty(),
-            ChannelData::ArrayDInt16(data) => data.0.is_empty(),
-            ChannelData::ArrayDUInt16(data) => data.0.is_empty(),
-            ChannelData::ArrayDInt32(data) => data.0.is_empty(),
-            ChannelData::ArrayDUInt32(data) => data.0.is_empty(),
-            ChannelData::ArrayDFloat32(data) => data.0.is_empty(),
-            ChannelData::ArrayDInt64(data) => data.0.is_empty(),
-            ChannelData::ArrayDUInt64(data) => data.0.is_empty(),
-            ChannelData::ArrayDFloat64(data) => data.0.is_empty(),
+            ChannelData::ArrayDInt8(data) => data.is_empty(),
+            ChannelData::ArrayDUInt8(data) => data.is_empty(),
+            ChannelData::ArrayDInt16(data) => data.is_empty(),
+            ChannelData::ArrayDUInt16(data) => data.is_empty(),
+            ChannelData::ArrayDInt32(data) => data.is_empty(),
+            ChannelData::ArrayDUInt32(data) => data.is_empty(),
+            ChannelData::ArrayDFloat32(data) => data.is_empty(),
+            ChannelData::ArrayDInt64(data) => data.is_empty(),
+            ChannelData::ArrayDUInt64(data) => data.is_empty(),
+            ChannelData::ArrayDFloat64(data) => data.is_empty(),
         }
     }
     /// flatten length of tensor
@@ -490,16 +414,16 @@ impl ChannelData {
             ChannelData::Utf8(data) => data.len(),
             ChannelData::VariableSizeByteArray(data) => data.len(),
             ChannelData::FixedSizeByteArray(data) => data.len(),
-            ChannelData::ArrayDInt8(data) => data.0.len(),
-            ChannelData::ArrayDUInt8(data) => data.0.len(),
-            ChannelData::ArrayDInt16(data) => data.0.len(),
-            ChannelData::ArrayDUInt16(data) => data.0.len(),
-            ChannelData::ArrayDInt32(data) => data.0.len(),
-            ChannelData::ArrayDUInt32(data) => data.0.len(),
-            ChannelData::ArrayDFloat32(data) => data.0.len(),
-            ChannelData::ArrayDInt64(data) => data.0.len(),
-            ChannelData::ArrayDUInt64(data) => data.0.len(),
-            ChannelData::ArrayDFloat64(data) => data.0.len(),
+            ChannelData::ArrayDInt8(data) => data.len(),
+            ChannelData::ArrayDUInt8(data) => data.len(),
+            ChannelData::ArrayDInt16(data) => data.len(),
+            ChannelData::ArrayDUInt16(data) => data.len(),
+            ChannelData::ArrayDInt32(data) => data.len(),
+            ChannelData::ArrayDUInt32(data) => data.len(),
+            ChannelData::ArrayDFloat32(data) => data.len(),
+            ChannelData::ArrayDInt64(data) => data.len(),
+            ChannelData::ArrayDUInt64(data) => data.len(),
+            ChannelData::ArrayDFloat64(data) => data.len(),
         }
     }
     /// returns the max bit count of each values in array
@@ -678,16 +602,16 @@ impl ChannelData {
             ChannelData::FixedSizeByteArray(a) => {
                 DataType::FixedSizeBinary(a.finish_cloned().value_length())
             }
-            ChannelData::ArrayDInt8((_a, _)) => DataType::Int8,
-            ChannelData::ArrayDUInt8((_a, _)) => DataType::UInt8,
-            ChannelData::ArrayDInt16((_a, _)) => DataType::Int16,
-            ChannelData::ArrayDUInt16((_a, _)) => DataType::UInt16,
-            ChannelData::ArrayDInt32((_a, _)) => DataType::Int32,
-            ChannelData::ArrayDUInt32((_a, _)) => DataType::UInt32,
-            ChannelData::ArrayDFloat32((_a, _)) => DataType::Float32,
-            ChannelData::ArrayDInt64((_a, _)) => DataType::Int64,
-            ChannelData::ArrayDUInt64((_a, _)) => DataType::UInt64,
-            ChannelData::ArrayDFloat64((_a, _)) => DataType::Float64,
+            ChannelData::ArrayDInt8(_a) => DataType::Int8,
+            ChannelData::ArrayDUInt8(_a) => DataType::UInt8,
+            ChannelData::ArrayDInt16(_a) => DataType::Int16,
+            ChannelData::ArrayDUInt16(_a) => DataType::UInt16,
+            ChannelData::ArrayDInt32(_a) => DataType::Int32,
+            ChannelData::ArrayDUInt32(_a) => DataType::UInt32,
+            ChannelData::ArrayDFloat32(_a) => DataType::Float32,
+            ChannelData::ArrayDInt64(_a) => DataType::Int64,
+            ChannelData::ArrayDUInt64(_a) => DataType::UInt64,
+            ChannelData::ArrayDFloat64(_a) => DataType::Float64,
             ChannelData::Utf8(_) => DataType::LargeUtf8,
         }
     }
@@ -772,61 +696,51 @@ impl ChannelData {
             ChannelData::VariableSizeByteArray(a) => Ok(a.values_slice().to_vec()),
             ChannelData::FixedSizeByteArray(a) => Ok(a.finish_cloned().value_data().to_vec()),
             ChannelData::ArrayDInt8(a) => Ok(a
-                .0
                 .values_slice()
                 .iter()
                 .flat_map(|x| x.to_ne_bytes())
                 .collect()),
             ChannelData::ArrayDUInt8(a) => Ok(a
-                .0
                 .values_slice()
                 .iter()
                 .flat_map(|x| x.to_ne_bytes())
                 .collect()),
             ChannelData::ArrayDInt16(a) => Ok(a
-                .0
                 .values_slice()
                 .iter()
                 .flat_map(|x| x.to_ne_bytes())
                 .collect()),
             ChannelData::ArrayDUInt16(a) => Ok(a
-                .0
                 .values_slice()
                 .iter()
                 .flat_map(|x| x.to_ne_bytes())
                 .collect()),
             ChannelData::ArrayDInt32(a) => Ok(a
-                .0
                 .values_slice()
                 .iter()
                 .flat_map(|x| x.to_ne_bytes())
                 .collect()),
             ChannelData::ArrayDUInt32(a) => Ok(a
-                .0
                 .values_slice()
                 .iter()
                 .flat_map(|x| x.to_ne_bytes())
                 .collect()),
             ChannelData::ArrayDFloat32(a) => Ok(a
-                .0
                 .values_slice()
                 .iter()
                 .flat_map(|x| x.to_ne_bytes())
                 .collect()),
             ChannelData::ArrayDInt64(a) => Ok(a
-                .0
                 .values_slice()
                 .iter()
                 .flat_map(|x| x.to_ne_bytes())
                 .collect()),
             ChannelData::ArrayDUInt64(a) => Ok(a
-                .0
                 .values_slice()
                 .iter()
                 .flat_map(|x| x.to_ne_bytes())
                 .collect()),
             ChannelData::ArrayDFloat64(a) => Ok(a
-                .0
                 .values_slice()
                 .iter()
                 .flat_map(|x| x.to_ne_bytes())
@@ -850,16 +764,16 @@ impl ChannelData {
             ChannelData::Complex64(_) => 1,
             ChannelData::VariableSizeByteArray(_) => 1,
             ChannelData::FixedSizeByteArray(_) => 1,
-            ChannelData::ArrayDInt8(a) => a.1 .0.len(),
-            ChannelData::ArrayDUInt8(a) => a.1 .0.len(),
-            ChannelData::ArrayDInt16(a) => a.1 .0.len(),
-            ChannelData::ArrayDUInt16(a) => a.1 .0.len(),
-            ChannelData::ArrayDInt32(a) => a.1 .0.len(),
-            ChannelData::ArrayDUInt32(a) => a.1 .0.len(),
-            ChannelData::ArrayDFloat32(a) => a.1 .0.len(),
-            ChannelData::ArrayDInt64(a) => a.1 .0.len(),
-            ChannelData::ArrayDUInt64(a) => a.1 .0.len(),
-            ChannelData::ArrayDFloat64(a) => a.1 .0.len(),
+            ChannelData::ArrayDInt8(a) => a.ndim(),
+            ChannelData::ArrayDUInt8(a) => a.ndim(),
+            ChannelData::ArrayDInt16(a) => a.ndim(),
+            ChannelData::ArrayDUInt16(a) => a.ndim(),
+            ChannelData::ArrayDInt32(a) => a.ndim(),
+            ChannelData::ArrayDUInt32(a) => a.ndim(),
+            ChannelData::ArrayDFloat32(a) => a.ndim(),
+            ChannelData::ArrayDInt64(a) => a.ndim(),
+            ChannelData::ArrayDUInt64(a) => a.ndim(),
+            ChannelData::ArrayDFloat64(a) => a.ndim(),
             ChannelData::Utf8(_) => 1,
         }
     }
@@ -881,16 +795,16 @@ impl ChannelData {
             ChannelData::Utf8(a) => (vec![a.len(); 1], Order::RowMajor),
             ChannelData::VariableSizeByteArray(a) => (vec![a.len(); 1], Order::RowMajor),
             ChannelData::FixedSizeByteArray(a) => (vec![a.len(); 1], Order::RowMajor),
-            ChannelData::ArrayDInt8(a) => a.1.clone(),
-            ChannelData::ArrayDUInt8(a) => a.1.clone(),
-            ChannelData::ArrayDInt16(a) => a.1.clone(),
-            ChannelData::ArrayDUInt16(a) => a.1.clone(),
-            ChannelData::ArrayDInt32(a) => a.1.clone(),
-            ChannelData::ArrayDUInt32(a) => a.1.clone(),
-            ChannelData::ArrayDFloat32(a) => a.1.clone(),
-            ChannelData::ArrayDInt64(a) => a.1.clone(),
-            ChannelData::ArrayDUInt64(a) => a.1.clone(),
-            ChannelData::ArrayDFloat64(a) => a.1.clone(),
+            ChannelData::ArrayDInt8(a) => (a.shape().clone(), a.order().clone()),
+            ChannelData::ArrayDUInt8(a) => (a.shape().clone(), a.order().clone()),
+            ChannelData::ArrayDInt16(a) => (a.shape().clone(), a.order().clone()),
+            ChannelData::ArrayDUInt16(a) => (a.shape().clone(), a.order().clone()),
+            ChannelData::ArrayDInt32(a) => (a.shape().clone(), a.order().clone()),
+            ChannelData::ArrayDUInt32(a) => (a.shape().clone(), a.order().clone()),
+            ChannelData::ArrayDFloat32(a) => (a.shape().clone(), a.order().clone()),
+            ChannelData::ArrayDInt64(a) => (a.shape().clone(), a.order().clone()),
+            ChannelData::ArrayDUInt64(a) => (a.shape().clone(), a.order().clone()),
+            ChannelData::ArrayDFloat64(a) => (a.shape().clone(), a.order().clone()),
         }
     }
     /// returns optional tuple of minimum and maximum values contained in the channel
@@ -967,69 +881,69 @@ impl ChannelData {
             ChannelData::VariableSizeByteArray(_) => (None, None),
             ChannelData::FixedSizeByteArray(_) => (None, None),
             ChannelData::ArrayDInt8(a) => {
-                let min = a.0.values_slice().iter().min().map(|v| *v as f64);
-                let max = a.0.values_slice().iter().max().map(|v| *v as f64);
+                let min = a.values_slice().iter().min().map(|v| *v as f64);
+                let max = a.values_slice().iter().max().map(|v| *v as f64);
                 (min, max)
             }
             ChannelData::ArrayDUInt8(a) => {
-                let min = a.0.values_slice().iter().min().map(|v| *v as f64);
-                let max = a.0.values_slice().iter().max().map(|v| *v as f64);
+                let min = a.values_slice().iter().min().map(|v| *v as f64);
+                let max = a.values_slice().iter().max().map(|v| *v as f64);
                 (min, max)
             }
             ChannelData::ArrayDInt16(a) => {
-                let min = a.0.values_slice().iter().min().map(|v| *v as f64);
-                let max = a.0.values_slice().iter().max().map(|v| *v as f64);
+                let min = a.values_slice().iter().min().map(|v| *v as f64);
+                let max = a.values_slice().iter().max().map(|v| *v as f64);
                 (min, max)
             }
             ChannelData::ArrayDUInt16(a) => {
-                let min = a.0.values_slice().iter().min().map(|v| *v as f64);
-                let max = a.0.values_slice().iter().max().map(|v| *v as f64);
+                let min = a.values_slice().iter().min().map(|v| *v as f64);
+                let max = a.values_slice().iter().max().map(|v| *v as f64);
                 (min, max)
             }
             ChannelData::ArrayDInt32(a) => {
-                let min = a.0.values_slice().iter().min().map(|v| *v as f64);
-                let max = a.0.values_slice().iter().max().map(|v| *v as f64);
+                let min = a.values_slice().iter().min().map(|v| *v as f64);
+                let max = a.values_slice().iter().max().map(|v| *v as f64);
                 (min, max)
             }
             ChannelData::ArrayDUInt32(a) => {
-                let min = a.0.values_slice().iter().min().map(|v| *v as f64);
-                let max = a.0.values_slice().iter().max().map(|v| *v as f64);
+                let min = a.values_slice().iter().min().map(|v| *v as f64);
+                let max = a.values_slice().iter().max().map(|v| *v as f64);
                 (min, max)
             }
             ChannelData::ArrayDFloat32(a) => {
-                let max =
-                    a.0.values_slice()
-                        .iter()
-                        .reduce(|accum, item| if accum >= item { accum } else { item })
-                        .map(|v| *v as f64);
-                let min =
-                    a.0.values_slice()
-                        .iter()
-                        .reduce(|accum, item| if accum <= item { accum } else { item })
-                        .map(|v| *v as f64);
+                let max = a
+                    .values_slice()
+                    .iter()
+                    .reduce(|accum, item| if accum >= item { accum } else { item })
+                    .map(|v| *v as f64);
+                let min = a
+                    .values_slice()
+                    .iter()
+                    .reduce(|accum, item| if accum <= item { accum } else { item })
+                    .map(|v| *v as f64);
                 (min, max)
             }
             ChannelData::ArrayDInt64(a) => {
-                let min = a.0.values_slice().iter().min().map(|v| *v as f64);
-                let max = a.0.values_slice().iter().max().map(|v| *v as f64);
+                let min = a.values_slice().iter().min().map(|v| *v as f64);
+                let max = a.values_slice().iter().max().map(|v| *v as f64);
                 (min, max)
             }
             ChannelData::ArrayDUInt64(a) => {
-                let min = a.0.values_slice().iter().min().map(|v| *v as f64);
-                let max = a.0.values_slice().iter().max().map(|v| *v as f64);
+                let min = a.values_slice().iter().min().map(|v| *v as f64);
+                let max = a.values_slice().iter().max().map(|v| *v as f64);
                 (min, max)
             }
             ChannelData::ArrayDFloat64(a) => {
-                let max =
-                    a.0.values_slice()
-                        .iter()
-                        .reduce(|accum, item| if accum >= item { accum } else { item })
-                        .cloned();
-                let min =
-                    a.0.values_slice()
-                        .iter()
-                        .reduce(|accum, item| if accum <= item { accum } else { item })
-                        .cloned();
+                let max = a
+                    .values_slice()
+                    .iter()
+                    .reduce(|accum, item| if accum >= item { accum } else { item })
+                    .cloned();
+                let min = a
+                    .values_slice()
+                    .iter()
+                    .reduce(|accum, item| if accum <= item { accum } else { item })
+                    .cloned();
                 (min, max)
             }
             ChannelData::Utf8(_) => (None, None),
@@ -1053,16 +967,16 @@ impl ChannelData {
             ChannelData::Utf8(a) => Arc::new(a.finish_cloned()) as ArrayRef,
             ChannelData::VariableSizeByteArray(a) => Arc::new(a.finish_cloned()) as ArrayRef,
             ChannelData::FixedSizeByteArray(a) => Arc::new(a.finish_cloned()) as ArrayRef,
-            ChannelData::ArrayDInt8(a) => Arc::new(a.0.finish_cloned()) as ArrayRef,
-            ChannelData::ArrayDUInt8(a) => Arc::new(a.0.finish_cloned()) as ArrayRef,
-            ChannelData::ArrayDInt16(a) => Arc::new(a.0.finish_cloned()) as ArrayRef,
-            ChannelData::ArrayDUInt16(a) => Arc::new(a.0.finish_cloned()) as ArrayRef,
-            ChannelData::ArrayDInt32(a) => Arc::new(a.0.finish_cloned()) as ArrayRef,
-            ChannelData::ArrayDUInt32(a) => Arc::new(a.0.finish_cloned()) as ArrayRef,
-            ChannelData::ArrayDFloat32(a) => Arc::new(a.0.finish_cloned()) as ArrayRef,
-            ChannelData::ArrayDInt64(a) => Arc::new(a.0.finish_cloned()) as ArrayRef,
-            ChannelData::ArrayDUInt64(a) => Arc::new(a.0.finish_cloned()) as ArrayRef,
-            ChannelData::ArrayDFloat64(a) => Arc::new(a.0.finish_cloned()) as ArrayRef,
+            ChannelData::ArrayDInt8(a) => Arc::new(a.finish_cloned()) as ArrayRef,
+            ChannelData::ArrayDUInt8(a) => Arc::new(a.finish_cloned()) as ArrayRef,
+            ChannelData::ArrayDInt16(a) => Arc::new(a.finish_cloned()) as ArrayRef,
+            ChannelData::ArrayDUInt16(a) => Arc::new(a.finish_cloned()) as ArrayRef,
+            ChannelData::ArrayDInt32(a) => Arc::new(a.finish_cloned()) as ArrayRef,
+            ChannelData::ArrayDUInt32(a) => Arc::new(a.finish_cloned()) as ArrayRef,
+            ChannelData::ArrayDFloat32(a) => Arc::new(a.finish_cloned()) as ArrayRef,
+            ChannelData::ArrayDInt64(a) => Arc::new(a.finish_cloned()) as ArrayRef,
+            ChannelData::ArrayDUInt64(a) => Arc::new(a.finish_cloned()) as ArrayRef,
+            ChannelData::ArrayDFloat64(a) => Arc::new(a.finish_cloned()) as ArrayRef,
         }
     }
     /// convert channel arrow data into dyn Array
@@ -1083,16 +997,16 @@ impl ChannelData {
             ChannelData::Utf8(a) => Arc::new(a.finish()) as ArrayRef,
             ChannelData::VariableSizeByteArray(a) => Arc::new(a.finish()) as ArrayRef,
             ChannelData::FixedSizeByteArray(a) => Arc::new(a.finish()) as ArrayRef,
-            ChannelData::ArrayDInt8(a) => Arc::new(a.0.finish_cloned()) as ArrayRef,
-            ChannelData::ArrayDUInt8(a) => Arc::new(a.0.finish_cloned()) as ArrayRef,
-            ChannelData::ArrayDInt16(a) => Arc::new(a.0.finish_cloned()) as ArrayRef,
-            ChannelData::ArrayDUInt16(a) => Arc::new(a.0.finish_cloned()) as ArrayRef,
-            ChannelData::ArrayDInt32(a) => Arc::new(a.0.finish_cloned()) as ArrayRef,
-            ChannelData::ArrayDUInt32(a) => Arc::new(a.0.finish_cloned()) as ArrayRef,
-            ChannelData::ArrayDFloat32(a) => Arc::new(a.0.finish_cloned()) as ArrayRef,
-            ChannelData::ArrayDInt64(a) => Arc::new(a.0.finish_cloned()) as ArrayRef,
-            ChannelData::ArrayDUInt64(a) => Arc::new(a.0.finish_cloned()) as ArrayRef,
-            ChannelData::ArrayDFloat64(a) => Arc::new(a.0.finish_cloned()) as ArrayRef,
+            ChannelData::ArrayDInt8(a) => Arc::new(a.finish()) as ArrayRef,
+            ChannelData::ArrayDUInt8(a) => Arc::new(a.finish()) as ArrayRef,
+            ChannelData::ArrayDInt16(a) => Arc::new(a.finish()) as ArrayRef,
+            ChannelData::ArrayDUInt16(a) => Arc::new(a.finish()) as ArrayRef,
+            ChannelData::ArrayDInt32(a) => Arc::new(a.finish()) as ArrayRef,
+            ChannelData::ArrayDUInt32(a) => Arc::new(a.finish()) as ArrayRef,
+            ChannelData::ArrayDFloat32(a) => Arc::new(a.finish()) as ArrayRef,
+            ChannelData::ArrayDInt64(a) => Arc::new(a.finish()) as ArrayRef,
+            ChannelData::ArrayDUInt64(a) => Arc::new(a.finish()) as ArrayRef,
+            ChannelData::ArrayDFloat64(a) => Arc::new(a.finish()) as ArrayRef,
         }
     }
     pub fn to_data(&self) -> ArrayData {
@@ -1112,16 +1026,16 @@ impl ChannelData {
             ChannelData::Utf8(a) => a.finish_cloned().to_data(),
             ChannelData::VariableSizeByteArray(a) => a.finish_cloned().to_data(),
             ChannelData::FixedSizeByteArray(a) => a.finish_cloned().to_data(),
-            ChannelData::ArrayDInt8((a, _)) => a.finish_cloned().to_data(),
-            ChannelData::ArrayDUInt8((a, _)) => a.finish_cloned().to_data(),
-            ChannelData::ArrayDInt16((a, _)) => a.finish_cloned().to_data(),
-            ChannelData::ArrayDUInt16((a, _)) => a.finish_cloned().to_data(),
-            ChannelData::ArrayDInt32((a, _)) => a.finish_cloned().to_data(),
-            ChannelData::ArrayDUInt32((a, _)) => a.finish_cloned().to_data(),
-            ChannelData::ArrayDFloat32((a, _)) => a.finish_cloned().to_data(),
-            ChannelData::ArrayDInt64((a, _)) => a.finish_cloned().to_data(),
-            ChannelData::ArrayDUInt64((a, _)) => a.finish_cloned().to_data(),
-            ChannelData::ArrayDFloat64((a, _)) => a.finish_cloned().to_data(),
+            ChannelData::ArrayDInt8(a) => a.finish_cloned().to_data(),
+            ChannelData::ArrayDUInt8(a) => a.finish_cloned().to_data(),
+            ChannelData::ArrayDInt16(a) => a.finish_cloned().to_data(),
+            ChannelData::ArrayDUInt16(a) => a.finish_cloned().to_data(),
+            ChannelData::ArrayDInt32(a) => a.finish_cloned().to_data(),
+            ChannelData::ArrayDUInt32(a) => a.finish_cloned().to_data(),
+            ChannelData::ArrayDFloat32(a) => a.finish_cloned().to_data(),
+            ChannelData::ArrayDInt64(a) => a.finish_cloned().to_data(),
+            ChannelData::ArrayDUInt64(a) => a.finish_cloned().to_data(),
+            ChannelData::ArrayDFloat64(a) => a.finish_cloned().to_data(),
         }
     }
     pub fn set_validity(&mut self, mask: &mut BooleanBufferBuilder) -> Result<(), Error> {
@@ -1187,16 +1101,36 @@ impl ChannelData {
                     });
                 *a = new_array;
             }
-            ChannelData::ArrayDInt8((_a, _)) => {}
-            ChannelData::ArrayDUInt8((_a, _)) => {}
-            ChannelData::ArrayDInt16((_a, _)) => {}
-            ChannelData::ArrayDUInt16((_a, _)) => {}
-            ChannelData::ArrayDInt32((_a, _)) => {}
-            ChannelData::ArrayDUInt32((_a, _)) => {}
-            ChannelData::ArrayDFloat32((_a, _)) => {}
-            ChannelData::ArrayDInt64((_a, _)) => {}
-            ChannelData::ArrayDUInt64((_a, _)) => {}
-            ChannelData::ArrayDFloat64((_a, _)) => {}
+            ChannelData::ArrayDInt8(a) => {
+                a.set_validity(mask);
+            }
+            ChannelData::ArrayDUInt8(a) => {
+                a.set_validity(mask);
+            }
+            ChannelData::ArrayDInt16(a) => {
+                a.set_validity(mask);
+            }
+            ChannelData::ArrayDUInt16(a) => {
+                a.set_validity(mask);
+            }
+            ChannelData::ArrayDInt32(a) => {
+                a.set_validity(mask);
+            }
+            ChannelData::ArrayDUInt32(a) => {
+                a.set_validity(mask);
+            }
+            ChannelData::ArrayDFloat32(a) => {
+                a.set_validity(mask);
+            }
+            ChannelData::ArrayDInt64(a) => {
+                a.set_validity(mask);
+            }
+            ChannelData::ArrayDUInt64(a) => {
+                a.set_validity(mask);
+            }
+            ChannelData::ArrayDFloat64(a) => {
+                a.set_validity(mask);
+            }
         }
         Ok(())
     }
@@ -1217,16 +1151,16 @@ impl ChannelData {
             ChannelData::Utf8(a) => a.finish_cloned().nulls().cloned(),
             ChannelData::VariableSizeByteArray(a) => a.finish_cloned().nulls().cloned(),
             ChannelData::FixedSizeByteArray(a) => a.finish_cloned().nulls().cloned(),
-            ChannelData::ArrayDInt8((a, _)) => a.finish_cloned().nulls().cloned(),
-            ChannelData::ArrayDUInt8((a, _)) => a.finish_cloned().nulls().cloned(),
-            ChannelData::ArrayDInt16((a, _)) => a.finish_cloned().nulls().cloned(),
-            ChannelData::ArrayDUInt16((a, _)) => a.finish_cloned().nulls().cloned(),
-            ChannelData::ArrayDInt32((a, _)) => a.finish_cloned().nulls().cloned(),
-            ChannelData::ArrayDUInt32((a, _)) => a.finish_cloned().nulls().cloned(),
-            ChannelData::ArrayDFloat32((a, _)) => a.finish_cloned().nulls().cloned(),
-            ChannelData::ArrayDInt64((a, _)) => a.finish_cloned().nulls().cloned(),
-            ChannelData::ArrayDUInt64((a, _)) => a.finish_cloned().nulls().cloned(),
-            ChannelData::ArrayDFloat64((a, _)) => a.finish_cloned().nulls().cloned(),
+            ChannelData::ArrayDInt8(a) => a.finish_cloned().nulls().cloned(),
+            ChannelData::ArrayDUInt8(a) => a.finish_cloned().nulls().cloned(),
+            ChannelData::ArrayDInt16(a) => a.finish_cloned().nulls().cloned(),
+            ChannelData::ArrayDUInt16(a) => a.finish_cloned().nulls().cloned(),
+            ChannelData::ArrayDInt32(a) => a.finish_cloned().nulls().cloned(),
+            ChannelData::ArrayDUInt32(a) => a.finish_cloned().nulls().cloned(),
+            ChannelData::ArrayDFloat32(a) => a.finish_cloned().nulls().cloned(),
+            ChannelData::ArrayDInt64(a) => a.finish_cloned().nulls().cloned(),
+            ChannelData::ArrayDUInt64(a) => a.finish_cloned().nulls().cloned(),
+            ChannelData::ArrayDFloat64(a) => a.finish_cloned().nulls().cloned(),
         }
     }
     pub fn as_ref(&self) -> Arc<dyn Array> {
@@ -1246,16 +1180,16 @@ impl ChannelData {
             ChannelData::Utf8(a) => Arc::new(a.finish_cloned()) as ArrayRef,
             ChannelData::VariableSizeByteArray(a) => Arc::new(a.finish_cloned()) as ArrayRef,
             ChannelData::FixedSizeByteArray(a) => Arc::new(a.finish_cloned()) as ArrayRef,
-            ChannelData::ArrayDInt8((a, _)) => Arc::new(a.finish_cloned()) as ArrayRef,
-            ChannelData::ArrayDUInt8((a, _)) => Arc::new(a.finish_cloned()) as ArrayRef,
-            ChannelData::ArrayDInt16((a, _)) => Arc::new(a.finish_cloned()) as ArrayRef,
-            ChannelData::ArrayDUInt16((a, _)) => Arc::new(a.finish_cloned()) as ArrayRef,
-            ChannelData::ArrayDInt32((a, _)) => Arc::new(a.finish_cloned()) as ArrayRef,
-            ChannelData::ArrayDUInt32((a, _)) => Arc::new(a.finish_cloned()) as ArrayRef,
-            ChannelData::ArrayDFloat32((a, _)) => Arc::new(a.finish_cloned()) as ArrayRef,
-            ChannelData::ArrayDInt64((a, _)) => Arc::new(a.finish_cloned()) as ArrayRef,
-            ChannelData::ArrayDUInt64((a, _)) => Arc::new(a.finish_cloned()) as ArrayRef,
-            ChannelData::ArrayDFloat64((a, _)) => Arc::new(a.finish_cloned()) as ArrayRef,
+            ChannelData::ArrayDInt8(a) => Arc::new(a.finish_cloned()) as ArrayRef,
+            ChannelData::ArrayDUInt8(a) => Arc::new(a.finish_cloned()) as ArrayRef,
+            ChannelData::ArrayDInt16(a) => Arc::new(a.finish_cloned()) as ArrayRef,
+            ChannelData::ArrayDUInt16(a) => Arc::new(a.finish_cloned()) as ArrayRef,
+            ChannelData::ArrayDInt32(a) => Arc::new(a.finish_cloned()) as ArrayRef,
+            ChannelData::ArrayDUInt32(a) => Arc::new(a.finish_cloned()) as ArrayRef,
+            ChannelData::ArrayDFloat32(a) => Arc::new(a.finish_cloned()) as ArrayRef,
+            ChannelData::ArrayDInt64(a) => Arc::new(a.finish_cloned()) as ArrayRef,
+            ChannelData::ArrayDUInt64(a) => Arc::new(a.finish_cloned()) as ArrayRef,
+            ChannelData::ArrayDFloat64(a) => Arc::new(a.finish_cloned()) as ArrayRef,
         }
     }
 }
@@ -1344,63 +1278,33 @@ pub fn data_type_init(
             0 | 1 => {
                 // unsigned int
                 if n_bytes <= 1 {
-                    Ok(ChannelData::ArrayDUInt8((
-                        PrimitiveBuilder::new(),
-                        (Vec::new(), Order::RowMajor),
-                    )))
+                    Ok(ChannelData::ArrayDUInt8(TensorArrow::new()))
                 } else if n_bytes == 2 {
-                    Ok(ChannelData::ArrayDUInt16((
-                        PrimitiveBuilder::new(),
-                        (Vec::new(), Order::RowMajor),
-                    )))
+                    Ok(ChannelData::ArrayDUInt16(TensorArrow::new()))
                 } else if n_bytes <= 4 {
-                    Ok(ChannelData::ArrayDUInt32((
-                        PrimitiveBuilder::new(),
-                        (Vec::new(), Order::RowMajor),
-                    )))
+                    Ok(ChannelData::ArrayDUInt32(TensorArrow::new()))
                 } else {
-                    Ok(ChannelData::ArrayDUInt64((
-                        PrimitiveBuilder::new(),
-                        (Vec::new(), Order::RowMajor),
-                    )))
+                    Ok(ChannelData::ArrayDUInt64(TensorArrow::new()))
                 }
             }
             2 | 3 => {
                 // signed int
                 if n_bytes <= 1 {
-                    Ok(ChannelData::ArrayDInt8((
-                        PrimitiveBuilder::new(),
-                        (Vec::new(), Order::RowMajor),
-                    )))
+                    Ok(ChannelData::ArrayDInt8(TensorArrow::new()))
                 } else if n_bytes == 2 {
-                    Ok(ChannelData::ArrayDInt16((
-                        PrimitiveBuilder::new(),
-                        (Vec::new(), Order::RowMajor),
-                    )))
+                    Ok(ChannelData::ArrayDInt16(TensorArrow::new()))
                 } else if n_bytes == 4 {
-                    Ok(ChannelData::ArrayDInt32((
-                        PrimitiveBuilder::new(),
-                        (Vec::new(), Order::RowMajor),
-                    )))
+                    Ok(ChannelData::ArrayDInt32(TensorArrow::new()))
                 } else {
-                    Ok(ChannelData::ArrayDInt64((
-                        PrimitiveBuilder::new(),
-                        (Vec::new(), Order::RowMajor),
-                    )))
+                    Ok(ChannelData::ArrayDInt64(TensorArrow::new()))
                 }
             }
             4 | 5 => {
                 // float
                 if n_bytes <= 4 {
-                    Ok(ChannelData::ArrayDFloat32((
-                        PrimitiveBuilder::new(),
-                        (Vec::new(), Order::RowMajor),
-                    )))
+                    Ok(ChannelData::ArrayDFloat32(TensorArrow::new()))
                 } else {
-                    Ok(ChannelData::ArrayDFloat64((
-                        PrimitiveBuilder::new(),
-                        (Vec::new(), Order::RowMajor),
-                    )))
+                    Ok(ChannelData::ArrayDFloat64(TensorArrow::new()))
                 }
             }
             15 | 16 => {

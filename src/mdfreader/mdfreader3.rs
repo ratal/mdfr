@@ -10,8 +10,8 @@ use std::io::{BufReader, Read};
 
 use crate::mdfreader::data_read3::read_channels_from_bytes;
 
-use super::channel_data::Order;
 use super::Mdf;
+use crate::channel_data::tensor_arrow::Order;
 use crate::mdfreader::conversions3::convert_all_channels;
 
 /// The following constant represents the size of data chunk to be read and processed.
