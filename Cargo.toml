@@ -44,7 +44,7 @@ libc = "0.2" # for the C api
 env_logger = "*"
 
 numpy = "0.20" # export rust ndarrays into numpy
-polars = { version = "0.37", features = [
+polars = { version = "0.38", features = [
     "dtype-full",
     "object",
     "fmt",
