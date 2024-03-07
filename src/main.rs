@@ -63,7 +63,7 @@ fn main() -> Result<(), Error> {
                 .required(false)
                 .num_args(1)
                 .value_name("ALGORITHM")
-                .help("Compression algorithm for writing data in parquet file, valid values are snappy, gzip, lzo. Default is uncompressed"),
+                .help("Compression algorithm for writing data in parquet file, valid values are snappy, gzip, lzo, lz4, zstd, brotli. Default is uncompressed"),
         )
         .arg(
             Arg::new("info")
@@ -105,14 +105,14 @@ fn main() -> Result<(), Error> {
         }
     }
 
-    // let parquet_compression = matches.get_one::<String>("parquet_compression");
-    // if let Some(file_name) = parquet_file_name {
-    //     mdf_file.export_to_parquet(file_name, parquet_compression.map(|x| &**x))?;
-    //     info!(
-    //         "Wrote parquet file {} with compression {:?}",
-    //         file_name, parquet_compression
-    //     );
-    // }
+    let parquet_compression = matches.get_one::<String>("parquet_compression");
+    if let Some(file_name) = parquet_file_name {
+        mdf_file.export_to_parquet(file_name, parquet_compression.map(|x| &**x))?;
+        info!(
+            "Wrote parquet file {} with compression {:?}",
+            file_name, parquet_compression
+        );
+    }
 
     Ok(())
 }

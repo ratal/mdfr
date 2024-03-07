@@ -19,6 +19,7 @@ use pyo3::prelude::*;
 
 //use crate::export::parquet::export_to_parquet;
 use crate::data_holder::channel_data::try_from;
+use crate::export::parquet::export_to_parquet;
 use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::mdfreader3::mdfreader3;
 use crate::mdfreader::mdfreader4::mdfreader4;
@@ -234,14 +235,14 @@ impl Mdf {
         Ok(())
     }
 
-    // /// export to Parquet file
-    // pub fn export_to_parquet(
-    //     &self,
-    //     file_name: &str,
-    //     compression: Option<&str>,
-    // ) -> arrow::error::Result<()> {
-    //     export_to_parquet(self, file_name, compression)
-    // }
+    /// export to Parquet file
+    pub fn export_to_parquet(
+        &self,
+        file_name: &str,
+        compression: Option<&str>,
+    ) -> arrow::error::Result<()> {
+        export_to_parquet(self, file_name, compression)
+    }
     /// Writes mdf4 file
     pub fn write(&mut self, file_name: &str, compression: bool) -> Result<Mdf> {
         mdfwriter4(self, file_name, compression)

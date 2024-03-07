@@ -1166,17 +1166,17 @@ mod tests {
             .is_none());
         Ok(())
     }
-    // #[test]
-    // fn export_to_parquet() -> Result<()> {
-    //     // Export to Parquet file
-    //     let file = format!(
-    //         "{}{}",
-    //         BASE_PATH_MDF3, &"RJ_N16-12-363_BM-15C-0024_228_2_20170116094355_CAN.dat"
-    //     );
-    //     let mut mdf = Mdf::new(&file)?;
-    //     mdf.load_all_channels_data_in_memory()?;
-    //     mdf.export_to_parquet(&WRITING_PARQUET_FILE, Some("snappy"))
-    //         .expect("failed writing parquet file");
-    //     Ok(())
-    // }
+    #[test]
+    fn export_to_parquet() -> Result<()> {
+        // Export to Parquet file
+        let file = format!(
+            "{}{}",
+            BASE_PATH_MDF3, &"RJ_N16-12-363_BM-15C-0024_228_2_20170116094355_CAN.dat"
+        );
+        let mut mdf = Mdf::new(&file)?;
+        mdf.load_all_channels_data_in_memory()?;
+        mdf.export_to_parquet(&WRITING_PARQUET_FILE, Some("snappy"))
+            .expect("failed writing parquet file");
+        Ok(())
+    }
 }
