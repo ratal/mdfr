@@ -680,15 +680,15 @@ impl ChannelData {
                 .collect()),
             ChannelData::Utf8(a) => {
                 let nbytes = self.byte_count() as usize;
-                Ok(a.values_slice()
+                Ok(a.finish_cloned()
                     .iter()
                     .flat_map(|x| {
-                        let str_bytes = x.to_string().into_bytes();
+                        let str_bytes = x.unwrap_or("").as_bytes();
                         let n_str_bytes = str_bytes.len();
                         if nbytes > n_str_bytes {
-                            [str_bytes, vec![0u8; nbytes - n_str_bytes]].concat()
+                            [str_bytes, &vec![0u8; nbytes - n_str_bytes]].concat()
                         } else {
-                            str_bytes
+                            str_bytes.to_vec()
                         }
                     })
                     .collect())
