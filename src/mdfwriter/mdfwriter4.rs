@@ -125,6 +125,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
             .read(true)
             .write(true)
             .create(true)
+            .truncate(true)
             .open(&*file)
             .context("Cannot create the file")?;
         let mut writer = BufWriter::new(&f);
@@ -208,6 +209,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
         .read(true)
         .write(true)
         .create(true)
+        .truncate(true)
         .open(&*file)
         .context("Cannot create the file")?;
     let mut writer = BufWriter::new(f);
@@ -278,7 +280,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
                                 .context("Could not write CABlock ca_composition")?;
                             let mut ca_block = Ca4BlockMembers::default();
                             ca_block.ca_ndim = c.ca_ndim;
-                            ca_block.ca_dim_size = c.ca_dim_size.clone();
+                            ca_block.ca_dim_size.clone_from(&c.ca_dim_size);
                             buffer
                                 .write_le(&ca_composition)
                                 .context("Could not write CABlock members")?;
@@ -606,7 +608,7 @@ fn create_blocks(
 
             cn_block.cn_composition = pointer;
             ca_block.ca_ndim = data_ndim as u16;
-            ca_block.ca_dim_size = data_dim_size.clone();
+            ca_block.ca_dim_size.clone_from(&data_dim_size);
             ca_block.ca_len = 48 + 8 * data_ndim as u64;
             pointer += ca_block.ca_len as i64;
             composition = Some(Composition {

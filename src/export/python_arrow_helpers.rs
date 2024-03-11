@@ -4,7 +4,6 @@ use std::sync::Arc;
 use arrow::array::{make_array, Array, ArrayData};
 use arrow::pyarrow::PyArrowType;
 use pyo3::prelude::*;
-use pyo3::PyResult;
 
 /// Take an arrow array from python and convert it to a rust arrow array.
 /// This operation does not copy data.

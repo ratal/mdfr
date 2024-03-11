@@ -1,7 +1,7 @@
 //! Exporting mdf to Parquet files.
 use arrow::{
     array::{Array, RecordBatch},
-    datatypes::{Field, Schema, SchemaBuilder},
+    datatypes::{Field, SchemaBuilder},
     error::Result,
 };
 use codepage::to_encoding;
@@ -41,11 +41,11 @@ pub fn export_to_parquet(mdf: &Mdf, file_name: &str, compression: Option<&str>) 
 
     let (arrow_data, mut arrow_schema) = mdf_data_to_arrow(mdf);
     arrow_schema
-        .metadata
+        .metadata_mut()
         .insert("file_name".to_string(), file_name.to_string());
 
     let file = std::io::BufWriter::new(std::fs::File::create(path).expect("Failed to create file"));
-    let mut writer = ArrowWriter::try_new(file, Arc::new(arrow_schema.clone()), Some(options))
+    let mut writer = ArrowWriter::try_new(file, Arc::new(arrow_schema.finish()), Some(options))
         .expect("Failed to write parquet file");
 
     // write data in file
@@ -74,10 +74,7 @@ pub fn parquet_compression_from_string(compression_option: Option<&str>) -> Comp
 }
 
 /// takes data of channel set from MdfInfo structure and stores in mdf.arrow_data
-fn mdf_data_to_arrow(mdf: &Mdf) -> (Vec<RecordBatch>, Schema) {
-    let mut chunk_index: usize = 0;
-    let mut array_index: usize = 0;
-    let mut field_index: usize = 0;
+fn mdf_data_to_arrow(mdf: &Mdf) -> (Vec<RecordBatch>, SchemaBuilder) {
     match &mdf.mdf_info {
         MdfInfo::V4(mdfinfo4) => {
             let mut arrow_schema = SchemaBuilder::with_capacity(mdfinfo4.channel_names_set.len());
@@ -95,7 +92,7 @@ fn mdf_data_to_arrow(mdf: &Mdf) -> (Vec<RecordBatch>, Schema) {
                         let mut fields = SchemaBuilder::with_capacity(cg.channel_names.len());
                         cg.cn.iter().for_each(|(_rec_pos, cn)| {
                             if !cn.data.is_empty() {
-                                let field = Field::new(
+                                let mut field = Field::new(
                                     cn.unique_name.clone(),
                                     cn.data.arrow_data_type().clone(),
                                     cn.data.validity().is_some(),
@@ -135,23 +132,22 @@ fn mdf_data_to_arrow(mdf: &Mdf) -> (Vec<RecordBatch>, Schema) {
                                         cn.block.cn_sync_type.to_string(),
                                     );
                                 }
+                                field = field.with_metadata(metadata);
                                 arrow_schema.push(field.clone());
-                                fields.push(field.with_metadata(metadata));
+                                fields.push(field);
                                 columns.push(cn.data.finish_cloned());
-                                array_index += 1;
-                                field_index += 1;
                             }
                         });
-                        arrow_data.push(
-                            RecordBatch::try_new(Arc::new(fields.finish()), columns)
-                                .expect("Failed creating recordbatch"),
-                        );
-                        chunk_index += 1;
-                        array_index = 0;
+                        if !columns.is_empty() {
+                            arrow_data.push(
+                                RecordBatch::try_new(Arc::new(fields.finish()), columns)
+                                    .expect("Failed creating recordbatch"),
+                            );
+                        }
                     });
                 }
             }
-            (arrow_data, arrow_schema.finish())
+            (arrow_data, arrow_schema)
         }
         MdfInfo::V3(mdfinfo3) => {
             let mut arrow_schema = SchemaBuilder::with_capacity(mdfinfo3.channel_names_set.len());
@@ -162,7 +158,7 @@ fn mdf_data_to_arrow(mdf: &Mdf) -> (Vec<RecordBatch>, Schema) {
                     let mut fields = SchemaBuilder::with_capacity(cg.channel_names.len());
                     for (_rec_pos, cn) in cg.cn.iter() {
                         if !cn.data.is_empty() {
-                            let field = Field::new(
+                            let mut field = Field::new(
                                 cn.unique_name.clone(),
                                 cn.data.arrow_data_type().clone(),
                                 false,
@@ -195,21 +191,20 @@ fn mdf_data_to_arrow(mdf: &Mdf) -> (Vec<RecordBatch>, Schema) {
                                     master_channel_name.to_string(),
                                 );
                             }
+                            field = field.with_metadata(metadata);
                             arrow_schema.push(field.clone());
-                            fields.push(field.with_metadata(metadata));
-                            array_index += 1;
-                            field_index += 1;
+                            fields.push(field);
                         }
                     }
-                    arrow_data.push(
-                        RecordBatch::try_new(Arc::new(fields.finish()), columns)
-                            .expect("Failed creating recordbatch"),
-                    );
-                    chunk_index += 1;
-                    array_index = 0;
+                    if !columns.is_empty() {
+                        arrow_data.push(
+                            RecordBatch::try_new(Arc::new(fields.finish()), columns)
+                                .expect("Failed creating recordbatch"),
+                        );
+                    }
                 }
             }
-            (arrow_data, arrow_schema.finish())
+            (arrow_data, arrow_schema)
         }
     }
 }

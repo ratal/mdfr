@@ -4,13 +4,10 @@ use anyhow::{anyhow, Context, Error, Result};
 use arrow::array::{Array, BooleanBufferBuilder, UInt16Builder, UInt32Builder, UInt8Builder};
 use binrw::{binrw, BinReaderExt, BinWriterExt};
 use byteorder::{LittleEndian, ReadBytesExt};
-use chrono::naive::NaiveDateTime;
-use chrono::Local;
+use chrono::{DateTime, Local};
 use log::warn;
 use md5::{Digest, Md5};
-use rand;
 use rayon::prelude::*;
-use roxmltree;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::default::Default;
 use std::fmt::Debug;
@@ -18,7 +15,6 @@ use std::fs::File;
 use std::io::{BufReader, Cursor, Read, Seek, Write};
 use std::sync::Arc;
 use std::{fmt, str};
-use transpose;
 use yazi::{decompress, Adler32, Format};
 
 use crate::data_holder::channel_data::{data_type_init, try_from, ChannelData};
@@ -130,7 +126,7 @@ impl MdfInfo4 {
         if let Some((m, _dg_pos, (_cg_pos, _rec_idd), (_cn_pos, _rec_pos))) =
             self.get_channel_id(channel_name)
         {
-            master = m.clone();
+            master.clone_from(m);
         }
         master
     }
@@ -165,7 +161,7 @@ impl MdfInfo4 {
             let mut channel_list = HashSet::new();
             if let Some(dg) = self.dg.get(dg_pos) {
                 if let Some(cg) = dg.cg.get(rec_id) {
-                    channel_list = cg.channel_names.clone();
+                    channel_list.clone_from(&cg.channel_names);
                 }
             }
             channel_list
@@ -277,7 +273,7 @@ impl MdfInfo4 {
             let composition_position = position_generator();
             cn_block.cn_composition = composition_position;
             ca_block.ca_ndim = data_ndim as u16;
-            ca_block.ca_dim_size = data_dim_size.clone();
+            ca_block.ca_dim_size.clone_from(&data_dim_size);
             ca_block.ca_len = 48 + 8 * data_ndim as u64;
             composition = Some(Composition {
                 block: Compo::CA(Box::new(ca_block)),
@@ -299,7 +295,7 @@ impl MdfInfo4 {
                     cg_block.cg_flags = 0b1000;
                     cg_block.cg_links = 7; // with cg_cg_master
                                            // cg_block.cg_len = 112;
-                    master.master_channel = m.clone();
+                    master.master_channel.clone_from(m);
                 }
             }
         }
@@ -1157,9 +1153,7 @@ impl fmt::Display for Hd4 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let sec = self.hd_start_time_ns / 1000000000;
         let nsec = (self.hd_start_time_ns - sec * 1000000000) as u32;
-        let naive = NaiveDateTime::from_timestamp_opt(sec as i64, nsec)
-            .unwrap_or_default()
-            .and_utc();
+        let naive = DateTime::from_timestamp(sec as i64, nsec).unwrap_or_default();
         writeln!(f, "Time : {} ", naive.to_rfc3339())
     }
 }
@@ -1703,12 +1697,12 @@ impl SharableBlocks {
         if let Some(md) = self.md_tx.get_mut(&position) {
             match md.block_type {
                 MetaDataBlockType::MdParsed => {
-                    comments = md.comments.clone();
+                    comments.clone_from(&md.comments);
                 }
                 MetaDataBlockType::MdBlock => {
                     // not yet parsed, so let's parse it
                     let _ = md.parse_xml();
-                    comments = md.comments.clone();
+                    comments.clone_from(&md.comments);
                 }
                 MetaDataBlockType::TX => {
                     // should not happen
@@ -1724,7 +1718,7 @@ impl SharableBlocks {
         let mut comments: HashMap<String, String> = HashMap::new();
         if let Some(md) = self.md_tx.get(&position) {
             if md.block_type == MetaDataBlockType::MdParsed {
-                comments = md.comments.clone();
+                comments.clone_from(&md.comments);
             }
         };
         comments
@@ -3261,7 +3255,7 @@ pub fn build_channel_db(
                 cg_channel_list.insert(cn.unique_name.clone());
                 // assigns master in channel_list
                 if let Some(id) = channel_list.get_mut(&cn.unique_name) {
-                    id.0 = master_channel_name.clone();
+                    id.0.clone_from(&master_channel_name);
                 }
             });
             cg.channel_names = cg_channel_list;

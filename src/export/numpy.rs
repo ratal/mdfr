@@ -8,7 +8,6 @@ use arrow::array::{
 use numpy::npyffi::types::NPY_ORDER;
 use numpy::{PyArray1, PyArrayDyn, ToPyArray};
 use pyo3::prelude::*;
-use pyo3::{PyAny, PyObject, PyResult};
 
 use crate::data_holder::channel_data::ChannelData;
 use crate::data_holder::tensor_arrow::{Order, TensorArrow};

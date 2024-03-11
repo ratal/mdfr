@@ -172,7 +172,6 @@ fn linear_conversion_primitive<T: ArrowPrimitiveType>(
     p2: f64,
 ) -> Result<PrimitiveBuilder<Float64Type>, Error>
 where
-    T: ArrowPrimitiveType,
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
@@ -378,7 +377,6 @@ fn rational_conversion_primitive<T: ArrowPrimitiveType>(
     cc_val: &[f64],
 ) -> Result<PrimitiveBuilder<Float64Type>, Error>
 where
-    T: ArrowPrimitiveType,
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
@@ -583,7 +581,6 @@ fn alegbraic_conversion_primitive<T: ArrowPrimitiveType>(
     array: &PrimitiveBuilder<T>,
 ) -> Result<PrimitiveBuilder<Float64Type>, Error>
 where
-    T: ArrowPrimitiveType,
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
@@ -808,7 +805,6 @@ fn value_to_value_with_interpolation_primitive<T: ArrowPrimitiveType>(
     val: Vec<(&f64, &f64)>,
 ) -> Result<PrimitiveBuilder<Float64Type>, Error>
 where
-    T: ArrowPrimitiveType,
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
@@ -970,7 +966,6 @@ fn value_to_value_without_interpolation_primitive<T: ArrowPrimitiveType>(
     val: Vec<(&f64, &f64)>,
 ) -> Result<PrimitiveBuilder<Float64Type>, Error>
 where
-    T: ArrowPrimitiveType,
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
@@ -1138,7 +1133,6 @@ fn value_range_to_value_table_calculation<T: ArrowPrimitiveType>(
     default_value: &f64,
 ) -> Result<PrimitiveBuilder<Float64Type>, Error>
 where
-    T: ArrowPrimitiveType,
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
@@ -1286,7 +1280,6 @@ fn value_to_text_calculation_int<T: ArrowPrimitiveType>(
     sharable: &SharableBlocks,
 ) -> Result<LargeStringBuilder, Error>
 where
-    T: ArrowPrimitiveType,
 {
     // table applicable only to integers, no canonization
     let mut table_int: HashMap<i64, TextOrScaleConversion> = HashMap::with_capacity(cc_val.len());
@@ -1686,7 +1679,7 @@ fn value_range_to_text_calculation<T: ArrowPrimitiveType>(
         let matched_key = keys
             .iter()
             .enumerate()
-            .find(|&x| (&x.1.min <= &a) && (a <= &x.1.max));
+            .find(|&x| (&x.1.min <= a) && (a <= &x.1.max));
         if let Some(key) = matched_key {
             match &txt[key.0] {
                 TextOrScaleConversion::Txt(txt) => {
@@ -2081,7 +2074,7 @@ fn bitfield_text_table_calculation<T: ArrowPrimitiveType>(
                         } else {
                             match &def {
                                 DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                                    new_a = txt.clone();
+                                    new_a.clone_from(txt);
                                 }
                                 DefaultTextOrScaleConversion::DefaultScale(conv) => {
                                     new_a = conv.eval_to_txt(a.unwrap_or(0f64));

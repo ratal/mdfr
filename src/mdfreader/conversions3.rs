@@ -93,7 +93,6 @@ fn linear_calculation<T: ArrowPrimitiveType>(
     cc_val: &[f64],
 ) -> Result<PrimitiveBuilder<Float64Type>, Error>
 where
-    T: ArrowPrimitiveType,
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
@@ -199,7 +198,6 @@ fn rational_calculation<T: ArrowPrimitiveType>(
     cc_val: &[f64],
 ) -> Result<PrimitiveBuilder<Float64Type>, Error>
 where
-    T: ArrowPrimitiveType,
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
@@ -305,7 +303,6 @@ fn polynomial_calculation<T: ArrowPrimitiveType>(
     cc_val: &[f64],
 ) -> Result<PrimitiveBuilder<Float64Type>, Error>
 where
-    T: ArrowPrimitiveType,
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
@@ -411,7 +408,6 @@ fn exponential_calculation<T: ArrowPrimitiveType>(
     cc_val: &[f64],
 ) -> Result<Option<PrimitiveBuilder<Float64Type>>, Error>
 where
-    T: ArrowPrimitiveType,
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
@@ -533,7 +529,6 @@ fn logarithmic_calculation<T: ArrowPrimitiveType>(
     cc_val: &[f64],
 ) -> Result<Option<PrimitiveBuilder<Float64Type>>, Error>
 where
-    T: ArrowPrimitiveType,
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
@@ -666,7 +661,6 @@ fn alegbraic_conversion_calculation<T: ArrowPrimitiveType>(
     name: &str,
 ) -> Result<PrimitiveBuilder<Float64Type>, Error>
 where
-    T: ArrowPrimitiveType,
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
@@ -862,7 +856,6 @@ fn value_to_value_with_interpolation_calculation<T: ArrowPrimitiveType>(
     cycle_count: usize,
 ) -> Result<PrimitiveBuilder<Float64Type>, Error>
 where
-    T: ArrowPrimitiveType,
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
@@ -969,7 +962,6 @@ fn value_to_value_without_interpolation_calculation<T: ArrowPrimitiveType>(
     cycle_count: usize,
 ) -> Result<PrimitiveBuilder<Float64Type>, Error>
 where
-    T: ArrowPrimitiveType,
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
@@ -1080,7 +1072,6 @@ fn value_to_text_calculation<T: ArrowPrimitiveType>(
     cycle_count: usize,
 ) -> Result<LargeStringBuilder, Error>
 where
-    T: ArrowPrimitiveType,
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
@@ -1186,7 +1177,6 @@ fn value_range_to_text_calculation<T: ArrowPrimitiveType>(
     cycle_count: usize,
 ) -> Result<LargeStringBuilder, Error>
 where
-    T: ArrowPrimitiveType,
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {

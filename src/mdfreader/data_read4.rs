@@ -12,10 +12,8 @@ use half::f16;
 use rayon::prelude::*;
 use std::io::Cursor;
 use std::str;
-use std::string::String;
 use std::{
     collections::HashSet,
-    convert::TryInto,
     sync::{Arc, Mutex},
 };
 
@@ -1102,8 +1100,7 @@ pub fn read_channels_from_bytes(
                                 let mut dst = String::with_capacity(value.len());
                                 let (_result, _size, _replacement) =
                                     decoder.decode_to_string(value, &mut dst, false);
-                                dst = dst.trim_end_matches('\0').to_owned();
-                                array.append_value(dst);
+                                array.append_value(dst.trim_end_matches('\0'));
                             }
                         } else if cn.block.cn_data_type == 7 {
                             // 7: String UTF8
@@ -1123,8 +1120,7 @@ pub fn read_channels_from_bytes(
                                     let mut dst = String::with_capacity(value.len());
                                     let (_result, _size, _replacement) =
                                         decoder.decode_to_string(value, &mut dst, false);
-                                    dst = dst.trim_end_matches('\0').to_owned();
-                                    array.append_value(dst);
+                                    array.append_value(dst.trim_end_matches('\0'));
                                 }
                             } else {
                                 let mut decoder = UTF_16LE.new_decoder();
@@ -1133,8 +1129,7 @@ pub fn read_channels_from_bytes(
                                     let mut dst = String::with_capacity(value.len());
                                     let (_result, _size, _replacement) =
                                         decoder.decode_to_string(value, &mut dst, false);
-                                    dst = dst.trim_end_matches('\0').to_owned();
-                                    array.append_value(dst);
+                                    array.append_value(dst.trim_end_matches('\0'));
                                 }
                             }
                         }

@@ -15,10 +15,8 @@ use rayon::prelude::*;
 use std::fs::File;
 use std::io::Cursor;
 use std::str;
-use std::string::String;
 use std::{
     collections::{HashMap, HashSet},
-    convert::TryInto,
     io::{BufReader, Read},
     usize,
 };
@@ -480,8 +478,7 @@ fn read_vlsd_from_bytes(
                         let mut dst = String::with_capacity(record.len());
                         let (_result, _size, _replacement) =
                             decoder.utf_16_le.decode_to_string(record, &mut dst, false);
-                        dst = dst.trim_end_matches('\0').to_owned();
-                        array.append_value(dst);
+                        array.append_value(dst.trim_end_matches('\0'));
                         position += length;
                         remaining = data_length - position;
                         nrecord += 1;
@@ -506,8 +503,7 @@ fn read_vlsd_from_bytes(
                         let mut dst = String::with_capacity(record.len());
                         let (_result, _size, _replacement) =
                             decoder.utf_16_be.decode_to_string(record, &mut dst, false);
-                        dst = dst.trim_end_matches('\0').to_owned();
-                        array.append_value(dst);
+                        array.append_value(dst.trim_end_matches('\0'));
                         position += length;
                         remaining = data_length - position;
                         nrecord += 1;
@@ -1156,8 +1152,7 @@ fn read_all_channels_unsorted_from_bytes(
                                                 } else {
                                                     bail!("channel data type is not correct for a text")
                                                 };
-                                                dst = dst.trim_end_matches('\0').to_owned();
-                                                array.append_value(dst);
+                                                array.append_value(dst.trim_end_matches('\0'));
                                             }
                                             ChannelData::VariableSizeByteArray(array) => {
                                                 array.append_value(record);

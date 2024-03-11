@@ -6,9 +6,8 @@ use encoding_rs::WINDOWS_1252;
 use half::f16;
 use rayon::prelude::*;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::io::Cursor;
-use std::string::String;
-use std::{collections::HashSet, convert::TryInto};
 
 use crate::data_holder::channel_data::ChannelData;
 
@@ -327,8 +326,7 @@ pub fn read_channels_from_bytes(
                         let mut dst = String::with_capacity(value.len());
                         let (_result, _size, _replacement) =
                             decoder.decode_to_string(value, &mut dst, false);
-                        dst = dst.trim_end_matches('\0').to_owned();
-                        array.append_value(dst);
+                        array.append_value(dst.trim_end_matches('\0'));
                     }
                 }
                 ChannelData::VariableSizeByteArray(array) => {

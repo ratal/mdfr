@@ -95,7 +95,7 @@ impl MdfInfo3 {
         let mut master = None;
         if let Some((m, _dg_pos, (_cg_pos, _rec_idd), _cn_pos)) = self.get_channel_id(channel_name)
         {
-            master = m.clone();
+            master.clone_from(m);
         }
         master
     }
@@ -129,7 +129,7 @@ impl MdfInfo3 {
             let mut channel_list = HashSet::new();
             if let Some(dg) = self.dg.get(dg_pos) {
                 if let Some(cg) = dg.cg.get(rec_id) {
-                    channel_list = cg.channel_names.clone();
+                    channel_list.clone_from(&cg.channel_names);
                 }
             }
             channel_list
@@ -508,6 +508,7 @@ pub fn hd3_parser(
             .unwrap_or_default()
             .and_hms_opt(hd_time.0, hd_time.1, hd_time.2)
             .unwrap_or_default()
+            .and_utc()
             .timestamp_nanos_opt()
             .map(|t| t as u64);
         hd_time_offset = None;
@@ -1694,7 +1695,7 @@ pub fn build_channel_db3(
                 cg_channel_list.insert(cn.unique_name.clone());
                 // assigns master in channel_list
                 if let Some(id) = channel_list.get_mut(&cn.unique_name) {
-                    id.0 = master_channel_name.clone();
+                    id.0.clone_from(&master_channel_name);
                 }
             }
             cg.channel_names = cg_channel_list;
