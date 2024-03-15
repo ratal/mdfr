@@ -125,7 +125,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
             .read(true)
             .write(true)
             .create(true)
-            .truncate(true)
+            .truncate(false)
             .open(&*file)
             .context("Cannot create the file")?;
         let mut writer = BufWriter::new(&f);
@@ -209,7 +209,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
         .read(true)
         .write(true)
         .create(true)
-        .truncate(true)
+        .truncate(false)
         .open(&*file)
         .context("Cannot create the file")?;
     let mut writer = BufWriter::new(f);
@@ -591,9 +591,9 @@ fn create_blocks(
         }
 
         // Channel array
-        let data_ndim = data.ndim() - 1;
+        let data_ndim = data.ndim();
         let mut composition: Option<Composition> = None;
-        if data_ndim > 0 {
+        if data_ndim > 1 {
             let data_dim_size = cn
                 .data
                 .shape()
