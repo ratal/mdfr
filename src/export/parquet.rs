@@ -1,8 +1,8 @@
 //! Exporting mdf to Parquet files.
+use anyhow::{Context, Error, Result};
 use arrow::{
     array::{Array, RecordBatch},
     datatypes::{Field, SchemaBuilder},
-    error::Result,
 };
 use codepage::to_encoding;
 use encoding_rs::Encoding as EncodingRs;
@@ -18,19 +18,27 @@ use rayon::iter::ParallelExtend;
 
 use crate::{mdfinfo::MdfInfo, mdfreader::Mdf};
 
-use std::path::Path;
+use std::{cmp::max, path::Path};
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
 
 /// writes mdf into parquet file
-pub fn export_to_parquet(mdf: &Mdf, file_name: &str, compression: Option<&str>) -> Result<()> {
+pub fn export_to_parquet(
+    mdf: &Mdf,
+    file_name: &str,
+    compression: Option<&str>,
+) -> Result<(), Error> {
     // Create file
     let path = Path::new(file_name);
 
+    let (arrow_data, mut arrow_schema, max_row_group_size) =
+        mdf_data_to_arrow(mdf).context("failed creating arrow schema and recordbatches")?;
+
     let options = WriterProperties::builder()
         .set_compression(parquet_compression_from_string(compression))
+        .set_max_row_group_size(max_row_group_size)
         .set_writer_version(WriterVersion::PARQUET_1_0)
         .set_encoding(Encoding::PLAIN)
         .set_key_value_metadata(Some(vec![KeyValue::new(
@@ -39,20 +47,32 @@ pub fn export_to_parquet(mdf: &Mdf, file_name: &str, compression: Option<&str>) 
         )]))
         .build();
 
-    let (arrow_data, mut arrow_schema) = mdf_data_to_arrow(mdf);
     arrow_schema
         .metadata_mut()
         .insert("file_name".to_string(), file_name.to_string());
 
-    let file = std::io::BufWriter::new(std::fs::File::create(path).expect("Failed to create file"));
-    let mut writer = ArrowWriter::try_new(file, Arc::new(arrow_schema.finish()), Some(options))
-        .expect("Failed to write parquet file");
+    let file =
+        std::io::BufWriter::new(std::fs::File::create(path).context("Failed to create file")?);
+    let finalised_arrow_schema = arrow_schema.finish();
+    let mut writer = ArrowWriter::try_new(
+        file,
+        Arc::new(finalised_arrow_schema.clone()),
+        Some(options.clone()),
+    )
+    .with_context(|| {
+        format!(
+            "Failed to write parquet file with schema {:?} and options {:?}",
+            finalised_arrow_schema, options
+        )
+    })?;
 
     // write data in file
     for group in arrow_data {
-        writer.write(&group)?;
+        writer
+            .write(&group)
+            .with_context(|| format!("Failed wirting recordbatch {:?}", group))?;
     }
-    writer.close().expect("Failed to write footer");
+    writer.close().context("Failed to write footer")?;
     Ok(())
 }
 
@@ -74,16 +94,21 @@ pub fn parquet_compression_from_string(compression_option: Option<&str>) -> Comp
 }
 
 /// takes data of channel set from MdfInfo structure and stores in mdf.arrow_data
-fn mdf_data_to_arrow(mdf: &Mdf) -> (Vec<RecordBatch>, SchemaBuilder) {
+fn mdf_data_to_arrow(mdf: &Mdf) -> Result<(Vec<RecordBatch>, SchemaBuilder, usize), Error> {
     match &mdf.mdf_info {
         MdfInfo::V4(mdfinfo4) => {
             let mut arrow_schema = SchemaBuilder::with_capacity(mdfinfo4.channel_names_set.len());
             let mut arrow_data: Vec<RecordBatch> = Vec::with_capacity(mdfinfo4.dg.len());
+            let mut max_row_group_size: usize = 0;
             for (_dg_block_position, dg) in mdfinfo4.dg.iter() {
                 let mut channel_names_present_in_dg = HashSet::new();
                 for channel_group in dg.cg.values() {
                     let cn = channel_group.channel_names.clone();
                     channel_names_present_in_dg.par_extend(cn);
+                    max_row_group_size = max(
+                        max_row_group_size,
+                        channel_group.block.cg_cycle_count as usize,
+                    );
                 }
                 if !channel_names_present_in_dg.is_empty() {
                     dg.cg.iter().for_each(|(_rec_id, cg)| {
@@ -147,15 +172,17 @@ fn mdf_data_to_arrow(mdf: &Mdf) -> (Vec<RecordBatch>, SchemaBuilder) {
                     });
                 }
             }
-            (arrow_data, arrow_schema)
+            Ok((arrow_data, arrow_schema, max_row_group_size))
         }
         MdfInfo::V3(mdfinfo3) => {
             let mut arrow_schema = SchemaBuilder::with_capacity(mdfinfo3.channel_names_set.len());
             let mut arrow_data: Vec<RecordBatch> = Vec::with_capacity(mdfinfo3.dg.len());
+            let mut max_row_group_size: usize = 0;
             for (_dg_block_position, dg) in mdfinfo3.dg.iter() {
                 for (_rec_id, cg) in dg.cg.iter() {
                     let mut columns = Vec::<Arc<dyn Array>>::with_capacity(cg.channel_names.len());
                     let mut fields = SchemaBuilder::with_capacity(cg.channel_names.len());
+                    max_row_group_size = max(max_row_group_size, cg.block.cg_cycle_count as usize);
                     for (_rec_pos, cn) in cg.cn.iter() {
                         if !cn.data.is_empty() {
                             let mut field = Field::new(
@@ -204,7 +231,7 @@ fn mdf_data_to_arrow(mdf: &Mdf) -> (Vec<RecordBatch>, SchemaBuilder) {
                     }
                 }
             }
-            (arrow_data, arrow_schema)
+            Ok((arrow_data, arrow_schema, max_row_group_size))
         }
     }
 }

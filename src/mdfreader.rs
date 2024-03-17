@@ -236,11 +236,7 @@ impl Mdf {
     }
 
     /// export to Parquet file
-    pub fn export_to_parquet(
-        &self,
-        file_name: &str,
-        compression: Option<&str>,
-    ) -> arrow::error::Result<()> {
+    pub fn export_to_parquet(&self, file_name: &str, compression: Option<&str>) -> Result<()> {
         export_to_parquet(self, file_name, compression)
     }
     /// Writes mdf4 file
