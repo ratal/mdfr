@@ -2,7 +2,7 @@
 use anyhow::{Context, Error, Result};
 use arrow::{
     array::{Array, RecordBatch},
-    datatypes::{Field, SchemaBuilder},
+    datatypes::{Field, Schema, SchemaBuilder},
 };
 use codepage::to_encoding;
 use encoding_rs::Encoding as EncodingRs;
@@ -16,9 +16,16 @@ use parquet::{
 };
 use rayon::iter::ParallelExtend;
 
-use crate::{mdfinfo::MdfInfo, mdfreader::Mdf};
+use crate::{
+    mdfinfo::{
+        mdfinfo3::Cn3,
+        mdfinfo4::{Cg4, Cn4, Dg4},
+        MdfInfo,
+    },
+    mdfreader::Mdf,
+};
 
-use std::{cmp::max, path::Path};
+use std::{cmp::max, fs::File, io::BufWriter, path::Path};
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
@@ -32,9 +39,17 @@ pub fn export_to_parquet(
 ) -> Result<(), Error> {
     // Create file
     let path = Path::new(file_name);
+    let file =
+        std::io::BufWriter::new(std::fs::File::create(path).context("Failed to create file")?);
 
-    let (arrow_data, mut arrow_schema, max_row_group_size) =
-        mdf_data_to_arrow(mdf).context("failed creating arrow schema and recordbatches")?;
+    let (mut arrow_schema, max_row_group_size) =
+        mdf_to_arrow_schema(mdf).context("failed creating arrow schema")?;
+
+    arrow_schema
+        .metadata_mut()
+        .insert("file_name".to_string(), file_name.to_string());
+
+    let finalised_arrow_schema = arrow_schema.finish();
 
     let options = WriterProperties::builder()
         .set_compression(parquet_compression_from_string(compression))
@@ -47,13 +62,6 @@ pub fn export_to_parquet(
         )]))
         .build();
 
-    arrow_schema
-        .metadata_mut()
-        .insert("file_name".to_string(), file_name.to_string());
-
-    let file =
-        std::io::BufWriter::new(std::fs::File::create(path).context("Failed to create file")?);
-    let finalised_arrow_schema = arrow_schema.finish();
     let mut writer = ArrowWriter::try_new(
         file,
         Arc::new(finalised_arrow_schema.clone()),
@@ -66,12 +74,9 @@ pub fn export_to_parquet(
         )
     })?;
 
-    // write data in file
-    for group in arrow_data {
-        writer
-            .write(&group)
-            .with_context(|| format!("Failed wirting recordbatch {:?}", group))?;
-    }
+    write_mdf_data_to_arrow(mdf, finalised_arrow_schema, &mut writer)
+        .context("failed writing mdf data")?;
+
     writer.close().context("Failed to write footer")?;
     Ok(())
 }
@@ -94,12 +99,103 @@ pub fn parquet_compression_from_string(compression_option: Option<&str>) -> Comp
 }
 
 /// takes data of channel set from MdfInfo structure and stores in mdf.arrow_data
-fn mdf_data_to_arrow(mdf: &Mdf) -> Result<(Vec<RecordBatch>, SchemaBuilder, usize), Error> {
+fn write_mdf_data_to_arrow(
+    mdf: &Mdf,
+    arrow_schema: Schema,
+    writer: &mut ArrowWriter<BufWriter<File>>,
+) -> Result<(), Error> {
+    match &mdf.mdf_info {
+        MdfInfo::V4(mdfinfo4) => {
+            mdfinfo4.dg.iter().try_for_each(
+                |(_dg_block_position, dg): (&i64, &Dg4)| -> Result<(), Error> {
+                    let mut channel_names_present_in_dg = HashSet::new();
+                    for channel_group in dg.cg.values() {
+                        let cn = channel_group.channel_names.clone();
+                        channel_names_present_in_dg.par_extend(cn);
+                    }
+                    if !channel_names_present_in_dg.is_empty() {
+                        dg.cg.iter().try_for_each(
+                            |(_rec_id, cg): (&u64, &Cg4)| -> Result<(), Error> {
+                                let mut columns =
+                                    Vec::<Arc<dyn Array>>::with_capacity(cg.channel_names.len());
+                                let mut fields =
+                                    SchemaBuilder::with_capacity(cg.channel_names.len());
+                                cg.cn
+                                    .iter()
+                                    .try_for_each(
+                                        |(_rec_pos, cn): (&i32, &Cn4)| -> Result<(), Error> {
+                                            if !cn.data.is_empty() {
+                                                let field = arrow_schema
+                                                    .field_with_name(&cn.unique_name)
+                                                    .with_context(|| {
+                                                        format!(
+                                                            "cannot find channel name {}",
+                                                            cn.unique_name
+                                                        )
+                                                    })?;
+                                                fields.push(field.clone());
+                                                columns.push(cn.data.finish_cloned());
+                                            }
+                                            Ok(())
+                                        },
+                                    )
+                                    .context("failed extracting data")?;
+                                if !columns.is_empty() {
+                                    // write data in file
+                                    let record_batch =
+                                        RecordBatch::try_new(Arc::new(fields.finish()), columns)
+                                            .context("Failed creating recordbatch")?;
+                                    writer
+                                        .write(&record_batch)
+                                        .with_context(|| format!("Failed writing recordbatch"))?;
+                                }
+                                Ok(())
+                            },
+                        )?;
+                    }
+                    Ok(())
+                },
+            )?;
+        }
+        MdfInfo::V3(mdfinfo3) => {
+            for (_dg_block_position, dg) in mdfinfo3.dg.iter() {
+                for (_rec_id, cg) in dg.cg.iter() {
+                    let mut columns = Vec::<Arc<dyn Array>>::with_capacity(cg.channel_names.len());
+                    let mut fields = SchemaBuilder::with_capacity(cg.channel_names.len());
+                    cg.cn
+                        .iter()
+                        .try_for_each(|(_rec_pos, cn): (&u32, &Cn3)| -> Result<(), Error> {
+                            if !cn.data.is_empty() {
+                                let field =
+                                    arrow_schema.field_with_name(&cn.unique_name).with_context(
+                                        || format!("cannot find channel name {}", cn.unique_name),
+                                    )?;
+                                fields.push(field.clone());
+                                columns.push(cn.data.finish_cloned());
+                            }
+                            Ok(())
+                        })
+                        .context("failed extracting data")?;
+                    if !columns.is_empty() {
+                        let record_batch = RecordBatch::try_new(Arc::new(fields.finish()), columns)
+                            .context("Failed creating recordbatch")?;
+                        writer
+                            .write(&record_batch)
+                            .with_context(|| format!("Failed writing recordbatch"))?;
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// takes data of channel set from MdfInfo structure and stores in mdf.arrow_data
+fn mdf_to_arrow_schema(mdf: &Mdf) -> Result<(SchemaBuilder, usize), Error> {
+    let mut max_row_group_size: usize = 0;
     match &mdf.mdf_info {
         MdfInfo::V4(mdfinfo4) => {
             let mut arrow_schema = SchemaBuilder::with_capacity(mdfinfo4.channel_names_set.len());
-            let mut arrow_data: Vec<RecordBatch> = Vec::with_capacity(mdfinfo4.dg.len());
-            let mut max_row_group_size: usize = 0;
             for (_dg_block_position, dg) in mdfinfo4.dg.iter() {
                 let mut channel_names_present_in_dg = HashSet::new();
                 for channel_group in dg.cg.values() {
@@ -112,9 +208,6 @@ fn mdf_data_to_arrow(mdf: &Mdf) -> Result<(Vec<RecordBatch>, SchemaBuilder, usiz
                 }
                 if !channel_names_present_in_dg.is_empty() {
                     dg.cg.iter().for_each(|(_rec_id, cg)| {
-                        let mut columns =
-                            Vec::<Arc<dyn Array>>::with_capacity(cg.channel_names.len());
-                        let mut fields = SchemaBuilder::with_capacity(cg.channel_names.len());
                         cg.cn.iter().for_each(|(_rec_pos, cn)| {
                             if !cn.data.is_empty() {
                                 let mut field = Field::new(
@@ -159,29 +252,17 @@ fn mdf_data_to_arrow(mdf: &Mdf) -> Result<(Vec<RecordBatch>, SchemaBuilder, usiz
                                 }
                                 field = field.with_metadata(metadata);
                                 arrow_schema.push(field.clone());
-                                fields.push(field);
-                                columns.push(cn.data.finish_cloned());
                             }
                         });
-                        if !columns.is_empty() {
-                            arrow_data.push(
-                                RecordBatch::try_new(Arc::new(fields.finish()), columns)
-                                    .expect("Failed creating recordbatch"),
-                            );
-                        }
                     });
                 }
             }
-            Ok((arrow_data, arrow_schema, max_row_group_size))
+            Ok((arrow_schema, max_row_group_size))
         }
         MdfInfo::V3(mdfinfo3) => {
             let mut arrow_schema = SchemaBuilder::with_capacity(mdfinfo3.channel_names_set.len());
-            let mut arrow_data: Vec<RecordBatch> = Vec::with_capacity(mdfinfo3.dg.len());
-            let mut max_row_group_size: usize = 0;
             for (_dg_block_position, dg) in mdfinfo3.dg.iter() {
                 for (_rec_id, cg) in dg.cg.iter() {
-                    let mut columns = Vec::<Arc<dyn Array>>::with_capacity(cg.channel_names.len());
-                    let mut fields = SchemaBuilder::with_capacity(cg.channel_names.len());
                     max_row_group_size = max(max_row_group_size, cg.block.cg_cycle_count as usize);
                     for (_rec_pos, cn) in cg.cn.iter() {
                         if !cn.data.is_empty() {
@@ -190,7 +271,6 @@ fn mdf_data_to_arrow(mdf: &Mdf) -> Result<(Vec<RecordBatch>, SchemaBuilder, usiz
                                 cn.data.arrow_data_type().clone(),
                                 false,
                             );
-                            columns.push(cn.data.finish_cloned());
                             let mut metadata = HashMap::<String, String>::new();
                             if let Some(array) =
                                 mdfinfo3.sharable.cc.get(&cn.block1.cn_cc_conversion)
@@ -220,18 +300,11 @@ fn mdf_data_to_arrow(mdf: &Mdf) -> Result<(Vec<RecordBatch>, SchemaBuilder, usiz
                             }
                             field = field.with_metadata(metadata);
                             arrow_schema.push(field.clone());
-                            fields.push(field);
                         }
-                    }
-                    if !columns.is_empty() {
-                        arrow_data.push(
-                            RecordBatch::try_new(Arc::new(fields.finish()), columns)
-                                .expect("Failed creating recordbatch"),
-                        );
                     }
                 }
             }
-            Ok((arrow_data, arrow_schema, max_row_group_size))
+            Ok((arrow_schema, max_row_group_size))
         }
     }
 }
