@@ -1163,6 +1163,64 @@ impl ChannelData {
             ChannelData::ArrayDFloat64(a) => a.finish_cloned().nulls().cloned(),
         }
     }
+    pub fn validity_slice(&self) -> Option<&[u8]> {
+        match self {
+            ChannelData::Int8(a) => a.validity_slice(),
+            ChannelData::UInt8(a) => a.validity_slice(),
+            ChannelData::Int16(a) => a.validity_slice(),
+            ChannelData::UInt16(a) => a.validity_slice(),
+            ChannelData::Int32(a) => a.validity_slice(),
+            ChannelData::UInt32(a) => a.validity_slice(),
+            ChannelData::Float32(a) => a.validity_slice(),
+            ChannelData::Int64(a) => a.validity_slice(),
+            ChannelData::UInt64(a) => a.validity_slice(),
+            ChannelData::Float64(a) => a.validity_slice(),
+            ChannelData::Complex32(a) => a.validity_slice(),
+            ChannelData::Complex64(a) => a.validity_slice(),
+            ChannelData::Utf8(a) => a.validity_slice(),
+            ChannelData::VariableSizeByteArray(a) => a.validity_slice(),
+            ChannelData::FixedSizeByteArray(_a) => None,
+            ChannelData::ArrayDInt8(a) => a.validity_slice(),
+            ChannelData::ArrayDUInt8(a) => a.validity_slice(),
+            ChannelData::ArrayDInt16(a) => a.validity_slice(),
+            ChannelData::ArrayDUInt16(a) => a.validity_slice(),
+            ChannelData::ArrayDInt32(a) => a.validity_slice(),
+            ChannelData::ArrayDUInt32(a) => a.validity_slice(),
+            ChannelData::ArrayDFloat32(a) => a.validity_slice(),
+            ChannelData::ArrayDInt64(a) => a.validity_slice(),
+            ChannelData::ArrayDUInt64(a) => a.validity_slice(),
+            ChannelData::ArrayDFloat64(a) => a.validity_slice(),
+        }
+    }
+    pub fn nullable(&self) -> bool {
+        match self {
+            ChannelData::Int8(a) => a.validity_slice().is_some(),
+            ChannelData::UInt8(a) => a.validity_slice().is_some(),
+            ChannelData::Int16(a) => a.validity_slice().is_some(),
+            ChannelData::UInt16(a) => a.validity_slice().is_some(),
+            ChannelData::Int32(a) => a.validity_slice().is_some(),
+            ChannelData::UInt32(a) => a.validity_slice().is_some(),
+            ChannelData::Float32(a) => a.validity_slice().is_some(),
+            ChannelData::Int64(a) => a.validity_slice().is_some(),
+            ChannelData::UInt64(a) => a.validity_slice().is_some(),
+            ChannelData::Float64(a) => a.validity_slice().is_some(),
+            ChannelData::Complex32(a) => a.nulls().is_some(),
+            ChannelData::Complex64(a) => a.nulls().is_some(),
+            ChannelData::Utf8(a) => a.validity_slice().is_some(),
+            ChannelData::VariableSizeByteArray(a) => a.validity_slice().is_some(),
+            ChannelData::FixedSizeByteArray(a) => a.finish_cloned().nulls().is_some(),
+            ChannelData::ArrayDInt8(a) => a.nulls().is_some(),
+            ChannelData::ArrayDUInt8(a) => a.nulls().is_some(),
+            ChannelData::ArrayDInt16(a) => a.nulls().is_some(),
+            ChannelData::ArrayDUInt16(a) => a.nulls().is_some(),
+            ChannelData::ArrayDInt32(a) => a.nulls().is_some(),
+            ChannelData::ArrayDUInt32(a) => a.nulls().is_some(),
+            ChannelData::ArrayDFloat32(a) => a.nulls().is_some(),
+            ChannelData::ArrayDInt64(a) => a.nulls().is_some(),
+            ChannelData::ArrayDUInt64(a) => a.nulls().is_some(),
+            ChannelData::ArrayDFloat64(a) => a.nulls().is_some(),
+        }
+    }
     pub fn as_ref(&self) -> Arc<dyn Array> {
         match self {
             ChannelData::Int8(a) => Arc::new(a.finish_cloned()) as ArrayRef,

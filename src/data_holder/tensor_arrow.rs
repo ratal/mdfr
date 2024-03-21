@@ -108,6 +108,9 @@ impl<T: ArrowPrimitiveType> TensorArrow<T> {
     pub fn set_validity(&mut self, mask: &mut BooleanBufferBuilder) {
         self.null_buffer_builder = Some(mask.finish());
     }
+    pub fn validity_slice(&self) -> Option<&[u8]> {
+        self.null_buffer_builder.as_ref().map(|s| s.values())
+    }
 }
 
 impl<T: ArrowPrimitiveType> Default for TensorArrow<T> {
