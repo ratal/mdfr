@@ -55,7 +55,7 @@ fn main() -> Result<(), Error> {
                 .required(false)
                 .num_args(1)
                 .value_name("FILE_NAME")
-                .help("Converts mdf into parquet file"),
+                .help("Converts mdf into parquet file, file name to be given without extension"),
         )
         .arg(
             Arg::new("parquet_compression")

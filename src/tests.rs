@@ -14,13 +14,12 @@ mod tests {
     use std::io;
     use std::path::Path;
     use std::sync::Arc;
-    use std::vec::Vec;
     use test_log::test;
 
     static BASE_PATH_MDF4: &str = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/";
     static BASE_PATH_MDF3: &str = "/home/ratal/workspace/mdfreader/mdfreader/tests/mdf3/";
     static WRITING_MDF_FILE: &str = "/home/ratal/workspace/mdfr/test_files/test.mf4";
-    static WRITING_PARQUET_FILE: &str = "/home/ratal/workspace/mdfr/test_files/test.parquet";
+    static WRITING_PARQUET_FILE: &str = "/home/ratal/workspace/mdfr/test_files/test_parquet";
 
     #[test]
     fn info_test() -> Result<()> {

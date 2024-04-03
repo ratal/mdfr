@@ -18,16 +18,18 @@ use rayon::iter::ParallelExtend;
 
 use crate::{
     mdfinfo::{
-        mdfinfo3::Cn3,
-        mdfinfo4::{Cg4, Cn4, Dg4},
+        mdfinfo3::{Cn3, MdfInfo3},
+        mdfinfo4::{Cg4, Cn4, Dg4, MdfInfo4},
         MdfInfo,
     },
     mdfreader::Mdf,
 };
 
-use std::{cmp::max, fs::File, io::BufWriter, path::Path};
 use std::{
     collections::{HashMap, HashSet},
+    fs::File,
+    io::BufWriter,
+    path::Path,
     sync::Arc,
 };
 
@@ -37,47 +39,9 @@ pub fn export_to_parquet(
     file_name: &str,
     compression: Option<&str>,
 ) -> Result<(), Error> {
-    // Create file
-    let path = Path::new(file_name);
-    let file =
-        std::io::BufWriter::new(std::fs::File::create(path).context("Failed to create file")?);
-
-    let (mut arrow_schema, max_row_group_size) =
-        mdf_to_arrow_schema(mdf).context("failed creating arrow schema")?;
-
-    arrow_schema
-        .metadata_mut()
-        .insert("file_name".to_string(), file_name.to_string());
-
-    let finalised_arrow_schema = arrow_schema.finish();
-
-    let options = WriterProperties::builder()
-        .set_compression(parquet_compression_from_string(compression))
-        .set_max_row_group_size(max_row_group_size)
-        .set_writer_version(WriterVersion::PARQUET_1_0)
-        .set_encoding(Encoding::PLAIN)
-        .set_key_value_metadata(Some(vec![KeyValue::new(
-            "file_name".to_string(),
-            file_name.to_string(),
-        )]))
-        .build();
-
-    let mut writer = ArrowWriter::try_new(
-        file,
-        Arc::new(finalised_arrow_schema.clone()),
-        Some(options.clone()),
-    )
-    .with_context(|| {
-        format!(
-            "Failed to write parquet file with schema {:?} and options {:?}",
-            finalised_arrow_schema, options
-        )
-    })?;
-
-    write_mdf_data_to_arrow(mdf, finalised_arrow_schema, &mut writer)
+    write_mdf_data_to_arrow(mdf, file_name, parquet_compression_from_string(compression))
         .context("failed writing mdf data")?;
 
-    writer.close().context("Failed to write footer")?;
     Ok(())
 }
 
@@ -98,11 +62,159 @@ pub fn parquet_compression_from_string(compression_option: Option<&str>) -> Comp
     }
 }
 
+// create
+
+/// Create parquet file name appending Channel Group's master channel
+/// Or if no master existing, add.
+/// Appending at the end of name the . parquet file extension
+fn create_parquet_writer(
+    file: &str,
+    compression: Compression,
+    finalised_arrow_schema: Schema,
+    master_channel: Option<String>,
+    rec_id: &u64,
+) -> Result<ArrowWriter<BufWriter<File>>, Error> {
+    let base_path = Path::new(file);
+    let mut master_channel_name = match master_channel {
+        Some(name) => name,
+        None => rec_id.to_string(),
+    };
+    master_channel_name.insert_str(0, &r"_");
+    let mut file_name = base_path
+        .file_name()
+        .context("no given file name")?
+        .to_os_string();
+    file_name.push(master_channel_name);
+    let mut buf_path = base_path.with_file_name(file_name.as_os_str());
+    buf_path.set_extension("parquet");
+    let path = buf_path.into_boxed_path();
+    let file = std::io::BufWriter::new(
+        std::fs::File::create(path.clone())
+            .with_context(|| format!("Failed to create file {:?}", path))?,
+    );
+    let options = WriterProperties::builder()
+        .set_compression(compression)
+        .set_writer_version(WriterVersion::PARQUET_1_0)
+        .set_encoding(Encoding::PLAIN)
+        .set_key_value_metadata(Some(vec![KeyValue::new(
+            "file_name".to_string(),
+            file_name
+                .into_string()
+                .expect("file name contains invalid Unicode data"),
+        )]))
+        .build();
+
+    Ok(ArrowWriter::try_new(
+        file,
+        Arc::new(finalised_arrow_schema.clone()),
+        Some(options.clone()),
+    )
+    .with_context(|| {
+        format!(
+            "Failed to write parquet file with schema {:?} and options {:?}",
+            finalised_arrow_schema, options
+        )
+    })?)
+}
+
+/// create mdf4 channel field
+fn mdf4_field(mdfinfo4: &Box<MdfInfo4>, cn: &Cn4) -> Field {
+    let field = Field::new(
+        cn.unique_name.clone(),
+        cn.data.arrow_data_type().clone(),
+        cn.data.validity().is_some(),
+    );
+    let mut metadata = HashMap::<String, String>::new();
+    if let Ok(Some(unit)) = mdfinfo4.sharable.get_tx(cn.block.cn_md_unit) {
+        if !unit.is_empty() {
+            metadata.insert("unit".to_string(), unit);
+        }
+    };
+    if let Ok(Some(desc)) = mdfinfo4.sharable.get_tx(cn.block.cn_md_comment) {
+        if !desc.is_empty() {
+            metadata.insert("description".to_string(), desc);
+        }
+    };
+    if let Some((Some(master_channel_name), _dg_pos, (_cg_pos, _rec_idd), (_cn_pos, _rec_pos))) =
+        mdfinfo4.channel_names_set.get(&cn.unique_name)
+    {
+        if !master_channel_name.is_empty() {
+            metadata.insert(
+                "master_channel".to_string(),
+                master_channel_name.to_string(),
+            );
+        }
+    }
+    if cn.block.cn_type == 4 {
+        metadata.insert(
+            "sync_channel".to_string(),
+            cn.block.cn_sync_type.to_string(),
+        );
+    }
+    field.with_metadata(metadata)
+}
+
+/// create mdf3 channel field
+fn mdf3_field(mdfinfo3: &Box<MdfInfo3>, cn: &Cn3) -> Field {
+    let field = Field::new(
+        cn.unique_name.clone(),
+        cn.data.arrow_data_type().clone(),
+        false,
+    );
+    let mut metadata = HashMap::<String, String>::new();
+    if let Some(array) = mdfinfo3.sharable.cc.get(&cn.block1.cn_cc_conversion) {
+        let txt = array.0.cc_unit;
+        let encoding: &'static EncodingRs =
+            to_encoding(mdfinfo3.id_block.id_codepage).unwrap_or(encoding_rs::WINDOWS_1252);
+        let u: String = encoding.decode(&txt).0.into();
+        metadata.insert(
+            "unit".to_string(),
+            u.trim_end_matches(char::from(0)).to_string(),
+        );
+    };
+    metadata.insert("description".to_string(), cn.description.clone());
+    if let Some((Some(master_channel_name), _dg_pos, (_cg_pos, _rec_idd), _cn_pos)) =
+        mdfinfo3.channel_names_set.get(&cn.unique_name)
+    {
+        metadata.insert(
+            "master_channel".to_string(),
+            master_channel_name.to_string(),
+        );
+    }
+    field.with_metadata(metadata)
+}
+
+/// Write columns and fields in parquet file
+fn write_data(
+    master_channel_name: Option<String>,
+    rec_id: &u64,
+    file_name: &str,
+    compression: Compression,
+    fields: Schema,
+    columns: Vec<Arc<dyn Array>>,
+) -> Result<(), Error> {
+    let record_batch = RecordBatch::try_new(Arc::new(fields.clone()), columns)
+        .context("Failed creating recordbatch")?;
+    let mut writer = create_parquet_writer(
+        file_name,
+        compression,
+        fields,
+        master_channel_name.clone(),
+        rec_id,
+    )
+    .context("failed creating parquet writer")?;
+    writer
+        .write(&record_batch)
+        .with_context(|| format!("Failed writing recordbatch"))?;
+    writer.close().context("Failed to write footer")?;
+    Ok(())
+}
+
 /// takes data of channel set from MdfInfo structure and stores in mdf.arrow_data
 fn write_mdf_data_to_arrow(
     mdf: &Mdf,
-    arrow_schema: Schema,
-    writer: &mut ArrowWriter<BufWriter<File>>,
+    file_name: &str,
+    compression: Compression,
 ) -> Result<(), Error> {
     match &mdf.mdf_info {
         MdfInfo::V4(mdfinfo4) => {
@@ -115,7 +227,7 @@ fn write_mdf_data_to_arrow(
                     }
                     if !channel_names_present_in_dg.is_empty() {
                         dg.cg.iter().try_for_each(
-                            |(_rec_id, cg): (&u64, &Cg4)| -> Result<(), Error> {
+                            |(rec_id, cg): (&u64, &Cg4)| -> Result<(), Error> {
                                 let mut columns =
                                     Vec::<Arc<dyn Array>>::with_capacity(cg.channel_names.len());
                                 let mut fields =
@@ -125,15 +237,7 @@ fn write_mdf_data_to_arrow(
                                     .try_for_each(
                                         |(_rec_pos, cn): (&i32, &Cn4)| -> Result<(), Error> {
                                             if !cn.data.is_empty() {
-                                                let field = arrow_schema
-                                                    .field_with_name(&cn.unique_name)
-                                                    .with_context(|| {
-                                                        format!(
-                                                            "cannot find channel name {}",
-                                                            cn.unique_name
-                                                        )
-                                                    })?;
-                                                fields.push(field.clone());
+                                                fields.push(mdf4_field(mdfinfo4, cn));
                                                 columns.push(cn.data.finish_cloned());
                                             }
                                             Ok(())
@@ -142,12 +246,16 @@ fn write_mdf_data_to_arrow(
                                     .context("failed extracting data")?;
                                 if !columns.is_empty() {
                                     // write data in file
-                                    let record_batch =
-                                        RecordBatch::try_new(Arc::new(fields.finish()), columns)
-                                            .context("Failed creating recordbatch")?;
-                                    writer
-                                        .write(&record_batch)
-                                        .with_context(|| format!("Failed writing recordbatch"))?;
+                                    let finalised_arrow_schema = fields.finish();
+                                    write_data(
+                                        cg.master_channel_name.clone(),
+                                        rec_id,
+                                        file_name,
+                                        compression,
+                                        finalised_arrow_schema,
+                                        columns,
+                                    )
+                                    .context("failed writing data in parquet file")?;
                                 }
                                 Ok(())
                             },
@@ -159,152 +267,35 @@ fn write_mdf_data_to_arrow(
         }
         MdfInfo::V3(mdfinfo3) => {
             for (_dg_block_position, dg) in mdfinfo3.dg.iter() {
-                for (_rec_id, cg) in dg.cg.iter() {
+                for (rec_id, cg) in dg.cg.iter() {
                     let mut columns = Vec::<Arc<dyn Array>>::with_capacity(cg.channel_names.len());
                     let mut fields = SchemaBuilder::with_capacity(cg.channel_names.len());
                     cg.cn
                         .iter()
                         .try_for_each(|(_rec_pos, cn): (&u32, &Cn3)| -> Result<(), Error> {
                             if !cn.data.is_empty() {
-                                let field =
-                                    arrow_schema.field_with_name(&cn.unique_name).with_context(
-                                        || format!("cannot find channel name {}", cn.unique_name),
-                                    )?;
-                                fields.push(field.clone());
+                                fields.push(mdf3_field(mdfinfo3, cn));
                                 columns.push(cn.data.finish_cloned());
                             }
                             Ok(())
                         })
                         .context("failed extracting data")?;
                     if !columns.is_empty() {
-                        let record_batch = RecordBatch::try_new(Arc::new(fields.finish()), columns)
-                            .context("Failed creating recordbatch")?;
-                        writer
-                            .write(&record_batch)
-                            .with_context(|| format!("Failed writing recordbatch"))?;
+                        // write data in file
+                        let finalised_arrow_schema = fields.finish();
+                        write_data(
+                            cg.master_channel_name.clone(),
+                            &(*rec_id as u64),
+                            file_name,
+                            compression,
+                            finalised_arrow_schema,
+                            columns,
+                        )
+                        .context("failed writing data in parquet file")?;
                     }
                 }
             }
         }
     }
     Ok(())
-}
-
-/// takes data of channel set from MdfInfo structure and stores in mdf.arrow_data
-fn mdf_to_arrow_schema(mdf: &Mdf) -> Result<(SchemaBuilder, usize), Error> {
-    let mut max_row_group_size: usize = 0;
-    match &mdf.mdf_info {
-        MdfInfo::V4(mdfinfo4) => {
-            let mut arrow_schema = SchemaBuilder::with_capacity(mdfinfo4.channel_names_set.len());
-            for (_dg_block_position, dg) in mdfinfo4.dg.iter() {
-                let mut channel_names_present_in_dg = HashSet::new();
-                for channel_group in dg.cg.values() {
-                    let cn = channel_group.channel_names.clone();
-                    channel_names_present_in_dg.par_extend(cn);
-                    max_row_group_size = max(
-                        max_row_group_size,
-                        channel_group.block.cg_cycle_count as usize,
-                    );
-                }
-                if !channel_names_present_in_dg.is_empty() {
-                    dg.cg.iter().for_each(|(_rec_id, cg)| {
-                        cg.cn.iter().for_each(|(_rec_pos, cn)| {
-                            if !cn.data.is_empty() {
-                                let mut field = Field::new(
-                                    cn.unique_name.clone(),
-                                    cn.data.arrow_data_type().clone(),
-                                    cn.data.validity().is_some(),
-                                );
-                                let mut metadata = HashMap::<String, String>::new();
-                                if let Ok(Some(unit)) =
-                                    mdfinfo4.sharable.get_tx(cn.block.cn_md_unit)
-                                {
-                                    if !unit.is_empty() {
-                                        metadata.insert("unit".to_string(), unit);
-                                    }
-                                };
-                                if let Ok(Some(desc)) =
-                                    mdfinfo4.sharable.get_tx(cn.block.cn_md_comment)
-                                {
-                                    if !desc.is_empty() {
-                                        metadata.insert("description".to_string(), desc);
-                                    }
-                                };
-                                if let Some((
-                                    Some(master_channel_name),
-                                    _dg_pos,
-                                    (_cg_pos, _rec_idd),
-                                    (_cn_pos, _rec_pos),
-                                )) = mdfinfo4.channel_names_set.get(&cn.unique_name)
-                                {
-                                    if !master_channel_name.is_empty() {
-                                        metadata.insert(
-                                            "master_channel".to_string(),
-                                            master_channel_name.to_string(),
-                                        );
-                                    }
-                                }
-                                if cn.block.cn_type == 4 {
-                                    metadata.insert(
-                                        "sync_channel".to_string(),
-                                        cn.block.cn_sync_type.to_string(),
-                                    );
-                                }
-                                field = field.with_metadata(metadata);
-                                arrow_schema.push(field.clone());
-                            }
-                        });
-                    });
-                }
-            }
-            Ok((arrow_schema, max_row_group_size))
-        }
-        MdfInfo::V3(mdfinfo3) => {
-            let mut arrow_schema = SchemaBuilder::with_capacity(mdfinfo3.channel_names_set.len());
-            for (_dg_block_position, dg) in mdfinfo3.dg.iter() {
-                for (_rec_id, cg) in dg.cg.iter() {
-                    max_row_group_size = max(max_row_group_size, cg.block.cg_cycle_count as usize);
-                    for (_rec_pos, cn) in cg.cn.iter() {
-                        if !cn.data.is_empty() {
-                            let mut field = Field::new(
-                                cn.unique_name.clone(),
-                                cn.data.arrow_data_type().clone(),
-                                false,
-                            );
-                            let mut metadata = HashMap::<String, String>::new();
-                            if let Some(array) =
-                                mdfinfo3.sharable.cc.get(&cn.block1.cn_cc_conversion)
-                            {
-                                let txt = array.0.cc_unit;
-                                let encoding: &'static EncodingRs =
-                                    to_encoding(mdfinfo3.id_block.id_codepage)
-                                        .unwrap_or(encoding_rs::WINDOWS_1252);
-                                let u: String = encoding.decode(&txt).0.into();
-                                metadata.insert(
-                                    "unit".to_string(),
-                                    u.trim_end_matches(char::from(0)).to_string(),
-                                );
-                            };
-                            metadata.insert("description".to_string(), cn.description.clone());
-                            if let Some((
-                                Some(master_channel_name),
-                                _dg_pos,
-                                (_cg_pos, _rec_idd),
-                                _cn_pos,
-                            )) = mdfinfo3.channel_names_set.get(&cn.unique_name)
-                            {
-                                metadata.insert(
-                                    "master_channel".to_string(),
-                                    master_channel_name.to_string(),
-                                );
-                            }
-                            field = field.with_metadata(metadata);
-                            arrow_schema.push(field.clone());
-                        }
-                    }
-                }
-            }
-            Ok((arrow_schema, max_row_group_size))
-        }
-    }
 }
