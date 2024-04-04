@@ -109,7 +109,7 @@ fn main() -> Result<(), Error> {
     if let Some(file_name) = parquet_file_name {
         mdf_file
             .export_to_parquet(file_name, parquet_compression.map(|x| &**x))
-            .context("failed to export into parquet file")?;
+            .with_context(|| format!("failed to export into parquet file {}", file_name))?;
         info!(
             "Wrote parquet file {} with compression {:?}",
             file_name, parquet_compression
