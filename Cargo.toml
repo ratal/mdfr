@@ -39,7 +39,7 @@ numpy = "0.20" # export rust ndarrays into numpy
 fasteval = "0.2" # for algebraic conversion
 itertools = "0.12"
 serde = { version = "1.0", features = ["derive"] } # for serialization
-whoami = "1.2" # to get user nam for writing file
+whoami = "1.5" # to get user nam for writing file
 rand = "0.8" # for random numbers
 parquet2 = "0.17" # for export to parquet file format
 arrow2 = { version = "0.18", features = [
