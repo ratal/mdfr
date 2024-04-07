@@ -5,6 +5,7 @@ use binrw::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::NaiveDate;
 use encoding_rs::Encoding;
+use log::info;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::default::Default;
@@ -586,8 +587,11 @@ pub fn parse_tx(
     let mut comment_raw = vec![0; (block_header.hdr_len - 4) as usize];
     rdr.read_exact(&mut comment_raw)
         .context("Could not read comment raw data")?;
-    let comment: String = encoding.decode(&comment_raw).0.into();
-    let comment: String = comment.trim_end_matches(char::from(0)).into();
+    let (comment, _encoding, error_flag) = encoding.decode(&comment_raw);
+    let comment: String = comment.to_string().trim_end_matches(char::from(0)).into();
+    if error_flag {
+        info!("errors reading {}", comment);
+    }
     let position = target as i64 + block_header.hdr_len as i64;
     Ok((block_header, comment, position))
 }
@@ -1000,17 +1004,23 @@ fn parse_cn3_block(
         n_bytes += 1;
     }
 
-    let mut unique_name: String = encoding.decode(&block1.cn_short_name).0.into();
-    unique_name = unique_name.trim_end_matches(char::from(0)).to_string();
+    let (name, _encoding, error_flag) = encoding.decode(&block1.cn_short_name);
+    let mut unique_name = name.to_string().trim_end_matches(char::from(0)).to_string();
     if block2.cn_tx_long_name != 0 {
         // Reads TX long name
         let (_, name, pos) = parse_tx(rdr, block2.cn_tx_long_name, position, encoding)?;
         unique_name = name;
         position = pos;
     }
+    if error_flag {
+        info!("errors reading channel name {}", unique_name);
+    }
 
-    let mut description: String = encoding.decode(&desc).0.into();
-    description = description.trim_end_matches(char::from(0)).to_string();
+    let (desc, _encoding, error_flag) = encoding.decode(&desc);
+    let description = desc.to_string().trim_end_matches(char::from(0)).to_string();
+    if error_flag {
+        info!("errors reading channel description {}", description);
+    }
 
     let mut comment = String::new();
     if block1.cn_tx_comment != 0 {
