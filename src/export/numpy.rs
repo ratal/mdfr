@@ -1,8 +1,8 @@
 //! this module provides methods to get directly channelData into python
 
 use arrow::array::{
-    Float32Builder, Float64Builder, Int16Builder, Int32Builder, Int64Builder, Int8Builder,
-    UInt16Builder, UInt32Builder, UInt64Builder, UInt8Builder,
+    ArrayBuilder, Float32Builder, Float64Builder, Int16Builder, Int32Builder, Int64Builder,
+    Int8Builder, UInt16Builder, UInt32Builder, UInt64Builder, UInt8Builder,
 };
 
 use numpy::npyffi::types::NPY_ORDER;
@@ -351,6 +351,136 @@ impl FromPyObject<'_> for ChannelData {
                     order,
                 )))
             }
+        }
+    }
+}
+
+#[pyclass]
+pub struct NumpyDType {
+    pub shape: Vec<usize>,
+    pub kind: String,
+}
+
+#[pymethods]
+impl NumpyDType {
+    fn shape(&self) -> Vec<usize> {
+        self.shape.clone()
+    }
+    fn kind(&self) -> String {
+        self.kind.clone()
+    }
+    fn __repr__(&mut self) -> PyResult<String> {
+        Ok(format!(
+            "dtype kind {}, shape {:?}",
+            self.kind(),
+            self.shape()
+        ))
+    }
+}
+
+impl ChannelData {
+    pub fn get_dtype(&self) -> NumpyDType {
+        match self {
+            ChannelData::Int8(a) => NumpyDType {
+                shape: vec![a.len()],
+                kind: "i1".to_string(),
+            },
+            ChannelData::UInt8(a) => NumpyDType {
+                shape: vec![a.len()],
+                kind: "u1".to_string(),
+            },
+            ChannelData::Int16(a) => NumpyDType {
+                shape: vec![a.len()],
+                kind: "i2".to_string(),
+            },
+            ChannelData::UInt16(a) => NumpyDType {
+                shape: vec![a.len()],
+                kind: "u2".to_string(),
+            },
+            ChannelData::Int32(a) => NumpyDType {
+                shape: vec![a.len()],
+                kind: "i4".to_string(),
+            },
+            ChannelData::UInt32(a) => NumpyDType {
+                shape: vec![a.len()],
+                kind: "u4".to_string(),
+            },
+            ChannelData::Float32(a) => NumpyDType {
+                shape: vec![a.len()],
+                kind: "f4".to_string(),
+            },
+            ChannelData::Int64(a) => NumpyDType {
+                shape: vec![a.len()],
+                kind: "i8".to_string(),
+            },
+            ChannelData::UInt64(a) => NumpyDType {
+                shape: vec![a.len()],
+                kind: "u8".to_string(),
+            },
+            ChannelData::Float64(a) => NumpyDType {
+                shape: vec![a.len()],
+                kind: "f8".to_string(),
+            },
+            ChannelData::Complex32(a) => NumpyDType {
+                shape: vec![a.len() * 2],
+                kind: "f4".to_string(),
+            },
+            ChannelData::Complex64(a) => NumpyDType {
+                shape: vec![a.len() * 2],
+                kind: "f8".to_string(),
+            },
+            ChannelData::Utf8(a) => NumpyDType {
+                shape: vec![a.len()],
+                kind: format!("U{}", self.byte_count()),
+            },
+            ChannelData::VariableSizeByteArray(a) => NumpyDType {
+                shape: vec![a.len()],
+                kind: format!("S{}", self.byte_count()),
+            },
+            ChannelData::FixedSizeByteArray(a) => NumpyDType {
+                shape: vec![a.len()],
+                kind: format!("S{}", self.byte_count()),
+            },
+            ChannelData::ArrayDInt8(a) => NumpyDType {
+                shape: a.shape().to_vec(),
+                kind: "i1".to_string(),
+            },
+            ChannelData::ArrayDUInt8(a) => NumpyDType {
+                shape: a.shape().to_vec(),
+                kind: "u1".to_string(),
+            },
+            ChannelData::ArrayDInt16(a) => NumpyDType {
+                shape: a.shape().to_vec(),
+                kind: "i2".to_string(),
+            },
+            ChannelData::ArrayDUInt16(a) => NumpyDType {
+                shape: a.shape().to_vec(),
+                kind: "u2".to_string(),
+            },
+            ChannelData::ArrayDInt32(a) => NumpyDType {
+                shape: a.shape().to_vec(),
+                kind: "i4".to_string(),
+            },
+            ChannelData::ArrayDUInt32(a) => NumpyDType {
+                shape: a.shape().to_vec(),
+                kind: "i4".to_string(),
+            },
+            ChannelData::ArrayDFloat32(a) => NumpyDType {
+                shape: a.shape().to_vec(),
+                kind: "f4".to_string(),
+            },
+            ChannelData::ArrayDInt64(a) => NumpyDType {
+                shape: a.shape().to_vec(),
+                kind: "i8".to_string(),
+            },
+            ChannelData::ArrayDUInt64(a) => NumpyDType {
+                shape: a.shape().to_vec(),
+                kind: "u8".to_string(),
+            },
+            ChannelData::ArrayDFloat64(a) => NumpyDType {
+                shape: a.shape().to_vec(),
+                kind: "f8".to_string(),
+            },
         }
     }
 }

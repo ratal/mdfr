@@ -2,6 +2,7 @@
 use std::collections::HashSet;
 use std::fmt::Write;
 
+use crate::data_holder::channel_data::ChannelData;
 use crate::export::polars::rust_arrow_to_py_series;
 use crate::export::python_arrow_helpers::array_to_rust;
 use crate::mdfinfo::MdfInfo;
@@ -72,6 +73,41 @@ impl Mdfr {
             }
             py_array
         })
+    }
+    /// returns channel's numpy dtype
+    fn get_channel_dtype(&self, channel_name: String) -> Py<PyAny> {
+        let Mdfr(mdf) = self;
+        let mut data: Option<&ChannelData> = None;
+        // extract channelData, even empty but initialised
+        match &mdf.mdf_info {
+            MdfInfo::V3(mdfinfo3) => {
+                if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
+                    mdfinfo3.get_channel_id(&channel_name)
+                {
+                    if let Some(dg) = mdfinfo3.dg.get(dg_pos) {
+                        if let Some(cg) = dg.cg.get(rec_id) {
+                            if let Some(cn) = cg.cn.get(cn_pos) {
+                                data = Some(&cn.data);
+                            }
+                        }
+                    }
+                }
+            }
+            MdfInfo::V4(mdfinfo4) => {
+                if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+                    mdfinfo4.get_channel_id(&channel_name)
+                {
+                    if let Some(dg) = mdfinfo4.dg.get(dg_pos) {
+                        if let Some(cg) = dg.cg.get(rec_id) {
+                            if let Some(cn) = cg.cn.get(rec_pos) {
+                                data = Some(&cn.data);
+                            }
+                        }
+                    }
+                }
+            }
+        };
+        pyo3::Python::with_gil(|py| data.map(|d| d.get_dtype()).into_py(py))
     }
     /// returns polars serie of channel
     fn get_polars_series(&self, channel_name: &str) -> PyResult<PyObject> {

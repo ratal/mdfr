@@ -122,7 +122,7 @@ impl Mdf {
     pub fn get_master_channel_names_set(&self) -> HashMap<Option<String>, HashSet<String>> {
         self.mdf_info.get_master_channel_names_set()
     }
-    /// returns channel's arrow2 Array.
+    /// returns channel's arrow Array.
     pub fn get_channel_data(&self, channel_name: &str) -> Option<&ChannelData> {
         match &self.mdf_info {
             MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_data(channel_name),
