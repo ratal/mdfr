@@ -18,7 +18,7 @@ use rayon::iter::ParallelExtend;
 
 use crate::{
     mdfinfo::{
-        mdfinfo3::{Cn3, MdfInfo3},
+        mdfinfo3::{Cg3, Cn3, MdfInfo3},
         mdfinfo4::{Cg4, Cn4, Dg4, MdfInfo4},
         MdfInfo,
     },
@@ -52,42 +52,14 @@ pub fn export_to_parquet(
                     if !channel_names_present_in_dg.is_empty() {
                         dg.cg.iter().try_for_each(
                             |(rec_id, cg): (&u64, &Cg4)| -> Result<(), Error> {
-                                let mut columns =
-                                    Vec::<Arc<dyn Array>>::with_capacity(cg.channel_names.len());
-                                let mut fields =
-                                    SchemaBuilder::with_capacity(cg.channel_names.len());
-                                cg.cn
-                                    .iter()
-                                    .try_for_each(
-                                        |(_rec_pos, cn): (&i32, &Cn4)| -> Result<(), Error> {
-                                            if !cn.data.is_empty() {
-                                                fields.push(mdf4_field(mdfinfo4, cn));
-                                                columns.push(cn.data.finish_cloned());
-                                            }
-                                            Ok(())
-                                        },
-                                    )
-                                    .context("failed extracting data")?;
-                                if !columns.is_empty() {
-                                    // write data in file
-                                    if let Some(master_channel) = &cg.master_channel_name {
-                                        fields.metadata_mut().insert("master_channel".to_owned(), master_channel.to_string());}
-                                    let finalised_arrow_schema = fields.finish();
-                                    write_data(
-                                        cg.master_channel_name.clone(),
-                                        rec_id,
-                                        file_name,
-                                        parquet_compression,
-                                        finalised_arrow_schema,
-                                        columns,
-                                    )
-                                    .with_context(|| {
-                                        format!(
-                                            "failed writing data in parquet for rec id {}, master {:?}",
-                                            rec_id, cg.master_channel_name
-                                        )
-                                    })?;
-                                }
+                                mdf4_cg_to_parquet(
+                                    file_name,
+                                    mdfinfo4,
+                                    rec_id,
+                                    cg,
+                                    parquet_compression,
+                                )
+                                .context("failed converting Channel Group 4 to parquet")?;
                                 Ok(())
                             },
                         )?;
@@ -99,44 +71,144 @@ pub fn export_to_parquet(
         MdfInfo::V3(mdfinfo3) => {
             for (_dg_block_position, dg) in mdfinfo3.dg.iter() {
                 for (rec_id, cg) in dg.cg.iter() {
-                    let mut columns = Vec::<Arc<dyn Array>>::with_capacity(cg.channel_names.len());
-                    let mut fields = SchemaBuilder::with_capacity(cg.channel_names.len());
-                    cg.cn
-                        .iter()
-                        .try_for_each(|(_rec_pos, cn): (&u32, &Cn3)| -> Result<(), Error> {
-                            if !cn.data.is_empty() {
-                                fields.push(mdf3_field(mdfinfo3, cn));
-                                columns.push(cn.data.finish_cloned());
-                            }
-                            Ok(())
-                        })
-                        .context("failed extracting data")?;
-                    if !columns.is_empty() {
-                        // write data in file
-                        if let Some(master_channel) = &cg.master_channel_name {
-                            fields
-                                .metadata_mut()
-                                .insert("master_channel".to_owned(), master_channel.to_string());
-                        }
-                        let finalised_arrow_schema = fields.finish();
-                        write_data(
-                            cg.master_channel_name.clone(),
-                            &(*rec_id as u64),
-                            file_name,
-                            parquet_compression,
-                            finalised_arrow_schema,
-                            columns,
-                        )
-                        .with_context(|| {
-                            format!(
-                                "failed writing data in parquet for rec id {}, master {:?}",
-                                rec_id, cg.master_channel_name
-                            )
-                        })?;
+                    mdf3_cg_to_parquet(file_name, mdfinfo3, rec_id, cg, parquet_compression)
+                        .context("failed converting Channel Group 3 to parquet")?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// writes mdf into parquet file
+pub fn export_dataframe_to_parquet(
+    mdf: &Mdf,
+    channel_name: &str,
+    file_name: &str,
+    compression: Option<&str>,
+) -> Result<(), Error> {
+    let parquet_compression = parquet_compression_from_string(compression);
+    match &mdf.mdf_info {
+        MdfInfo::V4(mdfinfo4) => {
+            if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, _rec_pos))) =
+                mdfinfo4.get_channel_id(channel_name)
+            {
+                if let Some(dg) = mdfinfo4.dg.get(dg_pos) {
+                    if let Some(cg) = dg.cg.get(rec_id) {
+                        mdf4_cg_to_parquet(file_name, mdfinfo4, rec_id, cg, parquet_compression)
+                            .context(
+                                "failed converting Channel Group 4 to parquet containing channel",
+                            )?;
                     }
                 }
             }
         }
+        MdfInfo::V3(mdfinfo3) => {
+            if let Some((_master, dg_pos, (_cg_pos, rec_id), _cn_pos)) =
+                mdfinfo3.get_channel_id(channel_name)
+            {
+                if let Some(dg) = mdfinfo3.dg.get(dg_pos) {
+                    if let Some(cg) = dg.cg.get(rec_id) {
+                        mdf3_cg_to_parquet(file_name, mdfinfo3, rec_id, cg, parquet_compression)
+                            .context(
+                                "failed converting Channel Group 3 to parquet containing channel",
+                            )?;
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// create a parquet file for the given CG4 block
+pub fn mdf4_cg_to_parquet(
+    file_name: &str,
+    mdfinfo4: &MdfInfo4,
+    rec_id: &u64,
+    cg: &Cg4,
+    parquet_compression: Compression,
+) -> Result<()> {
+    let mut columns = Vec::<Arc<dyn Array>>::with_capacity(cg.channel_names.len());
+    let mut fields = SchemaBuilder::with_capacity(cg.channel_names.len());
+    cg.cn
+        .iter()
+        .try_for_each(|(_rec_pos, cn): (&i32, &Cn4)| -> Result<(), Error> {
+            if !cn.data.is_empty() {
+                fields.push(mdf4_field(mdfinfo4, cn));
+                columns.push(cn.data.finish_cloned());
+            }
+            Ok(())
+        })
+        .context("failed extracting data")?;
+    if !columns.is_empty() {
+        // write data in file
+        if let Some(master_channel) = &cg.master_channel_name {
+            fields
+                .metadata_mut()
+                .insert("master_channel".to_owned(), master_channel.to_string());
+        }
+        let finalised_arrow_schema = fields.finish();
+        write_data(
+            cg.master_channel_name.clone(),
+            rec_id,
+            file_name,
+            parquet_compression,
+            finalised_arrow_schema,
+            columns,
+        )
+        .with_context(|| {
+            format!(
+                "failed writing data in parquet for rec id {}, master {:?}",
+                rec_id, cg.master_channel_name
+            )
+        })?;
+    }
+    Ok(())
+}
+
+/// create a parquet file for the given CG3 block
+pub fn mdf3_cg_to_parquet(
+    file_name: &str,
+    mdfinfo3: &MdfInfo3,
+    rec_id: &u16,
+    cg: &Cg3,
+    parquet_compression: Compression,
+) -> Result<()> {
+    let mut columns = Vec::<Arc<dyn Array>>::with_capacity(cg.channel_names.len());
+    let mut fields = SchemaBuilder::with_capacity(cg.channel_names.len());
+    cg.cn
+        .iter()
+        .try_for_each(|(_rec_pos, cn): (&u32, &Cn3)| -> Result<(), Error> {
+            if !cn.data.is_empty() {
+                fields.push(mdf3_field(mdfinfo3, cn));
+                columns.push(cn.data.finish_cloned());
+            }
+            Ok(())
+        })
+        .context("failed extracting data")?;
+    if !columns.is_empty() {
+        // write data in file
+        if let Some(master_channel) = &cg.master_channel_name {
+            fields
+                .metadata_mut()
+                .insert("master_channel".to_owned(), master_channel.to_string());
+        }
+        let finalised_arrow_schema = fields.finish();
+        write_data(
+            cg.master_channel_name.clone(),
+            &(*rec_id as u64),
+            file_name,
+            parquet_compression,
+            finalised_arrow_schema,
+            columns,
+        )
+        .with_context(|| {
+            format!(
+                "failed writing data in parquet for rec id {}, master {:?}",
+                rec_id, cg.master_channel_name
+            )
+        })?;
     }
     Ok(())
 }
@@ -163,6 +235,7 @@ pub fn parquet_compression_from_string(compression_option: Option<&str>) -> Comp
 /// Create parquet file name appending Channel Group's master channel
 /// Or if no master existing, add.
 /// Appending at the end of name the . parquet file extension
+#[inline]
 fn create_parquet_writer(
     file: &str,
     compression: Compression,
@@ -175,7 +248,7 @@ fn create_parquet_writer(
         Some(name) => name,
         None => rec_id.to_string(),
     };
-    master_channel_name.insert_str(0, &r"_");
+    master_channel_name.insert(0, '_');
     let mut file_name = base_path
         .file_name()
         .context("no given file name")?
@@ -200,7 +273,7 @@ fn create_parquet_writer(
         )]))
         .build();
 
-    Ok(ArrowWriter::try_new(
+    ArrowWriter::try_new(
         file,
         Arc::new(finalised_arrow_schema.clone()),
         Some(options.clone()),
@@ -210,11 +283,12 @@ fn create_parquet_writer(
             "Failed to write parquet file with schema {:?} and options {:?}",
             finalised_arrow_schema, options
         )
-    })?)
+    })
 }
 
 /// create mdf4 channel field
-fn mdf4_field(mdfinfo4: &Box<MdfInfo4>, cn: &Cn4) -> Field {
+#[inline]
+fn mdf4_field(mdfinfo4: &MdfInfo4, cn: &Cn4) -> Field {
     let field = Field::new(
         cn.unique_name.clone(),
         cn.data.arrow_data_type().clone(),
@@ -241,7 +315,8 @@ fn mdf4_field(mdfinfo4: &Box<MdfInfo4>, cn: &Cn4) -> Field {
 }
 
 /// create mdf3 channel field
-fn mdf3_field(mdfinfo3: &Box<MdfInfo3>, cn: &Cn3) -> Field {
+#[inline]
+fn mdf3_field(mdfinfo3: &MdfInfo3, cn: &Cn3) -> Field {
     let field = Field::new(
         cn.unique_name.clone(),
         cn.data.arrow_data_type().clone(),
@@ -265,6 +340,7 @@ fn mdf3_field(mdfinfo3: &Box<MdfInfo3>, cn: &Cn3) -> Field {
 }
 
 /// Write columns and fields in parquet file
+#[inline]
 fn write_data(
     master_channel_name: Option<String>,
     rec_id: &u64,
@@ -283,9 +359,12 @@ fn write_data(
         rec_id,
     )
     .context("failed creating parquet writer")?;
-    writer
-        .write(&record_batch)
-        .with_context(|| format!("Failed writing recordbatch"))?;
+    writer.write(&record_batch).with_context(|| {
+        format!(
+            "Failed writing recordbatch for record id {}, master channel {:?}",
+            rec_id, master_channel_name
+        )
+    })?;
     writer.close().context("Failed to write footer")?;
     Ok(())
 }

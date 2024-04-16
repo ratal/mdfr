@@ -3,20 +3,22 @@ use std::collections::HashSet;
 use std::fmt::Write;
 
 use crate::data_holder::channel_data::ChannelData;
-use crate::export::polars::rust_arrow_to_py_series;
-use crate::export::python_arrow_helpers::array_to_rust;
+
 use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::MasterSignature;
 use crate::mdfreader::Mdf;
 use arrow::array::ArrayData;
 use arrow::pyarrow::PyArrowType;
 use arrow::util::display::{ArrayFormatter, FormatOptions};
+
+use crate::export::numpy::array_to_rust;
+#[cfg(feature = "polars")]
+use crate::export::polars::rust_arrow_to_py_series;
 use pyo3::exceptions::PyUnicodeDecodeError;
 use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyBytes, PyDict, PyList};
 
 #[pymodule]
-#[pyo3(name = "mdfr")]
 fn mdfr(py: Python, m: &PyModule) -> PyResult<()> {
     register(py, m)?;
     Ok(())
@@ -110,6 +112,7 @@ impl Mdfr {
         pyo3::Python::with_gil(|py| data.map(|d| d.get_dtype()).into_py(py))
     }
     /// returns polars serie of channel
+    #[cfg(feature = "polars")]
     fn get_polars_series(&self, channel_name: &str) -> PyResult<PyObject> {
         let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|py| {
@@ -121,6 +124,7 @@ impl Mdfr {
         })
     }
     /// returns polar dataframe including channel
+    #[cfg(feature = "polars")]
     fn get_polars_dataframe(&self, channel_name: String) -> Py<PyAny> {
         let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|py| {
@@ -328,6 +332,25 @@ df=polars.DataFrame(series)
     pub fn list_attachments(&mut self) -> PyResult<String> {
         let Mdfr(mdf) = self;
         Ok(mdf.mdf_info.list_attachments())
+    }
+    /// export to Parquet files
+    #[cfg(feature = "parquet")]
+    pub fn export_to_parquet(&self, file_name: &str, compression: Option<&str>) -> PyResult<()> {
+        let Mdfr(mdf) = self;
+        mdf.export_to_parquet(file_name, compression)?;
+        Ok(())
+    }
+    /// export dataframe to Parquet files
+    #[cfg(feature = "parquet")]
+    pub fn export_dataframe_to_parquet(
+        &self,
+        channel_name: String,
+        file_name: &str,
+        compression: Option<&str>,
+    ) -> PyResult<()> {
+        let Mdfr(mdf) = self;
+        mdf.export_dataframe_to_parquet(channel_name, file_name, compression)?;
+        Ok(())
     }
     /// get attachment blocks
     pub fn get_attachment_blocks(&mut self) -> Py<PyAny> {

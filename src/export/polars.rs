@@ -4,7 +4,7 @@ use std::sync::Arc;
 use arrow::array::Array;
 use pyo3::{types::PyList, PyObject, PyResult, ToPyObject};
 
-use crate::export::python_arrow_helpers::to_py_array;
+use crate::export::numpy::to_py_array;
 
 /// converts rust arrow array into python polars series
 #[allow(dead_code)]

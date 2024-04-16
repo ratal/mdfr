@@ -11,6 +11,12 @@ readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+default = ["numpy", "parquet", "polars"]
+numpy = ["dep:numpy", "dep:pyo3"]
+polars = ["dep:polars", "dep:numpy", "dep:pyo3"]
+parquet = ["dep:parquet"]
+
 [dependencies]
 clap = "4" # for input arguments
 anyhow = { version = "1.0", features = ["backtrace"] } # error handling
@@ -39,20 +45,20 @@ arrow = { version = "51.0.0", features = [
     "prettyprint",
     "ffi",
 ] } # for efficient data storing in memory
-parquet = "51.0.0" # to write parquet file
-libc = "0.2" # for the C api
 env_logger = "*"
-
-numpy = "0.20" # export rust ndarrays into numpy
-polars = { version = "0.38", features = [
+libc = "0.2" # for the C api
+numpy = { version = "0.20", optional = true } # to export in numpy
+polars = { version = "0.39", features = [
     "dtype-full",
     "object",
     "fmt",
-] } # for python dataframe
+], optional = true } # for python dataframe
+parquet = { version = "51.0.0", optional = true } # to write parquet file
 
 [dependencies.pyo3]
 version = "0.20"
 features = ["extension-module", "num-complex", "anyhow"]
+optional = true
 
 [dev-dependencies]
 criterion = "0.5" # for benchmark

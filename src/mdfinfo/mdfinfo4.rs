@@ -2528,11 +2528,7 @@ fn parse_cn4_block(
 
     // Reads TX name
     position = read_meta_data(rdr, sharable, block.cn_tx_name, position, BlockType::CN)?;
-    let name: String = if let Some(n) = sharable.get_tx(block.cn_tx_name)? {
-        n
-    } else {
-        String::new()
-    };
+    let name: String = sharable.get_tx(block.cn_tx_name)?.unwrap_or_default();
 
     // Reads unit
     position = read_meta_data(rdr, sharable, block.cn_md_unit, position, BlockType::CN)?;
@@ -3058,6 +3054,7 @@ pub struct Composition {
 #[repr(C)]
 pub enum Compo {
     CA(Box<Ca4Block>),
+    #[allow(dead_code)]
     CN(Box<Cn4>),
 }
 

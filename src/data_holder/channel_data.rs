@@ -19,6 +19,8 @@ use std::mem::size_of;
 use std::sync::Arc;
 
 use crate::data_holder::complex_arrow::ComplexArrow;
+#[cfg(feature = "numpy")]
+use crate::data_holder::dtype::NumpyDType;
 
 use super::tensor_arrow::{Order, TensorArrow};
 
@@ -1009,6 +1011,7 @@ impl ChannelData {
             ChannelData::ArrayDFloat64(a) => Arc::new(a.finish()) as ArrayRef,
         }
     }
+    /// Convert ChannelData into ArrayData
     pub fn to_data(&self) -> ArrayData {
         match &self {
             ChannelData::Int8(a) => a.finish_cloned().to_data(),
@@ -1038,6 +1041,7 @@ impl ChannelData {
             ChannelData::ArrayDFloat64(a) => a.finish_cloned().to_data(),
         }
     }
+    /// Change the validity mask of the channel
     pub fn set_validity(&mut self, mask: &mut BooleanBufferBuilder) -> Result<(), Error> {
         match self {
             ChannelData::Int8(a) => {
@@ -1134,6 +1138,7 @@ impl ChannelData {
         }
         Ok(())
     }
+    /// Returns the channel's mask NullBuffer if existing
     pub fn validity(&self) -> Option<NullBuffer> {
         match self {
             ChannelData::Int8(a) => a.finish_cloned().nulls().cloned(),
@@ -1163,6 +1168,7 @@ impl ChannelData {
             ChannelData::ArrayDFloat64(a) => a.finish_cloned().nulls().cloned(),
         }
     }
+    /// Returns the channel's validity mask as a slice
     pub fn validity_slice(&self) -> Option<&[u8]> {
         match self {
             ChannelData::Int8(a) => a.validity_slice(),
@@ -1192,6 +1198,7 @@ impl ChannelData {
             ChannelData::ArrayDFloat64(a) => a.validity_slice(),
         }
     }
+    /// returns True if a validity mask is existing for the channel
     pub fn nullable(&self) -> bool {
         match self {
             ChannelData::Int8(a) => a.validity_slice().is_some(),
@@ -1221,6 +1228,7 @@ impl ChannelData {
             ChannelData::ArrayDFloat64(a) => a.nulls().is_some(),
         }
     }
+    /// converts the ChannelData into a ArrayRef (alis of Arc<dyn Array>)
     pub fn as_ref(&self) -> Arc<dyn Array> {
         match self {
             ChannelData::Int8(a) => Arc::new(a.finish_cloned()) as ArrayRef,
@@ -1248,6 +1256,113 @@ impl ChannelData {
             ChannelData::ArrayDInt64(a) => Arc::new(a.finish_cloned()) as ArrayRef,
             ChannelData::ArrayDUInt64(a) => Arc::new(a.finish_cloned()) as ArrayRef,
             ChannelData::ArrayDFloat64(a) => Arc::new(a.finish_cloned()) as ArrayRef,
+        }
+    }
+    #[cfg(feature = "numpy")]
+    pub fn get_dtype(&self) -> NumpyDType {
+        use super::dtype::NumpyDType;
+
+        match self {
+            ChannelData::Int8(a) => NumpyDType {
+                shape: vec![a.len()],
+                kind: "i1".to_string(),
+            },
+            ChannelData::UInt8(a) => NumpyDType {
+                shape: vec![a.len()],
+                kind: "u1".to_string(),
+            },
+            ChannelData::Int16(a) => NumpyDType {
+                shape: vec![a.len()],
+                kind: "i2".to_string(),
+            },
+            ChannelData::UInt16(a) => NumpyDType {
+                shape: vec![a.len()],
+                kind: "u2".to_string(),
+            },
+            ChannelData::Int32(a) => NumpyDType {
+                shape: vec![a.len()],
+                kind: "i4".to_string(),
+            },
+            ChannelData::UInt32(a) => NumpyDType {
+                shape: vec![a.len()],
+                kind: "u4".to_string(),
+            },
+            ChannelData::Float32(a) => NumpyDType {
+                shape: vec![a.len()],
+                kind: "f4".to_string(),
+            },
+            ChannelData::Int64(a) => NumpyDType {
+                shape: vec![a.len()],
+                kind: "i8".to_string(),
+            },
+            ChannelData::UInt64(a) => NumpyDType {
+                shape: vec![a.len()],
+                kind: "u8".to_string(),
+            },
+            ChannelData::Float64(a) => NumpyDType {
+                shape: vec![a.len()],
+                kind: "f8".to_string(),
+            },
+            ChannelData::Complex32(a) => NumpyDType {
+                shape: vec![a.len() * 2],
+                kind: "f4".to_string(),
+            },
+            ChannelData::Complex64(a) => NumpyDType {
+                shape: vec![a.len() * 2],
+                kind: "f8".to_string(),
+            },
+            ChannelData::Utf8(a) => NumpyDType {
+                shape: vec![a.len()],
+                kind: format!("U{}", self.byte_count()),
+            },
+            ChannelData::VariableSizeByteArray(a) => NumpyDType {
+                shape: vec![a.len()],
+                kind: format!("S{}", self.byte_count()),
+            },
+            ChannelData::FixedSizeByteArray(a) => NumpyDType {
+                shape: vec![a.len()],
+                kind: format!("S{}", self.byte_count()),
+            },
+            ChannelData::ArrayDInt8(a) => NumpyDType {
+                shape: a.shape().to_vec(),
+                kind: "i1".to_string(),
+            },
+            ChannelData::ArrayDUInt8(a) => NumpyDType {
+                shape: a.shape().to_vec(),
+                kind: "u1".to_string(),
+            },
+            ChannelData::ArrayDInt16(a) => NumpyDType {
+                shape: a.shape().to_vec(),
+                kind: "i2".to_string(),
+            },
+            ChannelData::ArrayDUInt16(a) => NumpyDType {
+                shape: a.shape().to_vec(),
+                kind: "u2".to_string(),
+            },
+            ChannelData::ArrayDInt32(a) => NumpyDType {
+                shape: a.shape().to_vec(),
+                kind: "i4".to_string(),
+            },
+            ChannelData::ArrayDUInt32(a) => NumpyDType {
+                shape: a.shape().to_vec(),
+                kind: "i4".to_string(),
+            },
+            ChannelData::ArrayDFloat32(a) => NumpyDType {
+                shape: a.shape().to_vec(),
+                kind: "f4".to_string(),
+            },
+            ChannelData::ArrayDInt64(a) => NumpyDType {
+                shape: a.shape().to_vec(),
+                kind: "i8".to_string(),
+            },
+            ChannelData::ArrayDUInt64(a) => NumpyDType {
+                shape: a.shape().to_vec(),
+                kind: "u8".to_string(),
+            },
+            ChannelData::ArrayDFloat64(a) => NumpyDType {
+                shape: a.shape().to_vec(),
+                kind: "f8".to_string(),
+            },
         }
     }
 }
@@ -1397,6 +1512,7 @@ pub fn data_type_init(
     }
 }
 
+/// converts a dyn Array in a ChannelData
 pub fn try_from(value: &dyn Array) -> Result<ChannelData, Error> {
     match value.data_type() {
         DataType::Null => {

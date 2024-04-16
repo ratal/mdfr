@@ -18,7 +18,6 @@ use std::str;
 use std::{
     collections::{HashMap, HashSet},
     io::{BufReader, Read},
-    usize,
 };
 
 use super::Mdf;

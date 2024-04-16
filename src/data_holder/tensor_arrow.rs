@@ -1,3 +1,4 @@
+//! tensor arrow array adapted to mdf4 specificities (samples of tensors)
 use arrow::{
     array::{ArrayBuilder, BooleanBufferBuilder, PrimitiveArray, PrimitiveBuilder},
     buffer::{BooleanBuffer, MutableBuffer},
@@ -7,14 +8,18 @@ use arrow::{
     },
 };
 
-/// Complex
-
+/// Tensor with innner arrow primitive builder
 #[derive(Debug)]
 pub struct TensorArrow<T: ArrowPrimitiveType> {
+    /// The validity mask booolean buffer
     null_buffer_builder: Option<BooleanBuffer>,
+    /// the primitive builder
     values_builder: PrimitiveBuilder<T>,
+    /// number of samples
     len: usize,
+    /// shape of tensor
     shape: Vec<usize>,
+    /// order of tesnor, row or column major
     order: Order,
 }
 
@@ -27,9 +32,11 @@ pub enum Order {
 }
 
 impl<T: ArrowPrimitiveType> TensorArrow<T> {
+    /// Create new empty tensor
     pub fn new() -> Self {
         Self::with_capacity(1024, vec![1], Order::RowMajor)
     }
+    /// Create new empty tensor with capacity
     pub fn with_capacity(capacity: usize, shape: Vec<usize>, order: Order) -> Self {
         Self {
             null_buffer_builder: None,
@@ -39,6 +46,7 @@ impl<T: ArrowPrimitiveType> TensorArrow<T> {
             order,
         }
     }
+    /// Create new tensor from mutable buffer
     pub fn new_from_buffer(values_buffer: MutableBuffer, shape: Vec<usize>, order: Order) -> Self {
         let length = values_buffer.len() / shape.iter().product::<usize>();
         let values_builder = PrimitiveBuilder::new_from_buffer(values_buffer, None);
@@ -50,6 +58,7 @@ impl<T: ArrowPrimitiveType> TensorArrow<T> {
             order,
         }
     }
+    /// Create new tensor from primitive builder
     pub fn new_from_primitive(
         primitive_builder: PrimitiveBuilder<T>,
         null_buffer: Option<&BooleanBuffer>,
@@ -72,42 +81,56 @@ impl<T: ArrowPrimitiveType> TensorArrow<T> {
             order,
         }
     }
+    /// returns the mutable reference of the internal primitive builder array
     pub fn values(&mut self) -> &mut PrimitiveBuilder<T> {
         &mut self.values_builder
     }
+    /// returns the length (number of samples) of the tensor.
+    /// Equals first value of shape vector.
     pub fn len(&self) -> usize {
         self.len
     }
+    /// Shape vector
     pub fn shape(&self) -> &Vec<usize> {
         &self.shape
     }
+    /// number of dimensions, length of shape vector
     pub fn ndim(&self) -> usize {
         self.shape.len()
     }
+    /// returns True if the tensor is empty
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+    /// returns order of tensor, either row or column major
     pub fn order(&self) -> &Order {
         &self.order
     }
+    /// returns inner primitive builder as a slice
     pub fn values_slice(&self) -> &[T::Native] {
         self.values_builder.values_slice()
     }
+    /// returns inner primitive builder as a mutable slice
     pub fn values_slice_mut(&mut self) -> &mut [T::Native] {
         self.values_builder.values_slice_mut()
     }
+    /// returns the validity array
     pub fn nulls(&self) -> Option<&BooleanBuffer> {
         self.null_buffer_builder.as_ref()
     }
+    /// returns a finished cloned primitive array of the inner primitive builder
     pub fn finish_cloned(&self) -> PrimitiveArray<T> {
         self.values_builder.finish_cloned()
     }
+    /// returns a finished primitive array of the inner primitive builder
     pub fn finish(&mut self) -> PrimitiveArray<T> {
         self.values_builder.finish()
     }
+    /// overwrite the validity array
     pub fn set_validity(&mut self, mask: &mut BooleanBufferBuilder) {
         self.null_buffer_builder = Some(mask.finish());
     }
+    /// returns the optional validity array as a slice
     pub fn validity_slice(&self) -> Option<&[u8]> {
         self.null_buffer_builder.as_ref().map(|s| s.values())
     }

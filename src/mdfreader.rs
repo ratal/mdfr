@@ -15,15 +15,20 @@ use anyhow::{Context, Error, Result};
 use arrow::array::Array;
 use arrow::util::display::{ArrayFormatter, FormatOptions};
 use log::info;
+#[cfg(feature = "numpy")]
 use pyo3::prelude::*;
 
 //use crate::export::parquet::export_to_parquet;
 use crate::data_holder::channel_data::try_from;
-use crate::export::parquet::export_to_parquet;
 use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::mdfreader3::mdfreader3;
 use crate::mdfreader::mdfreader4::mdfreader4;
 use crate::mdfwriter::mdfwriter4::mdfwriter4;
+
+#[cfg(feature = "parquet")]
+use crate::export::parquet::export_dataframe_to_parquet;
+#[cfg(feature = "parquet")]
+use crate::export::parquet::export_to_parquet;
 
 use crate::data_holder::arrow_helpers::{
     arrow_bit_count, arrow_byte_count, arrow_to_mdf_data_type,
@@ -53,13 +58,14 @@ pub struct DataSignature {
 
 /// master channel generic description
 #[repr(C)]
-#[derive(Clone, FromPyObject)]
+#[cfg_attr(feature = "numpy", derive(FromPyObject))]
+#[derive(Clone)]
 pub struct MasterSignature {
-    #[pyo3(attribute("name"))]
+    #[cfg_attr(feature = "numpy", pyo3(attribute("name")))]
     pub(crate) master_channel: Option<String>,
-    #[pyo3(attribute("type"))]
+    #[cfg_attr(feature = "numpy", pyo3(attribute("type")))]
     pub(crate) master_type: Option<u8>,
-    #[pyo3(attribute("flag"))]
+    #[cfg_attr(feature = "numpy", pyo3(attribute("flag")))]
     pub(crate) master_flag: bool,
 }
 
@@ -235,9 +241,20 @@ impl Mdf {
         Ok(())
     }
 
-    /// export to Parquet file
+    /// export to Parquet files
+    #[cfg(feature = "parquet")]
     pub fn export_to_parquet(&self, file_name: &str, compression: Option<&str>) -> Result<()> {
         export_to_parquet(self, file_name, compression)
+    }
+    /// export to Parquet files
+    #[cfg(feature = "parquet")]
+    pub fn export_dataframe_to_parquet(
+        &self,
+        channel_name: String,
+        file_name: &str,
+        compression: Option<&str>,
+    ) -> Result<()> {
+        export_dataframe_to_parquet(self, &channel_name, file_name, compression)
     }
     /// Writes mdf4 file
     pub fn write(&mut self, file_name: &str, compression: bool) -> Result<Mdf> {
