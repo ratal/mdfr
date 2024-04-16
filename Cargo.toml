@@ -1,6 +1,6 @@
 [package]
 name = "mdfr"
-version = "0.5.0"
+version = "0.6.0"
 description = "A package for reading and writing MDF files"
 authors = ["ratal <ratal@ratal.org>"]
 edition = "2021"
@@ -11,23 +11,23 @@ readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[features]
+default = ["numpy", "parquet", "polars"]
+numpy = ["dep:numpy", "dep:pyo3"]
+polars = ["dep:polars", "dep:numpy", "dep:pyo3"]
+parquet = ["dep:parquet"]
+
 [dependencies]
 clap = "4" # for input arguments
 anyhow = { version = "1.0", features = ["backtrace"] } # error handling
 log = "0.4" # to log events
 byteorder = "1.4" # for bytes conversions
 binrw = "0.13" # to efficiently read blocks
-num-traits = "0.2"
+num = "0.4"
 half = "2" # for f16 handling
 encoding_rs = "0.8" # for endian management and bytes to text conversion (utf8, SBC, UTF16)
 codepage = "0.1" # to convert code page into encoding
 chrono = "0.4" # for time conversion
-ndarray = { version = "0.15", features = [
-    "rayon",
-    "serde",
-    "approx",
-] } # for nd arrays
-ndarray-stats = "0.5" # for nd array statsq
 rayon = "1.5" # for general purpose parallel computations
 crossbeam-channel = "0.5" # for efficient channel between threads
 parking_lot = "0.12" # for efficient mutex
@@ -35,25 +35,30 @@ roxmltree = "0.19" # for xml parsing
 yazi = "0.2" # for DZ block data deflate
 md-5 = "0.10" # md5sum of attachments
 transpose = "0.2" # for DZBlock transpose
-numpy = "0.20" # export rust ndarrays into numpy
 fasteval = "0.2" # for algebraic conversion
 itertools = "0.12"
 serde = { version = "1.0", features = ["derive"] } # for serialization
 whoami = "1.2" # to get user nam for writing file
 rand = "0.8" # for random numbers
-parquet2 = "0.17" # for export to parquet file format
-arrow2 = { version = "0.18", features = [
-    "compute",
-    "io_parquet",
-    "io_parquet_compression",
+arrow = { version = "51.0.0", features = [
+    "pyarrow",
+    "prettyprint",
+    "ffi",
 ] } # for efficient data storing in memory
-polars = { version = "0.37", features = [
+env_logger = "*"
+libc = "0.2" # for the C api
+numpy = { version = "0.20", optional = true } # to export in numpy
+polars = { version = "0.39", features = [
     "dtype-full",
     "object",
     "fmt",
-] } # for python dataframe
-libc = "0.2" # for the C api
-env_logger = "*"
+], optional = true } # for python dataframe
+parquet = { version = "51.0.0", optional = true } # to write parquet file
+
+[dependencies.pyo3]
+version = "0.20"
+features = ["extension-module", "num-complex", "anyhow"]
+optional = true
 
 [dev-dependencies]
 criterion = "0.5" # for benchmark
@@ -65,10 +70,6 @@ cbindgen = "0.26" # to generate C api headers
 [lib]
 name = "mdfr"
 crate-type = ["rlib", "cdylib"]
-
-[dependencies.pyo3]
-version = "0.20"
-features = ["extension-module", "num-complex", "anyhow"]
 
 [[bench]]
 name = "mdf_benchmark"

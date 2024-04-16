@@ -2,6 +2,7 @@
 extern crate clap;
 
 use clap::{Arg, Command};
+mod data_holder;
 mod export;
 mod mdfinfo;
 mod mdfreader;
@@ -54,7 +55,7 @@ fn main() -> Result<(), Error> {
                 .required(false)
                 .num_args(1)
                 .value_name("FILE_NAME")
-                .help("Converts mdf into parquet file"),
+                .help("Converts mdf into parquet file, file name to be given without extension"),
         )
         .arg(
             Arg::new("parquet_compression")
@@ -62,7 +63,7 @@ fn main() -> Result<(), Error> {
                 .required(false)
                 .num_args(1)
                 .value_name("ALGORITHM")
-                .help("Compression algorithm for writing data in parquet file, valid values are snappy, gzip, lzo. Default is uncompressed"),
+                .help("Compression algorithm for writing data in parquet file, valid values are snappy, gzip, lzo, lz4, zstd, brotli. Default is uncompressed"),
         )
         .arg(
             Arg::new("info")
@@ -105,8 +106,11 @@ fn main() -> Result<(), Error> {
     }
 
     let parquet_compression = matches.get_one::<String>("parquet_compression");
+    #[cfg(feature = "parquet")]
     if let Some(file_name) = parquet_file_name {
-        mdf_file.export_to_parquet(file_name, parquet_compression.map(|x| &**x))?;
+        mdf_file
+            .export_to_parquet(file_name, parquet_compression.map(|x| &**x))
+            .with_context(|| format!("failed to export into parquet file {}", file_name))?;
         info!(
             "Wrote parquet file {} with compression {:?}",
             file_name, parquet_compression

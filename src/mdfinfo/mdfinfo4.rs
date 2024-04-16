@@ -1,31 +1,25 @@
 //! Parsing of file metadata into MdfInfo4 struct
-use crate::export::tensor::Order;
 use crate::mdfreader::{DataSignature, MasterSignature};
 use anyhow::{anyhow, Context, Error, Result};
-use arrow2::array::{Array, PrimitiveArray};
-use arrow2::bitmap::MutableBitmap;
-use arrow2::buffer::Buffer;
-use arrow2::datatypes::DataType;
+use arrow::array::{Array, BooleanBufferBuilder, UInt16Builder, UInt32Builder, UInt8Builder};
 use binrw::{binrw, BinReaderExt, BinWriterExt};
 use byteorder::{LittleEndian, ReadBytesExt};
-use chrono::naive::NaiveDateTime;
-use chrono::Local;
+use chrono::{DateTime, Local};
 use log::warn;
 use md5::{Digest, Md5};
-use rand;
 use rayon::prelude::*;
-use roxmltree;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::default::Default;
 use std::fmt::Debug;
 use std::fs::File;
 use std::io::{BufReader, Cursor, Read, Seek, Write};
+use std::sync::Arc;
 use std::{fmt, str};
-use transpose;
 use yazi::{decompress, Adler32, Format};
 
+use crate::data_holder::channel_data::{data_type_init, try_from, ChannelData};
+use crate::data_holder::tensor_arrow::Order;
 use crate::mdfinfo::IdBlock;
-use crate::mdfreader::channel_data::{data_type_init, try_from, ChannelData};
 
 use super::sym_buf_reader::SymBufReader;
 
@@ -132,7 +126,7 @@ impl MdfInfo4 {
         if let Some((m, _dg_pos, (_cg_pos, _rec_idd), (_cn_pos, _rec_pos))) =
             self.get_channel_id(channel_name)
         {
-            master = m.clone();
+            master.clone_from(m);
         }
         master
     }
@@ -167,7 +161,7 @@ impl MdfInfo4 {
             let mut channel_list = HashSet::new();
             if let Some(dg) = self.dg.get(dg_pos) {
                 if let Some(cg) = dg.cg.get(rec_id) {
-                    channel_list = cg.channel_names.clone();
+                    channel_list.clone_from(&cg.channel_names);
                 }
             }
             channel_list
@@ -257,6 +251,11 @@ impl MdfInfo4 {
             .create_tx(channel_name_position, channel_name.to_string());
 
         // Channel array
+        let mut list_size = data_signature.shape.0.iter().product(); // primitive list size is 1
+        if data_signature.data_type == 15 | 16 {
+            //complex
+            list_size *= 2;
+        }
         let data_ndim = data_signature.ndim - 1;
         let mut composition: Option<Composition> = None;
         if data_ndim > 0 {
@@ -269,20 +268,12 @@ impl MdfInfo4 {
                 .collect::<Vec<_>>();
             // data_dim_size.remove(0);
             let mut ca_block = Ca4Block::default();
-            for x in data_dim_size.clone() {
-                ca_block.snd += x as usize;
-                ca_block.pnd *= x as usize;
-            }
-            cg_block.cg_data_bytes = ca_block.pnd as u32 * data_signature.byte_count;
+            cg_block.cg_data_bytes = list_size as u32 * data_signature.byte_count;
 
             let composition_position = position_generator();
             cn_block.cn_composition = composition_position;
             ca_block.ca_ndim = data_ndim as u16;
-            ca_block.ca_dim_size = data_dim_size.clone();
-            ca_block.shape.0 = data_dim_size
-                .iter()
-                .map(|x| *x as usize)
-                .collect::<Vec<_>>();
+            ca_block.ca_dim_size.clone_from(&data_dim_size);
             ca_block.ca_len = 48 + 8 * data_ndim as u64;
             composition = Some(Composition {
                 block: Compo::CA(Box::new(ca_block)),
@@ -304,7 +295,7 @@ impl MdfInfo4 {
                     cg_block.cg_flags = 0b1000;
                     cg_block.cg_links = 7; // with cg_cg_master
                                            // cg_block.cg_len = 112;
-                    master.master_channel = m.clone();
+                    master.master_channel.clone_from(m);
                 }
             }
         }
@@ -338,6 +329,8 @@ impl MdfInfo4 {
             pos_byte_beg: 0,
             n_bytes,
             composition,
+            list_size,
+            shape: data_signature.shape,
             invalid_mask: None,
         };
 
@@ -426,7 +419,7 @@ impl MdfInfo4 {
     pub fn set_channel_data(
         &mut self,
         channel_name: &str,
-        data: Box<dyn Array>,
+        data: Arc<dyn Array>,
     ) -> Result<(), Error> {
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
             self.channel_names_set.get(channel_name)
@@ -434,8 +427,8 @@ impl MdfInfo4 {
             if let Some(dg) = self.dg.get_mut(dg_pos) {
                 if let Some(cg) = dg.cg.get_mut(rec_id) {
                     if let Some(cn) = cg.cn.get_mut(rec_pos) {
-                        cn.data =
-                            try_from(data).context("failed converting dyn array to ChannelData")?;
+                        cn.data = try_from(&data)
+                            .context("failed converting dyn array to ChannelData")?;
                     }
                 }
             }
@@ -910,7 +903,7 @@ impl MetaData {
                             };
                             if node.is_element()
                                 && !text.is_empty()
-                                && node.tag_name().name().to_string() == r"TX"
+                                && node.tag_name().name() == r"TX"
                             {
                                 tx = Some(text);
                                 break;
@@ -1160,9 +1153,7 @@ impl fmt::Display for Hd4 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let sec = self.hd_start_time_ns / 1000000000;
         let nsec = (self.hd_start_time_ns - sec * 1000000000) as u32;
-        let naive = NaiveDateTime::from_timestamp_opt(sec as i64, nsec)
-            .unwrap_or_default()
-            .and_utc();
+        let naive = DateTime::from_timestamp(sec as i64, nsec).unwrap_or_default();
         writeln!(f, "Time : {} ", naive.to_rfc3339())
     }
 }
@@ -1706,12 +1697,12 @@ impl SharableBlocks {
         if let Some(md) = self.md_tx.get_mut(&position) {
             match md.block_type {
                 MetaDataBlockType::MdParsed => {
-                    comments = md.comments.clone();
+                    comments.clone_from(&md.comments);
                 }
                 MetaDataBlockType::MdBlock => {
                     // not yet parsed, so let's parse it
                     let _ = md.parse_xml();
-                    comments = md.comments.clone();
+                    comments.clone_from(&md.comments);
                 }
                 MetaDataBlockType::TX => {
                     // should not happen
@@ -1727,7 +1718,7 @@ impl SharableBlocks {
         let mut comments: HashMap<String, String> = HashMap::new();
         if let Some(md) = self.md_tx.get(&position) {
             if md.block_type == MetaDataBlockType::MdParsed {
-                comments = md.comments.clone();
+                comments.clone_from(&md.comments);
             }
         };
         comments
@@ -1944,13 +1935,13 @@ impl Cg4 {
                         invalid_bytes.chunks(cg_inval_bytes).enumerate().for_each(
                             |(index, record)| {
                                 // arrow considers bit set as valid while mdf spec considers bit set as invalid
-                                mask.set(
+                                mask.set_bit(
                                     index,
                                     (record[*invalid_byte_position] & *invalid_byte_mask) == 0,
                                 );
                             },
                         );
-                        cn.data.set_validity(mask.clone()).with_context(|| {
+                        cn.data.set_validity(mask).with_context(|| {
                             format!(
                                 "failed applying invalid bits for channel {}",
                                 cn.unique_name
@@ -1971,7 +1962,7 @@ impl Cg4 {
                         &mut cn.invalid_mask
                     {
                         if let Some(mask) = validity {
-                            cn.data.set_validity(mask.clone()).with_context(|| {
+                            cn.data.set_validity(mask).with_context(|| {
                                 format!(
                                     "failed applying invalid bits for channel {} from mask",
                                     cn.unique_name
@@ -2147,12 +2138,26 @@ pub struct Cn4 {
     pub data: ChannelData,
     /// false = little endian
     pub endian: bool,
+    /// List size: 1 for normal primitive, 2 for complex, pnd for arrays
+    pub list_size: usize,
+    // Shape of array
+    pub shape: (Vec<usize>, Order),
     /// optional invalid mask array, invalid byte position in record, invalid byte mask
-    pub invalid_mask: Option<(Option<MutableBitmap>, usize, u8)>,
+    pub invalid_mask: Option<(Option<BooleanBufferBuilder>, usize, u8)>,
 }
 
 impl Clone for Cn4 {
     fn clone(&self) -> Self {
+        let mut invalid_mask: Option<(Option<BooleanBufferBuilder>, usize, u8)> = None;
+        if let Some((boolean_buffer, byte_position, byte_mask)) = &self.invalid_mask {
+            let mut boolean_buffer_builder: Option<BooleanBufferBuilder> = None;
+            if let Some(buffer) = boolean_buffer {
+                let mut new_boolean_buffer_builder = BooleanBufferBuilder::new(buffer.len());
+                new_boolean_buffer_builder.append_buffer(&buffer.finish_cloned());
+                boolean_buffer_builder = Some(new_boolean_buffer_builder);
+            }
+            invalid_mask = Some((boolean_buffer_builder, *byte_position, *byte_mask));
+        }
         Self {
             header: self.header,
             block: self.block.clone(),
@@ -2163,7 +2168,9 @@ impl Clone for Cn4 {
             composition: self.composition.clone(),
             data: ChannelData::default(),
             endian: self.endian,
-            invalid_mask: self.invalid_mask.clone(),
+            list_size: self.list_size,
+            shape: self.shape.clone(),
+            invalid_mask,
         }
     }
 }
@@ -2307,12 +2314,10 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 2,
         composition: None,
-        data: ChannelData::UInt16(PrimitiveArray::new(
-            DataType::UInt16,
-            Buffer::<u16>::new(),
-            None,
-        )),
+        data: ChannelData::UInt16(UInt16Builder::new()),
         endian: false,
+        list_size: 1,
+        shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
     };
     let block = Cn4Block {
@@ -2329,12 +2334,10 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 1,
         composition: None,
-        data: ChannelData::UInt8(PrimitiveArray::new(
-            DataType::UInt8,
-            Buffer::<u8>::new(),
-            None,
-        )),
+        data: ChannelData::UInt8(UInt8Builder::new()),
         endian: false,
+        list_size: 1,
+        shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
     };
     let block = Cn4Block {
@@ -2351,12 +2354,10 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 1,
         composition: None,
-        data: ChannelData::UInt8(PrimitiveArray::new(
-            DataType::UInt8,
-            Buffer::<u8>::new(),
-            None,
-        )),
+        data: ChannelData::UInt8(UInt8Builder::new()),
         endian: false,
+        list_size: 1,
+        shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
     };
     let block = Cn4Block {
@@ -2373,12 +2374,10 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 1,
         composition: None,
-        data: ChannelData::UInt8(PrimitiveArray::new(
-            DataType::UInt8,
-            Buffer::<u8>::new(),
-            None,
-        )),
+        data: ChannelData::UInt8(UInt8Builder::new()),
         endian: false,
+        list_size: 1,
+        shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
     };
     let block = Cn4Block {
@@ -2395,12 +2394,10 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 1,
         composition: None,
-        data: ChannelData::UInt8(PrimitiveArray::new(
-            DataType::UInt8,
-            Buffer::<u8>::new(),
-            None,
-        )),
+        data: ChannelData::UInt8(UInt8Builder::new()),
         endian: false,
+        list_size: 1,
+        shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
     };
     let block = Cn4Block {
@@ -2417,12 +2414,10 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 1,
         composition: None,
-        data: ChannelData::UInt8(PrimitiveArray::new(
-            DataType::UInt8,
-            Buffer::<u8>::new(),
-            None,
-        )),
+        data: ChannelData::UInt8(UInt8Builder::new()),
         endian: false,
+        list_size: 1,
+        shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
     };
     (date_ms, min, hour, day, month, year)
@@ -2444,12 +2439,10 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         pos_byte_beg,
         n_bytes: 4,
         composition: None,
-        data: ChannelData::UInt32(PrimitiveArray::new(
-            DataType::UInt32,
-            Buffer::<u32>::new(),
-            None,
-        )),
+        data: ChannelData::UInt32(UInt32Builder::new()),
         endian: false,
+        list_size: 1,
+        shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
     };
     let block = Cn4Block {
@@ -2466,12 +2459,10 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         pos_byte_beg,
         n_bytes: 2,
         composition: None,
-        data: ChannelData::UInt16(PrimitiveArray::new(
-            DataType::UInt16,
-            Buffer::<u16>::new(),
-            None,
-        )),
+        data: ChannelData::UInt16(UInt16Builder::new()),
         endian: false,
+        list_size: 1,
+        shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
     };
     (ms, days)
@@ -2525,25 +2516,19 @@ fn parse_cn4_block(
 
     let pos_byte_beg = block.cn_byte_offset + record_id_size as u32;
     let n_bytes = calc_n_bytes_not_aligned(block.cn_bit_count + (block.cn_bit_offset as u32));
-    let invalid_mask: Option<(Option<MutableBitmap>, usize, u8)> = if cg_inval_bytes != 0 {
+    let invalid_mask: Option<(Option<BooleanBufferBuilder>, usize, u8)> = if cg_inval_bytes != 0 {
         let invalid_byte_position = (block.cn_inval_bit_pos >> 3) as usize;
         let invalid_byte_mask = 1 << (block.cn_inval_bit_pos & 0x07);
-        Some((
-            Some(MutableBitmap::from_len_set(cg_cycle_count as usize)),
-            invalid_byte_position,
-            invalid_byte_mask,
-        ))
+        let mut buffer = BooleanBufferBuilder::new(cg_cycle_count as usize);
+        buffer.advance(cg_cycle_count as usize);
+        Some((Some(buffer), invalid_byte_position, invalid_byte_mask))
     } else {
         None
     };
 
     // Reads TX name
     position = read_meta_data(rdr, sharable, block.cn_tx_name, position, BlockType::CN)?;
-    let name: String = if let Some(n) = sharable.get_tx(block.cn_tx_name)? {
-        n
-    } else {
-        String::new()
-    };
+    let name: String = sharable.get_tx(block.cn_tx_name)?.unwrap_or_default();
 
     // Reads unit
     position = read_meta_data(rdr, sharable, block.cn_md_unit, position, BlockType::CN)?;
@@ -2574,24 +2559,40 @@ fn parse_cn4_block(
 
     //Reads CA or composition
     let compo: Option<Composition>;
-    let is_array: bool;
+    let list_size: usize;
+    let shape: (Vec<usize>, Order);
     if block.cn_composition != 0 {
-        let (co, pos, array_flag, n_cns, cnss) = parse_composition(
+        let (co, pos, array_size, s, n_cns, cnss) = parse_composition(
             rdr,
             block.cn_composition,
             position,
             sharable,
             record_layout,
             cg_cycle_count,
-        )?;
-        is_array = array_flag;
+        )
+        .context("Failed reading composition")?;
+        shape = s;
+        // list size calculation
+        if block.cn_data_type == 15 | 16 {
+            //complex
+            list_size = 2 * array_size;
+        } else {
+            list_size = array_size;
+        }
         compo = Some(co);
         position = pos;
         n_cn += n_cns;
         cns = cnss;
     } else {
         compo = None;
-        is_array = false;
+        shape = (vec![1], Order::RowMajor);
+        // list size calculation
+        if block.cn_data_type == 15 | 16 {
+            //complex
+            list_size = 2;
+        } else {
+            list_size = 1;
+        }
     }
 
     let mut endian: bool = false; // Little endian by default
@@ -2621,8 +2622,10 @@ fn parse_cn4_block(
         pos_byte_beg,
         n_bytes,
         composition: compo,
-        data: data_type_init(cn_type, data_type, n_bytes, is_array)?,
+        data: data_type_init(cn_type, data_type, n_bytes, list_size)?,
         endian,
+        list_size,
+        shape,
         invalid_mask,
     };
 
@@ -2807,9 +2810,6 @@ pub struct Ca4Block {
     pub ca_dim_size: Vec<u64>,
     pub ca_axis_value: Option<Vec<f64>>,
     pub ca_cycle_count: Option<Vec<u64>>,
-    pub snd: usize,
-    pub pnd: usize,
-    pub shape: (Vec<usize>, Order),
 }
 
 impl Default for Ca4Block {
@@ -2836,9 +2836,6 @@ impl Default for Ca4Block {
             ca_dim_size: vec![],
             ca_axis_value: None,
             ca_cycle_count: None,
-            snd: 0,
-            pnd: 1,
-            shape: (vec![], Order::RowMajor),
         }
     }
 }
@@ -2884,7 +2881,7 @@ fn parse_ca_block(
     ca_block: &mut Cursor<Vec<u8>>,
     block_header: Blockheader4,
     cg_cycle_count: u64,
-) -> Result<Ca4Block> {
+) -> Result<(Ca4Block, (Vec<usize>, Order), usize, usize), Error> {
     //Reads members first
     ca_block.set_position(block_header.hdr_links * 8); // change buffer position after links section
     let ca_members: Ca4BlockMembers = ca_block
@@ -3013,32 +3010,34 @@ fn parse_ca_block(
             None
         };
 
-    Ok(Ca4Block {
-        ca_id: block_header.hdr_id,
-        reserved: block_header.hdr_gap,
-        ca_len: block_header.hdr_len,
-        ca_links: block_header.hdr_links,
-        ca_composition,
-        ca_data,
-        ca_dynamic_size,
-        ca_input_quantity,
-        ca_output_quantity,
-        ca_comparison_quantity,
-        ca_cc_axis_conversion,
-        ca_axis,
-        ca_type: ca_members.ca_type,
-        ca_storage: ca_members.ca_storage,
-        ca_ndim: ca_members.ca_ndim,
-        ca_flags: ca_members.ca_flags,
-        ca_byte_offset_base: ca_members.ca_byte_offset_base,
-        ca_inval_bit_pos_base: ca_members.ca_inval_bit_pos_base,
-        ca_dim_size: ca_members.ca_dim_size,
-        ca_axis_value,
-        ca_cycle_count,
+    Ok((
+        Ca4Block {
+            ca_id: block_header.hdr_id,
+            reserved: block_header.hdr_gap,
+            ca_len: block_header.hdr_len,
+            ca_links: block_header.hdr_links,
+            ca_composition,
+            ca_data,
+            ca_dynamic_size,
+            ca_input_quantity,
+            ca_output_quantity,
+            ca_comparison_quantity,
+            ca_cc_axis_conversion,
+            ca_axis,
+            ca_type: ca_members.ca_type,
+            ca_storage: ca_members.ca_storage,
+            ca_ndim: ca_members.ca_ndim,
+            ca_flags: ca_members.ca_flags,
+            ca_byte_offset_base: ca_members.ca_byte_offset_base,
+            ca_inval_bit_pos_base: ca_members.ca_inval_bit_pos_base,
+            ca_dim_size: ca_members.ca_dim_size,
+            ca_axis_value,
+            ca_cycle_count,
+        },
+        shape,
         snd,
         pnd,
-        shape,
-    })
+    ))
 }
 
 /// contains composition blocks (CN or CA)
@@ -3055,6 +3054,7 @@ pub struct Composition {
 #[repr(C)]
 pub enum Compo {
     CA(Box<Ca4Block>),
+    #[allow(dead_code)]
     CN(Box<Cn4>),
 }
 
@@ -3067,28 +3067,32 @@ fn parse_composition(
     sharable: &mut SharableBlocks,
     record_layout: RecordLayout,
     cg_cycle_count: u64,
-) -> Result<(Composition, i64, bool, usize, CnType)> {
-    let (mut block, block_header, pos) = parse_block(rdr, target, position)?;
+) -> Result<(Composition, i64, usize, (Vec<usize>, Order), usize, CnType)> {
+    let (mut block, block_header, pos) =
+        parse_block(rdr, target, position).context("Failed parsing composition header block")?;
     position = pos;
-    let is_array: bool;
+    let array_size: usize;
     let mut cns: CnType;
     let mut n_cn: usize = 0;
 
     if block_header.hdr_id == "##CA".as_bytes() {
         // Channel Array
-        is_array = true;
-        let block = parse_ca_block(&mut block, block_header, cg_cycle_count)?;
+        let (block, mut shape, _snd, array_size) =
+            parse_ca_block(&mut block, block_header, cg_cycle_count)
+                .context("Failed parsing CA block")?;
         position = pos;
         let ca_compositon: Option<Box<Composition>>;
         if block.ca_composition != 0 {
-            let (ca, pos, _is_array, n_cns, cnss) = parse_composition(
+            let (ca, pos, _array_size, s, n_cns, cnss) = parse_composition(
                 rdr,
                 block.ca_composition,
                 position,
                 sharable,
                 record_layout,
                 cg_cycle_count,
-            )?;
+            )
+            .context("Failed parsing composition block")?;
+            shape = s;
             position = pos;
             cns = cnss;
             n_cn += n_cns;
@@ -3103,13 +3107,14 @@ fn parse_composition(
                 compo: ca_compositon,
             },
             position,
-            is_array,
+            array_size,
+            shape,
             n_cn,
             cns,
         ))
     } else {
         // Channel structure
-        is_array = false;
+        array_size = 1;
         let (cnss, pos, n_cns, first_rec_pos) = parse_cn4(
             rdr,
             target,
@@ -3127,8 +3132,9 @@ fn parse_composition(
         } else {
             Cn4::default()
         };
+        let shape: (Vec<usize>, Order);
         if cn_struct.block.cn_composition != 0 {
-            let (cn, pos, _is_array, n_cns, cnss) = parse_composition(
+            let (cn, pos, _array_size, s, n_cns, cnss) = parse_composition(
                 rdr,
                 cn_struct.block.cn_composition,
                 position,
@@ -3136,12 +3142,14 @@ fn parse_composition(
                 record_layout,
                 cg_cycle_count,
             )?;
+            shape = s;
             position = pos;
             n_cn += n_cns;
             cns.extend(cnss);
             cn_composition = Some(Box::new(cn));
         } else {
-            cn_composition = None
+            cn_composition = None;
+            shape = (vec![1], Order::RowMajor);
         }
         Ok((
             Composition {
@@ -3149,7 +3157,8 @@ fn parse_composition(
                 compo: cn_composition,
             },
             position,
-            is_array,
+            array_size,
+            shape,
             n_cn,
             cns,
         ))
@@ -3243,7 +3252,7 @@ pub fn build_channel_db(
                 cg_channel_list.insert(cn.unique_name.clone());
                 // assigns master in channel_list
                 if let Some(id) = channel_list.get_mut(&cn.unique_name) {
-                    id.0 = master_channel_name.clone();
+                    id.0.clone_from(&master_channel_name);
                 }
             });
             cg.channel_names = cg_channel_list;

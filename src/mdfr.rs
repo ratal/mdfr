@@ -2,19 +2,23 @@
 use std::collections::HashSet;
 use std::fmt::Write;
 
-use crate::export::numpy::arrow_to_numpy;
-use crate::export::polars::rust_arrow_to_py_series;
+use crate::data_holder::channel_data::ChannelData;
+
 use crate::mdfinfo::MdfInfo;
-use crate::mdfreader::arrow::array_to_rust;
 use crate::mdfreader::MasterSignature;
 use crate::mdfreader::Mdf;
-use arrow2::array::get_display;
+use arrow::array::ArrayData;
+use arrow::pyarrow::PyArrowType;
+use arrow::util::display::{ArrayFormatter, FormatOptions};
+
+use crate::export::numpy::array_to_rust;
+#[cfg(feature = "polars")]
+use crate::export::polars::rust_arrow_to_py_series;
 use pyo3::exceptions::PyUnicodeDecodeError;
 use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyBytes, PyDict, PyList};
 
 #[pymodule]
-#[pyo3(name = "mdfr")]
 fn mdfr(py: Python, m: &PyModule) -> PyResult<()> {
     register(py, m)?;
     Ok(())
@@ -50,7 +54,7 @@ impl Mdfr {
             let mut py_array: Py<PyAny>;
             let dt = mdf.get_channel_data(&channel_name);
             if let Some(data) = dt {
-                py_array = arrow_to_numpy(py, data.clone());
+                py_array = data.clone().into_py(py);
                 if let Some(m) = data.clone().validity() {
                     let mask: Py<PyAny> = m.iter().collect::<Vec<bool>>().into_py(py);
                     let locals = [("numpy", py.import("numpy").expect("could not import numpy"))]
@@ -72,18 +76,55 @@ impl Mdfr {
             py_array
         })
     }
+    /// returns channel's numpy dtype
+    fn get_channel_dtype(&self, channel_name: String) -> Py<PyAny> {
+        let Mdfr(mdf) = self;
+        let mut data: Option<&ChannelData> = None;
+        // extract channelData, even empty but initialised
+        match &mdf.mdf_info {
+            MdfInfo::V3(mdfinfo3) => {
+                if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
+                    mdfinfo3.get_channel_id(&channel_name)
+                {
+                    if let Some(dg) = mdfinfo3.dg.get(dg_pos) {
+                        if let Some(cg) = dg.cg.get(rec_id) {
+                            if let Some(cn) = cg.cn.get(cn_pos) {
+                                data = Some(&cn.data);
+                            }
+                        }
+                    }
+                }
+            }
+            MdfInfo::V4(mdfinfo4) => {
+                if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+                    mdfinfo4.get_channel_id(&channel_name)
+                {
+                    if let Some(dg) = mdfinfo4.dg.get(dg_pos) {
+                        if let Some(cg) = dg.cg.get(rec_id) {
+                            if let Some(cn) = cg.cn.get(rec_pos) {
+                                data = Some(&cn.data);
+                            }
+                        }
+                    }
+                }
+            }
+        };
+        pyo3::Python::with_gil(|py| data.map(|d| d.get_dtype()).into_py(py))
+    }
     /// returns polars serie of channel
+    #[cfg(feature = "polars")]
     fn get_polars_series(&self, channel_name: &str) -> PyResult<PyObject> {
         let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|py| {
             let mut py_serie = Ok(Python::None(py));
             if let Some(array) = mdf.get_channel_data(channel_name) {
-                py_serie = rust_arrow_to_py_series(array);
+                py_serie = rust_arrow_to_py_series(array.as_ref(), channel_name.to_string());
             };
             py_serie
         })
     }
     /// returns polar dataframe including channel
+    #[cfg(feature = "polars")]
     fn get_polars_dataframe(&self, channel_name: String) -> Py<PyAny> {
         let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|py| {
@@ -95,7 +136,7 @@ impl Mdfr {
                     series_dict
                         .set_item(
                             channel.clone(),
-                            rust_arrow_to_py_series(channel_data)
+                            rust_arrow_to_py_series(channel_data.as_ref(), channel)
                                 .expect("Could not convert to python series"),
                         )
                         .expect("could not store the serie in dict");
@@ -221,17 +262,18 @@ df=polars.DataFrame(series)
     }
     /// Adds a new channel in memory (no file modification)
     /// Master must be a dict with keys name, type and flag
+    /// Data  has to be a PyArrow
     pub fn add_channel(
         &mut self,
         channel_name: String,
-        data: Py<PyAny>,
+        data: PyArrowType<ArrayData>,
         master: MasterSignature,
         unit: Option<String>,
         description: Option<String>,
     ) -> PyResult<()> {
         let Mdfr(mdf) = self;
-        pyo3::Python::with_gil(|py| -> Result<(), PyErr> {
-            let array = array_to_rust(data.as_ref(py))
+        pyo3::Python::with_gil(|_| -> Result<(), PyErr> {
+            let array = array_to_rust(data)
                 .expect("data modification failed, could not extract numpy array");
             mdf.add_channel(
                 channel_name,
@@ -246,11 +288,15 @@ df=polars.DataFrame(series)
         })?;
         Ok(())
     }
-    /// defines channel's data in memory
-    pub fn set_channel_data(&mut self, channel_name: &str, data: Py<PyAny>) -> PyResult<()> {
+    /// defines channel's data in memory from PyArrow
+    pub fn set_channel_data(
+        &mut self,
+        channel_name: &str,
+        data: PyArrowType<ArrayData>,
+    ) -> PyResult<()> {
         let Mdfr(mdf) = self;
-        pyo3::Python::with_gil(|py| {
-            let array = array_to_rust(data.as_ref(py))
+        pyo3::Python::with_gil(|_| {
+            let array = array_to_rust(data)
                 .expect("data modification failed, could not extract numpy array");
             mdf.set_channel_data(channel_name, array)?;
             Ok(())
@@ -286,6 +332,25 @@ df=polars.DataFrame(series)
     pub fn list_attachments(&mut self) -> PyResult<String> {
         let Mdfr(mdf) = self;
         Ok(mdf.mdf_info.list_attachments())
+    }
+    /// export to Parquet files
+    #[cfg(feature = "parquet")]
+    pub fn export_to_parquet(&self, file_name: &str, compression: Option<&str>) -> PyResult<()> {
+        let Mdfr(mdf) = self;
+        mdf.export_to_parquet(file_name, compression)?;
+        Ok(())
+    }
+    /// export dataframe to Parquet files
+    #[cfg(feature = "parquet")]
+    pub fn export_dataframe_to_parquet(
+        &self,
+        channel_name: String,
+        file_name: &str,
+        compression: Option<&str>,
+    ) -> PyResult<()> {
+        let Mdfr(mdf) = self;
+        mdf.export_dataframe_to_parquet(channel_name, file_name, compression)?;
+        Ok(())
     }
     /// get attachment blocks
     pub fn get_attachment_blocks(&mut self) -> Py<PyAny> {
@@ -446,14 +511,15 @@ pyplot.show()
             .expect("plot python script failed");
         })
     }
-    /// export to Parquet file
-    pub fn export_to_parquet(&mut self, file_name: &str, compression_option: Option<&str>) {
-        let Mdfr(mdf) = self;
-        mdf.export_to_parquet(file_name, compression_option)
-            .expect("could not export to parquet")
-    }
+    // /// export to Parquet file
+    // pub fn export_to_parquet(&mut self, file_name: &str, compression_option: Option<&str>) {
+    //     let Mdfr(mdf) = self;
+    //     mdf.export_to_parquet(file_name, compression_option)
+    //         .expect("could not export to parquet")
+    // }
     fn __repr__(&mut self) -> PyResult<String> {
         let mut output: String;
+        let format_option = FormatOptions::new();
         match &mut self.0.mdf_info {
             MdfInfo::V3(mdfinfo3) => {
                 output = format!("Version : {}\n", mdfinfo3.id_block.id_ver);
@@ -490,11 +556,14 @@ pyplot.show()
                         write!(output, " {channel} ").expect("cannot print channel name");
                         if let Some(data) = self.0.get_channel_data(channel) {
                             if !data.is_empty() {
-                                let displayer = get_display(data.as_ref(), "null");
-                                displayer(&mut output, 0).expect("cannot channel data");
+                                let array = &data.as_ref();
+                                let displayer = ArrayFormatter::try_new(array, &format_option)
+                                    .expect("failed creating formatter for arrow array");
+                                write!(&mut output, "{}", displayer.value(0))
+                                    .expect("failed writing first value of array");
                                 write!(output, " ").expect("cannot print simple space character");
-                                displayer(&mut output, data.len() - 1)
-                                    .expect("cannot channel data");
+                                write!(&mut output, "{}", displayer.value(data.len() - 1))
+                                    .expect("failed writing last value of array");
                             }
                             writeln!(
                                 output,
@@ -531,11 +600,14 @@ pyplot.show()
                         write!(output, " {channel} ").expect("cannot print channel name");
                         if let Some(data) = self.0.get_channel_data(channel) {
                             if !data.is_empty() {
-                                let displayer = get_display(data.as_ref(), "null");
-                                displayer(&mut output, 0).expect("cannot print channel data");
+                                let array = &data.as_ref();
+                                let displayer = ArrayFormatter::try_new(array, &format_option)
+                                    .expect("failed creating formatter for arrow array");
+                                write!(&mut output, "{}", displayer.value(0))
+                                    .expect("cannot print channel data");
                                 write!(output, " .. ")
                                     .expect("cannot print simple space character");
-                                displayer(&mut output, data.len() - 1)
+                                write!(&mut output, "{}", displayer.value(data.len() - 1))
                                     .expect("cannot channel data");
                             }
                             writeln!(

@@ -1,172 +1,310 @@
 //! Exporting mdf to Parquet files.
-use arrow2::{
-    array::Array,
-    datatypes::DataType,
-    datatypes::{Field, Metadata, Schema},
-    error::{Error, Result},
-    io::parquet::write::{
-        array_to_columns, compress, to_parquet_schema, CompressedPage, CompressionOptions, DynIter,
-        DynStreamingIterator, Encoding, FallibleStreamingIterator, FileWriter, Version,
-        WriteOptions,
-    },
-    io::parquet::{read::ParquetError, write::transverse},
+use anyhow::{Context, Error, Result};
+use arrow::{
+    array::{Array, RecordBatch},
+    datatypes::{Field, Schema, SchemaBuilder},
 };
 use codepage::to_encoding;
 use encoding_rs::Encoding as EncodingRs;
-use rayon::iter::{
-    IndexedParallelIterator, IntoParallelRefIterator, ParallelExtend, ParallelIterator,
+use parquet::{
+    arrow::arrow_writer::ArrowWriter,
+    basic::{BrotliLevel, Compression, Encoding, GzipLevel, ZstdLevel},
+    file::{
+        metadata::KeyValue,
+        properties::{WriterProperties, WriterVersion},
+    },
 };
+use rayon::iter::ParallelExtend;
 
 use crate::{
     mdfinfo::{
-        mdfinfo4::{Cn4, MdfInfo4},
+        mdfinfo3::{Cg3, Cn3, MdfInfo3},
+        mdfinfo4::{Cg4, Cn4, Dg4, MdfInfo4},
         MdfInfo,
     },
     mdfreader::Mdf,
 };
 
-use std::collections::{HashSet, VecDeque};
-use std::{fs, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    fs::File,
+    io::BufWriter,
+    path::Path,
+    sync::Arc,
+};
 
-struct Bla {
-    columns: VecDeque<CompressedPage>,
-    current: Option<CompressedPage>,
-}
-
-impl Bla {
-    pub fn new(columns: VecDeque<CompressedPage>) -> Self {
-        Self {
-            columns,
-            current: None,
+/// writes mdf into parquet file
+pub fn export_to_parquet(
+    mdf: &Mdf,
+    file_name: &str,
+    compression: Option<&str>,
+) -> Result<(), Error> {
+    let parquet_compression = parquet_compression_from_string(compression);
+    match &mdf.mdf_info {
+        MdfInfo::V4(mdfinfo4) => {
+            mdfinfo4.dg.iter().try_for_each(
+                |(_dg_block_position, dg): (&i64, &Dg4)| -> Result<(), Error> {
+                    let mut channel_names_present_in_dg = HashSet::new();
+                    for channel_group in dg.cg.values() {
+                        let cn = channel_group.channel_names.clone();
+                        channel_names_present_in_dg.par_extend(cn);
+                    }
+                    if !channel_names_present_in_dg.is_empty() {
+                        dg.cg.iter().try_for_each(
+                            |(rec_id, cg): (&u64, &Cg4)| -> Result<(), Error> {
+                                mdf4_cg_to_parquet(
+                                    file_name,
+                                    mdfinfo4,
+                                    rec_id,
+                                    cg,
+                                    parquet_compression,
+                                )
+                                .context("failed converting Channel Group 4 to parquet")?;
+                                Ok(())
+                            },
+                        )?;
+                    }
+                    Ok(())
+                },
+            )?;
+        }
+        MdfInfo::V3(mdfinfo3) => {
+            for (_dg_block_position, dg) in mdfinfo3.dg.iter() {
+                for (rec_id, cg) in dg.cg.iter() {
+                    mdf3_cg_to_parquet(file_name, mdfinfo3, rec_id, cg, parquet_compression)
+                        .context("failed converting Channel Group 3 to parquet")?;
+                }
+            }
         }
     }
-}
-
-impl FallibleStreamingIterator for Bla {
-    type Item = CompressedPage;
-    type Error = Error;
-
-    fn advance(&mut self) -> Result<()> {
-        self.current = self.columns.pop_front();
-        Ok(())
-    }
-
-    fn get(&self) -> Option<&Self::Item> {
-        self.current.as_ref()
-    }
+    Ok(())
 }
 
 /// writes mdf into parquet file
-pub fn export_to_parquet(mdf: &Mdf, file_name: &str, compression: Option<&str>) -> Result<()> {
-    //let _ = data_type;
-    // Create file
-    let path = Path::new(file_name);
-
-    let options = WriteOptions {
-        write_statistics: false,
-        version: Version::V2,
-        compression: parquet_compression_from_string(compression),
-        data_pagesize_limit: None,
-    };
-
-    // No other encoding yet implemented, to be reviewed later if needed.
-    let encoding_map = |_data_type: &DataType| Encoding::Plain;
-
-    let (arrow_data, mut arrow_schema) = mdf_data_to_arrow(mdf);
-    arrow_schema
-        .metadata
-        .insert("file_name".to_string(), file_name.to_string());
-
-    // declare encodings
-    let encodings = (arrow_schema.fields)
-        .par_iter()
-        .map(|f| transverse(&f.data_type, encoding_map))
-        .collect::<Vec<_>>();
-
-    // derive the parquet schema (physical types) from arrow's schema.
-    let parquet_schema =
-        to_parquet_schema(&arrow_schema).expect("Failed to create SchemaDescriptor from Schema");
-
-    let row_groups = arrow_data.iter().map(|batch| {
-        // write batch to pages; parallelized by rayon
-        let columns = batch
-            .par_iter()
-            .zip(parquet_schema.fields().to_vec())
-            .zip(encodings.par_iter())
-            .flat_map(move |((array, type_), encoding)| {
-                let encoded_columns = array_to_columns(array, type_, options, encoding)
-                    .expect("Could not convert arrow array to column");
-                encoded_columns
-                    .into_iter()
-                    .map(|encoded_pages| {
-                        let encoded_pages = DynIter::new(encoded_pages.into_iter().map(|x| {
-                            x.map_err(|e| ParquetError::FeatureNotSupported(e.to_string()))
-                        }));
-                        encoded_pages
-                            .map(|page| {
-                                compress(page?, vec![], options.compression).map_err(|x| x.into())
-                            })
-                            .collect::<Result<VecDeque<_>>>()
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .collect::<Result<Vec<VecDeque<CompressedPage>>>>()?;
-
-        let row_group = DynIter::new(
-            columns
-                .into_iter()
-                .map(|column| Ok(DynStreamingIterator::new(Bla::new(column)))),
-        );
-        Result::Ok(row_group)
-    });
-
-    let file = fs::File::create(path).expect("Failed to create file");
-    let mut writer = FileWriter::try_new(file, arrow_schema.clone(), options)
-        .expect("Failed to write parquet file");
-
-    // write data in file
-    for group in row_groups {
-        writer.write(group?)?;
+pub fn export_dataframe_to_parquet(
+    mdf: &Mdf,
+    channel_name: &str,
+    file_name: &str,
+    compression: Option<&str>,
+) -> Result<(), Error> {
+    let parquet_compression = parquet_compression_from_string(compression);
+    match &mdf.mdf_info {
+        MdfInfo::V4(mdfinfo4) => {
+            if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, _rec_pos))) =
+                mdfinfo4.get_channel_id(channel_name)
+            {
+                if let Some(dg) = mdfinfo4.dg.get(dg_pos) {
+                    if let Some(cg) = dg.cg.get(rec_id) {
+                        mdf4_cg_to_parquet(file_name, mdfinfo4, rec_id, cg, parquet_compression)
+                            .context(
+                                "failed converting Channel Group 4 to parquet containing channel",
+                            )?;
+                    }
+                }
+            }
+        }
+        MdfInfo::V3(mdfinfo3) => {
+            if let Some((_master, dg_pos, (_cg_pos, rec_id), _cn_pos)) =
+                mdfinfo3.get_channel_id(channel_name)
+            {
+                if let Some(dg) = mdfinfo3.dg.get(dg_pos) {
+                    if let Some(cg) = dg.cg.get(rec_id) {
+                        mdf3_cg_to_parquet(file_name, mdfinfo3, rec_id, cg, parquet_compression)
+                            .context(
+                                "failed converting Channel Group 3 to parquet containing channel",
+                            )?;
+                    }
+                }
+            }
+        }
     }
-    writer.end(None).expect("Failed to write footer");
+    Ok(())
+}
+
+/// create a parquet file for the given CG4 block
+pub fn mdf4_cg_to_parquet(
+    file_name: &str,
+    mdfinfo4: &MdfInfo4,
+    rec_id: &u64,
+    cg: &Cg4,
+    parquet_compression: Compression,
+) -> Result<()> {
+    let mut columns = Vec::<Arc<dyn Array>>::with_capacity(cg.channel_names.len());
+    let mut fields = SchemaBuilder::with_capacity(cg.channel_names.len());
+    cg.cn
+        .iter()
+        .try_for_each(|(_rec_pos, cn): (&i32, &Cn4)| -> Result<(), Error> {
+            if !cn.data.is_empty() {
+                fields.push(mdf4_field(mdfinfo4, cn));
+                columns.push(cn.data.finish_cloned());
+            }
+            Ok(())
+        })
+        .context("failed extracting data")?;
+    if !columns.is_empty() {
+        // write data in file
+        if let Some(master_channel) = &cg.master_channel_name {
+            fields
+                .metadata_mut()
+                .insert("master_channel".to_owned(), master_channel.to_string());
+        }
+        let finalised_arrow_schema = fields.finish();
+        write_data(
+            cg.master_channel_name.clone(),
+            rec_id,
+            file_name,
+            parquet_compression,
+            finalised_arrow_schema,
+            columns,
+        )
+        .with_context(|| {
+            format!(
+                "failed writing data in parquet for rec id {}, master {:?}",
+                rec_id, cg.master_channel_name
+            )
+        })?;
+    }
+    Ok(())
+}
+
+/// create a parquet file for the given CG3 block
+pub fn mdf3_cg_to_parquet(
+    file_name: &str,
+    mdfinfo3: &MdfInfo3,
+    rec_id: &u16,
+    cg: &Cg3,
+    parquet_compression: Compression,
+) -> Result<()> {
+    let mut columns = Vec::<Arc<dyn Array>>::with_capacity(cg.channel_names.len());
+    let mut fields = SchemaBuilder::with_capacity(cg.channel_names.len());
+    cg.cn
+        .iter()
+        .try_for_each(|(_rec_pos, cn): (&u32, &Cn3)| -> Result<(), Error> {
+            if !cn.data.is_empty() {
+                fields.push(mdf3_field(mdfinfo3, cn));
+                columns.push(cn.data.finish_cloned());
+            }
+            Ok(())
+        })
+        .context("failed extracting data")?;
+    if !columns.is_empty() {
+        // write data in file
+        if let Some(master_channel) = &cg.master_channel_name {
+            fields
+                .metadata_mut()
+                .insert("master_channel".to_owned(), master_channel.to_string());
+        }
+        let finalised_arrow_schema = fields.finish();
+        write_data(
+            cg.master_channel_name.clone(),
+            &(*rec_id as u64),
+            file_name,
+            parquet_compression,
+            finalised_arrow_schema,
+            columns,
+        )
+        .with_context(|| {
+            format!(
+                "failed writing data in parquet for rec id {}, master {:?}",
+                rec_id, cg.master_channel_name
+            )
+        })?;
+    }
     Ok(())
 }
 
 /// converts a clap compression string into a CompressionOptions enum
-pub fn parquet_compression_from_string(compression_option: Option<&str>) -> CompressionOptions {
+pub fn parquet_compression_from_string(compression_option: Option<&str>) -> Compression {
     match compression_option {
         Some(option) => match option {
-            "snappy" => CompressionOptions::Snappy,
-            "gzip" => CompressionOptions::Gzip(None),
-            "lzo" => CompressionOptions::Lzo,
-            "brotli" => CompressionOptions::Brotli(None),
-            "lz4" => CompressionOptions::Lz4,
-            "lz4raw" => CompressionOptions::Lz4Raw,
-            _ => CompressionOptions::Uncompressed,
+            "snappy" => Compression::SNAPPY,
+            "gzip" => Compression::GZIP(GzipLevel::try_new(6).expect("Wrong Gzip level")),
+            "lzo" => Compression::LZO,
+            "brotli" => Compression::BROTLI(BrotliLevel::try_new(1).expect("Wrong Brotli level")),
+            "lz4" => Compression::LZ4,
+            "lz4raw" => Compression::LZ4_RAW,
+            "zstd" => Compression::ZSTD(ZstdLevel::try_new(1).expect("Wrong Zstd level")),
+            _ => Compression::UNCOMPRESSED,
         },
-        None => CompressionOptions::Uncompressed,
+        None => Compression::UNCOMPRESSED,
     }
 }
 
-/// returns arrow field from cn
+// create
+
+/// Create parquet file name appending Channel Group's master channel
+/// Or if no master existing, add.
+/// Appending at the end of name the . parquet file extension
 #[inline]
-fn cn4_field(mdfinfo4: &MdfInfo4, cn: &Cn4, data_type: DataType, is_nullable: bool) -> Field {
-    let field = Field::new(cn.unique_name.clone(), data_type, is_nullable);
-    let mut metadata = Metadata::new();
+fn create_parquet_writer(
+    file: &str,
+    compression: Compression,
+    finalised_arrow_schema: Schema,
+    master_channel: Option<String>,
+    rec_id: &u64,
+) -> Result<ArrowWriter<BufWriter<File>>, Error> {
+    let base_path = Path::new(file);
+    let mut master_channel_name = match master_channel {
+        Some(name) => name,
+        None => rec_id.to_string(),
+    };
+    master_channel_name.insert(0, '_');
+    let mut file_name = base_path
+        .file_name()
+        .context("no given file name")?
+        .to_os_string();
+    file_name.push(master_channel_name);
+    let mut buf_path = base_path.with_file_name(file_name.as_os_str());
+    buf_path.set_extension("parquet");
+    let path = buf_path.into_boxed_path();
+    let file = std::io::BufWriter::new(
+        std::fs::File::create(path.clone())
+            .with_context(|| format!("Failed to create file {:?}", path))?,
+    );
+    let options = WriterProperties::builder()
+        .set_compression(compression)
+        .set_writer_version(WriterVersion::PARQUET_1_0)
+        .set_encoding(Encoding::PLAIN)
+        .set_key_value_metadata(Some(vec![KeyValue::new(
+            "file_name".to_string(),
+            file_name
+                .into_string()
+                .expect("file name contains invalid Unicode data"),
+        )]))
+        .build();
+
+    ArrowWriter::try_new(
+        file,
+        Arc::new(finalised_arrow_schema.clone()),
+        Some(options.clone()),
+    )
+    .with_context(|| {
+        format!(
+            "Failed to write parquet file with schema {:?} and options {:?}",
+            finalised_arrow_schema, options
+        )
+    })
+}
+
+/// create mdf4 channel field
+#[inline]
+fn mdf4_field(mdfinfo4: &MdfInfo4, cn: &Cn4) -> Field {
+    let field = Field::new(
+        cn.unique_name.clone(),
+        cn.data.arrow_data_type().clone(),
+        cn.data.validity().is_some(),
+    );
+    let mut metadata = HashMap::<String, String>::new();
     if let Ok(Some(unit)) = mdfinfo4.sharable.get_tx(cn.block.cn_md_unit) {
-        metadata.insert("unit".to_string(), unit);
+        if !unit.is_empty() {
+            metadata.insert("unit".to_string(), unit);
+        }
     };
     if let Ok(Some(desc)) = mdfinfo4.sharable.get_tx(cn.block.cn_md_comment) {
-        metadata.insert("description".to_string(), desc);
+        if !desc.is_empty() {
+            metadata.insert("description".to_string(), desc);
+        }
     };
-    if let Some((Some(master_channel_name), _dg_pos, (_cg_pos, _rec_idd), (_cn_pos, _rec_pos))) =
-        mdfinfo4.channel_names_set.get(&cn.unique_name)
-    {
-        metadata.insert(
-            "master_channel".to_string(),
-            master_channel_name.to_string(),
-        );
-    }
     if cn.block.cn_type == 4 {
         metadata.insert(
             "sync_channel".to_string(),
@@ -176,101 +314,57 @@ fn cn4_field(mdfinfo4: &MdfInfo4, cn: &Cn4, data_type: DataType, is_nullable: bo
     field.with_metadata(metadata)
 }
 
-/// takes data of channel set from MdfInfo structure and stores in mdf.arrow_data
-fn mdf_data_to_arrow(mdf: &Mdf) -> (Vec<Vec<Box<dyn Array>>>, Schema) {
-    let mut chunk_index: usize = 0;
-    let mut array_index: usize = 0;
-    let mut field_index: usize = 0;
-    let mut arrow_schema = Schema::default();
-    match &mdf.mdf_info {
-        MdfInfo::V4(mdfinfo4) => {
-            let mut arrow_data: Vec<Vec<Box<dyn Array>>> = Vec::with_capacity(mdfinfo4.dg.len());
-            arrow_schema.fields = Vec::<Field>::with_capacity(mdfinfo4.channel_names_set.len());
-            for (_dg_block_position, dg) in mdfinfo4.dg.iter() {
-                let mut channel_names_present_in_dg = HashSet::new();
-                for channel_group in dg.cg.values() {
-                    let cn = channel_group.channel_names.clone();
-                    channel_names_present_in_dg.par_extend(cn);
-                }
-                if !channel_names_present_in_dg.is_empty() {
-                    dg.cg.iter().for_each(|(_rec_id, cg)| {
-                        let is_nullable: bool = cg.block.cg_inval_bytes > 0;
-                        let mut columns =
-                            Vec::<Box<dyn Array>>::with_capacity(cg.channel_names.len());
-                        cg.cn.iter().for_each(|(_rec_pos, cn)| {
-                            if !cn.data.is_empty() {
-                                arrow_schema.fields.push(cn4_field(
-                                    mdfinfo4,
-                                    cn,
-                                    cn.data.arrow_data_type().clone(),
-                                    is_nullable,
-                                ));
-                                columns.push(cn.data.boxed());
-                                array_index += 1;
-                                field_index += 1;
-                            }
-                        });
-                        arrow_data.push(columns);
-                        chunk_index += 1;
-                        array_index = 0;
-                    });
-                }
-            }
-            (arrow_data, arrow_schema)
+/// create mdf3 channel field
+#[inline]
+fn mdf3_field(mdfinfo3: &MdfInfo3, cn: &Cn3) -> Field {
+    let field = Field::new(
+        cn.unique_name.clone(),
+        cn.data.arrow_data_type().clone(),
+        false,
+    );
+    let mut metadata = HashMap::<String, String>::new();
+    if let Some(array) = mdfinfo3.sharable.cc.get(&cn.block1.cn_cc_conversion) {
+        let txt = array.0.cc_unit;
+        let encoding: &'static EncodingRs =
+            to_encoding(mdfinfo3.id_block.id_codepage).unwrap_or(encoding_rs::WINDOWS_1252);
+        let u: String = encoding.decode(&txt).0.into();
+        let unit = u.trim_end_matches(char::from(0)).to_string();
+        if !unit.is_empty() {
+            metadata.insert("unit".to_string(), unit);
         }
-        MdfInfo::V3(mdfinfo3) => {
-            let mut arrow_data: Vec<Vec<Box<dyn Array>>> = Vec::with_capacity(mdfinfo3.dg.len());
-            arrow_schema.fields = Vec::<Field>::with_capacity(mdfinfo3.channel_names_set.len());
-            for (_dg_block_position, dg) in mdfinfo3.dg.iter() {
-                for (_rec_id, cg) in dg.cg.iter() {
-                    let mut columns = Vec::<Box<dyn Array>>::with_capacity(cg.channel_names.len());
-                    for (_rec_pos, cn) in cg.cn.iter() {
-                        if !cn.data.is_empty() {
-                            let field = Field::new(
-                                cn.unique_name.clone(),
-                                cn.data.arrow_data_type().clone(),
-                                false,
-                            );
-                            columns.push(cn.data.boxed());
-                            let mut metadata = Metadata::new();
-                            if let Some(array) =
-                                mdfinfo3.sharable.cc.get(&cn.block1.cn_cc_conversion)
-                            {
-                                let txt = array.0.cc_unit;
-                                let encoding: &'static EncodingRs =
-                                    to_encoding(mdfinfo3.id_block.id_codepage)
-                                        .unwrap_or(encoding_rs::WINDOWS_1252);
-                                let u: String = encoding.decode(&txt).0.into();
-                                metadata.insert(
-                                    "unit".to_string(),
-                                    u.trim_end_matches(char::from(0)).to_string(),
-                                );
-                            };
-                            metadata.insert("description".to_string(), cn.description.clone());
-                            if let Some((
-                                Some(master_channel_name),
-                                _dg_pos,
-                                (_cg_pos, _rec_idd),
-                                _cn_pos,
-                            )) = mdfinfo3.channel_names_set.get(&cn.unique_name)
-                            {
-                                metadata.insert(
-                                    "master_channel".to_string(),
-                                    master_channel_name.to_string(),
-                                );
-                            }
-                            let field = field.with_metadata(metadata);
-                            arrow_schema.fields.push(field);
-                            array_index += 1;
-                            field_index += 1;
-                        }
-                    }
-                    arrow_data.push(columns);
-                    chunk_index += 1;
-                    array_index = 0;
-                }
-            }
-            (arrow_data, arrow_schema)
-        }
+    };
+    if !cn.description.is_empty() {
+        metadata.insert("description".to_string(), cn.description.clone());
     }
+    field.with_metadata(metadata)
+}
+
+/// Write columns and fields in parquet file
+#[inline]
+fn write_data(
+    master_channel_name: Option<String>,
+    rec_id: &u64,
+    file_name: &str,
+    compression: Compression,
+    fields: Schema,
+    columns: Vec<Arc<dyn Array>>,
+) -> Result<(), Error> {
+    let record_batch = RecordBatch::try_new(Arc::new(fields.clone()), columns)
+        .context("Failed creating recordbatch")?;
+    let mut writer = create_parquet_writer(
+        file_name,
+        compression,
+        fields,
+        master_channel_name.clone(),
+        rec_id,
+    )
+    .context("failed creating parquet writer")?;
+    writer.write(&record_batch).with_context(|| {
+        format!(
+            "Failed writing recordbatch for record id {}, master channel {:?}",
+            rec_id, master_channel_name
+        )
+    })?;
+    writer.close().context("Failed to write footer")?;
+    Ok(())
 }

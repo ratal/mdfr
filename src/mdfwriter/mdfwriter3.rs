@@ -1,8 +1,8 @@
 //! Converter of mdf version 3.x into mdf version 4.2
+use crate::data_holder::tensor_arrow::Order;
 use crate::mdfinfo::mdfinfo3::{convert_data_type_3to4, Cg3, Cn3, Dg3};
 use crate::mdfreader::{DataSignature, MasterSignature};
 
-use crate::export::tensor::Order::RowMajor;
 use crate::mdfinfo::{
     mdfinfo3::MdfInfo3,
     mdfinfo4::{FhBlock, MdfInfo4},
@@ -39,7 +39,7 @@ pub fn convert3to4(mdf3: &MdfInfo3, file_name: &str) -> Result<MdfInfo4, Error> 
                                     bit_count: bit_count as u32,
                                     byte_count: cn.n_bytes as u32,
                                     ndim: 1,
-                                    shape: (vec![cycle_count; 1], RowMajor),
+                                    shape: (vec![1], Order::RowMajor),
                                 };
                                 let master_signature = MasterSignature {
                                     master_channel: cg.master_channel_name.clone(),
@@ -76,7 +76,7 @@ pub fn convert3to4(mdf3: &MdfInfo3, file_name: &str) -> Result<MdfInfo4, Error> 
                                 bit_count: bit_count as u32,
                                 byte_count: cn.n_bytes as u32,
                                 ndim: 1,
-                                shape: (vec![cycle_count; 1], RowMajor),
+                                shape: (vec![1], Order::RowMajor),
                             };
                             let master_signature = MasterSignature {
                                 master_channel: cg.master_channel_name.clone(),

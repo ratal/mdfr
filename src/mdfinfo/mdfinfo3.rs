@@ -1,12 +1,11 @@
 //! Parsing of file metadata into MdfInfo3 struct
 use anyhow::{Context, Error, Result};
-use arrow2::array::PrimitiveArray;
-use arrow2::buffer::Buffer;
-use arrow2::datatypes::DataType;
+use arrow::array::{UInt16Builder, UInt32Builder, UInt8Builder};
 use binrw::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::NaiveDate;
 use encoding_rs::Encoding;
+use log::info;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::default::Default;
@@ -14,9 +13,9 @@ use std::fmt;
 use std::fs::File;
 use std::io::{prelude::*, Cursor};
 
-use crate::export::tensor::Order;
+use crate::data_holder::channel_data::{data_type_init, ChannelData};
+use crate::data_holder::tensor_arrow::Order;
 use crate::mdfinfo::IdBlock;
-use crate::mdfreader::channel_data::{data_type_init, ChannelData};
 
 use super::sym_buf_reader::SymBufReader;
 
@@ -97,7 +96,7 @@ impl MdfInfo3 {
         let mut master = None;
         if let Some((m, _dg_pos, (_cg_pos, _rec_idd), _cn_pos)) = self.get_channel_id(channel_name)
         {
-            master = m.clone();
+            master.clone_from(m);
         }
         master
     }
@@ -131,7 +130,7 @@ impl MdfInfo3 {
             let mut channel_list = HashSet::new();
             if let Some(dg) = self.dg.get(dg_pos) {
                 if let Some(cg) = dg.cg.get(rec_id) {
-                    channel_list = cg.channel_names.clone();
+                    channel_list.clone_from(&cg.channel_names);
                 }
             }
             channel_list
@@ -510,6 +509,7 @@ pub fn hd3_parser(
             .unwrap_or_default()
             .and_hms_opt(hd_time.0, hd_time.1, hd_time.2)
             .unwrap_or_default()
+            .and_utc()
             .timestamp_nanos_opt()
             .map(|t| t as u64);
         hd_time_offset = None;
@@ -587,8 +587,11 @@ pub fn parse_tx(
     let mut comment_raw = vec![0; (block_header.hdr_len - 4) as usize];
     rdr.read_exact(&mut comment_raw)
         .context("Could not read comment raw data")?;
-    let comment: String = encoding.decode(&comment_raw).0.into();
-    let comment: String = comment.trim_end_matches(char::from(0)).into();
+    let (comment, _encoding, error_flag) = encoding.decode(&comment_raw);
+    let comment: String = comment.to_string().trim_end_matches(char::from(0)).into();
+    if error_flag {
+        info!("errors reading {}", comment);
+    }
     let position = target as i64 + block_header.hdr_len as i64;
     Ok((block_header, comment, position))
 }
@@ -1001,17 +1004,23 @@ fn parse_cn3_block(
         n_bytes += 1;
     }
 
-    let mut unique_name: String = encoding.decode(&block1.cn_short_name).0.into();
-    unique_name = unique_name.trim_end_matches(char::from(0)).to_string();
+    let (name, _encoding, error_flag) = encoding.decode(&block1.cn_short_name);
+    let mut unique_name = name.to_string().trim_end_matches(char::from(0)).to_string();
     if block2.cn_tx_long_name != 0 {
         // Reads TX long name
         let (_, name, pos) = parse_tx(rdr, block2.cn_tx_long_name, position, encoding)?;
         unique_name = name;
         position = pos;
     }
+    if error_flag {
+        info!("errors reading channel name {}", unique_name);
+    }
 
-    let mut description: String = encoding.decode(&desc).0.into();
-    description = description.trim_end_matches(char::from(0)).to_string();
+    let (desc, _encoding, error_flag) = encoding.decode(&desc);
+    let description = desc.to_string().trim_end_matches(char::from(0)).to_string();
+    if error_flag {
+        info!("errors reading channel description {}", description);
+    }
 
     let mut comment = String::new();
     if block1.cn_tx_comment != 0 {
@@ -1071,7 +1080,7 @@ fn parse_cn3_block(
         unique_name,
         pos_byte_beg,
         n_bytes,
-        data: data_type_init(0, data_type, n_bytes as u32, false)?,
+        data: data_type_init(0, data_type, n_bytes as u32, 1)?,
         endian,
         channel_data_valid: false,
     };
@@ -1122,11 +1131,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Milliseconds"),
         pos_byte_beg,
         n_bytes: 2,
-        data: ChannelData::UInt16(PrimitiveArray::new(
-            DataType::UInt16,
-            Buffer::<u16>::new(),
-            None,
-        )),
+        data: ChannelData::UInt16(UInt16Builder::new()),
         endian: false,
         channel_data_valid: false,
     };
@@ -1145,11 +1150,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Minutes"),
         pos_byte_beg: pos_byte_beg + 2,
         n_bytes: 1,
-        data: ChannelData::UInt8(PrimitiveArray::new(
-            DataType::UInt8,
-            Buffer::<u8>::new(),
-            None,
-        )),
+        data: ChannelData::UInt8(UInt8Builder::new()),
         endian: false,
         channel_data_valid: false,
     };
@@ -1168,11 +1169,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Hours"),
         pos_byte_beg: pos_byte_beg + 3,
         n_bytes: 1,
-        data: ChannelData::UInt8(PrimitiveArray::new(
-            DataType::UInt8,
-            Buffer::<u8>::new(),
-            None,
-        )),
+        data: ChannelData::UInt8(UInt8Builder::new()),
         endian: false,
         channel_data_valid: false,
     };
@@ -1191,11 +1188,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Days"),
         pos_byte_beg: pos_byte_beg + 4,
         n_bytes: 1,
-        data: ChannelData::UInt8(PrimitiveArray::new(
-            DataType::UInt8,
-            Buffer::<u8>::new(),
-            None,
-        )),
+        data: ChannelData::UInt8(UInt8Builder::new()),
         endian: false,
         channel_data_valid: false,
     };
@@ -1214,11 +1207,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Month"),
         pos_byte_beg: pos_byte_beg + 5,
         n_bytes: 1,
-        data: ChannelData::UInt8(PrimitiveArray::new(
-            DataType::UInt8,
-            Buffer::<u8>::new(),
-            None,
-        )),
+        data: ChannelData::UInt8(UInt8Builder::new()),
         endian: false,
         channel_data_valid: false,
     };
@@ -1237,11 +1226,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Years"),
         pos_byte_beg: pos_byte_beg + 7,
         n_bytes: 1,
-        data: ChannelData::UInt8(PrimitiveArray::new(
-            DataType::UInt8,
-            Buffer::<u8>::new(),
-            None,
-        )),
+        data: ChannelData::UInt8(UInt8Builder::new()),
         endian: false,
         channel_data_valid: false,
     };
@@ -1270,11 +1255,7 @@ fn can_open_time(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3) {
         description: String::from("Milliseconds"),
         pos_byte_beg,
         n_bytes: 4,
-        data: ChannelData::UInt32(PrimitiveArray::new(
-            DataType::UInt32,
-            Buffer::<u32>::new(),
-            None,
-        )),
+        data: ChannelData::UInt32(UInt32Builder::new()),
         endian: false,
         channel_data_valid: false,
     };
@@ -1293,11 +1274,7 @@ fn can_open_time(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3) {
         description: String::from("Days"),
         pos_byte_beg: pos_byte_beg + 4,
         n_bytes: 2,
-        data: ChannelData::UInt16(PrimitiveArray::new(
-            DataType::UInt16,
-            Buffer::<u16>::new(),
-            None,
-        )),
+        data: ChannelData::UInt16(UInt16Builder::new()),
         endian: false,
         channel_data_valid: false,
     };
@@ -1728,7 +1705,7 @@ pub fn build_channel_db3(
                 cg_channel_list.insert(cn.unique_name.clone());
                 // assigns master in channel_list
                 if let Some(id) = channel_list.get_mut(&cn.unique_name) {
-                    id.0 = master_channel_name.clone();
+                    id.0.clone_from(&master_channel_name);
                 }
             }
             cg.channel_names = cg_channel_list;

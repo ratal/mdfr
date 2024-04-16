@@ -6,11 +6,10 @@ use encoding_rs::WINDOWS_1252;
 use half::f16;
 use rayon::prelude::*;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::io::Cursor;
-use std::string::String;
-use std::{collections::HashSet, convert::TryInto};
 
-use super::channel_data::ChannelData;
+use crate::data_holder::channel_data::ChannelData;
 
 /// copies data from data_chunk into each channel array
 pub fn read_channels_from_bytes(
@@ -31,22 +30,24 @@ pub fn read_channels_from_bytes(
             let pos_byte_beg = cn.pos_byte_beg as usize;
             let n_bytes = cn.n_bytes as usize;
             match &mut cn.data {
-                ChannelData::Int8(a)  => {
-                    let data = a.get_mut_values().context("Read channels from bytes function could not get mutable values from primitive array i8")?;
+                ChannelData::Int8(a) => {
+                    let data = a.values_slice_mut();
                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
                         value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i8>()];
-                        data[i + previous_index] = i8::from_le_bytes(value.try_into().context("Could not read i8")?);
+                        data[i + previous_index] =
+                            i8::from_le_bytes(value.try_into().context("Could not read i8")?);
                     }
                 }
-                ChannelData::UInt8(a)  => {
-                    let data = a.get_mut_values().context("Read channels from bytes function could not get mutable values from primitive array u8")?;
+                ChannelData::UInt8(a) => {
+                    let data = a.values_slice_mut();
                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
                         value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u8>()];
-                        data[i + previous_index] = u8::from_le_bytes(value.try_into().context("Could not read u8")?);
+                        data[i + previous_index] =
+                            u8::from_le_bytes(value.try_into().context("Could not read u8")?);
                     }
                 }
-                ChannelData::Int16(a)  => {
-                    let data = a.get_mut_values().context("Read channels from bytes function could not get mutable values from primitive array i16")?;
+                ChannelData::Int16(a) => {
+                    let data = a.values_slice_mut();
                     if cn.endian {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             value =
@@ -65,13 +66,13 @@ pub fn read_channels_from_bytes(
                         }
                     }
                 }
-                ChannelData::UInt16(a)  => {
-                    let data = a.get_mut_values().context("Read channels from bytes function could not get mutable values from primitive array u16")?;
+                ChannelData::UInt16(a) => {
+                    let data = a.values_slice_mut();
                     if cn.endian {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             value =
                                 &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u16>()];
-                                data[i + previous_index]  = u16::from_be_bytes(
+                            data[i + previous_index] = u16::from_be_bytes(
                                 value.try_into().context("Could not read be u16")?,
                             );
                         }
@@ -79,15 +80,15 @@ pub fn read_channels_from_bytes(
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             value =
                                 &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u16>()];
-                                data[i + previous_index]  = u16::from_le_bytes(
+                            data[i + previous_index] = u16::from_le_bytes(
                                 value.try_into().context("Could not read le u16")?,
                             );
                         }
                     }
                 }
-                ChannelData::Int32(a)  => {
-                    let data = a.get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array i32, channel {}", cn.unique_name))?;
-                    if  n_bytes == 3 {
+                ChannelData::Int32(a) => {
+                    let data = a.values_slice_mut();
+                    if n_bytes == 3 {
                         if cn.endian {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
@@ -121,8 +122,8 @@ pub fn read_channels_from_bytes(
                         }
                     }
                 }
-                ChannelData::UInt32(a)  => {
-                    let data = a.get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array u32, channel {}", cn.unique_name))?;
+                ChannelData::UInt32(a) => {
+                    let data = a.values_slice_mut();
                     if n_bytes == 3 {
                         if cn.endian {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -157,32 +158,32 @@ pub fn read_channels_from_bytes(
                         }
                     }
                 }
-                ChannelData::Float32(a)  => {
-                    let data = a.get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array f32, channel {}", cn.unique_name))?;
+                ChannelData::Float32(a) => {
+                    let data = a.values_slice_mut();
                     if cn.endian {
                         if n_bytes == 2 {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value =
-                                    &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f16>()];
-                                    data[i + previous_index] = f16::from_be_bytes(
+                                value = &record
+                                    [pos_byte_beg..pos_byte_beg + std::mem::size_of::<f16>()];
+                                data[i + previous_index] = f16::from_be_bytes(
                                     value.try_into().context("Could not read be f16")?,
                                 )
                                 .to_f32();
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value =
-                                    &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f32>()];
-                                    data[i + previous_index] = f32::from_be_bytes(
+                                value = &record
+                                    [pos_byte_beg..pos_byte_beg + std::mem::size_of::<f32>()];
+                                data[i + previous_index] = f32::from_be_bytes(
                                     value.try_into().context("Could not read be f32")?,
                                 );
                             }
                         }
-                    } else if n_bytes ==2 {
+                    } else if n_bytes == 2 {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             value =
                                 &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f16>()];
-                                data[i + previous_index] = f16::from_le_bytes(
+                            data[i + previous_index] = f16::from_le_bytes(
                                 value.try_into().context("Could not read le f16")?,
                             )
                             .to_f32();
@@ -197,8 +198,8 @@ pub fn read_channels_from_bytes(
                         }
                     }
                 }
-                ChannelData::Int64(a)  => {
-                    let data = a.get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array i64, channel {}", cn.unique_name))?;
+                ChannelData::Int64(a) => {
+                    let data = a.values_slice_mut();
                     if cn.endian {
                         if n_bytes == 8 {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -231,8 +232,8 @@ pub fn read_channels_from_bytes(
                         }
                     }
                 }
-                ChannelData::UInt64(a)  => {
-                    let data = a.get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array u64, channel {}", cn.unique_name))?;
+                ChannelData::UInt64(a) => {
+                    let data = a.values_slice_mut();
                     if cn.endian {
                         if n_bytes == 8 {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -271,7 +272,8 @@ pub fn read_channels_from_bytes(
                                 value.try_into().context("Could not read le u64")?,
                             );
                         }
-                    } else  if n_bytes == 7 { // little endian
+                    } else if n_bytes == 7 {
+                        // little endian
                         let mut buf = [0u8; std::mem::size_of::<u64>()];
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             buf[0..7].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + 7]);
@@ -284,7 +286,8 @@ pub fn read_channels_from_bytes(
                                 .read_u48::<LittleEndian>()
                                 .context("Could not read le u48")?;
                         }
-                    } else { // n_bytes = 5
+                    } else {
+                        // n_bytes = 5
                         let mut buf = [0u8; 6];
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             buf[0..5].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + 5]);
@@ -294,27 +297,27 @@ pub fn read_channels_from_bytes(
                         }
                     }
                 }
-                ChannelData::Float64(a)  => {
-                    let data = a.get_mut_values().with_context(|| format!("Read channels from bytes function could not get mutable values from primitive array f64, channel {}", cn.unique_name))?;
+                ChannelData::Float64(a) => {
+                    let data = a.values_slice_mut();
                     if cn.endian {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             value =
                                 &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
                             data[i + previous_index] = f64::from_be_bytes(
-                                    value.try_into().context("Could not read be f64")?,
-                                );
+                                value.try_into().context("Could not read be f64")?,
+                            );
                         }
                     } else {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             value =
                                 &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
                             data[i + previous_index] = f64::from_le_bytes(
-                                    value.try_into().context("Could not read le f64")?,
-                                );
+                                value.try_into().context("Could not read le f64")?,
+                            );
                         }
                     }
                 }
-                ChannelData::Utf8(array)  => {
+                ChannelData::Utf8(array) => {
                     let n_bytes = cn.n_bytes as usize;
                     // SBC ISO-8859-1 to be converted into UTF8
                     let mut decoder = WINDOWS_1252.new_decoder();
@@ -323,29 +326,30 @@ pub fn read_channels_from_bytes(
                         let mut dst = String::with_capacity(value.len());
                         let (_result, _size, _replacement) =
                             decoder.decode_to_string(value, &mut dst, false);
-                        dst = dst.trim_end_matches('\0').to_owned();
-                        array.push(Some(dst));
+                        array.append_value(dst.trim_end_matches('\0'));
                     }
                 }
-                ChannelData::VariableSizeByteArray(array)  => {
+                ChannelData::VariableSizeByteArray(array) => {
                     let n_bytes = cn.n_bytes as usize;
                     for record in data_chunk.chunks(record_length) {
-                        array.push(Some(&record[pos_byte_beg..pos_byte_beg + n_bytes]));
+                        array.append_value(&record[pos_byte_beg..pos_byte_beg + n_bytes]);
                     }
                 }
-                ChannelData::FixedSizeByteArray(a)  => {
+                ChannelData::FixedSizeByteArray(a) => {
                     let n_bytes = cn.n_bytes as usize;
                     for record in data_chunk.chunks(record_length) {
-                        a.push(Some(&record[pos_byte_beg..pos_byte_beg + n_bytes]));
+                        a.append_value(&record[pos_byte_beg..pos_byte_beg + n_bytes])
+                            .context("failed appending new value")?;
                     }
                 }
-                _=> bail!("mdf3 data type array not possible")
+                _ => bail!("mdf3 data type array not possible"),
             }
             // channel was properly read
             cn.channel_data_valid = true;
 
             // Other channel types : virtual channels cn_type 3 & 6 are handled at initialisation
             Ok(())
-        }).context("failed reading channels from bytes")?;
+        })
+        .context("failed reading channels from bytes")?;
     Ok(())
 }
