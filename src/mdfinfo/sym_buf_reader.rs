@@ -20,7 +20,7 @@ where
     R: Read,
 {
     /// Creates a new SymBufReader with a specified `buffer_size`.
-    /// This newly created object wraps another object which is [Read](std::io::Read).
+    /// This newly created object wraps another object which is Read (std::io::Read).
     pub fn new(reader: R) -> Self {
         let buffer = vec![0; DEFAULT_BUF_SIZE];
         Self {

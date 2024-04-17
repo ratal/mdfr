@@ -1228,7 +1228,7 @@ impl ChannelData {
             ChannelData::ArrayDFloat64(a) => a.nulls().is_some(),
         }
     }
-    /// converts the ChannelData into a ArrayRef (alis of Arc<dyn Array>)
+    /// converts the ChannelData into a ArrayRef
     pub fn as_ref(&self) -> Arc<dyn Array> {
         match self {
             ChannelData::Int8(a) => Arc::new(a.finish_cloned()) as ArrayRef,
