@@ -70,9 +70,11 @@ pub fn convert_all_channels(dg: &mut Dg3, sharable: &SharableBlocks3) -> Result<
                             })?
                         }
                         Conversion::TextTable(cc_val_ref) => {
-                            value_to_text(cn, cc_val_ref, &cycle_count).with_context(|| {
-                                format!("value to text conversion failed for {}", cn.unique_name)
-                            })?
+                            if cc_val_ref.len() >0 {
+                                value_to_text(cn, cc_val_ref, &cycle_count).with_context(|| {
+                                    format!("value to text conversion failed for {}", cn.unique_name)
+                                })?
+                            }
                         }
                         Conversion::TextRangeTable(cc_val_ref) => {
                             value_range_to_text(cn, cc_val_ref, &cycle_count).with_context(|| {
@@ -1025,6 +1027,8 @@ where
         let matched_key = cc_val_ref.iter().find(|&x| x.0 == *val);
         if let Some(key) = matched_key {
             new_array.append_value(key.1.clone());
+        } else {
+            new_array.append_value(cc_val_ref[0].1.clone());
         }
     });
     Ok(new_array)
