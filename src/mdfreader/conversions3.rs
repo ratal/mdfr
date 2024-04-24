@@ -11,6 +11,7 @@ use std::collections::BTreeMap;
 
 use crate::data_holder::channel_data::ChannelData;
 use crate::mdfinfo::mdfinfo3::{Cn3, Conversion, Dg3, SharableBlocks3};
+use crate::mdfreader::conversions4::{linear_calculation, rational_calculation};
 use fasteval::Evaler;
 use fasteval::{Compiler, Instruction, Slab};
 use log::warn;
@@ -86,36 +87,6 @@ pub fn convert_all_channels(dg: &mut Dg3, sharable: &SharableBlocks3) -> Result<
     Ok(())
 }
 
-/// Generic function calculating exponential conversion
-#[inline]
-fn linear_calculation<T: ArrowPrimitiveType>(
-    array: &mut PrimitiveBuilder<T>,
-    cc_val: &[f64],
-) -> Result<PrimitiveBuilder<Float64Type>, Error>
-where
-    <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
-    T::Native: NumCast,
-{
-    let p1 = cc_val[0];
-    let p2 = cc_val[1];
-    let array_f64: Float64Array = array
-        .finish()
-        .try_unary(|value| {
-            num::cast::cast::<T::Native, f64>(value).ok_or_else(|| {
-                ArrowError::CastError(format!("Can't cast value {:?} to f64", value,))
-            })
-        })
-        .context("failed converting array to f64")?;
-    let mut out = Float64Builder::with_capacity(array.capacity());
-    out.values_slice_mut()
-        .iter_mut()
-        .zip(array_f64.values())
-        .for_each(|(y, x)| {
-            *y = *x * p2 + p1;
-        });
-    Ok(out)
-}
-
 /// Apply linear conversion to get physical data
 fn linear_conversion(cn: &mut Cn3, cc_val: &[f64]) -> Result<(), Error> {
     let p1 = cc_val[0];
@@ -124,61 +95,61 @@ fn linear_conversion(cn: &mut Cn3, cc_val: &[f64]) -> Result<(), Error> {
         match &mut cn.data {
             ChannelData::UInt8(a) => {
                 cn.data = ChannelData::Float64(
-                    linear_calculation(a, cc_val)
+                    linear_calculation(a, p1, p2)
                         .context("failed linear conversion of u8 channel")?,
                 );
             }
             ChannelData::Int8(a) => {
                 cn.data = ChannelData::Float64(
-                    linear_calculation(a, cc_val)
+                    linear_calculation(a, p1, p2)
                         .context("failed linear conversion of i8 channel")?,
                 );
             }
             ChannelData::Int16(a) => {
                 cn.data = ChannelData::Float64(
-                    linear_calculation(a, cc_val)
+                    linear_calculation(a, p1, p2)
                         .context("failed linear conversion of i16 channel")?,
                 );
             }
             ChannelData::UInt16(a) => {
                 cn.data = ChannelData::Float64(
-                    linear_calculation(a, cc_val)
+                    linear_calculation(a, p1, p2)
                         .context("failed linear conversion of u16 channel")?,
                 );
             }
             ChannelData::Int32(a) => {
                 cn.data = ChannelData::Float64(
-                    linear_calculation(a, cc_val)
+                    linear_calculation(a, p1, p2)
                         .context("failed linear conversion of i32 channel")?,
                 );
             }
             ChannelData::UInt32(a) => {
                 cn.data = ChannelData::Float64(
-                    linear_calculation(a, cc_val)
+                    linear_calculation(a, p1, p2)
                         .context("failed linear conversion of u32 channel")?,
                 );
             }
             ChannelData::Float32(a) => {
                 cn.data = ChannelData::Float64(
-                    linear_calculation(a, cc_val)
+                    linear_calculation(a, p1, p2)
                         .context("failed linear conversion of f32 channel")?,
                 );
             }
             ChannelData::Int64(a) => {
                 cn.data = ChannelData::Float64(
-                    linear_calculation(a, cc_val)
+                    linear_calculation(a, p1, p2)
                         .context("failed linear conversion of i64 channel")?,
                 );
             }
             ChannelData::UInt64(a) => {
                 cn.data = ChannelData::Float64(
-                    linear_calculation(a, cc_val)
+                    linear_calculation(a, p1, p2)
                         .context("failed linear conversion of u64 channel")?,
                 );
             }
             ChannelData::Float64(a) => {
                 cn.data = ChannelData::Float64(
-                    linear_calculation(a, cc_val)
+                    linear_calculation(a, p1, p2)
                         .context("failed linear conversion of f64 channel")?,
                 );
             }
@@ -189,40 +160,6 @@ fn linear_conversion(cn: &mut Cn3, cc_val: &[f64]) -> Result<(), Error> {
         }
     }
     Ok(())
-}
-
-/// Generic function calculating rational conversion
-#[inline]
-fn rational_calculation<T: ArrowPrimitiveType>(
-    array: &mut PrimitiveBuilder<T>,
-    cc_val: &[f64],
-) -> Result<PrimitiveBuilder<Float64Type>, Error>
-where
-    <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
-    T::Native: NumCast,
-{
-    let p1 = cc_val[0];
-    let p2 = cc_val[1];
-    let p3 = cc_val[2];
-    let p4 = cc_val[3];
-    let p5 = cc_val[4];
-    let p6 = cc_val[5];
-    let array_f64: Float64Array = array
-        .finish()
-        .try_unary(|value| {
-            num::cast::cast::<T::Native, f64>(value).ok_or_else(|| {
-                ArrowError::CastError(format!("Can't cast value {:?} to f64", value,))
-            })
-        })
-        .context("failed converting array to f64")?;
-    let mut out = Float64Builder::with_capacity(array.capacity());
-    out.values_slice_mut()
-        .iter_mut()
-        .zip(array_f64.values())
-        .for_each(|(y, x)| {
-            *y = (x * x * p1 + x * p2 + p3) / (x * x * p4 + x * p5 + p6);
-        });
-    Ok(out)
 }
 
 /// Apply rational conversion to get physical data
