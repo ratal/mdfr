@@ -12,6 +12,7 @@ use arrow::datatypes::{
     DataType, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, Int8Type, UInt16Type,
     UInt32Type, UInt64Type, UInt8Type,
 };
+use arrow::util::display::{ArrayFormatter, FormatOptions};
 use itertools::Itertools;
 
 use std::fmt;
@@ -1228,7 +1229,7 @@ impl ChannelData {
             ChannelData::ArrayDFloat64(a) => a.nulls().is_some(),
         }
     }
-    /// converts the ChannelData into a ArrayRef (alis of Arc<dyn Array>)
+    /// converts the ChannelData into a ArrayRef
     pub fn as_ref(&self) -> Arc<dyn Array> {
         match self {
             ChannelData::Int8(a) => Arc::new(a.finish_cloned()) as ArrayRef,
@@ -1698,91 +1699,13 @@ pub fn try_from(value: &dyn Array) -> Result<ChannelData, Error> {
 
 impl fmt::Display for ChannelData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ChannelData::Int8(array) => {
-                writeln!(f, "{array:?}")
-            }
-            ChannelData::UInt8(array) => {
-                writeln!(f, "{array:?}")
-            }
-            ChannelData::Int16(array) => {
-                writeln!(f, "{array:?}")
-            }
-            ChannelData::UInt16(array) => {
-                writeln!(f, "{array:?}")
-            }
-            ChannelData::Int32(array) => {
-                writeln!(f, "{array:?}")
-            }
-            ChannelData::UInt32(array) => {
-                writeln!(f, "{array:?}")
-            }
-            ChannelData::Float32(array) => {
-                writeln!(f, "{array:?}")
-            }
-            ChannelData::Int64(array) => {
-                writeln!(f, "{array:?}")
-            }
-            ChannelData::UInt64(array) => {
-                writeln!(f, "{array:?}")
-            }
-            ChannelData::Float64(array) => {
-                writeln!(f, "{array:?}")
-            }
-            ChannelData::Complex32(array) => {
-                writeln!(f, "{array:?}")
-            }
-            ChannelData::Complex64(array) => {
-                writeln!(f, "{array:?}")
-            }
-            ChannelData::Utf8(array) => {
-                for text in array.values_slice().iter() {
-                    writeln!(f, " {text:?} ")?;
-                }
-                writeln!(f, " ")
-            }
-            ChannelData::VariableSizeByteArray(array) => {
-                for text in array.values_slice().iter() {
-                    writeln!(f, " {text:?} ")?;
-                }
-                writeln!(f, " ")
-            }
-            ChannelData::FixedSizeByteArray(array) => {
-                for text in array.finish_cloned().iter() {
-                    writeln!(f, " {text:?} ")?;
-                }
-                writeln!(f, " ")
-            }
-            ChannelData::ArrayDInt8(array) => {
-                writeln!(f, "{:?}", array)
-            }
-            ChannelData::ArrayDUInt8(array) => {
-                writeln!(f, "{:?}", array)
-            }
-            ChannelData::ArrayDInt16(array) => {
-                writeln!(f, "{:?}", array)
-            }
-            ChannelData::ArrayDUInt16(array) => {
-                writeln!(f, "{:?}", array)
-            }
-            ChannelData::ArrayDInt32(array) => {
-                writeln!(f, "{:?}", array)
-            }
-            ChannelData::ArrayDUInt32(array) => {
-                writeln!(f, "{:?}", array)
-            }
-            ChannelData::ArrayDFloat32(array) => {
-                writeln!(f, "{:?}", array)
-            }
-            ChannelData::ArrayDInt64(array) => {
-                writeln!(f, "{:?}", array)
-            }
-            ChannelData::ArrayDUInt64(array) => {
-                writeln!(f, "{:?}", array)
-            }
-            ChannelData::ArrayDFloat64(array) => {
-                writeln!(f, "{:?}", array)
-            }
+        let format_option = FormatOptions::new();
+        let data = self.as_ref();
+        let displayer =
+            ArrayFormatter::try_new(&data, &format_option).map_err(|_| std::fmt::Error)?;
+        for i in 0..self.len() {
+            write!(f, " {}", displayer.value(i))?;
         }
+        Ok(())
     }
 }

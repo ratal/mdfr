@@ -166,7 +166,7 @@ pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) -> Result<(
 
 /// Generic function calculating linear expression
 #[inline]
-fn linear_conversion_primitive<T: ArrowPrimitiveType>(
+pub fn linear_calculation<T: ArrowPrimitiveType>(
     array: &mut PrimitiveBuilder<T>,
     p1: f64,
     p2: f64,
@@ -199,81 +199,81 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
         match &mut cn.data {
             ChannelData::UInt8(a) => {
                 cn.data = ChannelData::Float64(
-                    linear_conversion_primitive(a, p1, p2)
+                    linear_calculation(a, p1, p2)
                         .context("failed linear conversion of u8 channel")?,
                 );
             }
             ChannelData::Int8(a) => {
                 cn.data = ChannelData::Float64(
-                    linear_conversion_primitive(a, p1, p2)
+                    linear_calculation(a, p1, p2)
                         .context("failed linear conversion of i8 channel")?,
                 );
             }
             ChannelData::Int16(a) => {
                 cn.data = ChannelData::Float64(
-                    linear_conversion_primitive(a, p1, p2)
+                    linear_calculation(a, p1, p2)
                         .context("failed linear conversion of i16 channel")?,
                 );
             }
             ChannelData::UInt16(a) => {
                 cn.data = ChannelData::Float64(
-                    linear_conversion_primitive(a, p1, p2)
+                    linear_calculation(a, p1, p2)
                         .context("failed linear conversion of u16 channel")?,
                 );
             }
             ChannelData::Int32(a) => {
                 cn.data = ChannelData::Float64(
-                    linear_conversion_primitive(a, p1, p2)
+                    linear_calculation(a, p1, p2)
                         .context("failed linear conversion of i32 channel")?,
                 );
             }
             ChannelData::UInt32(a) => {
                 cn.data = ChannelData::Float64(
-                    linear_conversion_primitive(a, p1, p2)
+                    linear_calculation(a, p1, p2)
                         .context("failed linear conversion of u32 channel")?,
                 );
             }
             ChannelData::Float32(a) => {
                 cn.data = ChannelData::Float64(
-                    linear_conversion_primitive(a, p1, p2)
+                    linear_calculation(a, p1, p2)
                         .context("failed linear conversion of f32 channel")?,
                 );
             }
             ChannelData::Int64(a) => {
                 cn.data = ChannelData::Float64(
-                    linear_conversion_primitive(a, p1, p2)
+                    linear_calculation(a, p1, p2)
                         .context("failed linear conversion of u16 channel")?,
                 );
             }
             ChannelData::UInt64(a) => {
                 cn.data = ChannelData::Float64(
-                    linear_conversion_primitive(a, p1, p2)
+                    linear_calculation(a, p1, p2)
                         .context("failed linear conversion of u64 channel")?,
                 );
             }
             ChannelData::Float64(a) => {
                 cn.data = ChannelData::Float64(
-                    linear_conversion_primitive(a, p1, p2)
+                    linear_calculation(a, p1, p2)
                         .context("failed linear conversion of f64 channel")?,
                 );
             }
             ChannelData::Complex32(a) => {
                 cn.data = ChannelData::Complex64(ComplexArrow::new_from_primitive(
-                    linear_conversion_primitive(a.values(), p1, p2)
+                    linear_calculation(a.values(), p1, p2)
                         .context("failed linear conversion of complex f32 channel")?,
                     a.nulls(),
                 ));
             }
             ChannelData::Complex64(a) => {
                 cn.data = ChannelData::Complex64(ComplexArrow::new_from_primitive(
-                    linear_conversion_primitive(a.values(), p1, p2)
+                    linear_calculation(a.values(), p1, p2)
                         .context("failed linear conversion of complex f64 channel")?,
                     a.nulls(),
                 ));
             }
             ChannelData::ArrayDUInt8(a) => {
                 cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                    linear_conversion_primitive(a.values(), p1, p2)
+                    linear_calculation(a.values(), p1, p2)
                         .context("failed linear conversion of tensor u8 channel")?,
                     a.nulls(),
                     a.shape().clone(),
@@ -282,7 +282,7 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
             }
             ChannelData::ArrayDInt8(a) => {
                 cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                    linear_conversion_primitive(a.values(), p1, p2)
+                    linear_calculation(a.values(), p1, p2)
                         .context("failed linear conversion of tensor i8 channel")?,
                     a.nulls(),
                     a.shape().clone(),
@@ -291,7 +291,7 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
             }
             ChannelData::ArrayDInt16(a) => {
                 cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                    linear_conversion_primitive(a.values(), p1, p2)
+                    linear_calculation(a.values(), p1, p2)
                         .context("failed linear conversion of tensor i16 channel")?,
                     a.nulls(),
                     a.shape().clone(),
@@ -300,7 +300,7 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
             }
             ChannelData::ArrayDUInt16(a) => {
                 cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                    linear_conversion_primitive(a.values(), p1, p2)
+                    linear_calculation(a.values(), p1, p2)
                         .context("failed linear conversion of tensor u16 channel")?,
                     a.nulls(),
                     a.shape().clone(),
@@ -309,7 +309,7 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
             }
             ChannelData::ArrayDInt32(a) => {
                 cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                    linear_conversion_primitive(a.values(), p1, p2)
+                    linear_calculation(a.values(), p1, p2)
                         .context("failed linear conversion of tensor i32 channel")?,
                     a.nulls(),
                     a.shape().clone(),
@@ -318,7 +318,7 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
             }
             ChannelData::ArrayDUInt32(a) => {
                 cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                    linear_conversion_primitive(a.values(), p1, p2)
+                    linear_calculation(a.values(), p1, p2)
                         .context("failed linear conversion of tensor u16 channel")?,
                     a.nulls(),
                     a.shape().clone(),
@@ -327,7 +327,7 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
             }
             ChannelData::ArrayDFloat32(a) => {
                 cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                    linear_conversion_primitive(a.values(), p1, p2)
+                    linear_calculation(a.values(), p1, p2)
                         .context("failed linear conversion of tensor f32 channel")?,
                     a.nulls(),
                     a.shape().clone(),
@@ -336,7 +336,7 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
             }
             ChannelData::ArrayDInt64(a) => {
                 cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                    linear_conversion_primitive(a.values(), p1, p2)
+                    linear_calculation(a.values(), p1, p2)
                         .context("failed linear conversion of tensor i64 channel")?,
                     a.nulls(),
                     a.shape().clone(),
@@ -345,7 +345,7 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
             }
             ChannelData::ArrayDUInt64(a) => {
                 cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                    linear_conversion_primitive(a.values(), p1, p2)
+                    linear_calculation(a.values(), p1, p2)
                         .context("failed linear conversion of tensor u64 channel")?,
                     a.nulls(),
                     a.shape().clone(),
@@ -354,7 +354,7 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
             }
             ChannelData::ArrayDFloat64(a) => {
                 cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                    linear_conversion_primitive(a.values(), p1, p2)
+                    linear_calculation(a.values(), p1, p2)
                         .context("failed linear conversion of tensor f64 channel")?,
                     a.nulls(),
                     a.shape().clone(),
@@ -372,7 +372,7 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
 
 /// Generic function calculating rational expression for a primitive
 #[inline]
-fn rational_conversion_primitive<T: ArrowPrimitiveType>(
+pub fn rational_calculation<T: ArrowPrimitiveType>(
     array: &PrimitiveBuilder<T>,
     cc_val: &[f64],
 ) -> Result<PrimitiveBuilder<Float64Type>, Error>
@@ -403,81 +403,81 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
     match &mut cn.data {
         ChannelData::UInt8(a) => {
             cn.data = ChannelData::Float64(
-                rational_conversion_primitive(a, cc_val)
+                rational_calculation(a, cc_val)
                     .context("failed rational conversion of u8 channel")?,
             );
         }
         ChannelData::Int8(a) => {
             cn.data = ChannelData::Float64(
-                rational_conversion_primitive(a, cc_val)
+                rational_calculation(a, cc_val)
                     .context("failed rational conversion of i8 channel")?,
             );
         }
         ChannelData::Int16(a) => {
             cn.data = ChannelData::Float64(
-                rational_conversion_primitive(a, cc_val)
+                rational_calculation(a, cc_val)
                     .context("failed rational conversion of i16 channel")?,
             );
         }
         ChannelData::UInt16(a) => {
             cn.data = ChannelData::Float64(
-                rational_conversion_primitive(a, cc_val)
+                rational_calculation(a, cc_val)
                     .context("failed rational conversion of u16 channel")?,
             );
         }
         ChannelData::Int32(a) => {
             cn.data = ChannelData::Float64(
-                rational_conversion_primitive(a, cc_val)
+                rational_calculation(a, cc_val)
                     .context("failed rational conversion of i32 channel")?,
             );
         }
         ChannelData::UInt32(a) => {
             cn.data = ChannelData::Float64(
-                rational_conversion_primitive(a, cc_val)
+                rational_calculation(a, cc_val)
                     .context("failed rational conversion of u32 channel")?,
             );
         }
         ChannelData::Float32(a) => {
             cn.data = ChannelData::Float64(
-                rational_conversion_primitive(a, cc_val)
+                rational_calculation(a, cc_val)
                     .context("failed rational conversion of f32 channel")?,
             );
         }
         ChannelData::Int64(a) => {
             cn.data = ChannelData::Float64(
-                rational_conversion_primitive(a, cc_val)
+                rational_calculation(a, cc_val)
                     .context("failed rational conversion of i64 channel")?,
             );
         }
         ChannelData::UInt64(a) => {
             cn.data = ChannelData::Float64(
-                rational_conversion_primitive(a, cc_val)
+                rational_calculation(a, cc_val)
                     .context("failed rational conversion of u64 channel")?,
             );
         }
         ChannelData::Float64(a) => {
             cn.data = ChannelData::Float64(
-                rational_conversion_primitive(a, cc_val)
+                rational_calculation(a, cc_val)
                     .context("failed rational conversion of f64 channel")?,
             );
         }
         ChannelData::Complex32(a) => {
             cn.data = ChannelData::Complex64(ComplexArrow::new_from_primitive(
-                rational_conversion_primitive(a.values(), cc_val)
+                rational_calculation(a.values(), cc_val)
                     .context("failed rational conversion of complex f32 channel")?,
                 a.nulls(),
             ));
         }
         ChannelData::Complex64(a) => {
             cn.data = ChannelData::Complex64(ComplexArrow::new_from_primitive(
-                rational_conversion_primitive(a.values(), cc_val)
+                rational_calculation(a.values(), cc_val)
                     .context("failed rational conversion of complex f64 channel")?,
                 a.nulls(),
             ));
         }
         ChannelData::ArrayDUInt8(a) => {
             cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                rational_conversion_primitive(a.values(), cc_val)
+                rational_calculation(a.values(), cc_val)
                     .context("failed rational conversion of u8 tensor channel")?,
                 a.nulls(),
                 a.shape().clone(),
@@ -486,7 +486,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
         }
         ChannelData::ArrayDInt8(a) => {
             cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                rational_conversion_primitive(a.values(), cc_val)
+                rational_calculation(a.values(), cc_val)
                     .context("failed rational conversion of i8 tensor channel")?,
                 a.nulls(),
                 a.shape().clone(),
@@ -495,7 +495,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
         }
         ChannelData::ArrayDInt16(a) => {
             cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                rational_conversion_primitive(a.values(), cc_val)
+                rational_calculation(a.values(), cc_val)
                     .context("failed rational conversion of i16 tensor channel")?,
                 a.nulls(),
                 a.shape().clone(),
@@ -504,7 +504,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
         }
         ChannelData::ArrayDUInt16(a) => {
             cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                rational_conversion_primitive(a.values(), cc_val)
+                rational_calculation(a.values(), cc_val)
                     .context("failed rational conversion of u16 tensor channel")?,
                 a.nulls(),
                 a.shape().clone(),
@@ -513,7 +513,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
         }
         ChannelData::ArrayDInt32(a) => {
             cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                rational_conversion_primitive(a.values(), cc_val)
+                rational_calculation(a.values(), cc_val)
                     .context("failed rational conversion of i32 tensor channel")?,
                 a.nulls(),
                 a.shape().clone(),
@@ -522,7 +522,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
         }
         ChannelData::ArrayDUInt32(a) => {
             cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                rational_conversion_primitive(a.values(), cc_val)
+                rational_calculation(a.values(), cc_val)
                     .context("failed rational conversion of u32 tensor channel")?,
                 a.nulls(),
                 a.shape().clone(),
@@ -531,7 +531,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
         }
         ChannelData::ArrayDFloat32(a) => {
             cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                rational_conversion_primitive(a.values(), cc_val)
+                rational_calculation(a.values(), cc_val)
                     .context("failed rational conversion of f32 tensor channel")?,
                 a.nulls(),
                 a.shape().clone(),
@@ -540,7 +540,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
         }
         ChannelData::ArrayDInt64(a) => {
             cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                rational_conversion_primitive(a.values(), cc_val)
+                rational_calculation(a.values(), cc_val)
                     .context("failed rational conversion of i64 tensor channel")?,
                 a.nulls(),
                 a.shape().clone(),
@@ -549,7 +549,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
         }
         ChannelData::ArrayDUInt64(a) => {
             cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                rational_conversion_primitive(a.values(), cc_val)
+                rational_calculation(a.values(), cc_val)
                     .context("failed rational conversion of u64 tensor channel")?,
                 a.nulls(),
                 a.shape().clone(),
@@ -558,7 +558,7 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
         }
         ChannelData::ArrayDFloat64(a) => {
             cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                rational_conversion_primitive(a.values(), cc_val)
+                rational_calculation(a.values(), cc_val)
                     .context("failed rational conversion of f64 tensor channel")?,
                 a.nulls(),
                 a.shape().clone(),

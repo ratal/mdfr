@@ -7,6 +7,7 @@ use crate::data_holder::channel_data::ChannelData;
 use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::MasterSignature;
 use crate::mdfreader::Mdf;
+use anyhow::Context;
 use arrow::array::ArrayData;
 use arrow::pyarrow::PyArrowType;
 use arrow::util::display::{ArrayFormatter, FormatOptions};
@@ -47,34 +48,38 @@ impl Mdfr {
         mdf.get_version()
     }
     /// returns channel's data, numpy array or list, depending if data type is numeric or string|bytes
-    fn get_channel_data(&self, channel_name: String) -> Py<PyAny> {
+    fn get_channel_data(&self, channel_name: String) -> PyResult<Py<PyAny>> {
         let Mdfr(mdf) = self;
         // default py_array value is python None
-        pyo3::Python::with_gil(|py| {
+        let data = pyo3::Python::with_gil(|py| -> PyResult<Py<PyAny>> {
             let mut py_array: Py<PyAny>;
             let dt = mdf.get_channel_data(&channel_name);
             if let Some(data) = dt {
                 py_array = data.clone().into_py(py);
                 if let Some(m) = data.clone().validity() {
                     let mask: Py<PyAny> = m.iter().collect::<Vec<bool>>().into_py(py);
-                    let locals = [("numpy", py.import("numpy").expect("could not import numpy"))]
-                        .into_py_dict(py);
+                    let locals = [(
+                        "numpy",
+                        py.import("numpy").context("could not import numpy")?,
+                    )]
+                    .into_py_dict(py);
                     locals
                         .set_item("py_array", &py_array)
-                        .expect("cannot set python data");
+                        .context("cannot set python data")?;
                     locals
                         .set_item("mask", mask)
-                        .expect("cannot set python mask");
+                        .context("cannot set python mask")?;
                     py_array = py
                         .eval(r#"numpy.ma.array(py_array, mask=mask)"#, None, Some(locals))
-                        .expect("masked array creation failed")
+                        .context("masked array creation failed")?
                         .into_py(py);
                 }
             } else {
                 py_array = Python::None(py);
             }
-            py_array
-        })
+            Ok(py_array)
+        })?;
+        Ok(data)
     }
     /// returns channel's numpy dtype
     fn get_channel_dtype(&self, channel_name: String) -> Py<PyAny> {
@@ -125,9 +130,9 @@ impl Mdfr {
     }
     /// returns polar dataframe including channel
     #[cfg(feature = "polars")]
-    fn get_polars_dataframe(&self, channel_name: String) -> Py<PyAny> {
+    fn get_polars_dataframe(&self, channel_name: String) -> PyResult<Py<PyAny>> {
         let Mdfr(mdf) = self;
-        pyo3::Python::with_gil(|py| {
+        Python::with_gil(|py| {
             let mut py_dataframe = Python::None(py);
             let channel_list = mdf.mdf_info.get_channel_names_cg_set(&channel_name);
             let series_dict = PyDict::new(py);
@@ -137,17 +142,17 @@ impl Mdfr {
                         .set_item(
                             channel.clone(),
                             rust_arrow_to_py_series(channel_data.as_ref(), channel)
-                                .expect("Could not convert to python series"),
+                                .context("Could not convert to python series")?,
                         )
-                        .expect("could not store the serie in dict");
+                        .context("could not store the serie in dict")?;
                 }
             }
             if !series_dict.is_empty() {
                 let locals = PyDict::new(py);
                 locals
                     .set_item("series", series_dict)
-                    .expect("cannot set python series_list");
-                py.import("polars").expect("Could import polars");
+                    .context("cannot set python series_list")?;
+                py.import("polars").context("Could import polars")?;
                 py.run(
                     r#"
 import polars
@@ -156,21 +161,21 @@ df=polars.DataFrame(series)
                     None,
                     Some(locals),
                 )
-                .expect("dataframe creation failed");
+                .context("dataframe creation failed")?;
                 if let Ok(Some(df)) = locals.get_item("df") {
                     py_dataframe = df.into();
                 }
             }
-            py_dataframe
+            Ok(py_dataframe)
         })
     }
     /// returns channel's unit string
-    fn get_channel_unit(&self, channel_name: String) -> PyResult<Py<PyAny>> {
+    fn get_channel_unit(&self, channel_name: String) -> PyResult<Option<String>> {
         let Mdfr(mdf) = self;
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::with_gil(|_py| {
             let unit_or_error = mdf.mdf_info.get_channel_unit(&channel_name);
             match unit_or_error {
-                Ok(unit) => Ok(unit.to_object(py)),
+                Ok(unit) => Ok(unit),
                 Err(_) => Err(PyUnicodeDecodeError::new_err(
                     "Invalid UTF-8 sequence in metadata",
                 )),
@@ -178,12 +183,12 @@ df=polars.DataFrame(series)
         })
     }
     /// returns channel's description string
-    fn get_channel_desc(&self, channel_name: String) -> PyResult<Py<PyAny>> {
+    fn get_channel_desc(&self, channel_name: String) -> PyResult<Option<String>> {
         let Mdfr(mdf) = self;
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::with_gil(|_py| {
             let desc_or_error = mdf.mdf_info.get_channel_desc(&channel_name);
             match desc_or_error {
-                Ok(desc) => Ok(desc.to_object(py)),
+                Ok(desc) => Ok(desc),
                 Err(_) => Err(PyUnicodeDecodeError::new_err(
                     "Invalid UTF-8 sequence in metadata",
                 )),
@@ -199,7 +204,7 @@ df=polars.DataFrame(series)
         })
     }
     /// returns channel's master data, numpy array or list, depending if data type is numeric or string|bytes
-    fn get_channel_master_data(&mut self, channel_name: String) -> Py<PyAny> {
+    fn get_channel_master_data(&mut self, channel_name: String) -> PyResult<Py<PyAny>> {
         // default py_array value is python None
         let master = self.get_channel_master(channel_name);
         self.get_channel_data(master.to_string())
@@ -274,7 +279,7 @@ df=polars.DataFrame(series)
         let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|_| -> Result<(), PyErr> {
             let array = array_to_rust(data)
-                .expect("data modification failed, could not extract numpy array");
+                .context("data modification failed, could not extract numpy array")?;
             mdf.add_channel(
                 channel_name,
                 array,
@@ -445,50 +450,54 @@ df=polars.DataFrame(series)
         })
     }
     /// plot one channel
-    pub fn plot(&self, channel_name: String) {
+    pub fn plot(&self, channel_name: String) -> PyResult<()> {
         let Mdfr(mdf) = self;
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::with_gil(|py| -> PyResult<()> {
             let locals = PyDict::new(py);
             locals
                 .set_item("channel_name", &channel_name)
-                .expect("cannot set python channel_name");
+                .context("cannot set python channel_name")?;
             locals
                 .set_item(
                     "channel_unit",
                     mdf.mdf_info.get_channel_unit(&channel_name).unwrap_or(None),
                 )
-                .expect("cannot set python channel_unit");
+                .context("cannot set python channel_unit")?;
             if let Some(master_name) = mdf.mdf_info.get_channel_master(&channel_name) {
                 locals
                     .set_item("master_channel_name", &master_name)
-                    .expect("cannot set python master_channel_name");
+                    .context("cannot set python master_channel_name")?;
                 locals
                     .set_item(
                         "master_channel_unit",
                         mdf.mdf_info.get_channel_unit(&master_name).unwrap_or(None),
                     )
-                    .expect("cannot set python master_channel_unit");
-                let data = self.get_channel_data(master_name);
+                    .context("cannot set python master_channel_unit")?;
+                let data = self
+                    .get_channel_data(master_name)
+                    .context("failed getting master channel data")?;
                 locals
                     .set_item("master_data", data)
-                    .expect("cannot set python master_data");
+                    .context("cannot set python master_data")?;
             } else {
                 locals
                     .set_item("master_channel_name", py.None())
-                    .expect("cannot set python master_channel_name");
+                    .context("cannot set python master_channel_name")?;
                 locals
                     .set_item("master_channel_unit", py.None())
-                    .expect("cannot set python master_channel_unit");
+                    .context("cannot set python master_channel_unit")?;
                 locals
                     .set_item("master_data", py.None())
-                    .expect("cannot set python master_data");
+                    .context("cannot set python master_data")?;
             }
-            let data = self.get_channel_data(channel_name);
+            let data = self
+                .get_channel_data(channel_name)
+                .context("failed getting channel data")?;
             locals
                 .set_item("channel_data", data)
-                .expect("cannot set python channel_data");
+                .context("cannot set python channel_data")?;
             py.import("matplotlib")
-                .expect("Could not import matplotlib");
+                .context("Could not import matplotlib")?;
             py.run(
                 r#"
 from matplotlib import pyplot
@@ -508,15 +517,11 @@ pyplot.show()
                 None,
                 Some(locals),
             )
-            .expect("plot python script failed");
+            .context("plot python script failed")?;
+            Ok(())
         })
     }
-    // /// export to Parquet file
-    // pub fn export_to_parquet(&mut self, file_name: &str, compression_option: Option<&str>) {
-    //     let Mdfr(mdf) = self;
-    //     mdf.export_to_parquet(file_name, compression_option)
-    //         .expect("could not export to parquet")
-    // }
+    /// display a representation of mdfinfo object content
     fn __repr__(&mut self) -> PyResult<String> {
         let mut output: String;
         let format_option = FormatOptions::new();
@@ -528,50 +533,58 @@ pyplot.show()
                     "Header :\n Author: {}  Organisation:{}",
                     mdfinfo3.hd_block.hd_author, mdfinfo3.hd_block.hd_organization
                 )
-                .expect("cannot print author and organisation");
+                .context("cannot print author and organisation")?;
                 writeln!(
                     output,
                     "Project: {}  Subject:{}",
                     mdfinfo3.hd_block.hd_project, mdfinfo3.hd_block.hd_subject
                 )
-                .expect("cannot print project and subject");
+                .context("cannot print project and subject")?;
                 writeln!(
                     output,
                     "Date: {:?}  Time:{:?}",
                     mdfinfo3.hd_block.hd_date, mdfinfo3.hd_block.hd_time
                 )
-                .expect("cannot print date and time");
-                write!(output, "Comments: {}", mdfinfo3.hd_comment).expect("cannot print comments");
+                .context("cannot print date and time")?;
+                write!(output, "Comments: {}", mdfinfo3.hd_comment)
+                    .context("cannot print comments")?;
                 for (master, list) in mdfinfo3.get_master_channel_names_set().iter() {
                     if let Some(master_name) = master {
                         writeln!(output, "\nMaster: {master_name}")
-                            .expect("cannot print master channel name");
+                            .context("cannot print master channel name")?;
                     } else {
                         writeln!(output, "\nWithout Master channel")
-                            .expect("cannot print thre is no master channel");
+                            .context("cannot print thre is no master channel")?;
                     }
                     for channel in list.iter() {
-                        let unit = self.get_channel_unit(channel.to_string())?;
-                        let desc = self.get_channel_desc(channel.to_string())?;
-                        write!(output, " {channel} ").expect("cannot print channel name");
+                        let unit = self
+                            .get_channel_unit(channel.to_string())
+                            .context("failed printing channel unit")?
+                            .unwrap_or_default();
+                        let desc = self
+                            .get_channel_desc(channel.to_string())
+                            .context("failed printing channel description")?
+                            .unwrap_or_default();
+                        write!(output, " {channel} ").context("cannot print channel name")?;
                         if let Some(data) = self.0.get_channel_data(channel) {
                             if !data.is_empty() {
                                 let array = &data.as_ref();
                                 let displayer = ArrayFormatter::try_new(array, &format_option)
-                                    .expect("failed creating formatter for arrow array");
+                                    .context("failed creating formatter for arrow array")?;
                                 write!(&mut output, "{}", displayer.value(0))
-                                    .expect("failed writing first value of array");
-                                write!(output, " ").expect("cannot print simple space character");
+                                    .context("failed writing first value of array")?;
+                                write!(output, " ")
+                                    .context("cannot print simple space character")?;
                                 write!(&mut output, "{}", displayer.value(data.len() - 1))
-                                    .expect("failed writing last value of array");
+                                    .context("failed writing last value of array")?;
                             }
                             writeln!(
                                 output,
-                                " {unit} {desc} "
-                            ).expect("cannot print channel unit and description with first and last item");
+                                " {:?} {:?} ",unit, desc
+                            ).context("cannot print channel unit and description with first and last item")?;
                         } else {
-                            writeln!(output, " {unit} {desc} ")
-                                .expect("cannot print channel unit and description");
+                            writeln!(output, " {:?} {:?} ", unit, desc)
+                                .context("cannot print channel unit and description")?;
                         }
                     }
                 }
@@ -579,44 +592,50 @@ pyplot.show()
             }
             MdfInfo::V4(mdfinfo4) => {
                 output = format!("Version : {}\n", mdfinfo4.id_block.id_ver);
-                writeln!(output, "{}", mdfinfo4.hd_block).expect("cannot print header block");
+                writeln!(output, "{}", mdfinfo4.hd_block).context("cannot print header block")?;
                 let comments = &mdfinfo4
                     .sharable
                     .get_comments(mdfinfo4.hd_block.hd_md_comment);
                 for c in comments.iter() {
-                    writeln!(output, "{} {}", c.0, c.1).expect("cannot print header comments");
+                    writeln!(output, "{} {}", c.0, c.1).context("cannot print header comments")?;
                 }
                 for (master, list) in mdfinfo4.get_master_channel_names_set().iter() {
                     if let Some(master_name) = master {
                         writeln!(output, "\nMaster: {master_name}")
-                            .expect("cannot print master channel name");
+                            .context("cannot print master channel name")?;
                     } else {
                         writeln!(output, "\nWithout Master channel")
-                            .expect("cannot print thre is no master channel");
+                            .context("cannot print thre is no master channel")?;
                     }
                     for channel in list.iter() {
-                        let unit = self.get_channel_unit(channel.to_string())?;
-                        let desc = self.get_channel_desc(channel.to_string())?;
-                        write!(output, " {channel} ").expect("cannot print channel name");
+                        let unit = self
+                            .get_channel_unit(channel.to_string())
+                            .context("failed printing channel unit")?
+                            .unwrap_or_default();
+                        let desc = self
+                            .get_channel_desc(channel.to_string())
+                            .context("failed printing channel description")?
+                            .unwrap_or_default();
+                        write!(output, " {channel} ").context("cannot print channel name")?;
                         if let Some(data) = self.0.get_channel_data(channel) {
                             if !data.is_empty() {
                                 let array = &data.as_ref();
                                 let displayer = ArrayFormatter::try_new(array, &format_option)
-                                    .expect("failed creating formatter for arrow array");
+                                    .context("failed creating formatter for arrow array")?;
                                 write!(&mut output, "{}", displayer.value(0))
-                                    .expect("cannot print channel data");
+                                    .context("cannot print channel data")?;
                                 write!(output, " .. ")
-                                    .expect("cannot print simple space character");
+                                    .context("cannot print simple space character")?;
                                 write!(&mut output, "{}", displayer.value(data.len() - 1))
-                                    .expect("cannot channel data");
+                                    .context("cannot channel data")?;
                             }
                             writeln!(
                                 output,
-                                " {unit} {desc} "
-                            ).expect("cannot print channel unit and description with first and last item");
+                                " {:?} {:?} ",unit, desc
+                            ).context("cannot print channel unit and description with first and last item")?;
                         } else {
-                            writeln!(output, " {unit} {desc} ")
-                                .expect("cannot print channel unit and description");
+                            writeln!(output, " {:?} {:?} ", unit, desc)
+                                .context("cannot print channel unit and description")?;
                         }
                     }
                 }

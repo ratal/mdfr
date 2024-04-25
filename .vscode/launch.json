@@ -53,7 +53,7 @@
                 }
             },
             "args": [
-                "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/Simple/test.mf4"
+                "/home/ratal/workspace/mdfreader/mdfreader/tests/mdf3/TGT.dat"
             ],
             "cwd": "${workspaceFolder}"
         },

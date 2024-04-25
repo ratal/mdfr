@@ -1,6 +1,6 @@
 [package]
 name = "mdfr"
-version = "0.6.0"
+version = "0.6.1"
 description = "A package for reading and writing MDF files"
 authors = ["ratal <ratal@ratal.org>"]
 edition = "2021"
@@ -63,6 +63,7 @@ optional = true
 [dev-dependencies]
 criterion = "0.5" # for benchmark
 test-log = "*"
+glob = "*"
 
 [build-dependencies]
 cbindgen = "0.26" # to generate C api headers
