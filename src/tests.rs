@@ -10,6 +10,7 @@ mod tests {
 
     use crate::data_holder::channel_data::ChannelData;
     use crate::mdfreader::Mdf;
+    use glob::glob;
     use std::fs;
     use std::io;
     use std::path::Path;
@@ -18,6 +19,7 @@ mod tests {
 
     static BASE_PATH_MDF4: &str = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/";
     static BASE_PATH_MDF3: &str = "/home/ratal/workspace/mdfreader/mdfreader/tests/mdf3/";
+    static BASE_TEST_PATH: &str = "/home/ratal/workspace/mdfr/test_files";
     static WRITING_MDF_FILE: &str = "/home/ratal/workspace/mdfr/test_files/test.mf4";
     static WRITING_PARQUET_FILE: &str = "/home/ratal/workspace/mdfr/test_files/test_parquet";
 
@@ -1172,6 +1174,7 @@ mod tests {
             "{}{}",
             BASE_PATH_MDF4, &"Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
         );
+        let extension = "*.parquet";
         let mut mdf = Mdf::new(&file)?;
         mdf.load_all_channels_data_in_memory()?;
         mdf.export_to_parquet(&WRITING_PARQUET_FILE, Some("zstd"))
@@ -1184,7 +1187,12 @@ mod tests {
         let mut mdf = Mdf::new(&file)?;
         mdf.load_all_channels_data_in_memory()?;
         mdf.export_to_parquet(&WRITING_PARQUET_FILE, Some("snappy"))
-            .expect("failed writing mdf4 parquet file");
+            .expect("failed writing mdf3 parquet file");
+        // remove all generated parquet files
+        let pattern = format!("{}/{}", BASE_TEST_PATH, extension);
+        for path in glob(&pattern).unwrap().filter_map(Result::ok) {
+            fs::remove_file(path)?;
+        }
         Ok(())
     }
 }
