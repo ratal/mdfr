@@ -70,7 +70,7 @@ pub fn convert_all_channels(dg: &mut Dg3, sharable: &SharableBlocks3) -> Result<
                             })?
                         }
                         Conversion::TextTable(cc_val_ref) => {
-                            if cc_val_ref.len() >0 {
+                            if !cc_val_ref.is_empty() {
                                 value_to_text(cn, cc_val_ref, &cycle_count).with_context(|| {
                                     format!("value to text conversion failed for {}", cn.unique_name)
                                 })?
