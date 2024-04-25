@@ -580,10 +580,10 @@ pyplot.show()
                             }
                             writeln!(
                                 output,
-                                " {} {} ",unit, desc
+                                " {:?} {:?} ",unit, desc
                             ).context("cannot print channel unit and description with first and last item")?;
                         } else {
-                            writeln!(output, " {} {} ", unit, desc)
+                            writeln!(output, " {:?} {:?} ", unit, desc)
                                 .context("cannot print channel unit and description")?;
                         }
                     }
@@ -631,10 +631,10 @@ pyplot.show()
                             }
                             writeln!(
                                 output,
-                                " {} {} ",unit, desc
+                                " {:?} {:?} ",unit, desc
                             ).context("cannot print channel unit and description with first and last item")?;
                         } else {
-                            writeln!(output, " {} {} ", unit, desc)
+                            writeln!(output, " {:?} {:?} ", unit, desc)
                                 .context("cannot print channel unit and description")?;
                         }
                     }

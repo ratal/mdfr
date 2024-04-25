@@ -63,6 +63,7 @@ optional = true
 [dev-dependencies]
 criterion = "0.5" # for benchmark
 test-log = "*"
+glob = "*"
 
 [build-dependencies]
 cbindgen = "0.26" # to generate C api headers
