@@ -1195,4 +1195,32 @@ mod tests {
         }
         Ok(())
     }
+    #[test]
+    fn export_to_hdf5() -> Result<()> {
+        // Export mdf4 to Parquet file
+        let file = format!(
+            "{}{}",
+            BASE_PATH_MDF4, &"Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
+        );
+        let extension = "*.hdf5";
+        let mut mdf = Mdf::new(&file)?;
+        mdf.load_all_channels_data_in_memory()?;
+        mdf.export_to_hdf5(&WRITING_PARQUET_FILE)
+            .expect("failed writing mdf4 parquet file");
+        // Export mdf3 to Parquet file
+        let file = format!(
+            "{}{}",
+            BASE_PATH_MDF3, &"RJ_N16-12-363_BM-15C-0024_228_2_20170116094355_CAN.dat"
+        );
+        let mut mdf = Mdf::new(&file)?;
+        mdf.load_all_channels_data_in_memory()?;
+        mdf.export_to_hdf5(&WRITING_PARQUET_FILE)
+            .expect("failed writing mdf3 parquet file");
+        // remove all generated hdf5 files
+        let pattern = format!("{}/{}", BASE_TEST_PATH, extension);
+        for path in glob(&pattern).unwrap().filter_map(Result::ok) {
+            fs::remove_file(path)?;
+        }
+        Ok(())
+    }
 }

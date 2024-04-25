@@ -357,6 +357,20 @@ df=polars.DataFrame(series)
         mdf.export_dataframe_to_parquet(channel_name, file_name, compression)?;
         Ok(())
     }
+    /// export to hdf5 files
+    #[cfg(feature = "hdf5")]
+    pub fn export_to_hdf5(&self, file_name: &str) -> PyResult<()> {
+        let Mdfr(mdf) = self;
+        mdf.export_to_hdf5(file_name)?;
+        Ok(())
+    }
+    /// export dataframe to Parquet files
+    #[cfg(feature = "parquet")]
+    pub fn export_dataframe_to_hdf5(&self, channel_name: String, file_name: &str) -> PyResult<()> {
+        let Mdfr(mdf) = self;
+        mdf.export_dataframe_to_hdf5(channel_name, file_name)?;
+        Ok(())
+    }
     /// get attachment blocks
     pub fn get_attachment_blocks(&mut self) -> Py<PyAny> {
         let Mdfr(mdf) = self;

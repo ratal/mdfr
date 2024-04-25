@@ -80,7 +80,7 @@ pub fn export_to_parquet(
     Ok(())
 }
 
-/// writes mdf into parquet file
+/// writes a dataframe or channel group defined by a given channel into a parquet file
 pub fn export_dataframe_to_parquet(
     mdf: &Mdf,
     channel_name: &str,
