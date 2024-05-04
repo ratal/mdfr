@@ -1,4 +1,5 @@
 //! tensor arrow array adapted to mdf4 specificities (samples of tensors)
+use anyhow::{Context, Error, Result};
 use arrow::{
     array::{ArrayBuilder, BooleanBufferBuilder, PrimitiveArray, PrimitiveBuilder},
     buffer::{BooleanBuffer, MutableBuffer},
@@ -7,6 +8,8 @@ use arrow::{
         UInt16Type, UInt32Type, UInt64Type, UInt8Type,
     },
 };
+#[cfg(feature = "ndarray")]
+use ndarray::{Array, IxDyn};
 
 /// Tensor with innner arrow primitive builder
 #[derive(Debug)]
@@ -19,7 +22,7 @@ pub struct TensorArrow<T: ArrowPrimitiveType> {
     len: usize,
     /// shape of tensor
     shape: Vec<usize>,
-    /// order of tesnor, row or column major
+    /// order of tensor, row or column major
     order: Order,
 }
 
@@ -205,3 +208,30 @@ tensor_arrow_clone!(Int64Type);
 tensor_arrow_clone!(UInt64Type);
 tensor_arrow_clone!(Float32Type);
 tensor_arrow_clone!(Float64Type);
+
+#[macro_export]
+macro_rules! tensor_arrow_to_ndarray {
+    ($arrow_type:ty, $rust_type:ty) => {
+        #[cfg(feature = "ndarray")]
+        impl TensorArrow<$arrow_type> {
+            /// to convert TensorArrow into ndarray
+            pub fn to_ndarray(&self) -> Result<Array<$rust_type, IxDyn>, Error> {
+                let vector: Vec<$rust_type> =
+                    self.values_builder.values_slice().iter().copied().collect();
+                Array::from_shape_vec(IxDyn(self.shape()), vector)
+                    .context("Failed reshaping tensor arrow into ndarray")
+            }
+        }
+    };
+}
+
+tensor_arrow_to_ndarray!(UInt8Type, u8);
+tensor_arrow_to_ndarray!(Int8Type, i8);
+tensor_arrow_to_ndarray!(Int16Type, i16);
+tensor_arrow_to_ndarray!(UInt16Type, u16);
+tensor_arrow_to_ndarray!(Int32Type, i32);
+tensor_arrow_to_ndarray!(UInt32Type, u32);
+tensor_arrow_to_ndarray!(Int64Type, i64);
+tensor_arrow_to_ndarray!(UInt64Type, u64);
+tensor_arrow_to_ndarray!(Float32Type, f32);
+tensor_arrow_to_ndarray!(Float64Type, f64);
