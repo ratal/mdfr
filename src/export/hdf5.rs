@@ -24,6 +24,7 @@ pub fn export_to_hdf5(mdf: &Mdf, file_name: &str) -> Result<(), Error> {
     let mut file = File::create(file_name).context("failed creating hdf5 file")?;
     match &mdf.mdf_info {
         MdfInfo::V4(mdfinfo4) => {
+            mdf4_metadata(&mut file, mdfinfo4).context("failed creating metadata for mdf4")?;
             mdfinfo4.dg.iter().try_for_each(
                 |(_dg_block_position, dg): (&i64, &Dg4)| -> Result<(), Error> {
                     dg.cg.iter().try_for_each(
@@ -38,6 +39,7 @@ pub fn export_to_hdf5(mdf: &Mdf, file_name: &str) -> Result<(), Error> {
             )?;
         }
         MdfInfo::V3(mdfinfo3) => {
+            mdf3_metadata(&mut file, mdfinfo3).context("failed creating metadata for mdf3")?;
             for (_dg_block_position, dg) in mdfinfo3.dg.iter() {
                 for (_rec_id, cg) in dg.cg.iter() {
                     mdf3_cg_to_hdf5(&mut file, mdfinfo3, cg)
@@ -58,6 +60,7 @@ pub fn export_dataframe_to_hdf5(
     let mut file = File::create(file_name).context("failed creating hdf5 file")?;
     match &mdf.mdf_info {
         MdfInfo::V4(mdfinfo4) => {
+            mdf4_metadata(&mut file, mdfinfo4).context("failed creating metadata for mdf4")?;
             if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, _rec_pos))) =
                 mdfinfo4.get_channel_id(channel_name)
             {
@@ -71,6 +74,7 @@ pub fn export_dataframe_to_hdf5(
             }
         }
         MdfInfo::V3(mdfinfo3) => {
+            mdf3_metadata(&mut file, mdfinfo3).context("failed creating metadata for mdf3")?;
             if let Some((_master, dg_pos, (_cg_pos, rec_id), _cn_pos)) =
                 mdfinfo3.get_channel_id(channel_name)
             {
@@ -192,6 +196,57 @@ pub fn mdf3_cg_to_hdf5(file: &mut File, mdfinfo3: &MdfInfo3, cg: &Cg3) -> Result
             Ok(())
         })
         .context("failed extracting data")?;
+    Ok(())
+}
+
+fn mdf4_metadata(file: &mut File, mdfinfo4: &MdfInfo4) -> Result<()> {
+    let attr = file
+        .new_attr::<u64>()
+        .create("start_time_ns")
+        .with_context(|| {
+            format!(
+                "failed creating time stamp {} attribute",
+                mdfinfo4.hd_block.hd_start_time_ns
+            )
+        })?;
+    attr.write_scalar(&mdfinfo4.hd_block.hd_start_time_ns)
+        .with_context(|| {
+            format!(
+                "failed writing attribute start_time_ns with value {}",
+                mdfinfo4.hd_block.hd_start_time_ns
+            )
+        })?;
+    Ok(())
+}
+
+fn mdf3_metadata(file: &mut File, mdfinfo3: &MdfInfo3) -> Result<()> {
+    let time = mdfinfo3.hd_block.hd_start_time_ns.unwrap_or(0);
+    let attr = file
+        .new_attr::<u64>()
+        .create("start_time_ns")
+        .with_context(|| format!("failed creating time stamp {} attribute", time))?;
+    attr.write_scalar(&time)
+        .with_context(|| format!("failed writing attribute start_time_ns with value {}", time))?;
+    let attr = file
+        .new_attr::<VarLenUnicode>()
+        .create("Author")
+        .with_context(|| {
+            format!(
+                "failed creating Author attribute {}",
+                mdfinfo3.hd_block.hd_author
+            )
+        })?;
+    let author: VarLenUnicode = mdfinfo3
+        .hd_block
+        .hd_author
+        .parse()
+        .unwrap_or("None".parse().unwrap());
+    attr.write_scalar(&author).with_context(|| {
+        format!(
+            "failed writing attribute author {}",
+            mdfinfo3.hd_block.hd_author
+        )
+    })?;
     Ok(())
 }
 
