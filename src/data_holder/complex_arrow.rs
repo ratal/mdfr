@@ -102,7 +102,7 @@ impl ComplexArrow<Float32Type> {
     /// to convert ComplexArrow into ndarray
     pub fn to_ndarray(&self) -> Result<Array<f32, Ix2>, Error> {
         let vector: Vec<f32> = self.values_builder.values_slice().to_vec();
-        Array::from_shape_vec((vector.len() / 2, 2), vector)
+        Array::from_shape_vec((self.len(), 2), vector)
             .context("Failed reshaping f32 complex arrow into ndarray")
     }
 }
