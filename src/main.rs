@@ -115,6 +115,7 @@ fn main() -> Result<(), Error> {
         }
     }
 
+    #[cfg(feature = "parquet")]
     let parquet_compression = matches.get_one::<String>("parquet_compression");
     #[cfg(feature = "parquet")]
     if let Some(file_name) = parquet_file_name {

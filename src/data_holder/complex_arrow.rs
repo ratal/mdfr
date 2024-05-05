@@ -1,4 +1,5 @@
 //! complex number stored in primitive builders, fixedsizearraybuilder being too restricted
+#[cfg(feature = "ndarray")]
 use anyhow::{Context, Error, Result};
 use arrow::{
     array::{ArrayBuilder, BooleanBufferBuilder, PrimitiveArray, PrimitiveBuilder},

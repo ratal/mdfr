@@ -1,4 +1,5 @@
 //! tensor arrow array adapted to mdf4 specificities (samples of tensors)
+#[cfg(feature = "ndarray")]
 use anyhow::{Context, Error, Result};
 use arrow::{
     array::{ArrayBuilder, BooleanBufferBuilder, PrimitiveArray, PrimitiveBuilder},
@@ -218,7 +219,9 @@ macro_rules! tensor_arrow_to_ndarray {
             pub fn to_ndarray(&self) -> Result<Array<$rust_type, IxDyn>, Error> {
                 let vector: Vec<$rust_type> =
                     self.values_builder.values_slice().iter().copied().collect();
-                Array::from_shape_vec(IxDyn(self.shape()), vector)
+                let mut shape = self.shape().clone();
+                shape.push(self.len());
+                Array::from_shape_vec(IxDyn(&shape), vector)
                     .context("Failed reshaping tensor arrow into ndarray")
             }
         }
