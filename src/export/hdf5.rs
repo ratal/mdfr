@@ -26,8 +26,8 @@ pub fn export_to_hdf5(mdf: &Mdf, file_name: &str) -> Result<(), Error> {
             mdfinfo4.dg.iter().try_for_each(
                 |(_dg_block_position, dg): (&i64, &Dg4)| -> Result<(), Error> {
                     dg.cg.iter().try_for_each(
-                        |(rec_id, cg): (&u64, &Cg4)| -> Result<(), Error> {
-                            mdf4_cg_to_hdf5(&mut file, mdfinfo4, rec_id, cg)
+                        |(_rec_id, cg): (&u64, &Cg4)| -> Result<(), Error> {
+                            mdf4_cg_to_hdf5(&mut file, mdfinfo4, cg)
                                 .context("failed converting Channel Group 4 to hdf5")?;
                             Ok(())
                         },
@@ -38,8 +38,8 @@ pub fn export_to_hdf5(mdf: &Mdf, file_name: &str) -> Result<(), Error> {
         }
         MdfInfo::V3(mdfinfo3) => {
             for (_dg_block_position, dg) in mdfinfo3.dg.iter() {
-                for (rec_id, cg) in dg.cg.iter() {
-                    mdf3_cg_to_hdf5(&mut file, mdfinfo3, rec_id, cg)
+                for (_rec_id, cg) in dg.cg.iter() {
+                    mdf3_cg_to_hdf5(&mut file, mdfinfo3, cg)
                         .context("failed converting Channel Group 3 to hdf5")?;
                 }
             }
@@ -62,7 +62,7 @@ pub fn export_dataframe_to_hdf5(
             {
                 if let Some(dg) = mdfinfo4.dg.get(dg_pos) {
                     if let Some(cg) = dg.cg.get(rec_id) {
-                        mdf4_cg_to_hdf5(&mut file, mdfinfo4, rec_id, cg).context(
+                        mdf4_cg_to_hdf5(&mut file, mdfinfo4, cg).context(
                             "failed converting Channel Group 4 to hdf5 containing channel",
                         )?;
                     }
@@ -75,7 +75,7 @@ pub fn export_dataframe_to_hdf5(
             {
                 if let Some(dg) = mdfinfo3.dg.get(dg_pos) {
                     if let Some(cg) = dg.cg.get(rec_id) {
-                        mdf3_cg_to_hdf5(&mut file, mdfinfo3, rec_id, cg).context(
+                        mdf3_cg_to_hdf5(&mut file, mdfinfo3, cg).context(
                             "failed converting Channel Group 3 to hdf5 containing channel",
                         )?;
                     }
@@ -87,14 +87,14 @@ pub fn export_dataframe_to_hdf5(
 }
 
 /// create a hdf5 file for the given CG4 block
-pub fn mdf4_cg_to_hdf5(file: &mut File, mdfinfo4: &MdfInfo4, rec_id: &u64, cg: &Cg4) -> Result<()> {
+pub fn mdf4_cg_to_hdf5(file: &mut File, mdfinfo4: &MdfInfo4, cg: &Cg4) -> Result<()> {
+    let master_channel = cg
+        .master_channel_name
+        .clone()
+        .unwrap_or(format!("no_master_channel_{}", cg.block_position));
     let group = file
-        .create_group(
-            &cg.master_channel_name
-                .clone()
-                .unwrap_or(format!("no_master_channel_{}", rec_id)),
-        )
-        .with_context(|| format!("failed creating group {:?}", cg.master_channel_name))?;
+        .create_group(&master_channel)
+        .with_context(|| format!("failed creating group {:?}", master_channel))?;
     cg.cn
         .iter()
         .try_for_each(|(_rec_pos, cn): (&i32, &Cn4)| -> Result<(), Error> {
@@ -143,13 +143,13 @@ pub fn mdf4_cg_to_hdf5(file: &mut File, mdfinfo4: &MdfInfo4, rec_id: &u64, cg: &
 }
 
 /// create a hdf5 file for the given CG3 block
-pub fn mdf3_cg_to_hdf5(file: &mut File, mdfinfo3: &MdfInfo3, rec_id: &u16, cg: &Cg3) -> Result<()> {
+pub fn mdf3_cg_to_hdf5(file: &mut File, mdfinfo3: &MdfInfo3, cg: &Cg3) -> Result<()> {
+    let master_channel = cg
+        .master_channel_name
+        .clone()
+        .unwrap_or(format!("no_master_channel_{}", cg.block_position));
     let group = file
-        .create_group(
-            &cg.master_channel_name
-                .clone()
-                .unwrap_or(format!("no_master_channel_{}", rec_id)),
-        )
+        .create_group(&master_channel)
         .with_context(|| format!("failed creating group {:?}", cg.master_channel_name))?;
     cg.cn
         .iter()

@@ -796,7 +796,7 @@ fn parse_cg3_block(
 pub struct Cg3 {
     pub block: Cg3Block,
     pub cn: HashMap<u32, Cn3>, // hashmap of channels
-    block_position: u32,
+    pub block_position: u32,
     pub master_channel_name: Option<String>,
     pub channel_names: HashSet<String>,
     pub record_length: u16, // record length including recordId
