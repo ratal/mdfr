@@ -22,6 +22,7 @@ mod tests {
     static BASE_TEST_PATH: &str = "/home/ratal/workspace/mdfr/test_files";
     static WRITING_MDF_FILE: &str = "/home/ratal/workspace/mdfr/test_files/test.mf4";
     static WRITING_PARQUET_FILE: &str = "/home/ratal/workspace/mdfr/test_files/test_parquet";
+    static WRITING_HDF5_FILE: &str = "/home/ratal/workspace/mdfr/test_files/test_hdf5.hdf5";
 
     #[test]
     fn info_test() -> Result<()> {
@@ -1205,8 +1206,8 @@ mod tests {
         let extension = "*.hdf5";
         let mut mdf = Mdf::new(&file)?;
         mdf.load_all_channels_data_in_memory()?;
-        mdf.export_to_hdf5(&WRITING_PARQUET_FILE)
-            .expect("failed writing mdf4 parquet file");
+        mdf.export_to_hdf5(&WRITING_HDF5_FILE)
+            .expect("failed writing mdf4 hdf5 file");
         // Export mdf3 to Parquet file
         let file = format!(
             "{}{}",
@@ -1214,8 +1215,8 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file)?;
         mdf.load_all_channels_data_in_memory()?;
-        mdf.export_to_hdf5(&WRITING_PARQUET_FILE)
-            .expect("failed writing mdf3 parquet file");
+        mdf.export_to_hdf5(&WRITING_HDF5_FILE)
+            .expect("failed writing mdf3 hdf5 file");
         // remove all generated hdf5 files
         let pattern = format!("{}/{}", BASE_TEST_PATH, extension);
         for path in glob(&pattern).unwrap().filter_map(Result::ok) {
