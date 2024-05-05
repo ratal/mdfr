@@ -6,6 +6,7 @@ use hdf5::{
     types::{VarLenArray, VarLenUnicode},
     Dataset, DatasetBuilder, H5Type,
 };
+use log::info;
 use ndarray::{Array as NdArray, IxDyn};
 
 use crate::mdfreader::Mdf;
@@ -255,7 +256,13 @@ fn convert_channel_data_into_ndarray(
                 .finish_cloned()
                 .iter()
                 .map(|x| match x {
-                    Some(x) => x.parse().unwrap(),
+                    Some(x) => match x.parse() {
+                        Ok(s) => s,
+                        Err(e) => {
+                            info!("failed parsing value {:?}, error {}", x, e);
+                            "null".parse().unwrap()
+                        }
+                    },
                     None => "null".parse().unwrap(),
                 })
                 .collect();
