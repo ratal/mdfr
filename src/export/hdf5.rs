@@ -200,53 +200,67 @@ pub fn mdf3_cg_to_hdf5(file: &mut File, mdfinfo3: &MdfInfo3, cg: &Cg3) -> Result
 }
 
 fn mdf4_metadata(file: &mut File, mdfinfo4: &MdfInfo4) -> Result<()> {
-    let attr = file
-        .new_attr::<u64>()
-        .create("start_time_ns")
-        .with_context(|| {
-            format!(
-                "failed creating time stamp {} attribute",
-                mdfinfo4.hd_block.hd_start_time_ns
-            )
-        })?;
-    attr.write_scalar(&mdfinfo4.hd_block.hd_start_time_ns)
-        .with_context(|| {
-            format!(
-                "failed writing attribute start_time_ns with value {}",
-                mdfinfo4.hd_block.hd_start_time_ns
-            )
-        })?;
+    create_scalar_group_attr::<File, u64>(
+        &file,
+        "start_time_ns",
+        &mdfinfo4.hd_block.hd_start_time_ns,
+    )
+    .with_context(|| {
+        format!(
+            "failed writing attribute start_time_ns with value {}",
+            mdfinfo4.hd_block.hd_start_time_ns
+        )
+    })?;
+    let comments = mdfinfo4
+        .sharable
+        .get_hd_comments(mdfinfo4.hd_block.hd_md_comment);
+    comments
+        .iter()
+        .try_for_each(|(name, comment)| -> Result<(), Error> {
+            create_str_group_attr::<File>(&file, name, comment).with_context(|| {
+                format!("failed writing attribute {} with value {}", name, comment,)
+            })?;
+            Ok(())
+        })
+        .context("failed writing hd comments")?;
     Ok(())
 }
 
 fn mdf3_metadata(file: &mut File, mdfinfo3: &MdfInfo3) -> Result<()> {
     let time = mdfinfo3.hd_block.hd_start_time_ns.unwrap_or(0);
-    let attr = file
-        .new_attr::<u64>()
-        .create("start_time_ns")
-        .with_context(|| format!("failed creating time stamp {} attribute", time))?;
-    attr.write_scalar(&time)
+    create_scalar_group_attr::<File, u64>(&file, "start_time_ns", &time)
         .with_context(|| format!("failed writing attribute start_time_ns with value {}", time))?;
-    let attr = file
-        .new_attr::<VarLenUnicode>()
-        .create("Author")
-        .with_context(|| {
+    create_str_group_attr::<File>(&file, "Author", &mdfinfo3.hd_block.hd_author).with_context(
+        || {
             format!(
-                "failed creating Author attribute {}",
+                "failed writing attribute author {}",
                 mdfinfo3.hd_block.hd_author
             )
+        },
+    )?;
+    create_str_group_attr::<File>(&file, "Project", &mdfinfo3.hd_block.hd_project).with_context(
+        || {
+            format!(
+                "failed writing attribute project {}",
+                mdfinfo3.hd_block.hd_project
+            )
+        },
+    )?;
+    create_str_group_attr::<File>(&file, "Subject", &mdfinfo3.hd_block.hd_subject).with_context(
+        || {
+            format!(
+                "failed writing attribute subject {}",
+                mdfinfo3.hd_block.hd_subject
+            )
+        },
+    )?;
+    create_str_group_attr::<File>(&file, "Organization", &mdfinfo3.hd_block.hd_organization)
+        .with_context(|| {
+            format!(
+                "failed writing attribute organization {}",
+                mdfinfo3.hd_block.hd_organization
+            )
         })?;
-    let author: VarLenUnicode = mdfinfo3
-        .hd_block
-        .hd_author
-        .parse()
-        .unwrap_or("None".parse().unwrap());
-    attr.write_scalar(&author).with_context(|| {
-        format!(
-            "failed writing attribute author {}",
-            mdfinfo3.hd_block.hd_author
-        )
-    })?;
     Ok(())
 }
 
@@ -258,7 +272,20 @@ where
         .new_attr::<VarLenUnicode>()
         .create(name)
         .with_context(|| format!("failed creating attribute {}", name))?;
-    let value: VarLenUnicode = value.parse().unwrap();
+    let value: VarLenUnicode = value.parse().unwrap_or("None".parse().unwrap());
+    attr.write_scalar(&value)
+        .with_context(|| format!("failed writing attribute {} with value {}", name, value))
+}
+
+fn create_str_group_attr<T>(location: &T, name: &str, value: &str) -> Result<()>
+where
+    T: std::ops::Deref<Target = hdf5::Group>,
+{
+    let attr = location
+        .new_attr::<VarLenUnicode>()
+        .create(name)
+        .with_context(|| format!("failed creating attribute {}", name))?;
+    let value: VarLenUnicode = value.parse().unwrap_or("None".parse().unwrap());
     attr.write_scalar(&value)
         .with_context(|| format!("failed writing attribute {} with value {}", name, value))
 }
@@ -266,6 +293,19 @@ where
 fn create_scalar_attr<T, N>(location: &T, name: &str, value: &N) -> Result<()>
 where
     T: std::ops::Deref<Target = hdf5::Container>,
+    N: H5Type + std::fmt::Debug,
+{
+    let attr = location
+        .new_attr::<N>()
+        .create(name)
+        .with_context(|| format!("failed creating attribute {}", name))?;
+    attr.write_scalar(value)
+        .with_context(|| format!("failed writing attribute {} with value {:?}", name, value))
+}
+
+fn create_scalar_group_attr<T, N>(location: &T, name: &str, value: &N) -> Result<()>
+where
+    T: std::ops::Deref<Target = hdf5::Group>,
     N: H5Type + std::fmt::Debug,
 {
     let attr = location
