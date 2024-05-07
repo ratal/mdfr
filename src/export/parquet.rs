@@ -230,8 +230,6 @@ pub fn parquet_compression_from_string(compression_option: Option<&str>) -> Comp
     }
 }
 
-// create
-
 /// Create parquet file name appending Channel Group's master channel
 /// Or if no master existing, add.
 /// Appending at the end of name the . parquet file extension

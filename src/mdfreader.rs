@@ -263,13 +263,18 @@ impl Mdf {
     }
     /// export a dataframe including a given channel to a hdf5 file
     #[cfg(feature = "hdf5")]
-    pub fn export_dataframe_to_hdf5(&self, channel_name: String, file_name: &str) -> Result<()> {
-        export_dataframe_to_hdf5(self, &channel_name, file_name)
+    pub fn export_dataframe_to_hdf5(
+        &self,
+        channel_name: String,
+        file_name: &str,
+        compression: Option<&str>,
+    ) -> Result<()> {
+        export_dataframe_to_hdf5(self, &channel_name, file_name, compression)
     }
     /// export all data to hdf5 file
     #[cfg(feature = "hdf5")]
-    pub fn export_to_hdf5(&self, file_name: &str) -> Result<()> {
-        export_to_hdf5(self, file_name)
+    pub fn export_to_hdf5(&self, file_name: &str, compression: Option<&str>) -> Result<()> {
+        export_to_hdf5(self, file_name, compression)
     }
     /// Writes mdf4 file
     pub fn write(&mut self, file_name: &str, compression: bool) -> Result<Mdf> {

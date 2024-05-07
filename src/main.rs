@@ -75,6 +75,14 @@ fn main() -> Result<(), Error> {
                 .help("Converts mdf into hdf5 file, file name to be given without extension"),
         )
         .arg(
+            Arg::new("hdf5_compression")
+                .long("hdf5_compression")
+                .required(false)
+                .num_args(1)
+                .value_name("FILTER")
+                .help("Compression algorithm for writing data in hdf5 file, valid values are deflate and lzf. Default is uncompressed"),
+        )
+        .arg(
             Arg::new("info")
                 .short('i')
                 .long("file_info")
@@ -129,9 +137,11 @@ fn main() -> Result<(), Error> {
     }
 
     #[cfg(feature = "hdf5")]
+    let hdf5_compression = matches.get_one::<String>("hdf5_compression");
+    #[cfg(feature = "hdf5")]
     if let Some(file_name) = hdf5_file_name {
         mdf_file
-            .export_to_hdf5(file_name)
+            .export_to_hdf5(file_name, hdf5_compression.map(|x| &**x))
             .with_context(|| format!("failed to export into hdf5 file {}", file_name))?;
         info!("Wrote hdf5 file {}", file_name);
     }

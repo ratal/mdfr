@@ -20,8 +20,9 @@ use crate::{
 };
 
 /// writes mdf into hdf5 file
-pub fn export_to_hdf5(mdf: &Mdf, file_name: &str) -> Result<(), Error> {
+pub fn export_to_hdf5(mdf: &Mdf, file_name: &str, compression: Option<&str>) -> Result<(), Error> {
     let mut file = File::create(file_name).context("failed creating hdf5 file")?;
+    let hdf5_compression = hdf5_compression_from_string(compression);
     match &mdf.mdf_info {
         MdfInfo::V4(mdfinfo4) => {
             mdf4_metadata(&mut file, mdfinfo4).context("failed creating metadata for mdf4")?;
@@ -29,7 +30,7 @@ pub fn export_to_hdf5(mdf: &Mdf, file_name: &str) -> Result<(), Error> {
                 |(_dg_block_position, dg): (&i64, &Dg4)| -> Result<(), Error> {
                     dg.cg.iter().try_for_each(
                         |(_rec_id, cg): (&u64, &Cg4)| -> Result<(), Error> {
-                            mdf4_cg_to_hdf5(&mut file, mdfinfo4, cg)
+                            mdf4_cg_to_hdf5(&mut file, mdfinfo4, cg, &hdf5_compression)
                                 .context("failed converting Channel Group 4 to hdf5")?;
                             Ok(())
                         },
@@ -42,7 +43,7 @@ pub fn export_to_hdf5(mdf: &Mdf, file_name: &str) -> Result<(), Error> {
             mdf3_metadata(&mut file, mdfinfo3).context("failed creating metadata for mdf3")?;
             for (_dg_block_position, dg) in mdfinfo3.dg.iter() {
                 for (_rec_id, cg) in dg.cg.iter() {
-                    mdf3_cg_to_hdf5(&mut file, mdfinfo3, cg)
+                    mdf3_cg_to_hdf5(&mut file, mdfinfo3, cg, &hdf5_compression)
                         .context("failed converting Channel Group 3 to hdf5")?;
                 }
             }
@@ -56,8 +57,10 @@ pub fn export_dataframe_to_hdf5(
     mdf: &Mdf,
     channel_name: &str,
     file_name: &str,
+    compression: Option<&str>,
 ) -> Result<(), Error> {
     let mut file = File::create(file_name).context("failed creating hdf5 file")?;
+    let hdf5_compression = hdf5_compression_from_string(compression);
     match &mdf.mdf_info {
         MdfInfo::V4(mdfinfo4) => {
             mdf4_metadata(&mut file, mdfinfo4).context("failed creating metadata for mdf4")?;
@@ -66,7 +69,7 @@ pub fn export_dataframe_to_hdf5(
             {
                 if let Some(dg) = mdfinfo4.dg.get(dg_pos) {
                     if let Some(cg) = dg.cg.get(rec_id) {
-                        mdf4_cg_to_hdf5(&mut file, mdfinfo4, cg).context(
+                        mdf4_cg_to_hdf5(&mut file, mdfinfo4, cg, &hdf5_compression).context(
                             "failed converting Channel Group 4 to hdf5 containing channel",
                         )?;
                     }
@@ -80,7 +83,7 @@ pub fn export_dataframe_to_hdf5(
             {
                 if let Some(dg) = mdfinfo3.dg.get(dg_pos) {
                     if let Some(cg) = dg.cg.get(rec_id) {
-                        mdf3_cg_to_hdf5(&mut file, mdfinfo3, cg).context(
+                        mdf3_cg_to_hdf5(&mut file, mdfinfo3, cg, &hdf5_compression).context(
                             "failed converting Channel Group 3 to hdf5 containing channel",
                         )?;
                     }
@@ -92,7 +95,12 @@ pub fn export_dataframe_to_hdf5(
 }
 
 /// create a hdf5 file for the given CG4 block
-pub fn mdf4_cg_to_hdf5(file: &mut File, mdfinfo4: &MdfInfo4, cg: &Cg4) -> Result<()> {
+pub fn mdf4_cg_to_hdf5(
+    file: &mut File,
+    mdfinfo4: &MdfInfo4,
+    cg: &Cg4,
+    compression: &Hdf5Compression,
+) -> Result<()> {
     let master_channel = cg
         .master_channel_name
         .clone()
@@ -104,7 +112,13 @@ pub fn mdf4_cg_to_hdf5(file: &mut File, mdfinfo4: &MdfInfo4, cg: &Cg4) -> Result
         .iter()
         .try_for_each(|(_rec_pos, cn): (&i32, &Cn4)| -> Result<(), Error> {
             if !cn.data.is_empty() {
-                let builder = group.new_dataset_builder();
+                let builder = match compression {
+                    Hdf5Compression::Deflate(level) => {
+                        group.new_dataset_builder().shuffle().deflate(*level)
+                    }
+                    Hdf5Compression::Lzf => group.new_dataset_builder().shuffle().lzf(),
+                    Hdf5Compression::Uncompressed => group.new_dataset_builder(),
+                };
                 let dataset = convert_channel_data_into_ndarray(builder, &cn.data, &cn.unique_name)
                     .with_context(|| {
                         format!("failed writing channel {} dataset", cn.unique_name)
@@ -148,7 +162,12 @@ pub fn mdf4_cg_to_hdf5(file: &mut File, mdfinfo4: &MdfInfo4, cg: &Cg4) -> Result
 }
 
 /// create a hdf5 file for the given CG3 block
-pub fn mdf3_cg_to_hdf5(file: &mut File, mdfinfo3: &MdfInfo3, cg: &Cg3) -> Result<()> {
+pub fn mdf3_cg_to_hdf5(
+    file: &mut File,
+    mdfinfo3: &MdfInfo3,
+    cg: &Cg3,
+    compression: &Hdf5Compression,
+) -> Result<()> {
     let master_channel = cg
         .master_channel_name
         .clone()
@@ -160,7 +179,13 @@ pub fn mdf3_cg_to_hdf5(file: &mut File, mdfinfo3: &MdfInfo3, cg: &Cg3) -> Result
         .iter()
         .try_for_each(|(_rec_pos, cn): (&u32, &Cn3)| -> Result<(), Error> {
             if !cn.data.is_empty() {
-                let builder = group.new_dataset_builder();
+                let builder = match compression {
+                    Hdf5Compression::Deflate(level) => {
+                        group.new_dataset_builder().shuffle().deflate(*level)
+                    }
+                    Hdf5Compression::Lzf => group.new_dataset_builder().shuffle().lzf(),
+                    Hdf5Compression::Uncompressed => group.new_dataset_builder(),
+                };
                 let dataset = convert_channel_data_into_ndarray(builder, &cn.data, &cn.unique_name)
                     .with_context(|| {
                         format!("failed writing channel {} dataset", cn.unique_name)
@@ -457,4 +482,22 @@ fn convert_channel_data_into_ndarray(
             )
             .create(name)?),
     }
+}
+
+/// converts a clap compression string into a Hdf5Compression enum
+pub fn hdf5_compression_from_string(compression_option: Option<&str>) -> Hdf5Compression {
+    match compression_option {
+        Some(option) => match option {
+            "deflate" => Hdf5Compression::Deflate(8),
+            "lzf" => Hdf5Compression::Lzf,
+            _ => Hdf5Compression::Uncompressed,
+        },
+        None => Hdf5Compression::Uncompressed,
+    }
+}
+
+pub enum Hdf5Compression {
+    Deflate(u8),
+    Lzf,
+    Uncompressed,
 }
