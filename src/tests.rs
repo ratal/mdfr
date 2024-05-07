@@ -1206,7 +1206,7 @@ mod tests {
         let extension = "*.hdf5";
         let mut mdf = Mdf::new(&file)?;
         mdf.load_all_channels_data_in_memory()?;
-        mdf.export_to_hdf5(&WRITING_HDF5_FILE)
+        mdf.export_to_hdf5(&WRITING_HDF5_FILE, Some(&"lzf"))
             .expect("failed writing mdf4 hdf5 file");
         // Export mdf3 to Parquet file
         let file = format!(
@@ -1215,7 +1215,7 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file)?;
         mdf.load_all_channels_data_in_memory()?;
-        mdf.export_to_hdf5(&WRITING_HDF5_FILE)
+        mdf.export_to_hdf5(&WRITING_HDF5_FILE, Some(&"deflate"))
             .expect("failed writing mdf3 hdf5 file");
         // remove all generated hdf5 files
         let pattern = format!("{}/{}", BASE_TEST_PATH, extension);

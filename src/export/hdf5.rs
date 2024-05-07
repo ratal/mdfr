@@ -95,6 +95,7 @@ pub fn export_dataframe_to_hdf5(
 }
 
 /// create a hdf5 file for the given CG4 block
+#[inline]
 pub fn mdf4_cg_to_hdf5(
     file: &mut File,
     mdfinfo4: &MdfInfo4,
@@ -162,6 +163,7 @@ pub fn mdf4_cg_to_hdf5(
 }
 
 /// create a hdf5 file for the given CG3 block
+#[inline]
 pub fn mdf3_cg_to_hdf5(
     file: &mut File,
     mdfinfo3: &MdfInfo3,
@@ -289,6 +291,7 @@ fn mdf3_metadata(file: &mut File, mdfinfo3: &MdfInfo3) -> Result<()> {
     Ok(())
 }
 
+#[inline]
 fn create_str_attr<T>(location: &T, name: &str, value: &str) -> Result<()>
 where
     T: std::ops::Deref<Target = hdf5::Container>,
@@ -302,6 +305,7 @@ where
         .with_context(|| format!("failed writing attribute {} with value {}", name, value))
 }
 
+#[inline]
 fn create_str_group_attr<T>(location: &T, name: &str, value: &str) -> Result<()>
 where
     T: std::ops::Deref<Target = hdf5::Group>,
@@ -315,6 +319,7 @@ where
         .with_context(|| format!("failed writing attribute {} with value {}", name, value))
 }
 
+#[inline]
 fn create_scalar_attr<T, N>(location: &T, name: &str, value: &N) -> Result<()>
 where
     T: std::ops::Deref<Target = hdf5::Container>,
@@ -328,6 +333,7 @@ where
         .with_context(|| format!("failed writing attribute {} with value {:?}", name, value))
 }
 
+#[inline]
 fn create_scalar_group_attr<T, N>(location: &T, name: &str, value: &N) -> Result<()>
 where
     T: std::ops::Deref<Target = hdf5::Group>,
@@ -341,6 +347,7 @@ where
         .with_context(|| format!("failed writing attribute {} with value {:?}", name, value))
 }
 
+#[inline]
 fn convert_channel_data_into_ndarray(
     builder: DatasetBuilder,
     data: &ChannelData,
@@ -485,6 +492,7 @@ fn convert_channel_data_into_ndarray(
 }
 
 /// converts a clap compression string into a Hdf5Compression enum
+#[inline]
 pub fn hdf5_compression_from_string(compression_option: Option<&str>) -> Hdf5Compression {
     match compression_option {
         Some(option) => match option {
