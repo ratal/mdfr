@@ -191,42 +191,82 @@ pub unsafe extern "C" fn get_channel_array(
     }
 }
 
-// / export to Parquet file
-// / Compression can be one of the following strings
-// / "snappy", "gzip", "lzo", "brotli", "lz4", "lz4raw"
-// /  or null pointer if no compression wanted
-// #[no_mangle]
-// pub unsafe extern "C" fn export_to_parquet(
-//     mdf: *const Mdf,
-//     file_name: *const c_char,
-//     compression: *const c_char,
-// ) {
-//     // # Safety
-//     //
-//     // It is the caller's guarantee to ensure `file_name`:
-//     //
-//     // - is not a null pointer
-//     // - points to valid, initialized data
-//     // - points to memory ending in a null byte
-//     // - won't be mutated for the duration of this function call
-//     let name = CStr::from_ptr(file_name)
-//         .to_str()
-//         .expect("Could not convert into utf8 the file name string");
-//     let comp = if compression.is_null() {
-//         None
-//     } else {
-//         Some(
-//             CStr::from_ptr(compression)
-//                 .to_str()
-//                 .expect("Could not convert into utf8 the compression string"),
-//         )
-//     };
-//     if let Some(mdf) = mdf.as_ref() {
-//         match mdf.export_to_parquet(name, comp) {
-//             Ok(_) => {}
-//             Err(e) => panic!("{}", e),
-//         }
-//     } else {
-//         panic!("Null pointer given for Mdf Rust object")
-//     }
-// }
+// export to Parquet file
+// Compression can be one of the following strings
+// "snappy", "gzip", "lzo", "brotli", "lz4", "lz4raw"
+//  or null pointer if no compression wanted
+#[no_mangle]
+pub unsafe extern "C" fn export_to_parquet(
+    mdf: *const Mdf,
+    file_name: *const c_char,
+    compression: *const c_char,
+) {
+    // # Safety
+    //
+    // It is the caller's guarantee to ensure `file_name`:
+    //
+    // - is not a null pointer
+    // - points to valid, initialized data
+    // - points to memory ending in a null byte
+    // - won't be mutated for the duration of this function call
+    let name = CStr::from_ptr(file_name)
+        .to_str()
+        .expect("Could not convert into utf8 the file name string");
+    let comp = if compression.is_null() {
+        None
+    } else {
+        Some(
+            CStr::from_ptr(compression)
+                .to_str()
+                .expect("Could not convert into utf8 the compression string"),
+        )
+    };
+    if let Some(mdf) = mdf.as_ref() {
+        match mdf.export_to_parquet(name, comp) {
+            Ok(_) => {}
+            Err(e) => panic!("{}", e),
+        }
+    } else {
+        panic!("Null pointer given for Mdf Rust object")
+    }
+}
+
+// export to hdf5 file
+// Compression can be one of the following strings
+// "deflate", "lzf"
+//  or null pointer if no compression wanted
+#[no_mangle]
+pub unsafe extern "C" fn export_to_hdf5(
+    mdf: *const Mdf,
+    file_name: *const c_char,
+    compression: *const c_char,
+) {
+    // # Safety
+    //
+    // It is the caller's guarantee to ensure `file_name`:
+    //
+    // - is not a null pointer
+    // - points to valid, initialized data
+    // - points to memory ending in a null byte
+    // - won't be mutated for the duration of this function call
+    let name = CStr::from_ptr(file_name)
+        .to_str()
+        .expect("Could not convert into utf8 the file name string");
+    let comp = if compression.is_null() {
+        None
+    } else {
+        Some(
+            CStr::from_ptr(compression)
+                .to_str()
+                .expect("Could not convert into utf8 the compression string"),
+        )
+    };
+    if let Some(mdf) = mdf.as_ref() {
+        match mdf.export_to_hdf5(name, comp) {
+            Ok(_) => {}
+            Err(e) => panic!("{}", e),
+        }
+    } else {
+        panic!("Null pointer given for Mdf Rust object")
+    }
+}
