@@ -34,12 +34,9 @@ jobs:
           run: |
             python -m pip install --upgrade pip
             pip install maturin
-            BASE_URL=https://support.hdfgroup.org/ftp/HDF5/releases
-            echo "DL_URL=$BASE_URL/hdf5-1.14/hdf5-1.14.3/bin/windows/hdf5-1.14.3-Std-win10_64-vs16.zip" >> $GITHUB_ENV
-            echo "C:\\Program Files\\HDF_Group\\HDF5\\1.14.0\\bin" >> $GITHUB_PATH
-            C:\msys64\usr\bin\wget.exe -q -O hdf5.zip ${{env.DL_URL}}
+            C:\msys64\usr\bin\wget.exe -q -O hdf5.zip https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.10/hdf5-1.10.11/bin/windows/hdf5-1.10.11-Std-win10_64-vs16.zip
             7z x hdf5.zip -y
-            msiexec /i hdf\\HDF5-1.14.3-win64.msi /quiet /qn /norestart
+            msiexec /i hdf\\HDF5-1.10.11-win64.msi /quiet /qn /norestart
         - name: Maturin publish
           shell: bash
           env:

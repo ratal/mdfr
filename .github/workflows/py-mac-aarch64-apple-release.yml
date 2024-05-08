@@ -33,7 +33,7 @@ jobs:
         shell: bash
         run: |
           rustup override set nightly
-          brew install hdf5-mpi
+          brew install hdf5@1.10
       - name: maturin publish
         uses: messense/maturin-action@v1
         env:
