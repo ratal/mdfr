@@ -266,7 +266,7 @@ fn mdf3_cn_to_hdf5(
 
 fn mdf4_metadata(file: &mut File, mdfinfo4: &MdfInfo4) -> Result<()> {
     create_scalar_group_attr::<File, u64>(
-        &file,
+        file,
         "start_time_ns",
         &mdfinfo4.hd_block.hd_start_time_ns,
     )
@@ -282,7 +282,7 @@ fn mdf4_metadata(file: &mut File, mdfinfo4: &MdfInfo4) -> Result<()> {
     comments
         .iter()
         .try_for_each(|(name, comment)| -> Result<(), Error> {
-            create_str_group_attr::<File>(&file, name, comment).with_context(|| {
+            create_str_group_attr::<File>(file, name, comment).with_context(|| {
                 format!("failed writing attribute {} with value {}", name, comment,)
             })?;
             Ok(())
@@ -293,9 +293,9 @@ fn mdf4_metadata(file: &mut File, mdfinfo4: &MdfInfo4) -> Result<()> {
 
 fn mdf3_metadata(file: &mut File, mdfinfo3: &MdfInfo3) -> Result<()> {
     let time = mdfinfo3.hd_block.hd_start_time_ns.unwrap_or(0);
-    create_scalar_group_attr::<File, u64>(&file, "start_time_ns", &time)
+    create_scalar_group_attr::<File, u64>(file, "start_time_ns", &time)
         .with_context(|| format!("failed writing attribute start_time_ns with value {}", time))?;
-    create_str_group_attr::<File>(&file, "Author", &mdfinfo3.hd_block.hd_author).with_context(
+    create_str_group_attr::<File>(file, "Author", &mdfinfo3.hd_block.hd_author).with_context(
         || {
             format!(
                 "failed writing attribute author {}",
@@ -303,7 +303,7 @@ fn mdf3_metadata(file: &mut File, mdfinfo3: &MdfInfo3) -> Result<()> {
             )
         },
     )?;
-    create_str_group_attr::<File>(&file, "Project", &mdfinfo3.hd_block.hd_project).with_context(
+    create_str_group_attr::<File>(file, "Project", &mdfinfo3.hd_block.hd_project).with_context(
         || {
             format!(
                 "failed writing attribute project {}",
@@ -311,7 +311,7 @@ fn mdf3_metadata(file: &mut File, mdfinfo3: &MdfInfo3) -> Result<()> {
             )
         },
     )?;
-    create_str_group_attr::<File>(&file, "Subject", &mdfinfo3.hd_block.hd_subject).with_context(
+    create_str_group_attr::<File>(file, "Subject", &mdfinfo3.hd_block.hd_subject).with_context(
         || {
             format!(
                 "failed writing attribute subject {}",
@@ -319,7 +319,7 @@ fn mdf3_metadata(file: &mut File, mdfinfo3: &MdfInfo3) -> Result<()> {
             )
         },
     )?;
-    create_str_group_attr::<File>(&file, "Organization", &mdfinfo3.hd_block.hd_organization)
+    create_str_group_attr::<File>(file, "Organization", &mdfinfo3.hd_block.hd_organization)
         .with_context(|| {
             format!(
                 "failed writing attribute organization {}",
