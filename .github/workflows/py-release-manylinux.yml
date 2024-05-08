@@ -19,6 +19,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           architecture: x64
+      - name: Install HDF5
+        run: sudo apt-get install libhdf5-openmpi-dev openmpi-bin libhdf5-dev
       - name: build x64_64
         uses: messense/maturin-action@v1
         env:
