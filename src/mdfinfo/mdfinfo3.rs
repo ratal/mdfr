@@ -390,7 +390,7 @@ pub struct Hd3 {
     /// subject or measurement object
     pub hd_subject: String,
     /// time stamp at which recording was started in nanosecond
-    hd_start_time_ns: Option<u64>,
+    pub hd_start_time_ns: Option<u64>,
     /// time stamp at which recording was started in nanosecond
     hd_time_offset: Option<i16>,
     /// time quality class
@@ -399,7 +399,7 @@ pub struct Hd3 {
     hd_time_identifier: Option<String>,
 }
 
-/// HD3 block strucutre
+/// HD3 block structure
 #[derive(Debug, PartialEq, Eq, Default, BinRead)]
 #[repr(C)]
 pub struct Hd3Block {
@@ -796,7 +796,7 @@ fn parse_cg3_block(
 pub struct Cg3 {
     pub block: Cg3Block,
     pub cn: HashMap<u32, Cn3>, // hashmap of channels
-    block_position: u32,
+    pub block_position: u32,
     pub master_channel_name: Option<String>,
     pub channel_names: HashSet<String>,
     pub record_length: u16, // record length including recordId

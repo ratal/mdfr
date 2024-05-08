@@ -1,9 +1,13 @@
 //! complex number stored in primitive builders, fixedsizearraybuilder being too restricted
+#[cfg(feature = "ndarray")]
+use anyhow::{Context, Error, Result};
 use arrow::{
     array::{ArrayBuilder, BooleanBufferBuilder, PrimitiveArray, PrimitiveBuilder},
     buffer::{BooleanBuffer, MutableBuffer},
     datatypes::{ArrowPrimitiveType, Float32Type, Float64Type},
 };
+#[cfg(feature = "ndarray")]
+use ndarray::{Array, Ix2};
 
 /// Complex struct
 #[derive(Debug)]
@@ -91,6 +95,26 @@ impl<T: ArrowPrimitiveType> ComplexArrow<T> {
     /// returns the optional validity array as a slice
     pub fn validity_slice(&self) -> Option<&[u8]> {
         self.null_buffer_builder.as_ref().map(|s| s.values())
+    }
+}
+
+#[cfg(feature = "ndarray")]
+impl ComplexArrow<Float32Type> {
+    /// to convert ComplexArrow into ndarray
+    pub fn to_ndarray(&self) -> Result<Array<f32, Ix2>, Error> {
+        let vector: Vec<f32> = self.values_builder.values_slice().to_vec();
+        Array::from_shape_vec((self.len(), 2), vector)
+            .context("Failed reshaping f32 complex arrow into ndarray")
+    }
+}
+
+#[cfg(feature = "ndarray")]
+impl ComplexArrow<Float64Type> {
+    /// to convert ComplexArrow into ndarray
+    pub fn to_ndarray(&self) -> Result<Array<f64, Ix2>, Error> {
+        let vector: Vec<f64> = self.values_builder.values_slice().to_vec();
+        Array::from_shape_vec((vector.len() / 2, 2), vector)
+            .context("Failed reshaping f64 complex arrow into ndarray")
     }
 }
 

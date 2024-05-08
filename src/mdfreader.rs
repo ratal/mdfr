@@ -30,6 +30,11 @@ use crate::export::parquet::export_dataframe_to_parquet;
 #[cfg(feature = "parquet")]
 use crate::export::parquet::export_to_parquet;
 
+#[cfg(feature = "hdf5")]
+use crate::export::hdf5::export_dataframe_to_hdf5;
+#[cfg(feature = "hdf5")]
+use crate::export::hdf5::export_to_hdf5;
+
 use crate::data_holder::arrow_helpers::{
     arrow_bit_count, arrow_byte_count, arrow_to_mdf_data_type,
 };
@@ -241,12 +246,12 @@ impl Mdf {
         Ok(())
     }
 
-    /// export to Parquet files
+    /// export to Parquet files, one for each channel group (or dataframe)
     #[cfg(feature = "parquet")]
     pub fn export_to_parquet(&self, file_name: &str, compression: Option<&str>) -> Result<()> {
         export_to_parquet(self, file_name, compression)
     }
-    /// export to Parquet files
+    /// export a dataframe including a given channel to a Parquet file
     #[cfg(feature = "parquet")]
     pub fn export_dataframe_to_parquet(
         &self,
@@ -255,6 +260,21 @@ impl Mdf {
         compression: Option<&str>,
     ) -> Result<()> {
         export_dataframe_to_parquet(self, &channel_name, file_name, compression)
+    }
+    /// export a dataframe including a given channel to a hdf5 file
+    #[cfg(feature = "hdf5")]
+    pub fn export_dataframe_to_hdf5(
+        &self,
+        channel_name: String,
+        file_name: &str,
+        compression: Option<&str>,
+    ) -> Result<()> {
+        export_dataframe_to_hdf5(self, &channel_name, file_name, compression)
+    }
+    /// export all data to hdf5 file
+    #[cfg(feature = "hdf5")]
+    pub fn export_to_hdf5(&self, file_name: &str, compression: Option<&str>) -> Result<()> {
+        export_to_hdf5(self, file_name, compression)
     }
     /// Writes mdf4 file
     pub fn write(&mut self, file_name: &str, compression: bool) -> Result<Mdf> {

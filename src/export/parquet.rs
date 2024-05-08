@@ -80,7 +80,7 @@ pub fn export_to_parquet(
     Ok(())
 }
 
-/// writes mdf into parquet file
+/// writes a dataframe or channel group defined by a given channel into a parquet file
 pub fn export_dataframe_to_parquet(
     mdf: &Mdf,
     channel_name: &str,
@@ -229,8 +229,6 @@ pub fn parquet_compression_from_string(compression_option: Option<&str>) -> Comp
         None => Compression::UNCOMPRESSED,
     }
 }
-
-// create
 
 /// Create parquet file name appending Channel Group's master channel
 /// Or if no master existing, add.

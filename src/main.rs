@@ -66,6 +66,23 @@ fn main() -> Result<(), Error> {
                 .help("Compression algorithm for writing data in parquet file, valid values are snappy, gzip, lzo, lz4, zstd, brotli. Default is uncompressed"),
         )
         .arg(
+            Arg::new("export_to_hdf5")
+                .long("export_to_hdf5")
+                .short('h')
+                .required(false)
+                .num_args(1)
+                .value_name("FILE_NAME")
+                .help("Converts mdf into hdf5 file, file name to be given without extension"),
+        )
+        .arg(
+            Arg::new("hdf5_compression")
+                .long("hdf5_compression")
+                .required(false)
+                .num_args(1)
+                .value_name("FILTER")
+                .help("Compression algorithm for writing data in hdf5 file, valid values are deflate and lzf. Default is uncompressed"),
+        )
+        .arg(
             Arg::new("info")
                 .short('i')
                 .long("file_info")
@@ -87,8 +104,9 @@ fn main() -> Result<(), Error> {
 
     let mdf4_file_name = matches.get_one::<String>("write");
     let parquet_file_name = matches.get_one::<String>("export_to_parquet");
+    let hdf5_file_name = matches.get_one::<String>("export_to_hdf5");
 
-    if mdf4_file_name.is_some() || parquet_file_name.is_some() {
+    if mdf4_file_name.is_some() || parquet_file_name.is_some() || hdf5_file_name.is_some() {
         mdf_file
             .load_all_channels_data_in_memory()
             .with_context(|| format!("failed reading channels data from file {}", file_name))?;
@@ -105,6 +123,7 @@ fn main() -> Result<(), Error> {
         }
     }
 
+    #[cfg(feature = "parquet")]
     let parquet_compression = matches.get_one::<String>("parquet_compression");
     #[cfg(feature = "parquet")]
     if let Some(file_name) = parquet_file_name {
@@ -115,6 +134,16 @@ fn main() -> Result<(), Error> {
             "Wrote parquet file {} with compression {:?}",
             file_name, parquet_compression
         );
+    }
+
+    #[cfg(feature = "hdf5")]
+    let hdf5_compression = matches.get_one::<String>("hdf5_compression");
+    #[cfg(feature = "hdf5")]
+    if let Some(file_name) = hdf5_file_name {
+        mdf_file
+            .export_to_hdf5(file_name, hdf5_compression.map(|x| &**x))
+            .with_context(|| format!("failed to export into hdf5 file {}", file_name))?;
+        info!("Wrote hdf5 file {}", file_name);
     }
 
     Ok(())

@@ -37,6 +37,8 @@ obj.plot('channel_name')
 
 # Export to parquet:
 obj.export_to_parquet('file_name', compression_option)
+# Export to hdf5:
+obj.export_to_hdf5('file_name')
 # write to mdf4 file, compressed or not
-obj.write('file_name', conpression_flag)
+obj.write('file_name', conpression_algo)
 ```

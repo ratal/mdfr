@@ -587,6 +587,7 @@ impl ChannelData {
             }
         }
     }
+    /// returns the arrow DataType equivalent to the ChannelData
     pub fn arrow_data_type(&self) -> DataType {
         match self {
             ChannelData::Int8(_) => DataType::Int8,
