@@ -18,6 +18,7 @@ polars = ["dep:polars", "dep:numpy", "dep:pyo3"]
 parquet = ["dep:parquet"]
 hdf5 = ["dep:hdf5", "ndarray"]
 ndarray = ["dep:ndarray"]
+hdf5-mpio = ["hdf5/mpio"]
 
 [dependencies]
 clap = "4" # for input arguments

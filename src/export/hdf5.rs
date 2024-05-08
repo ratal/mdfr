@@ -4,7 +4,7 @@ use arrow::array::Array;
 use hdf5::{
     file::File,
     types::{VarLenArray, VarLenUnicode},
-    Dataset, DatasetBuilder, H5Type,
+    Dataset, DatasetBuilder, Group, H5Type,
 };
 use log::info;
 use ndarray::{Array as NdArray, IxDyn};
@@ -18,6 +18,8 @@ use crate::{
         MdfInfo,
     },
 };
+#[cfg(feature = "hdf5-mpio")]
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 /// writes mdf into hdf5 file
 pub fn export_to_hdf5(mdf: &Mdf, file_name: &str, compression: Option<&str>) -> Result<(), Error> {
@@ -109,56 +111,74 @@ pub fn mdf4_cg_to_hdf5(
     let group = file
         .create_group(&master_channel)
         .with_context(|| format!("failed creating group {:?}", master_channel))?;
+    #[cfg(feature = "hdf5-mpio")]
     cg.cn
-        .iter()
+        .par_iter()
         .try_for_each(|(_rec_pos, cn): (&i32, &Cn4)| -> Result<(), Error> {
             if !cn.data.is_empty() {
-                let builder = match compression {
-                    Hdf5Compression::Deflate(level) => {
-                        group.new_dataset_builder().shuffle().deflate(*level)
-                    }
-                    Hdf5Compression::Lzf => group.new_dataset_builder().shuffle().lzf(),
-                    Hdf5Compression::Uncompressed => group.new_dataset_builder(),
-                };
-                let dataset = convert_channel_data_into_ndarray(builder, &cn.data, &cn.unique_name)
-                    .with_context(|| {
-                        format!("failed writing channel {} dataset", cn.unique_name)
-                    })?;
-                // writing channel unit if existing
-                if let Ok(Some(unit)) = mdfinfo4.sharable.get_tx(cn.block.cn_md_unit) {
-                    if !unit.is_empty() {
-                        create_str_attr(&dataset, "unit", &unit).with_context(|| {
-                            format!(
-                                "failed writing unit attribute for channel {}",
-                                cn.unique_name
-                            )
-                        })?;
-                    }
-                }
-                // writing channel description if existing
-                if let Ok(Some(desc)) = mdfinfo4.sharable.get_tx(cn.block.cn_md_comment) {
-                    if !desc.is_empty() {
-                        create_str_attr(&dataset, "description", &desc).with_context(|| {
-                            format!(
-                                "failed writing description attribute for channel {}",
-                                cn.unique_name
-                            )
-                        })?;
-                    }
-                };
-                // sync type
-                create_scalar_attr(&dataset, "sync_type", &cn.block.cn_sync_type).with_context(
-                    || {
-                        format!(
-                            "failed writing sync type attribute for channel {}",
-                            cn.unique_name
-                        )
-                    },
-                )?;
+                mdf4_cn_to_hdf5(mdfinfo4, cn, compression, &group)
+                    .context("failed writing dataset")?;
             }
             Ok(())
         })
         .context("failed extracting data")?;
+    #[cfg(not(feature = "hdf5-mpio"))]
+    cg.cn
+        .iter()
+        .try_for_each(|(_rec_pos, cn): (&i32, &Cn4)| -> Result<(), Error> {
+            if !cn.data.is_empty() {
+                mdf4_cn_to_hdf5(mdfinfo4, cn, compression, &group)
+                    .context("failed writing dataset")?;
+            }
+            Ok(())
+        })
+        .context("failed extracting data")?;
+    Ok(())
+}
+
+#[inline]
+pub fn mdf4_cn_to_hdf5(
+    mdfinfo4: &MdfInfo4,
+    cn: &Cn4,
+    compression: &Hdf5Compression,
+    group: &Group,
+) -> Result<(), Error> {
+    let builder = match compression {
+        Hdf5Compression::Deflate(level) => group.new_dataset_builder().shuffle().deflate(*level),
+        Hdf5Compression::Lzf => group.new_dataset_builder().shuffle().lzf(),
+        Hdf5Compression::Uncompressed => group.new_dataset_builder(),
+    };
+    let dataset = convert_channel_data_into_ndarray(builder, &cn.data, &cn.unique_name)
+        .with_context(|| format!("failed writing channel {} dataset", cn.unique_name))?;
+    // writing channel unit if existing
+    if let Ok(Some(unit)) = mdfinfo4.sharable.get_tx(cn.block.cn_md_unit) {
+        if !unit.is_empty() {
+            create_str_attr(&dataset, "unit", &unit).with_context(|| {
+                format!(
+                    "failed writing unit attribute for channel {}",
+                    cn.unique_name
+                )
+            })?;
+        }
+    }
+    // writing channel description if existing
+    if let Ok(Some(desc)) = mdfinfo4.sharable.get_tx(cn.block.cn_md_comment) {
+        if !desc.is_empty() {
+            create_str_attr(&dataset, "description", &desc).with_context(|| {
+                format!(
+                    "failed writing description attribute for channel {}",
+                    cn.unique_name
+                )
+            })?;
+        }
+    };
+    // sync type
+    create_scalar_attr(&dataset, "sync_type", &cn.block.cn_sync_type).with_context(|| {
+        format!(
+            "failed writing sync type attribute for channel {}",
+            cn.unique_name
+        )
+    })?;
     Ok(())
 }
 
@@ -177,52 +197,70 @@ pub fn mdf3_cg_to_hdf5(
     let group = file
         .create_group(&master_channel)
         .with_context(|| format!("failed creating group {:?}", cg.master_channel_name))?;
+    #[cfg(feature = "hdf5-mpio")]
     cg.cn
-        .iter()
+        .par_iter()
         .try_for_each(|(_rec_pos, cn): (&u32, &Cn3)| -> Result<(), Error> {
             if !cn.data.is_empty() {
-                let builder = match compression {
-                    Hdf5Compression::Deflate(level) => {
-                        group.new_dataset_builder().shuffle().deflate(*level)
-                    }
-                    Hdf5Compression::Lzf => group.new_dataset_builder().shuffle().lzf(),
-                    Hdf5Compression::Uncompressed => group.new_dataset_builder(),
-                };
-                let dataset = convert_channel_data_into_ndarray(builder, &cn.data, &cn.unique_name)
-                    .with_context(|| {
-                        format!("failed writing channel {} dataset", cn.unique_name)
-                    })?;
-                // writing channel unit if existing
-                if let Some(unit) = mdfinfo3._get_unit(&cn.block1.cn_cc_conversion) {
-                    if !unit.is_empty() {
-                        create_str_attr(&dataset, "unit", &unit).with_context(|| {
-                            format!(
-                                "failed writing unit attribute for channel {}",
-                                cn.unique_name
-                            )
-                        })?;
-                    }
-                }
-                // writing channel description if existing
-                create_str_attr(&dataset, "description", &cn.description).with_context(|| {
-                    format!(
-                        "failed writing description attribute for channel {}",
-                        cn.unique_name
-                    )
-                })?;
-                // sync type
-                create_scalar_attr(&dataset, "sync_type", &cn.block1.cn_type).with_context(
-                    || {
-                        format!(
-                            "failed writing sync type attribute for channel {}",
-                            cn.unique_name
-                        )
-                    },
-                )?;
+                mdf3_cn_to_hdf5(mdfinfo3, cn, compression, &group)
+                    .context("failed writing dataset")?;
             }
             Ok(())
         })
         .context("failed extracting data")?;
+    #[cfg(not(feature = "hdf5-mpio"))]
+    cg.cn
+        .iter()
+        .try_for_each(|(_rec_pos, cn): (&u32, &Cn3)| -> Result<(), Error> {
+            if !cn.data.is_empty() {
+                mdf3_cn_to_hdf5(mdfinfo3, cn, compression, &group)
+                    .context("failed writing dataset")?;
+            }
+            Ok(())
+        })
+        .context("failed extracting data")?;
+    Ok(())
+}
+
+#[inline]
+fn mdf3_cn_to_hdf5(
+    mdfinfo3: &MdfInfo3,
+    cn: &Cn3,
+    compression: &Hdf5Compression,
+    group: &Group,
+) -> Result<(), Error> {
+    let builder = match compression {
+        Hdf5Compression::Deflate(level) => group.new_dataset_builder().shuffle().deflate(*level),
+        Hdf5Compression::Lzf => group.new_dataset_builder().shuffle().lzf(),
+        Hdf5Compression::Uncompressed => group.new_dataset_builder(),
+    };
+    let dataset = convert_channel_data_into_ndarray(builder, &cn.data, &cn.unique_name)
+        .with_context(|| format!("failed writing channel {} dataset", cn.unique_name))?;
+    // writing channel unit if existing
+    if let Some(unit) = mdfinfo3._get_unit(&cn.block1.cn_cc_conversion) {
+        if !unit.is_empty() {
+            create_str_attr(&dataset, "unit", &unit).with_context(|| {
+                format!(
+                    "failed writing unit attribute for channel {}",
+                    cn.unique_name
+                )
+            })?;
+        }
+    }
+    // writing channel description if existing
+    create_str_attr(&dataset, "description", &cn.description).with_context(|| {
+        format!(
+            "failed writing description attribute for channel {}",
+            cn.unique_name
+        )
+    })?;
+    // sync type
+    create_scalar_attr(&dataset, "sync_type", &cn.block1.cn_type).with_context(|| {
+        format!(
+            "failed writing sync type attribute for channel {}",
+            cn.unique_name
+        )
+    })?;
     Ok(())
 }
 
