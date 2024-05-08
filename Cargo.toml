@@ -12,7 +12,7 @@ readme = "README.md"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["numpy", "parquet", "polars", "hdf5"]
+default = ["numpy", "parquet", "polars"]
 numpy = ["dep:numpy", "dep:pyo3"]
 polars = ["dep:polars", "dep:numpy", "dep:pyo3"]
 parquet = ["dep:parquet"]
