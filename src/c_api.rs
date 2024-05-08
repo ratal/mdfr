@@ -196,6 +196,7 @@ pub unsafe extern "C" fn get_channel_array(
 // "snappy", "gzip", "lzo", "brotli", "lz4", "lz4raw"
 //  or null pointer if no compression wanted
 #[no_mangle]
+#[cfg(feature = "parquet")]
 pub unsafe extern "C" fn export_to_parquet(
     mdf: *const Mdf,
     file_name: *const c_char,
@@ -236,6 +237,7 @@ pub unsafe extern "C" fn export_to_parquet(
 // "deflate", "lzf"
 //  or null pointer if no compression wanted
 #[no_mangle]
+#[cfg(feature = "hdf5")]
 pub unsafe extern "C" fn export_to_hdf5(
     mdf: *const Mdf,
     file_name: *const c_char,

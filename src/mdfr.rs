@@ -365,7 +365,7 @@ df=polars.DataFrame(series)
         Ok(())
     }
     /// export dataframe to Parquet files
-    #[cfg(feature = "parquet")]
+    #[cfg(feature = "hdf5")]
     pub fn export_dataframe_to_hdf5(
         &self,
         channel_name: String,
