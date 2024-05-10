@@ -68,7 +68,7 @@ fn main() -> Result<(), Error> {
         .arg(
             Arg::new("export_to_hdf5")
                 .long("export_to_hdf5")
-                .short('h')
+                .short('m')
                 .required(false)
                 .num_args(1)
                 .value_name("FILE_NAME")
