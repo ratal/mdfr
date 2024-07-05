@@ -7,7 +7,7 @@ use arrow::array::{
 use arrow::pyarrow::PyArrowType;
 
 use numpy::npyffi::types::NPY_ORDER;
-use numpy::{PyArray1, PyArrayDyn, ToPyArray};
+use numpy::{PyArray1, PyArrayDyn, PyArrayMethods, ToPyArray};
 use pyo3::prelude::*;
 
 use crate::data_holder::channel_data::ChannelData;
@@ -41,18 +41,18 @@ impl IntoPy<PyObject> for ChannelData {
     /// IntoPy implementation to convert a ChannelData into a PyObject
     fn into_py(self, py: Python) -> PyObject {
         match self {
-            ChannelData::Int8(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::UInt8(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::Int16(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::UInt16(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::Int32(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::UInt32(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::Float32(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::Int64(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::UInt64(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::Float64(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::Complex32(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::Complex64(array) => array.values_slice().to_pyarray(py).into_py(py),
+            ChannelData::Int8(array) => array.values_slice().to_pyarray_bound(py).into_py(py),
+            ChannelData::UInt8(array) => array.values_slice().to_pyarray_bound(py).into_py(py),
+            ChannelData::Int16(array) => array.values_slice().to_pyarray_bound(py).into_py(py),
+            ChannelData::UInt16(array) => array.values_slice().to_pyarray_bound(py).into_py(py),
+            ChannelData::Int32(array) => array.values_slice().to_pyarray_bound(py).into_py(py),
+            ChannelData::UInt32(array) => array.values_slice().to_pyarray_bound(py).into_py(py),
+            ChannelData::Float32(array) => array.values_slice().to_pyarray_bound(py).into_py(py),
+            ChannelData::Int64(array) => array.values_slice().to_pyarray_bound(py).into_py(py),
+            ChannelData::UInt64(array) => array.values_slice().to_pyarray_bound(py).into_py(py),
+            ChannelData::Float64(array) => array.values_slice().to_pyarray_bound(py).into_py(py),
+            ChannelData::Complex32(array) => array.values_slice().to_pyarray_bound(py).into_py(py),
+            ChannelData::Complex64(array) => array.values_slice().to_pyarray_bound(py).into_py(py),
             ChannelData::VariableSizeByteArray(array) => array.values_slice().into_py(py),
             ChannelData::FixedSizeByteArray(array) => {
                 let binary_array = array.finish_cloned();
@@ -65,61 +65,61 @@ impl IntoPy<PyObject> for ChannelData {
             }
             ChannelData::ArrayDInt8(array) => array
                 .values_slice()
-                .to_pyarray(py)
+                .to_pyarray_bound(py)
                 .reshape_with_order(array.shape().clone(), array.order().clone().into())
                 .expect("could not reshape i8")
                 .into_py(py),
             ChannelData::ArrayDUInt8(array) => array
                 .values_slice()
-                .to_pyarray(py)
+                .to_pyarray_bound(py)
                 .reshape_with_order(array.shape().clone(), array.order().clone().into())
                 .expect("could not reshape u8")
                 .into_py(py),
             ChannelData::ArrayDInt16(array) => array
                 .values_slice()
-                .to_pyarray(py)
+                .to_pyarray_bound(py)
                 .reshape_with_order(array.shape().clone(), array.order().clone().into())
                 .expect("could not reshape u16")
                 .into_py(py),
             ChannelData::ArrayDUInt16(array) => array
                 .values_slice()
-                .to_pyarray(py)
+                .to_pyarray_bound(py)
                 .reshape_with_order(array.shape().clone(), array.order().clone().into())
                 .expect("could not reshape i16")
                 .into_py(py),
             ChannelData::ArrayDInt32(array) => array
                 .values_slice()
-                .to_pyarray(py)
+                .to_pyarray_bound(py)
                 .reshape_with_order(array.shape().clone(), array.order().clone().into())
                 .expect("could not reshape i32")
                 .into_py(py),
             ChannelData::ArrayDUInt32(array) => array
                 .values_slice()
-                .to_pyarray(py)
+                .to_pyarray_bound(py)
                 .reshape_with_order(array.shape().clone(), array.order().clone().into())
                 .expect("could not reshape u32")
                 .into_py(py),
             ChannelData::ArrayDFloat32(array) => array
                 .values_slice()
-                .to_pyarray(py)
+                .to_pyarray_bound(py)
                 .reshape_with_order(array.shape().clone(), array.order().clone().into())
                 .expect("could not reshape f32")
                 .into_py(py),
             ChannelData::ArrayDInt64(array) => array
                 .values_slice()
-                .to_pyarray(py)
+                .to_pyarray_bound(py)
                 .reshape_with_order(array.shape().clone(), array.order().clone().into())
                 .expect("could not reshape i64")
                 .into_py(py),
             ChannelData::ArrayDUInt64(array) => array
                 .values_slice()
-                .to_pyarray(py)
+                .to_pyarray_bound(py)
                 .reshape_with_order(array.shape().clone(), array.order().clone().into())
                 .expect("could not reshape u64")
                 .into_py(py),
             ChannelData::ArrayDFloat64(array) => array
                 .values_slice()
-                .to_pyarray(py)
+                .to_pyarray_bound(py)
                 .reshape_with_order(array.shape().clone(), array.order().clone().into())
                 .expect("could not reshape f64")
                 .into_py(py),
@@ -136,18 +136,18 @@ impl ToPyObject for ChannelData {
     /// ToPyObject implementation to convert a ChannelData into a PyObject
     fn to_object(&self, py: Python) -> PyObject {
         match self {
-            ChannelData::Int8(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::UInt8(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::Int16(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::UInt16(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::Int32(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::UInt32(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::Float32(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::Int64(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::UInt64(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::Float64(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::Complex32(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::Complex64(array) => array.values_slice().to_pyarray(py).into_py(py),
+            ChannelData::Int8(array) => array.values_slice().to_pyarray_bound(py).into_py(py),
+            ChannelData::UInt8(array) => array.values_slice().to_pyarray_bound(py).into_py(py),
+            ChannelData::Int16(array) => array.values_slice().to_pyarray_bound(py).into_py(py),
+            ChannelData::UInt16(array) => array.values_slice().to_pyarray_bound(py).into_py(py),
+            ChannelData::Int32(array) => array.values_slice().to_pyarray_bound(py).into_py(py),
+            ChannelData::UInt32(array) => array.values_slice().to_pyarray_bound(py).into_py(py),
+            ChannelData::Float32(array) => array.values_slice().to_pyarray_bound(py).into_py(py),
+            ChannelData::Int64(array) => array.values_slice().to_pyarray_bound(py).into_py(py),
+            ChannelData::UInt64(array) => array.values_slice().to_pyarray_bound(py).into_py(py),
+            ChannelData::Float64(array) => array.values_slice().to_pyarray_bound(py).into_py(py),
+            ChannelData::Complex32(array) => array.values_slice().to_pyarray_bound(py).into_py(py),
+            ChannelData::Complex64(array) => array.values_slice().to_pyarray_bound(py).into_py(py),
             ChannelData::Utf8(array) => array
                 .finish_cloned()
                 .iter()
@@ -168,16 +168,34 @@ impl ToPyObject for ChannelData {
                     .collect();
                 out.to_object(py)
             }
-            ChannelData::ArrayDInt8(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::ArrayDUInt8(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::ArrayDInt16(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::ArrayDUInt16(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::ArrayDInt32(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::ArrayDUInt32(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::ArrayDFloat32(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::ArrayDInt64(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::ArrayDUInt64(array) => array.values_slice().to_pyarray(py).into_py(py),
-            ChannelData::ArrayDFloat64(array) => array.values_slice().to_pyarray(py).into_py(py),
+            ChannelData::ArrayDInt8(array) => array.values_slice().to_pyarray_bound(py).into_py(py),
+            ChannelData::ArrayDUInt8(array) => {
+                array.values_slice().to_pyarray_bound(py).into_py(py)
+            }
+            ChannelData::ArrayDInt16(array) => {
+                array.values_slice().to_pyarray_bound(py).into_py(py)
+            }
+            ChannelData::ArrayDUInt16(array) => {
+                array.values_slice().to_pyarray_bound(py).into_py(py)
+            }
+            ChannelData::ArrayDInt32(array) => {
+                array.values_slice().to_pyarray_bound(py).into_py(py)
+            }
+            ChannelData::ArrayDUInt32(array) => {
+                array.values_slice().to_pyarray_bound(py).into_py(py)
+            }
+            ChannelData::ArrayDFloat32(array) => {
+                array.values_slice().to_pyarray_bound(py).into_py(py)
+            }
+            ChannelData::ArrayDInt64(array) => {
+                array.values_slice().to_pyarray_bound(py).into_py(py)
+            }
+            ChannelData::ArrayDUInt64(array) => {
+                array.values_slice().to_pyarray_bound(py).into_py(py)
+            }
+            ChannelData::ArrayDFloat64(array) => {
+                array.values_slice().to_pyarray_bound(py).into_py(py)
+            }
         }
     }
 }

@@ -20,8 +20,8 @@ use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyBytes, PyDict, PyList};
 
 #[pymodule]
-fn mdfr(py: Python, m: &PyModule) -> PyResult<()> {
-    register(py, m)?;
+fn mdfr(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    register(m)?;
     Ok(())
 }
 
@@ -29,7 +29,7 @@ fn mdfr(py: Python, m: &PyModule) -> PyResult<()> {
 #[pyclass]
 struct Mdfr(Mdf);
 
-pub(crate) fn register(_py: Python, m: &PyModule) -> PyResult<()> {
+pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Mdfr>()?;
     Ok(())
 }
@@ -60,9 +60,9 @@ impl Mdfr {
                     let mask: Py<PyAny> = m.iter().collect::<Vec<bool>>().into_py(py);
                     let locals = [(
                         "numpy",
-                        py.import("numpy").context("could not import numpy")?,
+                        py.import_bound("numpy").context("could not import numpy")?,
                     )]
-                    .into_py_dict(py);
+                    .into_py_dict_bound(py);
                     locals
                         .set_item("py_array", &py_array)
                         .context("cannot set python data")?;
@@ -70,7 +70,11 @@ impl Mdfr {
                         .set_item("mask", mask)
                         .context("cannot set python mask")?;
                     py_array = py
-                        .eval(r#"numpy.ma.array(py_array, mask=mask)"#, None, Some(locals))
+                        .eval_bound(
+                            r#"numpy.ma.array(py_array, mask=mask)"#,
+                            None,
+                            Some(&locals),
+                        )
                         .context("masked array creation failed")?
                         .into_py(py);
                 }
@@ -135,7 +139,7 @@ impl Mdfr {
         Python::with_gil(|py| {
             let mut py_dataframe = Python::None(py);
             let channel_list = mdf.mdf_info.get_channel_names_cg_set(&channel_name);
-            let series_dict = PyDict::new(py);
+            let series_dict = PyDict::new_bound(py);
             for channel in channel_list {
                 if let Some(channel_data) = mdf.get_channel_data(&channel) {
                     series_dict
@@ -148,18 +152,18 @@ impl Mdfr {
                 }
             }
             if !series_dict.is_empty() {
-                let locals = PyDict::new(py);
+                let locals = PyDict::new_bound(py);
                 locals
                     .set_item("series", series_dict)
                     .context("cannot set python series_list")?;
-                py.import("polars").context("Could import polars")?;
-                py.run(
+                py.import_bound("polars").context("Could import polars")?;
+                py.run_bound(
                     r#"
 import polars
 df=polars.DataFrame(series)
 "#,
                     None,
-                    Some(locals),
+                    Some(&locals),
                 )
                 .context("dataframe creation failed")?;
                 if let Ok(Some(df)) = locals.get_item("df") {
@@ -382,9 +386,9 @@ df=polars.DataFrame(series)
         let atbs = mdf.mdf_info.get_attachement_blocks();
         pyo3::Python::with_gil(|py| {
             if let Some(at) = atbs {
-                let atl = PyList::empty(py);
+                let atl = PyList::empty_bound(py);
                 for (position, atb) in at {
-                    let atdict = PyDict::new(py);
+                    let atdict = PyDict::new_bound(py);
                     let _ = atdict.set_item("position", position);
                     if let Ok(res) = mdf.mdf_info.get_tx(atb.at_tx_filename) {
                         let _ = atdict.set_item("tx_name", res);
@@ -409,7 +413,7 @@ df=polars.DataFrame(series)
         let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|py| {
             if let Some(data) = mdf.mdf_info.get_attachment_embedded_data(position) {
-                PyBytes::new(py, &data).into()
+                PyBytes::new_bound(py, &data).into()
             } else {
                 py.None()
             }
@@ -426,9 +430,9 @@ df=polars.DataFrame(series)
         let evbs = mdf.mdf_info.get_event_blocks();
         pyo3::Python::with_gil(|py| {
             if let Some(ev) = evbs {
-                let evl = PyList::empty(py);
+                let evl = PyList::empty_bound(py);
                 for (_position, evb) in ev {
-                    let evdict = PyDict::new(py);
+                    let evdict = PyDict::new_bound(py);
                     if let Ok(res) = mdf.mdf_info.get_tx(evb.ev_tx_name) {
                         let _ = evdict.set_item("tx_name", res);
                     }
@@ -451,9 +455,9 @@ df=polars.DataFrame(series)
         let fhbs = mdf.mdf_info.get_file_history_blocks();
         pyo3::Python::with_gil(|py| {
             if let Some(fh) = fhbs {
-                let fhl = PyList::empty(py);
+                let fhl = PyList::empty_bound(py);
                 for fhb in fh {
-                    let fhdict: &PyDict = PyDict::new(py);
+                    let fhdict = PyDict::new_bound(py);
                     let _ =
                         fhdict.set_item("comment", mdf.mdf_info.get_comments(fhb.fh_md_comment));
                     let _ = fhdict.set_item("time_ns", fhb.fh_time_ns);
@@ -472,7 +476,7 @@ df=polars.DataFrame(series)
     pub fn plot(&self, channel_name: String) -> PyResult<()> {
         let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|py| -> PyResult<()> {
-            let locals = PyDict::new(py);
+            let locals = PyDict::new_bound(py);
             locals
                 .set_item("channel_name", &channel_name)
                 .context("cannot set python channel_name")?;
@@ -515,9 +519,9 @@ df=polars.DataFrame(series)
             locals
                 .set_item("channel_data", data)
                 .context("cannot set python channel_data")?;
-            py.import("matplotlib")
+            py.import_bound("matplotlib")
                 .context("Could not import matplotlib")?;
-            py.run(
+            py.run_bound(
                 r#"
 from matplotlib import pyplot
 from numpy import arange
@@ -534,7 +538,7 @@ pyplot.grid(True)
 pyplot.show()
 "#,
                 None,
-                Some(locals),
+                Some(&locals),
             )
             .context("plot python script failed")?;
             Ok(())
