@@ -21,7 +21,9 @@ mod tests {
     static BASE_PATH_MDF3: &str = "/home/ratal/workspace/mdfreader/mdfreader/tests/mdf3/";
     static BASE_TEST_PATH: &str = "/home/ratal/workspace/mdfr/test_files";
     static WRITING_MDF_FILE: &str = "/home/ratal/workspace/mdfr/test_files/test.mf4";
+    #[cfg(feature = "parquet")]
     static WRITING_PARQUET_FILE: &str = "/home/ratal/workspace/mdfr/test_files/test_parquet";
+    #[cfg(feature = "hdf5")]
     static WRITING_HDF5_FILE: &str = "/home/ratal/workspace/mdfr/test_files/test_hdf5.hdf5";
 
     #[test]
@@ -1168,6 +1170,7 @@ mod tests {
             .is_none());
         Ok(())
     }
+    #[cfg(feature = "parquet")]
     #[test]
     fn export_to_parquet() -> Result<()> {
         // Export mdf4 to Parquet file
@@ -1196,6 +1199,7 @@ mod tests {
         }
         Ok(())
     }
+    #[cfg(feature = "hdf5")]
     #[test]
     fn export_to_hdf5() -> Result<()> {
         // Export mdf4 to Parquet file
