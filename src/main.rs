@@ -21,7 +21,7 @@ fn main() -> Result<(), Error> {
     init();
     let matches = Command::new("mdfr")
         .bin_name("mdfr")
-        .version("0.1.0")
+        .version("0.6.3")
         .author("Aymeric Rateau <aymeric.rateau@gmail.com>")
         .about("reads ASAM mdf file")
         .arg(
