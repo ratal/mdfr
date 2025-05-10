@@ -176,11 +176,11 @@ impl Mdfr {
                     .set_item("series", series_dict)
                     .context("cannot set python series_list")?;
                 py.import("polars").context("Could import polars")?;
-                py.run_bound(
-                    r#"
+                py.run(
+                    c_str!(r#"
 import polars
 df=polars.DataFrame(series)
-"#,
+"#),
                     None,
                     Some(&locals),
                 )
@@ -558,8 +558,8 @@ df=polars.DataFrame(series)
                 .context("cannot set python channel_data")?;
             py.import("matplotlib")
                 .context("Could not import matplotlib")?;
-            py.run_bound(
-                r#"
+            py.run(
+                c_str!(r#"
 from matplotlib import pyplot
 from numpy import arange
 if master_data is None:
@@ -573,7 +573,7 @@ if master_channel_name is not None:
 pyplot.ylabel('{0} [{1}]'.format(channel_name, channel_unit))
 pyplot.grid(True)
 pyplot.show()
-"#,
+"#),
                 None,
                 Some(&locals),
             )

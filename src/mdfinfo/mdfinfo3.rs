@@ -119,8 +119,7 @@ impl MdfInfo3 {
     }
     /// returns the set of channel names
     pub fn get_channel_names_set(&self) -> HashSet<String> {
-        let channel_list = self.channel_names_set.keys().cloned().collect();
-        channel_list
+        self.channel_names_set.keys().cloned().collect()
     }
     /// returns the set of channel names that are in same channel group as input channel name
     pub fn get_channel_names_cg_set(&self, channel_name: &str) -> HashSet<String> {
