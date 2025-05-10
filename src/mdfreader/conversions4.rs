@@ -179,7 +179,7 @@ where
         .finish()
         .try_unary(|value| {
             num::cast::cast::<T::Native, f64>(value).ok_or_else(|| {
-                ArrowError::CastError(format!("Can't cast value {:?} to f64", value,))
+                ArrowError::CastError(format!("Can't cast value {value:?} to f64"))
             })
         })
         .context("failed converting array to f64")?
@@ -588,7 +588,7 @@ where
         .finish_cloned()
         .try_unary(|value| {
             num::cast::cast::<T::Native, f64>(value).ok_or_else(|| {
-                ArrowError::CastError(format!("Can't cast value {:?} to f64", value,))
+                ArrowError::CastError(format!("Can't cast value {value:?} to f64"))
             })
         })
         .context("failed converting array to f64")?;
@@ -604,8 +604,7 @@ where
                 Ok(val) => val,
                 Err(err) => {
                     warn!(
-                        "could not compute the value {:?} with expression {:?}, error {}",
-                        a, compiled, err
+                        "could not compute the value {a:?} with expression {compiled:?}, error {err}"
                     );
                     *a
                 }
@@ -812,7 +811,7 @@ where
         .finish_cloned()
         .try_unary(|value| {
             num::cast::cast::<T::Native, f64>(value).ok_or_else(|| {
-                ArrowError::CastError(format!("Can't cast value {:?} to f64", value,))
+                ArrowError::CastError(format!("Can't cast value {value:?} to f64"))
             })
         })
         .context("failed converting array to f64")?;
@@ -1580,7 +1579,7 @@ fn conversion_function(cc: &Cc4Block, sharable: &SharableBlocks) -> ConversionFu
                                 Box::new(slab),
                             ),
                             Err(e) => {
-                                warn!("Error parsing formulae {}, error {}", formulae, e);
+                                warn!("Error parsing formulae {formulae}, error {e}");
                                 ConversionFunction::Identity
                             }
                         }
@@ -1615,8 +1614,7 @@ impl ConversionFunction {
                     Ok(res) => res.to_string(),
                     Err(e) => {
                         warn!(
-                            "could not evaluate algebraic expression for {}, error {}",
-                            a, e
+                            "could not evaluate algebraic expression for {a}, error {e}"
                         );
                         a.to_string()
                     }

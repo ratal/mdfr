@@ -72,7 +72,7 @@ pub fn mdfreader4<'a>(
                         &channel_names_to_read_in_dg,
                         &mut decoder,
                     )
-                    .with_context(|| format!("failed reading data for dg {:?}", dg))?;
+                    .with_context(|| format!("failed reading data for dg {dg:?}"))?;
                     apply_bit_mask_offset(dg, &channel_names_to_read_in_dg)
                         .context("failed applying bit mask offset")?;
                     // channel_group invalid bits calculation (only for DIBlocks)
@@ -1456,8 +1456,7 @@ fn apply_bit_mask_offset(
             })
             .with_context(|| {
                 format!(
-                    "bit mask application failed for channel group {:?}",
-                    channel_group
+                    "bit mask application failed for channel group {channel_group:?}"
                 )
             })?
     }

@@ -255,7 +255,7 @@ where
         .finish()
         .try_unary(|value| {
             num::cast::cast::<T::Native, f64>(value).ok_or_else(|| {
-                ArrowError::CastError(format!("Can't cast value {:?} to f64", value,))
+                ArrowError::CastError(format!("Can't cast value {value:?} to f64"))
             })
         })
         .context("failed converting array to f64")?;
@@ -361,7 +361,7 @@ where
         .finish()
         .try_unary(|value| {
             num::cast::cast::<T::Native, f64>(value).ok_or_else(|| {
-                ArrowError::CastError(format!("Can't cast value {:?} to f64", value,))
+                ArrowError::CastError(format!("Can't cast value {value:?} to f64"))
             })
         })
         .context("failed converting array to f64")?;
@@ -482,7 +482,7 @@ where
         .finish()
         .try_unary(|value| {
             num::cast::cast::<T::Native, f64>(value).ok_or_else(|| {
-                ArrowError::CastError(format!("Can't cast value {:?} to f64", value,))
+                ArrowError::CastError(format!("Can't cast value {value:?} to f64"))
             })
         })
         .context("failed converting array to f64")?;
@@ -607,7 +607,7 @@ where
         .finish()
         .try_unary(|value| {
             num::cast::cast::<T::Native, f64>(value).ok_or_else(|| {
-                ArrowError::CastError(format!("Can't cast value {:?} to f64", value,))
+                ArrowError::CastError(format!("Can't cast value {value:?} to f64"))
             })
         })
         .context("failed converting array to f64")?;
@@ -623,8 +623,7 @@ where
                 Err(error_message) => {
                     *new_array = *a;
                     warn!(
-                        "{}\n Could not compute formulae {} for channel {} and value {}",
-                        error_message, formulae, name, a
+                        "{error_message}\n Could not compute formulae {formulae} for channel {name} and value {a}",
                     );
                 }
             }
@@ -803,7 +802,7 @@ where
         .finish()
         .try_unary(|value| {
             num::cast::cast::<T::Native, f64>(value).ok_or_else(|| {
-                ArrowError::CastError(format!("Can't cast value {:?} to f64", value,))
+                ArrowError::CastError(format!("Can't cast value {value:?} to f64"))
             })
         })
         .context("failed converting array to f64")?;
@@ -909,7 +908,7 @@ where
         .finish()
         .try_unary(|value| {
             num::cast::cast::<T::Native, f64>(value).ok_or_else(|| {
-                ArrowError::CastError(format!("Can't cast value {:?} to f64", value,))
+                ArrowError::CastError(format!("Can't cast value {value:?} to f64"))
             })
         })
         .context("failed converting array to f64")?;
@@ -1019,7 +1018,7 @@ where
         .finish()
         .try_unary(|value| {
             num::cast::cast::<T::Native, f64>(value).ok_or_else(|| {
-                ArrowError::CastError(format!("Can't cast value {:?} to f64", value,))
+                ArrowError::CastError(format!("Can't cast value {value:?} to f64"))
             })
         })
         .context("failed converting array to f64")?;
@@ -1126,7 +1125,7 @@ where
         .finish()
         .try_unary(|value| {
             num::cast::cast::<T::Native, f64>(value).ok_or_else(|| {
-                ArrowError::CastError(format!("Can't cast value {:?} to f64", value,))
+                ArrowError::CastError(format!("Can't cast value {value:?} to f64"))
             })
         })
         .context("failed converting array to f64")?;

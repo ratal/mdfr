@@ -912,7 +912,7 @@ impl MetaData {
                         Ok(tx)
                     }
                     Err(e) => {
-                        warn!("Error parsing comment : \n{}\n{}", comment, e);
+                        warn!("Error parsing comment : \n{comment}\n{e}");
                         Ok(None)
                     }
                 }
@@ -968,7 +968,7 @@ impl MetaData {
                 }
             }
             Err(e) => {
-                warn!("Could not parse HD MD comment : \n{}\n{}", comment, e);
+                warn!("Could not parse HD MD comment : \n{comment}\n{e}");
             }
         };
         self.comments = comments;
@@ -1016,7 +1016,7 @@ impl MetaData {
                 }
             }
             Err(e) => {
-                warn!("Could not parse FH comment : \n{}\n{}", comment, e);
+                warn!("Could not parse FH comment : \n{comment}\n{e}");
             }
         };
         self.comments = comments;
@@ -1047,7 +1047,7 @@ impl MetaData {
                 }
             }
             Err(e) => {
-                warn!("Error parsing comment : \n{}\n{}", comment, e);
+                warn!("Error parsing comment : \n{comment}\n{e}");
             }
         };
         self.comments = comments;

@@ -10,7 +10,6 @@ massif.*
 /venv
 test_mdf*
 test.mf4
-dhat.out.895819
-dhat.out.910889
+dhat.out.*
 test_files/test.mf4_test
 test_files/test.parquet

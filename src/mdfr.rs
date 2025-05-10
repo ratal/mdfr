@@ -16,6 +16,7 @@ use crate::export::numpy::array_to_rust;
 #[cfg(feature = "polars")]
 use crate::export::polars::rust_arrow_to_py_series;
 use pyo3::exceptions::PyUnicodeDecodeError;
+use pyo3::ffi::c_str;
 use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyBytes, PyDict, PyList};
 
@@ -55,14 +56,24 @@ impl Mdfr {
             let mut py_array: Py<PyAny>;
             let dt = mdf.get_channel_data(&channel_name);
             if let Some(data) = dt {
-                py_array = data.clone().into_py(py);
+                py_array = data
+                    .clone()
+                    .into_pyobject(py)
+                    .context("error converting ChannelData into python object")?
+                    .into();
                 if let Some(m) = data.clone().validity() {
-                    let mask: Py<PyAny> = m.iter().collect::<Vec<bool>>().into_py(py);
+                    let mask: Py<PyAny> = m
+                        .iter()
+                        .collect::<Vec<bool>>()
+                        .into_pyobject(py)
+                        .context("error converting validity into python object")?
+                        .into();
                     let locals = [(
                         "numpy",
-                        py.import_bound("numpy").context("could not import numpy")?,
+                        py.import("numpy").context("could not import numpy")?,
                     )]
-                    .into_py_dict_bound(py);
+                    .into_py_dict(py)
+                    .context("error converting validity into dictionary")?;
                     locals
                         .set_item("py_array", &py_array)
                         .context("cannot set python data")?;
@@ -70,13 +81,15 @@ impl Mdfr {
                         .set_item("mask", mask)
                         .context("cannot set python mask")?;
                     py_array = py
-                        .eval_bound(
-                            r#"numpy.ma.array(py_array, mask=mask)"#,
+                        .eval(
+                            c_str!("numpy.ma.array(py_array, mask=mask)"),
                             None,
                             Some(&locals),
                         )
                         .context("masked array creation failed")?
-                        .into_py(py);
+                        .into_pyobject(py)
+                        .context("error converting masked array into python object")?
+                        .into();
                 }
             } else {
                 py_array = Python::None(py);
@@ -86,7 +99,7 @@ impl Mdfr {
         Ok(data)
     }
     /// returns channel's numpy dtype
-    fn get_channel_dtype(&self, channel_name: String) -> Py<PyAny> {
+    fn get_channel_dtype(&self, channel_name: String) -> PyResult<Py<PyAny>> {
         let Mdfr(mdf) = self;
         let mut data: Option<&ChannelData> = None;
         // extract channelData, even empty but initialised
@@ -118,7 +131,13 @@ impl Mdfr {
                 }
             }
         };
-        pyo3::Python::with_gil(|py| data.map(|d| d.get_dtype()).into_py(py))
+        pyo3::Python::with_gil(|py| {
+            Ok(data
+                .map(|d| d.get_dtype())
+                .into_pyobject(py)
+                .context("error converting dtype into python object")?
+                .into())
+        })
     }
     /// returns polars serie of channel
     #[cfg(feature = "polars")]
@@ -139,7 +158,7 @@ impl Mdfr {
         Python::with_gil(|py| {
             let mut py_dataframe = Python::None(py);
             let channel_list = mdf.mdf_info.get_channel_names_cg_set(&channel_name);
-            let series_dict = PyDict::new_bound(py);
+            let series_dict = PyDict::new(py);
             for channel in channel_list {
                 if let Some(channel_data) = mdf.get_channel_data(&channel) {
                     series_dict
@@ -152,11 +171,11 @@ impl Mdfr {
                 }
             }
             if !series_dict.is_empty() {
-                let locals = PyDict::new_bound(py);
+                let locals = PyDict::new(py);
                 locals
                     .set_item("series", series_dict)
                     .context("cannot set python series_list")?;
-                py.import_bound("polars").context("Could import polars")?;
+                py.import("polars").context("Could import polars")?;
                 py.run_bound(
                     r#"
 import polars
@@ -200,47 +219,65 @@ df=polars.DataFrame(series)
         })
     }
     /// returns channel's associated master channel name string
-    pub fn get_channel_master(&self, channel_name: String) -> Py<PyAny> {
+    pub fn get_channel_master(&self, channel_name: String) -> PyResult<Py<PyAny>> {
         let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|py| {
-            let master: Py<PyAny> = mdf.mdf_info.get_channel_master(&channel_name).to_object(py);
-            master
+            let master: Py<PyAny> = mdf
+                .mdf_info
+                .get_channel_master(&channel_name)
+                .into_pyobject(py)
+                .context("error converting channel master name into python object")?
+                .into();
+            Ok(master)
         })
     }
     /// returns channel's master data, numpy array or list, depending if data type is numeric or string|bytes
     fn get_channel_master_data(&mut self, channel_name: String) -> PyResult<Py<PyAny>> {
         // default py_array value is python None
-        let master = self.get_channel_master(channel_name);
+        let master = self
+            .get_channel_master(channel_name)
+            .context("error getting master channel name")?;
         self.get_channel_data(master.to_string())
     }
     /// returns channel's associated master channel type string
     /// 0 = None (normal data channels), 1 = Time (seconds), 2 = Angle (radians),
     /// 3 = Distance (meters), 4 = Index (zero-based index values)
-    pub fn get_channel_master_type(&self, channel_name: String) -> Py<PyAny> {
+    pub fn get_channel_master_type(&self, channel_name: String) -> PyResult<Py<PyAny>> {
         let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|py| {
             let master_type: Py<PyAny> = mdf
                 .mdf_info
                 .get_channel_master_type(&channel_name)
-                .to_object(py);
-            master_type
+                .into_pyobject(py)
+                .context("error converting channel master type into python object")?
+                .into();
+            Ok(master_type)
         })
     }
     /// returns a set of all channel names contained in file
-    pub fn get_channel_names_set(&self) -> Py<PyAny> {
+    pub fn get_channel_names_set(&self) -> PyResult<Py<PyAny>> {
         let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|py| {
-            let channel_list: Py<PyAny> = mdf.mdf_info.get_channel_names_set().into_py(py);
-            channel_list
+            let channel_list: Py<PyAny> = mdf
+                .mdf_info
+                .get_channel_names_set()
+                .into_pyobject(py)
+                .context("error converting channel names set into python object")?
+                .into();
+            Ok(channel_list)
         })
     }
     /// returns a dict of master names keys for which values are a set of associated channel names
-    pub fn get_master_channel_names_set(&self) -> Py<PyAny> {
+    pub fn get_master_channel_names_set(&self) -> PyResult<Py<PyAny>> {
         let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|py| {
-            let master_channel_list: Py<PyAny> =
-                mdf.mdf_info.get_master_channel_names_set().into_py(py);
-            master_channel_list
+            let master_channel_list: Py<PyAny> = mdf
+                .mdf_info
+                .get_master_channel_names_set()
+                .into_pyobject(py)
+                .context("error converting master channel names set into python object")?
+                .into();
+            Ok(master_channel_list)
         })
     }
     /// load a set of channels in memory
@@ -386,9 +423,9 @@ df=polars.DataFrame(series)
         let atbs = mdf.mdf_info.get_attachement_blocks();
         pyo3::Python::with_gil(|py| {
             if let Some(at) = atbs {
-                let atl = PyList::empty_bound(py);
+                let atl = PyList::empty(py);
                 for (position, atb) in at {
-                    let atdict = PyDict::new_bound(py);
+                    let atdict = PyDict::new(py);
                     let _ = atdict.set_item("position", position);
                     if let Ok(res) = mdf.mdf_info.get_tx(atb.at_tx_filename) {
                         let _ = atdict.set_item("tx_name", res);
@@ -413,7 +450,7 @@ df=polars.DataFrame(series)
         let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|py| {
             if let Some(data) = mdf.mdf_info.get_attachment_embedded_data(position) {
-                PyBytes::new_bound(py, &data).into()
+                PyBytes::new(py, &data).into()
             } else {
                 py.None()
             }
@@ -430,9 +467,9 @@ df=polars.DataFrame(series)
         let evbs = mdf.mdf_info.get_event_blocks();
         pyo3::Python::with_gil(|py| {
             if let Some(ev) = evbs {
-                let evl = PyList::empty_bound(py);
+                let evl = PyList::empty(py);
                 for (_position, evb) in ev {
-                    let evdict = PyDict::new_bound(py);
+                    let evdict = PyDict::new(py);
                     if let Ok(res) = mdf.mdf_info.get_tx(evb.ev_tx_name) {
                         let _ = evdict.set_item("tx_name", res);
                     }
@@ -455,9 +492,9 @@ df=polars.DataFrame(series)
         let fhbs = mdf.mdf_info.get_file_history_blocks();
         pyo3::Python::with_gil(|py| {
             if let Some(fh) = fhbs {
-                let fhl = PyList::empty_bound(py);
+                let fhl = PyList::empty(py);
                 for fhb in fh {
-                    let fhdict = PyDict::new_bound(py);
+                    let fhdict = PyDict::new(py);
                     let _ =
                         fhdict.set_item("comment", mdf.mdf_info.get_comments(fhb.fh_md_comment));
                     let _ = fhdict.set_item("time_ns", fhb.fh_time_ns);
@@ -476,7 +513,7 @@ df=polars.DataFrame(series)
     pub fn plot(&self, channel_name: String) -> PyResult<()> {
         let Mdfr(mdf) = self;
         pyo3::Python::with_gil(|py| -> PyResult<()> {
-            let locals = PyDict::new_bound(py);
+            let locals = PyDict::new(py);
             locals
                 .set_item("channel_name", &channel_name)
                 .context("cannot set python channel_name")?;
@@ -519,7 +556,7 @@ df=polars.DataFrame(series)
             locals
                 .set_item("channel_data", data)
                 .context("cannot set python channel_data")?;
-            py.import_bound("matplotlib")
+            py.import("matplotlib")
                 .context("Could not import matplotlib")?;
             py.run_bound(
                 r#"
@@ -603,10 +640,10 @@ pyplot.show()
                             }
                             writeln!(
                                 output,
-                                " {:?} {:?} ",unit, desc
+                                " {unit:?} {desc:?} "
                             ).context("cannot print channel unit and description with first and last item")?;
                         } else {
-                            writeln!(output, " {:?} {:?} ", unit, desc)
+                            writeln!(output, " {unit:?} {desc:?} ")
                                 .context("cannot print channel unit and description")?;
                         }
                     }
@@ -654,10 +691,10 @@ pyplot.show()
                             }
                             writeln!(
                                 output,
-                                " {:?} {:?} ",unit, desc
+                                " {unit:?} {desc:?} " 
                             ).context("cannot print channel unit and description with first and last item")?;
                         } else {
-                            writeln!(output, " {:?} {:?} ", unit, desc)
+                            writeln!(output, " {unit:?} {desc:?} ")
                                 .context("cannot print channel unit and description")?;
                         }
                     }
