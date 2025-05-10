@@ -2,7 +2,7 @@
 use std::sync::Arc;
 
 use arrow::array::Array;
-use pyo3::{types::PyList, PyObject, PyResult, ToPyObject};
+use pyo3::{types::PyList, PyObject, PyResult};
 
 use crate::export::numpy::to_py_array;
 
@@ -20,10 +20,11 @@ pub fn rust_arrow_to_py_series(array: Arc<dyn Array>, name: String) -> PyResult<
         // import polars
         let polars = py.import("polars").expect("could not import polars");
         let vecname: Vec<String> = vec![name];
-        let pyname = PyList::new(py, vecname);
+        let pyname = PyList::new(py, vecname).expect("error creating new list");
         let out = polars
-            .call_method1("from_arrow", (pyarrow_array, pyname))
+            .unbind()
+            .call_method1(py, "from_arrow", (pyarrow_array, pyname))
             .expect("method from_arrow not existing");
-        Ok(out.to_object(py))
+        Ok(out)
     })
 }

@@ -1607,8 +1607,7 @@ pub fn read_channels_from_bytes(
         })
         .with_context(|| {
             format!(
-                "Parallel channels bytes reading failed for channel {:?}",
-                channels
+                "Parallel channels bytes reading failed for channel {channels:?}"
             )
         })?;
 

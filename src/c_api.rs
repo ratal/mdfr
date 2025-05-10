@@ -5,8 +5,8 @@ use libc::c_char;
 use std::ffi::{c_uchar, c_ushort, CStr, CString};
 
 /// create a new mdf from a file and its metadata
-#[no_mangle]
-pub unsafe extern "C" fn new_mdf(file_name: *const c_char) -> *mut Mdf {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn new_mdf(file_name: *const c_char) -> *mut Mdf { unsafe {
     // # Safety
     //
     // It is the caller's guarantee to ensure `file_name`:
@@ -26,25 +26,25 @@ pub unsafe extern "C" fn new_mdf(file_name: *const c_char) -> *mut Mdf {
         }
         Err(e) => panic!("{e:?}"),
     }
-}
+}}
 
 /// returns mdf file version
-#[no_mangle]
-pub unsafe extern "C" fn get_version(mdf: *const Mdf) -> c_ushort {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn get_version(mdf: *const Mdf) -> c_ushort { unsafe {
     if let Some(mdf) = mdf.as_ref() {
         mdf.get_version()
     } else {
         panic!("Null pointer given for Mdf Rust object")
     }
-}
+}}
 
 /// returns channel's unit string
 /// if no unit is existing for this channel, returns a null pointer
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_channel_unit(
     mdf: *const Mdf,
     channel_name: *const c_char,
-) -> *const c_char {
+) -> *const c_char { unsafe {
     let name = CStr::from_ptr(channel_name)
         .to_str()
         .expect("Could not convert into utf8 the file name string");
@@ -61,15 +61,15 @@ pub unsafe extern "C" fn get_channel_unit(
     } else {
         panic!("Null pointer given for Mdf Rust object")
     }
-}
+}}
 
 /// returns channel's description string
 /// if no description is existing for this channel, returns null pointer
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_channel_desc(
     mdf: *const Mdf,
     channel_name: *const libc::c_char,
-) -> *const c_char {
+) -> *const c_char { unsafe {
     let name = CStr::from_ptr(channel_name)
         .to_str()
         .expect("Could not convert into utf8 the file name string");
@@ -88,15 +88,15 @@ pub unsafe extern "C" fn get_channel_desc(
     } else {
         panic!("Null pointer given for Mdf Rust object")
     }
-}
+}}
 
 /// returns channel's associated master channel name string
 /// if no master channel existing, returns null pointer
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_channel_master(
     mdf: *const Mdf,
     channel_name: *const libc::c_char,
-) -> *const c_char {
+) -> *const c_char { unsafe {
     let name = CStr::from_ptr(channel_name)
         .to_str()
         .expect("Could not convert into utf8 the file name string");
@@ -110,16 +110,16 @@ pub unsafe extern "C" fn get_channel_master(
     } else {
         panic!("Null pointer given for Mdf Rust object")
     }
-}
+}}
 
 /// returns channel's associated master channel type string
 /// 0 = None (normal data channels), 1 = Time (seconds), 2 = Angle (radians),
 /// 3 = Distance (meters), 4 = Index (zero-based index values)
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_channel_master_type(
     mdf: *const Mdf,
     channel_name: *const libc::c_char,
-) -> c_uchar {
+) -> c_uchar { unsafe {
     let name = CStr::from_ptr(channel_name)
         .to_str()
         .expect("Could not convert into utf8 the file name string");
@@ -128,11 +128,11 @@ pub unsafe extern "C" fn get_channel_master_type(
     } else {
         panic!("Null pointer given for Mdf Rust object")
     }
-}
+}}
 
 /// returns a sorted array of strings of all channel names contained in file
-#[no_mangle]
-pub unsafe extern "C" fn get_channel_names_set(mdf: *const Mdf) -> *const *mut c_char {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn get_channel_names_set(mdf: *const Mdf) -> *const *mut c_char { unsafe {
     if let Some(mdf) = mdf.as_ref() {
         let set = mdf.get_channel_names_set();
         let mut s = set.into_iter().collect::<Vec<String>>();
@@ -151,11 +151,11 @@ pub unsafe extern "C" fn get_channel_names_set(mdf: *const Mdf) -> *const *mut c
     } else {
         panic!("Null pointer given for Mdf Rust object")
     }
-}
+}}
 
 /// load all channels data in memory
-#[no_mangle]
-pub unsafe extern "C" fn load_all_channels_data_in_memory(mdf: *mut Mdf) {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn load_all_channels_data_in_memory(mdf: *mut Mdf) { unsafe {
     if let Some(mdf) = mdf.as_mut() {
         match mdf.load_all_channels_data_in_memory() {
             Ok(_) => {}
@@ -164,15 +164,15 @@ pub unsafe extern "C" fn load_all_channels_data_in_memory(mdf: *mut Mdf) {
     } else {
         panic!("Null pointer given for Mdf Rust object")
     }
-}
+}}
 
 /// returns channel's arrow Array.
 /// null pointer returned if not found
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_channel_array(
     mdf: *const Mdf,
     channel_name: *const libc::c_char,
-) -> *const FFI_ArrowArray {
+) -> *const FFI_ArrowArray { unsafe {
     let name = CStr::from_ptr(channel_name)
         .to_str()
         .expect("Could not convert into utf8 the file name string");
@@ -189,19 +189,19 @@ pub unsafe extern "C" fn get_channel_array(
     } else {
         panic!("Null pointer given for Mdf Rust object")
     }
-}
+}}
 
 // export to Parquet file
 // Compression can be one of the following strings
 // "snappy", "gzip", "lzo", "brotli", "lz4", "lz4raw"
 //  or null pointer if no compression wanted
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(feature = "parquet")]
 pub unsafe extern "C" fn export_to_parquet(
     mdf: *const Mdf,
     file_name: *const c_char,
     compression: *const c_char,
-) {
+) { unsafe {
     // # Safety
     //
     // It is the caller's guarantee to ensure `file_name`:
@@ -230,7 +230,7 @@ pub unsafe extern "C" fn export_to_parquet(
     } else {
         panic!("Null pointer given for Mdf Rust object")
     }
-}
+}}
 
 // export to hdf5 file
 // Compression can be one of the following strings

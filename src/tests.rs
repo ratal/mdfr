@@ -21,7 +21,9 @@ mod tests {
     static BASE_PATH_MDF3: &str = "/home/ratal/workspace/mdfreader/mdfreader/tests/mdf3/";
     static BASE_TEST_PATH: &str = "/home/ratal/workspace/mdfr/test_files";
     static WRITING_MDF_FILE: &str = "/home/ratal/workspace/mdfr/test_files/test.mf4";
+    #[cfg(feature = "parquet")]
     static WRITING_PARQUET_FILE: &str = "/home/ratal/workspace/mdfr/test_files/test_parquet";
+    #[cfg(feature = "hdf5")]
     static WRITING_HDF5_FILE: &str = "/home/ratal/workspace/mdfr/test_files/test_hdf5.hdf5";
 
     #[test]
@@ -1099,16 +1101,16 @@ mod tests {
         } else {
             panic!("channel not found");
         }
-        if let Ok(Some(desc)) = mdf.get_channel_desc(&ref_channel.to_string()) {
+        match mdf.get_channel_desc(&ref_channel.to_string()) { Ok(Some(desc)) => {
             assert_eq!(desc, ref_desc);
-        } else {
+        } _ => {
             panic!("channel not found");
-        }
-        if let Ok(Some(unit)) = mdf.get_channel_unit(&ref_channel.to_string()) {
+        }}
+        match mdf.get_channel_unit(&ref_channel.to_string()) { Ok(Some(unit)) => {
             assert_eq!(unit, ref_unit);
-        } else {
+        } _ => {
             panic!("channel not found");
-        }
+        }}
         assert_eq!(mdf.get_channel_master_type(&ref_channel.to_string()), 1);
 
         // add new channel
@@ -1141,16 +1143,16 @@ mod tests {
         } else {
             panic!("channel not found");
         }
-        if let Ok(Some(desc)) = mdf.get_channel_desc(&channel_name.to_string()) {
+        match mdf.get_channel_desc(&channel_name.to_string()) { Ok(Some(desc)) => {
             assert_eq!(desc, ref_desc.to_string());
-        } else {
+        } _ => {
             panic!("channel not found");
-        }
-        if let Ok(Some(unit)) = mdf.get_channel_unit(&channel_name.to_string()) {
+        }}
+        match mdf.get_channel_unit(&channel_name.to_string()) { Ok(Some(unit)) => {
             assert_eq!(unit, ref_unit);
-        } else {
+        } _ => {
             panic!("channel not found");
-        }
+        }}
         assert_eq!(mdf.get_channel_master_type(&channel_name.to_string()), 0);
 
         //rename
@@ -1168,6 +1170,7 @@ mod tests {
             .is_none());
         Ok(())
     }
+    #[cfg(feature = "parquet")]
     #[test]
     fn export_to_parquet() -> Result<()> {
         // Export mdf4 to Parquet file
@@ -1196,6 +1199,7 @@ mod tests {
         }
         Ok(())
     }
+    #[cfg(feature = "hdf5")]
     #[test]
     fn export_to_hdf5() -> Result<()> {
         // Export mdf4 to Parquet file

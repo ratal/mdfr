@@ -30,12 +30,12 @@ pub(crate) type ChannelNamesSet = HashMap<String, ChannelId>;
 /// MdfInfo4 is the struct holding whole metadata of mdf4.x files
 /// * blocks with unique links are at top level like attachment, events and file history
 /// * sharable blocks (most likely referenced multiple times and shared by several blocks)
-/// that are in sharable fields and holds CC, SI, TX and MD blocks
+///   that are in sharable fields and holds CC, SI, TX and MD blocks
 /// * the dg fields nests cg itself nesting cn blocks and eventually compositions
-/// (other cn or ca blocks) and conversion
+///   (other cn or ca blocks) and conversion
 /// * channel_names_set is the complete set of channel names contained in file
 /// * in general the blocks are contained in HashMaps with key corresponding
-/// to their position in the file
+///   to their position in the file
 #[derive(Debug, Default, Clone)]
 #[repr(C)]
 pub struct MdfInfo4 {
@@ -150,8 +150,7 @@ impl MdfInfo4 {
     }
     /// returns the set of channel names
     pub fn get_channel_names_set(&self) -> HashSet<String> {
-        let channel_list = self.channel_names_set.keys().cloned().collect();
-        channel_list
+        self.channel_names_set.keys().cloned().collect()
     }
     /// returns the set of channel names that are in same channel group as input channel name
     pub fn get_channel_names_cg_set(&self, channel_name: &str) -> HashSet<String> {
@@ -891,7 +890,7 @@ impl MetaData {
                 let comment: String = self
                     .get_data_string()
                     .context("failed getting data string to extract TX tag")?
-                    .trim_end_matches(|c| c == '\n' || c == '\r' || c == ' ')
+                    .trim_end_matches(['\n', '\r', ' '])
                     .into(); // removes ending spaces
                 match roxmltree::Document::parse(&comment) {
                     Ok(md) => {
@@ -912,7 +911,7 @@ impl MetaData {
                         Ok(tx)
                     }
                     Err(e) => {
-                        warn!("Error parsing comment : \n{}\n{}", comment, e);
+                        warn!("Error parsing comment : \n{comment}\n{e}");
                         Ok(None)
                     }
                 }
@@ -957,7 +956,7 @@ impl MetaData {
         // MD Block from HD Block, reading xml
         let comment: String = self
             .get_data_string()?
-            .trim_end_matches(|c| c == '\n' || c == '\r' || c == ' ')
+            .trim_end_matches(['\n', '\r', ' '])
             .into(); // removes ending spaces
         match roxmltree::Document::parse(&comment) {
             Ok(md) => {
@@ -968,7 +967,7 @@ impl MetaData {
                 }
             }
             Err(e) => {
-                warn!("Could not parse HD MD comment : \n{}\n{}", comment, e);
+                warn!("Could not parse HD MD comment : \n{comment}\n{e}");
             }
         };
         self.comments = comments;
@@ -1003,7 +1002,7 @@ impl MetaData {
         // MD Block from FH Block, reading xml
         let comment: String = self
             .get_data_string()?
-            .trim_end_matches(|c| c == '\n' || c == '\r' || c == ' ')
+            .trim_end_matches(['\n', '\r', ' '])
             .into(); // removes ending spaces
         match roxmltree::Document::parse(&comment) {
             Ok(md) => {
@@ -1016,7 +1015,7 @@ impl MetaData {
                 }
             }
             Err(e) => {
-                warn!("Could not parse FH comment : \n{}\n{}", comment, e);
+                warn!("Could not parse FH comment : \n{comment}\n{e}");
             }
         };
         self.comments = comments;
@@ -1029,7 +1028,7 @@ impl MetaData {
         let mut comments: HashMap<String, String> = HashMap::new();
         let comment: String = self
             .get_data_string()?
-            .trim_end_matches(|c| c == '\n' || c == '\r' || c == ' ')
+            .trim_end_matches(['\n', '\r', ' '])
             .into(); // removes ending spaces
         match roxmltree::Document::parse(&comment) {
             Ok(md) => {
@@ -1047,7 +1046,7 @@ impl MetaData {
                 }
             }
             Err(e) => {
-                warn!("Error parsing comment : \n{}\n{}", comment, e);
+                warn!("Error parsing comment : \n{comment}\n{e}");
             }
         };
         self.comments = comments;

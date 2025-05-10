@@ -257,7 +257,7 @@ fn create_parquet_writer(
     let path = buf_path.into_boxed_path();
     let file = std::io::BufWriter::new(
         std::fs::File::create(path.clone())
-            .with_context(|| format!("Failed to create file {:?}", path))?,
+            .with_context(|| format!("Failed to create file {path:?}"))?,
     );
     let options = WriterProperties::builder()
         .set_compression(compression)
@@ -278,8 +278,7 @@ fn create_parquet_writer(
     )
     .with_context(|| {
         format!(
-            "Failed to write parquet file with schema {:?} and options {:?}",
-            finalised_arrow_schema, options
+            "Failed to write parquet file with schema {finalised_arrow_schema:?} and options {options:?}"
         )
     })
 }
@@ -359,8 +358,7 @@ fn write_data(
     .context("failed creating parquet writer")?;
     writer.write(&record_batch).with_context(|| {
         format!(
-            "Failed writing recordbatch for record id {}, master channel {:?}",
-            rec_id, master_channel_name
+            "Failed writing recordbatch for record id {rec_id}, master channel {master_channel_name:?}"
         )
     })?;
     writer.close().context("Failed to write footer")?;

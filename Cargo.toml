@@ -1,9 +1,9 @@
 [package]
 name = "mdfr"
-version = "0.6.2"
+version = "0.6.3"
 description = "A package for reading and writing MDF files"
 authors = ["ratal <ratal@ratal.org>"]
-edition = "2021"
+edition = "2024"
 repository = "https://github.com/ratal/mdfr/"
 categories = ["encoding", "filesystem"]
 license = "GPL-3.0"
@@ -21,59 +21,59 @@ ndarray = ["dep:ndarray"]
 hdf5-mpio = ["hdf5/mpio"]
 
 [dependencies]
-clap = "4" # for input arguments
+clap = "4.5" # for input arguments
 anyhow = { version = "1.0", features = ["backtrace"] } # error handling
 log = "0.4" # to log events
 byteorder = "1.4" # for bytes conversions
-binrw = "0.13" # to efficiently read blocks
+binrw = "0.15" # to efficiently read blocks
 num = "0.4"
-half = "2" # for f16 handling
+half = "2.6" # for f16 handling
 encoding_rs = "0.8" # for endian management and bytes to text conversion (utf8, SBC, UTF16)
 codepage = "0.1" # to convert code page into encoding
 chrono = "0.4" # for time conversion
 rayon = "1.5" # for general purpose parallel computations
 crossbeam-channel = "0.5" # for efficient channel between threads
 parking_lot = "0.12" # for efficient mutex
-roxmltree = "0.19" # for xml parsing
+roxmltree = "0.20" # for xml parsing
 yazi = "0.2" # for DZ block data deflate
 md-5 = "0.10" # md5sum of attachments
 transpose = "0.2" # for DZBlock transpose
 fasteval = "0.2" # for algebraic conversion
-itertools = "0.12"
+itertools = "0.14"
 serde = { version = "1.0", features = ["derive"] } # for serialization
-whoami = "1.2" # to get user nam for writing file
-rand = "0.8" # for random numbers
-arrow = { version = "51.0.0", features = [
+whoami = "1.6" # to get user name for writing file
+rand = "0.9" # for random numbers
+arrow = { version = "55.0.0", features = [
     "pyarrow",
     "prettyprint",
     "ffi",
 ] } # for efficient data storing in memory
-env_logger = "*"
+env_logger = "0.11"
 libc = "0.2" # for the C api
-numpy = { version = "0.20", optional = true } # to export in numpy
-polars = { version = "0.39", features = [
+numpy = { version = "0.24", optional = true } # to export in numpy
+polars = { version = "0.47", features = [
     "dtype-full",
     "object",
     "fmt",
 ], optional = true } # for python dataframe
-parquet = { version = "51.0.0", optional = true } # to write parquet file
+parquet = { version = "55.0.0", optional = true } # to write parquet file
 hdf5 = { version = "0.8", optional = true, features = [
     "lzf",
 ] } # to export into hdf5 file
-ndarray = { version = "0.15", optional = true } # to convert arraw data into ndarray, needed for hdf5
+ndarray = { version = "0.16", optional = true } # to convert arraw data into ndarray, needed for hdf5
 
 [dependencies.pyo3]
-version = "0.20"
+version = "0.24"
 features = ["extension-module", "num-complex", "anyhow"]
 optional = true
 
 [dev-dependencies]
 criterion = "0.5" # for benchmark
-test-log = "*"
+test-log = "0.2"
 glob = "*"
 
 [build-dependencies]
-cbindgen = "0.26" # to generate C api headers
+cbindgen = "0.28" # to generate C api headers
 
 [lib]
 name = "mdfr"

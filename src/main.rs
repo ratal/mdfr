@@ -21,7 +21,7 @@ fn main() -> Result<(), Error> {
     init();
     let matches = Command::new("mdfr")
         .bin_name("mdfr")
-        .version("0.1.0")
+        .version("0.6.3")
         .author("Aymeric Rateau <aymeric.rateau@gmail.com>")
         .about("reads ASAM mdf file")
         .arg(
@@ -96,7 +96,7 @@ fn main() -> Result<(), Error> {
         .context("File name missing")?;
 
     let mut mdf_file = mdfreader::Mdf::new(file_name)
-        .with_context(|| format!("failed reading metadata from file {}", file_name))?;
+        .with_context(|| format!("failed reading metadata from file {file_name}"))?;
 
     if matches.get_flag("info") {
         println!("{:?}", mdf_file.get_master_channel_names_set());
@@ -109,17 +109,17 @@ fn main() -> Result<(), Error> {
     if mdf4_file_name.is_some() || parquet_file_name.is_some() || hdf5_file_name.is_some() {
         mdf_file
             .load_all_channels_data_in_memory()
-            .with_context(|| format!("failed reading channels data from file {}", file_name))?;
-        info!("loaded all channels data in memory from file {}", file_name);
+            .with_context(|| format!("failed reading channels data from file {file_name}"))?;
+        info!("loaded all channels data in memory from file {file_name}");
     }
 
     let compression = matches.get_flag("compress");
     if let Some(file_name) = mdf4_file_name {
         mdf_file.write(file_name, compression)?;
         if compression {
-            info!("Wrote mdf4 file {} with compression", file_name);
+            info!("Wrote mdf4 file {file_name} with compression");
         } else {
-            info!("Wrote mdf4 file {} without compression", file_name);
+            info!("Wrote mdf4 file {file_name} without compression");
         }
     }
 
@@ -129,10 +129,9 @@ fn main() -> Result<(), Error> {
     if let Some(file_name) = parquet_file_name {
         mdf_file
             .export_to_parquet(file_name, parquet_compression.map(|x| &**x))
-            .with_context(|| format!("failed to export into parquet file {}", file_name))?;
+            .with_context(|| format!("failed to export into parquet file {file_name}"))?;
         info!(
-            "Wrote parquet file {} with compression {:?}",
-            file_name, parquet_compression
+            "Wrote parquet file {file_name} with compression {parquet_compression:?}" 
         );
     }
 
@@ -142,8 +141,8 @@ fn main() -> Result<(), Error> {
     if let Some(file_name) = hdf5_file_name {
         mdf_file
             .export_to_hdf5(file_name, hdf5_compression.map(|x| &**x))
-            .with_context(|| format!("failed to export into hdf5 file {}", file_name))?;
-        info!("Wrote hdf5 file {}", file_name);
+            .with_context(|| format!("failed to export into hdf5 file {file_name}"))?;
+        info!("Wrote hdf5 file {file_name}");
     }
 
     Ok(())

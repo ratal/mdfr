@@ -119,8 +119,7 @@ impl MdfInfo3 {
     }
     /// returns the set of channel names
     pub fn get_channel_names_set(&self) -> HashSet<String> {
-        let channel_list = self.channel_names_set.keys().cloned().collect();
-        channel_list
+        self.channel_names_set.keys().cloned().collect()
     }
     /// returns the set of channel names that are in same channel group as input channel name
     pub fn get_channel_names_cg_set(&self, channel_name: &str) -> HashSet<String> {
@@ -590,7 +589,7 @@ pub fn parse_tx(
     let (comment, _encoding, error_flag) = encoding.decode(&comment_raw);
     let comment: String = comment.to_string().trim_end_matches(char::from(0)).into();
     if error_flag {
-        info!("errors reading {}", comment);
+        info!("errors reading {comment}");
     }
     let position = target as i64 + block_header.hdr_len as i64;
     Ok((block_header, comment, position))
@@ -1013,13 +1012,13 @@ fn parse_cn3_block(
         position = pos;
     }
     if error_flag {
-        info!("errors reading channel name {}", unique_name);
+        info!("errors reading channel name {unique_name}");
     }
 
     let (desc, _encoding, error_flag) = encoding.decode(&desc);
     let description = desc.to_string().trim_end_matches(char::from(0)).to_string();
     if error_flag {
-        info!("errors reading channel description {}", description);
+        info!("errors reading channel description {description}");
     }
 
     let mut comment = String::new();

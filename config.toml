@@ -1,0 +1,5 @@
+[rust]
+debuginfo-level = 1
+
+[build]
+rustflags = ["-C", "symbol-mangling-version=v0"]
