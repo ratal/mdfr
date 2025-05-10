@@ -1284,14 +1284,14 @@ where
     let mut table_int: HashMap<i64, TextOrScaleConversion> = HashMap::with_capacity(cc_val.len());
     for (ind, val) in cc_val.iter().enumerate() {
         let val_i64 = (*val).round() as i64;
-        if let Ok(Some(txt)) = sharable.get_tx(cc_ref[ind]) {
+        match sharable.get_tx(cc_ref[ind]) { Ok(Some(txt)) => {
             table_int.insert(val_i64, TextOrScaleConversion::Txt(txt));
-        } else if let Some(cc) = sharable.cc.get(&cc_ref[ind]) {
+        } _ => if let Some(cc) = sharable.cc.get(&cc_ref[ind]) {
             let conv = conversion_function(cc, sharable);
             table_int.insert(val_i64, TextOrScaleConversion::Scale(Box::new(conv)));
         } else {
             table_int.insert(val_i64, TextOrScaleConversion::Nil);
-        }
+        }}
     }
     let array_f64: Float64Array = cast(&array.finish_cloned(), &DataType::Float64)
         .context("failed converting Array to f64 Array")?
@@ -1352,14 +1352,14 @@ fn value_to_text_calculation_f32(
     let mut table_float: HashMap<i64, TextOrScaleConversion> = HashMap::with_capacity(cc_val.len());
     for (ind, val) in cc_val.iter().enumerate() {
         let ref_val = (*val * canonization_value).round() as i64; // Canonization
-        if let Ok(Some(txt)) = sharable.get_tx(cc_ref[ind]) {
+        match sharable.get_tx(cc_ref[ind]) { Ok(Some(txt)) => {
             table_float.insert(ref_val, TextOrScaleConversion::Txt(txt));
-        } else if let Some(cc) = sharable.cc.get(&cc_ref[ind]) {
+        } _ => if let Some(cc) = sharable.cc.get(&cc_ref[ind]) {
             let conv = conversion_function(cc, sharable);
             table_float.insert(ref_val, TextOrScaleConversion::Scale(Box::new(conv)));
         } else {
             table_float.insert(ref_val, TextOrScaleConversion::Nil);
-        }
+        }}
     }
     let mut new_array = LargeStringBuilder::with_capacity(a.len(), 32);
     a.values_slice().iter().for_each(|a| {
@@ -1404,14 +1404,14 @@ fn value_to_text(
     sharable: &SharableBlocks,
 ) -> Result<(), Error> {
     let def: DefaultTextOrScaleConversion;
-    if let Ok(Some(txt)) = sharable.get_tx(cc_ref[cc_val.len()]) {
+    match sharable.get_tx(cc_ref[cc_val.len()]) { Ok(Some(txt)) => {
         def = DefaultTextOrScaleConversion::DefaultTxt(txt);
-    } else if let Some(cc) = sharable.cc.get(&cc_ref[cc_val.len()]) {
+    } _ => if let Some(cc) = sharable.cc.get(&cc_ref[cc_val.len()]) {
         let conv = conversion_function(cc, sharable);
         def = DefaultTextOrScaleConversion::DefaultScale(Box::new(conv));
     } else {
         def = DefaultTextOrScaleConversion::Nil;
-    }
+    }}
     match &mut cn.data {
         ChannelData::Int8(a) => {
             cn.data = ChannelData::Utf8(value_to_text_calculation_int(
@@ -1501,14 +1501,14 @@ fn value_to_text(
                 HashMap::with_capacity(cc_val.len());
             for (ind, val) in cc_val.iter().enumerate() {
                 let ref_val = (*val * 1024.0 * 1024.0).round() as i64; // Canonization
-                if let Ok(Some(txt)) = sharable.get_tx(cc_ref[ind]) {
+                match sharable.get_tx(cc_ref[ind]) { Ok(Some(txt)) => {
                     table_float.insert(ref_val, TextOrScaleConversion::Txt(txt));
-                } else if let Some(cc) = sharable.cc.get(&cc_ref[ind]) {
+                } _ => if let Some(cc) = sharable.cc.get(&cc_ref[ind]) {
                     let conv = conversion_function(cc, sharable);
                     table_float.insert(ref_val, TextOrScaleConversion::Scale(Box::new(conv)));
                 } else {
                     table_float.insert(ref_val, TextOrScaleConversion::Nil);
-                }
+                }}
             }
             let mut new_array = LargeStringBuilder::with_capacity(a.len(), 32);
             a.values_slice().iter().for_each(|a| {
@@ -1569,7 +1569,7 @@ fn conversion_function(cc: &Cc4Block, sharable: &SharableBlocks) -> ConversionFu
             ),
             3 => {
                 if !&cc.cc_ref.is_empty() {
-                    if let Ok(Some(formulae)) = sharable.get_tx(cc.cc_ref[0]) {
+                    match sharable.get_tx(cc.cc_ref[0]) { Ok(Some(formulae)) => {
                         let parser = fasteval::Parser::new();
                         let mut slab = fasteval::Slab::new();
                         let compiled = parser.parse(&formulae, &mut slab.ps);
@@ -1583,9 +1583,9 @@ fn conversion_function(cc: &Cc4Block, sharable: &SharableBlocks) -> ConversionFu
                                 ConversionFunction::Identity
                             }
                         }
-                    } else {
+                    } _ => {
                         ConversionFunction::Identity
-                    }
+                    }}
                 } else {
                     ConversionFunction::Identity
                 }
@@ -1650,24 +1650,24 @@ fn value_range_to_text_calculation<T: ArrowPrimitiveType>(
     }
     let mut txt: Vec<TextOrScaleConversion> = Vec::with_capacity(n_keys);
     for pointer in cc_ref.iter() {
-        if let Ok(Some(t)) = sharable.get_tx(*pointer) {
+        match sharable.get_tx(*pointer) { Ok(Some(t)) => {
             txt.push(TextOrScaleConversion::Txt(t));
-        } else if let Some(cc) = sharable.cc.get(pointer) {
+        } _ => if let Some(cc) = sharable.cc.get(pointer) {
             let conv = conversion_function(cc, sharable);
             txt.push(TextOrScaleConversion::Scale(Box::new(conv)));
         } else {
             txt.push(TextOrScaleConversion::Nil);
-        }
+        }}
     }
     let def: DefaultTextOrScaleConversion;
-    if let Ok(Some(t)) = sharable.get_tx(cc_ref[n_keys]) {
+    match sharable.get_tx(cc_ref[n_keys]) { Ok(Some(t)) => {
         def = DefaultTextOrScaleConversion::DefaultTxt(t);
-    } else if let Some(cc) = sharable.cc.get(&cc_ref[n_keys]) {
+    } _ => if let Some(cc) = sharable.cc.get(&cc_ref[n_keys]) {
         let conv = conversion_function(cc, sharable);
         def = DefaultTextOrScaleConversion::DefaultScale(Box::new(conv));
     } else {
         def = DefaultTextOrScaleConversion::Nil;
-    }
+    }}
     let mut new_array = LargeStringBuilder::with_capacity(array.len(), 32);
     let array_f64: Float64Array = cast(&array.finish_cloned(), &DataType::Float64)
         .expect("failed converting Array to f64 Array")
@@ -1872,11 +1872,11 @@ fn text_to_text_calculation(
     let mut table: HashMap<String, Option<String>> = HashMap::with_capacity(cc_ref.len());
     for ccref in pairs.iter() {
         if let Ok(Some(key)) = sharable.get_tx(*ccref.0) {
-            if let Ok(Some(txt)) = sharable.get_tx(*ccref.1) {
+            match sharable.get_tx(*ccref.1) { Ok(Some(txt)) => {
                 table.insert(key, Some(txt));
-            } else {
+            } _ => {
                 table.insert(key, None);
-            }
+            }}
         }
     }
     let mut default: Option<String> = None;
@@ -1940,11 +1940,11 @@ fn bitfield_text_table_calculation<T: ArrowPrimitiveType>(
         if let Some(cc) = sharable.cc.get(pointer) {
             let name: Option<String>;
             if cc.cc_tx_name != 0 {
-                if let Ok(Some(n)) = sharable.get_tx(cc.cc_tx_name) {
+                match sharable.get_tx(cc.cc_tx_name) { Ok(Some(n)) => {
                     name = Some(n);
-                } else {
+                } _ => {
                     name = None
-                }
+                }}
             } else {
                 name = None
             }
@@ -1955,25 +1955,25 @@ fn bitfield_text_table_calculation<T: ArrowPrimitiveType>(
                             HashMap::with_capacity(cc_val.len());
                         for (ind, val) in cc_val.iter().enumerate() {
                             let val_i64 = (*val).round() as i64;
-                            if let Ok(Some(txt)) = sharable.get_tx(cc.cc_ref[ind]) {
+                            match sharable.get_tx(cc.cc_ref[ind]) { Ok(Some(txt)) => {
                                 table_int.insert(val_i64, TextOrScaleConversion::Txt(txt));
-                            } else if let Some(cc) = sharable.cc.get(&cc.cc_ref[ind]) {
+                            } _ => if let Some(cc) = sharable.cc.get(&cc.cc_ref[ind]) {
                                 let conv = conversion_function(cc, sharable);
                                 table_int
                                     .insert(val_i64, TextOrScaleConversion::Scale(Box::new(conv)));
                             } else {
                                 table_int.insert(val_i64, TextOrScaleConversion::Nil);
-                            }
+                            }}
                         }
                         let def: DefaultTextOrScaleConversion;
-                        if let Ok(Some(txt)) = sharable.get_tx(cc.cc_ref[cc_val.len()]) {
+                        match sharable.get_tx(cc.cc_ref[cc_val.len()]) { Ok(Some(txt)) => {
                             def = DefaultTextOrScaleConversion::DefaultTxt(txt);
-                        } else if let Some(cc) = sharable.cc.get(&cc.cc_ref[cc_val.len()]) {
+                        } _ => if let Some(cc) = sharable.cc.get(&cc.cc_ref[cc_val.len()]) {
                             let conv = conversion_function(cc, sharable);
                             def = DefaultTextOrScaleConversion::DefaultScale(Box::new(conv));
                         } else {
                             def = DefaultTextOrScaleConversion::Nil;
-                        }
+                        }}
                         table.push((ValueOrValueRangeToText::ValueToText(table_int, def), name));
                     }
                     CcVal::Uint(_) => (),
@@ -1992,24 +1992,24 @@ fn bitfield_text_table_calculation<T: ArrowPrimitiveType>(
                         }
                         let mut txt: Vec<TextOrScaleConversion> = Vec::with_capacity(n_keys);
                         for pointer in cc.cc_ref.iter() {
-                            if let Ok(Some(t)) = sharable.get_tx(*pointer) {
+                            match sharable.get_tx(*pointer) { Ok(Some(t)) => {
                                 txt.push(TextOrScaleConversion::Txt(t));
-                            } else if let Some(ccc) = sharable.cc.get(pointer) {
+                            } _ => if let Some(ccc) = sharable.cc.get(pointer) {
                                 let conv = conversion_function(ccc, sharable);
                                 txt.push(TextOrScaleConversion::Scale(Box::new(conv)));
                             } else {
                                 txt.push(TextOrScaleConversion::Nil);
-                            }
+                            }}
                         }
                         let def: DefaultTextOrScaleConversion;
-                        if let Ok(Some(t)) = sharable.get_tx(cc.cc_ref[n_keys]) {
+                        match sharable.get_tx(cc.cc_ref[n_keys]) { Ok(Some(t)) => {
                             def = DefaultTextOrScaleConversion::DefaultTxt(t);
-                        } else if let Some(ccc) = sharable.cc.get(&cc.cc_ref[n_keys]) {
+                        } _ => if let Some(ccc) = sharable.cc.get(&cc.cc_ref[n_keys]) {
                             let conv = conversion_function(ccc, sharable);
                             def = DefaultTextOrScaleConversion::DefaultScale(Box::new(conv));
                         } else {
                             def = DefaultTextOrScaleConversion::Nil;
-                        }
+                        }}
                         table.push((
                             ValueOrValueRangeToText::ValueRangeToText(txt, def, keys),
                             name,

@@ -165,7 +165,7 @@ impl Clone for ChannelData {
                 let array: FixedSizeBinaryArray = array.finish_cloned();
                 let mut new_array =
                     FixedSizeBinaryBuilder::with_capacity(array.len(), array.value_length());
-                if let Some(validity) = array.logical_nulls() {
+                match array.logical_nulls() { Some(validity) => {
                     array
                         .values()
                         .chunks(array.value_length() as usize)
@@ -179,7 +179,7 @@ impl Clone for ChannelData {
                                 new_array.append_null();
                             }
                         });
-                } else {
+                } _ => {
                     array
                         .values()
                         .chunks(array.value_length() as usize)
@@ -188,7 +188,7 @@ impl Clone for ChannelData {
                                 .append_value(value)
                                 .expect("failed appending new fixed binary value");
                         });
-                }
+                }}
                 Self::FixedSizeByteArray(new_array)
             }
             Self::ArrayDInt8(arg0) => Self::ArrayDInt8(arg0.clone()),
@@ -1608,7 +1608,7 @@ pub fn try_from(value: &dyn Array) -> Result<ChannelData, Error> {
                 .downcast_ref::<FixedSizeBinaryArray>()
                 .context("could not downcast to fixed size binary array")?;
             let mut new_array = FixedSizeBinaryBuilder::with_capacity(array.len(), *size);
-            if let Some(validity) = array.logical_nulls() {
+            match array.logical_nulls() { Some(validity) => {
                 array
                     .values()
                     .chunks(array.value_length() as usize)
@@ -1622,7 +1622,7 @@ pub fn try_from(value: &dyn Array) -> Result<ChannelData, Error> {
                             new_array.append_null();
                         }
                     });
-            } else {
+            } _ => {
                 array
                     .values()
                     .chunks(array.value_length() as usize)
@@ -1631,7 +1631,7 @@ pub fn try_from(value: &dyn Array) -> Result<ChannelData, Error> {
                             .append_value(value)
                             .expect("failed appending new fixed binary value");
                     });
-            }
+            }}
             Ok(ChannelData::FixedSizeByteArray(new_array))
         }
         DataType::LargeBinary => {

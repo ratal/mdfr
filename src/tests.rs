@@ -1101,16 +1101,16 @@ mod tests {
         } else {
             panic!("channel not found");
         }
-        if let Ok(Some(desc)) = mdf.get_channel_desc(&ref_channel.to_string()) {
+        match mdf.get_channel_desc(&ref_channel.to_string()) { Ok(Some(desc)) => {
             assert_eq!(desc, ref_desc);
-        } else {
+        } _ => {
             panic!("channel not found");
-        }
-        if let Ok(Some(unit)) = mdf.get_channel_unit(&ref_channel.to_string()) {
+        }}
+        match mdf.get_channel_unit(&ref_channel.to_string()) { Ok(Some(unit)) => {
             assert_eq!(unit, ref_unit);
-        } else {
+        } _ => {
             panic!("channel not found");
-        }
+        }}
         assert_eq!(mdf.get_channel_master_type(&ref_channel.to_string()), 1);
 
         // add new channel
@@ -1143,16 +1143,16 @@ mod tests {
         } else {
             panic!("channel not found");
         }
-        if let Ok(Some(desc)) = mdf.get_channel_desc(&channel_name.to_string()) {
+        match mdf.get_channel_desc(&channel_name.to_string()) { Ok(Some(desc)) => {
             assert_eq!(desc, ref_desc.to_string());
-        } else {
+        } _ => {
             panic!("channel not found");
-        }
-        if let Ok(Some(unit)) = mdf.get_channel_unit(&channel_name.to_string()) {
+        }}
+        match mdf.get_channel_unit(&channel_name.to_string()) { Ok(Some(unit)) => {
             assert_eq!(unit, ref_unit);
-        } else {
+        } _ => {
             panic!("channel not found");
-        }
+        }}
         assert_eq!(mdf.get_channel_master_type(&channel_name.to_string()), 0);
 
         //rename
