@@ -21,7 +21,7 @@ ndarray = ["dep:ndarray"]
 hdf5-mpio = ["hdf5/mpio"]
 
 [dependencies]
-clap = "4.5" # for input arguments
+clap = "4.5.38" # for input arguments
 anyhow = { version = "1.0", features = ["backtrace"] } # error handling
 log = "0.4" # to log events
 byteorder = "1.4" # for bytes conversions
@@ -43,7 +43,7 @@ itertools = "0.14"
 serde = { version = "1.0", features = ["derive"] } # for serialization
 whoami = "1.6" # to get user name for writing file
 rand = "0.9" # for random numbers
-arrow = { version = "55.0.0", features = [
+arrow = { version = "55.1.0", features = [
     "pyarrow",
     "prettyprint",
     "ffi",
@@ -56,7 +56,7 @@ polars = { version = "0.47", features = [
     "object",
     "fmt",
 ], optional = true } # for python dataframe
-parquet = { version = "55.0.0", optional = true } # to write parquet file
+parquet = { version = "55.1.0", optional = true } # to write parquet file
 hdf5 = { version = "0.8", optional = true, features = [
     "lzf",
 ] } # to export into hdf5 file
@@ -68,7 +68,7 @@ features = ["extension-module", "num-complex", "anyhow"]
 optional = true
 
 [dev-dependencies]
-criterion = "0.5" # for benchmark
+criterion = "0.6" # for benchmark
 test-log = "0.2"
 glob = "*"
 
