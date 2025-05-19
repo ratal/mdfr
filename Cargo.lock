@@ -2248,7 +2248,7 @@ dependencies = [
 
 [[package]]
 name = "mdfr"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "anyhow",
  "arrow",
@@ -2263,7 +2263,7 @@ dependencies = [
  "encoding_rs",
  "env_logger 0.11.8",
  "fasteval",
- "glob 0.3.2",
+ "glob 0.2.11",
  "half",
  "hdf5",
  "itertools 0.14.0",
