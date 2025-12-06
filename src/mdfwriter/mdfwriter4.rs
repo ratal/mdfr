@@ -9,18 +9,18 @@ use std::{
 };
 
 use crate::{
-    data_holder::channel_data::{data_type_init, ChannelData},
+    data_holder::channel_data::{ChannelData, data_type_init},
     mdfinfo::{
-        mdfinfo4::{
-            default_short_header, BlockType, Blockheader4, Ca4Block, Ca4BlockMembers, Cg4,
-            Cg4Block, Cn4, Cn4Block, Compo, Composition, Dg4, Dg4Block, Dz4Block, FhBlock,
-            Ld4Block, MdfInfo4, MetaData, MetaDataBlockType,
-        },
         MdfInfo,
+        mdfinfo4::{
+            BlockType, Blockheader4, Ca4Block, Ca4BlockMembers, Cg4, Cg4Block, Cn4, Cn4Block,
+            Compo, Composition, Dg4, Dg4Block, Dz4Block, FhBlock, Ld4Block, MdfInfo4, MetaData,
+            MetaDataBlockType, default_short_header,
+        },
     },
     mdfreader::Mdf,
 };
-use anyhow::{bail, Context, Error, Result};
+use anyhow::{Context, Error, Result, bail};
 use arrow::buffer::NullBuffer;
 use binrw::BinWriterExt;
 use crossbeam_channel::bounded;
@@ -41,7 +41,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
     let n_channels = mdf.mdf_info.get_channel_names_set().len();
     let mut new_info = MdfInfo4::new(file_name, n_channels);
     let mut pointer: i64 = 168; // after HD block
-                                // FH block
+    // FH block
     new_info.fh = Vec::new();
     let mut fh = FhBlock::default();
     new_info.hd_block.hd_fh_first = pointer;
@@ -60,51 +60,49 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
             let mut cg_cg_master: i64 = 0;
 
             // find master channel and start to write blocks for it
-            if let Some(master_channel_name) = &cg.master_channel_name {
-                if let Some((
+            if let Some(master_channel_name) = &cg.master_channel_name
+                && let Some((
                     _master_name,
                     _dg_master_position,
                     (_cg_master_block_position, _record_id),
                     (_cn_master_block_position, cn_master_record_position),
                 )) = info.get_channel_id(master_channel_name)
-                {
-                    if let Some(cn_master) = cg.cn.get(cn_master_record_position) {
-                        if let Some(data) = mdf.get_channel_data(&cn_master.unique_name) {
-                            // Writing master channel
-                            cg_cg_master = pointer + 64; // after DGBlock
-                            last_dg_pointer = pointer;
-                            pointer = create_blocks(
-                                &mut new_info,
-                                &info,
-                                pointer,
-                                cg,
-                                cn_master,
-                                data,
-                                &cg_cg_master,
-                                true,
-                            )?;
-                        }
-                    }
-                }
+                && let Some(cn_master) = cg.cn.get(cn_master_record_position)
+                && let Some(data) = mdf.get_channel_data(&cn_master.unique_name)
+            {
+                // Writing master channel
+                cg_cg_master = pointer + 64; // after DGBlock
+                last_dg_pointer = pointer;
+                pointer = create_blocks(
+                    &mut new_info,
+                    &info,
+                    pointer,
+                    cg,
+                    cn_master,
+                    data,
+                    &cg_cg_master,
+                    true,
+                )?;
             }
 
             // create the other non master channel blocks
             for (_cn_record_position, cn) in cg.cn.iter() {
                 // not master channel
-                if cn.block.cn_type != 2 && cn.block.cn_type != 3 {
-                    if let Some(data) = mdf.get_channel_data(&cn.unique_name) {
-                        last_dg_pointer = pointer;
-                        pointer = create_blocks(
-                            &mut new_info,
-                            &info,
-                            pointer,
-                            cg,
-                            cn,
-                            data,
-                            &cg_cg_master,
-                            false,
-                        )?;
-                    }
+                if cn.block.cn_type != 2
+                    && cn.block.cn_type != 3
+                    && let Some(data) = mdf.get_channel_data(&cn.unique_name)
+                {
+                    last_dg_pointer = pointer;
+                    pointer = create_blocks(
+                        &mut new_info,
+                        &info,
+                        pointer,
+                        cg,
+                        cn,
+                        data,
+                        &cg_cg_master,
+                        false,
+                    )?;
                 }
             }
         }
@@ -563,31 +561,31 @@ fn create_blocks(
             .insert(tx_name_position, tx_name_block);
 
         // channel unit
-        if let Some(unit) = info.sharable.md_tx.get(&cn.block.cn_md_unit) {
-            if let Some(unit_str) = unit.get_tx_bytes() {
-                let mut tx_unit_block = MetaData::new(MetaDataBlockType::TX, BlockType::CN);
-                tx_unit_block.set_data_buffer(unit_str);
-                cn_block.cn_md_unit = pointer;
-                pointer += tx_unit_block.block.hdr_len as i64;
-                new_info
-                    .sharable
-                    .md_tx
-                    .insert(cn_block.cn_md_unit, tx_unit_block);
-            }
+        if let Some(unit) = info.sharable.md_tx.get(&cn.block.cn_md_unit)
+            && let Some(unit_str) = unit.get_tx_bytes()
+        {
+            let mut tx_unit_block = MetaData::new(MetaDataBlockType::TX, BlockType::CN);
+            tx_unit_block.set_data_buffer(unit_str);
+            cn_block.cn_md_unit = pointer;
+            pointer += tx_unit_block.block.hdr_len as i64;
+            new_info
+                .sharable
+                .md_tx
+                .insert(cn_block.cn_md_unit, tx_unit_block);
         }
 
         // channel comment
-        if let Some(comment) = info.sharable.md_tx.get(&cn.block.cn_md_comment) {
-            if let Some(comment_str) = comment.get_tx_bytes() {
-                let mut tx_comment_block = MetaData::new(MetaDataBlockType::TX, BlockType::CN);
-                tx_comment_block.set_data_buffer(comment_str);
-                cn_block.cn_md_comment = pointer;
-                pointer += tx_comment_block.block.hdr_len as i64;
-                new_info
-                    .sharable
-                    .md_tx
-                    .insert(cn_block.cn_md_comment, tx_comment_block);
-            }
+        if let Some(comment) = info.sharable.md_tx.get(&cn.block.cn_md_comment)
+            && let Some(comment_str) = comment.get_tx_bytes()
+        {
+            let mut tx_comment_block = MetaData::new(MetaDataBlockType::TX, BlockType::CN);
+            tx_comment_block.set_data_buffer(comment_str);
+            cn_block.cn_md_comment = pointer;
+            pointer += tx_comment_block.block.hdr_len as i64;
+            new_info
+                .sharable
+                .md_tx
+                .insert(cn_block.cn_md_comment, tx_comment_block);
         }
 
         // Channel array

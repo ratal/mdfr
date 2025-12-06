@@ -1,6 +1,6 @@
 //! Parsing of file metadata into MdfInfo3 struct
 use anyhow::{Context, Error, Result};
-use arrow::array::{UInt16Builder, UInt32Builder, UInt8Builder};
+use arrow::array::{UInt8Builder, UInt16Builder, UInt32Builder};
 use binrw::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::NaiveDate;
@@ -11,9 +11,9 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::default::Default;
 use std::fmt;
 use std::fs::File;
-use std::io::{prelude::*, Cursor};
+use std::io::{Cursor, prelude::*};
 
-use crate::data_holder::channel_data::{data_type_init, ChannelData};
+use crate::data_holder::channel_data::{ChannelData, data_type_init};
 use crate::data_holder::tensor_arrow::Order;
 use crate::mdfinfo::IdBlock;
 
@@ -55,14 +55,11 @@ impl MdfInfo3 {
         let mut unit: Option<String> = None;
         if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
             self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(cn_pos)
         {
-            if let Some(dg) = self.dg.get(dg_pos) {
-                if let Some(cg) = dg.cg.get(rec_id) {
-                    if let Some(cn) = cg.cn.get(cn_pos) {
-                        unit = self._get_unit(&cn.block1.cn_cc_conversion);
-                    }
-                }
-            }
+            unit = self._get_unit(&cn.block1.cn_cc_conversion);
         }
         unit
     }
@@ -80,14 +77,11 @@ impl MdfInfo3 {
         let mut desc: Option<String> = None;
         if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
             self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(cn_pos)
         {
-            if let Some(dg) = self.dg.get(dg_pos) {
-                if let Some(cg) = dg.cg.get(rec_id) {
-                    if let Some(cn) = cg.cn.get(cn_pos) {
-                        desc = Some(cn.description.clone());
-                    }
-                }
-            }
+            desc = Some(cn.description.clone());
         }
         desc
     }
@@ -106,14 +100,11 @@ impl MdfInfo3 {
         let mut master_type: u16 = 0; // default to normal data channel
         if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
             self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(cn_pos)
         {
-            if let Some(dg) = self.dg.get(dg_pos) {
-                if let Some(cg) = dg.cg.get(rec_id) {
-                    if let Some(cn) = cg.cn.get(cn_pos) {
-                        master_type = cn.block1.cn_type;
-                    }
-                }
-            }
+            master_type = cn.block1.cn_type;
         }
         master_type as u8
     }
@@ -127,10 +118,10 @@ impl MdfInfo3 {
             self.get_channel_id(channel_name)
         {
             let mut channel_list = HashSet::new();
-            if let Some(dg) = self.dg.get(dg_pos) {
-                if let Some(cg) = dg.cg.get(rec_id) {
-                    channel_list.clone_from(&cg.channel_names);
-                }
+            if let Some(dg) = self.dg.get(dg_pos)
+                && let Some(cg) = dg.cg.get(rec_id)
+            {
+                channel_list.clone_from(&cg.channel_names);
             }
             channel_list
         } else {
@@ -160,16 +151,12 @@ impl MdfInfo3 {
         for channel_name in channel_names {
             if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
                 self.channel_names_set.get_mut(&channel_name)
+                && let Some(dg) = self.dg.get_mut(dg_pos)
+                && let Some(cg) = dg.cg.get_mut(rec_id)
+                && let Some(cn) = cg.cn.get_mut(cn_pos)
+                && !cn.data.is_empty()
             {
-                if let Some(dg) = self.dg.get_mut(dg_pos) {
-                    if let Some(cg) = dg.cg.get_mut(rec_id) {
-                        if let Some(cn) = cg.cn.get_mut(cn_pos) {
-                            if !cn.data.is_empty() {
-                                cn.data = cn.data.zeros(0, 0, 0, (Vec::new(), Order::RowMajor))?;
-                            }
-                        }
-                    }
-                }
+                cn.data = cn.data.zeros(0, 0, 0, (Vec::new(), Order::RowMajor))?;
             }
         }
         Ok(())
@@ -179,16 +166,12 @@ impl MdfInfo3 {
         let mut data: Option<&ChannelData> = None;
         if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
             self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(cn_pos)
+            && !cn.data.is_empty()
         {
-            if let Some(dg) = self.dg.get(dg_pos) {
-                if let Some(cg) = dg.cg.get(rec_id) {
-                    if let Some(cn) = cg.cn.get(cn_pos) {
-                        if !cn.data.is_empty() {
-                            data = Some(&cn.data);
-                        }
-                    }
-                }
-            }
+            data = Some(&cn.data);
         }
         data
     }
@@ -196,14 +179,12 @@ impl MdfInfo3 {
     pub fn remove_channel(&mut self, channel_name: &str) {
         if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
             self.channel_names_set.get(channel_name)
+            && let Some(dg) = self.dg.get_mut(dg_pos)
+            && let Some(cg) = dg.cg.get_mut(rec_id)
         {
-            if let Some(dg) = self.dg.get_mut(dg_pos) {
-                if let Some(cg) = dg.cg.get_mut(rec_id) {
-                    cg.cn.remove(cn_pos);
-                    cg.channel_names.remove(channel_name);
-                    self.channel_names_set.remove(channel_name);
-                }
-            }
+            cg.cn.remove(cn_pos);
+            cg.channel_names.remove(channel_name);
+            self.channel_names_set.remove(channel_name);
         }
     }
     /// True if channel contains data
@@ -211,14 +192,11 @@ impl MdfInfo3 {
         let mut state: bool = false;
         if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
             self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(cn_pos)
         {
-            if let Some(dg) = self.dg.get(dg_pos) {
-                if let Some(cg) = dg.cg.get(rec_id) {
-                    if let Some(cn) = cg.cn.get(cn_pos) {
-                        state = cn.channel_data_valid
-                    }
-                }
-            }
+            state = cn.channel_data_valid
         }
         state
     }
@@ -230,75 +208,67 @@ impl MdfInfo3 {
     pub fn rename_channel(&mut self, channel_name: &str, new_name: &str) {
         if let Some((master, dg_pos, (cg_pos, rec_id), cn_pos)) =
             self.channel_names_set.remove(channel_name)
+            && let Some(dg) = self.dg.get_mut(&dg_pos)
+            && let Some(cg) = dg.cg.get_mut(&rec_id)
+            && let Some(cn) = cg.cn.get_mut(&cn_pos)
         {
-            if let Some(dg) = self.dg.get_mut(&dg_pos) {
-                if let Some(cg) = dg.cg.get_mut(&rec_id) {
-                    if let Some(cn) = cg.cn.get_mut(&cn_pos) {
-                        cn.unique_name = new_name.to_string();
-                        cg.channel_names.remove(channel_name);
-                        cg.channel_names.insert(new_name.to_string());
-                        if let Some(master_name) = &master {
-                            if master_name == channel_name {
-                                cg.master_channel_name = Some(new_name.to_string());
-                                cg.channel_names.iter().for_each(|channel| {
-                                    if let Some(val) = self.channel_names_set.get_mut(channel) {
-                                        val.0 = Some(new_name.to_string());
-                                        val.1 = dg_pos;
-                                        val.2 = (cg_pos, rec_id);
-                                        val.3 = cn_pos;
-                                    }
-                                });
-                            }
-                        }
-
-                        self.channel_names_set.insert(
-                            new_name.to_string(),
-                            (master, dg_pos, (cg_pos, rec_id), cn_pos),
-                        );
+            cn.unique_name = new_name.to_string();
+            cg.channel_names.remove(channel_name);
+            cg.channel_names.insert(new_name.to_string());
+            if let Some(master_name) = &master
+                && master_name == channel_name
+            {
+                cg.master_channel_name = Some(new_name.to_string());
+                cg.channel_names.iter().for_each(|channel| {
+                    if let Some(val) = self.channel_names_set.get_mut(channel) {
+                        val.0 = Some(new_name.to_string());
+                        val.1 = dg_pos;
+                        val.2 = (cg_pos, rec_id);
+                        val.3 = cn_pos;
                     }
-                }
+                });
             }
+
+            self.channel_names_set.insert(
+                new_name.to_string(),
+                (master, dg_pos, (cg_pos, rec_id), cn_pos),
+            );
         }
     }
     /// Sets the channel unit in memory
     pub fn set_channel_unit(&mut self, channel_name: &str, unit: &str) {
         if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
             self.channel_names_set.get(channel_name)
+            && let Some(dg) = self.dg.get_mut(dg_pos)
+            && let Some(cg) = dg.cg.get_mut(rec_id)
+            && let Some(cn) = cg.cn.get_mut(cn_pos)
         {
-            if let Some(dg) = self.dg.get_mut(dg_pos) {
-                if let Some(cg) = dg.cg.get_mut(rec_id) {
-                    if let Some(cn) = cg.cn.get_mut(cn_pos) {
-                        let unit_vector = self.encoding.encode(unit).0;
-                        let mut unit_array = [0; 20];
-                        unit_array = match unit_vector.len().cmp(&20) {
-                            Ordering::Less => {
-                                unit_array[0..unit_vector.len()].copy_from_slice(&unit_vector);
-                                unit_array
-                            }
-                            _ => {
-                                unit_array.copy_from_slice(&unit_vector[0..20]);
-                                unit_array
-                            }
-                        };
-                        if cn.block1.cn_cc_conversion != 0 {
-                            if let Some(array) =
-                                self.sharable.cc.get_mut(&cn.block1.cn_cc_conversion)
-                            {
-                                array.0.cc_unit = unit_array;
-                            }
-                        } else {
-                            let cc_position = rand::random::<u32>();
-                            cn.block1.cn_cc_conversion = cc_position;
-                            let cc_block = Cc3Block {
-                                cc_unit: unit_array,
-                                ..Default::default()
-                            };
-                            self.sharable
-                                .cc
-                                .insert(cc_position, (cc_block, Conversion::default()));
-                        }
-                    }
+            let unit_vector = self.encoding.encode(unit).0;
+            let mut unit_array = [0; 20];
+            unit_array = match unit_vector.len().cmp(&20) {
+                Ordering::Less => {
+                    unit_array[0..unit_vector.len()].copy_from_slice(&unit_vector);
+                    unit_array
                 }
+                _ => {
+                    unit_array.copy_from_slice(&unit_vector[0..20]);
+                    unit_array
+                }
+            };
+            if cn.block1.cn_cc_conversion != 0 {
+                if let Some(array) = self.sharable.cc.get_mut(&cn.block1.cn_cc_conversion) {
+                    array.0.cc_unit = unit_array;
+                }
+            } else {
+                let cc_position = rand::random::<u32>();
+                cn.block1.cn_cc_conversion = cc_position;
+                let cc_block = Cc3Block {
+                    cc_unit: unit_array,
+                    ..Default::default()
+                };
+                self.sharable
+                    .cc
+                    .insert(cc_position, (cc_block, Conversion::default()));
             }
         }
     }
@@ -306,14 +276,11 @@ impl MdfInfo3 {
     pub fn set_channel_desc(&mut self, channel_name: &str, desc: &str) {
         if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
             self.channel_names_set.get(channel_name)
+            && let Some(dg) = self.dg.get_mut(dg_pos)
+            && let Some(cg) = dg.cg.get_mut(rec_id)
+            && let Some(cn) = cg.cn.get_mut(cn_pos)
         {
-            if let Some(dg) = self.dg.get_mut(dg_pos) {
-                if let Some(cg) = dg.cg.get_mut(rec_id) {
-                    if let Some(cn) = cg.cn.get_mut(cn_pos) {
-                        cn.description = desc.to_string();
-                    }
-                }
-            }
+            cn.description = desc.to_string();
         }
     }
 }
@@ -999,7 +966,7 @@ fn parse_cn3_block(
         .context("Could not read buffer into Cn3Block2 struct")?;
     let pos_byte_beg = block2.cn_bit_offset / 8 + record_id_size;
     let mut n_bytes = block2.cn_bit_count / 8u16;
-    if (block2.cn_bit_count % 8) != 0 {
+    if !block2.cn_bit_count.is_multiple_of(8) {
         n_bytes += 1;
     }
 
@@ -1328,7 +1295,7 @@ impl Default for Cc3Block {
 }
 
 /// All kind of channel data conversions
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 #[repr(C)]
 pub enum Conversion {
     Linear(Vec<f64>),
@@ -1341,13 +1308,8 @@ pub enum Conversion {
     Formula(String),
     TextTable(Vec<(f64, String)>),
     TextRangeTable((Vec<(f64, f64, String)>, String)),
+    #[default]
     Identity,
-}
-
-impl Default for Conversion {
-    fn default() -> Self {
-        Self::Identity
-    }
 }
 
 /// Parser for channel conversion blocks

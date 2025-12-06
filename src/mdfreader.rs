@@ -314,16 +314,16 @@ impl fmt::Display for Mdf {
                     }
                     for channel in list.iter() {
                         writeln!(f, " {channel} ").expect("cannot print channel name");
-                        if let Some(data) = self.get_channel_data(channel) {
-                            if !data.is_empty() {
-                                let array = &data.as_ref();
-                                let displayer = ArrayFormatter::try_new(array, &format_option)
-                                    .map_err(|_| std::fmt::Error)?;
-                                write!(f, "{}", displayer.value(0)).expect("cannot channel data");
-                                write!(f, " ").expect("cannot print simple space character");
-                                write!(f, "{}", displayer.value(data.len() - 1))
-                                    .expect("cannot channel data");
-                            }
+                        if let Some(data) = self.get_channel_data(channel)
+                            && !data.is_empty()
+                        {
+                            let array = &data.as_ref();
+                            let displayer = ArrayFormatter::try_new(array, &format_option)
+                                .map_err(|_| std::fmt::Error)?;
+                            write!(f, "{}", displayer.value(0)).expect("cannot channel data");
+                            write!(f, " ").expect("cannot print simple space character");
+                            write!(f, "{}", displayer.value(data.len() - 1))
+                                .expect("cannot channel data");
                         }
                         if let Ok(Some(unit)) = self.get_channel_unit(channel) {
                             writeln!(f, " {unit} ").expect("cannot print channel unit");
@@ -354,16 +354,16 @@ impl fmt::Display for Mdf {
                     }
                     for channel in list.iter() {
                         writeln!(f, " {channel} ").expect("cannot print channel name");
-                        if let Some(data) = self.get_channel_data(channel) {
-                            if !data.is_empty() {
-                                let array = &data.as_ref();
-                                let displayer = ArrayFormatter::try_new(array, &format_option)
-                                    .map_err(|_| std::fmt::Error)?;
-                                write!(f, "{}", displayer.value(0)).expect("cannot channel data");
-                                write!(f, " ").expect("cannot print simple space character");
-                                write!(f, "{}", displayer.value(data.len() - 1))
-                                    .expect("cannot channel data");
-                            }
+                        if let Some(data) = self.get_channel_data(channel)
+                            && !data.is_empty()
+                        {
+                            let array = &data.as_ref();
+                            let displayer = ArrayFormatter::try_new(array, &format_option)
+                                .map_err(|_| std::fmt::Error)?;
+                            write!(f, "{}", displayer.value(0)).expect("cannot channel data");
+                            write!(f, " ").expect("cannot print simple space character");
+                            write!(f, "{}", displayer.value(data.len() - 1))
+                                .expect("cannot channel data");
                         }
                         if let Ok(Some(unit)) = self.get_channel_unit(channel) {
                             writeln!(f, " {unit} ").expect("cannot print channel unit");

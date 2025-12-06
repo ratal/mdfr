@@ -2,17 +2,17 @@
 use std::sync::Arc;
 
 use arrow::array::Array;
-use pyo3::{types::PyList, PyObject, PyResult};
+use pyo3::{Py, PyAny, PyResult, types::PyList};
 
 use crate::export::numpy::to_py_array;
 
 /// converts rust arrow array into python polars series
 #[allow(dead_code)]
-pub fn rust_arrow_to_py_series(array: Arc<dyn Array>, name: String) -> PyResult<PyObject> {
+pub fn rust_arrow_to_py_series(array: Arc<dyn Array>, name: String) -> PyResult<Py<PyAny>> {
     // ensure we have a single chunk
 
     // acquire the gil
-    pyo3::Python::with_gil(|py| {
+    pyo3::Python::attach(|py| {
         // pyarrow array
         let pyarrow_array =
             to_py_array(py, array).expect("failed to convert arrow array to pyarrow array");

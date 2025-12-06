@@ -18,9 +18,9 @@ use rayon::iter::ParallelExtend;
 
 use crate::{
     mdfinfo::{
+        MdfInfo,
         mdfinfo3::{Cg3, Cn3, MdfInfo3},
         mdfinfo4::{Cg4, Cn4, Dg4, MdfInfo4},
-        MdfInfo,
     },
     mdfreader::Mdf,
 };
@@ -92,29 +92,21 @@ pub fn export_dataframe_to_parquet(
         MdfInfo::V4(mdfinfo4) => {
             if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, _rec_pos))) =
                 mdfinfo4.get_channel_id(channel_name)
+                && let Some(dg) = mdfinfo4.dg.get(dg_pos)
+                && let Some(cg) = dg.cg.get(rec_id)
             {
-                if let Some(dg) = mdfinfo4.dg.get(dg_pos) {
-                    if let Some(cg) = dg.cg.get(rec_id) {
-                        mdf4_cg_to_parquet(file_name, mdfinfo4, rec_id, cg, parquet_compression)
-                            .context(
-                                "failed converting Channel Group 4 to parquet containing channel",
-                            )?;
-                    }
-                }
+                mdf4_cg_to_parquet(file_name, mdfinfo4, rec_id, cg, parquet_compression)
+                    .context("failed converting Channel Group 4 to parquet containing channel")?;
             }
         }
         MdfInfo::V3(mdfinfo3) => {
             if let Some((_master, dg_pos, (_cg_pos, rec_id), _cn_pos)) =
                 mdfinfo3.get_channel_id(channel_name)
+                && let Some(dg) = mdfinfo3.dg.get(dg_pos)
+                && let Some(cg) = dg.cg.get(rec_id)
             {
-                if let Some(dg) = mdfinfo3.dg.get(dg_pos) {
-                    if let Some(cg) = dg.cg.get(rec_id) {
-                        mdf3_cg_to_parquet(file_name, mdfinfo3, rec_id, cg, parquet_compression)
-                            .context(
-                                "failed converting Channel Group 3 to parquet containing channel",
-                            )?;
-                    }
-                }
+                mdf3_cg_to_parquet(file_name, mdfinfo3, rec_id, cg, parquet_compression)
+                    .context("failed converting Channel Group 3 to parquet containing channel")?;
             }
         }
     }
@@ -292,15 +284,15 @@ fn mdf4_field(mdfinfo4: &MdfInfo4, cn: &Cn4) -> Field {
         cn.data.validity().is_some(),
     );
     let mut metadata = HashMap::<String, String>::new();
-    if let Ok(Some(unit)) = mdfinfo4.sharable.get_tx(cn.block.cn_md_unit) {
-        if !unit.is_empty() {
-            metadata.insert("unit".to_string(), unit);
-        }
+    if let Ok(Some(unit)) = mdfinfo4.sharable.get_tx(cn.block.cn_md_unit)
+        && !unit.is_empty()
+    {
+        metadata.insert("unit".to_string(), unit);
     };
-    if let Ok(Some(desc)) = mdfinfo4.sharable.get_tx(cn.block.cn_md_comment) {
-        if !desc.is_empty() {
-            metadata.insert("description".to_string(), desc);
-        }
+    if let Ok(Some(desc)) = mdfinfo4.sharable.get_tx(cn.block.cn_md_comment)
+        && !desc.is_empty()
+    {
+        metadata.insert("description".to_string(), desc);
     };
     if cn.block.cn_type == 4 {
         metadata.insert(

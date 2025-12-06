@@ -162,11 +162,11 @@ where
                 self.pos = new_pos as usize;
                 return Ok(());
             }
-        } else if let Some(new_pos) = pos.checked_add(offset as u64) {
-            if new_pos <= self.cap as u64 {
-                self.pos = new_pos as usize;
-                return Ok(());
-            }
+        } else if let Some(new_pos) = pos.checked_add(offset as u64)
+            && new_pos <= self.cap as u64
+        {
+            self.pos = new_pos as usize;
+            return Ok(());
         }
 
         // Flushes the buffer
@@ -189,14 +189,14 @@ where
             let middle_of_buffer = (DEFAULT_BUF_SIZE as i64) / 2;
             // checks if close to stream start
             let stream_position = self.stream_position()? as i64;
-            if let Some(remaining) = stream_position.checked_sub(middle_of_buffer) {
-                if remaining <= 0 {
-                    self.rewind()?;
-                    let n_read = self.reader.read(&mut self.buf)?;
-                    self.cap = n_read;
-                    self.pos = stream_position as usize;
-                    return Ok(self.buffer());
-                }
+            if let Some(remaining) = stream_position.checked_sub(middle_of_buffer)
+                && remaining <= 0
+            {
+                self.rewind()?;
+                let n_read = self.reader.read(&mut self.buf)?;
+                self.cap = n_read;
+                self.pos = stream_position as usize;
+                return Ok(self.buffer());
             }
 
             // reposition half buffer size before

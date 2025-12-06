@@ -1,6 +1,6 @@
 //! Converter of mdf version 3.x into mdf version 4.2
 use crate::data_holder::tensor_arrow::Order;
-use crate::mdfinfo::mdfinfo3::{convert_data_type_3to4, Cg3, Cn3, Dg3};
+use crate::mdfinfo::mdfinfo3::{Cg3, Cn3, Dg3, convert_data_type_3to4};
 use crate::mdfreader::{DataSignature, MasterSignature};
 
 use crate::mdfinfo::{
@@ -23,40 +23,38 @@ pub fn convert3to4(mdf3: &MdfInfo3, file_name: &str) -> Result<MdfInfo4, Error> 
                 .iter()
                 .try_for_each(|(_rec_id, cg): (&u16, &Cg3)| -> Result<(), Error> {
                     // First add master channel
-                    if let Some(master_channel_name) = &cg.master_channel_name {
-                        if let Some((_master_channel, _dg_pos, (_cg_pos, _rec_id), cn_pos)) =
+                    if let Some(master_channel_name) = &cg.master_channel_name
+                        && let Some((_master_channel, _dg_pos, (_cg_pos, _rec_id), cn_pos)) =
                             mdf3.channel_names_set.get(master_channel_name)
-                        {
-                            if let Some(cn) = cg.cn.get(cn_pos) {
-                                let unit = mdf3._get_unit(&cn.block1.cn_cc_conversion);
-                                let desc = Some(cn.description.clone());
-                                let cycle_count = cg.block.cg_cycle_count as usize;
-                                let bit_count = cn.block2.cn_bit_count;
-                                let data_type = convert_data_type_3to4(cn.block2.cn_data_type);
-                                let data_signature = DataSignature {
-                                    len: cycle_count,
-                                    data_type,
-                                    bit_count: bit_count as u32,
-                                    byte_count: cn.n_bytes as u32,
-                                    ndim: 1,
-                                    shape: (vec![1], Order::RowMajor),
-                                };
-                                let master_signature = MasterSignature {
-                                    master_channel: cg.master_channel_name.clone(),
-                                    master_type: Some(1),
-                                    master_flag: true,
-                                };
-                                mdf4.add_channel(
-                                    master_channel_name.clone(),
-                                    cn.data.clone(),
-                                    data_signature,
-                                    master_signature,
-                                    unit,
-                                    desc,
-                                )
-                                .context("Failed adding channel")?;
-                            }
-                        }
+                        && let Some(cn) = cg.cn.get(cn_pos)
+                    {
+                        let unit = mdf3._get_unit(&cn.block1.cn_cc_conversion);
+                        let desc = Some(cn.description.clone());
+                        let cycle_count = cg.block.cg_cycle_count as usize;
+                        let bit_count = cn.block2.cn_bit_count;
+                        let data_type = convert_data_type_3to4(cn.block2.cn_data_type);
+                        let data_signature = DataSignature {
+                            len: cycle_count,
+                            data_type,
+                            bit_count: bit_count as u32,
+                            byte_count: cn.n_bytes as u32,
+                            ndim: 1,
+                            shape: (vec![1], Order::RowMajor),
+                        };
+                        let master_signature = MasterSignature {
+                            master_channel: cg.master_channel_name.clone(),
+                            master_type: Some(1),
+                            master_flag: true,
+                        };
+                        mdf4.add_channel(
+                            master_channel_name.clone(),
+                            cn.data.clone(),
+                            data_signature,
+                            master_signature,
+                            unit,
+                            desc,
+                        )
+                        .context("Failed adding channel")?;
                     }
                     // then add other channels
                     cg.cn

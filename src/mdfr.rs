@@ -52,7 +52,7 @@ impl Mdfr {
     fn get_channel_data(&self, channel_name: String) -> PyResult<Py<PyAny>> {
         let Mdfr(mdf) = self;
         // default py_array value is python None
-        let data = pyo3::Python::with_gil(|py| -> PyResult<Py<PyAny>> {
+        let data = pyo3::Python::attach(|py| -> PyResult<Py<PyAny>> {
             let mut py_array: Py<PyAny>;
             let dt = mdf.get_channel_data(&channel_name);
             if let Some(data) = dt {
@@ -107,31 +107,25 @@ impl Mdfr {
             MdfInfo::V3(mdfinfo3) => {
                 if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
                     mdfinfo3.get_channel_id(&channel_name)
+                    && let Some(dg) = mdfinfo3.dg.get(dg_pos)
+                    && let Some(cg) = dg.cg.get(rec_id)
+                    && let Some(cn) = cg.cn.get(cn_pos)
                 {
-                    if let Some(dg) = mdfinfo3.dg.get(dg_pos) {
-                        if let Some(cg) = dg.cg.get(rec_id) {
-                            if let Some(cn) = cg.cn.get(cn_pos) {
-                                data = Some(&cn.data);
-                            }
-                        }
-                    }
+                    data = Some(&cn.data);
                 }
             }
             MdfInfo::V4(mdfinfo4) => {
                 if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
                     mdfinfo4.get_channel_id(&channel_name)
+                    && let Some(dg) = mdfinfo4.dg.get(dg_pos)
+                    && let Some(cg) = dg.cg.get(rec_id)
+                    && let Some(cn) = cg.cn.get(rec_pos)
                 {
-                    if let Some(dg) = mdfinfo4.dg.get(dg_pos) {
-                        if let Some(cg) = dg.cg.get(rec_id) {
-                            if let Some(cn) = cg.cn.get(rec_pos) {
-                                data = Some(&cn.data);
-                            }
-                        }
-                    }
+                    data = Some(&cn.data);
                 }
             }
         };
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::attach(|py| {
             Ok(data
                 .map(|d| d.get_dtype())
                 .into_pyobject(py)
@@ -141,9 +135,9 @@ impl Mdfr {
     }
     /// returns polars serie of channel
     #[cfg(feature = "polars")]
-    fn get_polars_series(&self, channel_name: &str) -> PyResult<PyObject> {
+    fn get_polars_series(&self, channel_name: &str) -> PyResult<Py<PyAny>> {
         let Mdfr(mdf) = self;
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::attach(|py| {
             let mut py_serie = Ok(Python::None(py));
             if let Some(array) = mdf.get_channel_data(channel_name) {
                 py_serie = rust_arrow_to_py_series(array.as_ref(), channel_name.to_string());
@@ -155,7 +149,7 @@ impl Mdfr {
     #[cfg(feature = "polars")]
     fn get_polars_dataframe(&self, channel_name: String) -> PyResult<Py<PyAny>> {
         let Mdfr(mdf) = self;
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let mut py_dataframe = Python::None(py);
             let channel_list = mdf.mdf_info.get_channel_names_cg_set(&channel_name);
             let series_dict = PyDict::new(py);
@@ -177,10 +171,12 @@ impl Mdfr {
                     .context("cannot set python series_list")?;
                 py.import("polars").context("Could import polars")?;
                 py.run(
-                    c_str!(r#"
+                    c_str!(
+                        r#"
 import polars
 df=polars.DataFrame(series)
-"#),
+"#
+                    ),
                     None,
                     Some(&locals),
                 )
@@ -195,7 +191,7 @@ df=polars.DataFrame(series)
     /// returns channel's unit string
     fn get_channel_unit(&self, channel_name: String) -> PyResult<Option<String>> {
         let Mdfr(mdf) = self;
-        pyo3::Python::with_gil(|_py| {
+        pyo3::Python::attach(|_py| {
             let unit_or_error = mdf.mdf_info.get_channel_unit(&channel_name);
             match unit_or_error {
                 Ok(unit) => Ok(unit),
@@ -208,7 +204,7 @@ df=polars.DataFrame(series)
     /// returns channel's description string
     fn get_channel_desc(&self, channel_name: String) -> PyResult<Option<String>> {
         let Mdfr(mdf) = self;
-        pyo3::Python::with_gil(|_py| {
+        pyo3::Python::attach(|_py| {
             let desc_or_error = mdf.mdf_info.get_channel_desc(&channel_name);
             match desc_or_error {
                 Ok(desc) => Ok(desc),
@@ -221,7 +217,7 @@ df=polars.DataFrame(series)
     /// returns channel's associated master channel name string
     pub fn get_channel_master(&self, channel_name: String) -> PyResult<Py<PyAny>> {
         let Mdfr(mdf) = self;
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::attach(|py| {
             let master: Py<PyAny> = mdf
                 .mdf_info
                 .get_channel_master(&channel_name)
@@ -244,7 +240,7 @@ df=polars.DataFrame(series)
     /// 3 = Distance (meters), 4 = Index (zero-based index values)
     pub fn get_channel_master_type(&self, channel_name: String) -> PyResult<Py<PyAny>> {
         let Mdfr(mdf) = self;
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::attach(|py| {
             let master_type: Py<PyAny> = mdf
                 .mdf_info
                 .get_channel_master_type(&channel_name)
@@ -257,7 +253,7 @@ df=polars.DataFrame(series)
     /// returns a set of all channel names contained in file
     pub fn get_channel_names_set(&self) -> PyResult<Py<PyAny>> {
         let Mdfr(mdf) = self;
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::attach(|py| {
             let channel_list: Py<PyAny> = mdf
                 .mdf_info
                 .get_channel_names_set()
@@ -270,7 +266,7 @@ df=polars.DataFrame(series)
     /// returns a dict of master names keys for which values are a set of associated channel names
     pub fn get_master_channel_names_set(&self) -> PyResult<Py<PyAny>> {
         let Mdfr(mdf) = self;
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::attach(|py| {
             let master_channel_list: Py<PyAny> = mdf
                 .mdf_info
                 .get_master_channel_names_set()
@@ -318,7 +314,7 @@ df=polars.DataFrame(series)
         description: Option<String>,
     ) -> PyResult<()> {
         let Mdfr(mdf) = self;
-        pyo3::Python::with_gil(|_| -> Result<(), PyErr> {
+        pyo3::Python::attach(|_| -> Result<(), PyErr> {
             let array = array_to_rust(data)
                 .context("data modification failed, could not extract numpy array")?;
             mdf.add_channel(
@@ -341,7 +337,7 @@ df=polars.DataFrame(series)
         data: PyArrowType<ArrayData>,
     ) -> PyResult<()> {
         let Mdfr(mdf) = self;
-        pyo3::Python::with_gil(|_| {
+        pyo3::Python::attach(|_| {
             let array = array_to_rust(data)
                 .expect("data modification failed, could not extract numpy array");
             mdf.set_channel_data(channel_name, array)?;
@@ -421,7 +417,7 @@ df=polars.DataFrame(series)
     pub fn get_attachment_blocks(&mut self) -> Py<PyAny> {
         let Mdfr(mdf) = self;
         let atbs = mdf.mdf_info.get_attachement_blocks();
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::attach(|py| {
             if let Some(at) = atbs {
                 let atl = PyList::empty(py);
                 for (position, atb) in at {
@@ -448,7 +444,7 @@ df=polars.DataFrame(series)
     /// get embedded data in attachment
     pub fn get_attachment_embedded_data(&self, position: i64) -> Py<PyAny> {
         let Mdfr(mdf) = self;
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::attach(|py| {
             if let Some(data) = mdf.mdf_info.get_attachment_embedded_data(position) {
                 PyBytes::new(py, &data).into()
             } else {
@@ -465,7 +461,7 @@ df=polars.DataFrame(series)
     pub fn get_event_blocks(&mut self) -> Py<PyAny> {
         let Mdfr(mdf) = self;
         let evbs = mdf.mdf_info.get_event_blocks();
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::attach(|py| {
             if let Some(ev) = evbs {
                 let evl = PyList::empty(py);
                 for (_position, evb) in ev {
@@ -490,7 +486,7 @@ df=polars.DataFrame(series)
     pub fn get_file_history_blocks(&mut self) -> Py<PyAny> {
         let Mdfr(mdf) = self;
         let fhbs = mdf.mdf_info.get_file_history_blocks();
-        pyo3::Python::with_gil(|py| {
+        pyo3::Python::attach(|py| {
             if let Some(fh) = fhbs {
                 let fhl = PyList::empty(py);
                 for fhb in fh {
@@ -512,7 +508,7 @@ df=polars.DataFrame(series)
     /// plot one channel
     pub fn plot(&self, channel_name: String) -> PyResult<()> {
         let Mdfr(mdf) = self;
-        pyo3::Python::with_gil(|py| -> PyResult<()> {
+        pyo3::Python::attach(|py| -> PyResult<()> {
             let locals = PyDict::new(py);
             locals
                 .set_item("channel_name", &channel_name)
@@ -559,7 +555,8 @@ df=polars.DataFrame(series)
             py.import("matplotlib")
                 .context("Could not import matplotlib")?;
             py.run(
-                c_str!(r#"
+                c_str!(
+                    r#"
 from matplotlib import pyplot
 from numpy import arange
 if master_data is None:
@@ -573,7 +570,8 @@ if master_channel_name is not None:
 pyplot.ylabel('{0} [{1}]'.format(channel_name, channel_unit))
 pyplot.grid(True)
 pyplot.show()
-"#),
+"#
+                ),
                 None,
                 Some(&locals),
             )
