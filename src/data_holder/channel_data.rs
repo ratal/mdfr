@@ -1,16 +1,16 @@
 //! this module holds the channel data enum and related implementations
 
-use anyhow::{bail, Context, Error, Result};
+use anyhow::{Context, Error, Result, bail};
 use arrow::array::{
-    as_primitive_array, Array, ArrayBuilder, ArrayData, ArrayRef, BinaryArray,
-    BooleanBufferBuilder, FixedSizeBinaryArray, FixedSizeBinaryBuilder, FixedSizeListArray,
-    Int8Builder, LargeBinaryArray, LargeBinaryBuilder, LargeStringArray, LargeStringBuilder,
-    PrimitiveBuilder, StringArray,
+    Array, ArrayBuilder, ArrayData, ArrayRef, BinaryArray, BooleanBufferBuilder,
+    FixedSizeBinaryArray, FixedSizeBinaryBuilder, FixedSizeListArray, Int8Builder,
+    LargeBinaryArray, LargeBinaryBuilder, LargeStringArray, LargeStringBuilder, PrimitiveBuilder,
+    StringArray, as_primitive_array,
 };
 use arrow::buffer::{MutableBuffer, NullBuffer};
 use arrow::datatypes::{
-    DataType, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, Int8Type, UInt16Type,
-    UInt32Type, UInt64Type, UInt8Type,
+    DataType, Float32Type, Float64Type, Int8Type, Int16Type, Int32Type, Int64Type, UInt8Type,
+    UInt16Type, UInt32Type, UInt64Type,
 };
 use arrow::util::display::{ArrayFormatter, FormatOptions};
 use itertools::Itertools;
@@ -165,30 +165,33 @@ impl Clone for ChannelData {
                 let array: FixedSizeBinaryArray = array.finish_cloned();
                 let mut new_array =
                     FixedSizeBinaryBuilder::with_capacity(array.len(), array.value_length());
-                match array.logical_nulls() { Some(validity) => {
-                    array
-                        .values()
-                        .chunks(array.value_length() as usize)
-                        .zip(validity.iter())
-                        .for_each(|(value, validity)| {
-                            if validity {
+                match array.logical_nulls() {
+                    Some(validity) => {
+                        array
+                            .values()
+                            .chunks(array.value_length() as usize)
+                            .zip(validity.iter())
+                            .for_each(|(value, validity)| {
+                                if validity {
+                                    new_array
+                                        .append_value(value)
+                                        .expect("failed appending new fixed binary value");
+                                } else {
+                                    new_array.append_null();
+                                }
+                            });
+                    }
+                    _ => {
+                        array
+                            .values()
+                            .chunks(array.value_length() as usize)
+                            .for_each(|value| {
                                 new_array
                                     .append_value(value)
                                     .expect("failed appending new fixed binary value");
-                            } else {
-                                new_array.append_null();
-                            }
-                        });
-                } _ => {
-                    array
-                        .values()
-                        .chunks(array.value_length() as usize)
-                        .for_each(|value| {
-                            new_array
-                                .append_value(value)
-                                .expect("failed appending new fixed binary value");
-                        });
-                }}
+                            });
+                    }
+                }
                 Self::FixedSizeByteArray(new_array)
             }
             Self::ArrayDInt8(arg0) => Self::ArrayDInt8(arg0.clone()),
@@ -1421,7 +1424,7 @@ pub fn data_type_init(
                 }
                 15 | 16 => {
                     // complex, should not happen here
-                    if n_bytes <= 4 {
+                    if n_bytes <= 8 {
                         Ok(ChannelData::Complex32(ComplexArrow::new()))
                     } else {
                         Ok(ChannelData::Complex64(ComplexArrow::new()))
@@ -1485,7 +1488,7 @@ pub fn data_type_init(
             15 | 16 => {
                 // complex
                 if list_size == 2 {
-                    if n_bytes <= 4 {
+                    if n_bytes <= 8 {
                         Ok(ChannelData::Complex32(ComplexArrow::new()))
                     } else {
                         Ok(ChannelData::Complex64(ComplexArrow::new()))
@@ -1608,30 +1611,33 @@ pub fn try_from(value: &dyn Array) -> Result<ChannelData, Error> {
                 .downcast_ref::<FixedSizeBinaryArray>()
                 .context("could not downcast to fixed size binary array")?;
             let mut new_array = FixedSizeBinaryBuilder::with_capacity(array.len(), *size);
-            match array.logical_nulls() { Some(validity) => {
-                array
-                    .values()
-                    .chunks(array.value_length() as usize)
-                    .zip(validity.iter())
-                    .for_each(|(value, validity)| {
-                        if validity {
+            match array.logical_nulls() {
+                Some(validity) => {
+                    array
+                        .values()
+                        .chunks(array.value_length() as usize)
+                        .zip(validity.iter())
+                        .for_each(|(value, validity)| {
+                            if validity {
+                                new_array
+                                    .append_value(value)
+                                    .expect("failed appending new fixed binary value");
+                            } else {
+                                new_array.append_null();
+                            }
+                        });
+                }
+                _ => {
+                    array
+                        .values()
+                        .chunks(array.value_length() as usize)
+                        .for_each(|value| {
                             new_array
                                 .append_value(value)
                                 .expect("failed appending new fixed binary value");
-                        } else {
-                            new_array.append_null();
-                        }
-                    });
-            } _ => {
-                array
-                    .values()
-                    .chunks(array.value_length() as usize)
-                    .for_each(|value| {
-                        new_array
-                            .append_value(value)
-                            .expect("failed appending new fixed binary value");
-                    });
-            }}
+                        });
+                }
+            }
             Ok(ChannelData::FixedSizeByteArray(new_array))
         }
         DataType::LargeBinary => {

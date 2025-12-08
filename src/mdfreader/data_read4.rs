@@ -3,8 +3,8 @@ use crate::data_holder::tensor_arrow::TensorArrow;
 use crate::mdfinfo::mdfinfo4::{Cn4, CnType};
 use anyhow::{Context, Error, Ok, Result};
 use arrow::array::{
-    Float32Builder, Float64Builder, Int16Builder, Int32Builder, Int64Builder, Int8Builder,
-    UInt16Builder, UInt32Builder, UInt64Builder, UInt8Builder,
+    Float32Builder, Float64Builder, Int8Builder, Int16Builder, Int32Builder, Int64Builder,
+    UInt8Builder, UInt16Builder, UInt32Builder, UInt64Builder,
 };
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
 use encoding_rs::{UTF_16BE, UTF_16LE, WINDOWS_1252};
@@ -276,7 +276,7 @@ pub fn read_one_channel_array(
             }
             ChannelData::Complex32(a) => {
                 let data = a.values().values_slice_mut();
-                if n_bytes <= 2 {
+                if n_bytes <= 4 {
                     // complex 16
                     if cn.endian {
                         for (i, value) in data_bytes.chunks(std::mem::size_of::<f16>()).enumerate()
@@ -295,7 +295,7 @@ pub fn read_one_channel_array(
                             .to_f32();
                         }
                     }
-                } else if n_bytes <= 4 {
+                } else if n_bytes <= 8 {
                     // complex 32
                     if cn.endian {
                         for (i, value) in data_bytes.chunks(std::mem::size_of::<f32>()).enumerate()
@@ -966,7 +966,7 @@ pub fn read_channels_from_bytes(
                     }
                     ChannelData::Complex32(a) => {
                         let data = a.values().values_slice_mut();
-                        if n_bytes <= 2 {
+                        if n_bytes <= 4 {
                             // complex 16
                             let mut re_val: &[u8];
                             let mut im_val: &[u8];
@@ -1009,7 +1009,7 @@ pub fn read_channels_from_bytes(
                                     .to_f32();
                                 }
                             }
-                        } else if n_bytes <= 4 {
+                        } else if n_bytes <= 8 {
                             // complex 32
                             let mut re_val: &[u8];
                             let mut im_val: &[u8];
@@ -1606,9 +1606,7 @@ pub fn read_channels_from_bytes(
             Ok(())
         })
         .with_context(|| {
-            format!(
-                "Parallel channels bytes reading failed for channel {channels:?}"
-            )
+            format!("Parallel channels bytes reading failed for channel {channels:?}")
         })?;
 
     let lock = vlsd_channels
