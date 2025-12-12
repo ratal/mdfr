@@ -39,14 +39,14 @@ fn main() -> Result<(), Error> {
                 .required(false)
                 .num_args(1)
                 .value_name("FILE_NAME")
-                .help("write the read content into a new mdf4.2 file"),
+                .help("write the read content into a new mdf4.3 file"),
         )
         .arg(
             Arg::new("compress")
                 .long("compress")
                 .short('z')
                 .action(clap::ArgAction::SetTrue)
-                .help("compress data when writing into a new mdf4.2 file"),
+                .help("compress data when writing into a new mdf4.3 file"),
         )
         .arg(
             Arg::new("export_to_parquet")
@@ -130,9 +130,7 @@ fn main() -> Result<(), Error> {
         mdf_file
             .export_to_parquet(file_name, parquet_compression.map(|x| &**x))
             .with_context(|| format!("failed to export into parquet file {file_name}"))?;
-        info!(
-            "Wrote parquet file {file_name} with compression {parquet_compression:?}" 
-        );
+        info!("Wrote parquet file {file_name} with compression {parquet_compression:?}");
     }
 
     #[cfg(feature = "hdf5")]

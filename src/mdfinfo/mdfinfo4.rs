@@ -1,11 +1,12 @@
 //! Parsing of file metadata into MdfInfo4 struct
 use crate::mdfreader::{DataSignature, MasterSignature};
-use anyhow::{Context, Error, Result, anyhow};
+use anyhow::{Context, Error, Result, bail};
 use arrow::array::{Array, BooleanBufferBuilder, UInt8Builder, UInt16Builder, UInt32Builder};
 use binrw::{BinReaderExt, BinWriterExt, binrw};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::{DateTime, Local};
 use log::warn;
+use lz4::Decoder as Lz4Decoder;
 use md5::{Digest, Md5};
 use rayon::prelude::*;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
@@ -15,7 +16,8 @@ use std::fs::File;
 use std::io::{BufReader, Cursor, Read, Seek, Write};
 use std::sync::Arc;
 use std::{fmt, str};
-use yazi::{Adler32, Format, decompress};
+use yazi::{Adler32, Decoder as YaziDecoder, Format, decompress};
+use zstd::Decoder as ZstdDecoder;
 
 use crate::data_holder::channel_data::{ChannelData, data_type_init, try_from};
 use crate::data_holder::tensor_arrow::Order;
@@ -3300,13 +3302,52 @@ pub fn parse_dz(rdr: &mut BufReader<&File>) -> Result<(Vec<u8>, Dz4Block)> {
         .context("Could not read into Dz4Block struct")?;
     let mut buf = vec![0u8; block.dz_data_length as usize];
     rdr.read_exact(&mut buf).context("Could not read Dz data")?;
-    let mut data: Vec<u8>;
-    let checksum: Option<u32>;
-    (data, checksum) = decompress(&buf, Format::Zlib).expect("Could not decompress data");
-    if Some(Adler32::from_buf(&data).finish()) != checksum {
-        return Err(anyhow!("Checksum not ok"));
-    }
-    if block.dz_zip_type == 1 {
+    // decompress data
+    let mut data = Vec::<u8>::new();
+    match block.dz_zip_type {
+        0 | 1 => {
+            // deflate algorithm
+            let mut decoder = YaziDecoder::new();
+            decoder.set_format(Format::Zlib);
+            let mut stream = decoder.stream_into_vec(&mut data);
+            stream
+                .write(&buf[..])
+                .expect("Error decompressing Deflate data");
+            // checksum is an Option<u32>
+            let (_, checksum) = stream.finish().expect("");
+            if Adler32::from_buf(&data).finish() != checksum.unwrap() {
+                bail!("Yazi Error InvalidBitstream");
+            }
+        }
+        2 | 3 => {
+            // zstd algorithm
+            let reader = Cursor::new(buf);
+            let mut decoder =
+                ZstdDecoder::new(reader).context("Error creating Zstd decoder from read vector")?;
+            let _nbbytesread = decoder
+                .read_to_end(&mut data)
+                .context("error reading the compressed bytes")?;
+        }
+        4 | 5 => {
+            // lz4 algorithm
+            let reader = Cursor::new(buf);
+            let mut decoder =
+                Lz4Decoder::new(reader).context("Error creating Zstd decoder from read vector")?;
+            let _nbbytesread = decoder
+                .read_to_end(&mut data)
+                .context("error reading the compressed bytes")?;
+        }
+        254 => {
+            //custom compression
+            todo!("not yet implemented custom compression algorithm")
+        }
+        _ => {
+            bail!("not implemented compression algorithm")
+        }
+    };
+    // transpose data
+    if block.dz_zip_type == 1 | 3 | 5 {
+        // transpose
         let m = block.dz_org_data_length / block.dz_zip_parameter as u64;
         let tail: Vec<u8> = data.split_off((m * block.dz_zip_parameter as u64) as usize);
         let mut output = vec![0u8; (m * block.dz_zip_parameter as u64) as usize];

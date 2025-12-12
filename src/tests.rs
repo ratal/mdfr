@@ -751,10 +751,9 @@ mod tests {
 
     #[test]
     fn compressed_data_mdf43_algo() -> Result<()> {
-        // TODO read all the file in the folder
-        let file_name = format!("{}{}", BASE_PATH_MDF4, "CompressedData/MDF430_Algorithms");
-        let mut mdf = Mdf::new(&file_name)?;
-        mdf.load_all_channels_data_in_memory()?;
+        // read all the file in the folder
+        let path = format!("{}{}", BASE_PATH_MDF4, "CompressedData/MDF430_Algorithms");
+        parse_info_folder(&path).unwrap();
         Ok(())
     }
 

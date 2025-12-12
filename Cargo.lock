@@ -2306,6 +2306,7 @@ dependencies = [
  "itertools 0.14.0",
  "libc",
  "log 0.4.27",
+ "lz4",
  "md-5",
  "ndarray 0.16.1",
  "num",
@@ -2322,6 +2323,7 @@ dependencies = [
  "transpose",
  "whoami",
  "yazi",
+ "zstd",
 ]
 
 [[package]]
