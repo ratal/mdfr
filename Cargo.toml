@@ -29,6 +29,7 @@ binrw = "0.15" # to efficiently read blocks
 num = "0.4"
 half = "2.7" # for f16 handling
 encoding_rs = "0.8" # for endian management and bytes to text conversion (utf8, SBC, UTF16)
+unicode-bom = "2.0"
 codepage = "0.1" # to convert code page into encoding
 chrono = "0.4" # for time conversion
 rayon = "1.11" # for general purpose parallel computations

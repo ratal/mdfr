@@ -77,9 +77,9 @@ impl Default for IdBlock {
     fn default() -> Self {
         IdBlock {
             id_file_id: [77, 68, 70, 32, 32, 32, 32, 32], // "MDF     "
-            id_vers: [52, 46, 50, 48, 32, 32, 32, 32],    // "4.20    "
+            id_vers: [52, 46, 51, 48, 32, 32, 32, 32],    // "4.30    "
             id_prog: [109, 100, 102, 114, 32, 32, 32, 32], // "mdfr    "
-            id_ver: 420,
+            id_ver: 430,
             id_default_byteorder: 0,
             id_floatingpointformat: 0,
             id_codepage: 0,

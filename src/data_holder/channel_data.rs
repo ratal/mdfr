@@ -1434,10 +1434,17 @@ pub fn data_type_init(
                     // String UTF8
                     Ok(ChannelData::Utf8(LargeStringBuilder::new()))
                 }
-                _ => {
+                17 => {
+                    // String Unicode with Byte Order Mark
+                    unimplemented!(
+                        "Unicode BOM",
+                    );
+                    Ok(ChannelData::Utf8(LargeStringBuilder::new()))
+                }
+                10 => {
                     // bytearray
-                    if cn_type == 1 {
-                        // VLSD
+                    if cn_type == 1 || cn_type == 7 {
+                        // VLSD or VLSC
                         Ok(ChannelData::VariableSizeByteArray(LargeBinaryBuilder::new()))
                     } else {
                         Ok(ChannelData::FixedSizeByteArray(
@@ -1445,6 +1452,9 @@ pub fn data_type_init(
                         ))
                     }
                 }
+                _ => {unimplemented!(
+                    "not implemented channel data type",
+                );}
             }
         } else {
             // virtual channels, cn_bit_count = 0 -> n_bytes = 0, must be LE unsigned int
@@ -1506,13 +1516,25 @@ pub fn data_type_init(
                     }
                 }
             }
+            10 => {
+                // bytearray
+                if cn_type == 1 || cn_type == 7 {
+                    // VLSD or VLSC
+                    Ok(ChannelData::VariableSizeByteArray(LargeBinaryBuilder::new()))
+                } else {
+                    Ok(ChannelData::FixedSizeByteArray(
+                        FixedSizeBinaryBuilder::new(n_bytes as i32),
+                    ))
+                }
+            }
             _ => {
-                // strings or bytes arrays not implemented for tensors, theoritically not possible from spec
-                bail!("strings or bytes arrays not implemented for tensors, should it be ?");
+                unimplemented!(
+                    "not implemented channel array data type",
+                );
             }
         }
     } else {
-        // virtual channels arrays not implemented, can it even exists ?
+        // virtual channels arrays not implemented, can it even exist ?
         bail!("Virtual channel arrays not implemented, should it even exist ?");
     }
 }

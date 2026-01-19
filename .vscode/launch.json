@@ -53,7 +53,7 @@
                 }
             },
             "args": [
-                "/home/ratal/workspace/mdfreader/mdfreader/tests/mdf3/TGT.dat"
+                "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/ChannelTypes/VLSC/Vector_VLSC_Single_VD.mf4"
             ],
             "cwd": "${workspaceFolder}"
         },

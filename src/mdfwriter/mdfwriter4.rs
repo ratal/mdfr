@@ -8,6 +8,8 @@ use std::{
     thread,
 };
 
+use super::mdfwriter3::convert3to4;
+use crate::mdfinfo::mdfinfo4::Blockheader4Short;
 use crate::{
     data_holder::channel_data::{ChannelData, data_type_init},
     mdfinfo::{
@@ -28,8 +30,6 @@ use parking_lot::Mutex;
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 use std::fs::File;
 use yazi::{CompressionLevel, Encoder, Format};
-
-use super::mdfwriter3::convert3to4;
 
 /// writes mdf4.2 file
 pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> {
@@ -261,17 +261,19 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
                         .write(&mut buffer)
                         .context("Failed writing tx comment")?;
                 }
-                // channel array
+                // channel composition
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(c) => {
-                            let mut header = Blockheader4::default();
+                            let mut header = Blockheader4Short::default();
                             header.hdr_id = [35, 35, 67, 65]; // ##CA
                             header.hdr_len = c.ca_len;
-                            header.hdr_links = 1;
                             buffer
                                 .write_le(&header)
                                 .context("Could not write CABlock header")?;
+                            buffer
+                                .write_le(&1u64)
+                                .context("error writing number of links in CA Block")?;
                             let ca_composition: u64 = 0;
                             buffer
                                 .write_le(&ca_composition)
@@ -283,7 +285,21 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
                                 .write_le(&ca_composition)
                                 .context("Could not write CABlock members")?;
                         }
-                        Compo::CN(_) => {}
+                        Compo::DS(_) => {
+                            todo!()
+                        }
+                        Compo::CL(_) => {
+                            todo!()
+                        }
+                        Compo::CU(_) => {
+                            todo!()
+                        }
+                        Compo::CV(_) => {
+                            todo!()
+                        }
+                        Compo::CN(_) => {
+                            todo!()
+                        }
                     }
                 }
             }
@@ -375,7 +391,7 @@ fn create_ld(m: &Option<NullBuffer>, offset: &mut i64) -> Option<Ld4Block> {
     ld_block.ld_sample_offset.push(0);
     if m.is_some() {
         ld_block.ld_n_links = (ld_block.ld_count * 2 + 1) as u64;
-        ld_block.ld_flags = 1u32 << 31;
+        ld_block.ld_flags = 1u8 << 7;
     } else {
         ld_block.ld_n_links = (ld_block.ld_count + 1) as u64;
         ld_block.ld_flags = 0b0;

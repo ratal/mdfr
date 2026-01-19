@@ -602,6 +602,12 @@ mod tests {
 
         // VLSC
         // TODO
+        let file_name = format!(
+            "{}",
+            "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/DynamicData/ChannelList/simple_list.mf4"
+        );
+        let mut mdf = Mdf::new(&file_name)?;
+        mdf.load_all_channels_data_in_memory()?;
 
         Ok(())
     }

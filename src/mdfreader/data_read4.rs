@@ -1,13 +1,13 @@
 //! this module implements low level data reading for mdf4 files.
 use crate::data_holder::tensor_arrow::TensorArrow;
 use crate::mdfinfo::mdfinfo4::{Cn4, CnType};
-use anyhow::{Context, Error, Ok, Result};
+use anyhow::{Context, Error, Ok, Result, bail};
 use arrow::array::{
     Float32Builder, Float64Builder, Int8Builder, Int16Builder, Int32Builder, Int64Builder,
     UInt8Builder, UInt16Builder, UInt32Builder, UInt64Builder,
 };
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
-use encoding_rs::{UTF_16BE, UTF_16LE, WINDOWS_1252};
+use encoding_rs::{GB18030, UTF_8, UTF_16BE, UTF_16LE, WINDOWS_1252};
 use half::f16;
 use rayon::prelude::*;
 use std::io::Cursor;
@@ -16,6 +16,7 @@ use std::{
     collections::HashSet,
     sync::{Arc, Mutex},
 };
+use unicode_bom::Bom;
 
 use crate::data_holder::channel_data::ChannelData;
 
@@ -368,6 +369,25 @@ pub fn read_one_channel_array(
                             data.append_value(dst.trim_end_matches('\0'));
                         }
                     }
+                } else if cn.block.cn_data_type == 17 {
+                    // 17: Unicode with BOM, assuming each sample has same BOM
+                    // identifies BOM at beginning of stream
+                    let bom = Bom::from(&data_bytes[..]);
+                    let mut decoder = match bom {
+                        Bom::Utf8 => UTF_8.new_decoder(),
+                        Bom::Utf16Be => UTF_16BE.new_decoder(),
+                        Bom::Utf16Le => UTF_16LE.new_decoder(),
+                        Bom::Gb18030 => GB18030.new_decoder(),
+                        _ => {
+                            bail!("not implemented BOM type");
+                        }
+                    };
+                    for record in data_bytes.chunks(n_bytes) {
+                        let mut dst = String::new();
+                        let (_result, _size, _replacement) =
+                            decoder.decode_to_string(record, &mut dst, false);
+                        data.append_value(dst.trim_end_matches('\0'));
+                    }
                 }
             }
             ChannelData::VariableSizeByteArray(a) => {
@@ -655,8 +675,8 @@ pub fn read_channels_from_bytes(
     previous_index: usize,
     channel_names_to_read_in_dg: &HashSet<String>,
     record_with_invalid_data: bool,
-) -> Result<Vec<i32>, Error> {
-    let vlsd_channels: Arc<Mutex<Vec<i32>>> = Arc::new(Mutex::new(Vec::new()));
+) -> Result<Vec<(u8, i32)>, Error> {
+    let vlsd_channels: Arc<Mutex<Vec<(u8, i32)>>> = Arc::new(Mutex::new(Vec::new()));
     // iterates for each channel in parallel with rayon crate
     channels
         .par_iter_mut()
@@ -1132,6 +1152,26 @@ pub fn read_channels_from_bytes(
                                     array.append_value(dst.trim_end_matches('\0'));
                                 }
                             }
+                        } else if cn.block.cn_data_type == 17 {
+                            // 17: Unicode with BOM
+                            for record in data_chunk.chunks(record_length) {
+                                value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                                // identifies BOM
+                                let bom = Bom::from(&value[..]);
+                                let mut decoder = match bom {
+                                    Bom::Utf8 => UTF_8.new_decoder(),
+                                    Bom::Utf16Be => UTF_16BE.new_decoder(),
+                                    Bom::Utf16Le => UTF_16LE.new_decoder(),
+                                    Bom::Gb18030 => GB18030.new_decoder(),
+                                    _ => {
+                                        bail!("not implemented BOM type");
+                                    }
+                                };
+                                let mut dst = String::with_capacity(value.len());
+                                let (_result, _size, _replacement) =
+                                    decoder.decode_to_string(value, &mut dst, false);
+                                array.append_value(dst.trim_end_matches('\0'));
+                            }
                         }
                     }
                     ChannelData::VariableSizeByteArray(array) => {
@@ -1579,14 +1619,15 @@ pub fn read_channels_from_bytes(
                         }
                     }
                 }
-            } else if cn.block.cn_type == 1 {
-                // SD Block attached as data block is sorted
+            } else if cn.block.cn_type == 1 || cn.block.cn_type == 7 {
+                // cn_type == 1: VLSD - SD Block attached as data block
+                // cn_type == 7: VLSC - VD Block with (time, size, offset) triplet
                 if cn.block.cn_data != 0 {
                     let c_vlsd_channel = Arc::clone(&vlsd_channels);
                     let mut vlsd_channel = c_vlsd_channel
                         .lock()
                         .expect("Could not get lock from vlsd channel arc vec");
-                    vlsd_channel.push(*rec_pos);
+                    vlsd_channel.push((cn.block.cn_type, *rec_pos));
                 }
             }
             // Other channel types : virtual channels cn_type 3 & 6 are handled at initialisation

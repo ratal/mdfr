@@ -25,6 +25,34 @@ use crate::mdfinfo::IdBlock;
 
 use super::sym_buf_reader::SymBufReader;
 
+// =============================================================================
+// MDF 4.3 Flag Constants
+// =============================================================================
+
+// Channel Group (CG) flags - cg_flags field (u16)
+// Bits 0-4 are from MDF 4.2
+/// Bit 5: VLSC channel group (contains VLSC channels)
+pub const CG_F_VLSC: u16 = 1 << 5;
+/// Bit 6: Raw sensor event channel group
+pub const CG_F_RAW_SENSOR_EVENT: u16 = 1 << 6;
+/// Bit 7: Protocol event channel group
+pub const CG_F_PROTOCOL_EVENT: u16 = 1 << 7;
+
+// Channel (CN) flags - cn_flags field (u32)
+// Bits 0-14 are from MDF 4.2
+/// Bit 15: Raw sensor event channel
+pub const CN_F_RAW_SENSOR_EVENT: u32 = 1 << 15;
+/// Bit 16: Auxiliary channel
+pub const CN_F_AUXILIARY: u32 = 1 << 16;
+/// Bit 17: Data stream mode - channel uses data stream alignment
+pub const CN_F_DATA_STREAM_MODE: u32 = 1 << 17;
+/// Bit 18: Alignment reset - reset alignment to start of data stream
+pub const CN_F_ALIGNMENT_RESET: u32 = 1 << 18;
+/// Bit 19: Protocol event channel
+pub const CN_F_PROTOCOL_EVENT: u32 = 1 << 19;
+/// Bit 20: Data description mode - channel describes data structure
+pub const CN_F_DATA_DESCRIPTION_MODE: u32 = 1 << 20;
+
 /// ChannelId : (Option<master_channelname>, dg_pos, (cg_pos, rec_id), (cn_pos, rec_pos))
 pub(crate) type ChannelId = (Option<String>, i64, (i64, u64), (i64, i32));
 pub(crate) type ChannelNamesSet = HashMap<String, ChannelId>;
@@ -642,9 +670,9 @@ pub fn parse_block_header(rdr: &mut SymBufReader<&File>) -> Result<Blockheader4>
 #[repr(C)]
 pub struct Blockheader4Short {
     /// '##XX'
-    hdr_id: [u8; 4],
+    pub hdr_id: [u8; 4],
     /// reserved, must be 0
-    hdr_gap: [u8; 4],
+    pub hdr_gap: [u8; 4],
     /// Length of block in bytes
     pub hdr_len: u64,
 }
@@ -1259,8 +1287,12 @@ pub struct At4Block {
     pub at_flags: u16,
     /// Creator index, i.e. zero-based index of FHBLOCK in global list of FHBLOCKs that specifies which application has created this attachment, or changed it most recently.
     pub at_creator_index: u16,
+    /// Compression algorithm used for embedded data
+    pub at_zip_type: u8,
+    /// File path format
+    pub at_path_syntax: u8,
     /// Reserved
-    at_reserved: [u8; 4],
+    at_reserved: [u8; 2],
     /// 128-bit value for MD5 check sum (of the uncompressed data if data is embedded and compressed). Only valid if "MD5 check sum valid" flag (bit 2) is set.
     pub at_md5_checksum: [u8; 16],
     /// Original data size in Bytes, i.e. either for external file or for uncompressed data.
@@ -2029,8 +2061,10 @@ pub struct Cn4Block {
     cn_inval_bit_pos: u32,
     /// Precision for display of floating point values. 0xFF means unrestricted precision (infinite). Any other value specifies the number of decimal places to use for display of floating point values. Only valid if "precision valid" flag (bit 2) is set
     cn_precision: u8,
-    /// Reserved
-    cn_reserved: [u8; 3],
+    /// Byte alignment with previous channel in data stream
+    cn_alignment: u8,
+    /// Number of attachment for this channel
+    cn_attachment_count: u16,
     /// Minimum signal value that occurred for this signal (raw value) Only valid if "value range valid" flag (bit 3) is set.
     cn_val_range_min: f64,
     /// Maximum signal value that occurred for this signal (raw value) Only valid if "value range valid" flag (bit 3) is set.
@@ -2070,13 +2104,27 @@ impl Default for Cn4Block {
             cn_flags: 0,
             cn_inval_bit_pos: 0,
             cn_precision: 0,
-            cn_reserved: [0; 3],
+            cn_alignment: 0,
+            cn_attachment_count: 0,
             cn_val_range_min: 0.0,
             cn_val_range_max: 0.0,
             cn_limit_min: 0.0,
             cn_limit_max: 0.0,
             cn_limit_ext_min: 0.0,
             cn_limit_ext_max: 0.0,
+        }
+    }
+}
+
+impl Cn4Block {
+    /// Returns the cn_cn_size link for VLSC channels (cn_type = 7).
+    /// This link points to a channel containing the size information for variable length signal data.
+    /// Only valid for MDF 4.3+ VLSC channels.
+    pub fn cn_cn_size(&self) -> Option<i64> {
+        if self.cn_type == 7 && !self.links.is_empty() {
+            Some(self.links[0]) // First additional link (9th link) is cn_cn_size
+        } else {
+            None
         }
     }
 }
@@ -2843,14 +2891,18 @@ impl Default for Ca4BlockMembers {
 /// Channel Array block parser
 fn parse_ca_block(
     ca_block: &mut Cursor<Vec<u8>>,
-    block_header: Blockheader4,
+    block_header: Blockheader4Short,
     cg_cycle_count: u64,
 ) -> Result<(Ca4Block, (Vec<usize>, Order), usize, usize), Error> {
+    // reads links count
+    let ca_links: u64 = ca_block
+        .read_le()
+        .context("Could not read links count in ca block")?;
     //Reads members first
-    ca_block.set_position(block_header.hdr_links * 8); // change buffer position after links section
+    ca_block.set_position(ca_links * 8); // change buffer position after links section
     let ca_members: Ca4BlockMembers = ca_block
         .read_le()
-        .context("Coudl tno read buffer into CaBlockMembers struct")?;
+        .context("Could not read buffer into CaBlockMembers struct")?;
     let mut snd: usize;
     let mut pnd: usize;
     // converts  ca_dim_size from u64 to usize
@@ -2979,7 +3031,7 @@ fn parse_ca_block(
             ca_id: block_header.hdr_id,
             reserved: block_header.hdr_gap,
             ca_len: block_header.hdr_len,
-            ca_links: block_header.hdr_links,
+            ca_links,
             ca_composition,
             ca_data,
             ca_dynamic_size,
@@ -3013,17 +3065,21 @@ pub struct Composition {
     pub compo: Option<Box<Composition>>,
 }
 
-/// enum allowing to nest CA or CN blocks for a compostion
+/// enum allowing to nest CA or CN blocks for a composition
 #[derive(Debug, Clone)]
 #[repr(C)]
 pub enum Compo {
     CA(Box<Ca4Block>),
     #[allow(dead_code)]
     CN(Box<Cn4>),
+    CL(Box<Cl4Block>),
+    CV(Box<Cv4Block>),
+    CU(Box<Cu4Block>),
+    DS(Box<Ds4Block>),
 }
 
-/// parses CN (structure) of CA (Array) blocks
-/// CN (structures of composed channels )and CA (array of arrays) blocks can be nested or vene CA and CN nested and mixed: this is not supported, very complicated
+/// parses composition linked blocks
+/// CN (structures of composed channels )and CA (array of arrays) blocks can be nested or even CA and CN nested and mixed: this is not supported, very complicated
 fn parse_composition(
     rdr: &mut SymBufReader<&File>,
     target: i64,
@@ -3032,20 +3088,20 @@ fn parse_composition(
     record_layout: RecordLayout,
     cg_cycle_count: u64,
 ) -> Result<(Composition, i64, usize, (Vec<usize>, Order), usize, CnType)> {
-    let (mut block, block_header, pos) =
-        parse_block(rdr, target, position).context("Failed parsing composition header block")?;
+    let (mut block, block_header_short, pos) = parse_block_short(rdr, target, position)
+        .context("Failed parsing composition header block")?;
     position = pos;
     let array_size: usize;
-    let mut cns: CnType;
+    let mut cns: CnType = HashMap::new();
     let mut n_cn: usize = 0;
 
-    if block_header.hdr_id == "##CA".as_bytes() {
+    if block_header_short.hdr_id == "##CA".as_bytes() {
         // Channel Array
         let (block, mut shape, _snd, array_size) =
-            parse_ca_block(&mut block, block_header, cg_cycle_count)
+            parse_ca_block(&mut block, block_header_short, cg_cycle_count)
                 .context("Failed parsing CA block")?;
         position = pos;
-        let ca_compositon: Option<Box<Composition>>;
+        let ca_composition: Option<Box<Composition>>;
         if block.ca_composition != 0 {
             let (ca, pos, _array_size, s, n_cns, cnss) = parse_composition(
                 rdr,
@@ -3055,20 +3111,20 @@ fn parse_composition(
                 record_layout,
                 cg_cycle_count,
             )
-            .context("Failed parsing composition block")?;
+            .context("Failed parsing composition block from CA block")?;
             shape = s;
             position = pos;
             cns = cnss;
             n_cn += n_cns;
-            ca_compositon = Some(Box::new(ca));
+            ca_composition = Some(Box::new(ca));
         } else {
-            ca_compositon = None;
+            ca_composition = None;
             cns = HashMap::new();
         }
         Ok((
             Composition {
                 block: Compo::CA(Box::new(block)),
-                compo: ca_compositon,
+                compo: ca_composition,
             },
             position,
             array_size,
@@ -3076,7 +3132,152 @@ fn parse_composition(
             n_cn,
             cns,
         ))
-    } else {
+    } else if block_header_short.hdr_id == "##DS".as_bytes() {
+        // Data Stream
+        let ds_block: Ds4Block = block.read_le().context("Failed parsing DS block")?;
+        array_size = 1;
+        let (cnss, pos, n_cns, first_rec_pos) = parse_cn4(
+            rdr,
+            ds_block.ds_cn_composition,
+            position,
+            sharable,
+            record_layout,
+            cg_cycle_count,
+        )?;
+        position = pos;
+        n_cn += n_cns;
+        cns = cnss;
+        let ds_composition: Option<Box<Composition>>;
+        let mut shape = (Vec::<usize>::new(), Order::RowMajor);
+        if ds_block.ds_cn_composition != 0 {
+            let (ds, pos, _array_size, s, n_cns, cnss) = parse_composition(
+                rdr,
+                ds_block.ds_cn_composition,
+                position,
+                sharable,
+                record_layout,
+                cg_cycle_count,
+            )
+            .context("Failed parsing composition block from DS Block")?;
+            shape = s;
+            position = pos;
+            cns = cnss;
+            n_cn += n_cns;
+            ds_composition = Some(Box::new(ds));
+        } else {
+            ds_composition = None;
+            cns = HashMap::new();
+        }
+        Ok((
+            Composition {
+                block: Compo::DS(Box::new(ds_block)),
+                compo: ds_composition,
+            },
+            position,
+            array_size,
+            shape,
+            n_cn,
+            cns,
+        ))
+    } else if block_header_short.hdr_id == "##CL".as_bytes() {
+        // Channel List
+        let cl_block: Cl4Block = block.read_le().context("Failed parsing CL block")?;
+        let cl_composition: Option<Box<Composition>>;
+        let mut shape = (Vec::<usize>::new(), Order::RowMajor);
+        array_size = 0;
+        if cl_block.cl_composition != 0 {
+            let (ds, pos, _array_size, s, n_cns, cnss) = parse_composition(
+                rdr,
+                cl_block.cl_composition,
+                position,
+                sharable,
+                record_layout,
+                cg_cycle_count,
+            )
+            .context("Failed parsing composition block from CL Block")?;
+            shape = s;
+            position = pos;
+            cns = cnss;
+            n_cn += n_cns;
+            cl_composition = Some(Box::new(ds));
+        } else {
+            cl_composition = None;
+            cns = HashMap::new();
+        }
+        Ok((
+            Composition {
+                block: Compo::CL(Box::new(cl_block)),
+                compo: cl_composition,
+            },
+            position,
+            array_size,
+            shape,
+            n_cn,
+            cns,
+        ))
+    } else if block_header_short.hdr_id == "##CV".as_bytes() {
+        // Channel Variant
+        let cv_block: Cv4Block = block.read_le().context("Failed parsing CV block")?;
+        let cv_composition: Option<Box<Composition>> = None; // no composition possible after CV block
+        let shape = (Vec::<usize>::new(), Order::RowMajor);
+        array_size = 0;
+        // reads all the listed Channel Blocks
+        for target in cv_block.cv_cn_option.iter() {
+            let (cnss, pos, n_cns, _first_rec_pos) = parse_cn4(
+                rdr,
+                target.clone(),
+                position,
+                sharable,
+                record_layout,
+                cg_cycle_count,
+            )?;
+            position = pos;
+            n_cn += n_cns;
+            cns.extend(cnss);
+        }
+        Ok((
+            Composition {
+                block: Compo::CV(Box::new(cv_block)),
+                compo: cv_composition,
+            },
+            position,
+            array_size,
+            shape,
+            n_cn,
+            cns,
+        ))
+    } else if block_header_short.hdr_id == "##CU".as_bytes() {
+        // Channel Union
+        let cu_block: Cu4Block = block.read_le().context("Failed parsing CV block")?;
+        let cv_composition: Option<Box<Composition>> = None; // no composition possible after CV block
+        let shape = (Vec::<usize>::new(), Order::RowMajor);
+        array_size = 0;
+        // reads all the listed Channel Blocks
+        for target in cu_block.cu_cn_member.iter() {
+            let (cnss, pos, n_cns, _first_rec_pos) = parse_cn4(
+                rdr,
+                target.clone(),
+                position,
+                sharable,
+                record_layout,
+                cg_cycle_count,
+            )?;
+            position = pos;
+            n_cn += n_cns;
+            cns.extend(cnss);
+        }
+        Ok((
+            Composition {
+                block: Compo::CU(Box::new(cu_block)),
+                compo: cv_composition,
+            },
+            position,
+            array_size,
+            shape,
+            n_cn,
+            cns,
+        ))
+    } else if block_header_short.hdr_id == "##CN".as_bytes() {
         // Channel structure
         array_size = 1;
         let (cnss, pos, n_cns, first_rec_pos) = parse_cn4(
@@ -3126,6 +3327,8 @@ fn parse_composition(
             n_cn,
             cns,
         ))
+    } else {
+        bail!("Unknown composition block type")
     }
 }
 
@@ -3226,7 +3429,7 @@ pub fn build_channel_db(
     channel_list
 }
 
-/// DT4 Data List block struct, without the Id
+/// Generic Data block struct, without the Id
 #[derive(Debug, PartialEq, Eq, Default, Clone)]
 #[binrw]
 #[br(little)]
@@ -3338,8 +3541,9 @@ pub fn parse_dz(rdr: &mut BufReader<&File>) -> Result<(Vec<u8>, Dz4Block)> {
                 .context("error reading the compressed bytes")?;
         }
         254 => {
-            //custom compression
-            todo!("not yet implemented custom compression algorithm")
+            // MDF 4.3 custom/vendor-specific compression
+            // The decompression algorithm is vendor-specific and cannot be handled generically
+            bail!("Custom compression (dz_zip_type=254) not supported - vendor-specific decompression required")
         }
         _ => {
             bail!("not implemented compression algorithm")
@@ -3425,12 +3629,18 @@ pub struct Ld4Block {
     // links
     /// next ld block
     pub ld_next: i64,
-    /// links
+    /// number of links
     #[br(if(ld_n_links > 1), little, count = ld_n_links - 1)]
     pub ld_links: Vec<i64>,
     // members
     /// Flags
-    pub ld_flags: u32,
+    pub ld_flags: u8,
+    /// Zip info in valid data
+    pub ld_zip_info: u8,
+    /// Zip info in ivalid data
+    pub ld_zip_info_inval: u8,
+    /// Extended flags
+    pub ld_flags_ext: u8,
     /// Number of data blocks
     pub ld_count: u32,
     #[br(if((ld_flags & 0b1)!=0), little)]
@@ -3454,6 +3664,9 @@ impl Default for Ld4Block {
             ld_next: 0,
             ld_links: vec![],
             ld_flags: 0,
+            ld_zip_info: 0,
+            ld_zip_info_inval: 0,
+            ld_flags_ext: 0,
             ld_count: 1,
             ld_equal_sample_count: None,
             ld_sample_offset: vec![],
@@ -3470,7 +3683,7 @@ impl Ld4Block {
     }
     /// Data block positions
     pub fn ld_data(&self) -> Vec<i64> {
-        if (1u32 << 31) & self.ld_flags > 0 {
+        if (1u8 << 7) & self.ld_flags > 0 {
             self.ld_links.iter().step_by(2).copied().collect()
         } else {
             self.ld_links.clone()
@@ -3478,7 +3691,7 @@ impl Ld4Block {
     }
     /// Invalid data block positions
     pub fn ld_invalid_data(&self) -> Vec<i64> {
-        if (1u32 << 31) & self.ld_flags > 0 {
+        if (1u8 << 7) & self.ld_flags > 0 {
             self.ld_links.iter().skip(1).step_by(2).copied().collect()
         } else {
             Vec::<i64>::new()
@@ -3527,4 +3740,146 @@ pub struct Hl4Block {
     hl_zip_type: u8,
     /// reserved
     hl_reserved: [u8; 5],
+}
+
+/// GD4 Guard Block struct (MDF 4.3)
+/// Used to safeguard newly introduced features against incompatible readers
+/// Note: gd_reserved is not included as its size varies based on gd_len
+#[derive(Debug, PartialEq, Eq, Default, Clone)]
+#[binrw]
+#[br(little)]
+#[repr(C)]
+pub struct Gd4Block {
+    // header
+    // ##GD
+    // gd_id: [u8; 4],
+    /// reserved
+    reserved: [u8; 4],
+    /// Length of block in bytes
+    pub gd_len: u64,
+    /// # of links (always 1)
+    gd_links: u64,
+    // link section
+    /// Pointer to the guarded block (shall not be NIL)
+    pub gd_link: i64,
+    // data section
+    /// Minimum version number of the MDF format the reader shall support
+    /// Same format as id_ver in IDBLOCK, i.e. 430 for MDF 4.3.0
+    pub gd_version: u16,
+    // gd_reserved is not included - size varies, position handled manually
+}
+
+/// DS4 Data Stream block struct
+#[derive(Debug, PartialEq, Eq, Default, Clone)]
+#[binrw]
+#[br(little)]
+#[repr(C)]
+pub struct Ds4Block {
+    //header
+    // ##DS
+    // ds_id: [u8; 4],
+    /// reserved
+    // reserved: [u8; 4],
+    /// Length of block in bytes
+    // pub ds_len: u64,
+    /// # of links
+    ds_links: u64,
+    /// links
+    /// link to CNBlock describing dynamic data
+    pub ds_cn_composition: i64,
+    /// link to CNBlock for the alignment start with data stream mode
+    pub ds_cn_alignment_start: i64,
+    /// data
+    /// Minimum version of the reader to read the data
+    pub ds_version: u16,
+    /// DSBlock mode, 0 data stream, 1 data description
+    pub ds_mode: u8,
+}
+
+/// CL4 Channel List block struct
+#[derive(Debug, PartialEq, Eq, Default, Clone)]
+#[binrw]
+#[br(little)]
+#[repr(C)]
+pub struct Cl4Block {
+    //header
+    // ##CL
+    // cl_id: [u8; 4],
+    /// reserved
+    // reserved: [u8; 4],
+    /// Length of block in bytes
+    // pub cl_len: u64,
+    /// # of links
+    cl_links: u64,
+    /// links
+    /// link to CNBlock describing dynamic data
+    pub cl_composition: i64,
+    /// link to CNBlock for the alignment start with data stream mode
+    pub cl_cn_size: i64,
+    /// data
+    /// Flags
+    pub cl_flags: u16,
+    /// Bytes alignment
+    pub cl_alignment: u8,
+    /// Bit Offset
+    pub cl_bit_offset: u8,
+    /// Byte Offset
+    pub cl_byte_offset: u32,
+}
+
+/// CV4 Channel Variant block struct
+#[derive(Debug, PartialEq, Eq, Default, Clone)]
+#[binrw]
+#[br(little)]
+#[repr(C)]
+pub struct Cv4Block {
+    //header
+    // ##CV
+    // cv_id: [u8; 4],
+    /// reserved
+    // reserved: [u8; 4],
+    /// Length of block in bytes
+    // pub cv_len: u64,
+    /// # of links
+    cv_n_links: u64,
+    /// links
+    /// link to CNBlock for discriminator channel
+    pub cv_cn_discriminator: i64,
+    /// list of option channel
+    #[br(if(cv_n_links > 1), little, count = cv_n_links - 1)]
+    pub cv_cn_option: Vec<i64>,
+    /// data
+    /// number of option channels
+    pub cv_option_count: u32,
+    /// reserved
+    cv_reserved: [u8; 4],
+    /// list of discriminator values for the options
+    #[br(if(cv_option_count > 1), little, count = cv_option_count )]
+    pub cv_option_val: Vec<u64>,
+}
+
+/// CU4 Channel Union block struct
+#[derive(Debug, PartialEq, Eq, Default, Clone)]
+#[binrw]
+#[br(little)]
+#[repr(C)]
+pub struct Cu4Block {
+    //header
+    // ##CU
+    // cu_id: [u8; 4],
+    /// reserved
+    // reserved: [u8; 4],
+    /// Length of block in bytes
+    // pub cu_len: u64,
+    /// # of links
+    cu_n_links: u64,
+    /// links
+    /// list of member channel
+    #[br(if(cu_n_links > 1), little, count = cu_n_links)]
+    pub cu_cn_member: Vec<i64>,
+    /// data
+    /// number of member channels
+    pub cu_member_count: u32,
+    /// reserved
+    cu_reserved: [u8; 4],
 }
