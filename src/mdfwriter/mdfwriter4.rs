@@ -637,6 +637,7 @@ fn create_blocks(
                 cn_block.cn_data_type,
                 cg_block.cg_data_bytes,
                 cn.list_size,
+                cn_block.cn_flags,
             )
             .with_context(|| format!("failed initilising array for channel {}", cn.unique_name))?,
             block: cn_block,

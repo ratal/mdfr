@@ -2142,7 +2142,7 @@ pub struct Cn4Block {
     /// Number of bits for signal value in record
     pub cn_bit_count: u32,
     /// Flags (see CN_F_xxx)
-    cn_flags: u32,
+    pub cn_flags: u32,
     /// Position of invalidation bit.
     cn_inval_bit_pos: u32,
     /// Precision for display of floating point values. 0xFF means unrestricted precision (infinite). Any other value specifies the number of decimal places to use for display of floating point values. Only valid if "precision valid" flag (bit 2) is set
@@ -2671,7 +2671,7 @@ fn parse_cn4_block(
         .context("Failed reading composition")?;
         shape = s;
         // list size calculation
-        if block.cn_data_type == 15 | 16 {
+        if block.cn_data_type == 15 || block.cn_data_type == 16 {
             //complex
             list_size = 2 * array_size;
         } else {
@@ -2714,13 +2714,13 @@ fn parse_cn4_block(
 
     let cn_struct = Cn4 {
         header: cnheader,
-        block,
         unique_name: name,
         block_position: target,
         pos_byte_beg,
         n_bytes,
         composition: compo,
-        data: data_type_init(cn_type, data_type, n_bytes, list_size)?,
+        data: data_type_init(cn_type, data_type, n_bytes, list_size, block.cn_flags)?,
+        block,
         endian,
         list_size,
         shape,
@@ -3222,9 +3222,10 @@ fn parse_composition(
         // Data Stream
         let ds_block: Ds4Block = block.read_le().context("Failed parsing DS block")?;
         array_size = 1;
+        let ds_pointer = ds_block.ds_cn_composition();
         let (_cnss, pos, n_cns, _first_rec_pos) = parse_cn4(
             rdr,
-            ds_block.ds_cn_composition,
+            ds_pointer,
             position,
             sharable,
             record_layout,
@@ -3234,10 +3235,10 @@ fn parse_composition(
         n_cn += n_cns;
         let ds_composition: Option<Box<Composition>>;
         let mut shape = (Vec::<usize>::new(), Order::RowMajor);
-        if ds_block.ds_cn_composition != 0 {
+        if ds_pointer != 0 {
             let (ds, pos, _array_size, s, n_cns, cnss) = parse_composition(
                 rdr,
-                ds_block.ds_cn_composition,
+                ds_pointer,
                 position,
                 sharable,
                 record_layout,
@@ -3882,12 +3883,10 @@ pub struct Ds4Block {
     /// Length of block in bytes
     // pub ds_len: u64,
     /// # of links
-    ds_links: u64,
+    pub ds_links: u64,
     /// links
-    /// link to CNBlock describing dynamic data
-    pub ds_cn_composition: i64,
-    /// link to CNBlock for the alignment start with data stream mode
-    pub ds_cn_alignment_start: i64,
+    #[br(count = ds_links)]
+    pub links: Vec<i64>,
     /// data
     /// Minimum version of the reader to read the data
     pub ds_version: u16,
@@ -3895,6 +3894,21 @@ pub struct Ds4Block {
     pub ds_mode: u8,
     /// Reserved
     pub ds_reserved: [u8; 5],
+}
+
+impl Ds4Block {
+    pub fn ds_cn_composition(&self) -> i64 {
+        self.links.get(0).copied().unwrap_or(0)
+    }
+    pub fn ds_cn_alignment_start(&self) -> i64 {
+        self.links.get(1).copied().unwrap_or(0)
+    }
+    pub fn ds_data(&self) -> i64 {
+        self.links.get(2).copied().unwrap_or(0)
+    }
+    pub fn ds_md_comment(&self) -> i64 {
+        self.links.get(3).copied().unwrap_or(0)
+    }
 }
 
 /// CL4 Channel List block struct

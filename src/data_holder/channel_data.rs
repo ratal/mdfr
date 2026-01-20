@@ -1,5 +1,6 @@
 //! this module holds the channel data enum and related implementations
 
+use crate::mdfinfo::mdfinfo4::CN_F_DATA_STREAM_MODE;
 use anyhow::{Context, Error, Result, bail};
 use arrow::array::{
     Array, ArrayBuilder, ArrayData, ArrayRef, BinaryArray, BooleanBufferBuilder,
@@ -1384,6 +1385,7 @@ pub fn data_type_init(
     cn_data_type: u8,
     n_bytes: u32,
     list_size: usize,
+    cn_flags: u32,
 ) -> Result<ChannelData, Error> {
     if list_size == 1 {
         // Not an array
@@ -1440,8 +1442,8 @@ pub fn data_type_init(
                 }
                 10 => {
                     // bytearray
-                    if cn_type == 1 || cn_type == 7 {
-                        // VLSD or VLSC
+                    if cn_type == 1 || cn_type == 7 || (cn_flags & CN_F_DATA_STREAM_MODE) != 0 {
+                        // VLSD, VLSC, or Data Stream (MDF 4.3 flag bit 17)
                         Ok(ChannelData::VariableSizeByteArray(LargeBinaryBuilder::new()))
                     } else {
                         Ok(ChannelData::FixedSizeByteArray(
@@ -1451,7 +1453,7 @@ pub fn data_type_init(
                 }
                 11 | 12 | 13 | 14 => {
                     // MIME or CANopen date/time types - store as byte array for now
-                    if cn_type == 1 || cn_type == 7 {
+                    if cn_type == 1 || cn_type == 7 || (cn_flags & CN_F_DATA_STREAM_MODE) != 0 {
                         Ok(ChannelData::VariableSizeByteArray(LargeBinaryBuilder::new()))
                     } else {
                         Ok(ChannelData::FixedSizeByteArray(

@@ -1,6 +1,6 @@
 //! this module implements low level data reading for mdf4 files.
 use crate::data_holder::tensor_arrow::TensorArrow;
-use crate::mdfinfo::mdfinfo4::{Cn4, CnType};
+use crate::mdfinfo::mdfinfo4::{CN_F_DATA_STREAM_MODE, Cn4, CnType, Compo};
 use anyhow::{Context, Error, Ok, Result, bail};
 use arrow::array::{
     Float32Builder, Float64Builder, Int8Builder, Int16Builder, Int32Builder, Int64Builder,
@@ -1627,10 +1627,23 @@ pub fn read_channels_from_bytes(
                         }
                     }
                 }
-            } else if cn.block.cn_type == 1 || cn.block.cn_type == 7 {
-                // cn_type == 1: VLSD - SD Block attached as data block
-                // cn_type == 7: VLSC - VD Block with (time, size, offset) triplet
-                if cn.block.cn_data != 0 {
+            } else {
+                let mut is_dynamic = cn.block.cn_type == 1 || cn.block.cn_type == 7 || (cn.block.cn_flags & CN_F_DATA_STREAM_MODE != 0);
+                if !is_dynamic {
+                    if let Some(composition) = &cn.composition {
+                        match &composition.block {
+                            Compo::CA(ca) if ca.ca_storage == 5 => is_dynamic = true,
+                            Compo::DS(_) => is_dynamic = true,
+                            _ => {}
+                        }
+                    }
+                }
+
+                if is_dynamic {
+                    // cn_type == 1: VLSD - SD Block attached as data block
+                    // cn_type == 7: VLSC - VD Block with (time, size, offset) triplet
+                    // CN_F_DATA_STREAM_MODE: Data Stream - DS Block points to data
+                    // ca_storage == 5: Dynamic array storage
                     let c_vlsd_channel = Arc::clone(&vlsd_channels);
                     let mut vlsd_channel = c_vlsd_channel
                         .lock()
