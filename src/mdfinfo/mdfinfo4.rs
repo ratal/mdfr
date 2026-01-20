@@ -30,8 +30,9 @@ use super::sym_buf_reader::SymBufReader;
 // =============================================================================
 
 // Channel Group (CG) flags - cg_flags field (u16)
-// Bits 0-4 are from MDF 4.2
-/// Bit 5: VLSC channel group (contains VLSC channels)
+/// Bit 0: VLSD channel group (Variable Length Signal Data)
+pub const CG_F_VLSD: u16 = 1 << 0;
+/// Bit 5: VLSC channel group (contains VLSC channels, MDF 4.3)
 pub const CG_F_VLSC: u16 = 1 << 5;
 /// Bit 6: Raw sensor event channel group
 pub const CG_F_RAW_SENSOR_EVENT: u16 = 1 << 6;
@@ -1600,13 +1601,13 @@ pub fn parse_dg4(
     Ok((dg, position, n_cg, n_cn))
 }
 
-/// Try to link VLSD Channel Groups with matching channel in other groups
+/// Try to link VLSD/VLSC Channel Groups with matching channel in other groups
 fn identify_vlsd_cg(cg: &mut HashMap<u64, Cg4>) {
-    // First find all VLSD Channel Groups
+    // First find all VLSD/VLSC Channel Groups
     let mut vlsd: HashMap<i64, u64> = HashMap::new();
     for (rec_id, channel_group) in cg.iter() {
-        if (channel_group.block.cg_flags & 0b1) != 0 {
-            // VLSD channel group found
+        if (channel_group.block.cg_flags & (CG_F_VLSD | CG_F_VLSC)) != 0 {
+            // VLSD or VLSC channel group found
             vlsd.insert(channel_group.block_position, *rec_id);
         }
     }

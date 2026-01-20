@@ -3,15 +3,16 @@ use crate::data_holder::channel_data::ChannelData;
 use crate::mdfinfo::MdfInfo;
 use crate::mdfinfo::mdfinfo4::{Blockheader4, Cg4, Cn4, Dg4};
 use crate::mdfinfo::mdfinfo4::{
-    Dl4Block, Dt4Block, Gd4Block, Hl4Block, Ld4Block, parse_dz, parser_dl4_block, parser_ld4_block,
+    CG_F_VLSC, CG_F_VLSD, Dl4Block, Dt4Block, Gd4Block, Hl4Block, Ld4Block, parse_dz,
+    parser_dl4_block, parser_ld4_block,
 };
 use crate::mdfreader::conversions4::convert_all_channels;
 use crate::mdfreader::data_read4::read_channels_from_bytes;
 use crate::mdfreader::data_read4::read_one_channel_array;
 use anyhow::{Context, Error, Result, bail};
-use log::warn;
 use binrw::BinReaderExt;
 use encoding_rs::{Decoder, GB18030, UTF_8, UTF_16BE, UTF_16LE, WINDOWS_1252};
+use log::warn;
 use rayon::prelude::*;
 use std::fs::File;
 use std::io::Cursor;
@@ -355,6 +356,11 @@ fn read_data(
                 .read_le()
                 .context("could not read into Gd4Block structure")?;
 
+            // Gd4Block struct size (without id): 4 + 8 + 8 + 8 + 2 = 30 bytes
+            // After reading: reader at position + 4 (id) + 30 (struct) = position + 34
+            const GD4_STRUCT_SIZE: i64 = 30;
+            let current_pos = position + 4 + GD4_STRUCT_SIZE;
+
             // Check if we support the required MDF version (430 for MDF 4.3.0)
             if block.gd_version > 430 {
                 warn!(
@@ -364,7 +370,7 @@ fn read_data(
                 position += block.gd_len as i64;
             } else {
                 // Follow the guarded link to the actual data block
-                rdr.seek_relative(block.gd_link - (position + block.gd_len as i64))
+                rdr.seek_relative(block.gd_link - current_pos)
                     .context("Could not reach guarded block from GDBLOCK")?;
                 position = block.gd_link;
 
@@ -1400,7 +1406,7 @@ fn read_all_channels_unsorted_from_bytes(
     let data_length = data.len();
     let dg_rec_id_size = dg.block.dg_rec_id_size as usize;
     let vlsd_data_start_offset = dg_rec_id_size + std::mem::size_of::<u32>();
-    // unsort data into sorted data blocks, except for VLSD CG.
+    // unsorted data into sorted data blocks, except for VLSD CG.
     let mut remaining: usize = data_length - position;
     while remaining > 0 {
         // reads record id
@@ -1424,8 +1430,8 @@ fn read_all_channels_unsorted_from_bytes(
         // reads record based on record id
         if let Some(cg) = dg.cg.get_mut(&rec_id) {
             let record_length = cg.record_length as usize;
-            if (cg.block.cg_flags & 0b1) != 0 {
-                // VLSD channel
+            if (cg.block.cg_flags & (CG_F_VLSD | CG_F_VLSC)) != 0 {
+                // VLSD or VLSC channel (Variable Length Signal Data/Size Channel)
                 if remaining >= 4 + dg_rec_id_size {
                     let len = &data[position + dg_rec_id_size..position + vlsd_data_start_offset];
                     let length: usize =
@@ -1499,7 +1505,7 @@ fn read_all_channels_unsorted_from_bytes(
                                 bail!("could not find the target record id");
                             }
                         } else {
-                            bail!("no vsld in CG, wrong cg_flags");
+                            bail!("no VLSD/VLSC target in CG, wrong cg_flags");
                         }
                         position += length;
                     } else {
