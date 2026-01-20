@@ -24,7 +24,7 @@ pub mod sym_buf_reader;
 use binrw::io::Cursor;
 use mdfinfo3::{hd3_comment_parser, hd3_parser, parse_dg3, MdfInfo3, SharableBlocks3};
 use mdfinfo4::{
-    build_channel_db, hd4_parser, parse_at4, parse_dg4, parse_ev4, parse_fh, MdfInfo4,
+    build_channel_db, hd4_parser, parse_at4, parse_ch4, parse_dg4, parse_ev4, parse_fh, MdfInfo4,
     SharableBlocks,
 };
 
@@ -179,6 +179,10 @@ impl MdfInfo {
             let (ev, position) = parse_ev4(&mut rdr, &mut sharable, hd.hd_ev_first, position)
                 .context("failed parsing events")?;
 
+            // CH Block read
+            let (ch, position) = parse_ch4(&mut rdr, &mut sharable, hd.hd_ch_first, position)
+                .context("failed parsing channel hierarchy")?;
+
             // Read DG Block
             let (mut dg, _, n_cg, n_cn) =
                 parse_dg4(&mut rdr, hd.hd_dg_first, position, &mut sharable)
@@ -197,6 +201,7 @@ impl MdfInfo {
                 dg,
                 sharable,
                 channel_names_set,
+                ch,
             }))
         };
         info!("Finished reading metadata");

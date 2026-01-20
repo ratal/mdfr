@@ -88,6 +88,8 @@ pub struct MdfInfo4 {
     pub sharable: SharableBlocks,
     /// set of all channel names
     pub channel_names_set: ChannelNamesSet, // set of channel names
+    /// channel hierarchy blocks
+    pub ch: HashMap<i64, Ch4Block>,
 }
 
 /// MdfInfo4's implementation
@@ -230,6 +232,7 @@ impl MdfInfo4 {
             at: HashMap::new(),
             ev: HashMap::new(),
             hd_block: Hd4::default(),
+            ch: HashMap::new(),
         }
     }
     /// Adds a new channel in memory (no file modification)
@@ -494,50 +497,7 @@ impl MdfInfo4 {
         if let Some(at) = self.at.get(&position) {
             match &at.1 {
                 None => None,
-                Some(embedded_data) => {
-                    // are data compressed
-                    let mut data: Vec<u8>;
-                    if (at.0.at_flags & 0b10) > 0 {
-                        // Compressed data (zlib format - checksum verified by flate2)
-                        let reader = Cursor::new(embedded_data);
-                        let mut decoder = ZlibDecoder::new(reader);
-                        data = Vec::new();
-                        if decoder.read_to_end(&mut data).is_err() {
-                            warn!("Could not decompress attached embedded data");
-                            return None;
-                        }
-                        // verify MD5 data integrity if flag is set
-                        if (at.0.at_flags & 0b100) > 0 {
-                            let mut hasher = Md5::new();
-                            hasher.update(data.clone());
-                            let result = hasher.finalize();
-                            if result == at.0.at_md5_checksum.into() {
-                                Some(data)
-                            } else {
-                                warn!("Embedded data MD5 checksum not ok");
-                                None
-                            }
-                        } else {
-                            Some(data)
-                        }
-                    } else {
-                        // not compressed data
-                        if (at.0.at_flags & 0b100) > 0 {
-                            // verify data integrity
-                            let mut hasher = Md5::new();
-                            hasher.update(embedded_data.clone());
-                            let result = hasher.finalize();
-                            if result == at.0.at_md5_checksum.into() {
-                                Some(embedded_data.to_vec())
-                            } else {
-                                warn!("Embedded data checksum not ok");
-                                None
-                            }
-                        } else {
-                            Some(embedded_data.to_vec())
-                        }
-                    }
-                }
+                Some(embedded_data) => Some(embedded_data.clone()),
             }
         } else {
             None
@@ -790,6 +750,7 @@ pub enum BlockType {
     CN,
     CC,
     SI,
+    CH,
 }
 
 /// struct linking MD or TX block with
@@ -1084,7 +1045,7 @@ pub struct Hd4 {
     /// There must be at least one FHBLOCK with information about the application which created the MDF file.
     pub hd_fh_first: i64,
     /// Pointer to first channel hierarchy block (CHBLOCK) (can be NIL).
-    hd_ch_first: i64,
+    pub hd_ch_first: i64,
     /// Pointer to first attachment block (ATBLOCK) (can be NIL)
     pub hd_at_first: i64,
     /// Pointer to first event block (EVBLOCK) (can be NIL)
@@ -1325,6 +1286,25 @@ fn parser_at4_block(
         let mut embedded_data = vec![0u8; block.at_embedded_size as usize];
         rdr.read_exact(&mut embedded_data)
             .context("Could not parse At4Block embedded attachement")?;
+
+        let zip_type = block.at_zip_type;
+        if (block.at_flags & 0b10) > 0 {
+            embedded_data = decompress_data(zip_type, 0, embedded_data, block.at_original_size)?;
+        }
+
+        // MD5 Checksum verification
+        if (block.at_flags & 0b100) > 0 {
+            let mut hasher = Md5::new();
+            hasher.update(&embedded_data);
+            let result = hasher.finalize();
+            if result.as_slice() != block.at_md5_checksum {
+                warn!(
+                    "MD5 checksum mismatch for attachment: expected {:?}, got {:?}",
+                    block.at_md5_checksum, result
+                );
+            }
+        }
+
         position += block.at_embedded_size as i64;
         Some(embedded_data)
     } else {
@@ -1468,6 +1448,89 @@ pub fn parse_ev4(
         }
     }
     Ok((ev, position))
+}
+
+
+/// Ch4Block struct
+#[derive(Debug, PartialEq, Eq, Default, Clone)]
+#[binrw]
+#[br(little)]
+#[repr(C)]
+pub struct Ch4Block {
+    // header
+    // ##CH
+    // ch_id [u8;4]
+    /// reserved
+    // reserved: [u8; 4],
+    /// Length of block in bytes
+    // pub ch_len: u64,
+    /// # of links
+    pub ch_links: u64,
+
+    // link section
+    /// link to next CHBLOCK at this hierarchy level
+    pub ch_ch_next: i64,
+    /// link to first CHBLOCK at the next hierarchy level (child)
+    pub ch_ch_first: i64,
+    /// link to TXBLOCK with the name of the hierarchy level
+    pub ch_tx_name: i64,
+    /// link to MDBLOCK with a comment/description
+    pub ch_md_comment: i64,
+    /// list of elements in this hierarchy level
+    #[br(count = ch_links - 4)]
+    pub ch_element: Vec<i64>,
+
+    // data section
+    /// number of elements in this hierarchy level (Nx3)
+    pub ch_element_count: u32,
+    /// hierarchy level type
+    pub ch_type: u8,
+    /// reserved
+    pub ch_reserved: [u8; 3],
+}
+
+/// parser Ch4Block
+fn parser_ch4_block(
+    rdr: &mut SymBufReader<&File>,
+    target: i64,
+    mut position: i64,
+) -> Result<(Ch4Block, i64)> {
+    let (mut block, _header, pos) = parse_block_short(rdr, target, position)?;
+    position = pos;
+    let block: Ch4Block = block.read_le().context("Error parsing ch block")?;
+
+    Ok((block, position))
+}
+
+/// parses all CH blocks starting from target
+pub fn parse_ch4(
+    rdr: &mut SymBufReader<&File>,
+    sharable: &mut SharableBlocks,
+    target: i64,
+    mut position: i64,
+) -> Result<(HashMap<i64, Ch4Block>, i64)> {
+    let mut ch = HashMap::new();
+    let mut next_pointer = target;
+    while next_pointer > 0 {
+        let block_start = next_pointer;
+        let (block, pos) = parser_ch4_block(rdr, next_pointer, position)?;
+        position = pos;
+
+        // Parse comments/names if exist
+        position = read_meta_data(rdr, sharable, block.ch_tx_name, position, BlockType::CH)?;
+        position = read_meta_data(rdr, sharable, block.ch_md_comment, position, BlockType::CH)?;
+
+        // Traverse children
+        if block.ch_ch_first > 0 {
+            let (children, pos) = parse_ch4(rdr, sharable, block.ch_ch_first, position)?;
+            position = pos;
+            ch.extend(children);
+        }
+
+        next_pointer = block.ch_ch_next;
+        ch.insert(block_start, block);
+    }
+    Ok((ch, position))
 }
 
 /// Dg4 Data Group block struct
@@ -2922,7 +2985,7 @@ fn parse_ca_block(
         .read_le()
         .context("Could not read links count in ca block")?;
     //Reads members first
-    ca_block.set_position(ca_links * 8); // change buffer position after links section
+    ca_block.set_position(8 + ca_links * 8); // change buffer position after links section
     let ca_members: Ca4BlockMembers = ca_block
         .read_le()
         .context("Could not read buffer into CaBlockMembers struct")?;
@@ -2972,7 +3035,7 @@ fn parse_ca_block(
     };
 
     // Reads links
-    ca_block.set_position(0); // change buffer position to beginning of links section
+    ca_block.set_position(8); // change buffer position to beginning of links section
 
     let ca_composition: i64 = ca_block
         .read_i64::<LittleEndian>()
@@ -2982,7 +3045,7 @@ fn parse_ca_block(
     let ca_data: Option<Vec<i64>> = if ca_members.ca_storage == 2 {
         ca_block
             .read_i64_into::<LittleEndian>(&mut val)
-            .context("Could not read ca_storage")?;
+            .context("Could not read ca_data")?;
         Some(val)
     } else {
         None
@@ -3424,7 +3487,7 @@ pub fn build_channel_db(
         });
     });
     // identifying master channels
-    let avg_ncn_per_cg = n_cn / n_cg;
+    let avg_ncn_per_cg = if n_cg > 0 { n_cn / n_cg } else { 0 };
     dg.iter_mut().for_each(|(_dg_position, dg)| {
         dg.cg.iter_mut().for_each(|(_record_id, cg)| {
             let mut cg_channel_list: HashSet<String> = HashSet::with_capacity(avg_ncn_per_cg);
@@ -3520,16 +3583,15 @@ pub fn parser_dl4_block(
     Ok((block, position))
 }
 
-/// parses DZBlock
-pub fn parse_dz(rdr: &mut BufReader<&File>) -> Result<(Vec<u8>, Dz4Block)> {
-    let mut block: Dz4Block = rdr
-        .read_le()
-        .context("Could not read into Dz4Block struct")?;
-    let mut buf = vec![0u8; block.dz_data_length as usize];
-    rdr.read_exact(&mut buf).context("Could not read Dz data")?;
-    // decompress data
+/// Helper function to decompress data using various algorithms
+pub fn decompress_data(
+    zip_type: u8,
+    zip_parameter: u32,
+    buf: Vec<u8>,
+    org_data_length: u64,
+) -> Result<Vec<u8>> {
     let mut data = Vec::<u8>::new();
-    match block.dz_zip_type {
+    match zip_type {
         0 | 1 => {
             // deflate algorithm (zlib format)
             let reader = Cursor::new(buf);
@@ -3551,39 +3613,55 @@ pub fn parse_dz(rdr: &mut BufReader<&File>) -> Result<(Vec<u8>, Dz4Block)> {
             // lz4 algorithm
             let reader = Cursor::new(buf);
             let mut decoder =
-                Lz4Decoder::new(reader).context("Error creating Zstd decoder from read vector")?;
+                Lz4Decoder::new(reader).context("Error creating Lz4 decoder from read vector")?;
             let _nbbytesread = decoder
                 .read_to_end(&mut data)
                 .context("error reading the compressed bytes")?;
         }
         254 => {
             // MDF 4.3 custom/vendor-specific compression
-            // The decompression algorithm is vendor-specific and cannot be handled generically
-            // Return empty data and log warning
-            warn!("Custom compression (dz_zip_type=254) not supported - data will be empty");
-            block.dz_org_data_length = 0; // Signal that no data is available
+            warn!("Custom compression (zip_type=254) not supported - data will be empty");
+            return Ok(data);
         }
         _ => {
-            bail!("not implemented compression algorithm")
+            bail!("not implemented compression algorithm: {}", zip_type)
         }
     };
     // transpose data
-    if matches!(block.dz_zip_type, 1 | 3 | 5) {
+    if matches!(zip_type, 1 | 3 | 5) && zip_parameter > 0 {
         // transpose
-        let m = block.dz_org_data_length / block.dz_zip_parameter as u64;
-        let tail: Vec<u8> = data.split_off((m * block.dz_zip_parameter as u64) as usize);
-        let mut output = vec![0u8; (m * block.dz_zip_parameter as u64) as usize];
+        let m = org_data_length / zip_parameter as u64;
+        let tail: Vec<u8> = data.split_off((m * zip_parameter as u64) as usize);
+        let mut output = vec![0u8; (m * zip_parameter as u64) as usize];
         transpose::transpose(
             &data,
             &mut output,
             m as usize,
-            block.dz_zip_parameter as usize,
+            zip_parameter as usize,
         );
         data = output;
         if !tail.is_empty() {
             data.extend(tail);
         }
     }
+    Ok(data)
+}
+
+/// parses DZBlock
+pub fn parse_dz(rdr: &mut BufReader<&File>) -> Result<(Vec<u8>, Dz4Block)> {
+    let mut block: Dz4Block = rdr
+        .read_le()
+        .context("Could not read into Dz4Block struct")?;
+    let mut buf = vec![0u8; block.dz_data_length as usize];
+    rdr.read_exact(&mut buf).context("Could not read Dz data")?;
+    // decompress data
+    let data = decompress_data(
+        block.dz_zip_type,
+        block.dz_zip_parameter,
+        buf,
+        block.dz_org_data_length,
+    )?;
+    block.dz_org_data_length = data.len() as u64;
     Ok((data, block))
 }
 
@@ -3701,7 +3779,10 @@ impl Ld4Block {
     }
     /// Data block positions
     pub fn ld_data(&self) -> Vec<i64> {
-        if (1u8 << 7) & self.ld_flags > 0 {
+        // In MDF 4.3, bit 7 of ld_flags_ext indicates invalid data present.
+        // If present, links are interleaved: Data 1, Inval 1, Data 2, Inval 2, ...
+        // We can also check if the number of links matches 2 * ld_count.
+        if (1u8 << 7) & self.ld_flags_ext > 0 || self.ld_links.len() as u32 == self.ld_count * 2 {
             self.ld_links.iter().step_by(2).copied().collect()
         } else {
             self.ld_links.clone()
@@ -3709,7 +3790,7 @@ impl Ld4Block {
     }
     /// Invalid data block positions
     pub fn ld_invalid_data(&self) -> Vec<i64> {
-        if (1u8 << 7) & self.ld_flags > 0 {
+        if (1u8 << 7) & self.ld_flags_ext > 0 || self.ld_links.len() as u32 == self.ld_count * 2 {
             self.ld_links.iter().skip(1).step_by(2).copied().collect()
         } else {
             Vec::<i64>::new()
@@ -3812,6 +3893,8 @@ pub struct Ds4Block {
     pub ds_version: u16,
     /// DSBlock mode, 0 data stream, 1 data description
     pub ds_mode: u8,
+    /// Reserved
+    pub ds_reserved: [u8; 5],
 }
 
 /// CL4 Channel List block struct

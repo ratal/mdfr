@@ -99,7 +99,7 @@ fn default_read_exact<R: Read + ?Sized>(this: &mut R, mut buf: &mut [u8]) -> Res
     if !buf.is_empty() {
         Err(Error::new(
             ErrorKind::UnexpectedEof,
-            "failed to write whole buffer",
+            "failed to fill whole buffer",
         ))
     } else {
         Ok(())

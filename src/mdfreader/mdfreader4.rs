@@ -635,7 +635,8 @@ fn read_vlsd_from_bytes(
                             as usize;
                     if (position + length + 4) <= data_length {
                         position += std::mem::size_of::<u32>();
-                        let record = &data[position..position + length - 1]; // do not take null terminated character
+                        let record_len = if length > 0 { length - 1 } else { 0 };
+                        let record = &data[position..position + record_len]; // do not take null terminated character
                         let mut dst = String::with_capacity(record.len());
                         let (_result, _size, _replacement) = decoder
                             .windows_1252
@@ -1187,7 +1188,10 @@ fn parser_dl4_sorted(
                     previous_index = read_vlsd_from_bytes(&mut data, cn, previous_index, decoder)?;
                 }
             } else {
-                let n_record_chunk = block_length / record_length;
+                let n_record_chunk = if record_length > 0 { block_length / record_length } else { 0 };
+                if previous_index >= cg_cycle_count || n_record_chunk == 0 {
+                    continue;
+                }
                 if previous_index + n_record_chunk < cg_cycle_count {
                     vlsd_channels = read_channels_from_bytes(
                         &data[..record_length * n_record_chunk],

@@ -1449,8 +1449,18 @@ pub fn data_type_init(
                         ))
                     }
                 }
+                11 | 12 | 13 | 14 => {
+                    // MIME or CANopen date/time types - store as byte array for now
+                    if cn_type == 1 || cn_type == 7 {
+                        Ok(ChannelData::VariableSizeByteArray(LargeBinaryBuilder::new()))
+                    } else {
+                        Ok(ChannelData::FixedSizeByteArray(
+                            FixedSizeBinaryBuilder::new(n_bytes as i32),
+                        ))
+                    }
+                }
                 _ => {
-                    unimplemented!("not implemented channel data type",);
+                    unimplemented!("not implemented channel data type: {}", cn_data_type);
                 }
             }
         } else {

@@ -1176,13 +1176,21 @@ pub fn read_channels_from_bytes(
                     }
                     ChannelData::VariableSizeByteArray(array) => {
                         for record in data_chunk.chunks(record_length) {
-                            array.append_value(&record[pos_byte_beg..pos_byte_beg + n_bytes]);
+                            if pos_byte_beg + n_bytes <= record.len() {
+                                array.append_value(&record[pos_byte_beg..pos_byte_beg + n_bytes]);
+                            } else {
+                                array.append_null();
+                            }
                         }
                     }
                     ChannelData::FixedSizeByteArray(a) => {
                         for record in data_chunk.chunks(record_length) {
-                            a.append_value(&record[pos_byte_beg..pos_byte_beg + n_bytes])
-                                .context("failed appending new value")?;
+                            if pos_byte_beg + n_bytes <= record.len() {
+                                a.append_value(&record[pos_byte_beg..pos_byte_beg + n_bytes])
+                                    .context("failed appending new value")?;
+                            } else {
+                                a.append_null();
+                            }
                         }
                     }
                     ChannelData::ArrayDInt8(a) => {
