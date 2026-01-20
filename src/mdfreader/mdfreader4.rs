@@ -937,7 +937,10 @@ fn parser_ld4(
             }
             position = ld_data + block_header.len as i64;
         }
-        if channel_group.block.cg_inval_bytes > 0 {
+        // For VLSD/VLSC, cg_inval_bytes is the high part of VL data size, not invalidation bytes
+        if channel_group.block.cg_inval_bytes > 0
+            && (channel_group.block.cg_flags & (CG_F_VLSD | CG_F_VLSC)) == 0
+        {
             // Reads invalid DI or DZ block
             let ld_invalid_data_vec = ld_blocks[0].ld_invalid_data();
             let ld_invalid_data = if !ld_invalid_data_vec.is_empty() {
@@ -987,7 +990,12 @@ fn read_dv_di(
     channel_names_to_read_in_dg: &HashSet<String>,
 ) -> Result<i64, Error> {
     let cg_cycle_count = channel_group.block.cg_cycle_count as usize;
-    let cg_inval_bytes = channel_group.block.cg_inval_bytes as usize;
+    // For VLSD/VLSC, cg_inval_bytes is the high part of VL data size, not invalidation bytes
+    let cg_inval_bytes = if (channel_group.block.cg_flags & (CG_F_VLSD | CG_F_VLSC)) != 0 {
+        0
+    } else {
+        channel_group.block.cg_inval_bytes as usize
+    };
     // initialises the arrays
     initialise_arrays(
         channel_group,
@@ -996,7 +1004,7 @@ fn read_dv_di(
     )
     .context("failed initialising arrays for dv di blocks")?;
     for ld in &ld_blocks {
-        if !ld.ld_invalid_data().is_empty() {
+        if !ld.ld_invalid_data().is_empty() && cg_inval_bytes > 0 {
             // initialises the invalid bytes vector
             channel_group.invalid_bytes = Some(vec![0u8; cg_inval_bytes * cg_cycle_count]);
         }

@@ -29,7 +29,8 @@ use crossbeam_channel::bounded;
 use parking_lot::Mutex;
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 use std::fs::File;
-use yazi::{CompressionLevel, Encoder, Format};
+use flate2::write::ZlibEncoder;
+use flate2::Compression;
 
 /// writes mdf4.2 file
 pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> {
@@ -431,16 +432,13 @@ fn create_dz_dv(
     offset: &mut i64,
 ) -> Result<(DataBlock, usize, Vec<u8>), Error> {
     let mut dz_block = Dz4Block::default();
-    let mut encoder = Encoder::boxed();
-    encoder.set_format(Format::Zlib);
-    encoder.set_level(CompressionLevel::BestSize);
-    let mut data_bytes = Vec::new();
-    let mut stream = encoder.stream_into_vec(&mut data_bytes);
     let bytes = data
         .to_bytes()
         .context("failed converting array data into bytes for dz or dv block")?;
-    stream.write(&bytes).expect("Could not compress data");
-    dz_block.dz_data_length = stream.finish().expect("failed finishing to compress data");
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());
+    encoder.write_all(&bytes).expect("Could not compress data");
+    let mut data_bytes = encoder.finish().expect("failed finishing to compress data");
+    dz_block.dz_data_length = data_bytes.len() as u64;
     let dv_dz_block: DataBlock;
     let byte_aligned: usize;
     let length = data.len();
@@ -479,17 +477,15 @@ fn create_dz_di(
 ) -> Result<Option<(DataBlock, Vec<u8>)>, Error> {
     let mut dz_invalid_block = Dz4Block::default();
     dz_invalid_block.dz_org_data_length = mask.len() as u64;
-    let mut encoder = Encoder::boxed();
-    encoder.set_format(Format::Zlib);
-    encoder.set_level(CompressionLevel::BestSize);
-    let mut data_bytes = Vec::new();
-    let mut stream = encoder.stream_into_vec(&mut data_bytes);
-    stream
-        .write(mask.iter().map(|v| v as u8).collect::<Vec<u8>>().as_slice())
+    let mask_bytes: Vec<u8> = mask.iter().map(|v| v as u8).collect();
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());
+    encoder
+        .write_all(&mask_bytes)
         .expect("Could not compress invalid data");
-    dz_invalid_block.dz_data_length = stream
+    let mut data_bytes = encoder
         .finish()
         .expect("failed finishing to compress invalid data");
+    dz_invalid_block.dz_data_length = data_bytes.len() as u64;
     if dz_invalid_block.dz_org_data_length < dz_invalid_block.dz_data_length {
         Ok(create_di(mask, offset)?)
     } else {

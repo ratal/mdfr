@@ -16,7 +16,7 @@ use std::fs::File;
 use std::io::{BufReader, Cursor, Read, Seek, Write};
 use std::sync::Arc;
 use std::{fmt, str};
-use yazi::{Adler32, Decoder as YaziDecoder, Format, decompress};
+use flate2::read::ZlibDecoder;
 use zstd::Decoder as ZstdDecoder;
 
 use crate::data_holder::channel_data::{ChannelData, data_type_init, try_from};
@@ -496,27 +496,27 @@ impl MdfInfo4 {
                 None => None,
                 Some(embedded_data) => {
                     // are data compressed
-                    let data: Vec<u8>;
+                    let mut data: Vec<u8>;
                     if (at.0.at_flags & 0b10) > 0 {
-                        // Compressed data
-                        let checksum: Option<u32>;
-                        (data, checksum) = decompress(embedded_data, Format::Zlib)
-                            .expect("Could not decompress attached embedded data");
-                        // is checksum valid
+                        // Compressed data (zlib format - checksum verified by flate2)
+                        let reader = Cursor::new(embedded_data);
+                        let mut decoder = ZlibDecoder::new(reader);
+                        data = Vec::new();
+                        if decoder.read_to_end(&mut data).is_err() {
+                            warn!("Could not decompress attached embedded data");
+                            return None;
+                        }
+                        // verify MD5 data integrity if flag is set
                         if (at.0.at_flags & 0b100) > 0 {
-                            // verify data integrity
                             let mut hasher = Md5::new();
                             hasher.update(data.clone());
                             let result = hasher.finalize();
                             if result == at.0.at_md5_checksum.into() {
                                 Some(data)
                             } else {
-                                warn!("Embedded data checksum not ok");
+                                warn!("Embedded data MD5 checksum not ok");
                                 None
                             }
-                        } else if Some(Adler32::from_buf(&data).finish()) != checksum {
-                            warn!("Embedded data checksum not ok");
-                            None
                         } else {
                             Some(data)
                         }
@@ -1821,7 +1821,13 @@ fn parse_cg4_block(
 
     // Reads MD
     position = read_meta_data(rdr, sharable, cg.cg_md_comment, position, BlockType::CG)?;
-    let record_layout = (record_id_size, cg.cg_data_bytes, cg.cg_inval_bytes);
+    // For VLSD/VLSC, cg_inval_bytes is the high part of VL data size, not invalidation bytes
+    let inval_bytes_for_record = if (cg.cg_flags & (CG_F_VLSD | CG_F_VLSC)) != 0 {
+        0
+    } else {
+        cg.cg_inval_bytes
+    };
+    let record_layout = (record_id_size, cg.cg_data_bytes, inval_bytes_for_record);
 
     // reads CN (and other linked block behind like CC, SI, CA, etc.)
     let (cn, pos, n_cn, _first_rec_pos) = parse_cn4(
@@ -1917,6 +1923,10 @@ impl Cg4 {
     /// Computes the validity mask for each channel in the group
     /// clears out the common invalid bytes vector for the group at the end
     pub fn process_all_channel_invalid_bits(&mut self) -> Result<(), Error> {
+        // For VLSD/VLSC, cg_inval_bytes is the high part of VL data size, not invalidation bytes
+        if (self.block.cg_flags & (CG_F_VLSD | CG_F_VLSC)) != 0 {
+            return Ok(());
+        }
         // get invalid bytes
         let cg_inval_bytes = self.block.cg_inval_bytes as usize;
         if let Some(invalid_bytes) = &self.invalid_bytes {
@@ -1991,7 +2001,14 @@ pub fn parse_cg4(
             parse_cg4_block(rdr, target, position, sharable, record_id_size)?;
         position = pos;
         let mut next_pointer = cg_struct.block.cg_cg_next;
-        cg_struct.record_length += record_id_size as u32 + cg_struct.block.cg_inval_bytes;
+        // For VLSD/VLSC, cg_inval_bytes is the high part of total VL data size, not invalidation bytes
+        let inval_bytes_size =
+            if (cg_struct.block.cg_flags & (CG_F_VLSD | CG_F_VLSC)) != 0 {
+                0
+            } else {
+                cg_struct.block.cg_inval_bytes
+            };
+        cg_struct.record_length += record_id_size as u32 + inval_bytes_size;
         cg.insert(cg_struct.block.cg_record_id, cg_struct);
         n_cg += 1;
         n_cn += num_cn;
@@ -2000,7 +2017,14 @@ pub fn parse_cg4(
             let (mut cg_struct, pos, num_cn) =
                 parse_cg4_block(rdr, next_pointer, position, sharable, record_id_size)?;
             position = pos;
-            cg_struct.record_length += record_id_size as u32 + cg_struct.block.cg_inval_bytes;
+            // For VLSD/VLSC, cg_inval_bytes is the high part of total VL data size, not invalidation bytes
+            let inval_bytes_size =
+                if (cg_struct.block.cg_flags & (CG_F_VLSD | CG_F_VLSC)) != 0 {
+                    0
+                } else {
+                    cg_struct.block.cg_inval_bytes
+                };
+            cg_struct.record_length += record_id_size as u32 + inval_bytes_size;
             next_pointer = cg_struct.block.cg_cg_next;
             cg.insert(cg_struct.block.cg_record_id, cg_struct);
             n_cg += 1;
@@ -3501,7 +3525,7 @@ pub fn parser_dl4_block(
 
 /// parses DZBlock
 pub fn parse_dz(rdr: &mut BufReader<&File>) -> Result<(Vec<u8>, Dz4Block)> {
-    let block: Dz4Block = rdr
+    let mut block: Dz4Block = rdr
         .read_le()
         .context("Could not read into Dz4Block struct")?;
     let mut buf = vec![0u8; block.dz_data_length as usize];
@@ -3510,18 +3534,12 @@ pub fn parse_dz(rdr: &mut BufReader<&File>) -> Result<(Vec<u8>, Dz4Block)> {
     let mut data = Vec::<u8>::new();
     match block.dz_zip_type {
         0 | 1 => {
-            // deflate algorithm
-            let mut decoder = YaziDecoder::new();
-            decoder.set_format(Format::Zlib);
-            let mut stream = decoder.stream_into_vec(&mut data);
-            stream
-                .write(&buf[..])
-                .expect("Error decompressing Deflate data");
-            // checksum is an Option<u32>
-            let (_, checksum) = stream.finish().expect("");
-            if Adler32::from_buf(&data).finish() != checksum.unwrap() {
-                bail!("Yazi Error InvalidBitstream");
-            }
+            // deflate algorithm (zlib format)
+            let reader = Cursor::new(buf);
+            let mut decoder = ZlibDecoder::new(reader);
+            decoder
+                .read_to_end(&mut data)
+                .context("Error decompressing Deflate data")?;
         }
         2 | 3 => {
             // zstd algorithm
@@ -3544,14 +3562,16 @@ pub fn parse_dz(rdr: &mut BufReader<&File>) -> Result<(Vec<u8>, Dz4Block)> {
         254 => {
             // MDF 4.3 custom/vendor-specific compression
             // The decompression algorithm is vendor-specific and cannot be handled generically
-            bail!("Custom compression (dz_zip_type=254) not supported - vendor-specific decompression required")
+            // Return empty data and log warning
+            warn!("Custom compression (dz_zip_type=254) not supported - data will be empty");
+            block.dz_org_data_length = 0; // Signal that no data is available
         }
         _ => {
             bail!("not implemented compression algorithm")
         }
     };
     // transpose data
-    if block.dz_zip_type == 1 | 3 | 5 {
+    if matches!(block.dz_zip_type, 1 | 3 | 5) {
         // transpose
         let m = block.dz_org_data_length / block.dz_zip_parameter as u64;
         let tail: Vec<u8> = data.split_off((m * block.dz_zip_parameter as u64) as usize);
