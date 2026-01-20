@@ -589,7 +589,7 @@ fn read_vd(
         if let Some(cn) = channel_group.cn.get_mut(rec_pos) {
             // Reinitialize cn.data for the actual variable length data
             cn.data = match cn_data_type {
-                6 | 7 | 8 | 9 => ChannelData::Utf8(arrow::array::LargeStringBuilder::new()),
+                6..=9 => ChannelData::Utf8(arrow::array::LargeStringBuilder::new()),
                 10 => ChannelData::VariableSizeByteArray(arrow::array::LargeBinaryBuilder::new()),
                 _ => continue,
             };
@@ -1476,7 +1476,7 @@ fn read_all_channels_unsorted_from_bytes(
                                                         .decode_to_string(record, &mut dst, false);
                                                 } else if target_cn.block.cn_data_type == 17 {
                                                     // Unicode with BOM
-                                                    let bom = Bom::from(&record[..]);
+                                                    let bom = Bom::from(record);
                                                     let mut decoder = match bom {
                                                         Bom::Utf8 => UTF_8.new_decoder(),
                                                         Bom::Utf16Be => UTF_16BE.new_decoder(),

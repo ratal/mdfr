@@ -1436,9 +1436,6 @@ pub fn data_type_init(
                 }
                 17 => {
                     // String Unicode with Byte Order Mark
-                    unimplemented!(
-                        "Unicode BOM",
-                    );
                     Ok(ChannelData::Utf8(LargeStringBuilder::new()))
                 }
                 10 => {
@@ -1452,9 +1449,9 @@ pub fn data_type_init(
                         ))
                     }
                 }
-                _ => {unimplemented!(
-                    "not implemented channel data type",
-                );}
+                _ => {
+                    unimplemented!("not implemented channel data type",);
+                }
             }
         } else {
             // virtual channels, cn_bit_count = 0 -> n_bytes = 0, must be LE unsigned int
@@ -1528,9 +1525,7 @@ pub fn data_type_init(
                 }
             }
             _ => {
-                unimplemented!(
-                    "not implemented channel array data type",
-                );
+                unimplemented!("not implemented channel array data type",);
             }
         }
     } else {

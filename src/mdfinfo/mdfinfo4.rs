@@ -5,6 +5,7 @@ use arrow::array::{Array, BooleanBufferBuilder, UInt8Builder, UInt16Builder, UIn
 use binrw::{BinReaderExt, BinWriterExt, binrw};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::{DateTime, Local};
+use flate2::read::ZlibDecoder;
 use log::warn;
 use lz4::Decoder as Lz4Decoder;
 use md5::{Digest, Md5};
@@ -16,7 +17,6 @@ use std::fs::File;
 use std::io::{BufReader, Cursor, Read, Seek, Write};
 use std::sync::Arc;
 use std::{fmt, str};
-use flate2::read::ZlibDecoder;
 use zstd::Decoder as ZstdDecoder;
 
 use crate::data_holder::channel_data::{ChannelData, data_type_init, try_from};
@@ -2002,12 +2002,11 @@ pub fn parse_cg4(
         position = pos;
         let mut next_pointer = cg_struct.block.cg_cg_next;
         // For VLSD/VLSC, cg_inval_bytes is the high part of total VL data size, not invalidation bytes
-        let inval_bytes_size =
-            if (cg_struct.block.cg_flags & (CG_F_VLSD | CG_F_VLSC)) != 0 {
-                0
-            } else {
-                cg_struct.block.cg_inval_bytes
-            };
+        let inval_bytes_size = if (cg_struct.block.cg_flags & (CG_F_VLSD | CG_F_VLSC)) != 0 {
+            0
+        } else {
+            cg_struct.block.cg_inval_bytes
+        };
         cg_struct.record_length += record_id_size as u32 + inval_bytes_size;
         cg.insert(cg_struct.block.cg_record_id, cg_struct);
         n_cg += 1;
@@ -2018,12 +2017,11 @@ pub fn parse_cg4(
                 parse_cg4_block(rdr, next_pointer, position, sharable, record_id_size)?;
             position = pos;
             // For VLSD/VLSC, cg_inval_bytes is the high part of total VL data size, not invalidation bytes
-            let inval_bytes_size =
-                if (cg_struct.block.cg_flags & (CG_F_VLSD | CG_F_VLSC)) != 0 {
-                    0
-                } else {
-                    cg_struct.block.cg_inval_bytes
-                };
+            let inval_bytes_size = if (cg_struct.block.cg_flags & (CG_F_VLSD | CG_F_VLSC)) != 0 {
+                0
+            } else {
+                cg_struct.block.cg_inval_bytes
+            };
             cg_struct.record_length += record_id_size as u32 + inval_bytes_size;
             next_pointer = cg_struct.block.cg_cg_next;
             cg.insert(cg_struct.block.cg_record_id, cg_struct);
@@ -3161,7 +3159,7 @@ fn parse_composition(
         // Data Stream
         let ds_block: Ds4Block = block.read_le().context("Failed parsing DS block")?;
         array_size = 1;
-        let (cnss, pos, n_cns, first_rec_pos) = parse_cn4(
+        let (_cnss, pos, n_cns, _first_rec_pos) = parse_cn4(
             rdr,
             ds_block.ds_cn_composition,
             position,
@@ -3171,7 +3169,6 @@ fn parse_composition(
         )?;
         position = pos;
         n_cn += n_cns;
-        cns = cnss;
         let ds_composition: Option<Box<Composition>>;
         let mut shape = (Vec::<usize>::new(), Order::RowMajor);
         if ds_block.ds_cn_composition != 0 {
@@ -3250,7 +3247,7 @@ fn parse_composition(
         for target in cv_block.cv_cn_option.iter() {
             let (cnss, pos, n_cns, _first_rec_pos) = parse_cn4(
                 rdr,
-                target.clone(),
+                *target,
                 position,
                 sharable,
                 record_layout,
@@ -3281,7 +3278,7 @@ fn parse_composition(
         for target in cu_block.cu_cn_member.iter() {
             let (cnss, pos, n_cns, _first_rec_pos) = parse_cn4(
                 rdr,
-                target.clone(),
+                *target,
                 position,
                 sharable,
                 record_layout,

@@ -1157,7 +1157,7 @@ pub fn read_channels_from_bytes(
                             for record in data_chunk.chunks(record_length) {
                                 value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
                                 // identifies BOM
-                                let bom = Bom::from(&value[..]);
+                                let bom = Bom::from(value);
                                 let mut decoder = match bom {
                                     Bom::Utf8 => UTF_8.new_decoder(),
                                     Bom::Utf16Be => UTF_16BE.new_decoder(),
