@@ -2046,6 +2046,167 @@ impl Cg4 {
         }
         Ok(())
     }
+
+    /// Process Channel Variant (CV) compositions after data is loaded.
+    /// For each channel with a CV composition, this method:
+    /// 1. Reads the discriminator channel values
+    /// 2. Maps discriminator values to option indices using cv_option_val
+    /// 3. Merges option channel data based on the discriminator
+    ///
+    /// After processing, the parent channel (with CV composition) contains the merged data.
+    pub fn process_channel_variants(&mut self) -> Result<(), Error> {
+        // Find channels with CV composition and collect info
+        let cv_channels: Vec<(i32, i64, Vec<i64>, Vec<u64>)> = self
+            .cn
+            .iter()
+            .filter_map(|(rec_pos, cn)| {
+                if let Some(composition) = &cn.composition {
+                    if let Compo::CV(cv_block) = &composition.block {
+                        return Some((
+                            *rec_pos,
+                            cv_block.cv_cn_discriminator,
+                            cv_block.cv_cn_option.clone(),
+                            cv_block.cv_option_val.clone(),
+                        ));
+                    }
+                }
+                None
+            })
+            .collect();
+
+        for (parent_rec_pos, discriminator_ptr, option_ptrs, option_vals) in cv_channels {
+            // First pass: collect all needed data (immutable borrows complete before mutable)
+            let discriminator_values: Vec<u64>;
+            let option_data: Vec<Option<ChannelData>>;
+
+            {
+                // Find the discriminator channel by block_position
+                let discriminator_cn = self
+                    .cn
+                    .values()
+                    .find(|cn| cn.block_position == discriminator_ptr);
+
+                let Some(disc_cn) = discriminator_cn else {
+                    log::warn!(
+                        "CV discriminator channel not found for block_position {}",
+                        discriminator_ptr
+                    );
+                    continue;
+                };
+
+                // Get discriminator values as u64
+                discriminator_values = match &disc_cn.data {
+                    ChannelData::UInt8(b) => b.values_slice().iter().map(|v| *v as u64).collect(),
+                    ChannelData::UInt16(b) => b.values_slice().iter().map(|v| *v as u64).collect(),
+                    ChannelData::UInt32(b) => b.values_slice().iter().map(|v| *v as u64).collect(),
+                    ChannelData::UInt64(b) => b.values_slice().to_vec(),
+                    ChannelData::Int8(b) => b.values_slice().iter().map(|v| *v as u64).collect(),
+                    ChannelData::Int16(b) => b.values_slice().iter().map(|v| *v as u64).collect(),
+                    ChannelData::Int32(b) => b.values_slice().iter().map(|v| *v as u64).collect(),
+                    ChannelData::Int64(b) => b.values_slice().iter().map(|v| *v as u64).collect(),
+                    _ => {
+                        log::warn!("CV discriminator channel has unsupported data type");
+                        continue;
+                    }
+                };
+
+                if discriminator_values.is_empty() {
+                    continue;
+                }
+
+                // Collect option channel data (clone to own data)
+                option_data = option_ptrs
+                    .iter()
+                    .map(|ptr| {
+                        self.cn
+                            .values()
+                            .find(|cn| cn.block_position == *ptr)
+                            .map(|cn| cn.data.clone())
+                    })
+                    .collect();
+            }
+            // Immutable borrows end here
+
+            // Build index mapping: discriminator value -> option index
+            let val_to_option: std::collections::HashMap<u64, usize> = option_vals
+                .iter()
+                .enumerate()
+                .map(|(idx, val)| (*val, idx))
+                .collect();
+
+            // Get template from first valid option
+            let template = option_data.iter().find_map(|o| o.clone());
+
+            // Second pass: update parent channel (mutable borrow)
+            if let Some(parent_cn) = self.cn.get_mut(&parent_rec_pos) {
+                if let Some(tmpl) = template {
+                    // Create new merged data with same type as first option
+                    let merged_data = merge_variant_data_owned(
+                        &discriminator_values,
+                        &option_data,
+                        &val_to_option,
+                        &tmpl,
+                    );
+
+                    if let Some(data) = merged_data {
+                        parent_cn.data = data;
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// Merge variant option data based on discriminator values (using owned ChannelData)
+fn merge_variant_data_owned(
+    discriminator_values: &[u64],
+    option_data: &[Option<ChannelData>],
+    val_to_option: &std::collections::HashMap<u64, usize>,
+    template: &ChannelData,
+) -> Option<ChannelData> {
+    use crate::data_holder::channel_data::ChannelData;
+
+    let n_samples = discriminator_values.len();
+
+    macro_rules! merge_typed {
+        ($builder_type:ty, $variant:ident) => {{
+            let mut builder = <$builder_type>::with_capacity(n_samples);
+            for (i, disc_val) in discriminator_values.iter().enumerate() {
+                if let Some(&opt_idx) = val_to_option.get(disc_val) {
+                    if let Some(Some(opt_data)) = option_data.get(opt_idx) {
+                        if let ChannelData::$variant(b) = opt_data {
+                            if i < b.values_slice().len() {
+                                builder.append_value(b.values_slice()[i]);
+                                continue;
+                            }
+                        }
+                    }
+                }
+                // Default value if option not found
+                builder.append_value(Default::default());
+            }
+            Some(ChannelData::$variant(builder))
+        }};
+    }
+
+    match template {
+        ChannelData::UInt8(_) => merge_typed!(arrow::array::UInt8Builder, UInt8),
+        ChannelData::UInt16(_) => merge_typed!(arrow::array::UInt16Builder, UInt16),
+        ChannelData::UInt32(_) => merge_typed!(arrow::array::UInt32Builder, UInt32),
+        ChannelData::UInt64(_) => merge_typed!(arrow::array::UInt64Builder, UInt64),
+        ChannelData::Int8(_) => merge_typed!(arrow::array::Int8Builder, Int8),
+        ChannelData::Int16(_) => merge_typed!(arrow::array::Int16Builder, Int16),
+        ChannelData::Int32(_) => merge_typed!(arrow::array::Int32Builder, Int32),
+        ChannelData::Int64(_) => merge_typed!(arrow::array::Int64Builder, Int64),
+        ChannelData::Float32(_) => merge_typed!(arrow::array::Float32Builder, Float32),
+        ChannelData::Float64(_) => merge_typed!(arrow::array::Float64Builder, Float64),
+        _ => {
+            log::warn!("CV variant merge not implemented for this data type");
+            None
+        }
+    }
 }
 
 /// Cg4 blocks and linked blocks parsing
@@ -2336,6 +2497,9 @@ pub fn parse_cn4(
                 while cn.contains_key(&first_rec_pos) {
                     first_rec_pos -= 1;
                 }
+            } else if (cn_struct.block.cn_flags & CN_F_DATA_STREAM_MODE) != 0 {
+                // data stream mode channel: use negative block_position as key to avoid collisions
+                first_rec_pos = -(cn_struct.block_position as i32);
             }
             cn.insert(first_rec_pos, cn_struct);
         }
@@ -2384,6 +2548,9 @@ pub fn parse_cn4(
                     while cn.contains_key(&rec_pos) {
                         rec_pos -= 1;
                     }
+                } else if (cn_struct.block.cn_flags & CN_F_DATA_STREAM_MODE) != 0 {
+                    // data stream mode channel: use negative block_position as key to avoid collisions
+                    rec_pos = -(cn_struct.block_position as i32);
                 }
                 cn.insert(rec_pos, cn_struct);
             }
@@ -3223,7 +3390,7 @@ fn parse_composition(
         let ds_block: Ds4Block = block.read_le().context("Failed parsing DS block")?;
         array_size = 1;
         let ds_pointer = ds_block.ds_cn_composition();
-        let (_cnss, pos, n_cns, _first_rec_pos) = parse_cn4(
+        let (ds_cnss, pos, n_cns, _first_rec_pos) = parse_cn4(
             rdr,
             ds_pointer,
             position,
@@ -3247,12 +3414,14 @@ fn parse_composition(
             .context("Failed parsing composition block from DS Block")?;
             shape = s;
             position = pos;
-            cns = cnss;
+            // Merge channels from parse_cn4 (includes size channel) with composition channels
+            cns = ds_cnss;
+            cns.extend(cnss);
             n_cn += n_cns;
             ds_composition = Some(Box::new(ds));
         } else {
             ds_composition = None;
-            cns = HashMap::new();
+            cns = ds_cnss;
         }
         Ok((
             Composition {
@@ -3271,6 +3440,8 @@ fn parse_composition(
         let cl_composition: Option<Box<Composition>>;
         let mut shape = (Vec::<usize>::new(), Order::RowMajor);
         array_size = 0;
+        // Note: cl_cn_size points to the size channel (parsed elsewhere in the CG)
+        // Parse the composition (element type)
         if cl_block.cl_composition != 0 {
             let (ds, pos, _array_size, s, n_cns, cnss) = parse_composition(
                 rdr,
@@ -3307,7 +3478,9 @@ fn parse_composition(
         let cv_composition: Option<Box<Composition>> = None; // no composition possible after CV block
         let shape = (Vec::<usize>::new(), Order::RowMajor);
         array_size = 0;
-        // reads all the listed Channel Blocks
+        // Note: cv_cn_discriminator points to the discriminator channel (parsed elsewhere in the CG)
+        // cv_option_val contains the discriminator values for each option
+        // reads all the listed option Channel Blocks
         for target in cv_block.cv_cn_option.iter() {
             let (cnss, pos, n_cns, _first_rec_pos) = parse_cn4(
                 rdr,

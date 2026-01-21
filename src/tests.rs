@@ -602,12 +602,26 @@ mod tests {
 
         // VLSC
         // TODO
-        let file_name = format!(
-            "{}",
-            "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/DynamicData/ChannelList/simple_list.mf4"
-        );
-        let mut mdf = Mdf::new(&file_name)?;
+
+        // Channel List (CL) test
+        let file_name = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/DynamicData/ChannelList/simple_list.mf4";
+        let mut mdf = Mdf::new(file_name)?;
         mdf.load_all_channels_data_in_memory()?;
+        // Verify size channel is present (uses negative block_position as rec_pos)
+        assert!(mdf.get_channel_data(&"size".to_string()).is_some());
+        assert!(mdf.get_channel_data(&"x".to_string()).is_some());
+        assert!(mdf.get_channel_data(&"x.a".to_string()).is_some());
+        assert!(mdf.get_channel_data(&"x.b".to_string()).is_some());
+
+        // Channel Variant (CV) test
+        let file_name = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/Variant/Etas_cv_storage_with_fixed_length.mf4";
+        let mut mdf = Mdf::new(file_name)?;
+        mdf.load_all_channels_data_in_memory()?;
+        // File should have: time, discriminator, variant channels
+        // The variant channel should contain merged data based on discriminator
+        assert!(mdf.get_channel_data(&"time".to_string()).is_some());
+        assert!(mdf.get_channel_data(&"discriminator".to_string()).is_some());
+        assert!(mdf.get_channel_data(&"variant".to_string()).is_some());
 
         Ok(())
     }

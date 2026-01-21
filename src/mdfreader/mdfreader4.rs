@@ -83,6 +83,10 @@ pub fn mdfreader4<'a>(
                         channel_group
                             .process_all_channel_invalid_bits()
                             .context("failed processing all channel invalid bits")?;
+                        // Process Channel Variants (CV) - merge option data based on discriminator
+                        channel_group
+                            .process_channel_variants()
+                            .context("failed processing channel variants")?;
                     }
                     // conversion of all channels to physical values
                     convert_all_channels(dg, &info.sharable)
