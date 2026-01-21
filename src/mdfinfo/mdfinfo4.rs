@@ -35,23 +35,30 @@ pub const CG_F_VLSD: u16 = 1 << 0;
 /// Bit 5: VLSC channel group (contains VLSC channels, MDF 4.3)
 pub const CG_F_VLSC: u16 = 1 << 5;
 /// Bit 6: Raw sensor event channel group
+#[allow(dead_code)]
 pub const CG_F_RAW_SENSOR_EVENT: u16 = 1 << 6;
 /// Bit 7: Protocol event channel group
+#[allow(dead_code)]
 pub const CG_F_PROTOCOL_EVENT: u16 = 1 << 7;
 
 // Channel (CN) flags - cn_flags field (u32)
 // Bits 0-14 are from MDF 4.2
 /// Bit 15: Raw sensor event channel
+#[allow(dead_code)]
 pub const CN_F_RAW_SENSOR_EVENT: u32 = 1 << 15;
 /// Bit 16: Auxiliary channel
+#[allow(dead_code)]
 pub const CN_F_AUXILIARY: u32 = 1 << 16;
 /// Bit 17: Data stream mode - channel uses data stream alignment
 pub const CN_F_DATA_STREAM_MODE: u32 = 1 << 17;
 /// Bit 18: Alignment reset - reset alignment to start of data stream
+#[allow(dead_code)]
 pub const CN_F_ALIGNMENT_RESET: u32 = 1 << 18;
 /// Bit 19: Protocol event channel
+#[allow(dead_code)]
 pub const CN_F_PROTOCOL_EVENT: u32 = 1 << 19;
 /// Bit 20: Data description mode - channel describes data structure
+#[allow(dead_code)]
 pub const CN_F_DATA_DESCRIPTION_MODE: u32 = 1 << 20;
 
 /// ChannelId : (Option<master_channelname>, dg_pos, (cg_pos, rec_id), (cn_pos, rec_pos))
@@ -495,10 +502,7 @@ impl MdfInfo4 {
     /// get embedded data in attachment for a block at position
     pub fn get_attachment_embedded_data(&self, position: i64) -> Option<Vec<u8>> {
         if let Some(at) = self.at.get(&position) {
-            match &at.1 {
-                None => None,
-                Some(embedded_data) => Some(embedded_data.clone()),
-            }
+            at.1.as_ref().map(|embedded_data| embedded_data.clone())
         } else {
             None
         }
@@ -2060,6 +2064,7 @@ impl Cg4 {
             .cn
             .iter()
             .filter_map(|(rec_pos, cn)| {
+                #[allow(clippy::collapsible_if)]
                 if let Some(composition) = &cn.composition {
                     if let Compo::CV(cv_block) = &composition.block {
                         return Some((
@@ -3325,8 +3330,10 @@ pub enum Compo {
     CA(Box<Ca4Block>),
     #[allow(dead_code)]
     CN(Box<Cn4>),
+    #[allow(dead_code)]
     CL(Box<Cl4Block>),
     CV(Box<Cv4Block>),
+    #[allow(dead_code)]
     CU(Box<Cu4Block>),
     DS(Box<Ds4Block>),
 }
@@ -4061,12 +4068,14 @@ impl Ds4Block {
     pub fn ds_cn_composition(&self) -> i64 {
         self.links.get(0).copied().unwrap_or(0)
     }
+    #[allow(dead_code)]
     pub fn ds_cn_alignment_start(&self) -> i64 {
         self.links.get(1).copied().unwrap_or(0)
     }
     pub fn ds_data(&self) -> i64 {
         self.links.get(2).copied().unwrap_or(0)
     }
+    #[allow(dead_code)]
     pub fn ds_md_comment(&self) -> i64 {
         self.links.get(3).copied().unwrap_or(0)
     }

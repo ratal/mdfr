@@ -1451,7 +1451,7 @@ pub fn data_type_init(
                         ))
                     }
                 }
-                11 | 12 | 13 | 14 => {
+                11..=14 => {
                     // MIME or CANopen date/time types - store as byte array for now
                     if cn_type == 1 || cn_type == 7 || (cn_flags & CN_F_DATA_STREAM_MODE) != 0 {
                         Ok(ChannelData::VariableSizeByteArray(LargeBinaryBuilder::new()))

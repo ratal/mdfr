@@ -69,6 +69,7 @@ mod tests {
                             .to_os_string()
                             .into_string()
                         {
+                            #[allow(clippy::collapsible_if)]
                             if valid_ext.contains(&ext) {
                                 if let Some(file_name) = entry.path().to_str() {
                                     println!(" Reading file : {}", file_name);
@@ -78,9 +79,10 @@ mod tests {
                             }
                         }
                     } else if metadata.is_dir() {
+                        #[allow(clippy::collapsible_if)]
                         if let Some(path) = entry.path().to_str() {
                             let path_str = path.to_owned();
-                            let _ = match parse_info_folder(&path_str) {
+                            match parse_info_folder(&path_str) {
                                 Ok(v) => v,
                                 Err(e) => {
                                     println!("Error parsing the folder {} \n {}", path_str, e)
@@ -166,7 +168,7 @@ mod tests {
     #[test]
     fn basic_test() -> Result<()> {
         let file = "test_files/test_basic.mf4";
-        let mut mdf = Mdf::new(&file)?;
+        let mut mdf = Mdf::new(file)?;
         mdf.load_all_channels_data_in_memory()?;
         mdf.write("test_files/test.mf4", true)?;
         Ok(())
@@ -197,7 +199,7 @@ mod tests {
             *v -= counter;
             counter += 1
         });
-        if let Some(data) = mdf.get_channel_data(&"Counter_INT64_BE".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Counter_INT64_BE") {
             assert_eq!(
                 ChannelData::Int64(Int64Builder::new_from_buffer(vect.clone().into(), None)),
                 data.clone()
@@ -205,7 +207,7 @@ mod tests {
         }
         let mut mdf2 = mdf.write(&writing_mdf_file, false)?;
         mdf2.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf2.get_channel_data(&"Counter_INT64_LE".to_string()) {
+        if let Some(data) = mdf2.get_channel_data("Counter_INT64_LE") {
             assert_eq!(
                 ChannelData::Int64(Int64Builder::new_from_buffer(vect.into(), None)),
                 data.clone()
@@ -224,7 +226,7 @@ mod tests {
         //         data
         //     );
         // }
-        if let Some(data) = mdf2.get_channel_data(&"Counter_INT32_LE".to_string()) {
+        if let Some(data) = mdf2.get_channel_data("Counter_INT32_LE") {
             assert_eq!(
                 ChannelData::Int32(Int32Builder::new_from_buffer(vect.into(), None)),
                 data.clone()
@@ -236,13 +238,13 @@ mod tests {
             *v -= counter;
             counter += 1
         });
-        if let Some(data) = mdf.get_channel_data(&"Counter_INT16_BE".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Counter_INT16_BE") {
             assert_eq!(
                 ChannelData::Int16(Int16Builder::new_from_buffer(vect.clone().into(), None)),
                 data.clone()
             );
         }
-        if let Some(data) = mdf2.get_channel_data(&"Counter_INT16_LE".to_string()) {
+        if let Some(data) = mdf2.get_channel_data("Counter_INT16_LE") {
             assert_eq!(
                 ChannelData::Int16(Int16Builder::new_from_buffer(vect.into(), None)),
                 data.clone()
@@ -300,7 +302,7 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Time channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Time channel") {
             assert_eq!(
                 ChannelData::Float64(Float64Builder::new_from_buffer(
                     vec![0., 1., 2., 3., 4., 5., 6., 7., 8., 9.].into(),
@@ -309,12 +311,12 @@ mod tests {
                 data.clone()
             );
         }
-        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Data channel") {
             assert_eq!(expected_string_result, data.clone());
         }
         let mut mdf2 = mdf.write(&writing_mdf_file, false)?;
         mdf2.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf2.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf2.get_channel_data("Data channel") {
             assert_eq!(expected_string_result, data.clone());
         }
         //UTF16
@@ -324,12 +326,12 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Data channel") {
             assert_eq!(expected_string_result, data.clone());
         }
         let mut mdf2 = mdf.write(&writing_mdf_file, false)?;
         mdf2.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf2.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf2.get_channel_data("Data channel") {
             assert_eq!(expected_string_result, data.clone());
         }
         let file_name = format!(
@@ -338,7 +340,7 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Data channel") {
             assert_eq!(expected_string_result, data.clone());
         }
         //SBC
@@ -348,12 +350,12 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Data channel") {
             assert_eq!(expected_string_result, data.clone());
         }
         let mut mdf2 = mdf.write(&writing_mdf_file, false)?;
         mdf2.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf2.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf2.get_channel_data("Data channel") {
             assert_eq!(expected_string_result, data.clone());
         }
 
@@ -375,7 +377,7 @@ mod tests {
         byte_array.append_value(vec![235, 234, 233, 232, 231])?;
         byte_array.append_value(vec![255, 255, 255, 255, 255])?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Time channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Time channel") {
             assert_eq!(
                 ChannelData::Float64(Float64Builder::new_from_buffer(
                     vec![0., 1., 2., 3., 4., 5., 6., 7., 8., 9.].into(),
@@ -384,12 +386,12 @@ mod tests {
                 data.clone()
             );
         }
-        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Data channel") {
             assert_eq!(&ChannelData::FixedSizeByteArray(byte_array), data);
         }
         let mut mdf2 = mdf.write(&writing_mdf_file, false)?;
         mdf2.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf2.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf2.get_channel_data("Data channel") {
             let mut byte_array = FixedSizeBinaryBuilder::with_capacity(10, 5);
             byte_array.append_value(vec![255, 255, 255, 255, 255])?;
             byte_array.append_value(vec![18, 35, 52, 69, 86])?;
@@ -429,7 +431,7 @@ mod tests {
         let mut vect: Vec<f64> = vec![0.; 101];
         let mut counter: f64 = 0.;
         vect.iter_mut().for_each(|v| {
-            *v = counter.clone() * 0.03;
+            *v = counter * 0.03;
             counter += 1.
         });
         let expected_master =
@@ -440,7 +442,7 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Time channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Time channel") {
             assert_eq!(expected_master, data.clone());
         }
         let file_name = format!(
@@ -449,7 +451,7 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Time channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Time channel") {
             assert_eq!(expected_master, data.clone());
         }
         let file_name = format!(
@@ -458,7 +460,7 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Time channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Time channel") {
             assert_eq!(expected_master, data.clone());
         }
 
@@ -481,7 +483,7 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Data channel") {
             assert_eq!(expected_string_result, data.clone());
         }
         let file_name = format!(
@@ -490,7 +492,7 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Data channel") {
             assert_eq!(expected_string_result, data.clone());
         }
         let file_name = format!(
@@ -499,7 +501,7 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Data channel") {
             assert_eq!(expected_string_result, data.clone());
         }
         let file_name = format!(
@@ -508,7 +510,7 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Data channel") {
             assert_eq!(expected_string_result, data.clone());
         }
 
@@ -526,7 +528,7 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Data channel") {
             assert_eq!(ChannelData::UInt64(virtal_vect), *data);
         }
         let mut vect: Vec<f64> = vec![100.0f64; 200];
@@ -542,7 +544,7 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Data channel") {
             assert_eq!(ChannelData::Float64(virtal_linear_vect), *data);
         }
         let file_name = format!(
@@ -551,7 +553,7 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Data channel") {
             assert_eq!(
                 ChannelData::Float64(Float64Builder::new_from_buffer(
                     vec![42f64; 200].into(),
@@ -567,7 +569,7 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Data channel") {
             assert_eq!(expected_string_result, data.clone());
         }
         let file_name = format!(
@@ -576,7 +578,7 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Data channel") {
             assert_eq!(expected_string_result, data.clone());
         }
         let file_name = format!(
@@ -585,7 +587,7 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Data channel") {
             assert_eq!(expected_string_result, data.clone());
         }
 
@@ -607,7 +609,7 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Data channel") {
             assert_eq!(expected_string_result, data.clone());
         }
 
@@ -616,10 +618,10 @@ mod tests {
         let mut mdf = Mdf::new(file_name)?;
         mdf.load_all_channels_data_in_memory()?;
         // Verify size channel is present (uses negative block_position as rec_pos)
-        assert!(mdf.get_channel_data(&"size".to_string()).is_some());
-        assert!(mdf.get_channel_data(&"x".to_string()).is_some());
-        assert!(mdf.get_channel_data(&"x.a".to_string()).is_some());
-        assert!(mdf.get_channel_data(&"x.b".to_string()).is_some());
+        assert!(mdf.get_channel_data("size").is_some());
+        assert!(mdf.get_channel_data("x").is_some());
+        assert!(mdf.get_channel_data("x.a").is_some());
+        assert!(mdf.get_channel_data("x.b").is_some());
 
         // Channel Variant (CV) test
         let file_name = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/Variant/Etas_cv_storage_with_fixed_length.mf4";
@@ -627,9 +629,9 @@ mod tests {
         mdf.load_all_channels_data_in_memory()?;
         // File should have: time, discriminator, variant channels
         // The variant channel should contain merged data based on discriminator
-        assert!(mdf.get_channel_data(&"time".to_string()).is_some());
-        assert!(mdf.get_channel_data(&"discriminator".to_string()).is_some());
-        assert!(mdf.get_channel_data(&"variant".to_string()).is_some());
+        assert!(mdf.get_channel_data("time").is_some());
+        assert!(mdf.get_channel_data("discriminator").is_some());
+        assert!(mdf.get_channel_data("variant").is_some());
 
          // DS Block (Data Stream) - Implicitly tested via Dynamic Data/ChannelList examples but specific check helpful
          // Using ChannelList example which uses DS for data stream mode
@@ -637,7 +639,7 @@ mod tests {
          let mut mdf = Mdf::new(file_name)?;
          mdf.load_all_channels_data_in_memory()?;
          // "x" is a channel using DSBLOCK for its data
-         assert!(mdf.get_channel_data(&"x".to_string()).is_some());
+         assert!(mdf.get_channel_data("x").is_some());
 
          // CU Block (Channel Union)
          let file_name = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/Union/simple_union.mf4";
@@ -656,7 +658,7 @@ mod tests {
          );
          let mut mdf = Mdf::new(&file_name)?;
          mdf.load_all_channels_data_in_memory()?;
-         if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+         if let Some(data) = mdf.get_channel_data("Data channel") {
              // Virtual data should be generated correctly
               assert_eq!(data.len(), 200); 
          }
@@ -673,7 +675,7 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Channel B".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Channel B") {
             let mut vect: Vec<u64> = vec![0; 30];
             let mut counter: u64 = 0;
             vect.iter_mut().for_each(|v| {
@@ -704,14 +706,14 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"channel1".to_string()) {
+        if let Some(data) = mdf.get_channel_data("channel1") {
             assert_eq!(data.len(), 254552);
         }
         // Equal length
         let file_name = format!("{}{}", BASE_PATH_MDF4, "DataList/Vector_DL_Linked_List.MF4");
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"channel1".to_string()) {
+        if let Some(data) = mdf.get_channel_data("channel1") {
             assert_eq!(data.len(), 254552);
         }
 
@@ -765,11 +767,11 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Time channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Time channel") {
             let mut vect: Vec<f64> = vec![0.; 10000];
             let mut counter: u64 = 0;
             vect.iter_mut().for_each(|v| {
-                *v = (counter.clone() as f64) / 10.0;
+                *v = (counter as f64) / 10.0;
                 counter += 1;
             });
             assert_eq!(
@@ -785,11 +787,11 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Time channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Time channel") {
             let mut vect: Vec<f64> = vec![0.; 10000];
             let mut counter: u64 = 0;
             vect.iter_mut().for_each(|v| {
-                *v = (counter.clone() as f64) / 10.0;
+                *v = (counter as f64) / 10.0;
                 counter += 1;
             });
             assert_eq!(
@@ -854,7 +856,7 @@ mod tests {
         expected_string_result.append_value("nine");
         let expected_string_result = ChannelData::Utf8(expected_string_result);
 
-        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Data channel") {
              assert_eq!(expected_string_result, data.clone());
         }
         Ok(())
@@ -878,11 +880,11 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Data channel") {
             let mut vect: Vec<f64> = vec![0.; 10];
             let mut counter: f64 = 0.;
             vect.iter_mut().for_each(|v| {
-                *v = counter.clone() * -3.2 - 4.8;
+                *v = counter * -3.2 - 4.8;
                 counter += 1.
             });
             assert_eq!(
@@ -896,7 +898,7 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Data channel") {
             let vect: Vec<f64> = vec![3.; 10];
             assert_eq!(
                 &ChannelData::Float64(Float64Builder::new_from_buffer(vect.into(), None)),
@@ -937,7 +939,7 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Data channel") {
             let vect = Vec::from([1., 2., 5., 10., 17., 26., 37., 50., 65., 82.]);
             assert_eq!(
                 &ChannelData::Float64(Float64Builder::new_from_buffer(vect.into(), None)),
@@ -970,7 +972,7 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Data channel") {
             let vect = Vec::from([
                 -5.,
                 -5.,
@@ -1022,7 +1024,7 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Data channel") {
             let vect = Vec::from([
                 -5., -5., -5., -5., -5., -5., -5., -2., -2., -2., -2., 0., 0., 0., 1., 1., 1., 2.,
                 2., 0., 0., 3., 3., 6., 6., 3., 3., 0., 0., 0.,
@@ -1046,7 +1048,7 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Data channel") {
             let vect = Vec::from([
                 -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 2.0, 2.0, 2.0, 2.0,
                 2.0, 3.0, 3.0, 5.0, 5.0, 5.0, 6.0, 7.0, 7.0, 8.0, 8.0, 9.0, 9.0, 9.0, 9.0,
@@ -1064,7 +1066,7 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Data channel") {
             let mut target = LargeStringBuilder::with_capacity(10, 20);
             target.append_value("No match");
             target.append_value("first gear");
@@ -1092,7 +1094,7 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Data channel") {
             let mut target = LargeStringBuilder::with_capacity(10, 20);
             target.append_value("Out of range");
             target.append_value("very low");
@@ -1120,19 +1122,19 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Data channel") {
             let mut vect: Vec<f64> = vec![0.; 300];
             let mut counter: f64 = 0.;
             vect.iter_mut().for_each(|v| {
-                *v = counter.clone();
+                *v = counter;
                 counter += 0.1
             });
             let mut target = LargeStringBuilder::with_capacity(vect.len(), 32);
             vect.iter().for_each(|v| {
                 if 9.9999 <= *v && *v <= 10.1001 {
-                    target.append_value("Illegal value".to_string())
+                    target.append_value("Illegal value")
                 } else if 20.0 <= *v && *v <= 30.0 {
-                    target.append_value("Out of range".to_string())
+                    target.append_value("Out of range")
                 } else {
                     target.append_value((10.0 / (v - 10.0)).to_string())
                 }
@@ -1156,7 +1158,7 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Data channel") {
             let vect = Vec::from([-50., 1., 2., 3., 4., 5., 6., 7., 8., 9.]);
             assert_eq!(
                 &ChannelData::Float64(Float64Builder::new_from_buffer(vect.into(), None)),
@@ -1171,7 +1173,7 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&"Data channel".to_string()) {
+        if let Some(data) = mdf.get_channel_data("Data channel") {
             let mut target = LargeStringBuilder::with_capacity(10, 20);
             target.append_value("No translation");
             target.append_value("Eins");
@@ -1228,7 +1230,7 @@ mod tests {
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
         if let Some(data) = mdf.get_channel_data(
-            &"CAN_DataFrame.ID CAN_DataFrame_101 CANReplay_7_5 Message".to_string(),
+            "CAN_DataFrame.ID CAN_DataFrame_101 CANReplay_7_5 Message",
         ) {
             let vect: Vec<f64> = vec![101.; 79];
             assert_eq!(
@@ -1263,8 +1265,8 @@ mod tests {
         // without compression
         let mut info2 = mdf.write(WRITING_MDF_FILE, false)?;
         info2.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&ref_channel.to_string()) {
-            if let Some(data2) = info2.get_channel_data(&ref_channel.to_string()) {
+        if let Some(data) = mdf.get_channel_data(ref_channel) {
+            if let Some(data2) = info2.get_channel_data(ref_channel) {
                 assert_eq!(*data2, *data);
             } else {
                 panic!("Channel not found");
@@ -1275,8 +1277,8 @@ mod tests {
         // with compression
         let mut info2 = mdf.write(WRITING_MDF_FILE, true)?;
         info2.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&ref_channel.to_string()) {
-            if let Some(data2) = info2.get_channel_data(&ref_channel.to_string()) {
+        if let Some(data) = mdf.get_channel_data(ref_channel) {
+            if let Some(data2) = info2.get_channel_data(ref_channel) {
                 assert_eq!(*data2, *data);
             } else {
                 panic!("Channel not found");
@@ -1293,8 +1295,8 @@ mod tests {
         // with compression
         let mut info2 = mdf.write(WRITING_MDF_FILE, true)?;
         info2.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&ref_channel.to_string()) {
-            if let Some(data2) = info2.get_channel_data(&ref_channel.to_string()) {
+        if let Some(data) = mdf.get_channel_data(ref_channel) {
+            if let Some(data2) = info2.get_channel_data(ref_channel) {
                 assert_eq!(*data2, *data);
             } else {
                 panic!("Channel not found");
@@ -1305,8 +1307,8 @@ mod tests {
         // without compression
         let mut info2 = mdf.write(WRITING_MDF_FILE, false)?;
         info2.load_all_channels_data_in_memory()?;
-        if let Some(data) = mdf.get_channel_data(&ref_channel.to_string()) {
-            if let Some(data2) = info2.get_channel_data(&ref_channel.to_string()) {
+        if let Some(data) = mdf.get_channel_data(ref_channel) {
+            if let Some(data2) = info2.get_channel_data(ref_channel) {
                 assert_eq!(*data2, *data);
             } else {
                 panic!("Channel not found");
@@ -1327,8 +1329,8 @@ mod tests {
         let channel_name3 = r"TEMP_FUEL";
         let mut mdf4 = mdf.write(WRITING_MDF_FILE, true)?;
         mdf4.load_all_channels_data_in_memory()?;
-        let mdf3_data = mdf.get_channel_data(&channel_name3);
-        let mdf4_data = mdf4.get_channel_data(&channel_name3);
+        let mdf3_data = mdf.get_channel_data(channel_name3);
+        let mdf4_data = mdf4.get_channel_data(channel_name3);
         assert_eq!(mdf3_data, mdf4_data);
         Ok(())
     }
@@ -1345,7 +1347,7 @@ mod tests {
         let mut mdf = Mdf::new(&file)?;
         mdf.load_all_channels_data_in_memory()?;
         // modify data
-        if let Some(data) = mdf.get_channel_data(&ref_channel.to_string()) {
+        if let Some(data) = mdf.get_channel_data(ref_channel) {
             let mut new_data = PrimitiveBuilder::with_capacity(data.len());
             data.finish_cloned()
                 .as_primitive::<Float32Type>()
@@ -1353,16 +1355,16 @@ mod tests {
                 .for_each(|v| new_data.append_option(v));
             new_data.values_slice_mut()[0] = 0.0f32;
             mdf.set_channel_data(
-                &ref_channel.to_string(),
+                ref_channel,
                 ChannelData::Float32(new_data).as_ref(),
             )?;
-            mdf.set_channel_desc(&ref_channel.to_string(), ref_desc);
-            mdf.set_channel_unit(&ref_channel.to_string(), ref_unit);
-            mdf.set_channel_master_type(&ref_channel.to_string(), 1)?;
+            mdf.set_channel_desc(ref_channel, ref_desc);
+            mdf.set_channel_unit(ref_channel, ref_unit);
+            mdf.set_channel_master_type(ref_channel, 1)?;
         } else {
             panic!("channel not found");
         }
-        if let Some(data) = mdf.get_channel_data(&ref_channel.to_string()) {
+        if let Some(data) = mdf.get_channel_data(ref_channel) {
             let (minimum, _) = data.min_max();
             if let Some(min) = minimum {
                 assert!(min < 1000.0f64);
@@ -1370,7 +1372,7 @@ mod tests {
         } else {
             panic!("channel not found");
         }
-        match mdf.get_channel_desc(&ref_channel.to_string()) {
+        match mdf.get_channel_desc(ref_channel) {
             Ok(Some(desc)) => {
                 assert_eq!(desc, ref_desc);
             }
@@ -1378,7 +1380,7 @@ mod tests {
                 panic!("channel not found");
             }
         }
-        match mdf.get_channel_unit(&ref_channel.to_string()) {
+        match mdf.get_channel_unit(ref_channel) {
             Ok(Some(unit)) => {
                 assert_eq!(unit, ref_unit);
             }
@@ -1386,7 +1388,7 @@ mod tests {
                 panic!("channel not found");
             }
         }
-        assert_eq!(mdf.get_channel_master_type(&ref_channel.to_string()), 1);
+        assert_eq!(mdf.get_channel_master_type(ref_channel), 1);
 
         // add new channel
         drop(mdf);
@@ -1395,7 +1397,7 @@ mod tests {
         let channel_name = r"Fake_name".to_string();
         let new_channel_name = r"New fake_name".to_string();
         let new_data = Arc::new(Float64Array::try_new(vec![0f64; 3300].into(), None)?);
-        let master_channel = mdf.get_channel_master(&ref_channel.to_string());
+        let master_channel = mdf.get_channel_master(ref_channel);
         let master_type = Some(0);
         let master_flag = false;
         let unit = Some(ref_unit.to_string());
@@ -1410,7 +1412,7 @@ mod tests {
             desc,
         )?;
 
-        if let Some(data) = mdf.get_channel_data(&channel_name.to_string()) {
+        if let Some(data) = mdf.get_channel_data(&channel_name) {
             let (minimum, _) = data.min_max();
             if let Some(min) = minimum {
                 assert!(min == 0.0f64);
@@ -1418,7 +1420,7 @@ mod tests {
         } else {
             panic!("channel not found");
         }
-        match mdf.get_channel_desc(&channel_name.to_string()) {
+        match mdf.get_channel_desc(&channel_name) {
             Ok(Some(desc)) => {
                 assert_eq!(desc, ref_desc.to_string());
             }
@@ -1426,7 +1428,7 @@ mod tests {
                 panic!("channel not found");
             }
         }
-        match mdf.get_channel_unit(&channel_name.to_string()) {
+        match mdf.get_channel_unit(&channel_name) {
             Ok(Some(unit)) => {
                 assert_eq!(unit, ref_unit);
             }
@@ -1434,21 +1436,21 @@ mod tests {
                 panic!("channel not found");
             }
         }
-        assert_eq!(mdf.get_channel_master_type(&channel_name.to_string()), 0);
+        assert_eq!(mdf.get_channel_master_type(&channel_name), 0);
 
         //rename
-        assert!(mdf.get_channel_data(&channel_name.to_string()).is_some());
-        mdf.rename_channel(&channel_name.to_string(), &new_channel_name);
-        assert!(mdf.get_channel_data(&channel_name.to_string()).is_none());
+        assert!(mdf.get_channel_data(&channel_name).is_some());
+        mdf.rename_channel(&channel_name, &new_channel_name);
+        assert!(mdf.get_channel_data(&channel_name).is_none());
 
         //remove
         assert!(
-            mdf.get_channel_data(&new_channel_name.to_string())
+            mdf.get_channel_data(&new_channel_name)
                 .is_some()
         );
         mdf.remove_channel(&new_channel_name);
         assert!(
-            mdf.get_channel_data(&new_channel_name.to_string())
+            mdf.get_channel_data(&new_channel_name)
                 .is_none()
         );
         Ok(())
@@ -1464,7 +1466,7 @@ mod tests {
         let extension = "*.parquet";
         let mut mdf = Mdf::new(&file)?;
         mdf.load_all_channels_data_in_memory()?;
-        mdf.export_to_parquet(&WRITING_PARQUET_FILE, Some("zstd"))
+        mdf.export_to_parquet(WRITING_PARQUET_FILE, Some("zstd"))
             .expect("failed writing mdf4 parquet file");
         // Export mdf3 to Parquet file
         let file = format!(
@@ -1473,7 +1475,7 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file)?;
         mdf.load_all_channels_data_in_memory()?;
-        mdf.export_to_parquet(&WRITING_PARQUET_FILE, Some("snappy"))
+        mdf.export_to_parquet(WRITING_PARQUET_FILE, Some("snappy"))
             .expect("failed writing mdf3 parquet file");
         // remove all generated parquet files
         let pattern = format!("{}/{}", BASE_TEST_PATH, extension);
