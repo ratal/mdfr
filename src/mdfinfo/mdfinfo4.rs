@@ -3390,16 +3390,6 @@ fn parse_composition(
         let ds_block: Ds4Block = block.read_le().context("Failed parsing DS block")?;
         array_size = 1;
         let ds_pointer = ds_block.ds_cn_composition();
-        let (ds_cnss, pos, n_cns, _first_rec_pos) = parse_cn4(
-            rdr,
-            ds_pointer,
-            position,
-            sharable,
-            record_layout,
-            cg_cycle_count,
-        )?;
-        position = pos;
-        n_cn += n_cns;
         let ds_composition: Option<Box<Composition>>;
         let mut shape = (Vec::<usize>::new(), Order::RowMajor);
         if ds_pointer != 0 {
@@ -3414,14 +3404,12 @@ fn parse_composition(
             .context("Failed parsing composition block from DS Block")?;
             shape = s;
             position = pos;
-            // Merge channels from parse_cn4 (includes size channel) with composition channels
-            cns = ds_cnss;
-            cns.extend(cnss);
+            cns = cnss;
             n_cn += n_cns;
             ds_composition = Some(Box::new(ds));
         } else {
             ds_composition = None;
-            cns = ds_cnss;
+            cns = HashMap::new();
         }
         Ok((
             Composition {
@@ -3507,7 +3495,7 @@ fn parse_composition(
         ))
     } else if block_header_short.hdr_id == "##CU".as_bytes() {
         // Channel Union
-        let cu_block: Cu4Block = block.read_le().context("Failed parsing CV block")?;
+        let cu_block: Cu4Block = block.read_le().context("Failed parsing CU block")?;
         let cv_composition: Option<Box<Composition>> = None; // no composition possible after CV block
         let shape = (Vec::<usize>::new(), Order::RowMajor);
         array_size = 0;
