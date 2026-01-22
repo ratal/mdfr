@@ -3,10 +3,10 @@ mod tests {
     use anyhow::Result;
     use arrow::array::{
         AsArray, FixedSizeBinaryBuilder, Float64Array, Float64Builder, Int16Builder, Int32Builder,
-        Int64Builder, LargeStringBuilder, PrimitiveBuilder, UInt64Builder,
+        Int64Builder, LargeStringBuilder, PrimitiveBuilder, UInt16Builder, UInt64Builder,
     };
 
-    use arrow::datatypes::Float32Type;
+    use arrow::datatypes::{Float32Type, Float64Type};
 
     use crate::data_holder::channel_data::ChannelData;
     use crate::mdfreader::Mdf;
@@ -184,7 +184,7 @@ mod tests {
             "DataTypes/StringTypes/".to_string(),
             "DataTypes/Complex/".to_string(),
         ];
-        let writing_mdf_file = format!("{}{}", WRITING_MDF_FILE, "_test".to_owned()).to_owned();
+        let writing_mdf_file = format!("{}/data_types_test.mf4", BASE_TEST_PATH);
 
         // Integer testing
         let file_name = format!(
@@ -412,6 +412,9 @@ mod tests {
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
+        
+        // Cleanup temporary file
+        fs::remove_file(&writing_mdf_file).ok();
         Ok(())
     }
 
@@ -613,42 +616,132 @@ mod tests {
             assert_eq!(expected_string_result, data.clone());
         }
 
-        // Channel List (CL) test
+        // Channel List (CL) + Data Stream (DS) test
+        // File: simple_list.mf4 contains a dynamic list structure with:
+        // - time: master channel (2 samples) [0.0, 1.0]
+        // - size: indicates list size (2 samples) [0, 202]  
+        // - x: parent structure (FixedSizeByteArray with CL block)
+        // - x.a: first member (Int32) [0, 1000000000]
+        // - x.b: second member (Float64) [0.0, 2.121995791e-314]
         let file_name = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/DynamicData/ChannelList/simple_list.mf4";
         let mut mdf = Mdf::new(file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        // Verify size channel is present (uses negative block_position as rec_pos)
-        assert!(mdf.get_channel_data("size").is_some());
-        assert!(mdf.get_channel_data("x").is_some());
-        assert!(mdf.get_channel_data("x.a").is_some());
-        assert!(mdf.get_channel_data("x.b").is_some());
+        
+        // Verify all channels are present
+        assert!(mdf.get_channel_data("size").is_some(), "size channel should exist");
+        assert!(mdf.get_channel_data("x").is_some(), "x channel should exist");
+        assert!(mdf.get_channel_data("x.a").is_some(), "x.a channel should exist");
+        assert!(mdf.get_channel_data("x.b").is_some(), "x.b channel should exist");
+        assert!(mdf.get_channel_data("time").is_some(), "time channel should exist");
+        
+        // Verify time channel (master)
+        if let Some(time_data) = mdf.get_channel_data("time") {
+            assert_eq!(time_data.len(), 2, "time should have 2 samples");
+            assert_eq!(mdf.get_channel_master_type("time"), 1, "time should be master type 1 (Time)");
+        }
+        
+        // Verify size channel values
+        if let Some(size_data) = mdf.get_channel_data("size") {
+            assert_eq!(size_data.len(), 2, "size should have 2 samples");
+            // Size values: [0, 202]
+            let expected_size = ChannelData::UInt16(UInt16Builder::new_from_buffer(vec![0u16, 202u16].into(), None));
+            assert_eq!(&expected_size, size_data, "size channel values should match");
+        }
+        
+        // Verify x.a channel values (Int32)
+        if let Some(xa_data) = mdf.get_channel_data("x.a") {
+            assert_eq!(xa_data.len(), 2, "x.a should have 2 samples");
+            let expected_xa = ChannelData::Int32(Int32Builder::new_from_buffer(vec![0i32, 1000000000i32].into(), None));
+            assert_eq!(&expected_xa, xa_data, "x.a channel values should match");
+        }
+        
+        // Verify x.b channel values (Float64)
+        if let Some(xb_data) = mdf.get_channel_data("x.b") {
+            assert_eq!(xb_data.len(), 2, "x.b should have 2 samples");
+            // First value should be 0.0
+            let values = xb_data.finish_cloned();
+            let float_values = values.as_primitive::<Float64Type>();
+            assert_eq!(float_values.value(0), 0.0, "x.b first value should be 0.0");
+        }
 
         // Channel Variant (CV) test
+        // File: Etas_cv_storage_with_fixed_length.mf4 contains:
+        // - time: master channel (3 samples) [0.0, 1.0, 2.0]
+        // - discriminator: variant selector (3 samples) [0, 1, 2]
+        // - variant: merged variant data based on discriminator value
         let file_name = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/Variant/Etas_cv_storage_with_fixed_length.mf4";
         let mut mdf = Mdf::new(file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        // File should have: time, discriminator, variant channels
-        // The variant channel should contain merged data based on discriminator
-        assert!(mdf.get_channel_data("time").is_some());
-        assert!(mdf.get_channel_data("discriminator").is_some());
-        assert!(mdf.get_channel_data("variant").is_some());
+        
+        // Verify all 3 channels are present
+        assert!(mdf.get_channel_data("time").is_some(), "time channel should exist");
+        assert!(mdf.get_channel_data("discriminator").is_some(), "discriminator channel should exist");
+        assert!(mdf.get_channel_data("variant").is_some(), "variant channel should exist");
+        
+        // Verify time channel (master)
+        if let Some(time_data) = mdf.get_channel_data("time") {
+            assert_eq!(time_data.len(), 3, "time should have 3 samples");
+            let expected_time = ChannelData::Float64(Float64Builder::new_from_buffer(
+                vec![0.0f64, 1.0f64, 2.0f64].into(),
+                None
+            ));
+            assert_eq!(&expected_time, time_data, "time channel values should match [0.0, 1.0, 2.0]");
+            assert_eq!(mdf.get_channel_master_type("time"), 1, "time should be master type 1 (Time)");
+        }
+        
+        // Verify discriminator channel  
+        if let Some(disc_data) = mdf.get_channel_data("discriminator") {
+            assert_eq!(disc_data.len(), 3, "discriminator should have 3 samples");
+            let expected_disc = ChannelData::UInt16(UInt16Builder::new_from_buffer(
+                vec![0u16, 1u16, 2u16].into(),
+                None
+            ));
+            assert_eq!(&expected_disc, disc_data, "discriminator values should match [0, 1, 2]");
+        }
+        
+        // Verify variant channel exists and has correct length
+        if let Some(variant_data) = mdf.get_channel_data("variant") {
+            assert_eq!(variant_data.len(), 3, "variant should have 3 samples");
+            // Variant data is FixedSizeByteArray containing merged data from different options
+        }
 
-         // DS Block (Data Stream) - Implicitly tested via Dynamic Data/ChannelList examples but specific check helpful
-         // Using ChannelList example which uses DS for data stream mode
+         // DS Block (Data Stream) test
+         // Note: DS blocks are implicitly tested via ChannelList (simple_list.mf4) 
+         // where the "x" channel uses DSBLOCK for data stream mode
          let file_name = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/DynamicData/ChannelList/simple_list.mf4";
          let mut mdf = Mdf::new(file_name)?;
          mdf.load_all_channels_data_in_memory()?;
-         // "x" is a channel using DSBLOCK for its data
-         assert!(mdf.get_channel_data("x").is_some());
+         // "x" channel uses DS block - verify it's readable
+         assert!(mdf.get_channel_data("x").is_some(), "DS-based channel 'x' should be readable");
 
-         // CU Block (Channel Union)
-         let file_name = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/Union/simple_union.mf4";
-         // Note: If simple_union.mf4 doesn't exist, we might need another file or skip. 
-         // Checking existing "Union" folder usage in parse_all_folders4 suggests it exists.
+         // CU Block (Channel Union) test
+         // File: Etas_cu_storage_with_fixed_length.mf4 contains:
+         // - time: master channel (3 samples) [0.0, 1.0, 2.0]
+         // - union: union data storing different member types in same space
+         let file_name = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/Union/Etas_cu_storage_with_fixed_length.mf4";
          if Path::new(file_name).exists() {
              let mut mdf = Mdf::new(file_name)?;
              mdf.load_all_channels_data_in_memory()?;
-             // Assertions for union members would go here, assuming we know the structure
+             
+             // Verify both channels present
+             assert!(mdf.get_channel_data("time").is_some(), "time channel should exist");
+             assert!(mdf.get_channel_data("union").is_some(), "union channel should exist");
+             
+             // Verify time channel
+             if let Some(time_data) = mdf.get_channel_data("time") {
+                 assert_eq!(time_data.len(), 3, "time should have 3 samples");
+                 let expected_time = ChannelData::Float64(Float64Builder::new_from_buffer(
+                     vec![0.0f64, 1.0f64, 2.0f64].into(),
+                     None
+                 ));
+                 assert_eq!(&expected_time, time_data, "time channel values should match [0.0, 1.0, 2.0]");
+             }
+             
+             // Verify union channel exists and has correct length
+             if let Some(union_data) = mdf.get_channel_data("union") {
+                 assert_eq!(union_data.len(), 3, "union should have 3 samples");
+                 // Union data is FixedSizeByteArray containing overlapping member data
+             }
          }
 
          // VD Block (Virtual Data)
@@ -1263,7 +1356,8 @@ mod tests {
         let mut mdf = Mdf::new(&file)?;
         mdf.load_all_channels_data_in_memory()?;
         // without compression
-        let mut info2 = mdf.write(WRITING_MDF_FILE, false)?;
+        let writing_mdf_file = format!("{}/writing_mdf4_test.mf4", BASE_TEST_PATH);
+        let mut info2 = mdf.write(&writing_mdf_file, false)?;
         info2.load_all_channels_data_in_memory()?;
         if let Some(data) = mdf.get_channel_data(ref_channel) {
             if let Some(data2) = info2.get_channel_data(ref_channel) {
@@ -1275,7 +1369,7 @@ mod tests {
             panic!("Channel not found");
         }
         // with compression
-        let mut info2 = mdf.write(WRITING_MDF_FILE, true)?;
+        let mut info2 = mdf.write(&writing_mdf_file, true)?;
         info2.load_all_channels_data_in_memory()?;
         if let Some(data) = mdf.get_channel_data(ref_channel) {
             if let Some(data2) = info2.get_channel_data(ref_channel) {
@@ -1293,7 +1387,7 @@ mod tests {
         let mut mdf = Mdf::new(&file)?;
         mdf.load_all_channels_data_in_memory()?;
         // with compression
-        let mut info2 = mdf.write(WRITING_MDF_FILE, true)?;
+        let mut info2 = mdf.write(&writing_mdf_file, true)?;
         info2.load_all_channels_data_in_memory()?;
         if let Some(data) = mdf.get_channel_data(ref_channel) {
             if let Some(data2) = info2.get_channel_data(ref_channel) {
@@ -1305,7 +1399,7 @@ mod tests {
             panic!("Channel not found");
         }
         // without compression
-        let mut info2 = mdf.write(WRITING_MDF_FILE, false)?;
+        let mut info2 = mdf.write(&writing_mdf_file, false)?;
         info2.load_all_channels_data_in_memory()?;
         if let Some(data) = mdf.get_channel_data(ref_channel) {
             if let Some(data2) = info2.get_channel_data(ref_channel) {
@@ -1327,11 +1421,14 @@ mod tests {
         let mut mdf = Mdf::new(&file)?;
         mdf.load_all_channels_data_in_memory()?;
         let channel_name3 = r"TEMP_FUEL";
-        let mut mdf4 = mdf.write(WRITING_MDF_FILE, true)?;
+        let mut mdf4 = mdf.write(&writing_mdf_file, true)?;
         mdf4.load_all_channels_data_in_memory()?;
         let mdf3_data = mdf.get_channel_data(channel_name3);
         let mdf4_data = mdf4.get_channel_data(channel_name3);
         assert_eq!(mdf3_data, mdf4_data);
+        
+        // Cleanup temporary file
+        fs::remove_file(&writing_mdf_file).ok();
         Ok(())
     }
     #[test]
