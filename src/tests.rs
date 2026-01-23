@@ -1339,7 +1339,6 @@ mod tests {
         }
 
         // Partial conversion
-        // TODO
         let file_name = format!(
             "{}{}{}",
             BASE_PATH_MDF4, list_of_paths[2], "Vector_PartialConversionLinearIdentityAlgebraic.mf4"
@@ -1360,7 +1359,6 @@ mod tests {
         mdf.load_all_channels_data_in_memory()?;
 
         // Bitfield conversion
-        // TODO
         let file_name = format!(
             "{}{}{}",
             BASE_PATH_MDF4, list_of_paths[6], "RAC_MDF420_BitfieldTextTable.mf4"

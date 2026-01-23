@@ -547,7 +547,94 @@ impl MdfInfo4 {
     pub fn get_event_blocks(&self) -> HashMap<i64, Ev4Block> {
         self.ev.clone()
     }
-    // TODO Extract CH
+    /// Get a channel hierarchy block from its position
+    pub fn get_channel_hierarchy_block(&self, position: i64) -> Option<Ch4Block> {
+        self.ch.get(&position).cloned()
+    }
+    /// Get all channel hierarchy blocks
+    pub fn get_channel_hierarchy_blocks(&self) -> HashMap<i64, Ch4Block> {
+        self.ch.clone()
+    }
+    /// List channel hierarchy in a human-readable format
+    pub fn list_channel_hierarchy(&self) -> String {
+        let mut output = String::new();
+        // Find root blocks (blocks not referenced as children or siblings by any other block)
+        let mut non_root_positions: HashSet<i64> = HashSet::new();
+        for block in self.ch.values() {
+            if block.ch_ch_first > 0 {
+                non_root_positions.insert(block.ch_ch_first);
+            }
+            if block.ch_ch_next > 0 {
+                non_root_positions.insert(block.ch_ch_next);
+            }
+        }
+
+        let mut roots: Vec<i64> = self
+            .ch
+            .keys()
+            .filter(|pos| !non_root_positions.contains(pos))
+            .copied()
+            .collect();
+        roots.sort();
+
+        for root_pos in roots {
+            self.format_hierarchy_level(&mut output, root_pos, 0);
+        }
+        output
+    }
+    /// Helper to format a hierarchy level recursively
+    fn format_hierarchy_level(&self, output: &mut String, position: i64, depth: usize) {
+        if let Some(block) = self.ch.get(&position) {
+            let indent = "  ".repeat(depth);
+            let type_name = match block.ch_type {
+                0 => "Group",
+                1 => "Function",
+                2 => "Structure",
+                3 => "Map list",
+                4 => "Input variables",
+                5 => "Output variables",
+                6 => "Local variables",
+                7 => "Defined calibration objects",
+                8 => "Referenced calibration objects",
+                _ => "Unknown",
+            };
+            let name = self
+                .sharable
+                .get_tx(block.ch_tx_name)
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| "<unnamed>".to_string());
+
+            output.push_str(&format!(
+                "{}[{}] {} (elements={})\n",
+                indent, type_name, name, block.ch_element_count
+            ));
+
+            // List elements (each element is a DG/CG/CN triplet)
+            for i in 0..block.ch_element_count as usize {
+                let base_idx = i * 3;
+                if base_idx + 2 < block.ch_element.len() {
+                    let dg_pos = block.ch_element[base_idx];
+                    let cg_pos = block.ch_element[base_idx + 1];
+                    let cn_pos = block.ch_element[base_idx + 2];
+                    output.push_str(&format!(
+                        "{}  -> DG:{} CG:{} CN:{}\n",
+                        indent, dg_pos, cg_pos, cn_pos
+                    ));
+                }
+            }
+
+            // Traverse children first
+            if block.ch_ch_first > 0 {
+                self.format_hierarchy_level(output, block.ch_ch_first, depth + 1);
+            }
+
+            // Then traverse siblings at same level
+            if block.ch_ch_next > 0 {
+                self.format_hierarchy_level(output, block.ch_ch_next, depth);
+            }
+        }
+    }
 }
 
 /// creates random negative position

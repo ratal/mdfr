@@ -32,7 +32,7 @@ use crate::data_holder::channel_data::ChannelData;
 use crate::mdfwriter::mdfwriter3::convert3to4;
 
 use self::mdfinfo3::build_channel_db3;
-use self::mdfinfo4::{At4Block, Ev4Block, FhBlock};
+use self::mdfinfo4::{At4Block, Ch4Block, Ev4Block, FhBlock};
 use self::sym_buf_reader::SymBufReader;
 use crate::mdfreader::{DataSignature, MasterSignature};
 
@@ -492,6 +492,27 @@ impl MdfInfo {
         match self {
             MdfInfo::V3(_) => None,
             MdfInfo::V4(mdfinfo4) => Some(mdfinfo4.fh.clone()),
+        }
+    }
+    /// Get a channel hierarchy block from its position (MDF 4.x only)
+    pub fn get_channel_hierarchy_block(&self, position: i64) -> Option<Ch4Block> {
+        match self {
+            MdfInfo::V3(_) => None,
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_hierarchy_block(position),
+        }
+    }
+    /// Get all channel hierarchy blocks (MDF 4.x only)
+    pub fn get_channel_hierarchy_blocks(&self) -> Option<HashMap<i64, Ch4Block>> {
+        match self {
+            MdfInfo::V3(_) => None,
+            MdfInfo::V4(mdfinfo4) => Some(mdfinfo4.get_channel_hierarchy_blocks()),
+        }
+    }
+    /// List channel hierarchy in a human-readable format (MDF 4.x only)
+    pub fn list_channel_hierarchy(&self) -> String {
+        match self {
+            MdfInfo::V3(_) => String::new(),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.list_channel_hierarchy(),
         }
     }
 }
