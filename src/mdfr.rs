@@ -505,6 +505,63 @@ df=polars.DataFrame(series)
             }
         })
     }
+    /// list channel hierarchy in a human-readable format (MDF 4.x only)
+    pub fn list_channel_hierarchy(&mut self) -> PyResult<String> {
+        let Mdfr(mdf) = self;
+        Ok(mdf.mdf_info.list_channel_hierarchy())
+    }
+    /// get channel hierarchy blocks (MDF 4.x only)
+    pub fn get_channel_hierarchy_blocks(&mut self) -> Py<PyAny> {
+        let Mdfr(mdf) = self;
+        let chbs = mdf.mdf_info.get_channel_hierarchy_blocks();
+        pyo3::Python::attach(|py| {
+            if let Some(ch) = chbs {
+                let chl = PyList::empty(py);
+                for (position, chb) in ch {
+                    let chdict = PyDict::new(py);
+                    let _ = chdict.set_item("position", position);
+                    if let Ok(res) = mdf.mdf_info.get_tx(chb.ch_tx_name) {
+                        let _ = chdict.set_item("name", res);
+                    }
+                    let _ = chdict.set_item("comment", mdf.mdf_info.get_comments(chb.ch_md_comment));
+                    let type_name = match chb.ch_type {
+                        0 => "Group",
+                        1 => "Function",
+                        2 => "Structure",
+                        3 => "Map list",
+                        4 => "Input variables",
+                        5 => "Output variables",
+                        6 => "Local variables",
+                        7 => "Defined calibration objects",
+                        8 => "Referenced calibration objects",
+                        _ => "Unknown",
+                    };
+                    let _ = chdict.set_item("type", type_name);
+                    let _ = chdict.set_item("type_id", chb.ch_type);
+                    let _ = chdict.set_item("element_count", chb.ch_element_count);
+                    let _ = chdict.set_item("first_child", chb.ch_ch_first);
+                    let _ = chdict.set_item("next_sibling", chb.ch_ch_next);
+                    // Elements as list of (DG, CG, CN) triplets
+                    let elements = PyList::empty(py);
+                    for i in 0..chb.ch_element_count as usize {
+                        let base_idx = i * 3;
+                        if base_idx + 2 < chb.ch_element.len() {
+                            let triplet = PyDict::new(py);
+                            let _ = triplet.set_item("dg", chb.ch_element[base_idx]);
+                            let _ = triplet.set_item("cg", chb.ch_element[base_idx + 1]);
+                            let _ = triplet.set_item("cn", chb.ch_element[base_idx + 2]);
+                            let _ = elements.append(triplet);
+                        }
+                    }
+                    let _ = chdict.set_item("elements", elements);
+                    let _ = chl.append(chdict);
+                }
+                chl.into()
+            } else {
+                py.None()
+            }
+        })
+    }
     /// plot one channel
     pub fn plot(&self, channel_name: String) -> PyResult<()> {
         let Mdfr(mdf) = self;
