@@ -539,6 +539,42 @@ impl MdfInfo4 {
         }
         output
     }
+    /// list source information blocks
+    pub fn list_source_information(&self) -> String {
+        let mut output = String::new();
+        for (key, block) in self.sharable.si.iter() {
+            let si_type_name = match block.si_type {
+                0 => "Other",
+                1 => "ECU",
+                2 => "Bus",
+                3 => "I/O",
+                4 => "Tool",
+                5 => "User",
+                _ => "Unknown",
+            };
+            let bus_type_name = match block.si_bus_type {
+                0 => "None",
+                1 => "Other",
+                2 => "CAN",
+                3 => "LIN",
+                4 => "MOST",
+                5 => "FlexRay",
+                6 => "K-Line",
+                7 => "Ethernet",
+                8 => "USB",
+                _ => "Unknown",
+            };
+            output.push_str(&format!(
+                "position: {}, name: {:?}, path: {:?}, type: {}, bus: {}\n",
+                key,
+                self.sharable.get_tx(block.si_tx_name),
+                self.sharable.get_tx(block.si_tx_path),
+                si_type_name,
+                bus_type_name,
+            ))
+        }
+        output
+    }
     /// get event block from its position
     pub fn get_event_block(&self, position: i64) -> Option<Ev4Block> {
         self.ev.get(&position).cloned()

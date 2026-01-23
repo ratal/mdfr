@@ -515,6 +515,13 @@ impl MdfInfo {
             MdfInfo::V4(mdfinfo4) => mdfinfo4.list_channel_hierarchy(),
         }
     }
+    /// List source information blocks (MDF 4.x only)
+    pub fn list_source_information(&self) -> String {
+        match self {
+            MdfInfo::V3(_) => String::new(),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.list_source_information(),
+        }
+    }
 }
 
 impl fmt::Display for MdfInfo {

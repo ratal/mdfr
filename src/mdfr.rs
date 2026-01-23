@@ -714,6 +714,37 @@ pyplot.show()
                 for c in comments.iter() {
                     writeln!(output, "{} {}", c.0, c.1).context("cannot print header comments")?;
                 }
+                // Source Information
+                let si_info = mdfinfo4.list_source_information();
+                if !si_info.is_empty() {
+                    writeln!(output, "\n--- Source Information ---")
+                        .context("cannot print source info header")?;
+                    write!(output, "{}", si_info).context("cannot print source information")?;
+                }
+                // Attachments
+                let at_info = mdfinfo4.list_attachments();
+                if !at_info.is_empty() {
+                    writeln!(output, "\n--- Attachments ---")
+                        .context("cannot print attachments header")?;
+                    write!(output, "{}", at_info).context("cannot print attachments")?;
+                }
+                // Events
+                let ev_info = mdfinfo4.list_events();
+                if !ev_info.is_empty() {
+                    writeln!(output, "\n--- Events ---")
+                        .context("cannot print events header")?;
+                    write!(output, "{}", ev_info).context("cannot print events")?;
+                }
+                // Channel Hierarchy
+                let ch_info = mdfinfo4.list_channel_hierarchy();
+                if !ch_info.is_empty() {
+                    writeln!(output, "\n--- Channel Hierarchy ---")
+                        .context("cannot print channel hierarchy header")?;
+                    write!(output, "{}", ch_info).context("cannot print channel hierarchy")?;
+                }
+                // Channels
+                writeln!(output, "\n--- Channels ---")
+                    .context("cannot print channels header")?;
                 for (master, list) in mdfinfo4.get_master_channel_names_set().iter() {
                     if let Some(master_name) = master {
                         writeln!(output, "\nMaster: {master_name}")
