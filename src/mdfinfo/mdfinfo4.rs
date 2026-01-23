@@ -936,7 +936,7 @@ impl MetaData {
     }
     /// Creates File History MetaData
     pub fn create_fh(&mut self) {
-        let user_name = whoami::username();
+        let user_name = whoami::username().unwrap_or_else(|_| "unknown".to_string());
         let comments = format!(
             "<FHcomment>
 <TX>created</TX>
