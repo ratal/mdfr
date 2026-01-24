@@ -14,18 +14,27 @@ mod tests {
     use std::fs;
     use std::io;
     use std::path::Path;
-    use std::sync::Arc;
+    use std::sync::{Arc, LazyLock};
     use test_log::test;
 
-    static BASE_PATH_MDF4: &str =
-        "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/";
-    static BASE_PATH_MDF3: &str = "/home/ratal/workspace/mdfreader/mdfreader/tests/mdf3/";
-    static BASE_TEST_PATH: &str = "/home/ratal/workspace/mdfr/test_files";
-    static WRITING_MDF_FILE: &str = "/home/ratal/workspace/mdfr/test_files/test.mf4";
+    static MDFREADER_TESTS_PATH: &str = "/home/ratal/workspace/mdfreader/mdfreader/tests/";
+    static MDFR_PATH: &str = "/home/ratal/workspace/mdfr/";
+
+    static BASE_PATH_MDF4: LazyLock<String> =
+        LazyLock::new(|| format!("{}MDF4/MDF4.3/Base_Standard/Examples/", MDFREADER_TESTS_PATH));
+    static BASE_PATH_MDF3: LazyLock<String> =
+        LazyLock::new(|| format!("{}mdf3/", MDFREADER_TESTS_PATH));
+    static BASE_TEST_PATH: LazyLock<String> =
+        LazyLock::new(|| format!("{}test_files", MDFR_PATH));
+    #[allow(dead_code)]
+    static WRITING_MDF_FILE: LazyLock<String> =
+        LazyLock::new(|| format!("{}test_files/test.mf4", MDFR_PATH));
     #[cfg(feature = "parquet")]
-    static WRITING_PARQUET_FILE: &str = "/home/ratal/workspace/mdfr/test_files/test_parquet";
+    static WRITING_PARQUET_FILE: LazyLock<String> =
+        LazyLock::new(|| format!("{}test_files/test_parquet", MDFR_PATH));
     #[cfg(feature = "hdf5")]
-    static WRITING_HDF5_FILE: &str = "/home/ratal/workspace/mdfr/test_files/test_hdf5.hdf5";
+    static WRITING_HDF5_FILE: LazyLock<String> =
+        LazyLock::new(|| format!("{}test_files/test_hdf5.hdf5", MDFR_PATH));
 
     #[test]
     fn info_test() -> Result<()> {
@@ -153,7 +162,7 @@ mod tests {
         ];
         for path in list_of_paths.iter() {
             println!("reading folder : {}", path);
-            parse_info_folder(&format!("{}{}", BASE_PATH_MDF4, &path)).unwrap();
+            parse_info_folder(&format!("{}{}", BASE_PATH_MDF4.as_str(), &path)).unwrap();
         }
         Ok(())
     }
@@ -184,12 +193,12 @@ mod tests {
             "DataTypes/StringTypes/".to_string(),
             "DataTypes/Complex/".to_string(),
         ];
-        let writing_mdf_file = format!("{}/data_types_test.mf4", BASE_TEST_PATH);
+        let writing_mdf_file = format!("{}/data_types_test.mf4", BASE_TEST_PATH.as_str());
 
         // Integer testing
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[2], "Vector_IntegerTypes.MF4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[2], "Vector_IntegerTypes.MF4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -253,14 +262,14 @@ mod tests {
 
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[2], "ETAS_IntegerTypes.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[2], "ETAS_IntegerTypes.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
 
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[2], "dSPACE_IntegerTypes.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[2], "dSPACE_IntegerTypes.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -268,16 +277,16 @@ mod tests {
         // Real types
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[3], "Vector_RealTypes.MF4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[3], "Vector_RealTypes.MF4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
-        let file_name = format!("{}{}", BASE_PATH_MDF4, "Halffloat/halffloat_sinus.mf4");
+        let file_name = format!("{}{}", BASE_PATH_MDF4.as_str(), "Halffloat/halffloat_sinus.mf4");
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[3], "dSPACE_RealTypes.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[3], "dSPACE_RealTypes.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -298,7 +307,7 @@ mod tests {
         let expected_string_result = ChannelData::Utf8(expected_string_result);
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[4], "Vector_FixedLengthStringUTF8.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[4], "Vector_FixedLengthStringUTF8.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -322,7 +331,7 @@ mod tests {
         //UTF16
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[4], "Vector_FixedLengthStringUTF16_BE.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[4], "Vector_FixedLengthStringUTF16_BE.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -336,7 +345,7 @@ mod tests {
         }
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[4], "Vector_FixedLengthStringUTF16_LE.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[4], "Vector_FixedLengthStringUTF16_LE.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -346,7 +355,7 @@ mod tests {
         //SBC
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[4], "Vector_FixedLengthStringSBC.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[4], "Vector_FixedLengthStringSBC.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -362,7 +371,7 @@ mod tests {
         // byteArray testing
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[0], "Vector_ByteArrayFixedLength.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[0], "Vector_ByteArrayFixedLength.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         let mut byte_array = FixedSizeBinaryBuilder::with_capacity(10, 5);
@@ -408,7 +417,7 @@ mod tests {
         //Complex testing
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[5], "Vector_ComplexNumbers.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[5], "Vector_ComplexNumbers.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -441,7 +450,7 @@ mod tests {
             ChannelData::Float64(Float64Builder::new_from_buffer(vect.into(), None));
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[0], "Vector_VirtualTimeMasterChannel.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[0], "Vector_VirtualTimeMasterChannel.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -450,7 +459,7 @@ mod tests {
         }
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[0], "Vector_DifferentMasterChannels.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[0], "Vector_DifferentMasterChannels.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -459,7 +468,7 @@ mod tests {
         }
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[0], "Vector_NoMasterChannel.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[0], "Vector_NoMasterChannel.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -482,7 +491,7 @@ mod tests {
         let expected_string_result = ChannelData::Utf8(expected_string_result);
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[1], "Vector_MLSD_String_UTF8.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[1], "Vector_MLSD_String_UTF8.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -491,7 +500,7 @@ mod tests {
         }
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[1], "Vector_MLSD_String_SBC.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[1], "Vector_MLSD_String_SBC.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -500,7 +509,7 @@ mod tests {
         }
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[1], "Vector_MLSD_String_UTF16_BE.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[1], "Vector_MLSD_String_UTF16_BE.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -509,7 +518,7 @@ mod tests {
         }
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[1], "Vector_MLSD_String_UTF16_LE.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[1], "Vector_MLSD_String_UTF16_LE.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -527,7 +536,7 @@ mod tests {
         let virtal_vect = UInt64Builder::new_from_buffer(vect.into(), None);
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[3], "Vector_VirtualDataChannelNoConversion.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[3], "Vector_VirtualDataChannelNoConversion.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -543,7 +552,7 @@ mod tests {
         let virtal_linear_vect = Float64Builder::new_from_buffer(vect.into(), None);
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[3], "Vector_VirtualDataChannelLinearConversion.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[3], "Vector_VirtualDataChannelLinearConversion.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -552,7 +561,7 @@ mod tests {
         }
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[3], "Vector_VirtualDataChannelConstantConversion.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[3], "Vector_VirtualDataChannelConstantConversion.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -568,7 +577,7 @@ mod tests {
         // VLSD testing
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[2], "Vector_VLSD_String_UTF8.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[2], "Vector_VLSD_String_UTF8.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -577,7 +586,7 @@ mod tests {
         }
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[2], "Vector_VLSD_String_UTF16_LE.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[2], "Vector_VLSD_String_UTF16_LE.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -586,7 +595,7 @@ mod tests {
         }
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[2], "Vector_VLSD_String_UTF16_BE.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[2], "Vector_VLSD_String_UTF16_BE.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -597,7 +606,7 @@ mod tests {
         // Synchronization
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[4], "Vector_SyncStreamChannel.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[4], "Vector_SyncStreamChannel.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -605,7 +614,7 @@ mod tests {
         // VLSC
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[6], "Vector_VLSC_String_UTF8.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[6], "Vector_VLSC_String_UTF8.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -803,7 +812,7 @@ mod tests {
         // VD Block (Virtual Data)
         let file_name = format!(
             "{}{}",
-            BASE_PATH_MDF4,
+            BASE_PATH_MDF4.as_str(),
             "ChannelTypes/VirtualData/Vector_VirtualDataChannelLinearConversion.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
@@ -821,7 +830,7 @@ mod tests {
         // Overlapping signals
         let file_name = format!(
             "{}{}",
-            BASE_PATH_MDF4, "RecordLayout/NotByteAligned/Vector_NotByteAligned.mf4"
+            BASE_PATH_MDF4.as_str(), "RecordLayout/NotByteAligned/Vector_NotByteAligned.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -841,7 +850,7 @@ mod tests {
         // Overlapping signals
         let file_name = format!(
             "{}{}",
-            BASE_PATH_MDF4, "RecordLayout/OverlappingSignals/Vector_OverlappingSignals.mf4"
+            BASE_PATH_MDF4.as_str(), "RecordLayout/OverlappingSignals/Vector_OverlappingSignals.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -852,7 +861,7 @@ mod tests {
         // Equal length
         let file_name = format!(
             "{}{}",
-            BASE_PATH_MDF4, "DataList/DT_EqualLength/Vector_DT_EqualLen.MF4"
+            BASE_PATH_MDF4.as_str(), "DataList/DT_EqualLength/Vector_DT_EqualLen.MF4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -860,7 +869,7 @@ mod tests {
             assert_eq!(data.len(), 254552);
         }
         // Equal length
-        let file_name = format!("{}{}", BASE_PATH_MDF4, "DataList/Vector_DL_Linked_List.MF4");
+        let file_name = format!("{}{}", BASE_PATH_MDF4.as_str(), "DataList/Vector_DL_Linked_List.MF4");
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
         if let Some(data) = mdf.get_channel_data("channel1") {
@@ -870,7 +879,7 @@ mod tests {
         // Empty data
         let file_name = format!(
             "{}{}",
-            BASE_PATH_MDF4, "DataList/EmptyList/ETAS_EmptyDL.mf4"
+            BASE_PATH_MDF4.as_str(), "DataList/EmptyList/ETAS_EmptyDL.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -878,7 +887,7 @@ mod tests {
         // SD List
         let file_name = format!(
             "{}{}",
-            BASE_PATH_MDF4, "DataList/SD_List/Vector_SD_List.MF4"
+            BASE_PATH_MDF4.as_str(), "DataList/SD_List/Vector_SD_List.MF4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -886,7 +895,7 @@ mod tests {
         // Separate invalidation bits
         let file_name = format!(
             "{}{}",
-            BASE_PATH_MDF4, "DataList/RAC_MDF420_ListData_SeparateInvalidationBits.mf4"
+            BASE_PATH_MDF4.as_str(), "DataList/RAC_MDF420_ListData_SeparateInvalidationBits.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -897,7 +906,7 @@ mod tests {
         // Single DZ deflate
         let file_name = format!(
             "{}{}",
-            BASE_PATH_MDF4, "CompressedData/Simple/Vector_SingleDZ_Deflate.mf4"
+            BASE_PATH_MDF4.as_str(), "CompressedData/Simple/Vector_SingleDZ_Deflate.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -905,7 +914,7 @@ mod tests {
         // Single DZ transpose deflate
         let file_name = format!(
             "{}{}",
-            BASE_PATH_MDF4, "CompressedData/Simple/Vector_SingleDZ_TransposeDeflate.mf4"
+            BASE_PATH_MDF4.as_str(), "CompressedData/Simple/Vector_SingleDZ_TransposeDeflate.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -913,7 +922,7 @@ mod tests {
         // deflate data list
         let file_name = format!(
             "{}{}",
-            BASE_PATH_MDF4, "CompressedData/DataList/Vector_DataList_Deflate.mf4"
+            BASE_PATH_MDF4.as_str(), "CompressedData/DataList/Vector_DataList_Deflate.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -933,7 +942,7 @@ mod tests {
         // transpose deflate data list
         let file_name = format!(
             "{}{}",
-            BASE_PATH_MDF4, "CompressedData/DataList/Vector_DataList_TransposeDeflate.mf4"
+            BASE_PATH_MDF4.as_str(), "CompressedData/DataList/Vector_DataList_TransposeDeflate.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -953,7 +962,7 @@ mod tests {
         // Unsorted
         let file_name = format!(
             "{}{}",
-            BASE_PATH_MDF4, "CompressedData/Unsorted/Vector_SingleDZ_Unsorted.MF4"
+            BASE_PATH_MDF4.as_str(), "CompressedData/Unsorted/Vector_SingleDZ_Unsorted.MF4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -963,7 +972,7 @@ mod tests {
     #[test]
     fn compressed_data_mdf43_algo() -> Result<()> {
         // read all the file in the folder
-        let path = format!("{}{}", BASE_PATH_MDF4, "CompressedData/MDF430_Algorithms");
+        let path = format!("{}{}", BASE_PATH_MDF4.as_str(), "CompressedData/MDF430_Algorithms");
         parse_info_folder(&path).unwrap();
         Ok(())
     }
@@ -973,13 +982,13 @@ mod tests {
         // VLSD
         let file_name = format!(
             "{}{}",
-            BASE_PATH_MDF4, "UnsortedData/VLSD/Vector_Unsorted_VLSD.MF4"
+            BASE_PATH_MDF4.as_str(), "UnsortedData/VLSD/Vector_Unsorted_VLSD.MF4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
         let file_name = format!(
             "{}{}",
-            BASE_PATH_MDF4, "UnsortedData/VLSD/RAC_MDF430_Unsorted_VLSD_Compact_Structure.mf4"
+            BASE_PATH_MDF4.as_str(), "UnsortedData/VLSD/RAC_MDF430_Unsorted_VLSD_Compact_Structure.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -987,7 +996,7 @@ mod tests {
         //VLSC
         let file_name = format!(
             "{}{}",
-            BASE_PATH_MDF4, "UnsortedData/VLSC/RAC_MDF430_Unsorted_VLSC_Compact_Structure.mf4"
+            BASE_PATH_MDF4.as_str(), "UnsortedData/VLSC/RAC_MDF430_Unsorted_VLSC_Compact_Structure.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -1026,7 +1035,7 @@ mod tests {
         // Linear conversion testing
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[0], "Vector_LinearConversion.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[0], "Vector_LinearConversion.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -1044,7 +1053,7 @@ mod tests {
         }
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[0], "Vector_LinearConversionFactor0.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[0], "Vector_LinearConversionFactor0.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -1057,7 +1066,7 @@ mod tests {
         }
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[0], "dSPACE_LinearConversion.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[0], "dSPACE_LinearConversion.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -1065,19 +1074,19 @@ mod tests {
         // Rational conversion
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[3], "Vector_RationalConversionIntParams.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[3], "Vector_RationalConversionIntParams.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[3], "Vector_RationalConversionRealParams.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[3], "Vector_RationalConversionRealParams.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[3], "Vector_RationalConversionZeroedParams.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[3], "Vector_RationalConversionZeroedParams.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -1085,7 +1094,7 @@ mod tests {
         // Text conversion
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[5], "Vector_AlgebraicConversionQuadratic.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[5], "Vector_AlgebraicConversionQuadratic.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -1098,19 +1107,19 @@ mod tests {
         }
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[5], "Vector_AlgebraicConversionRational.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[5], "Vector_AlgebraicConversionRational.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[5], "Vector_AlgebraicConversionSinus.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[5], "Vector_AlgebraicConversionSinus.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[5], "dSPACE_AlgebraicConversion.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[5], "dSPACE_AlgebraicConversion.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -1118,7 +1127,7 @@ mod tests {
         // Lookup conversion : Value to Value Table With Interpolation
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[1], "Vector_Value2ValueConversionInterpolation.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[1], "Vector_Value2ValueConversionInterpolation.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -1162,7 +1171,7 @@ mod tests {
         }
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[1], "dSPACE_Value2ValueConversionInterpolation.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[1], "dSPACE_Value2ValueConversionInterpolation.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -1170,7 +1179,7 @@ mod tests {
         // Lookup conversion : Value to Value Table Without Interpolation
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[1], "Vector_Value2ValueConversionNoInterpolation.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[1], "Vector_Value2ValueConversionNoInterpolation.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -1186,7 +1195,7 @@ mod tests {
         }
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[1], "dSPACE_Value2ValueConversionNoInterpolation.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[1], "dSPACE_Value2ValueConversionNoInterpolation.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -1194,7 +1203,7 @@ mod tests {
         // Lookup conversion : Value Range to Value
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[1], "Vector_ValueRange2ValueConversion.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[1], "Vector_ValueRange2ValueConversion.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -1212,7 +1221,7 @@ mod tests {
         // Lookup conversion : Value to Text
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[1], "Vector_Value2TextConversion.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[1], "Vector_Value2TextConversion.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -1232,7 +1241,7 @@ mod tests {
         }
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[1], "dSPACE_Value2TextConversion.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[1], "dSPACE_Value2TextConversion.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -1240,7 +1249,7 @@ mod tests {
         // Lookup conversion : Value range to Text
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[1], "Vector_ValueRange2TextConversion.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[1], "Vector_ValueRange2TextConversion.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -1260,7 +1269,7 @@ mod tests {
         }
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[1], "dSPACE_ValueRange2TextConversion.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[1], "dSPACE_ValueRange2TextConversion.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -1268,7 +1277,7 @@ mod tests {
         // Lookup conversion : Value range to Text,
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[2], "Vector_StatusStringTableConversionAlgebraic.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[2], "Vector_StatusStringTableConversionAlgebraic.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -1304,7 +1313,7 @@ mod tests {
         // Text conversion : Text to Value
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[4], "Vector_Text2ValueConversion.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[4], "Vector_Text2ValueConversion.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -1319,7 +1328,7 @@ mod tests {
         // Text conversion : Text to Text
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[4], "Vector_Text2TextConversion.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[4], "Vector_Text2TextConversion.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -1341,19 +1350,19 @@ mod tests {
         // Partial conversion
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[2], "Vector_PartialConversionLinearIdentityAlgebraic.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[2], "Vector_PartialConversionLinearIdentityAlgebraic.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[2], "Vector_PartialConversionValueRange2TextRational.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[2], "Vector_PartialConversionValueRange2TextRational.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[2], "Vector_StatusStringTableConversionAlgebraic.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[2], "Vector_StatusStringTableConversionAlgebraic.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -1361,7 +1370,7 @@ mod tests {
         // Bitfield conversion
         let file_name = format!(
             "{}{}{}",
-            BASE_PATH_MDF4, list_of_paths[6], "RAC_MDF420_BitfieldTextTable.mf4"
+            BASE_PATH_MDF4.as_str(), list_of_paths[6], "RAC_MDF420_BitfieldTextTable.mf4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -1373,7 +1382,7 @@ mod tests {
         // sort bus
         let file_name = format!(
             "{}{}",
-            BASE_PATH_MDF4, "BusLogging/CAN/Vector_CAN_DataFrame_Sort_ID.MF4"
+            BASE_PATH_MDF4.as_str(), "BusLogging/CAN/Vector_CAN_DataFrame_Sort_ID.MF4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -1388,13 +1397,13 @@ mod tests {
         }
         let file_name = format!(
             "{}{}",
-            BASE_PATH_MDF4, "BusLogging/CAN/Vector_CAN_DataFrame_Sort_Bus.MF4"
+            BASE_PATH_MDF4.as_str(), "BusLogging/CAN/Vector_CAN_DataFrame_Sort_Bus.MF4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
         let file_name = format!(
             "{}{}",
-            BASE_PATH_MDF4, "BusLogging/CAN/Vector_CAN_DataFrame_Sort_ID_SignalDesc.MF4"
+            BASE_PATH_MDF4.as_str(), "BusLogging/CAN/Vector_CAN_DataFrame_Sort_ID_SignalDesc.MF4"
         );
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -1405,13 +1414,13 @@ mod tests {
         // write file with invalid channels
         let file = format!(
             "{}{}",
-            BASE_PATH_MDF4, &"Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
+            BASE_PATH_MDF4.as_str(), &"Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
         );
         let ref_channel = r"NO";
         let mut mdf = Mdf::new(&file)?;
         mdf.load_all_channels_data_in_memory()?;
         // without compression
-        let writing_mdf_file = format!("{}/writing_mdf4_test.mf4", BASE_TEST_PATH);
+        let writing_mdf_file = format!("{}/writing_mdf4_test.mf4", BASE_TEST_PATH.as_str());
         let mut info2 = mdf.write(&writing_mdf_file, false)?;
         info2.load_all_channels_data_in_memory()?;
         if let Some(data) = mdf.get_channel_data(ref_channel) {
@@ -1437,7 +1446,7 @@ mod tests {
         }
 
         // write file with many channels
-        let file = format!("{}{}", BASE_PATH_MDF4, &"Simple/test.mf4");
+        let file = format!("{}{}", BASE_PATH_MDF4.as_str(), &"Simple/test.mf4");
         let ref_channel = r"C90 CG21 in error.mdf";
         let mut mdf = Mdf::new(&file)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -1471,7 +1480,7 @@ mod tests {
         drop(mdf);
         let file = format!(
             "{}{}",
-            BASE_PATH_MDF3, &"RJ_N16-12-363_BM-15C-0024_228_2_20170116094355_CAN.dat"
+            BASE_PATH_MDF3.as_str(), &"RJ_N16-12-363_BM-15C-0024_228_2_20170116094355_CAN.dat"
         );
         let mut mdf = Mdf::new(&file)?;
         mdf.load_all_channels_data_in_memory()?;
@@ -1491,7 +1500,7 @@ mod tests {
         // write file with invalid channels
         let file = format!(
             "{}{}",
-            BASE_PATH_MDF4, &"Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
+            BASE_PATH_MDF4.as_str(), &"Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
         );
         let ref_channel = r"PANS";
         let ref_desc = r"tralala";
@@ -1604,24 +1613,24 @@ mod tests {
         // Export mdf4 to Parquet file
         let file = format!(
             "{}{}",
-            BASE_PATH_MDF4, &"Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
+            BASE_PATH_MDF4.as_str(), &"Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
         );
         let extension = "*.parquet";
         let mut mdf = Mdf::new(&file)?;
         mdf.load_all_channels_data_in_memory()?;
-        mdf.export_to_parquet(WRITING_PARQUET_FILE, Some("zstd"))
+        mdf.export_to_parquet(WRITING_PARQUET_FILE.as_str(), Some("zstd"))
             .expect("failed writing mdf4 parquet file");
         // Export mdf3 to Parquet file
         let file = format!(
             "{}{}",
-            BASE_PATH_MDF3, &"RJ_N16-12-363_BM-15C-0024_228_2_20170116094355_CAN.dat"
+            BASE_PATH_MDF3.as_str(), &"RJ_N16-12-363_BM-15C-0024_228_2_20170116094355_CAN.dat"
         );
         let mut mdf = Mdf::new(&file)?;
         mdf.load_all_channels_data_in_memory()?;
-        mdf.export_to_parquet(WRITING_PARQUET_FILE, Some("snappy"))
+        mdf.export_to_parquet(WRITING_PARQUET_FILE.as_str(), Some("snappy"))
             .expect("failed writing mdf3 parquet file");
         // remove all generated parquet files
-        let pattern = format!("{}/{}", BASE_TEST_PATH, extension);
+        let pattern = format!("{}/{}", BASE_TEST_PATH.as_str(), extension);
         for path in glob(&pattern).unwrap().filter_map(Result::ok) {
             fs::remove_file(path)?;
         }
@@ -1633,24 +1642,24 @@ mod tests {
         // Export mdf4 to Parquet file
         let file = format!(
             "{}{}",
-            BASE_PATH_MDF4, &"Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
+            BASE_PATH_MDF4.as_str(), &"Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
         );
         let extension = "*.hdf5";
         let mut mdf = Mdf::new(&file)?;
         mdf.load_all_channels_data_in_memory()?;
-        mdf.export_to_hdf5(&WRITING_HDF5_FILE, Some(&"lzf"))
+        mdf.export_to_hdf5(WRITING_HDF5_FILE.as_str(), Some(&"lzf"))
             .expect("failed writing mdf4 hdf5 file");
         // Export mdf3 to Parquet file
         let file = format!(
             "{}{}",
-            BASE_PATH_MDF3, &"RJ_N16-12-363_BM-15C-0024_228_2_20170116094355_CAN.dat"
+            BASE_PATH_MDF3.as_str(), &"RJ_N16-12-363_BM-15C-0024_228_2_20170116094355_CAN.dat"
         );
         let mut mdf = Mdf::new(&file)?;
         mdf.load_all_channels_data_in_memory()?;
-        mdf.export_to_hdf5(&WRITING_HDF5_FILE, Some(&"deflate"))
+        mdf.export_to_hdf5(WRITING_HDF5_FILE.as_str(), Some(&"deflate"))
             .expect("failed writing mdf3 hdf5 file");
         // remove all generated hdf5 files
-        let pattern = format!("{}/{}", BASE_TEST_PATH, extension);
+        let pattern = format!("{}/{}", BASE_TEST_PATH.as_str(), extension);
         for path in glob(&pattern).unwrap().filter_map(Result::ok) {
             fs::remove_file(path)?;
         }

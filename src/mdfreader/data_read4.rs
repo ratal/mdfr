@@ -1629,22 +1629,20 @@ pub fn read_channels_from_bytes(
                 }
             } else {
                 let mut is_dynamic = cn.block.cn_type == 1 || cn.block.cn_type == 7 || (cn.block.cn_flags & CN_F_DATA_STREAM_MODE != 0);
-                if !is_dynamic {
-                    if let Some(composition) = &cn.composition {
-                        match &composition.block {
-                            Compo::CA(ca) if ca.ca_storage == 5 => is_dynamic = true,
-                            Compo::DS(_) => is_dynamic = true,
-                            Compo::CL(_) => is_dynamic = true, // Channel list - variable length
-                            Compo::CV(_) => {
-                                // Channel Variant - option channels parsed separately
-                                // discriminator determines which option is active
-                            }
-                            Compo::CU(_) => {
-                                // Channel Union - all members share same bytes
-                                // Members parsed as separate channels
-                            }
-                            _ => {}
+                if !is_dynamic && let Some(composition) = &cn.composition {
+                    match &composition.block {
+                        Compo::CA(ca) if ca.ca_storage == 5 => is_dynamic = true,
+                        Compo::DS(_) => is_dynamic = true,
+                        Compo::CL(_) => is_dynamic = true, // Channel list - variable length
+                        Compo::CV(_) => {
+                            // Channel Variant - option channels parsed separately
+                            // discriminator determines which option is active
                         }
+                        Compo::CU(_) => {
+                            // Channel Union - all members share same bytes
+                            // Members parsed as separate channels
+                        }
+                        _ => {}
                     }
                 }
 

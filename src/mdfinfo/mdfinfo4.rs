@@ -502,7 +502,7 @@ impl MdfInfo4 {
     /// get embedded data in attachment for a block at position
     pub fn get_attachment_embedded_data(&self, position: i64) -> Option<Vec<u8>> {
         if let Some(at) = self.at.get(&position) {
-            at.1.as_ref().map(|embedded_data| embedded_data.clone())
+            at.1.clone()
         } else {
             None
         }
@@ -2266,19 +2266,19 @@ impl Cg4 {
             let template = option_data.iter().find_map(|o| o.clone());
 
             // Second pass: update parent channel (mutable borrow)
-            if let Some(parent_cn) = self.cn.get_mut(&parent_rec_pos) {
-                if let Some(tmpl) = template {
-                    // Create new merged data with same type as first option
-                    let merged_data = merge_variant_data_owned(
-                        &discriminator_values,
-                        &option_data,
-                        &val_to_option,
-                        &tmpl,
-                    );
+            if let Some(parent_cn) = self.cn.get_mut(&parent_rec_pos)
+                && let Some(tmpl) = template
+            {
+                // Create new merged data with same type as first option
+                let merged_data = merge_variant_data_owned(
+                    &discriminator_values,
+                    &option_data,
+                    &val_to_option,
+                    &tmpl,
+                );
 
-                    if let Some(data) = merged_data {
-                        parent_cn.data = data;
-                    }
+                if let Some(data) = merged_data {
+                    parent_cn.data = data;
                 }
             }
         }
@@ -2302,15 +2302,12 @@ fn merge_variant_data_owned(
         ($builder_type:ty, $variant:ident) => {{
             let mut builder = <$builder_type>::with_capacity(n_samples);
             for (i, disc_val) in discriminator_values.iter().enumerate() {
-                if let Some(&opt_idx) = val_to_option.get(disc_val) {
-                    if let Some(Some(opt_data)) = option_data.get(opt_idx) {
-                        if let ChannelData::$variant(b) = opt_data {
-                            if i < b.values_slice().len() {
-                                builder.append_value(b.values_slice()[i]);
-                                continue;
-                            }
-                        }
-                    }
+                if let Some(&opt_idx) = val_to_option.get(disc_val)
+                    && let Some(Some(ChannelData::$variant(b))) = option_data.get(opt_idx)
+                    && i < b.values_slice().len()
+                {
+                    builder.append_value(b.values_slice()[i]);
+                    continue;
                 }
                 // Default value if option not found
                 builder.append_value(Default::default());
@@ -2567,6 +2564,12 @@ pub(crate) type CnType = HashMap<i32, Cn4>;
 
 /// record layout type : record_id_size: u8, cg_data_bytes: u32, cg_inval_bytes: u32
 type RecordLayout = (u8, u32, u32);
+
+/// Channel Array block parse result type
+type CaBlockParseResult = (Ca4Block, (Vec<usize>, Order), usize, usize);
+
+/// Composition parse result type
+type CompositionParseResult = (Composition, i64, usize, (Vec<usize>, Order), usize, CnType);
 
 /// creates recursively in the channel group the CN blocks and all its other linked blocks (CC, MD, TX, CA, etc.)
 pub fn parse_cn4(
@@ -3274,7 +3277,7 @@ fn parse_ca_block(
     ca_block: &mut Cursor<Vec<u8>>,
     block_header: Blockheader4Short,
     cg_cycle_count: u64,
-) -> Result<(Ca4Block, (Vec<usize>, Order), usize, usize), Error> {
+) -> Result<CaBlockParseResult, Error> {
     // reads links count
     let ca_links: u64 = ca_block
         .read_le()
@@ -3470,7 +3473,7 @@ fn parse_composition(
     sharable: &mut SharableBlocks,
     record_layout: RecordLayout,
     cg_cycle_count: u64,
-) -> Result<(Composition, i64, usize, (Vec<usize>, Order), usize, CnType)> {
+) -> Result<CompositionParseResult> {
     let (mut block, block_header_short, pos) = parse_block_short(rdr, target, position)
         .context("Failed parsing composition header block")?;
     position = pos;
@@ -4189,7 +4192,7 @@ pub struct Ds4Block {
 
 impl Ds4Block {
     pub fn ds_cn_composition(&self) -> i64 {
-        self.links.get(0).copied().unwrap_or(0)
+        self.links.first().copied().unwrap_or(0)
     }
     #[allow(dead_code)]
     pub fn ds_cn_alignment_start(&self) -> i64 {

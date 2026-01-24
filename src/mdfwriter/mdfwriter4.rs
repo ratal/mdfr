@@ -266,9 +266,11 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
                 if let Some(compo) = &cn.composition {
                     match &compo.block {
                         Compo::CA(c) => {
-                            let mut header = Blockheader4Short::default();
-                            header.hdr_id = [35, 35, 67, 65]; // ##CA
-                            header.hdr_len = c.ca_len;
+                            let header = Blockheader4Short {
+                                hdr_id: [35, 35, 67, 65], // ##CA
+                                hdr_len: c.ca_len,
+                                ..Default::default()
+                            };
                             buffer
                                 .write_le(&header)
                                 .context("Could not write CABlock header")?;

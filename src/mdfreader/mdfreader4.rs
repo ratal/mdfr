@@ -1825,10 +1825,10 @@ fn read_ds(
                         ds_data_pointer = ds.ds_data();
                     }
                     Compo::CA(ca) if ca.ca_storage == 5 => {
-                        if let Some(sub_compo) = &composition.compo {
-                            if let Compo::DS(ds) = &sub_compo.block {
-                                ds_data_pointer = ds.ds_data();
-                            }
+                        if let Some(sub_compo) = &composition.compo
+                            && let Compo::DS(ds) = &sub_compo.block
+                        {
+                            ds_data_pointer = ds.ds_data();
                         }
                     }
                     _ => {}
