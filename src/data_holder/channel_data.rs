@@ -1389,7 +1389,18 @@ pub fn data_type_init(
 ) -> Result<ChannelData, Error> {
     if list_size == 1 {
         // Not an array
-        if cn_type != 3 || cn_type != 6 {
+        if cn_type == 7 {
+            // VLSC channel - stores offsets into VD block as unsigned int
+            if n_bytes <= 1 {
+                Ok(ChannelData::UInt8(PrimitiveBuilder::new()))
+            } else if n_bytes == 2 {
+                Ok(ChannelData::UInt16(PrimitiveBuilder::new()))
+            } else if n_bytes <= 4 {
+                Ok(ChannelData::UInt32(PrimitiveBuilder::new()))
+            } else {
+                Ok(ChannelData::UInt64(PrimitiveBuilder::new()))
+            }
+        } else if cn_type != 3 && cn_type != 6 {
             // not virtual channel or vlsd
             match cn_data_type {
                 0 | 1 => {

@@ -127,12 +127,13 @@ impl<'py> IntoPyObject<'py> for ChannelData {
                 .reshape_with_order(array.shape().clone(), array.order().clone().into())
                 .expect("could not reshape f64")
                 .into_any()),
-            ChannelData::Utf8(array) => Ok(array
-                .finish_cloned()
-                .iter()
-                .collect::<Option<String>>()
-                .into_pyobject(py)
-                .expect("error converting Utf8 array into python object")),
+            ChannelData::Utf8(array) => {
+                let string_array = array.finish_cloned();
+                let strings: Vec<Option<&str>> = string_array.iter().collect();
+                Ok(strings
+                    .into_pyobject(py)
+                    .expect("error converting Utf8 array into python object"))
+            }
         }
     }
 }

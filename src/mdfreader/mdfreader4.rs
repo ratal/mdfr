@@ -466,6 +466,9 @@ fn read_vd(
 
             // Get offsets from the VLSC channel data
             let offsets: Vec<u64> = match &cn.data {
+                ChannelData::UInt8(a) => a.values_slice().iter().map(|&v| v as u64).collect(),
+                ChannelData::UInt16(a) => a.values_slice().iter().map(|&v| v as u64).collect(),
+                ChannelData::UInt32(a) => a.values_slice().iter().map(|&v| v as u64).collect(),
                 ChannelData::UInt64(a) => a.values_slice().to_vec(),
                 _ => Vec::new(),
             };
@@ -481,6 +484,7 @@ fn read_vd(
                 for (_pos, size_cn) in channel_group.cn.iter() {
                     if size_cn.block_position == size_pos {
                         match &size_cn.data {
+                            // Unsigned int types
                             ChannelData::UInt8(a) => {
                                 found_sizes =
                                     Some(a.values_slice().iter().map(|&v| v as u64).collect());
@@ -495,6 +499,23 @@ fn read_vd(
                             }
                             ChannelData::UInt64(a) => {
                                 found_sizes = Some(a.values_slice().to_vec());
+                            }
+                            // Signed int types (some files use signed int for sizes)
+                            ChannelData::Int8(a) => {
+                                found_sizes =
+                                    Some(a.values_slice().iter().map(|&v| v as u64).collect());
+                            }
+                            ChannelData::Int16(a) => {
+                                found_sizes =
+                                    Some(a.values_slice().iter().map(|&v| v as u64).collect());
+                            }
+                            ChannelData::Int32(a) => {
+                                found_sizes =
+                                    Some(a.values_slice().iter().map(|&v| v as u64).collect());
+                            }
+                            ChannelData::Int64(a) => {
+                                found_sizes =
+                                    Some(a.values_slice().iter().map(|&v| v as u64).collect());
                             }
                             _ => {}
                         }
@@ -541,8 +562,9 @@ fn read_vd(
         // Now update cn.data with the actual variable length data
         if let Some(cn) = channel_group.cn.get_mut(rec_pos) {
             // Reinitialize cn.data for the actual variable length data
+            // cn_data_type: 6=SBC, 7=UTF-8, 8=UTF-16 LE, 9=UTF-16 BE, 10=byte array, 17=UTF-8 with BOM
             cn.data = match cn_data_type {
-                6..=9 => ChannelData::Utf8(arrow::array::LargeStringBuilder::new()),
+                6..=9 | 17 => ChannelData::Utf8(arrow::array::LargeStringBuilder::new()),
                 10 => ChannelData::VariableSizeByteArray(arrow::array::LargeBinaryBuilder::new()),
                 _ => continue,
             };
@@ -743,11 +765,12 @@ fn read_vlsc_from_bytes(
         ChannelData::Utf8(array) => {
             if cn.block.cn_data_type == 6 {
                 // SBC ISO-8859-1 string
+                // Note: VLSC size channel gives actual data length (no null terminator)
                 for (offset, size) in offsets.iter().zip(sizes.iter()) {
                     let start = *offset as usize;
                     let length = *size as usize;
                     if start + length <= data_length && length > 0 {
-                        let record = &data[start..start + length - 1]; // do not take null terminated character
+                        let record = &data[start..start + length];
                         let mut dst = String::with_capacity(record.len());
                         let (_result, _size, _replacement) = decoder
                             .windows_1252
@@ -762,11 +785,12 @@ fn read_vlsc_from_bytes(
                 }
             } else if cn.block.cn_data_type == 7 {
                 // UTF-8 string
+                // Note: VLSC size channel gives actual data length (no null terminator)
                 for (offset, size) in offsets.iter().zip(sizes.iter()) {
                     let start = *offset as usize;
                     let length = *size as usize;
                     if start + length <= data_length && length > 0 {
-                        let record = &data[start..start + length - 1]; // do not take null terminated character
+                        let record = &data[start..start + length];
                         let dst = str::from_utf8(record).context("Found invalid UTF-8")?;
                         array.append_value(dst);
                         max_position = max_position.max(start + length);
@@ -805,6 +829,50 @@ fn read_vlsc_from_bytes(
                         let (_result, _size, _replacement) =
                             decoder.utf_16_be.decode_to_string(record, &mut dst, false);
                         array.append_value(dst.trim_end_matches('\0'));
+                        max_position = max_position.max(start + length);
+                    } else if length == 0 {
+                        array.append_value("");
+                    } else {
+                        array.append_null();
+                    }
+                }
+            } else if cn.block.cn_data_type == 17 {
+                // String with BOM - the BOM indicates the actual encoding
+                // BOM types: UTF-8 (0xEF 0xBB 0xBF), UTF-16 LE (0xFF 0xFE), UTF-16 BE (0xFE 0xFF)
+                for (offset, size) in offsets.iter().zip(sizes.iter()) {
+                    let start = *offset as usize;
+                    let length = *size as usize;
+                    if start + length <= data_length && length > 0 {
+                        let record = &data[start..start + length];
+                        // Detect BOM and decode accordingly
+                        if record.len() >= 3
+                            && record[0] == 0xEF
+                            && record[1] == 0xBB
+                            && record[2] == 0xBF
+                        {
+                            // UTF-8 BOM
+                            let record = &record[3..];
+                            let dst = str::from_utf8(record).context("Found invalid UTF-8 with BOM")?;
+                            array.append_value(dst);
+                        } else if record.len() >= 2 && record[0] == 0xFF && record[1] == 0xFE {
+                            // UTF-16 LE BOM
+                            let record = &record[2..];
+                            let mut dst = String::with_capacity(record.len());
+                            let (_result, _size, _replacement) =
+                                decoder.utf_16_le.decode_to_string(record, &mut dst, false);
+                            array.append_value(dst.trim_end_matches('\0'));
+                        } else if record.len() >= 2 && record[0] == 0xFE && record[1] == 0xFF {
+                            // UTF-16 BE BOM
+                            let record = &record[2..];
+                            let mut dst = String::with_capacity(record.len());
+                            let (_result, _size, _replacement) =
+                                decoder.utf_16_be.decode_to_string(record, &mut dst, false);
+                            array.append_value(dst.trim_end_matches('\0'));
+                        } else {
+                            // No recognized BOM, try UTF-8
+                            let dst = str::from_utf8(record).context("Found invalid UTF-8 (no BOM)")?;
+                            array.append_value(dst);
+                        }
                         max_position = max_position.max(start + length);
                     } else if length == 0 {
                         array.append_value("");
@@ -1410,6 +1478,24 @@ fn read_all_channels_unsorted_from_bytes(
                             if let Some(target_cg) = dg.cg.get_mut(&target_rec_id) {
                                 if let Some(target_cn) = target_cg.cn.get_mut(&target_rec_pos) {
                                     if let Some((nrecord, _)) = record_counter.get_mut(&rec_id) {
+                                        // For VLSC channels (cn_type == 7) in unsorted data,
+                                        // reinitialize from UInt (offset storage) to actual data type on first record
+                                        if *nrecord == 0 && target_cn.block.cn_type == 7 {
+                                            match target_cn.block.cn_data_type {
+                                                6..=9 | 17 => {
+                                                    target_cn.data = ChannelData::Utf8(
+                                                        arrow::array::LargeStringBuilder::new(),
+                                                    );
+                                                }
+                                                10 => {
+                                                    target_cn.data =
+                                                        ChannelData::VariableSizeByteArray(
+                                                            arrow::array::LargeBinaryBuilder::new(),
+                                                        );
+                                                }
+                                                _ => {}
+                                            }
+                                        }
                                         match &mut target_cn.data {
                                             ChannelData::Utf8(array) => {
                                                 let mut dst = String::with_capacity(record.len());

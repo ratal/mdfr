@@ -619,7 +619,31 @@ mod tests {
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
         if let Some(data) = mdf.get_channel_data("Data channel") {
+            assert!(!data.is_empty(), "VLSC channel data should not be empty");
+            assert_eq!(data.len(), 10, "VLSC channel should have 10 samples");
             assert_eq!(expected_string_result, data.clone());
+        } else {
+            panic!("VLSC Data channel not found");
+        }
+
+        // VLSC Etas with BOM - this file has channels: time, size, comment (VLSC)
+        // Note: This file has mixed BOM encodings (UTF-8 and UTF-16 LE)
+        let file_name = format!(
+            "{}{}{}",
+            BASE_PATH_MDF4.as_str(), list_of_paths[6], "Etas_VLSC_String_UTF_with_BOM.mf4"
+        );
+        let mut mdf = Mdf::new(&file_name)?;
+        mdf.load_all_channels_data_in_memory()?;
+        if let Some(data) = mdf.get_channel_data("comment") {
+            assert!(!data.is_empty(), "VLSC Etas 'comment' channel data should not be empty");
+            // Verify it's actually string data (Utf8 type)
+            assert!(
+                matches!(data, ChannelData::Utf8(_)),
+                "VLSC Etas 'comment' channel should be Utf8 type, got {:?}",
+                data
+            );
+        } else {
+            panic!("VLSC Etas 'comment' channel not found");
         }
 
         // Channel List (CL) + Data Stream (DS) test
