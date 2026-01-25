@@ -26,11 +26,11 @@ use anyhow::{Context, Error, Result, bail};
 use arrow::buffer::NullBuffer;
 use binrw::BinWriterExt;
 use crossbeam_channel::bounded;
+use flate2::Compression;
+use flate2::write::ZlibEncoder;
 use parking_lot::Mutex;
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 use std::fs::File;
-use flate2::write::ZlibEncoder;
-use flate2::Compression;
 
 /// writes mdf4.2 file
 pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> {

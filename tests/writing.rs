@@ -10,7 +10,10 @@ static MDFREADER_TESTS_PATH: &str = "/home/ratal/workspace/mdfreader/mdfreader/t
 static MDFR_PATH: &str = "/home/ratal/workspace/mdfr/";
 
 static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(|| {
-    format!("{}MDF4/MDF4.3/Base_Standard/Examples/", MDFREADER_TESTS_PATH)
+    format!(
+        "{}MDF4/MDF4.3/Base_Standard/Examples/",
+        MDFREADER_TESTS_PATH
+    )
 });
 
 static BASE_PATH_MDF3: LazyLock<String> =

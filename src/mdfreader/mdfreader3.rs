@@ -1,8 +1,8 @@
 //! data read and load in memory based in MdfInfo3's metadata
 use rayon::prelude::*;
 
-use crate::mdfinfo::mdfinfo3::{Cg3, Cn3, Dg3};
 use crate::mdfinfo::MdfInfo;
+use crate::mdfinfo::mdfinfo3::{Cg3, Cn3, Dg3};
 use anyhow::{Context, Error, Result};
 use std::collections::{HashMap, HashSet};
 use std::fs::File;

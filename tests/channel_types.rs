@@ -1,5 +1,7 @@
 use anyhow::Result;
-use arrow::array::{AsArray, Float64Builder, Int32Builder, LargeStringBuilder, UInt16Builder, UInt64Builder};
+use arrow::array::{
+    AsArray, Float64Builder, Int32Builder, LargeStringBuilder, UInt16Builder, UInt64Builder,
+};
 use arrow::datatypes::Float64Type;
 use mdfr::data_holder::channel_data::ChannelData;
 use mdfr::mdfreader::Mdf;
@@ -7,7 +9,8 @@ use std::path::Path;
 use std::sync::LazyLock;
 
 static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(|| {
-    "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/".to_string()
+    "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/"
+        .to_string()
 });
 
 #[test]
@@ -184,7 +187,10 @@ fn virtual_data_channels() -> Result<()> {
     mdf.load_all_channels_data_in_memory()?;
     if let Some(data) = mdf.get_channel_data("Data channel") {
         assert_eq!(
-            ChannelData::Float64(Float64Builder::new_from_buffer(vec![42f64; 200].into(), None)),
+            ChannelData::Float64(Float64Builder::new_from_buffer(
+                vec![42f64; 200].into(),
+                None
+            )),
             *data
         );
     }
@@ -370,8 +376,10 @@ fn channel_list() -> Result<()> {
     if let Some(size_data) = mdf.get_channel_data("size") {
         assert_eq!(size_data.len(), 2, "size should have 2 samples");
         // Size values: [0, 202]
-        let expected_size =
-            ChannelData::UInt16(UInt16Builder::new_from_buffer(vec![0u16, 202u16].into(), None));
+        let expected_size = ChannelData::UInt16(UInt16Builder::new_from_buffer(
+            vec![0u16, 202u16].into(),
+            None,
+        ));
         assert_eq!(
             &expected_size, size_data,
             "size channel values should match"

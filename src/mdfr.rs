@@ -523,7 +523,8 @@ df=polars.DataFrame(series)
                     if let Ok(res) = mdf.mdf_info.get_tx(chb.ch_tx_name) {
                         let _ = chdict.set_item("name", res);
                     }
-                    let _ = chdict.set_item("comment", mdf.mdf_info.get_comments(chb.ch_md_comment));
+                    let _ =
+                        chdict.set_item("comment", mdf.mdf_info.get_comments(chb.ch_md_comment));
                     let type_name = match chb.ch_type {
                         0 => "Group",
                         1 => "Function",
@@ -731,8 +732,7 @@ pyplot.show()
                 // Events
                 let ev_info = mdfinfo4.list_events();
                 if !ev_info.is_empty() {
-                    writeln!(output, "\n--- Events ---")
-                        .context("cannot print events header")?;
+                    writeln!(output, "\n--- Events ---").context("cannot print events header")?;
                     write!(output, "{}", ev_info).context("cannot print events")?;
                 }
                 // Channel Hierarchy
@@ -743,8 +743,7 @@ pyplot.show()
                     write!(output, "{}", ch_info).context("cannot print channel hierarchy")?;
                 }
                 // Channels
-                writeln!(output, "\n--- Channels ---")
-                    .context("cannot print channels header")?;
+                writeln!(output, "\n--- Channels ---").context("cannot print channels header")?;
                 for (master, list) in mdfinfo4.get_master_channel_names_set().iter() {
                     if let Some(master_name) = master {
                         writeln!(output, "\nMaster: {master_name}")

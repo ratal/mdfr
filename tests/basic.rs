@@ -9,8 +9,12 @@ use std::sync::LazyLock;
 
 static MDFREADER_TESTS_PATH: &str = "/home/ratal/workspace/mdfreader/mdfreader/tests/";
 
-static BASE_PATH_MDF4: LazyLock<String> =
-    LazyLock::new(|| format!("{}MDF4/MDF4.3/Base_Standard/Examples/", MDFREADER_TESTS_PATH));
+static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(|| {
+    format!(
+        "{}MDF4/MDF4.3/Base_Standard/Examples/",
+        MDFREADER_TESTS_PATH
+    )
+});
 
 fn parse_info_folder(folder: &String) -> Result<()> {
     let path = Path::new(folder);

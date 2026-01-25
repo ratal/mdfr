@@ -2,9 +2,9 @@
 //! mdfinfo module
 
 use anyhow::Error;
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use arrow::array::Array;
-use binrw::{binrw, BinReaderExt};
+use binrw::{BinReaderExt, binrw};
 use codepage::to_encoding;
 use encoding_rs::Encoding;
 use log::info;
@@ -22,10 +22,10 @@ pub mod mdfinfo4;
 pub mod sym_buf_reader;
 
 use binrw::io::Cursor;
-use mdfinfo3::{hd3_comment_parser, hd3_parser, parse_dg3, MdfInfo3, SharableBlocks3};
+use mdfinfo3::{MdfInfo3, SharableBlocks3, hd3_comment_parser, hd3_parser, parse_dg3};
 use mdfinfo4::{
-    build_channel_db, hd4_parser, parse_at4, parse_ch4, parse_dg4, parse_ev4, parse_fh, MdfInfo4,
-    SharableBlocks,
+    MdfInfo4, SharableBlocks, build_channel_db, hd4_parser, parse_at4, parse_ch4, parse_dg4,
+    parse_ev4, parse_fh,
 };
 
 use crate::data_holder::channel_data::ChannelData;

@@ -2,9 +2,9 @@
 use anyhow::{Context, Error, Result};
 use arrow::array::Array;
 use hdf5::{
+    Dataset, DatasetBuilder, Group, H5Type,
     file::File,
     types::{VarLenArray, VarLenUnicode},
-    Dataset, DatasetBuilder, Group, H5Type,
 };
 use log::info;
 use ndarray::{Array as NdArray, IxDyn};
@@ -13,9 +13,9 @@ use crate::mdfreader::Mdf;
 use crate::{
     data_holder::channel_data::ChannelData,
     mdfinfo::{
+        MdfInfo,
         mdfinfo3::{Cg3, Cn3, MdfInfo3},
         mdfinfo4::{Cg4, Cn4, Dg4, MdfInfo4},
-        MdfInfo,
     },
 };
 #[cfg(feature = "hdf5-mpio")]

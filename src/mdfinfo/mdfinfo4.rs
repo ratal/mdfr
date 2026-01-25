@@ -1577,7 +1577,6 @@ pub fn parse_ev4(
     Ok((ev, position))
 }
 
-
 /// Ch4Block struct
 #[derive(Debug, PartialEq, Eq, Default, Clone)]
 #[binrw]
@@ -3928,12 +3927,7 @@ pub fn decompress_data(
         let m = org_data_length / zip_parameter as u64;
         let tail: Vec<u8> = data.split_off((m * zip_parameter as u64) as usize);
         let mut output = vec![0u8; (m * zip_parameter as u64) as usize];
-        transpose::transpose(
-            &data,
-            &mut output,
-            m as usize,
-            zip_parameter as usize,
-        );
+        transpose::transpose(&data, &mut output, m as usize, zip_parameter as usize);
         data = output;
         if !tail.is_empty() {
             data.extend(tail);

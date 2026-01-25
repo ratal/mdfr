@@ -1,6 +1,6 @@
 use anyhow::Result;
 use core::time::Duration;
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use mdfr::mdfreader::Mdf;
 use std::process::Command;
 use std::sync::LazyLock;

@@ -1640,7 +1640,8 @@ pub fn read_channels_from_bytes(
                     vlsd_channel.push((cn.block.cn_type, *rec_pos));
                 }
             } else {
-                let mut is_dynamic = cn.block.cn_type == 1 || (cn.block.cn_flags & CN_F_DATA_STREAM_MODE != 0);
+                let mut is_dynamic =
+                    cn.block.cn_type == 1 || (cn.block.cn_flags & CN_F_DATA_STREAM_MODE != 0);
                 if !is_dynamic && let Some(composition) = &cn.composition {
                     match &composition.block {
                         Compo::CA(ca) if ca.ca_storage == 5 => is_dynamic = true,

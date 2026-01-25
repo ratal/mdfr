@@ -1,11 +1,11 @@
 //! this module provides methods to get directly channelData into python
 
-use arrow::array::{make_array, Array, ArrayData};
+use arrow::array::{Array, ArrayData, make_array};
 use arrow::pyarrow::PyArrowType;
 
 use numpy::npyffi::types::NPY_ORDER;
 use numpy::{PyArrayMethods, ToPyArray};
-use pyo3::{prelude::*, Bound};
+use pyo3::{Bound, prelude::*};
 
 use crate::data_holder::channel_data::ChannelData;
 use crate::data_holder::tensor_arrow::Order;

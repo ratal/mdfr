@@ -4,9 +4,9 @@ use arrow::array::{Float64Array, Float64Builder, LargeStringBuilder, PrimitiveBu
 use arrow::datatypes::{ArrowPrimitiveType, Float64Type};
 use arrow::error::ArrowError;
 use itertools::Itertools;
+use num::NumCast;
 use num::abs;
 use num::cast::AsPrimitive;
-use num::NumCast;
 use std::collections::BTreeMap;
 
 use crate::data_holder::channel_data::ChannelData;
@@ -254,9 +254,8 @@ where
     let array_f64: Float64Array = array
         .finish()
         .try_unary(|value| {
-            num::cast::cast::<T::Native, f64>(value).ok_or_else(|| {
-                ArrowError::CastError(format!("Can't cast value {value:?} to f64"))
-            })
+            num::cast::cast::<T::Native, f64>(value)
+                .ok_or_else(|| ArrowError::CastError(format!("Can't cast value {value:?} to f64")))
         })
         .context("failed converting array to f64")?;
     let mut out = Float64Builder::with_capacity(array.capacity());
@@ -360,9 +359,8 @@ where
     let array_f64: Float64Array = array
         .finish()
         .try_unary(|value| {
-            num::cast::cast::<T::Native, f64>(value).ok_or_else(|| {
-                ArrowError::CastError(format!("Can't cast value {value:?} to f64"))
-            })
+            num::cast::cast::<T::Native, f64>(value)
+                .ok_or_else(|| ArrowError::CastError(format!("Can't cast value {value:?} to f64")))
         })
         .context("failed converting array to f64")?;
     let mut out = Float64Builder::with_capacity(array.capacity());
@@ -481,9 +479,8 @@ where
     let array_f64: Float64Array = array
         .finish()
         .try_unary(|value| {
-            num::cast::cast::<T::Native, f64>(value).ok_or_else(|| {
-                ArrowError::CastError(format!("Can't cast value {value:?} to f64"))
-            })
+            num::cast::cast::<T::Native, f64>(value)
+                .ok_or_else(|| ArrowError::CastError(format!("Can't cast value {value:?} to f64")))
         })
         .context("failed converting array to f64")?;
     let mut out = Float64Builder::with_capacity(array.capacity());
@@ -606,9 +603,8 @@ where
     let array_f64: Float64Array = array
         .finish()
         .try_unary(|value| {
-            num::cast::cast::<T::Native, f64>(value).ok_or_else(|| {
-                ArrowError::CastError(format!("Can't cast value {value:?} to f64"))
-            })
+            num::cast::cast::<T::Native, f64>(value)
+                .ok_or_else(|| ArrowError::CastError(format!("Can't cast value {value:?} to f64")))
         })
         .context("failed converting array to f64")?;
     let mut new_array = vec![0f64; *cycle_count];
@@ -801,9 +797,8 @@ where
     let array_f64: Float64Array = array
         .finish()
         .try_unary(|value| {
-            num::cast::cast::<T::Native, f64>(value).ok_or_else(|| {
-                ArrowError::CastError(format!("Can't cast value {value:?} to f64"))
-            })
+            num::cast::cast::<T::Native, f64>(value)
+                .ok_or_else(|| ArrowError::CastError(format!("Can't cast value {value:?} to f64")))
         })
         .context("failed converting array to f64")?;
     let mut new_array = vec![0f64; cycle_count];
@@ -835,56 +830,82 @@ fn value_to_value_with_interpolation(
 ) -> Result<(), Error> {
     match &mut cn.data {
         ChannelData::Int8(a) => {
-            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(a,
-                cc_val,
-                *cycle_count as usize).context("failed value to value with interpolation conversion of i8 channel")?);
+            cn.data = ChannelData::Float64(
+                value_to_value_with_interpolation_calculation(a, cc_val, *cycle_count as usize)
+                    .context("failed value to value with interpolation conversion of i8 channel")?,
+            );
         }
         ChannelData::UInt8(a) => {
-            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(a,
-                cc_val,
-                *cycle_count as usize).context("failed value to value with interpolation conversion of u8 channel")?);
+            cn.data = ChannelData::Float64(
+                value_to_value_with_interpolation_calculation(a, cc_val, *cycle_count as usize)
+                    .context("failed value to value with interpolation conversion of u8 channel")?,
+            );
         }
         ChannelData::Int16(a) => {
-            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(a,
-                cc_val,
-                *cycle_count as usize).context("failed value to value with interpolation conversion of i16 channel")?);
+            cn.data = ChannelData::Float64(
+                value_to_value_with_interpolation_calculation(a, cc_val, *cycle_count as usize)
+                    .context(
+                        "failed value to value with interpolation conversion of i16 channel",
+                    )?,
+            );
         }
         ChannelData::UInt16(a) => {
-            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(a,
-                cc_val,
-                *cycle_count as usize).context("failed value to value with interpolation conversion of u16 channel")?);
+            cn.data = ChannelData::Float64(
+                value_to_value_with_interpolation_calculation(a, cc_val, *cycle_count as usize)
+                    .context(
+                        "failed value to value with interpolation conversion of u16 channel",
+                    )?,
+            );
         }
         ChannelData::Int32(a) => {
-            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(a,
-                cc_val,
-                *cycle_count as usize).context("failed value to value with interpolation conversion of i32 channel")?);
+            cn.data = ChannelData::Float64(
+                value_to_value_with_interpolation_calculation(a, cc_val, *cycle_count as usize)
+                    .context(
+                        "failed value to value with interpolation conversion of i32 channel",
+                    )?,
+            );
         }
         ChannelData::UInt32(a) => {
-            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(a,
-                cc_val,
-                *cycle_count as usize).context("failed value to value with interpolation conversion of u32 channel")?);
+            cn.data = ChannelData::Float64(
+                value_to_value_with_interpolation_calculation(a, cc_val, *cycle_count as usize)
+                    .context(
+                        "failed value to value with interpolation conversion of u32 channel",
+                    )?,
+            );
         }
         ChannelData::Float32(a) => {
-            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(a,
-                cc_val,
-                *cycle_count as usize).context("failed value to value with interpolation conversion of f32 channel")?);
+            cn.data = ChannelData::Float64(
+                value_to_value_with_interpolation_calculation(a, cc_val, *cycle_count as usize)
+                    .context(
+                        "failed value to value with interpolation conversion of f32 channel",
+                    )?,
+            );
         }
         ChannelData::Int64(a) => {
-            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(a,
-                cc_val,
-                *cycle_count as usize).context("failed value to value with interpolation conversion of i64 channel")?);
+            cn.data = ChannelData::Float64(
+                value_to_value_with_interpolation_calculation(a, cc_val, *cycle_count as usize)
+                    .context(
+                        "failed value to value with interpolation conversion of i64 channel",
+                    )?,
+            );
         }
         ChannelData::UInt64(a) => {
-            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(a,
-                cc_val,
-                *cycle_count as usize).context("failed value to value with interpolation conversion of u64 channel")?);
+            cn.data = ChannelData::Float64(
+                value_to_value_with_interpolation_calculation(a, cc_val, *cycle_count as usize)
+                    .context(
+                        "failed value to value with interpolation conversion of u64 channel",
+                    )?,
+            );
         }
         ChannelData::Float64(a) => {
-            cn.data = ChannelData::Float64(value_to_value_with_interpolation_calculation(a,
-                cc_val,
-                *cycle_count as usize).context("failed value to value with interpolation conversion of f64 channel")?);
+            cn.data = ChannelData::Float64(
+                value_to_value_with_interpolation_calculation(a, cc_val, *cycle_count as usize)
+                    .context(
+                        "failed value to value with interpolation conversion of f64 channel",
+                    )?,
+            );
         }
-        _=> warn!(
+        _ => warn!(
             "not possible to apply value to value with interpolation conversion to the data type of channel {}",
             cn.unique_name,
         ),
@@ -907,9 +928,8 @@ where
     let array_f64: Float64Array = array
         .finish()
         .try_unary(|value| {
-            num::cast::cast::<T::Native, f64>(value).ok_or_else(|| {
-                ArrowError::CastError(format!("Can't cast value {value:?} to f64"))
-            })
+            num::cast::cast::<T::Native, f64>(value)
+                .ok_or_else(|| ArrowError::CastError(format!("Can't cast value {value:?} to f64")))
         })
         .context("failed converting array to f64")?;
     let mut new_array = vec![0f64; cycle_count];
@@ -926,11 +946,7 @@ where
                 Err(idx) => {
                     let (x0, y0) = val[idx - 1];
                     let (x1, y1) = val[idx];
-                    if (a - x0) > (x1 - a) {
-                        *y1
-                    } else {
-                        *y0
-                    }
+                    if (a - x0) > (x1 - a) { *y1 } else { *y0 }
                 }
             };
         });
@@ -945,54 +961,84 @@ fn value_to_value_without_interpolation(
 ) -> Result<(), Error> {
     match &mut cn.data {
         ChannelData::Int8(a) => {
-            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(a,
-                cc_val,
-                *cycle_count as usize).context("failed value to value without interpolation conversion of i8 channel")?);
+            cn.data = ChannelData::Float64(
+                value_to_value_without_interpolation_calculation(a, cc_val, *cycle_count as usize)
+                    .context(
+                        "failed value to value without interpolation conversion of i8 channel",
+                    )?,
+            );
         }
         ChannelData::UInt8(a) => {
-            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(a,
-                cc_val,
-                *cycle_count as usize).context("failed value to value without interpolation conversion of u8 channel")?);
+            cn.data = ChannelData::Float64(
+                value_to_value_without_interpolation_calculation(a, cc_val, *cycle_count as usize)
+                    .context(
+                        "failed value to value without interpolation conversion of u8 channel",
+                    )?,
+            );
         }
         ChannelData::Int16(a) => {
-            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(a,
-                cc_val,
-                *cycle_count as usize).context("failed value to value without interpolation conversion of i16 channel")?);
+            cn.data = ChannelData::Float64(
+                value_to_value_without_interpolation_calculation(a, cc_val, *cycle_count as usize)
+                    .context(
+                        "failed value to value without interpolation conversion of i16 channel",
+                    )?,
+            );
         }
         ChannelData::UInt16(a) => {
-            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(a,
-                cc_val,
-                *cycle_count as usize).context("failed value to value without interpolation conversion of u16 channel")?);
+            cn.data = ChannelData::Float64(
+                value_to_value_without_interpolation_calculation(a, cc_val, *cycle_count as usize)
+                    .context(
+                        "failed value to value without interpolation conversion of u16 channel",
+                    )?,
+            );
         }
         ChannelData::Int32(a) => {
-            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(a,
-                cc_val,
-                *cycle_count as usize).context("failed value to value without interpolation conversion of i32 channel")?);
+            cn.data = ChannelData::Float64(
+                value_to_value_without_interpolation_calculation(a, cc_val, *cycle_count as usize)
+                    .context(
+                        "failed value to value without interpolation conversion of i32 channel",
+                    )?,
+            );
         }
         ChannelData::UInt32(a) => {
-            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(a,
-                cc_val,
-                *cycle_count as usize).context("failed value to value without interpolation conversion of u32 channel")?);
+            cn.data = ChannelData::Float64(
+                value_to_value_without_interpolation_calculation(a, cc_val, *cycle_count as usize)
+                    .context(
+                        "failed value to value without interpolation conversion of u32 channel",
+                    )?,
+            );
         }
         ChannelData::Float32(a) => {
-            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(a,
-                cc_val,
-                *cycle_count as usize).context("failed value to value without interpolation conversion of f32 channel")?);
+            cn.data = ChannelData::Float64(
+                value_to_value_without_interpolation_calculation(a, cc_val, *cycle_count as usize)
+                    .context(
+                        "failed value to value without interpolation conversion of f32 channel",
+                    )?,
+            );
         }
         ChannelData::Int64(a) => {
-            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(a,
-                cc_val,
-                *cycle_count as usize).context("failed value to value without interpolation conversion of i64 channel")?);
+            cn.data = ChannelData::Float64(
+                value_to_value_without_interpolation_calculation(a, cc_val, *cycle_count as usize)
+                    .context(
+                        "failed value to value without interpolation conversion of i64 channel",
+                    )?,
+            );
         }
         ChannelData::UInt64(a) => {
-            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(a,
-                cc_val,
-                *cycle_count as usize).context("failed value to value without interpolation conversion of u64 channel")?);
+            cn.data = ChannelData::Float64(
+                value_to_value_without_interpolation_calculation(a, cc_val, *cycle_count as usize)
+                    .context(
+                        "failed value to value without interpolation conversion of u64 channel",
+                    )?,
+            );
         }
         ChannelData::Float64(a) => {
-            cn.data = ChannelData::Float64(value_to_value_without_interpolation_calculation(a,
-                cc_val,
-                *cycle_count as usize).context("failed value to value without interpolation conversion of f64 channel")?);
+            cn.data = ChannelData::Float64(
+                value_to_value_without_interpolation_calculation(a, cc_val, *cycle_count as usize)
+                    .context(
+                        "failed value to value without interpolation conversion of f64 channel",
+                    )?,
+            );
         }
         _ => warn!(
             "not possible to apply value to value without interpolation conversion to the data type of channel {}",
@@ -1017,9 +1063,8 @@ where
     let array_f64: Float64Array = array
         .finish()
         .try_unary(|value| {
-            num::cast::cast::<T::Native, f64>(value).ok_or_else(|| {
-                ArrowError::CastError(format!("Can't cast value {value:?} to f64"))
-            })
+            num::cast::cast::<T::Native, f64>(value)
+                .ok_or_else(|| ArrowError::CastError(format!("Can't cast value {value:?} to f64")))
         })
         .context("failed converting array to f64")?;
     array_f64.values().iter().for_each(|val| {
@@ -1124,9 +1169,8 @@ where
     let array_f64: Float64Array = array
         .finish()
         .try_unary(|value| {
-            num::cast::cast::<T::Native, f64>(value).ok_or_else(|| {
-                ArrowError::CastError(format!("Can't cast value {value:?} to f64"))
-            })
+            num::cast::cast::<T::Native, f64>(value)
+                .ok_or_else(|| ArrowError::CastError(format!("Can't cast value {value:?} to f64")))
         })
         .context("failed converting array to f64")?;
     array_f64.values().iter().for_each(|a| {
@@ -1134,9 +1178,9 @@ where
             .0
             .iter()
             .enumerate()
-            .find(|&x| (x.1 .0 <= *a) && (*a < x.1 .1));
+            .find(|&x| (x.1.0 <= *a) && (*a < x.1.1));
         if let Some(key) = matched_key {
-            new_array.append_value(key.1 .2.clone());
+            new_array.append_value(key.1.2.clone());
         } else {
             new_array.append_value(cc_val_ref.1.clone());
         }

@@ -852,7 +852,8 @@ fn read_vlsc_from_bytes(
                         {
                             // UTF-8 BOM
                             let record = &record[3..];
-                            let dst = str::from_utf8(record).context("Found invalid UTF-8 with BOM")?;
+                            let dst =
+                                str::from_utf8(record).context("Found invalid UTF-8 with BOM")?;
                             array.append_value(dst);
                         } else if record.len() >= 2 && record[0] == 0xFF && record[1] == 0xFE {
                             // UTF-16 LE BOM
@@ -870,7 +871,8 @@ fn read_vlsc_from_bytes(
                             array.append_value(dst.trim_end_matches('\0'));
                         } else {
                             // No recognized BOM, try UTF-8
-                            let dst = str::from_utf8(record).context("Found invalid UTF-8 (no BOM)")?;
+                            let dst =
+                                str::from_utf8(record).context("Found invalid UTF-8 (no BOM)")?;
                             array.append_value(dst);
                         }
                         max_position = max_position.max(start + length);
@@ -1209,7 +1211,11 @@ fn parser_dl4_sorted(
                     previous_index = read_vlsd_from_bytes(&mut data, cn, previous_index, decoder)?;
                 }
             } else {
-                let n_record_chunk = if record_length > 0 { block_length / record_length } else { 0 };
+                let n_record_chunk = if record_length > 0 {
+                    block_length / record_length
+                } else {
+                    0
+                };
                 if previous_index >= cg_cycle_count || n_record_chunk == 0 {
                     continue;
                 }
