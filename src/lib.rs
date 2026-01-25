@@ -8,4 +8,3 @@ pub mod mdfr;
 
 pub mod mdfreader;
 pub mod mdfwriter;
-mod tests;
