@@ -3,6 +3,7 @@ pub mod conversions3;
 pub mod conversions4;
 pub mod data_read3;
 pub mod data_read4;
+pub mod datastream_decoder;
 pub mod mdfreader3;
 pub mod mdfreader4;
 use std::collections::{HashMap, HashSet};

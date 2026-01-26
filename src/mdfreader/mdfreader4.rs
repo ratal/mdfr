@@ -1,7 +1,7 @@
 //! data read and load in memory based in MdfInfo4's metadata
 use crate::data_holder::channel_data::ChannelData;
 use crate::mdfinfo::MdfInfo;
-use crate::mdfinfo::mdfinfo4::{Blockheader4, Cg4, Cn4, Dg4};
+use crate::mdfinfo::mdfinfo4::{Blockheader4, Cg4, Cn4, Composition, Dg4, Ds4Block};
 use crate::mdfinfo::mdfinfo4::{
     CG_F_VLSC, CG_F_VLSD, Dl4Block, Dt4Block, Gd4Block, Hl4Block, Ld4Block, parse_dz,
     parser_dl4_block, parser_ld4_block,
@@ -9,6 +9,7 @@ use crate::mdfinfo::mdfinfo4::{
 use crate::mdfreader::conversions4::convert_all_channels;
 use crate::mdfreader::data_read4::read_channels_from_bytes;
 use crate::mdfreader::data_read4::read_one_channel_array;
+use crate::mdfreader::datastream_decoder;
 use anyhow::{Context, Error, Result, bail};
 use binrw::BinReaderExt;
 use encoding_rs::{Decoder, GB18030, UTF_8, UTF_16BE, UTF_16LE, WINDOWS_1252};
@@ -1985,10 +1986,217 @@ fn read_ds(
                     continue;
                 };
 
-                // Read data into channel. We assume length-prefixed samples for dynamic data.
-                read_vlsd_from_bytes(&mut data, cn, 0, decoder)?;
+                // Check if this is data stream mode (ds_mode == 0) with composition
+                // We need to extract what we need from cn before dropping the borrow
+                let ds_decode_info: Option<(Ds4Block, Box<Composition>)> =
+                    if let Some(composition) = &cn.composition {
+                        if let Compo::DS(ds_block) = &composition.block {
+                            if ds_block.ds_mode == 0 {
+                                // Clone the ds_block (dereferencing the Box) and the composition
+                                composition
+                                    .compo
+                                    .as_ref()
+                                    .map(|c| ((**ds_block).clone(), c.clone()))
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+
+                if let Some((ds_block, child_composition)) = ds_decode_info {
+                    // Parse record offsets and sizes from length-prefixed data
+                    let (record_offsets, record_sizes) = parse_vlsd_record_offsets(&data)?;
+
+                    // Decode using composition
+                    let decoded = datastream_decoder::decode_datastream_blob(
+                        &data,
+                        &ds_block,
+                        &child_composition,
+                        &channel_group.cn,
+                        &record_offsets,
+                        &record_sizes,
+                    )?;
+
+                    // Store decoded child channel data
+                    for (rec_pos, values) in decoded {
+                        if let Some(child_cn) = channel_group.cn.get_mut(&rec_pos) {
+                            store_decoded_values_in_channel(child_cn, values, decoder)?;
+                        }
+                    }
+                } else {
+                    // Fallback: read as length-prefixed samples for dynamic data
+                    if let Some(cn) = channel_group.cn.get_mut(rec_pos) {
+                        read_vlsd_from_bytes(&mut data, cn, 0, decoder)?;
+                    }
+                }
             }
         }
     }
     Ok(position)
+}
+
+/// Parses VLSD record offsets and sizes from a length-prefixed data blob.
+/// Returns (offsets, sizes) vectors where each element corresponds to one record.
+fn parse_vlsd_record_offsets(data: &[u8]) -> Result<(Vec<u64>, Vec<u64>)> {
+    let mut offsets = Vec::new();
+    let mut sizes = Vec::new();
+    let mut position: usize = 0;
+
+    while position + 4 <= data.len() {
+        let length = u32::from_le_bytes(
+            data[position..position + 4]
+                .try_into()
+                .context("Could not read VLSD length prefix")?,
+        ) as usize;
+
+        // Record starts after the 4-byte length prefix
+        offsets.push((position + 4) as u64);
+        sizes.push(length as u64);
+
+        // Move to next record
+        position += 4 + length;
+
+        if position > data.len() {
+            break;
+        }
+    }
+
+    Ok((offsets, sizes))
+}
+
+/// Stores decoded byte values into a channel's data structure
+fn store_decoded_values_in_channel(
+    cn: &mut Cn4,
+    values: Vec<Vec<u8>>,
+    decoder: &mut Dec,
+) -> Result<()> {
+    for value_bytes in values {
+        match &mut cn.data {
+            ChannelData::Int8(builder) => {
+                if !value_bytes.is_empty() {
+                    builder.append_value(value_bytes[0] as i8);
+                }
+            }
+            ChannelData::UInt8(builder) => {
+                if !value_bytes.is_empty() {
+                    builder.append_value(value_bytes[0]);
+                }
+            }
+            ChannelData::Int16(builder) => {
+                if value_bytes.len() >= 2 {
+                    let val = if cn.endian {
+                        i16::from_be_bytes(value_bytes[..2].try_into()?)
+                    } else {
+                        i16::from_le_bytes(value_bytes[..2].try_into()?)
+                    };
+                    builder.append_value(val);
+                }
+            }
+            ChannelData::UInt16(builder) => {
+                if value_bytes.len() >= 2 {
+                    let val = if cn.endian {
+                        u16::from_be_bytes(value_bytes[..2].try_into()?)
+                    } else {
+                        u16::from_le_bytes(value_bytes[..2].try_into()?)
+                    };
+                    builder.append_value(val);
+                }
+            }
+            ChannelData::Int32(builder) => {
+                if value_bytes.len() >= 4 {
+                    let val = if cn.endian {
+                        i32::from_be_bytes(value_bytes[..4].try_into()?)
+                    } else {
+                        i32::from_le_bytes(value_bytes[..4].try_into()?)
+                    };
+                    builder.append_value(val);
+                }
+            }
+            ChannelData::UInt32(builder) => {
+                if value_bytes.len() >= 4 {
+                    let val = if cn.endian {
+                        u32::from_be_bytes(value_bytes[..4].try_into()?)
+                    } else {
+                        u32::from_le_bytes(value_bytes[..4].try_into()?)
+                    };
+                    builder.append_value(val);
+                }
+            }
+            ChannelData::Float32(builder) => {
+                if value_bytes.len() >= 4 {
+                    let val = if cn.endian {
+                        f32::from_be_bytes(value_bytes[..4].try_into()?)
+                    } else {
+                        f32::from_le_bytes(value_bytes[..4].try_into()?)
+                    };
+                    builder.append_value(val);
+                }
+            }
+            ChannelData::Int64(builder) => {
+                if value_bytes.len() >= 8 {
+                    let val = if cn.endian {
+                        i64::from_be_bytes(value_bytes[..8].try_into()?)
+                    } else {
+                        i64::from_le_bytes(value_bytes[..8].try_into()?)
+                    };
+                    builder.append_value(val);
+                }
+            }
+            ChannelData::UInt64(builder) => {
+                if value_bytes.len() >= 8 {
+                    let val = if cn.endian {
+                        u64::from_be_bytes(value_bytes[..8].try_into()?)
+                    } else {
+                        u64::from_le_bytes(value_bytes[..8].try_into()?)
+                    };
+                    builder.append_value(val);
+                }
+            }
+            ChannelData::Float64(builder) => {
+                if value_bytes.len() >= 8 {
+                    let val = if cn.endian {
+                        f64::from_be_bytes(value_bytes[..8].try_into()?)
+                    } else {
+                        f64::from_le_bytes(value_bytes[..8].try_into()?)
+                    };
+                    builder.append_value(val);
+                }
+            }
+            ChannelData::Utf8(builder) => {
+                // Decode string based on data type
+                let s = if cn.block.cn_data_type == 6 {
+                    // SBC (Windows-1252)
+                    let mut dst = String::with_capacity(value_bytes.len());
+                    let _ = decoder
+                        .windows_1252
+                        .decode_to_string(&value_bytes, &mut dst, false);
+                    dst
+                } else if cn.block.cn_data_type == 7 || cn.block.cn_data_type == 9 {
+                    // UTF-8 or ISO-8859-1 (treat as UTF-8)
+                    String::from_utf8_lossy(&value_bytes).into_owned()
+                } else if cn.block.cn_data_type == 8 {
+                    // UTF-16 LE
+                    let mut dst = String::with_capacity(value_bytes.len());
+                    let _ = decoder
+                        .utf_16_le
+                        .decode_to_string(&value_bytes, &mut dst, false);
+                    dst
+                } else {
+                    String::from_utf8_lossy(&value_bytes).into_owned()
+                };
+                builder.append_value(s);
+            }
+            ChannelData::VariableSizeByteArray(builder) => {
+                builder.append_value(&value_bytes);
+            }
+            _ => {
+                // For other types (complex, tensor, etc.), skip for now
+            }
+        }
+    }
+    Ok(())
 }

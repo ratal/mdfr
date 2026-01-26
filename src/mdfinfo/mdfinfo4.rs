@@ -2423,17 +2423,17 @@ pub struct Cn4Block {
     /// Bit offset (0-7): first bit (=LSB) of signal value after Byte offset has been applied (see 4.21.4.2 Reading the Signal Value). If zero, the signal value is 1-Byte aligned. A value different to zero is only allowed for Integer data types (cn_data_type ≤ 3) and if the Integer signal value fits into 8 contiguous Bytes (cn_bit_count + cn_bit_offset ≤ 64). For all other cases, cn_bit_offset must be zero.
     pub cn_bit_offset: u8,
     /// Offset to first Byte in the data record that contains bits of the signal value. The offset is applied to the plain record data, i.e. skipping the record ID.
-    cn_byte_offset: u32,
+    pub cn_byte_offset: u32,
     /// Number of bits for signal value in record
     pub cn_bit_count: u32,
     /// Flags (see CN_F_xxx)
     pub cn_flags: u32,
     /// Position of invalidation bit.
-    cn_inval_bit_pos: u32,
+    pub cn_inval_bit_pos: u32,
     /// Precision for display of floating point values. 0xFF means unrestricted precision (infinite). Any other value specifies the number of decimal places to use for display of floating point values. Only valid if "precision valid" flag (bit 2) is set
     cn_precision: u8,
     /// Byte alignment with previous channel in data stream
-    cn_alignment: u8,
+    pub cn_alignment: u8,
     /// Number of attachment for this channel
     cn_attachment_count: u16,
     /// Minimum signal value that occurred for this signal (raw value) Only valid if "value range valid" flag (bit 3) is set.
