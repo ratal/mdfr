@@ -3006,6 +3006,11 @@ fn parse_cn4_block(
     {
         endian = true; // big endian
     }
+    // For VLSC/VLSD channels, cn_data_type describes the signal data block encoding
+    // (e.g. UTF-16 BE), not the byte order of the integer offsets stored in the DT block.
+    if block.cn_type == 1 || block.cn_type == 7 {
+        endian = false;
+    }
     let data_type = block.cn_data_type;
     let cn_type = block.cn_type;
 

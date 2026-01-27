@@ -287,6 +287,52 @@ fn vlsc_channels() -> Result<()> {
         panic!("VLSC Data channel not found");
     }
 
+    // VLSC with different string encodings
+    for file in [
+        "Vector_VLSC_String_SBC.mf4",
+        "Vector_VLSC_String_UTF16_LE.mf4",
+        "Vector_VLSC_String_UTF16_BE.mf4",
+    ] {
+        let file_name = format!("{}{}{}", BASE_PATH_MDF4.as_str(), list_of_paths[0], file);
+        let mut mdf = Mdf::new(&file_name)?;
+        mdf.load_all_channels_data_in_memory()?;
+        if let Some(data) = mdf.get_channel_data("Data channel") {
+            assert_eq!(expected_string_result, data.clone(), "Failed for {}", file);
+        } else {
+            panic!("VLSC Data channel not found in {}", file);
+        }
+    }
+
+    // VLSC with single VD block (uncompressed and compressed)
+    for file in [
+        "Vector_VLSC_Single_VD.mf4",
+        "Vector_VLSC_Single_VD_Compressed.mf4",
+    ] {
+        let file_name = format!("{}{}{}", BASE_PATH_MDF4.as_str(), list_of_paths[0], file);
+        let mut mdf = Mdf::new(&file_name)?;
+        mdf.load_all_channels_data_in_memory()?;
+        if let Some(data) = mdf.get_channel_data("data") {
+            assert!(!data.is_empty(), "VLSC data should not be empty in {}", file);
+        } else {
+            panic!("VLSC data channel not found in {}", file);
+        }
+    }
+
+    // VLSC with Data List (DL -> VD blocks), uncompressed and compressed (DL -> DZ)
+    for file in [
+        "Vector_VLSC_DataList_VD.mf4",
+        "Vector_VLSC_DataList_VD_Compressed.mf4",
+    ] {
+        let file_name = format!("{}{}{}", BASE_PATH_MDF4.as_str(), list_of_paths[0], file);
+        let mut mdf = Mdf::new(&file_name)?;
+        mdf.load_all_channels_data_in_memory()?;
+        if let Some(data) = mdf.get_channel_data("data") {
+            assert!(!data.is_empty(), "VLSC data should not be empty in {}", file);
+        } else {
+            panic!("VLSC data channel not found in {}", file);
+        }
+    }
+
     // VLSC Etas with BOM - this file has channels: time, size, comment (VLSC)
     // Note: This file has mixed BOM encodings (UTF-8 and UTF-16 LE)
     let file_name = format!(

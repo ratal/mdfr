@@ -351,6 +351,62 @@ fn read_data(
     Ok(position)
 }
 
+/// Reads and concatenates data from any data block type (##DT, ##SD, ##VD, ##DZ, ##DL, ##HL).
+/// The block id must already have been read. Returns concatenated raw bytes and updated position.
+fn read_all_blocks_to_bytes(
+    rdr: &mut BufReader<&File>,
+    id: [u8; 4],
+    mut position: i64,
+) -> Result<Option<(Vec<u8>, i64)>> {
+    if id == *b"##DT" || id == *b"##SD" || id == *b"##VD" {
+        let block_header: Dt4Block = rdr.read_le().context("Could not read data block header")?;
+        let mut buf = vec![0u8; block_header.len as usize - 24];
+        rdr.read_exact(&mut buf)
+            .context("could not read data block buffer")?;
+        position += block_header.len as i64;
+        Ok(Some((buf, position)))
+    } else if id == *b"##DZ" {
+        let (buf, block_header) = parse_dz(rdr)?;
+        position += block_header.len as i64;
+        Ok(Some((buf, position)))
+    } else if id == *b"##HL" || id == *b"##DL" {
+        let current_pos = if id == *b"##HL" {
+            let (pos, _id) = read_hl(rdr, position)?;
+            pos
+        } else {
+            position
+        };
+        let (dl_blocks, mut pos) = parser_dl4(rdr, current_pos)?;
+        let mut combined_data = Vec::new();
+        for dl in dl_blocks {
+            for data_ptr in dl.dl_data {
+                if data_ptr == 0 {
+                    continue;
+                }
+                rdr.seek_relative(data_ptr - pos)?;
+                pos = data_ptr;
+                let mut inner_id = [0u8; 4];
+                rdr.read_exact(&mut inner_id)?;
+                if inner_id == *b"##DZ" {
+                    let (buf, header) = parse_dz(rdr)?;
+                    pos += header.len as i64;
+                    combined_data.extend(buf);
+                } else {
+                    // ##DT, ##SD, ##VD or any other raw data block
+                    let header: Dt4Block = rdr.read_le()?;
+                    let mut buf = vec![0u8; header.len as usize - 24];
+                    rdr.read_exact(&mut buf)?;
+                    pos += header.len as i64;
+                    combined_data.extend(buf);
+                }
+            }
+        }
+        Ok(Some((combined_data, pos)))
+    } else {
+        Ok(None)
+    }
+}
+
 /// Header List block reader
 /// This HL Block references Data List Blocks that are listing DZ Blocks
 /// It is existing to add complementary information about compression in DZ
@@ -544,21 +600,13 @@ fn read_vd(
         rdr.read_exact(&mut id)
             .context("could not read VD block id")?;
 
-        let data: Vec<u8>;
-        if "##VD".as_bytes() == id {
-            let block_header: Dt4Block = rdr.read_le().context("Could not read VD block struct")?;
-            let mut buf = vec![0u8; block_header.len as usize - 24];
-            rdr.read_exact(&mut buf)
-                .context("could not read VD data buffer")?;
-            position += block_header.len as i64;
-            data = buf;
-        } else if "##DZ".as_bytes() == id {
-            let (buf, block_header) = parse_dz(rdr)?;
-            position += block_header.len as i64;
-            data = buf;
-        } else {
-            continue;
-        }
+        let data: Vec<u8> = match read_all_blocks_to_bytes(rdr, id, position)? {
+            Some((buf, pos)) => {
+                position = pos;
+                buf
+            }
+            None => continue,
+        };
 
         // Now update cn.data with the actual variable length data
         if let Some(cn) = channel_group.cn.get_mut(rec_pos) {
@@ -1937,53 +1985,12 @@ fn read_ds(
                 rdr.read_exact(&mut id)
                     .context("could not read DS data block id")?;
 
-                let mut data: Vec<u8> = if "##DT".as_bytes() == id || "##SD".as_bytes() == id {
-                    let block_header: Dt4Block =
-                        rdr.read_le().context("Could not read DT/SD header in DS")?;
-                    let mut buf = vec![0u8; block_header.len as usize - 24];
-                    rdr.read_exact(&mut buf)
-                        .context("could not read DT/SD data buffer in DS")?;
-                    position += block_header.len as i64;
-                    buf
-                } else if "##DZ".as_bytes() == id {
-                    let (buf, block_header) = parse_dz(rdr)?;
-                    position += block_header.len as i64;
-                    buf
-                } else if "##DL".as_bytes() == id || "##HL".as_bytes() == id {
-                    let current_pos = if id == "##HL".as_bytes() {
-                        let (pos, _id) = read_hl(rdr, position)?;
-                        pos
-                    } else {
-                        position
-                    };
-                    let (dl_blocks, mut pos) = parser_dl4(rdr, current_pos)?;
-                    let mut combined_data = Vec::new();
-                    for dl in dl_blocks {
-                        for data_ptr in dl.dl_data {
-                            if data_ptr == 0 {
-                                continue;
-                            }
-                            rdr.seek_relative(data_ptr - pos)?;
-                            pos = data_ptr;
-                            let mut inner_id = [0u8; 4];
-                            rdr.read_exact(&mut inner_id)?;
-                            if "##DT".as_bytes() == inner_id || "##SD".as_bytes() == inner_id {
-                                let header: Dt4Block = rdr.read_le()?;
-                                let mut buf = vec![0u8; header.len as usize - 24];
-                                rdr.read_exact(&mut buf)?;
-                                pos += header.len as i64;
-                                combined_data.extend(buf);
-                            } else if "##DZ".as_bytes() == inner_id {
-                                let (buf, header) = parse_dz(rdr)?;
-                                pos += header.len as i64;
-                                combined_data.extend(buf);
-                            }
-                        }
+                let mut data: Vec<u8> = match read_all_blocks_to_bytes(rdr, id, position)? {
+                    Some((buf, pos)) => {
+                        position = pos;
+                        buf
                     }
-                    position = pos;
-                    combined_data
-                } else {
-                    continue;
+                    None => continue,
                 };
 
                 // Check if this is data stream mode (ds_mode == 0) with composition
