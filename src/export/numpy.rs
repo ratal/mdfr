@@ -1,6 +1,6 @@
 //! this module provides methods to get directly channelData into python
 
-use arrow::array::{Array, ArrayData, make_array};
+use arrow::array::{Array, ArrayData, UnionArray, make_array};
 use arrow::pyarrow::PyArrowType;
 
 use numpy::npyffi::types::NPY_ORDER;
@@ -133,6 +133,13 @@ impl<'py> IntoPyObject<'py> for ChannelData {
                 Ok(strings
                     .into_pyobject(py)
                     .expect("error converting Utf8 array into python object"))
+            }
+            ChannelData::Union(array) => {
+                let arrow_data = to_py_array(py, Arc::new(UnionArray::from(array.to_data())))
+                    .expect("error converting Union array into python object");
+                Ok(arrow_data
+                    .into_pyobject(py)
+                    .expect("error converting Union PyArrow into python object"))
             }
         }
     }

@@ -1,7 +1,13 @@
 //! Parsing of file metadata into MdfInfo4 struct
 use crate::mdfreader::{DataSignature, MasterSignature};
 use anyhow::{Context, Error, Result, bail};
-use arrow::array::{Array, BooleanBufferBuilder, UInt8Builder, UInt16Builder, UInt32Builder};
+use arrow::array::{
+    Array, ArrayRef, BooleanBufferBuilder, UInt8Builder, UInt16Builder, UInt32Builder, UInt32Array,
+    UnionArray,
+};
+use arrow::buffer::ScalarBuffer;
+use arrow::compute::take;
+use arrow::datatypes::{Field, UnionFields};
 use binrw::{BinReaderExt, BinWriterExt, binrw};
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::{DateTime, Local};
@@ -2205,6 +2211,7 @@ impl Cg4 {
             // First pass: collect all needed data (immutable borrows complete before mutable)
             let discriminator_values: Vec<u64>;
             let option_data: Vec<Option<ChannelData>>;
+            let option_names: Vec<String>;
 
             {
                 // Find the discriminator channel by block_position
@@ -2241,7 +2248,7 @@ impl Cg4 {
                     continue;
                 }
 
-                // Collect option channel data (clone to own data)
+                // Collect option channel data and names (clone to own data)
                 option_data = option_ptrs
                     .iter()
                     .map(|ptr| {
@@ -2249,6 +2256,17 @@ impl Cg4 {
                             .values()
                             .find(|cn| cn.block_position == *ptr)
                             .map(|cn| cn.data.clone())
+                    })
+                    .collect();
+
+                option_names = option_ptrs
+                    .iter()
+                    .map(|ptr| {
+                        self.cn
+                            .values()
+                            .find(|cn| cn.block_position == *ptr)
+                            .map(|cn| cn.unique_name.clone())
+                            .unwrap_or_default()
                     })
                     .collect();
             }
@@ -2261,24 +2279,215 @@ impl Cg4 {
                 .map(|(idx, val)| (*val, idx))
                 .collect();
 
-            // Get template from first valid option
-            let template = option_data.iter().find_map(|o| o.clone());
-
-            // Second pass: update parent channel (mutable borrow)
-            if let Some(parent_cn) = self.cn.get_mut(&parent_rec_pos)
-                && let Some(tmpl) = template
-            {
-                // Create new merged data with same type as first option
-                let merged_data = merge_variant_data_owned(
-                    &discriminator_values,
-                    &option_data,
-                    &val_to_option,
-                    &tmpl,
-                );
-
-                if let Some(data) = merged_data {
-                    parent_cn.data = data;
+            // Check if all option channels have the same data type
+            let all_same_type = {
+                let mut discriminants: Vec<std::mem::Discriminant<ChannelData>> = Vec::new();
+                for data in option_data.iter().flatten() {
+                    discriminants.push(std::mem::discriminant(data));
                 }
+                discriminants.windows(2).all(|w| w[0] == w[1])
+            };
+
+            if all_same_type {
+                // All options have the same type: use existing merge path
+                let template = option_data.iter().find_map(|o| o.clone());
+
+                // Second pass: update parent channel (mutable borrow)
+                if let Some(parent_cn) = self.cn.get_mut(&parent_rec_pos)
+                    && let Some(tmpl) = template
+                {
+                    let merged_data = merge_variant_data_owned(
+                        &discriminator_values,
+                        &option_data,
+                        &val_to_option,
+                        &tmpl,
+                    );
+
+                    if let Some(data) = merged_data {
+                        parent_cn.data = data;
+                    }
+                }
+            } else {
+                // Mixed types: build a dense UnionArray
+                // Effective sample count is the minimum of discriminator and all option lengths
+                let n_samples = {
+                    let mut min_len = discriminator_values.len();
+                    for data in option_data.iter().flatten() {
+                        min_len = min_len.min(data.len());
+                    }
+                    min_len
+                };
+
+                // Build type_ids and offsets for dense union
+                let mut type_ids = Vec::with_capacity(n_samples);
+                let mut offsets = Vec::with_capacity(n_samples);
+                let mut child_counts = vec![0i32; option_data.len()];
+
+                for disc_val in &discriminator_values[..n_samples] {
+                    let opt_idx = val_to_option.get(disc_val).copied().unwrap_or(0);
+                    type_ids.push(opt_idx as i8);
+                    offsets.push(child_counts[opt_idx]);
+                    child_counts[opt_idx] += 1;
+                }
+
+                // Build child arrays: for dense union, each child contains only the
+                // rows where the discriminator selects that option
+                let children: Vec<ArrayRef> = option_data
+                    .iter()
+                    .enumerate()
+                    .map(|(opt_idx, opt)| {
+                        if let Some(data) = opt {
+                            let full_array = data.finish_cloned();
+                            // Find indices where this option is selected (within n_samples)
+                            let indices: Vec<u32> = discriminator_values[..n_samples]
+                                .iter()
+                                .enumerate()
+                                .filter_map(|(i, disc_val)| {
+                                    if val_to_option.get(disc_val) == Some(&opt_idx) {
+                                        Some(i as u32)
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect();
+                            let indices_array = UInt32Array::from(indices);
+                            take(&*full_array, &indices_array, None)
+                                .unwrap_or(full_array)
+                        } else {
+                            Arc::new(arrow::array::NullArray::new(0)) as ArrayRef
+                        }
+                    })
+                    .collect();
+
+                // Build UnionFields
+                let fields: Vec<(i8, Arc<Field>)> = children
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, array)| {
+                        let name = option_names.get(idx).cloned().unwrap_or_default();
+                        let field = Field::new(name, array.data_type().clone(), true);
+                        (idx as i8, Arc::new(field))
+                    })
+                    .collect();
+
+                let union_fields = UnionFields::from_iter(fields);
+                let type_ids_buffer = ScalarBuffer::from(type_ids);
+                let offsets_buffer = ScalarBuffer::from(offsets);
+
+                match UnionArray::try_new(
+                    union_fields,
+                    type_ids_buffer,
+                    Some(offsets_buffer),
+                    children,
+                ) {
+                    Ok(union_array) => {
+                        if let Some(parent_cn) = self.cn.get_mut(&parent_rec_pos) {
+                            parent_cn.data = ChannelData::Union(union_array);
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "Failed to create dense UnionArray for CV variant: {}",
+                            e
+                        );
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Process Channel Union (CU) compositions after data is loaded.
+    /// For each channel with a CU composition, this method:
+    /// 1. Collects member channel data (already read by pipeline)
+    /// 2. Builds UnionFields from member names and data types
+    /// 3. Creates a sparse UnionArray where all members are valid at every row
+    /// 4. Replaces parent channel data with ChannelData::Union
+    ///
+    /// CU blocks represent C-style unions: all members share the same bytes and are
+    /// simultaneously valid, just interpreted differently.
+    pub fn process_channel_unions(&mut self) -> Result<(), Error> {
+        // Find channels with CU composition and collect info
+        let cu_channels: Vec<(i32, Vec<i64>)> = self
+            .cn
+            .iter()
+            .filter_map(|(rec_pos, cn)| {
+                if let Some(composition) = &cn.composition
+                    && let Compo::CU(cu_block) = &composition.block
+                {
+                    return Some((*rec_pos, cu_block.cu_cn_member.clone()));
+                }
+                None
+            })
+            .collect();
+
+        for (parent_rec_pos, member_ptrs) in cu_channels {
+            if member_ptrs.is_empty() {
+                continue;
+            }
+
+            // Collect member channel info: (name, data as ArrayRef)
+            let member_info: Vec<(String, ArrayRef)> = member_ptrs
+                .iter()
+                .filter_map(|ptr| {
+                    self.cn.values().find(|cn| cn.block_position == *ptr).map(
+                        |cn| {
+                            let name = cn.unique_name.clone();
+                            let array = cn.data.finish_cloned();
+                            (name, array)
+                        },
+                    )
+                })
+                .collect();
+
+            if member_info.is_empty() {
+                log::warn!("CU member channels not found for parent at rec_pos {}", parent_rec_pos);
+                continue;
+            }
+
+            // All members should have the same length (same number of samples)
+            let n_samples = member_info.first().map(|(_, arr)| arr.len()).unwrap_or(0);
+            if n_samples == 0 {
+                continue;
+            }
+
+            // Build UnionFields: (type_id, Field)
+            let fields: Vec<(i8, Arc<Field>)> = member_info
+                .iter()
+                .enumerate()
+                .map(|(idx, (name, array))| {
+                    let field = Field::new(name.clone(), array.data_type().clone(), true);
+                    (idx as i8, Arc::new(field))
+                })
+                .collect();
+
+            let union_fields = UnionFields::from_iter(fields);
+
+            // Collect child arrays
+            let children: Vec<ArrayRef> = member_info.iter().map(|(_, array)| array.clone()).collect();
+
+            // For sparse union: type_ids all set to 0 (first member as primary interpretation)
+            // In reality for CU blocks, all members are equally valid - we just pick the first
+            let type_ids: ScalarBuffer<i8> = ScalarBuffer::from(vec![0i8; n_samples]);
+
+            // Create sparse UnionArray (offsets = None)
+            let union_array = match UnionArray::try_new(
+                union_fields,
+                type_ids,
+                None, // sparse union: no offsets
+                children,
+            ) {
+                Ok(arr) => arr,
+                Err(e) => {
+                    log::warn!("Failed to create UnionArray for CU channel: {}", e);
+                    continue;
+                }
+            };
+
+            // Update parent channel data
+            if let Some(parent_cn) = self.cn.get_mut(&parent_rec_pos) {
+                parent_cn.data = ChannelData::Union(union_array);
             }
         }
 
@@ -3606,6 +3815,8 @@ fn parse_composition(
         // Note: cv_cn_discriminator points to the discriminator channel (parsed elsewhere in the CG)
         // cv_option_val contains the discriminator values for each option
         // reads all the listed option Channel Blocks
+        // For CV options, re-key using negative block_position to avoid HashMap
+        // collisions since all options share the same byte offset in the record.
         for target in cv_block.cv_cn_option.iter() {
             let (cnss, pos, n_cns, _first_rec_pos) = parse_cn4(
                 rdr,
@@ -3617,7 +3828,11 @@ fn parse_composition(
             )?;
             position = pos;
             n_cn += n_cns;
-            cns.extend(cnss);
+            // Re-key option channels using negative block_position
+            for (_rec_pos, cn_struct) in cnss {
+                let unique_key = -(cn_struct.block_position as i32);
+                cns.insert(unique_key, cn_struct);
+            }
         }
         Ok((
             Composition {
@@ -3637,6 +3852,8 @@ fn parse_composition(
         let shape = (Vec::<usize>::new(), Order::RowMajor);
         array_size = 0;
         // reads all the listed Channel Blocks
+        // For CU members, re-key using negative block_position to avoid HashMap
+        // collisions since all members share the same byte offset in the record.
         for target in cu_block.cu_cn_member.iter() {
             let (cnss, pos, n_cns, _first_rec_pos) = parse_cn4(
                 rdr,
@@ -3648,7 +3865,11 @@ fn parse_composition(
             )?;
             position = pos;
             n_cn += n_cns;
-            cns.extend(cnss);
+            // Re-key member channels using negative block_position
+            for (_rec_pos, cn_struct) in cnss {
+                let unique_key = -(cn_struct.block_position as i32);
+                cns.insert(unique_key, cn_struct);
+            }
         }
         Ok((
             Composition {

@@ -6,7 +6,7 @@ use arrow::array::{
     Array, ArrayBuilder, ArrayData, ArrayRef, BinaryArray, BooleanBufferBuilder,
     FixedSizeBinaryArray, FixedSizeBinaryBuilder, FixedSizeListArray, Int8Builder,
     LargeBinaryArray, LargeBinaryBuilder, LargeStringArray, LargeStringBuilder, PrimitiveBuilder,
-    StringArray, as_primitive_array,
+    StringArray, UnionArray, as_primitive_array,
 };
 use arrow::buffer::{MutableBuffer, NullBuffer};
 use arrow::datatypes::{
@@ -57,6 +57,7 @@ pub enum ChannelData {
     ArrayDInt64(TensorArrow<Int64Type>),
     ArrayDUInt64(TensorArrow<UInt64Type>),
     ArrayDFloat64(TensorArrow<Float64Type>),
+    Union(UnionArray),
 }
 
 impl PartialEq for ChannelData {
@@ -91,6 +92,7 @@ impl PartialEq for ChannelData {
             (Self::ArrayDInt64(l0), Self::ArrayDInt64(r0)) => l0 == r0,
             (Self::ArrayDUInt64(l0), Self::ArrayDUInt64(r0)) => l0 == r0,
             (Self::ArrayDFloat64(l0), Self::ArrayDFloat64(r0)) => l0 == r0,
+            (Self::Union(l0), Self::Union(r0)) => l0.to_data() == r0.to_data(),
             _ => false,
         }
     }
@@ -205,6 +207,9 @@ impl Clone for ChannelData {
             Self::ArrayDInt64(arg0) => Self::ArrayDInt64(arg0.clone()),
             Self::ArrayDUInt64(arg0) => Self::ArrayDUInt64(arg0.clone()),
             Self::ArrayDFloat64(arg0) => Self::ArrayDFloat64(arg0.clone()),
+            Self::Union(arg0) => {
+                Self::Union(UnionArray::from(arg0.to_data()))
+            }
         }
     }
 }
@@ -370,6 +375,9 @@ impl ChannelData {
                         shape.1,
                     )))
                 }
+                ChannelData::Union(_) => {
+                    bail!("Union channels cannot be zero-initialized")
+                }
             }
         }
     }
@@ -401,6 +409,7 @@ impl ChannelData {
             ChannelData::ArrayDInt64(data) => data.is_empty(),
             ChannelData::ArrayDUInt64(data) => data.is_empty(),
             ChannelData::ArrayDFloat64(data) => data.is_empty(),
+            ChannelData::Union(data) => data.is_empty(),
         }
     }
     /// flatten length of tensor
@@ -431,6 +440,7 @@ impl ChannelData {
             ChannelData::ArrayDInt64(data) => data.len(),
             ChannelData::ArrayDUInt64(data) => data.len(),
             ChannelData::ArrayDFloat64(data) => data.len(),
+            ChannelData::Union(data) => data.len(),
         }
     }
     /// returns the max bit count of each values in array
@@ -481,6 +491,20 @@ impl ChannelData {
             ChannelData::ArrayDInt64(_) => 64,
             ChannelData::ArrayDUInt64(_) => 64,
             ChannelData::ArrayDFloat64(_) => 64,
+            ChannelData::Union(a) => {
+                // Union bit size is the max of all member sizes (in bits)
+                if let DataType::Union(fields, _) = a.data_type() {
+                    fields
+                        .iter()
+                        .filter_map(|(_, field)| {
+                            field.data_type().primitive_width().map(|w| (w * 8) as u32)
+                        })
+                        .max()
+                        .unwrap_or(0)
+                } else {
+                    0
+                }
+            }
         }
     }
     /// returns the max byte count of each values in array
@@ -527,6 +551,20 @@ impl ChannelData {
             ChannelData::ArrayDInt64(_) => 8,
             ChannelData::ArrayDUInt64(_) => 8,
             ChannelData::ArrayDFloat64(_) => 8,
+            ChannelData::Union(a) => {
+                // Union byte size is the max of all member sizes
+                if let DataType::Union(fields, _) = a.data_type() {
+                    fields
+                        .iter()
+                        .filter_map(|(_, field)| {
+                            field.data_type().primitive_width().map(|w| w as u32)
+                        })
+                        .max()
+                        .unwrap_or(0)
+                } else {
+                    0
+                }
+            }
         }
     }
     /// returns mdf4 data type
@@ -559,6 +597,7 @@ impl ChannelData {
                 ChannelData::ArrayDUInt64(_) => 1,
                 ChannelData::ArrayDFloat64(_) => 5,
                 ChannelData::Utf8(_) => 7,
+                ChannelData::Union(_) => 10,
             }
         } else {
             // LE
@@ -588,6 +627,7 @@ impl ChannelData {
                 ChannelData::ArrayDUInt64(_) => 0,
                 ChannelData::ArrayDFloat64(_) => 4,
                 ChannelData::Utf8(_) => 7,
+                ChannelData::Union(_) => 10,
             }
         }
     }
@@ -621,6 +661,7 @@ impl ChannelData {
             ChannelData::ArrayDUInt64(_a) => DataType::UInt64,
             ChannelData::ArrayDFloat64(_a) => DataType::Float64,
             ChannelData::Utf8(_) => DataType::LargeUtf8,
+            ChannelData::Union(a) => a.data_type().clone(),
         }
     }
     /// returns raw bytes vectors from ndarray
@@ -753,6 +794,45 @@ impl ChannelData {
                 .iter()
                 .flat_map(|x| x.to_ne_bytes())
                 .collect()),
+            ChannelData::Union(a) => {
+                // Union has fixed-length records equal to the max member size.
+                // For each row, extract the active child's raw bytes, zero-padded
+                // to the union byte count.
+                let union_byte_count = self.byte_count() as usize;
+                if union_byte_count == 0 {
+                    return Ok(Vec::new());
+                }
+                let n = a.len();
+                let mut bytes = vec![0u8; n * union_byte_count];
+                let is_dense = matches!(
+                    a.data_type(),
+                    DataType::Union(_, arrow::datatypes::UnionMode::Dense)
+                );
+                for i in 0..n {
+                    let type_id = a.type_id(i);
+                    let child = a.child(type_id);
+                    let child_offset = if is_dense {
+                        a.value_offset(i)
+                    } else {
+                        i
+                    };
+                    let child_data = child.to_data();
+                    if let Some(elem_size) = child.data_type().primitive_width() {
+                        // Primitive type: extract raw bytes from values buffer
+                        if let Some(buffer) = child_data.buffers().first() {
+                            let start = (child_data.offset() + child_offset) * elem_size;
+                            let end = start + elem_size;
+                            let copy_len = elem_size.min(union_byte_count);
+                            if end <= buffer.len() {
+                                bytes[i * union_byte_count..i * union_byte_count + copy_len]
+                                    .copy_from_slice(&buffer.as_slice()[start..start + copy_len]);
+                            }
+                        }
+                    }
+                    // Non-primitive children (strings, etc.) are left as zero bytes
+                }
+                Ok(bytes)
+            }
         }
     }
     /// returns the number of dimensions of the channel
@@ -783,6 +863,7 @@ impl ChannelData {
             ChannelData::ArrayDUInt64(a) => a.ndim(),
             ChannelData::ArrayDFloat64(a) => a.ndim(),
             ChannelData::Utf8(_) => 1,
+            ChannelData::Union(_) => 1,
         }
     }
     /// returns the shape of channel
@@ -813,6 +894,7 @@ impl ChannelData {
             ChannelData::ArrayDInt64(a) => (a.shape().clone(), a.order().clone()),
             ChannelData::ArrayDUInt64(a) => (a.shape().clone(), a.order().clone()),
             ChannelData::ArrayDFloat64(a) => (a.shape().clone(), a.order().clone()),
+            ChannelData::Union(a) => (vec![a.len(); 1], Order::RowMajor),
         }
     }
     /// returns optional tuple of minimum and maximum values contained in the channel
@@ -955,6 +1037,7 @@ impl ChannelData {
                 (min, max)
             }
             ChannelData::Utf8(_) => (None, None),
+            ChannelData::Union(_) => (None, None),
         }
     }
     /// convert channel arrow data into dyn Array
@@ -985,6 +1068,7 @@ impl ChannelData {
             ChannelData::ArrayDInt64(a) => Arc::new(a.finish_cloned()) as ArrayRef,
             ChannelData::ArrayDUInt64(a) => Arc::new(a.finish_cloned()) as ArrayRef,
             ChannelData::ArrayDFloat64(a) => Arc::new(a.finish_cloned()) as ArrayRef,
+            ChannelData::Union(a) => Arc::new(UnionArray::from(a.to_data())) as ArrayRef,
         }
     }
     /// convert channel arrow data into dyn Array
@@ -1015,6 +1099,7 @@ impl ChannelData {
             ChannelData::ArrayDInt64(a) => Arc::new(a.finish()) as ArrayRef,
             ChannelData::ArrayDUInt64(a) => Arc::new(a.finish()) as ArrayRef,
             ChannelData::ArrayDFloat64(a) => Arc::new(a.finish()) as ArrayRef,
+            ChannelData::Union(a) => Arc::new(UnionArray::from(a.to_data())) as ArrayRef,
         }
     }
     /// Convert ChannelData into ArrayData
@@ -1045,6 +1130,7 @@ impl ChannelData {
             ChannelData::ArrayDInt64(a) => a.finish_cloned().to_data(),
             ChannelData::ArrayDUInt64(a) => a.finish_cloned().to_data(),
             ChannelData::ArrayDFloat64(a) => a.finish_cloned().to_data(),
+            ChannelData::Union(a) => a.to_data(),
         }
     }
     /// Change the validity mask of the channel
@@ -1141,6 +1227,78 @@ impl ChannelData {
             ChannelData::ArrayDFloat64(a) => {
                 a.set_validity(mask);
             }
+            ChannelData::Union(a) => {
+                // Apply the validity mask to each child array in the union.
+                // In MDF, the invalidation bit applies to the whole union per record.
+                // For sparse unions, every child gets the same mask.
+                // For dense unions, the mask is mapped per-child via type_ids/offsets.
+                let validity_mask = mask.finish();
+                let data = a.to_data();
+                let n_children = data.child_data().len();
+                let is_dense = data.buffers().len() > 1; // dense has type_ids + offsets buffers
+
+                if is_dense {
+                    // Dense union: map validity per-child using type_ids and offsets
+                    let type_ids = a.type_ids();
+                    let mut child_nulls: Vec<Vec<bool>> = (0..n_children)
+                        .map(|_| Vec::new())
+                        .collect();
+                    for (i, &tid) in type_ids.iter().enumerate() {
+                        let valid = validity_mask.value(i);
+                        if let Some(child_vec) = child_nulls.get_mut(tid as usize) {
+                            child_vec.push(valid);
+                        }
+                    }
+                    let new_children: Vec<ArrayData> = data
+                        .child_data()
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, child)| {
+                            let child_mask = &child_nulls[idx];
+                            let mut null_builder =
+                                BooleanBufferBuilder::new(child_mask.len());
+                            for &v in child_mask {
+                                null_builder.append(v);
+                            }
+                            let null_buffer = NullBuffer::new(null_builder.finish());
+                            child
+                                .clone()
+                                .into_builder()
+                                .null_bit_buffer(Some(null_buffer.into_inner().into_inner()))
+                                .build()
+                                .unwrap_or_else(|_| child.clone())
+                        })
+                        .collect();
+                    let new_data = data
+                        .into_builder()
+                        .child_data(new_children)
+                        .build()
+                        .unwrap_or_else(|_| a.to_data());
+                    *a = UnionArray::from(new_data);
+                } else {
+                    // Sparse union: apply same mask to all children
+                    let null_buffer = NullBuffer::new(validity_mask);
+                    let null_bit_buffer = null_buffer.into_inner().into_inner();
+                    let new_children: Vec<ArrayData> = data
+                        .child_data()
+                        .iter()
+                        .map(|child| {
+                            child
+                                .clone()
+                                .into_builder()
+                                .null_bit_buffer(Some(null_bit_buffer.clone()))
+                                .build()
+                                .unwrap_or_else(|_| child.clone())
+                        })
+                        .collect();
+                    let new_data = data
+                        .into_builder()
+                        .child_data(new_children)
+                        .build()
+                        .unwrap_or_else(|_| a.to_data());
+                    *a = UnionArray::from(new_data);
+                }
+            }
         }
         Ok(())
     }
@@ -1172,6 +1330,7 @@ impl ChannelData {
             ChannelData::ArrayDInt64(a) => a.finish_cloned().nulls().cloned(),
             ChannelData::ArrayDUInt64(a) => a.finish_cloned().nulls().cloned(),
             ChannelData::ArrayDFloat64(a) => a.finish_cloned().nulls().cloned(),
+            ChannelData::Union(a) => a.logical_nulls(),
         }
     }
     /// Returns the channel's validity mask as a slice
@@ -1202,6 +1361,7 @@ impl ChannelData {
             ChannelData::ArrayDInt64(a) => a.validity_slice(),
             ChannelData::ArrayDUInt64(a) => a.validity_slice(),
             ChannelData::ArrayDFloat64(a) => a.validity_slice(),
+            ChannelData::Union(_) => None,
         }
     }
     /// returns True if a validity mask is existing for the channel
@@ -1232,6 +1392,7 @@ impl ChannelData {
             ChannelData::ArrayDInt64(a) => a.nulls().is_some(),
             ChannelData::ArrayDUInt64(a) => a.nulls().is_some(),
             ChannelData::ArrayDFloat64(a) => a.nulls().is_some(),
+            ChannelData::Union(a) => a.logical_nulls().is_some(),
         }
     }
     /// converts the ChannelData into a ArrayRef
@@ -1262,6 +1423,7 @@ impl ChannelData {
             ChannelData::ArrayDInt64(a) => Arc::new(a.finish_cloned()) as ArrayRef,
             ChannelData::ArrayDUInt64(a) => Arc::new(a.finish_cloned()) as ArrayRef,
             ChannelData::ArrayDFloat64(a) => Arc::new(a.finish_cloned()) as ArrayRef,
+            ChannelData::Union(a) => Arc::new(UnionArray::from(a.to_data())) as ArrayRef,
         }
     }
     #[cfg(feature = "numpy")]
@@ -1368,6 +1530,10 @@ impl ChannelData {
             ChannelData::ArrayDFloat64(a) => NumpyDType {
                 shape: a.shape().to_vec(),
                 kind: "f8".to_string(),
+            },
+            ChannelData::Union(a) => NumpyDType {
+                shape: vec![a.len()],
+                kind: "O".to_string(),
             },
         }
     }

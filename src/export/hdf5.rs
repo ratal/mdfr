@@ -526,6 +526,10 @@ fn convert_channel_data_into_ndarray(
                     .context("Failed converting channelData nd f64 into ndarray")?,
             )
             .create(name)?),
+        ChannelData::Union(_) => {
+            info!("Union channel {} skipped for hdf5 export", name);
+            Ok(builder.with_data(&[0u8; 0]).create(name)?)
+        }
     }
 }
 

@@ -662,6 +662,7 @@ pub fn read_one_channel_array(
                     cn.shape.1.clone(),
                 );
             }
+            ChannelData::Union(_) => {} // Union channels are constructed post-read
         }
     }
     // Other channel types : virtual channels cn_type 3 & 6 are handled at initialisation
@@ -1630,6 +1631,7 @@ pub fn read_channels_from_bytes(
                             }
                         }
                     }
+                    ChannelData::Union(_) => {} // Union channels are constructed post-read
                 }
                 // VLSC channels: offsets were read above, now mark for VD block processing
                 if cn.block.cn_type == 7 {

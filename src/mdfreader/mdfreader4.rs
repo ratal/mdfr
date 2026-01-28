@@ -88,6 +88,10 @@ pub fn mdfreader4<'a>(
                         channel_group
                             .process_channel_variants()
                             .context("failed processing channel variants")?;
+                        // Process Channel Unions (CU) - create UnionArray from member channels
+                        channel_group
+                            .process_channel_unions()
+                            .context("failed processing channel unions")?;
                     }
                     // conversion of all channels to physical values
                     convert_all_channels(dg, &info.sharable)
@@ -792,6 +796,7 @@ fn read_vlsd_from_bytes(
         ChannelData::ArrayDInt64(_) => {}
         ChannelData::ArrayDUInt64(_) => {}
         ChannelData::ArrayDFloat64(_) => {}
+        ChannelData::Union(_) => {}
     }
     Ok(nrecord + previous_index)
 }
@@ -1889,6 +1894,7 @@ fn apply_bit_mask_offset(
                                 };
                             }
                             ChannelData::ArrayDFloat64(_) => (),
+                            ChannelData::Union(_) => (),
                         }
                     }
                 }

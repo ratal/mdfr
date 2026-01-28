@@ -1,6 +1,6 @@
 use anyhow::Result;
 use arrow::array::{
-    AsArray, Float64Builder, Int32Builder, LargeStringBuilder, UInt16Builder, UInt64Builder,
+    Array, AsArray, Float64Builder, Int32Builder, LargeStringBuilder, UInt16Builder, UInt64Builder,
 };
 use arrow::datatypes::Float64Type;
 use mdfr::data_holder::channel_data::ChannelData;
@@ -509,10 +509,32 @@ fn channel_variant() -> Result<()> {
         );
     }
 
-    // Verify variant channel exists and has correct length
+    // Verify variant channel is a dense UnionArray with 3 mixed-type options
     if let Some(variant_data) = mdf.get_channel_data("variant") {
         assert_eq!(variant_data.len(), 3, "variant should have 3 samples");
-        // Variant data is FixedSizeByteArray containing merged data from different options
+        if let ChannelData::Union(arr) = variant_data {
+            assert_eq!(arr.len(), 3, "UnionArray should have 3 samples");
+            let data_type = arr.data_type();
+            if let arrow::datatypes::DataType::Union(fields, arrow::datatypes::UnionMode::Dense) =
+                data_type
+            {
+                assert_eq!(fields.len(), 3, "Union should have 3 option fields");
+            } else {
+                panic!(
+                    "variant channel should be a Dense Union, got {:?}",
+                    data_type
+                );
+            }
+            // Verify each sample selects the correct option via type_ids [0, 1, 2]
+            assert_eq!(arr.type_id(0), 0, "sample 0 should select option 0");
+            assert_eq!(arr.type_id(1), 1, "sample 1 should select option 1");
+            assert_eq!(arr.type_id(2), 2, "sample 2 should select option 2");
+        } else {
+            panic!(
+                "variant channel should be ChannelData::Union for mixed types, got {:?}",
+                std::mem::discriminant(variant_data)
+            );
+        }
     }
     Ok(())
 }
@@ -567,10 +589,27 @@ fn channel_union() -> Result<()> {
             );
         }
 
-        // Verify union channel exists and has correct length
+        // Verify union channel exists, has correct length, and is Union type
         if let Some(union_data) = mdf.get_channel_data("union") {
             assert_eq!(union_data.len(), 3, "union should have 3 samples");
-            // Union data is FixedSizeByteArray containing overlapping member data
+            // Verify it's now a Union type (not FixedSizeByteArray)
+            if let ChannelData::Union(arr) = union_data {
+                // UnionArray should have the same length
+                assert_eq!(arr.len(), 3, "UnionArray should have 3 samples");
+                // Check that we have member fields
+                let data_type = arr.data_type();
+                if let arrow::datatypes::DataType::Union(fields, _mode) = data_type {
+                    assert!(
+                        !fields.is_empty(),
+                        "Union should have at least one member field"
+                    );
+                }
+            } else {
+                panic!(
+                    "union channel should be ChannelData::Union type, got {:?}",
+                    std::mem::discriminant(union_data)
+                );
+            }
         }
     }
     Ok(())
