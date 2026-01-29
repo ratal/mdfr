@@ -491,20 +491,7 @@ impl ChannelData {
             ChannelData::ArrayDInt64(_) => 64,
             ChannelData::ArrayDUInt64(_) => 64,
             ChannelData::ArrayDFloat64(_) => 64,
-            ChannelData::Union(a) => {
-                // Union bit size is the max of all member sizes (in bits)
-                if let DataType::Union(fields, _) = a.data_type() {
-                    fields
-                        .iter()
-                        .filter_map(|(_, field)| {
-                            field.data_type().primitive_width().map(|w| (w * 8) as u32)
-                        })
-                        .max()
-                        .unwrap_or(0)
-                } else {
-                    0
-                }
-            }
+            ChannelData::Union(_) => self.byte_count() * 8,
         }
     }
     /// returns the max byte count of each values in array
@@ -808,24 +795,34 @@ impl ChannelData {
                     a.data_type(),
                     DataType::Union(_, arrow::datatypes::UnionMode::Dense)
                 );
+                // Pre-compute child metadata per type_id to avoid per-row to_data() calls
+                let mut children_meta: std::collections::HashMap<i8, (ArrayData, usize)> =
+                    std::collections::HashMap::new();
+                if let DataType::Union(fields, _) = a.data_type() {
+                    for (type_id, _) in fields.iter() {
+                        let child = a.child(type_id);
+                        if let Some(elem_size) = child.data_type().primitive_width() {
+                            children_meta.insert(type_id, (child.to_data(), elem_size));
+                        }
+                    }
+                }
                 for i in 0..n {
                     let type_id = a.type_id(i);
-                    let child = a.child(type_id);
-                    let child_offset = if is_dense {
-                        a.value_offset(i)
-                    } else {
-                        i
-                    };
-                    let child_data = child.to_data();
-                    if let Some(elem_size) = child.data_type().primitive_width() {
-                        // Primitive type: extract raw bytes from values buffer
+                    if let Some((child_data, elem_size)) = children_meta.get(&type_id) {
+                        let child_offset = if is_dense {
+                            a.value_offset(i)
+                        } else {
+                            i
+                        };
                         if let Some(buffer) = child_data.buffers().first() {
                             let start = (child_data.offset() + child_offset) * elem_size;
                             let end = start + elem_size;
-                            let copy_len = elem_size.min(union_byte_count);
+                            let copy_len = (*elem_size).min(union_byte_count);
                             if end <= buffer.len() {
                                 bytes[i * union_byte_count..i * union_byte_count + copy_len]
-                                    .copy_from_slice(&buffer.as_slice()[start..start + copy_len]);
+                                    .copy_from_slice(
+                                        &buffer.as_slice()[start..start + copy_len],
+                                    );
                             }
                         }
                     }
@@ -1240,8 +1237,16 @@ impl ChannelData {
                 if is_dense {
                     // Dense union: map validity per-child using type_ids and offsets
                     let type_ids = a.type_ids();
-                    let mut child_nulls: Vec<Vec<bool>> = (0..n_children)
-                        .map(|_| Vec::new())
+                    // Pre-count child sizes for capacity allocation
+                    let mut child_sizes = vec![0usize; n_children];
+                    for &tid in type_ids.iter() {
+                        if let Some(count) = child_sizes.get_mut(tid as usize) {
+                            *count += 1;
+                        }
+                    }
+                    let mut child_nulls: Vec<Vec<bool>> = child_sizes
+                        .iter()
+                        .map(|&sz| Vec::with_capacity(sz))
                         .collect();
                     for (i, &tid) in type_ids.iter().enumerate() {
                         let valid = validity_mask.value(i);

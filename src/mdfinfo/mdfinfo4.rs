@@ -2248,27 +2248,25 @@ impl Cg4 {
                     continue;
                 }
 
-                // Collect option channel data and names (clone to own data)
-                option_data = option_ptrs
-                    .iter()
-                    .map(|ptr| {
-                        self.cn
-                            .values()
-                            .find(|cn| cn.block_position == *ptr)
-                            .map(|cn| cn.data.clone())
-                    })
-                    .collect();
-
-                option_names = option_ptrs
-                    .iter()
-                    .map(|ptr| {
-                        self.cn
-                            .values()
-                            .find(|cn| cn.block_position == *ptr)
-                            .map(|cn| cn.unique_name.clone())
-                            .unwrap_or_default()
-                    })
-                    .collect();
+                // Collect option channel data and names in a single pass
+                let (data_vec, names_vec): (Vec<Option<ChannelData>>, Vec<String>) =
+                    option_ptrs
+                        .iter()
+                        .map(|ptr| {
+                            match self
+                                .cn
+                                .values()
+                                .find(|cn| cn.block_position == *ptr)
+                            {
+                                Some(cn) => {
+                                    (Some(cn.data.clone()), cn.unique_name.clone())
+                                }
+                                None => (None, String::new()),
+                            }
+                        })
+                        .unzip();
+                option_data = data_vec;
+                option_names = names_vec;
             }
             // Immutable borrows end here
 
@@ -2318,39 +2316,29 @@ impl Cg4 {
                     min_len
                 };
 
-                // Build type_ids and offsets for dense union
+                // Single pass: build type_ids, offsets, and per-child indices together
                 let mut type_ids = Vec::with_capacity(n_samples);
                 let mut offsets = Vec::with_capacity(n_samples);
-                let mut child_counts = vec![0i32; option_data.len()];
+                let mut child_indices: Vec<Vec<u32>> =
+                    vec![Vec::new(); option_data.len()];
 
-                for disc_val in &discriminator_values[..n_samples] {
+                for (i, disc_val) in discriminator_values[..n_samples].iter().enumerate()
+                {
                     let opt_idx = val_to_option.get(disc_val).copied().unwrap_or(0);
                     type_ids.push(opt_idx as i8);
-                    offsets.push(child_counts[opt_idx]);
-                    child_counts[opt_idx] += 1;
+                    offsets.push(child_indices[opt_idx].len() as i32);
+                    child_indices[opt_idx].push(i as u32);
                 }
 
-                // Build child arrays: for dense union, each child contains only the
-                // rows where the discriminator selects that option
+                // Build child arrays using pre-collected indices
                 let children: Vec<ArrayRef> = option_data
                     .iter()
                     .enumerate()
                     .map(|(opt_idx, opt)| {
                         if let Some(data) = opt {
                             let full_array = data.finish_cloned();
-                            // Find indices where this option is selected (within n_samples)
-                            let indices: Vec<u32> = discriminator_values[..n_samples]
-                                .iter()
-                                .enumerate()
-                                .filter_map(|(i, disc_val)| {
-                                    if val_to_option.get(disc_val) == Some(&opt_idx) {
-                                        Some(i as u32)
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .collect();
-                            let indices_array = UInt32Array::from(indices);
+                            let indices_array =
+                                UInt32Array::from(child_indices[opt_idx].clone());
                             take(&*full_array, &indices_array, None)
                                 .unwrap_or(full_array)
                         } else {
@@ -2359,18 +2347,7 @@ impl Cg4 {
                     })
                     .collect();
 
-                // Build UnionFields
-                let fields: Vec<(i8, Arc<Field>)> = children
-                    .iter()
-                    .enumerate()
-                    .map(|(idx, array)| {
-                        let name = option_names.get(idx).cloned().unwrap_or_default();
-                        let field = Field::new(name, array.data_type().clone(), true);
-                        (idx as i8, Arc::new(field))
-                    })
-                    .collect();
-
-                let union_fields = UnionFields::from_iter(fields);
+                let union_fields = build_union_fields(&option_names, &children);
                 let type_ids_buffer = ScalarBuffer::from(type_ids);
                 let offsets_buffer = ScalarBuffer::from(offsets);
 
@@ -2452,20 +2429,10 @@ impl Cg4 {
                 continue;
             }
 
-            // Build UnionFields: (type_id, Field)
-            let fields: Vec<(i8, Arc<Field>)> = member_info
-                .iter()
-                .enumerate()
-                .map(|(idx, (name, array))| {
-                    let field = Field::new(name.clone(), array.data_type().clone(), true);
-                    (idx as i8, Arc::new(field))
-                })
-                .collect();
-
-            let union_fields = UnionFields::from_iter(fields);
-
-            // Collect child arrays
-            let children: Vec<ArrayRef> = member_info.iter().map(|(_, array)| array.clone()).collect();
+            // Split member_info into names and children, then build UnionFields
+            let (member_names, children): (Vec<String>, Vec<ArrayRef>) =
+                member_info.into_iter().unzip();
+            let union_fields = build_union_fields(&member_names, &children);
 
             // For sparse union: type_ids all set to 0 (first member as primary interpretation)
             // In reality for CU blocks, all members are equally valid - we just pick the first
@@ -2493,6 +2460,22 @@ impl Cg4 {
 
         Ok(())
     }
+}
+
+/// Build UnionFields from parallel name and child arrays slices.
+fn build_union_fields(names: &[String], children: &[ArrayRef]) -> UnionFields {
+    let fields: Vec<(i8, Arc<Field>)> = children
+        .iter()
+        .enumerate()
+        .map(|(idx, array)| {
+            let name = names.get(idx).cloned().unwrap_or_default();
+            (
+                idx as i8,
+                Arc::new(Field::new(name, array.data_type().clone(), true)),
+            )
+        })
+        .collect();
+    UnionFields::from_iter(fields)
 }
 
 /// Merge variant option data based on discriminator values (using owned ChannelData)
@@ -3677,6 +3660,38 @@ pub enum Compo {
     DS(Box<Ds4Block>),
 }
 
+/// Parse and re-key channel blocks for CU/CV compositions.
+/// All member/option channels share the same byte offset in the record,
+/// so they are re-keyed using negative block_position to avoid HashMap collisions.
+fn parse_and_rekey_channels(
+    rdr: &mut SymBufReader<&File>,
+    targets: &[i64],
+    position: &mut i64,
+    sharable: &mut SharableBlocks,
+    record_layout: RecordLayout,
+    cg_cycle_count: u64,
+) -> Result<(CnType, usize)> {
+    let mut cns: CnType = HashMap::new();
+    let mut n_cn: usize = 0;
+    for target in targets {
+        let (cnss, pos, n_cns, _first_rec_pos) = parse_cn4(
+            rdr,
+            *target,
+            *position,
+            sharable,
+            record_layout,
+            cg_cycle_count,
+        )?;
+        *position = pos;
+        n_cn += n_cns;
+        for (_rec_pos, cn_struct) in cnss {
+            let unique_key = -(cn_struct.block_position as i32);
+            cns.insert(unique_key, cn_struct);
+        }
+    }
+    Ok((cns, n_cn))
+}
+
 /// parses composition linked blocks
 /// CN (structures of composed channels )and CA (array of arrays) blocks can be nested or even CA and CN nested and mixed: this is not supported, very complicated
 fn parse_composition(
@@ -3809,31 +3824,19 @@ fn parse_composition(
     } else if block_header_short.hdr_id == "##CV".as_bytes() {
         // Channel Variant
         let cv_block: Cv4Block = block.read_le().context("Failed parsing CV block")?;
-        let cv_composition: Option<Box<Composition>> = None; // no composition possible after CV block
+        let cv_composition: Option<Box<Composition>> = None;
         let shape = (Vec::<usize>::new(), Order::RowMajor);
         array_size = 0;
-        // Note: cv_cn_discriminator points to the discriminator channel (parsed elsewhere in the CG)
-        // cv_option_val contains the discriminator values for each option
-        // reads all the listed option Channel Blocks
-        // For CV options, re-key using negative block_position to avoid HashMap
-        // collisions since all options share the same byte offset in the record.
-        for target in cv_block.cv_cn_option.iter() {
-            let (cnss, pos, n_cns, _first_rec_pos) = parse_cn4(
-                rdr,
-                *target,
-                position,
-                sharable,
-                record_layout,
-                cg_cycle_count,
-            )?;
-            position = pos;
-            n_cn += n_cns;
-            // Re-key option channels using negative block_position
-            for (_rec_pos, cn_struct) in cnss {
-                let unique_key = -(cn_struct.block_position as i32);
-                cns.insert(unique_key, cn_struct);
-            }
-        }
+        let (rekeyed_cns, rekeyed_n_cn) = parse_and_rekey_channels(
+            rdr,
+            &cv_block.cv_cn_option,
+            &mut position,
+            sharable,
+            record_layout,
+            cg_cycle_count,
+        )?;
+        n_cn += rekeyed_n_cn;
+        cns.extend(rekeyed_cns);
         Ok((
             Composition {
                 block: Compo::CV(Box::new(cv_block)),
@@ -3848,33 +3851,23 @@ fn parse_composition(
     } else if block_header_short.hdr_id == "##CU".as_bytes() {
         // Channel Union
         let cu_block: Cu4Block = block.read_le().context("Failed parsing CU block")?;
-        let cv_composition: Option<Box<Composition>> = None; // no composition possible after CV block
+        let cu_composition: Option<Box<Composition>> = None;
         let shape = (Vec::<usize>::new(), Order::RowMajor);
         array_size = 0;
-        // reads all the listed Channel Blocks
-        // For CU members, re-key using negative block_position to avoid HashMap
-        // collisions since all members share the same byte offset in the record.
-        for target in cu_block.cu_cn_member.iter() {
-            let (cnss, pos, n_cns, _first_rec_pos) = parse_cn4(
-                rdr,
-                *target,
-                position,
-                sharable,
-                record_layout,
-                cg_cycle_count,
-            )?;
-            position = pos;
-            n_cn += n_cns;
-            // Re-key member channels using negative block_position
-            for (_rec_pos, cn_struct) in cnss {
-                let unique_key = -(cn_struct.block_position as i32);
-                cns.insert(unique_key, cn_struct);
-            }
-        }
+        let (rekeyed_cns, rekeyed_n_cn) = parse_and_rekey_channels(
+            rdr,
+            &cu_block.cu_cn_member,
+            &mut position,
+            sharable,
+            record_layout,
+            cg_cycle_count,
+        )?;
+        n_cn += rekeyed_n_cn;
+        cns.extend(rekeyed_cns);
         Ok((
             Composition {
                 block: Compo::CU(Box::new(cu_block)),
-                compo: cv_composition,
+                compo: cu_composition,
             },
             position,
             array_size,
