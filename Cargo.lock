@@ -749,7 +749,7 @@ version = "0.29.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "befbfd072a8e81c02f8c507aefce431fe5e7d051f83d48a23ffc9b9fe5a11799"
 dependencies = [
- "clap 4.5.54",
+ "clap 4.5.56",
  "heck",
  "indexmap",
  "log 0.4.29",
@@ -880,18 +880,18 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.5.54"
+version = "4.5.56"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6e6ff9dcd79cff5cd969a17a545d79e84ab086e444102a591e288a8aa3ce394"
+checksum = "a75ca66430e33a14957acc24c5077b503e7d374151b2b4b3a10c83b4ceb4be0e"
 dependencies = [
  "clap_builder",
 ]
 
 [[package]]
 name = "clap_builder"
-version = "4.5.54"
+version = "4.5.56"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa42cf4d2b7a41bc8f663a7cab4031ebafa1bf3875705bfaf8466dc60ab52c00"
+checksum = "793207c7fa6300a0608d1080b858e5fdbe713cdc1c8db9fb17777d8a13e63df0"
 dependencies = [
  "anstream",
  "anstyle",
@@ -1025,7 +1025,7 @@ dependencies = [
  "anes",
  "cast",
  "ciborium",
- "clap 4.5.54",
+ "clap 4.5.56",
  "criterion-plot",
  "itertools 0.13.0",
  "num-traits",
@@ -2308,7 +2308,7 @@ dependencies = [
 
 [[package]]
 name = "mdfr"
-version = "0.6.4"
+version = "0.6.5"
 dependencies = [
  "anyhow",
  "arrow",
@@ -2316,7 +2316,7 @@ dependencies = [
  "byteorder",
  "cbindgen",
  "chrono",
- "clap 4.5.54",
+ "clap 4.5.56",
  "codepage",
  "criterion",
  "crossbeam-channel",
@@ -2324,7 +2324,7 @@ dependencies = [
  "env_logger 0.11.8",
  "fasteval",
  "flate2",
- "glob 0.3.3",
+ "glob 0.2.11",
  "half",
  "hdf5",
  "itertools 0.14.0",
@@ -4988,9 +4988,9 @@ dependencies = [
 
 [[package]]
 name = "whoami"
-version = "2.0.2"
+version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ace4d5c7b5ab3d99629156d4e0997edbe98a4beb6d5ba99e2cae830207a81983"
+checksum = "8fae98cf96deed1b7572272dfc777713c249ae40aa1cf8862e091e8b745f5361"
 dependencies = [
  "libredox",
  "wasite",

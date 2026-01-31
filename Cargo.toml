@@ -1,6 +1,6 @@
 [package]
 name = "mdfr"
-version = "0.6.4"
+version = "0.6.5"
 description = "A package for reading and writing MDF files"
 authors = ["ratal <ratal@ratal.org>"]
 edition = "2024"
@@ -21,7 +21,7 @@ ndarray = ["dep:ndarray"]
 hdf5-mpio = ["hdf5/mpio"]
 
 [dependencies]
-clap = "4.5.54" # for input arguments
+clap = "4.5.56" # for input arguments
 anyhow = { version = "1.0", features = ["backtrace"] } # error handling
 log = "0.4" # to log events
 byteorder = "1.4" # for bytes conversions
@@ -44,7 +44,7 @@ transpose = "0.2" # for DZBlock transpose
 fasteval = "0.2" # for algebraic conversion
 itertools = "0.14"
 serde = { version = "1.0", features = ["derive"] } # for serialization
-whoami = "2.0.2" # to get user name for writing file
+whoami = "2.1.0" # to get user name for writing file
 rand = "0.9" # for random numbers
 arrow = { version = "57.1.0", features = [
     "pyarrow",
