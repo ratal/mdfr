@@ -554,6 +554,21 @@ impl ChannelData {
             }
         }
     }
+    /// Extracts integer channel values as a Vec<u64>.
+    /// Returns None for non-integer types.
+    pub fn to_u64_vec(&self) -> Option<Vec<u64>> {
+        match self {
+            ChannelData::UInt8(a) => Some(a.values_slice().iter().map(|&v| v as u64).collect()),
+            ChannelData::UInt16(a) => Some(a.values_slice().iter().map(|&v| v as u64).collect()),
+            ChannelData::UInt32(a) => Some(a.values_slice().iter().map(|&v| v as u64).collect()),
+            ChannelData::UInt64(a) => Some(a.values_slice().to_vec()),
+            ChannelData::Int8(a) => Some(a.values_slice().iter().map(|&v| v as u64).collect()),
+            ChannelData::Int16(a) => Some(a.values_slice().iter().map(|&v| v as u64).collect()),
+            ChannelData::Int32(a) => Some(a.values_slice().iter().map(|&v| v as u64).collect()),
+            ChannelData::Int64(a) => Some(a.values_slice().iter().map(|&v| v as u64).collect()),
+            _ => None,
+        }
+    }
     /// returns mdf4 data type
     pub fn data_type(&self, endian: bool) -> u8 {
         if endian {

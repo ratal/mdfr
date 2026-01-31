@@ -2229,16 +2229,9 @@ impl Cg4 {
                 };
 
                 // Get discriminator values as u64
-                discriminator_values = match &disc_cn.data {
-                    ChannelData::UInt8(b) => b.values_slice().iter().map(|v| *v as u64).collect(),
-                    ChannelData::UInt16(b) => b.values_slice().iter().map(|v| *v as u64).collect(),
-                    ChannelData::UInt32(b) => b.values_slice().iter().map(|v| *v as u64).collect(),
-                    ChannelData::UInt64(b) => b.values_slice().to_vec(),
-                    ChannelData::Int8(b) => b.values_slice().iter().map(|v| *v as u64).collect(),
-                    ChannelData::Int16(b) => b.values_slice().iter().map(|v| *v as u64).collect(),
-                    ChannelData::Int32(b) => b.values_slice().iter().map(|v| *v as u64).collect(),
-                    ChannelData::Int64(b) => b.values_slice().iter().map(|v| *v as u64).collect(),
-                    _ => {
+                discriminator_values = match disc_cn.data.to_u64_vec() {
+                    Some(v) => v,
+                    None => {
                         log::warn!("CV discriminator channel has unsupported data type");
                         continue;
                     }
