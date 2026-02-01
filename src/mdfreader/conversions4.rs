@@ -1,13 +1,7 @@
 //! this modules implements functions to convert arrays into physical arrays using CCBlock
 use anyhow::{Context, Error, Result, bail};
-use arrow::array::{
-    Array, ArrayBuilder, AsArray, Float64Array, Float64Builder, LargeStringBuilder,
-    PrimitiveBuilder,
-};
-use arrow::compute::cast;
+use arrow::array::{ArrayBuilder, Float64Builder, LargeStringBuilder, PrimitiveBuilder};
 use arrow::datatypes::{ArrowPrimitiveType, Float32Type, Float64Type};
-use arrow::datatypes::{DataType, Int64Type};
-use arrow::error::ArrowError;
 use itertools::Itertools;
 use log::warn;
 use num::abs;
@@ -173,19 +167,9 @@ where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
-    let mut array_f64: Float64Builder = array
-        .finish()
-        .try_unary(|value| {
-            num::cast::cast::<T::Native, f64>(value)
-                .ok_or_else(|| ArrowError::CastError(format!("Can't cast value {value:?} to f64")))
-        })
-        .context("failed converting array to f64")?
-        .into_builder()
-        .expect("Failed getting mutable F64");
-    array_f64.values_slice_mut().iter_mut().for_each(|x| {
-        *x = *x * p2 + p1;
-    });
-    Ok(array_f64)
+    let values = array.values_slice();
+    let converted: Vec<f64> = values.iter().map(|v| (*v).as_() * p2 + p1).collect();
+    Ok(Float64Builder::new_from_buffer(converted.into(), None))
 }
 
 /// Apply linear conversion to get physical data
@@ -249,10 +233,10 @@ fn linear_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
                 );
             }
             ChannelData::Float64(a) => {
-                cn.data = ChannelData::Float64(
-                    linear_calculation(a, p1, p2)
-                        .context("failed linear conversion of f64 channel")?,
-                );
+                // In-place conversion for f64 - avoids all allocations
+                a.values_slice_mut().iter_mut().for_each(|x| {
+                    *x = *x * p2 + p1;
+                });
             }
             ChannelData::Complex32(a) => {
                 cn.data = ChannelData::Complex64(ComplexArrow::new_from_primitive(
@@ -383,16 +367,15 @@ where
     let p4 = cc_val[3];
     let p5 = cc_val[4];
     let p6 = cc_val[5];
-    let array_f64: Float64Array = cast(&(array.finish_cloned()), &DataType::Float64)
-        .context("failed converting Array to f64 Array")?
-        .as_primitive::<Float64Type>()
-        .clone();
-    let array_f64 = array_f64
-        .unary_mut(|x| (x * x * p1 + x * p2 + p3) / (x * x * p4 + x * p5 + p6))
-        .expect("error applying rational conversion");
-    Ok(array_f64
-        .into_builder()
-        .expect("failed converting to builder"))
+    let values = array.values_slice();
+    let converted: Vec<f64> = values
+        .iter()
+        .map(|v| {
+            let x: f64 = (*v).as_();
+            (x * x * p1 + x * p2 + p3) / (x * x * p4 + x * p5 + p6)
+        })
+        .collect();
+    Ok(Float64Builder::new_from_buffer(converted.into(), None))
 }
 
 /// Apply rational conversion to get physical data
@@ -453,10 +436,16 @@ fn rational_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
             );
         }
         ChannelData::Float64(a) => {
-            cn.data = ChannelData::Float64(
-                rational_calculation(a, cc_val)
-                    .context("failed rational conversion of f64 channel")?,
-            );
+            let p1 = cc_val[0];
+            let p2 = cc_val[1];
+            let p3 = cc_val[2];
+            let p4 = cc_val[3];
+            let p5 = cc_val[4];
+            let p6 = cc_val[5];
+            a.values_slice_mut().iter_mut().for_each(|x| {
+                let v = *x;
+                *x = (v * v * p1 + v * p2 + p3) / (v * v * p4 + v * p5 + p6);
+            });
         }
         ChannelData::Complex32(a) => {
             cn.data = ChannelData::Complex64(ComplexArrow::new_from_primitive(
@@ -581,41 +570,25 @@ where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
-    let array_f64: Float64Array = array
-        .finish_cloned()
-        .try_unary(|value| {
-            num::cast::cast::<T::Native, f64>(value)
-                .ok_or_else(|| ArrowError::CastError(format!("Can't cast value {value:?} to f64")))
-        })
-        .context("failed converting array to f64")?;
-    let mut new_array = vec![0f64; array_f64.len()];
-    new_array
-        .iter_mut()
-        .zip(array_f64.values())
-        .for_each(|(new_a, a)| {
-            let mut map = BTreeMap::new();
-            map.insert("X".to_string(), *a);
-            let val = compiled.eval(slab, &mut map);
-            *new_a = match val {
-                Ok(val) => val,
-                Err(err) => {
-                    warn!(
-                        "could not compute the value {a:?} with expression {compiled:?}, error {err}"
-                    );
-                    *a
-                }
+    let values = array.values_slice();
+    let mut new_array = vec![0f64; values.len()];
+    let mut map = BTreeMap::new();
+    new_array.iter_mut().zip(values).for_each(|(new_a, v)| {
+        let a: f64 = (*v).as_();
+        map.clear();
+        map.insert("X".to_string(), a);
+        let val = compiled.eval(slab, &mut map);
+        *new_a = match val {
+            Ok(val) => val,
+            Err(err) => {
+                warn!(
+                    "could not compute the value {a:?} with expression {compiled:?}, error {err}"
+                );
+                a
             }
-        });
-    Ok(PrimitiveBuilder::new_from_buffer(
-        new_array.into(),
-        array_f64.nulls().map(|null_buffer| {
-            null_buffer
-                .inner()
-                .sliced()
-                .into_mutable()
-                .expect("failed converting null_buffer into mutable")
-        }),
-    ))
+        }
+    });
+    Ok(PrimitiveBuilder::new_from_buffer(new_array.into(), None))
 }
 
 /// Apply algebraic conversion to get physical data
@@ -817,20 +790,15 @@ where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
-    let array_f64: Float64Array = array
-        .finish_cloned()
-        .try_unary(|value| {
-            num::cast::cast::<T::Native, f64>(value)
-                .ok_or_else(|| ArrowError::CastError(format!("Can't cast value {value:?} to f64")))
-        })
-        .context("failed converting array to f64")?;
-    let mut new_array = vec![0f64; array_f64.len()];
+    let values = array.values_slice();
+    let mut new_array = vec![0f64; values.len()];
     new_array
         .iter_mut()
-        .zip(array_f64.values())
-        .for_each(|(new_array, a)| {
-            *new_array = match val
-                .binary_search_by(|&(xi, _)| xi.partial_cmp(a).unwrap_or(Ordering::Equal))
+        .zip(values)
+        .for_each(|(new_a, v)| {
+            let a: f64 = (*v).as_();
+            *new_a = match val
+                .binary_search_by(|&(xi, _)| xi.partial_cmp(&a).unwrap_or(Ordering::Equal))
             {
                 Ok(idx) => *val[idx].1,
                 Err(0) => *val[0].1,
@@ -1017,17 +985,15 @@ where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
-    let array_f64: Float64Array = cast(&array.finish(), &DataType::Float64)
-        .context("failed converting Array to f64 Array")?
-        .as_primitive::<Float64Type>()
-        .clone();
-    let mut new_array = vec![0f64; array_f64.len()];
+    let values = array.values_slice();
+    let mut new_array = vec![0f64; values.len()];
     new_array
         .iter_mut()
-        .zip(array_f64.values())
-        .for_each(|(new_array, a)| {
-            *new_array = match val
-                .binary_search_by(|&(xi, _)| xi.partial_cmp(a).unwrap_or(Ordering::Equal))
+        .zip(values)
+        .for_each(|(new_a, v)| {
+            let a: f64 = (*v).as_();
+            *new_a = match val
+                .binary_search_by(|&(xi, _)| xi.partial_cmp(&a).unwrap_or(Ordering::Equal))
             {
                 Ok(idx) => *val[idx].1,
                 Err(0) => *val[0].1,
@@ -1240,23 +1206,21 @@ where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
-    let array_f64: Float64Array = cast(&array.finish_cloned(), &DataType::Float64)
-        .context("failed converting Array to f64 Array")?
-        .as_primitive::<Float64Type>()
-        .clone();
-    let mut new_array = vec![0f64; array_f64.len()];
+    let values = array.values_slice();
+    let mut new_array = vec![0f64; values.len()];
     new_array
         .iter_mut()
-        .zip(array_f64.values())
-        .for_each(|(new_array, a)| {
-            *new_array = match val
-                .binary_search_by(|&(xi, _, _)| xi.partial_cmp(a).unwrap_or(Ordering::Equal))
+        .zip(values)
+        .for_each(|(new_a, v)| {
+            let a: f64 = (*v).as_();
+            *new_a = match val
+                .binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a).unwrap_or(Ordering::Equal))
             {
                 Ok(idx) => val[idx].2,
                 Err(0) => *default_value,
-                Err(idx) if (idx >= val.len() && *a <= val[idx - 1].1) => val[idx - 1].2,
+                Err(idx) if (idx >= val.len() && a <= val[idx - 1].1) => val[idx - 1].2,
                 Err(idx) => {
-                    if *a <= val[idx].1 {
+                    if a <= val[idx].1 {
                         val[idx].2
                     } else {
                         *default_value
@@ -1374,6 +1338,7 @@ fn value_to_text_calculation_int<T: ArrowPrimitiveType>(
     sharable: &SharableBlocks,
 ) -> Result<LargeStringBuilder, Error>
 where
+    <T as ArrowPrimitiveType>::Native: AsPrimitive<f64> + AsPrimitive<i64>,
 {
     // table applicable only to integers, no canonization
     let mut table_int: HashMap<i64, TextOrScaleConversion> = HashMap::with_capacity(cc_val.len());
@@ -1393,45 +1358,37 @@ where
             }
         }
     }
-    let array_f64: Float64Array = cast(&array.finish_cloned(), &DataType::Float64)
-        .context("failed converting Array to f64 Array")?
-        .as_primitive::<Float64Type>()
-        .clone();
-    let array_i64 = cast(&array.finish_cloned(), &DataType::Int64)
-        .context("failed converting Array to Int64 Array")?
-        .as_primitive::<Int64Type>()
-        .clone();
-    let mut new_array = LargeStringBuilder::with_capacity(array_f64.len(), 32);
-    array_f64
-        .iter()
-        .zip(array_i64.iter())
-        .for_each(|(a_f64, a_i64)| {
-            if let Some(tosc) = table_int.get(&a_i64.unwrap_or_default()) {
-                match tosc {
-                    TextOrScaleConversion::Txt(txt) => {
-                        new_array.append_value(txt.clone());
-                    }
-                    TextOrScaleConversion::Scale(conv) => {
-                        new_array.append_value(conv.eval_to_txt(a_f64.unwrap_or(0f64)));
-                    }
-                    _ => {
-                        new_array.append_value(a_f64.unwrap_or(0f64).to_string());
-                    }
+    let values = array.values_slice();
+    let mut new_array = LargeStringBuilder::with_capacity(values.len(), 32);
+    values.iter().for_each(|v| {
+        let a_f64: f64 = (*v).as_();
+        let a_i64: i64 = (*v).as_();
+        if let Some(tosc) = table_int.get(&a_i64) {
+            match tosc {
+                TextOrScaleConversion::Txt(txt) => {
+                    new_array.append_value(txt.clone());
                 }
-            } else {
-                match &def {
-                    DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                        new_array.append_value(txt.clone());
-                    }
-                    DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                        new_array.append_value(conv.eval_to_txt(a_f64.unwrap_or(0f64)));
-                    }
-                    _ => {
-                        new_array.append_value(a_f64.unwrap_or(0f64).to_string());
-                    }
+                TextOrScaleConversion::Scale(conv) => {
+                    new_array.append_value(conv.eval_to_txt(a_f64));
+                }
+                _ => {
+                    new_array.append_value(a_f64.to_string());
                 }
             }
-        });
+        } else {
+            match &def {
+                DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                    new_array.append_value(txt.clone());
+                }
+                DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                    new_array.append_value(conv.eval_to_txt(a_f64));
+                }
+                _ => {
+                    new_array.append_value(a_f64.to_string());
+                }
+            }
+        }
+    });
     if let Some(validity) = array.validity_slice_mut() {
         let _ = new_array.validity_slice_mut().insert(validity);
     }
@@ -1729,7 +1686,10 @@ fn value_range_to_text_calculation<T: ArrowPrimitiveType>(
     cc_val: &[f64],
     cc_ref: &[i64],
     sharable: &SharableBlocks,
-) -> LargeStringBuilder {
+) -> LargeStringBuilder
+where
+    <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
+{
     let n_keys = cc_val.len() / 2;
     let mut keys: Vec<KeyRange> = Vec::with_capacity(n_keys);
     for (key_min, key_max) in cc_val.iter().tuples() {
@@ -1769,12 +1729,10 @@ fn value_range_to_text_calculation<T: ArrowPrimitiveType>(
             }
         }
     }
-    let mut new_array = LargeStringBuilder::with_capacity(array.len(), 32);
-    let array_f64: Float64Array = cast(&array.finish_cloned(), &DataType::Float64)
-        .expect("failed converting Array to f64 Array")
-        .as_primitive::<Float64Type>()
-        .clone();
-    array_f64.values().iter().for_each(|a| {
+    let values = array.values_slice();
+    let mut new_array = LargeStringBuilder::with_capacity(values.len(), 32);
+    values.iter().for_each(|v| {
+        let a: &f64 = &(*v).as_();
         let matched_key = keys
             .iter()
             .enumerate()
@@ -1992,7 +1950,10 @@ fn bitfield_text_table_calculation<T: ArrowPrimitiveType>(
     cc_val: &[u64],
     cc_ref: &[i64],
     sharable: &SharableBlocks,
-) -> Result<LargeStringBuilder> {
+) -> Result<LargeStringBuilder>
+where
+    <T as ArrowPrimitiveType>::Native: AsPrimitive<f64> + AsPrimitive<i64>,
+{
     let mut table: Vec<(ValueOrValueRangeToText, Option<String>)> =
         Vec::with_capacity(cc_ref.len());
     for pointer in cc_ref.iter() {
@@ -2105,136 +2066,127 @@ fn bitfield_text_table_calculation<T: ArrowPrimitiveType>(
         }
     }
 
-    let array_f64 = cast(&array.finish_cloned(), &DataType::Float64)
-        .context("failed converting Array to f64 Array")?
-        .as_primitive::<Float64Type>()
-        .clone();
-    let array_i64 = cast(&array.finish_cloned(), &DataType::Int64)
-        .context("failed converting Array to Int64 Array")?
-        .as_primitive::<Int64Type>()
-        .clone();
-    let mut new_array = LargeStringBuilder::with_capacity(array.len(), 32);
-    array_f64
-        .iter()
-        .zip(array_i64.iter())
-        .for_each(|(a, a_i64)| {
-            let mut new_a = String::new();
-            for (ind, val) in cc_val.iter().enumerate() {
-                match &table[ind] {
-                    (ValueOrValueRangeToText::ValueToText(table_int, def), name) => {
-                        let ref_val =
-                            a_i64.unwrap_or_default() & (val.to_i64().unwrap_or_default());
-                        if let Some(tosc) = table_int.get(&ref_val) {
-                            match tosc {
-                                TextOrScaleConversion::Txt(txt) => {
-                                    if let Some(n) = name {
-                                        new_a = format!("{} | {} = {}", new_a, n, txt.clone());
-                                    } else {
-                                        new_a = format!("{} | {}", new_a, txt.clone());
-                                    }
-                                }
-                                TextOrScaleConversion::Scale(conv) => {
-                                    if let Some(n) = name {
-                                        new_a = format!(
-                                            "{} | {} = {}",
-                                            new_a,
-                                            n,
-                                            conv.eval_to_txt(a.unwrap_or_default())
-                                        );
-                                    } else {
-                                        new_a = format!(
-                                            "{} | {}",
-                                            new_a,
-                                            conv.eval_to_txt(a.unwrap_or_default())
-                                        );
-                                    }
-                                }
-                                _ => {
-                                    new_a = format!("{} | {}", new_a, "nothing");
+    let values = array.values_slice();
+    let mut new_array = LargeStringBuilder::with_capacity(values.len(), 32);
+    values.iter().for_each(|v| {
+        let a_f64: f64 = (*v).as_();
+        let a_i64: i64 = (*v).as_();
+        let mut new_a = String::new();
+        for (ind, val) in cc_val.iter().enumerate() {
+            match &table[ind] {
+                (ValueOrValueRangeToText::ValueToText(table_int, def), name) => {
+                    let ref_val = a_i64 & (val.to_i64().unwrap_or_default());
+                    if let Some(tosc) = table_int.get(&ref_val) {
+                        match tosc {
+                            TextOrScaleConversion::Txt(txt) => {
+                                if let Some(n) = name {
+                                    new_a = format!("{} | {} = {}", new_a, n, txt.clone());
+                                } else {
+                                    new_a = format!("{} | {}", new_a, txt.clone());
                                 }
                             }
-                        } else {
-                            match &def {
-                                DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                                    new_a.clone_from(txt);
+                            TextOrScaleConversion::Scale(conv) => {
+                                if let Some(n) = name {
+                                    new_a = format!(
+                                        "{} | {} = {}",
+                                        new_a,
+                                        n,
+                                        conv.eval_to_txt(a_f64)
+                                    );
+                                } else {
+                                    new_a = format!(
+                                        "{} | {}",
+                                        new_a,
+                                        conv.eval_to_txt(a_f64)
+                                    );
                                 }
-                                DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                                    new_a = conv.eval_to_txt(a.unwrap_or(0f64));
-                                }
-                                _ => {
-                                    new_a = format!("{} | {}", new_a, "nothing");
-                                }
+                            }
+                            _ => {
+                                new_a = format!("{} | {}", new_a, "nothing");
+                            }
+                        }
+                    } else {
+                        match &def {
+                            DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                                new_a.clone_from(txt);
+                            }
+                            DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                                new_a = conv.eval_to_txt(a_f64);
+                            }
+                            _ => {
+                                new_a = format!("{} | {}", new_a, "nothing");
                             }
                         }
                     }
-                    (ValueOrValueRangeToText::ValueRangeToText(txt, def, keys), name) => {
-                        let matched_key = keys.iter().enumerate().find(|&x| {
-                            (x.1.min <= a.unwrap_or_default()) && (a.unwrap_or_default() <= x.1.max)
-                        });
-                        if let Some(key) = matched_key {
-                            match &txt[key.0] {
-                                TextOrScaleConversion::Txt(txt) => {
-                                    if let Some(n) = name {
-                                        new_a = format!("{} | {} = {}", new_a, n, txt.clone());
-                                    } else {
-                                        new_a = format!("{} | {}", new_a, txt.clone());
-                                    }
-                                }
-                                TextOrScaleConversion::Scale(conv) => {
-                                    if let Some(n) = name {
-                                        new_a = format!(
-                                            "{} | {} = {}",
-                                            new_a,
-                                            n,
-                                            conv.eval_to_txt(a.unwrap_or_default())
-                                        );
-                                    } else {
-                                        new_a = format!(
-                                            "{} | {}",
-                                            new_a,
-                                            conv.eval_to_txt(a.unwrap_or_default())
-                                        );
-                                    }
-                                }
-                                _ => {
-                                    new_array.append_value(format!("{} | {}", new_a, "nothing"));
+                }
+                (ValueOrValueRangeToText::ValueRangeToText(txt, def, keys), name) => {
+                    let matched_key = keys.iter().enumerate().find(|&x| {
+                        (x.1.min <= a_f64) && (a_f64 <= x.1.max)
+                    });
+                    if let Some(key) = matched_key {
+                        match &txt[key.0] {
+                            TextOrScaleConversion::Txt(txt) => {
+                                if let Some(n) = name {
+                                    new_a = format!("{} | {} = {}", new_a, n, txt.clone());
+                                } else {
+                                    new_a = format!("{} | {}", new_a, txt.clone());
                                 }
                             }
-                        } else {
-                            match &def {
-                                DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                                    if let Some(n) = name {
-                                        new_a = format!("{} | {} = {}", new_a, n, txt.clone());
-                                    } else {
-                                        new_a = format!("{} | {}", new_a, txt.clone());
-                                    }
+                            TextOrScaleConversion::Scale(conv) => {
+                                if let Some(n) = name {
+                                    new_a = format!(
+                                        "{} | {} = {}",
+                                        new_a,
+                                        n,
+                                        conv.eval_to_txt(a_f64)
+                                    );
+                                } else {
+                                    new_a = format!(
+                                        "{} | {}",
+                                        new_a,
+                                        conv.eval_to_txt(a_f64)
+                                    );
                                 }
-                                DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                                    if let Some(n) = name {
-                                        new_a = format!(
-                                            "{} | {} = {}",
-                                            new_a,
-                                            n,
-                                            conv.eval_to_txt(a.unwrap_or_default())
-                                        );
-                                    } else {
-                                        new_a = format!(
-                                            "{} | {}",
-                                            new_a,
-                                            conv.eval_to_txt(a.unwrap_or_default())
-                                        );
-                                    }
+                            }
+                            _ => {
+                                new_array.append_value(format!("{} | {}", new_a, "nothing"));
+                            }
+                        }
+                    } else {
+                        match &def {
+                            DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                                if let Some(n) = name {
+                                    new_a = format!("{} | {} = {}", new_a, n, txt.clone());
+                                } else {
+                                    new_a = format!("{} | {}", new_a, txt.clone());
                                 }
-                                _ => {
-                                    new_a = format!("{} | {}", new_a, "nothing");
+                            }
+                            DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                                if let Some(n) = name {
+                                    new_a = format!(
+                                        "{} | {} = {}",
+                                        new_a,
+                                        n,
+                                        conv.eval_to_txt(a_f64)
+                                    );
+                                } else {
+                                    new_a = format!(
+                                        "{} | {}",
+                                        new_a,
+                                        conv.eval_to_txt(a_f64)
+                                    );
                                 }
+                            }
+                            _ => {
+                                new_a = format!("{} | {}", new_a, "nothing");
                             }
                         }
                     }
                 }
             }
-            new_array.append_value(new_a);
-        });
+        }
+        new_array.append_value(new_a);
+    });
     Ok(new_array)
 }
 

@@ -50,11 +50,11 @@ pub fn mdfreader4<'a>(
             };
             // read file data
             for (_dg_position, dg) in info.dg.iter_mut() {
-                // Let's find channel names
+                // Let's find channel names to read in this data group
                 channel_names_present_in_dg = HashSet::new();
                 for channel_group in dg.cg.values() {
-                    let cn = channel_group.channel_names.clone();
-                    channel_names_present_in_dg.par_extend(cn);
+                    channel_names_present_in_dg
+                        .extend(channel_group.channel_names.iter().cloned());
                 }
                 let channel_names_to_read_in_dg: HashSet<_> = channel_names_present_in_dg
                     .into_par_iter()
@@ -1150,12 +1150,14 @@ fn read_all_channels_sorted(
     // read by chunks and store in channel array
     let mut previous_index: usize = 0;
     let mut vlsd_channels: Vec<(u8, i32)> = Vec::new();
+    // Allocate buffer once and reuse across chunks
+    let max_chunk_size = chunks.iter().map(|c| c.1).max().unwrap_or(0);
+    let mut data_chunk = vec![0u8; max_chunk_size];
     for (n_record_chunk, chunk_size) in chunks {
-        let mut data_chunk = vec![0u8; chunk_size];
-        rdr.read_exact(&mut data_chunk)
+        rdr.read_exact(&mut data_chunk[..chunk_size])
             .context("Could not read data chunk")?;
         vlsd_channels = read_channels_from_bytes(
-            &data_chunk,
+            &data_chunk[..chunk_size],
             &mut channel_group.cn,
             channel_group.record_length as usize,
             previous_index,
@@ -1215,20 +1217,19 @@ fn read_all_channels_unsorted(
 
     // reads the sorted data block into chunks
     let mut data: Vec<u8> = Vec::new();
-    let mut data_chunk: Vec<u8>;
+    let mut data_chunk = vec![0u8; CHUNK_SIZE_READING_4];
     while position < data_block_length {
-        if (data_block_length - position) > CHUNK_SIZE_READING_4 {
-            // not last chunk of data
-            data_chunk = vec![0u8; CHUNK_SIZE_READING_4];
+        let chunk_size = if (data_block_length - position) > CHUNK_SIZE_READING_4 {
             position += CHUNK_SIZE_READING_4;
+            CHUNK_SIZE_READING_4
         } else {
-            // last chunk of data
-            data_chunk = vec![0u8; data_block_length - position];
-            position += data_block_length - position;
-        }
-        rdr.read_exact(&mut data_chunk)
+            let remaining = data_block_length - position;
+            position += remaining;
+            remaining
+        };
+        rdr.read_exact(&mut data_chunk[..chunk_size])
             .context("Could not read data chunk")?;
-        data.extend(data_chunk);
+        data.extend_from_slice(&data_chunk[..chunk_size]);
         read_all_channels_unsorted_from_bytes(
             &mut data,
             dg,
