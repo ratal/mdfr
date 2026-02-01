@@ -1933,7 +1933,14 @@ pub fn try_from(value: &dyn Array) -> Result<ChannelData, Error> {
                 bail!("FixedSizeList is not of size 2, to be used for complex")
             }
         }
-        _ => todo!(),
+        DataType::Union(_, _) => {
+            let array = value
+                .as_any()
+                .downcast_ref::<UnionArray>()
+                .context("could not downcast to UnionArray")?;
+            Ok(ChannelData::Union(UnionArray::from(array.to_data())))
+        }
+        dt => bail!("Arrow data type {dt} is not supported for conversion to ChannelData"),
     }
 }
 
