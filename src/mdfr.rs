@@ -48,6 +48,16 @@ impl Mdfr {
         let Mdfr(mdf) = self;
         mdf.get_version()
     }
+    /// returns true if the file was marked as unfinalized
+    pub fn is_unfinalized(&self) -> bool {
+        let Mdfr(mdf) = self;
+        mdf.is_unfinalized()
+    }
+    /// returns the standard and custom unfinalization flags (0, 0) if finalized or MDF3
+    pub fn get_unfin_flags(&self) -> (u16, u16) {
+        let Mdfr(mdf) = self;
+        mdf.get_unfin_flags()
+    }
     /// returns channel's data, numpy array or list, depending if data type is numeric or string|bytes
     fn get_channel_data(&self, channel_name: String) -> PyResult<Py<PyAny>> {
         let Mdfr(mdf) = self;
@@ -263,6 +273,19 @@ df=polars.DataFrame(series)
             Ok(channel_list)
         })
     }
+    /// returns the set of channel names that are in the same channel group as input channel name
+    pub fn get_channel_names_cg_set(&self, channel_name: String) -> PyResult<Py<PyAny>> {
+        let Mdfr(mdf) = self;
+        pyo3::Python::attach(|py| {
+            let channel_list: Py<PyAny> = mdf
+                .mdf_info
+                .get_channel_names_cg_set(&channel_name)
+                .into_pyobject(py)
+                .context("error converting channel group names set into python object")?
+                .into();
+            Ok(channel_list)
+        })
+    }
     /// returns a dict of master names keys for which values are a set of associated channel names
     pub fn get_master_channel_names_set(&self) -> PyResult<Py<PyAny>> {
         let Mdfr(mdf) = self;
@@ -301,6 +324,13 @@ df=polars.DataFrame(series)
     pub fn write(&mut self, file_name: &str, compression: bool) -> PyResult<Mdfr> {
         let Mdfr(mdf) = self;
         Ok(Mdfr(mdf.write(file_name, compression)?))
+    }
+    /// converts MDF version 3.x to 4.2 in memory
+    pub fn convert3to4(&mut self, file_name: &str) -> PyResult<()> {
+        let Mdfr(mdf) = self;
+        let converted = mdf.mdf_info.convert3to4(file_name)?;
+        mdf.mdf_info = converted;
+        Ok(())
     }
     /// Adds a new channel in memory (no file modification)
     /// Master must be a dict with keys name, type and flag
@@ -509,6 +539,16 @@ df=polars.DataFrame(series)
     pub fn list_channel_hierarchy(&mut self) -> PyResult<String> {
         let Mdfr(mdf) = self;
         Ok(mdf.mdf_info.list_channel_hierarchy())
+    }
+    /// list source information blocks (MDF 4.x only)
+    pub fn list_source_information(&self) -> PyResult<String> {
+        let Mdfr(mdf) = self;
+        Ok(mdf.mdf_info.list_source_information())
+    }
+    /// list sample reduction blocks for all channel groups (MDF 4.x only)
+    pub fn list_sample_reductions(&self) -> PyResult<String> {
+        let Mdfr(mdf) = self;
+        Ok(mdf.mdf_info.list_sample_reductions())
     }
     /// get channel hierarchy blocks (MDF 4.x only)
     pub fn get_channel_hierarchy_blocks(&mut self) -> Py<PyAny> {

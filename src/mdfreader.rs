@@ -94,6 +94,18 @@ impl Mdf {
     pub fn get_version(&self) -> u16 {
         self.mdf_info.get_version()
     }
+    /// returns true if the file was marked as unfinalized
+    pub fn is_unfinalized(&self) -> bool {
+        self.mdf_info.is_unfinalized()
+    }
+    /// returns the standard and custom unfinalization flags (0, 0) if finalized or MDF3
+    pub fn get_unfin_flags(&self) -> (u16, u16) {
+        self.mdf_info.get_unfin_flags()
+    }
+    /// List sample reduction blocks for all channel groups (MDF 4.x only)
+    pub fn list_sample_reductions(&self) -> String {
+        self.mdf_info.list_sample_reductions()
+    }
     /// returns channel's unit string
     pub fn get_channel_unit(&self, channel_name: &str) -> Result<Option<String>> {
         self.mdf_info.get_channel_unit(channel_name)

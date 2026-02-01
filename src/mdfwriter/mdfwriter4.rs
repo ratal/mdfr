@@ -264,46 +264,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
                 }
                 // channel composition
                 if let Some(compo) = &cn.composition {
-                    match &compo.block {
-                        Compo::CA(c) => {
-                            let header = Blockheader4Short {
-                                hdr_id: [35, 35, 67, 65], // ##CA
-                                hdr_len: c.ca_len,
-                                ..Default::default()
-                            };
-                            buffer
-                                .write_le(&header)
-                                .context("Could not write CABlock header")?;
-                            buffer
-                                .write_le(&1u64)
-                                .context("error writing number of links in CA Block")?;
-                            let ca_composition: u64 = 0;
-                            buffer
-                                .write_le(&ca_composition)
-                                .context("Could not write CABlock ca_composition")?;
-                            let mut ca_block = Ca4BlockMembers::default();
-                            ca_block.ca_ndim = c.ca_ndim;
-                            ca_block.ca_dim_size.clone_from(&c.ca_dim_size);
-                            buffer
-                                .write_le(&ca_composition)
-                                .context("Could not write CABlock members")?;
-                        }
-                        Compo::DS(_) => {
-                            todo!()
-                        }
-                        Compo::CL(_) => {
-                            todo!()
-                        }
-                        Compo::CU(_) => {
-                            todo!()
-                        }
-                        Compo::CV(_) => {
-                            todo!()
-                        }
-                        Compo::CN(_) => {
-                            todo!()
-                        }
-                    }
+                    write_composition(&mut buffer, compo)?;
                 }
             }
         }
@@ -315,6 +276,101 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
     Ok(Mdf {
         mdf_info: MdfInfo::V4(Box::new(new_info)),
     })
+}
+
+/// Writes a composition block (CA, DS, CL, CU, CV, CN) and any nested composition recursively
+fn write_composition(buffer: &mut Cursor<Vec<u8>>, compo: &Composition) -> Result<()> {
+    match &compo.block {
+        Compo::CA(c) => {
+            let header = Blockheader4Short {
+                hdr_id: [35, 35, 67, 65], // ##CA
+                hdr_len: c.ca_len,
+                ..Default::default()
+            };
+            buffer
+                .write_le(&header)
+                .context("Could not write CABlock header")?;
+            buffer
+                .write_le(&1u64)
+                .context("error writing number of links in CA Block")?;
+            let ca_composition: u64 = 0;
+            buffer
+                .write_le(&ca_composition)
+                .context("Could not write CABlock ca_composition")?;
+            let mut ca_block = Ca4BlockMembers::default();
+            ca_block.ca_ndim = c.ca_ndim;
+            ca_block.ca_dim_size.clone_from(&c.ca_dim_size);
+            buffer
+                .write_le(&ca_block)
+                .context("Could not write CABlock members")?;
+        }
+        Compo::DS(ds) => {
+            let header = Blockheader4Short {
+                hdr_id: [35, 35, 68, 83], // ##DS
+                hdr_len: 16 + 8 + ds.ds_links * 8 + 8,
+                ..Default::default()
+            };
+            buffer
+                .write_le(&header)
+                .context("Could not write DSBlock header")?;
+            buffer
+                .write_le(ds)
+                .context("Could not write DSBlock")?;
+        }
+        Compo::CL(cl) => {
+            let header = Blockheader4Short {
+                hdr_id: [35, 35, 67, 76], // ##CL
+                hdr_len: 48,
+                ..Default::default()
+            };
+            buffer
+                .write_le(&header)
+                .context("Could not write CLBlock header")?;
+            buffer
+                .write_le(cl)
+                .context("Could not write CLBlock")?;
+        }
+        Compo::CU(cu) => {
+            let header = Blockheader4Short {
+                hdr_id: [35, 35, 67, 85], // ##CU
+                hdr_len: 16 + 8 + cu.cu_n_links * 8 + 4 + 4,
+                ..Default::default()
+            };
+            buffer
+                .write_le(&header)
+                .context("Could not write CUBlock header")?;
+            buffer
+                .write_le(cu)
+                .context("Could not write CUBlock")?;
+        }
+        Compo::CV(cv) => {
+            let header = Blockheader4Short {
+                hdr_id: [35, 35, 67, 86], // ##CV
+                hdr_len: 16 + 8 + cv.cv_n_links * 8 + 4 + 4 + cv.cv_option_count as u64 * 8,
+                ..Default::default()
+            };
+            buffer
+                .write_le(&header)
+                .context("Could not write CVBlock header")?;
+            buffer
+                .write_le(cv)
+                .context("Could not write CVBlock")?;
+        }
+        Compo::CN(cn) => {
+            // Nested CN composition: write the CN block header + block data
+            buffer
+                .write_le(&cn.header)
+                .context("Could not write composition CN header")?;
+            buffer
+                .write_le(&cn.block)
+                .context("Could not write composition CN block")?;
+        }
+    }
+    // Handle recursive nested compositions
+    if let Some(nested) = &compo.compo {
+        write_composition(buffer, nested)?;
+    }
+    Ok(())
 }
 
 /// Writes the data blocks
@@ -662,6 +718,7 @@ fn create_blocks(
             record_length: cg_block.cg_data_bytes,
             vlsd_cg: None,
             invalid_bytes: None,
+            sr: Vec::new(),
         };
         new_cg.cn.insert(0, new_cn);
         new_cg.channel_names.insert(cn.unique_name.clone());

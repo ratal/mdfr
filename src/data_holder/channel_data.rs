@@ -10,8 +10,8 @@ use arrow::array::{
 };
 use arrow::buffer::{MutableBuffer, NullBuffer};
 use arrow::datatypes::{
-    DataType, Float32Type, Float64Type, Int8Type, Int16Type, Int32Type, Int64Type, UInt8Type,
-    UInt16Type, UInt32Type, UInt64Type,
+    DataType, Float16Type, Float32Type, Float64Type, Int8Type, Int16Type, Int32Type, Int64Type,
+    UInt8Type, UInt16Type, UInt32Type, UInt64Type,
 };
 use arrow::util::display::{ArrayFormatter, FormatOptions};
 use itertools::Itertools;
@@ -1806,7 +1806,14 @@ pub fn try_from(value: &dyn Array) -> Result<ChannelData, Error> {
             data.iter().for_each(|v| new_data.append_option(v));
             Ok(ChannelData::UInt64(new_data))
         }
-        DataType::Float16 => todo!(),
+        DataType::Float16 => {
+            let data = as_primitive_array::<Float16Type>(value);
+            let mut new_data = PrimitiveBuilder::<Float32Type>::with_capacity(data.len());
+            data.iter().for_each(|v| {
+                new_data.append_option(v.map(|f| f.to_f32()))
+            });
+            Ok(ChannelData::Float32(new_data))
+        }
         DataType::Float32 => {
             let data = as_primitive_array::<Float32Type>(value);
             let mut new_data = PrimitiveBuilder::with_capacity(data.len());

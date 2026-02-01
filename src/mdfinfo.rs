@@ -7,7 +7,7 @@ use arrow::array::Array;
 use binrw::{BinReaderExt, binrw};
 use codepage::to_encoding;
 use encoding_rs::Encoding;
-use log::info;
+use log::{info, warn};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
@@ -35,6 +35,29 @@ use self::mdfinfo3::build_channel_db3;
 use self::mdfinfo4::{At4Block, Ch4Block, Ev4Block, FhBlock};
 use self::sym_buf_reader::SymBufReader;
 use crate::mdfreader::{DataSignature, MasterSignature};
+
+/// "UnFinMF " identifier bytes for unfinalized MDF files
+const UNFINALIZED_ID: [u8; 8] = [85, 110, 70, 105, 110, 77, 70, 32];
+
+/// Standard unfinalization flag bits (id_unfin_flags)
+/// Bit 0: Update of cycle counters for CG-/CABLOCK required
+const UNFIN_CG_CYCLE_COUNTERS: u16 = 1 << 0;
+/// Bit 1: Update of cycle counters for SRBLOCKs required
+const UNFIN_SR_CYCLE_COUNTERS: u16 = 1 << 1;
+/// Bit 2: Update of length for last DTBLOCK required
+const UNFIN_LAST_DT_LENGTH: u16 = 1 << 2;
+/// Bit 3: Update of length for last RDBLOCK required
+const UNFIN_LAST_RD_LENGTH: u16 = 1 << 3;
+/// Bit 4: Update of last DLBLOCK in each chained list required
+const UNFIN_LAST_DL_BLOCK: u16 = 1 << 4;
+/// Bit 5: Update of cg_data_bytes and cg_inval_bytes in VLSD CGBLOCK required
+const UNFIN_VLSD_CG_BYTES: u16 = 1 << 5;
+/// Bit 6: Update of offset values for VLSD channel required
+const UNFIN_VLSD_OFFSET: u16 = 1 << 6;
+/// Bit 7: Update of cg_data_bytes and cg_inval_bytes in VLSC CGBLOCK required
+const UNFIN_VLSC_CG_BYTES: u16 = 1 << 7;
+/// Bit 8: Update of offset values for VLSC channel required
+const UNFIN_VLSC_OFFSET: u16 = 1 << 8;
 
 /// joins mdf versions 3.x and 4.x
 #[derive(Debug)]
@@ -113,6 +136,52 @@ impl MdfInfo {
             .read_le()
             .context("Could not parse buffer into IdBlock structure")?;
         info!("Read IdBlock");
+
+        // Check for unfinalized MDF file (MDF 4.x feature, version-independent)
+        let id_unfin_flags = id.id_unfin_flags;
+        let id_custom_unfin_flags = id.id_custom_unfin_flags;
+        let is_unfinalized = id.id_file_id == UNFINALIZED_ID || id_unfin_flags != 0;
+        if is_unfinalized {
+            warn!(
+                "Unfinalized MDF file detected (id_unfin_flags=0x{:04X}, id_custom_unfin_flags=0x{:04X}). \
+                 Data may be incomplete or metadata may be inaccurate.",
+                id_unfin_flags,
+                id_custom_unfin_flags,
+            );
+            if id_unfin_flags & UNFIN_CG_CYCLE_COUNTERS != 0 {
+                warn!("  Bit 0: CG/CA cycle counters may be incorrect");
+            }
+            if id_unfin_flags & UNFIN_SR_CYCLE_COUNTERS != 0 {
+                warn!("  Bit 1: SR cycle counters may be incorrect");
+            }
+            if id_unfin_flags & UNFIN_LAST_DT_LENGTH != 0 {
+                warn!("  Bit 2: Last DT block length may be incorrect");
+            }
+            if id_unfin_flags & UNFIN_LAST_RD_LENGTH != 0 {
+                warn!("  Bit 3: Last RD block length may be incorrect");
+            }
+            if id_unfin_flags & UNFIN_LAST_DL_BLOCK != 0 {
+                warn!("  Bit 4: Last DL block may have incorrect dl_count or NIL links");
+            }
+            if id_unfin_flags & UNFIN_VLSD_CG_BYTES != 0 {
+                warn!("  Bit 5: VLSD CG data_bytes/inval_bytes may be incorrect");
+            }
+            if id_unfin_flags & UNFIN_VLSD_OFFSET != 0 {
+                warn!("  Bit 6: VLSD channel offsets may be incorrect");
+            }
+            if id_unfin_flags & UNFIN_VLSC_CG_BYTES != 0 {
+                warn!("  Bit 7: VLSC CG data_bytes/inval_bytes may be incorrect");
+            }
+            if id_unfin_flags & UNFIN_VLSC_OFFSET != 0 {
+                warn!("  Bit 8: VLSC channel offsets may be incorrect");
+            }
+            if id_custom_unfin_flags != 0 {
+                warn!(
+                    "  Custom finalization flags set (tool-specific): 0x{:04X}",
+                    id_custom_unfin_flags
+                );
+            }
+        }
 
         // Depending of version different blocks
         let mdf_info: MdfInfo = if id.id_ver < 400 {
@@ -202,6 +271,7 @@ impl MdfInfo {
                 sharable,
                 channel_names_set,
                 ch,
+                is_unfinalized,
             }))
         };
         info!("Finished reading metadata");
@@ -212,6 +282,23 @@ impl MdfInfo {
         match self {
             MdfInfo::V3(mdfinfo3) => mdfinfo3.id_block.id_ver,
             MdfInfo::V4(mdfinfo4) => mdfinfo4.id_block.id_ver,
+        }
+    }
+    /// returns true if the file was marked as unfinalized
+    pub fn is_unfinalized(&self) -> bool {
+        match self {
+            MdfInfo::V3(_) => false,
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.is_unfinalized,
+        }
+    }
+    /// returns the standard and custom unfinalization flags (0, 0) if finalized or MDF3
+    pub fn get_unfin_flags(&self) -> (u16, u16) {
+        match self {
+            MdfInfo::V3(_) => (0, 0),
+            MdfInfo::V4(mdfinfo4) => (
+                mdfinfo4.id_block.id_unfin_flags,
+                mdfinfo4.id_block.id_custom_unfin_flags,
+            ),
         }
     }
     /// returns channel's unit string
@@ -520,6 +607,13 @@ impl MdfInfo {
         match self {
             MdfInfo::V3(_) => String::new(),
             MdfInfo::V4(mdfinfo4) => mdfinfo4.list_source_information(),
+        }
+    }
+    /// List sample reduction blocks for all channel groups (MDF 4.x only)
+    pub fn list_sample_reductions(&self) -> String {
+        match self {
+            MdfInfo::V3(_) => String::new(),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.list_sample_reductions(),
         }
     }
 }

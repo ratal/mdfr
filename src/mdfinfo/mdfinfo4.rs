@@ -103,6 +103,8 @@ pub struct MdfInfo4 {
     pub channel_names_set: ChannelNamesSet, // set of channel names
     /// channel hierarchy blocks
     pub ch: HashMap<i64, Ch4Block>,
+    /// whether the file was marked as unfinalized
+    pub is_unfinalized: bool,
 }
 
 /// MdfInfo4's implementation
@@ -246,6 +248,7 @@ impl MdfInfo4 {
             ev: HashMap::new(),
             hd_block: Hd4::default(),
             ch: HashMap::new(),
+            is_unfinalized: false,
         }
     }
     /// Adds a new channel in memory (no file modification)
@@ -373,6 +376,7 @@ impl MdfInfo4 {
             record_length: n_bytes,
             vlsd_cg: None,
             invalid_bytes: None,
+            sr: Vec::new(),
         };
         cg.cn.insert(0, cn);
         cg.channel_names.insert(channel_name.to_string());
@@ -542,6 +546,40 @@ impl MdfInfo4 {
                 block.links[block.ev_scope_count as usize.. block.ev_attachment_count as usize].to_vec(),
                 block.ev_type,
             ))
+        }
+        output
+    }
+    /// list sample reduction blocks for all channel groups
+    pub fn list_sample_reductions(&self) -> String {
+        let mut output = String::new();
+        let sync_type_name = |st: u8| match st {
+            1 => "time (s)",
+            2 => "angle (rad)",
+            3 => "distance (m)",
+            4 => "index",
+            _ => "unknown",
+        };
+        for (_dg_pos, dg) in self.dg.iter() {
+            for (rec_id, cg) in dg.cg.iter() {
+                if !cg.sr.is_empty() {
+                    output.push_str(&format!(
+                        "Channel group (rec_id={}): {} sample reduction(s)\n",
+                        rec_id,
+                        cg.sr.len()
+                    ));
+                    for (i, sr) in cg.sr.iter().enumerate() {
+                        output.push_str(&format!(
+                            "  SR[{}]: cycle_count={}, interval={}, sync_type={} ({}), flags=0x{:02X}\n",
+                            i,
+                            sr.sr_cycle_count,
+                            sr.sr_interval,
+                            sr.sr_sync_type,
+                            sync_type_name(sr.sr_sync_type),
+                            sr.sr_flags,
+                        ));
+                    }
+                }
+            }
         }
         output
     }
@@ -2053,6 +2091,10 @@ fn parse_cg4_block(
 
     let record_length = cg.cg_data_bytes;
 
+    // Parse Sample Reduction blocks if present
+    let (sr_blocks, pos) = parse_sr4(rdr, cg.cg_sr_first, position)?;
+    position = pos;
+
     let cg_struct = Cg4 {
         header,
         block: cg,
@@ -2063,9 +2105,49 @@ fn parse_cg4_block(
         block_position: target,
         vlsd_cg: None,
         invalid_bytes: None,
+        sr: sr_blocks,
     };
 
     Ok((cg_struct, position, n_cn))
+}
+
+/// Parses the linked list of Sample Reduction blocks (SRBLOCK) starting from target
+fn parse_sr4(
+    rdr: &mut SymBufReader<&File>,
+    target: i64,
+    mut position: i64,
+) -> Result<(Vec<Sr4Block>, i64)> {
+    let mut sr_blocks: Vec<Sr4Block> = Vec::new();
+    if target <= 0 {
+        return Ok((sr_blocks, position));
+    }
+
+    let mut next = target;
+    while next > 0 {
+        // Read just the 16-byte header first to validate before allocating
+        rdr.seek_relative(next - position)
+            .context("Could not reach SR block header position")?;
+        let header: Blockheader4Short =
+            parse_block_header_short(rdr).context("Could not read SR block header")?;
+        // Validate block ID is ##SR
+        if &header.hdr_id != b"##SR" {
+            position = next + 16;
+            break;
+        }
+        // Now read the rest of the block
+        let mut buf = vec![0u8; (header.hdr_len - 16) as usize];
+        rdr.read_exact(&mut buf)
+            .context("Could not read SR block body")?;
+        position = next + header.hdr_len as i64;
+        let mut block = Cursor::new(buf);
+        let sr: Sr4Block = block
+            .read_le()
+            .context("Could not read buffer into Sr4Block struct")?;
+        next = sr.sr_sr_next;
+        sr_blocks.push(sr);
+    }
+
+    Ok((sr_blocks, position))
 }
 
 /// Channel Group struct
@@ -2091,6 +2173,8 @@ pub struct Cg4 {
     pub vlsd_cg: Option<(u64, i32)>,
     /// invalid byte array, optional
     pub invalid_bytes: Option<Vec<u8>>,
+    /// Sample reduction blocks linked from cg_sr_first
+    pub sr: Vec<Sr4Block>,
 }
 
 /// Cg4 implementations for extracting acquisition and source name and path
@@ -4427,7 +4511,7 @@ pub struct Cl4Block {
     /// Length of block in bytes
     // pub cl_len: u64,
     /// # of links
-    cl_links: u64,
+    pub cl_links: u64,
     /// links
     /// link to CNBlock describing dynamic data
     pub cl_composition: i64,
@@ -4458,7 +4542,7 @@ pub struct Cv4Block {
     /// Length of block in bytes
     // pub cv_len: u64,
     /// # of links
-    cv_n_links: u64,
+    pub cv_n_links: u64,
     /// links
     /// link to CNBlock for discriminator channel
     pub cv_cn_discriminator: i64,
@@ -4469,7 +4553,7 @@ pub struct Cv4Block {
     /// number of option channels
     pub cv_option_count: u32,
     /// reserved
-    cv_reserved: [u8; 4],
+    pub cv_reserved: [u8; 4],
     /// list of discriminator values for the options
     #[br(if(cv_option_count > 1), little, count = cv_option_count )]
     pub cv_option_val: Vec<u64>,
@@ -4489,7 +4573,7 @@ pub struct Cu4Block {
     /// Length of block in bytes
     // pub cu_len: u64,
     /// # of links
-    cu_n_links: u64,
+    pub cu_n_links: u64,
     /// links
     /// list of member channel
     #[br(if(cu_n_links > 1), little, count = cu_n_links)]
@@ -4498,5 +4582,41 @@ pub struct Cu4Block {
     /// number of member channels
     pub cu_member_count: u32,
     /// reserved
-    cu_reserved: [u8; 4],
+    pub cu_reserved: [u8; 4],
+}
+
+/// SR4 Sample Reduction block struct (Section 6.29 of MDF 4.3 spec)
+#[derive(Debug, PartialEq, Clone)]
+#[binrw]
+#[br(little)]
+#[repr(C)]
+pub struct Sr4Block {
+    /// Pointer to next sample reduction block (SRBLOCK) (can be NIL)
+    pub sr_sr_next: i64,
+    /// Pointer to reduction data block (RD-/RV-/DZBLOCK or DL-/LD-/HLBLOCK)
+    pub sr_data: i64,
+    /// Number of cycles, i.e. number of sample reduction records
+    pub sr_cycle_count: u64,
+    /// Length of sample interval used to calculate the reduction records (unit depends on sr_sync_type)
+    pub sr_interval: f64,
+    /// Sync type: 1=time(s), 2=angle(rad), 3=distance(m), 4=index
+    pub sr_sync_type: u8,
+    /// Flags: bit 0 = invalidation bytes present, bit 1 = dominant invalidation bit
+    pub sr_flags: u8,
+    /// Reserved
+    sr_reserved: [u8; 6],
+}
+
+impl Default for Sr4Block {
+    fn default() -> Self {
+        Sr4Block {
+            sr_sr_next: 0,
+            sr_data: 0,
+            sr_cycle_count: 0,
+            sr_interval: 0.0,
+            sr_sync_type: 1,
+            sr_flags: 0,
+            sr_reserved: [0; 6],
+        }
+    }
 }
