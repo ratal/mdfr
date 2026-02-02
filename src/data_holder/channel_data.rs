@@ -569,6 +569,14 @@ impl ChannelData {
             _ => None,
         }
     }
+    /// Returns a borrowed slice of u64 values if the data is already UInt64.
+    /// Zero-copy alternative to to_u64_vec() for the common case.
+    pub fn as_u64_slice(&self) -> Option<&[u64]> {
+        match self {
+            ChannelData::UInt64(a) => Some(a.values_slice()),
+            _ => None,
+        }
+    }
     /// returns mdf4 data type
     pub fn data_type(&self, endian: bool) -> u8 {
         if endian {

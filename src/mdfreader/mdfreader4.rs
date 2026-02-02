@@ -381,7 +381,7 @@ fn read_all_blocks_to_bytes(
             position
         };
         let (dl_blocks, mut pos) = parser_dl4(rdr, current_pos)?;
-        let mut combined_data = Vec::new();
+        let mut combined_data = Vec::with_capacity(CHUNK_SIZE_READING_4 * 2);
         for dl in dl_blocks {
             for data_ptr in dl.dl_data {
                 if data_ptr == 0 {
@@ -598,6 +598,7 @@ fn read_vlsd_from_bytes(
     let data_length = data.len();
     let mut remaining: usize = data_length - position;
     let mut nrecord: usize = 0;
+    let mut str_buf = String::new();
     match &mut cn.data {
         ChannelData::Utf8(array) => {
             let cn_data_type = cn.block.cn_data_type;
@@ -613,7 +614,7 @@ fn read_vlsd_from_bytes(
                         _ => length,
                     };
                     let record = &data[position..position + record_len];
-                    array.append_value(decode_string_bytes(record, cn_data_type, decoder)?);
+                    array.append_value(decode_string_bytes(record, cn_data_type, decoder, &mut str_buf)?);
                     position += length;
                     remaining = data_length - position;
                     nrecord += 1;
@@ -674,6 +675,7 @@ fn read_vlsc_from_bytes(
 ) -> Result<usize> {
     let data_length = data.len();
     let mut max_position: usize = 0;
+    let mut str_buf = String::new();
     match &mut cn.data {
         ChannelData::Utf8(array) => {
             let cn_data_type = cn.block.cn_data_type;
@@ -682,7 +684,7 @@ fn read_vlsc_from_bytes(
                 let length = *size as usize;
                 if start + length <= data_length && length > 0 {
                     let record = &data[start..start + length];
-                    array.append_value(decode_string_bytes(record, cn_data_type, decoder)?);
+                    array.append_value(decode_string_bytes(record, cn_data_type, decoder, &mut str_buf)?);
                     max_position = max_position.max(start + length);
                 } else if length == 0 {
                     array.append_value("");
@@ -1074,7 +1076,7 @@ fn parser_dl4_unsorted(
     channel_names_to_read_in_dg: &HashSet<String>,
 ) -> Result<i64> {
     // Read all data blocks
-    let mut data: Vec<u8> = Vec::new();
+    let mut data: Vec<u8> = Vec::with_capacity(CHUNK_SIZE_READING_4 * 2);
     let mut decoder: Dec = Dec {
         windows_1252: WINDOWS_1252.new_decoder(),
         utf_16_be: UTF_16BE.new_decoder(),
@@ -1083,7 +1085,12 @@ fn parser_dl4_unsorted(
     // initialise record counter
     let mut record_counter: HashMap<u64, (usize, Vec<u8>)> = HashMap::new();
     for cg in dg.cg.values_mut() {
-        record_counter.insert(cg.block.cg_record_id, (0, Vec::new()));
+        let capacity = if (cg.block.cg_flags & (CG_F_VLSD | CG_F_VLSC)) != 0 {
+            0 // VLSD/VLSC data is not accumulated in record_counter
+        } else {
+            cg.block.cg_cycle_count as usize * cg.record_length as usize
+        };
+        record_counter.insert(cg.block.cg_record_id, (0, Vec::with_capacity(capacity)));
     }
     for dl in dl_blocks {
         for data_pointer in dl.dl_data {
@@ -1212,11 +1219,16 @@ fn read_all_channels_unsorted(
     };
     // initialise record counter that will contain sorted data blocks for each channel group
     for cg in dg.cg.values_mut() {
-        record_counter.insert(cg.block.cg_record_id, (0, Vec::new()));
+        let capacity = if (cg.block.cg_flags & (CG_F_VLSD | CG_F_VLSC)) != 0 {
+            0 // VLSD/VLSC data is not accumulated in record_counter
+        } else {
+            cg.block.cg_cycle_count as usize * cg.record_length as usize
+        };
+        record_counter.insert(cg.block.cg_record_id, (0, Vec::with_capacity(capacity)));
     }
 
     // reads the sorted data block into chunks
-    let mut data: Vec<u8> = Vec::new();
+    let mut data: Vec<u8> = Vec::with_capacity(CHUNK_SIZE_READING_4 * 2);
     let mut data_chunk = vec![0u8; CHUNK_SIZE_READING_4];
     while position < data_block_length {
         let chunk_size = if (data_block_length - position) > CHUNK_SIZE_READING_4 {
@@ -1253,6 +1265,8 @@ fn read_all_channels_unsorted_from_bytes(
     let data_length = data.len();
     let dg_rec_id_size = dg.block.dg_rec_id_size as usize;
     let vlsd_data_start_offset = dg_rec_id_size + std::mem::size_of::<u32>();
+    // reusable string buffer for VLSC string decoding
+    let mut dst = String::new();
     // unsorted data into sorted data blocks, except for VLSD CG.
     let mut remaining: usize = data_length - position;
     while remaining > 0 {
@@ -1262,15 +1276,13 @@ fn read_all_channels_unsorted_from_bytes(
             rec_id = data[position].into();
         } else if dg_rec_id_size == 2 && remaining >= 2 {
             let rec = &data[position..position + std::mem::size_of::<u16>()];
-            rec_id = u16::from_le_bytes(rec.try_into().context("Could not convert record id u16")?)
-                as u64;
+            rec_id = u16::from_le_bytes(rec.try_into().unwrap()) as u64;
         } else if dg_rec_id_size == 4 && remaining >= 4 {
             let rec = &data[position..position + std::mem::size_of::<u32>()];
-            rec_id = u32::from_le_bytes(rec.try_into().context("Could not convert record id u32")?)
-                as u64;
+            rec_id = u32::from_le_bytes(rec.try_into().unwrap()) as u64;
         } else if dg_rec_id_size == 8 && remaining >= 8 {
             let rec = &data[position..position + std::mem::size_of::<u64>()];
-            rec_id = u64::from_le_bytes(rec.try_into().context("Could not convert record id u64")?);
+            rec_id = u64::from_le_bytes(rec.try_into().unwrap());
         } else {
             break; // not enough data remaining
         }
@@ -1282,8 +1294,7 @@ fn read_all_channels_unsorted_from_bytes(
                 if remaining >= 4 + dg_rec_id_size {
                     let len = &data[position + dg_rec_id_size..position + vlsd_data_start_offset];
                     let length: usize =
-                        u32::from_le_bytes(len.try_into().context("Could not read length")?)
-                            as usize;
+                        u32::from_le_bytes(len.try_into().unwrap()) as usize;
                     remaining = data_length - position - vlsd_data_start_offset;
                     if remaining >= length {
                         position += vlsd_data_start_offset;
@@ -1312,45 +1323,48 @@ fn read_all_channels_unsorted_from_bytes(
                                         }
                                         match &mut target_cn.data {
                                             ChannelData::Utf8(array) => {
-                                                let mut dst = String::with_capacity(record.len());
-                                                if target_cn.block.cn_data_type == 6 {
-                                                    let (_result, _size, _replacement) = decoder
-                                                        .windows_1252
-                                                        .decode_to_string(record, &mut dst, false);
-                                                } else if target_cn.block.cn_data_type == 7 {
-                                                    dst = str::from_utf8(record)
-                                                        .context(
-                                                            "Found invalid UTF-8 from VLSD record",
-                                                        )?
-                                                        .to_string();
-                                                } else if target_cn.block.cn_data_type == 8 {
-                                                    let (_result, _size, _replacement) = decoder
-                                                        .utf_16_le
-                                                        .decode_to_string(record, &mut dst, false);
-                                                } else if target_cn.block.cn_data_type == 9 {
-                                                    let (_result, _size, _replacement) = decoder
-                                                        .utf_16_be
-                                                        .decode_to_string(record, &mut dst, false);
-                                                } else if target_cn.block.cn_data_type == 17 {
-                                                    // Unicode with BOM
-                                                    let bom = Bom::from(record);
-                                                    let mut decoder = match bom {
-                                                        Bom::Utf8 => UTF_8.new_decoder(),
-                                                        Bom::Utf16Be => UTF_16BE.new_decoder(),
-                                                        Bom::Utf16Le => UTF_16LE.new_decoder(),
-                                                        Bom::Gb18030 => GB18030.new_decoder(),
-                                                        _ => {
-                                                            bail!("not implemented BOM type");
-                                                        }
-                                                    };
-                                                    let (_result, _size, _replacement) = decoder
-                                                        .decode_to_string(record, &mut dst, false);
+                                                if target_cn.block.cn_data_type == 7 {
+                                                    // UTF-8: no decoding needed, use &str directly
+                                                    array.append_value(
+                                                        str::from_utf8(record)
+                                                            .context("Found invalid UTF-8 from VLSD record")?
+                                                            .trim_end_matches('\0'),
+                                                    );
                                                 } else {
-                                                    bail!(
-                                                        "channel data type is not correct for a text"
-                                                    )
-                                                };
-                                                array.append_value(dst.trim_end_matches('\0'));
+                                                    dst.clear();
+                                                    if target_cn.block.cn_data_type == 6 {
+                                                        let (_result, _size, _replacement) = decoder
+                                                            .windows_1252
+                                                            .decode_to_string(record, &mut dst, false);
+                                                    } else if target_cn.block.cn_data_type == 8 {
+                                                        let (_result, _size, _replacement) = decoder
+                                                            .utf_16_le
+                                                            .decode_to_string(record, &mut dst, false);
+                                                    } else if target_cn.block.cn_data_type == 9 {
+                                                        let (_result, _size, _replacement) = decoder
+                                                            .utf_16_be
+                                                            .decode_to_string(record, &mut dst, false);
+                                                    } else if target_cn.block.cn_data_type == 17 {
+                                                        // Unicode with BOM
+                                                        let bom = Bom::from(record);
+                                                        let mut bom_decoder = match bom {
+                                                            Bom::Utf8 => UTF_8.new_decoder(),
+                                                            Bom::Utf16Be => UTF_16BE.new_decoder(),
+                                                            Bom::Utf16Le => UTF_16LE.new_decoder(),
+                                                            Bom::Gb18030 => GB18030.new_decoder(),
+                                                            _ => {
+                                                                bail!("not implemented BOM type");
+                                                            }
+                                                        };
+                                                        let (_result, _size, _replacement) = bom_decoder
+                                                            .decode_to_string(record, &mut dst, false);
+                                                    } else {
+                                                        bail!(
+                                                            "channel data type is not correct for a text"
+                                                        )
+                                                    };
+                                                    array.append_value(dst.trim_end_matches('\0'));
+                                                }
                                             }
                                             ChannelData::VariableSizeByteArray(array) => {
                                                 array.append_value(record);
@@ -1398,9 +1412,9 @@ fn read_all_channels_unsorted_from_bytes(
     }
 
     // removes consumed records from data and leaves remaining that could not be processed.
-    let remaining_vect = data[position..].to_owned();
-    data.clear(); // removes data but keeps capacity
-    data.extend(remaining_vect);
+    let remaining_len = data.len() - position;
+    data.copy_within(position.., 0);
+    data.truncate(remaining_len);
 
     // From sorted data block, copies data in channels arrays
     for (rec_id, (index, record_data)) in record_counter.iter_mut() {
@@ -1429,31 +1443,33 @@ struct Dec {
 
 /// Decodes a byte slice to a String based on MDF4 cn_data_type.
 /// cn_data_type: 6=SBC/Windows-1252, 7=UTF-8, 8=UTF-16 LE, 9=UTF-16 BE, 17=BOM-prefixed
-fn decode_string_bytes(record: &[u8], cn_data_type: u8, decoder: &mut Dec) -> Result<String> {
+fn decode_string_bytes<'a>(
+    record: &'a [u8],
+    cn_data_type: u8,
+    decoder: &mut Dec,
+    buf: &'a mut String,
+) -> Result<&'a str> {
     match cn_data_type {
         6 => {
-            let mut dst = String::with_capacity(record.len());
+            buf.clear();
+            buf.reserve(record.len());
             let _ = decoder
                 .windows_1252
-                .decode_to_string(record, &mut dst, false);
-            Ok(dst)
+                .decode_to_string(record, buf, false);
+            Ok(buf.as_str())
         }
-        7 => Ok(str::from_utf8(record)
-            .context("Found invalid UTF-8")?
-            .to_string()),
+        7 => Ok(str::from_utf8(record).context("Found invalid UTF-8")?),
         8 => {
-            let mut dst = String::with_capacity(record.len());
-            let _ = decoder
-                .utf_16_le
-                .decode_to_string(record, &mut dst, false);
-            Ok(dst.trim_end_matches('\0').to_string())
+            buf.clear();
+            buf.reserve(record.len());
+            let _ = decoder.utf_16_le.decode_to_string(record, buf, false);
+            Ok(buf.trim_end_matches('\0'))
         }
         9 => {
-            let mut dst = String::with_capacity(record.len());
-            let _ = decoder
-                .utf_16_be
-                .decode_to_string(record, &mut dst, false);
-            Ok(dst.trim_end_matches('\0').to_string())
+            buf.clear();
+            buf.reserve(record.len());
+            let _ = decoder.utf_16_be.decode_to_string(record, buf, false);
+            Ok(buf.trim_end_matches('\0'))
         }
         17 => {
             if record.len() >= 3
@@ -1461,28 +1477,30 @@ fn decode_string_bytes(record: &[u8], cn_data_type: u8, decoder: &mut Dec) -> Re
                 && record[1] == 0xBB
                 && record[2] == 0xBF
             {
-                Ok(str::from_utf8(&record[3..])
-                    .context("Found invalid UTF-8 with BOM")?
-                    .to_string())
+                Ok(str::from_utf8(&record[3..]).context("Found invalid UTF-8 with BOM")?)
             } else if record.len() >= 2 && record[0] == 0xFF && record[1] == 0xFE {
-                let mut dst = String::with_capacity(record.len());
+                buf.clear();
+                buf.reserve(record.len());
                 let _ = decoder
                     .utf_16_le
-                    .decode_to_string(&record[2..], &mut dst, false);
-                Ok(dst.trim_end_matches('\0').to_string())
+                    .decode_to_string(&record[2..], buf, false);
+                Ok(buf.trim_end_matches('\0'))
             } else if record.len() >= 2 && record[0] == 0xFE && record[1] == 0xFF {
-                let mut dst = String::with_capacity(record.len());
+                buf.clear();
+                buf.reserve(record.len());
                 let _ = decoder
                     .utf_16_be
-                    .decode_to_string(&record[2..], &mut dst, false);
-                Ok(dst.trim_end_matches('\0').to_string())
+                    .decode_to_string(&record[2..], buf, false);
+                Ok(buf.trim_end_matches('\0'))
             } else {
-                Ok(str::from_utf8(record)
-                    .context("Found invalid UTF-8 (no BOM)")?
-                    .to_string())
+                Ok(str::from_utf8(record).context("Found invalid UTF-8 (no BOM)")?)
             }
         }
-        _ => Ok(String::from_utf8_lossy(record).into_owned()),
+        _ => {
+            buf.clear();
+            buf.push_str(&String::from_utf8_lossy(record));
+            Ok(buf.as_str())
+        }
     }
 }
 
@@ -1900,6 +1918,7 @@ fn store_decoded_values_in_channel(
     values: Vec<Vec<u8>>,
     decoder: &mut Dec,
 ) -> Result<()> {
+    let mut str_buf = String::new();
     for value_bytes in values {
         match &mut cn.data {
             ChannelData::Int8(builder) => {
@@ -1997,6 +2016,7 @@ fn store_decoded_values_in_channel(
                     &value_bytes,
                     cn.block.cn_data_type,
                     decoder,
+                    &mut str_buf,
                 )?);
             }
             ChannelData::VariableSizeByteArray(builder) => {
