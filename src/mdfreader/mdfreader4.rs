@@ -29,7 +29,7 @@ use super::Mdf;
 /// The following constant represents the size of data chunk to be read and processed.
 /// a big chunk will improve performance but consume more memory
 /// a small chunk will not consume too much memory but will cause many read calls, penalising performance
-pub const CHUNK_SIZE_READING_4: usize = 524288; // can be tuned according to architecture
+pub const CHUNK_SIZE_READING_4: usize = 4_194_304; // can be tuned according to architecture
 
 /// Reads the file data based on headers information contained in info parameter
 /// Hashset of channel names parameter allows to filter which channels to read
@@ -57,8 +57,8 @@ pub fn mdfreader4<'a>(
                         .extend(channel_group.channel_names.iter().cloned());
                 }
                 let channel_names_to_read_in_dg: HashSet<_> = channel_names_present_in_dg
-                    .into_par_iter()
-                    .filter(|v| channel_names.contains(v))
+                    .intersection(channel_names)
+                    .cloned()
                     .collect();
                 if dg.block.dg_data != 0 && !channel_names_to_read_in_dg.is_empty() {
                     // header block
