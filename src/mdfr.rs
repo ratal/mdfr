@@ -459,8 +459,12 @@ df=polars.DataFrame(series)
                     if let Ok(res) = mdf.mdf_info.get_tx(atb.at_tx_mimetype) {
                         let _ = atdict.set_item("tx_mimetype", res);
                     }
-                    let _ =
-                        atdict.set_item("md_comment", mdf.mdf_info.get_comments(atb.at_md_comment));
+                    let _ = atdict.set_item(
+                        "md_comment",
+                        mdf.mdf_info
+                            .get_md_comment(atb.at_md_comment)
+                            .map(|c| format!("{c}")),
+                    );
                     let _ = atdict.set_item("flags", atb.at_flags);
                     let _ = atdict.set_item("creator_index", atb.at_creator_index);
                     let _ = atl.append(atdict);
@@ -499,8 +503,12 @@ df=polars.DataFrame(series)
                     if let Ok(res) = mdf.mdf_info.get_tx(evb.ev_tx_name) {
                         let _ = evdict.set_item("tx_name", res);
                     }
-                    let _ =
-                        evdict.set_item("md_comment", mdf.mdf_info.get_comments(evb.ev_md_comment));
+                    let _ = evdict.set_item(
+                        "md_comment",
+                        mdf.mdf_info
+                            .get_md_comment(evb.ev_md_comment)
+                            .map(|c| format!("{c}")),
+                    );
                     let _ = evdict.set_item("type", evb.ev_type);
                     let _ = evdict.set_item("sync_type", evb.ev_sync_type);
                     let _ = evdict.set_item("range_type", evb.ev_range_type);
@@ -526,8 +534,12 @@ df=polars.DataFrame(series)
                 let fhl = PyList::empty(py);
                 for fhb in fh {
                     let fhdict = PyDict::new(py);
-                    let _ =
-                        fhdict.set_item("comment", mdf.mdf_info.get_comments(fhb.fh_md_comment));
+                    let _ = fhdict.set_item(
+                        "comment",
+                        mdf.mdf_info
+                            .get_md_comment(fhb.fh_md_comment)
+                            .map(|c| format!("{c}")),
+                    );
                     let _ = fhdict.set_item("time_ns", fhb.fh_time_ns);
                     let _ = fhdict.set_item("tz_offset_min", fhb.fh_tz_offset_min);
                     let _ = fhdict.set_item("dst_offset_min", fhb.fh_dst_offset_min);
@@ -571,8 +583,12 @@ df=polars.DataFrame(series)
                     if let Ok(res) = mdf.mdf_info.get_tx(sib.si_tx_path) {
                         let _ = sidict.set_item("path", res);
                     }
-                    let _ =
-                        sidict.set_item("comment", mdf.mdf_info.get_comments(sib.si_md_comment));
+                    let _ = sidict.set_item(
+                        "comment",
+                        mdf.mdf_info
+                            .get_md_comment(sib.si_md_comment)
+                            .map(|c| format!("{c}")),
+                    );
                     let _ = sidict.set_item("type", sib.get_type_str());
                     let _ = sidict.set_item("type_id", sib.si_type);
                     let _ = sidict.set_item("bus_type", sib.get_bus_type_str());
@@ -626,8 +642,12 @@ df=polars.DataFrame(series)
                     if let Ok(res) = mdf.mdf_info.get_tx(chb.ch_tx_name) {
                         let _ = chdict.set_item("name", res);
                     }
-                    let _ =
-                        chdict.set_item("comment", mdf.mdf_info.get_comments(chb.ch_md_comment));
+                    let _ = chdict.set_item(
+                        "comment",
+                        mdf.mdf_info
+                            .get_md_comment(chb.ch_md_comment)
+                            .map(|c| format!("{c}")),
+                    );
                     let _ = chdict.set_item("type", chb.get_type_str());
                     let _ = chdict.set_item("type_id", chb.ch_type);
                     let _ = chdict.set_item("element_count", chb.ch_element_count);

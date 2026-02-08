@@ -511,11 +511,14 @@ impl MdfInfo {
             MdfInfo::V4(mdfinfo4) => mdfinfo4.set_channel_desc(channel_name, desc),
         }
     }
-    /// get comment from position
-    pub fn get_comments(&mut self, position: i64) -> Option<HashMap<String, String>> {
+    /// get typed comment from position
+    pub fn get_md_comment(
+        &mut self,
+        position: i64,
+    ) -> Option<&crate::mdfinfo::mdfinfo4::MdComment> {
         match self {
             MdfInfo::V3(_mdfinfo3) => None,
-            MdfInfo::V4(mdfinfo4) => Some(mdfinfo4.sharable.get_comments(position)),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.sharable.get_md_comment(position),
         }
     }
     /// get tx from position

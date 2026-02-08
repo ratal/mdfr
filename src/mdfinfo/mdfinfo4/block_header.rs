@@ -8,7 +8,7 @@ use std::io::{Cursor, Read};
 use std::str;
 
 use super::cc_block::Cc4Block;
-use super::metadata::{BlockType, MetaData, MetaDataBlockType};
+use super::metadata::{BlockType, HdComment, MdComment, MetaData, MetaDataBlockType};
 use super::si_block::Si4Block;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 
@@ -187,8 +187,8 @@ pub(super) fn read_meta_data(
             block,
             raw_data: raw_data.into_inner(),
             block_type,
-            comments: HashMap::new(),
             parent_block_type,
+            md_comment: None,
         };
         sharable.md_tx.insert(target, md);
         Ok(position)
@@ -212,18 +212,7 @@ impl fmt::Display for SharableBlocks {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "MD TX comments : \n")?;
         for (_k, c) in self.md_tx.iter() {
-            match c.block_type {
-                MetaDataBlockType::MdParsed => {
-                    for (tag, text) in c.comments.iter() {
-                        writeln!(f, "Tag: {tag}  Text: {text}")?;
-                    }
-                }
-                MetaDataBlockType::TX => match c.get_data_string() {
-                    Ok(s) => writeln!(f, "Text: {s}")?,
-                    Err(e) => writeln!(f, "Text: {e:?}")?,
-                },
-                _ => (),
-            }
+            writeln!(f, "{c}")?;
         }
         writeln!(f, "CC : \n")?;
         for (position, cc) in self.cc.iter() {
@@ -254,44 +243,35 @@ impl SharableBlocks {
             .or_insert_with(|| MetaData::new(MetaDataBlockType::TX, BlockType::CN));
         md.set_data_buffer(text.as_bytes());
     }
-    /// Returns metadata from MD Block
-    /// keys are tag and related value text of tag
-    pub fn get_comments(&mut self, position: i64) -> HashMap<String, String> {
-        let mut comments: HashMap<String, String> = HashMap::new();
+    /// Returns typed metadata comment, parsing lazily if needed
+    pub fn get_md_comment(&mut self, position: i64) -> Option<&MdComment> {
         if let Some(md) = self.md_tx.get_mut(&position) {
             match md.block_type {
-                MetaDataBlockType::MdParsed => {
-                    comments.clone_from(&md.comments);
-                }
+                MetaDataBlockType::MdParsed => {}
                 MetaDataBlockType::MdBlock => {
-                    // not yet parsed, so let's parse it
                     let _ = md.parse_xml();
-                    comments.clone_from(&md.comments);
                 }
-                MetaDataBlockType::TX => {
-                    // should not happen
-                }
+                MetaDataBlockType::TX => return None,
             }
-        };
-        comments
+        }
+        self.md_tx
+            .get(&position)
+            .and_then(|md| md.md_comment.as_ref())
     }
-    /// Returns metadata from MD Block linked by HD Block
-    /// keys are tag and related value text of tag
-    pub fn get_hd_comments(&self, position: i64) -> HashMap<String, String> {
-        // this method assumes the xml was already parsed
-        let mut comments: HashMap<String, String> = HashMap::new();
+    /// Returns HD comment, assumes already parsed
+    pub fn get_hd_comments(&self, position: i64) -> Option<&HdComment> {
         if let Some(md) = self.md_tx.get(&position)
             && md.block_type == MetaDataBlockType::MdParsed
+            && let Some(MdComment::Hd(hd)) = &md.md_comment
         {
-            comments.clone_from(&md.comments);
-        };
-        comments
+            return Some(hd);
+        }
+        None
     }
-    /// parses the HD Block metadata comments
-    /// done right after reading HD block
+    /// parses the HD Block metadata comments, done right after reading HD block
     pub fn parse_hd_comments(&mut self, position: i64) {
         if let Some(md) = self.md_tx.get_mut(&position) {
-            let _ = md.parse_hd_xml();
+            let _ = md.parse_hd_comment();
         };
     }
     /// Create new Shared Block

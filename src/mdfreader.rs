@@ -351,11 +351,10 @@ impl fmt::Display for Mdf {
             MdfInfo::V4(mdfinfo4) => {
                 writeln!(f, "Version : {}", mdfinfo4.id_block.id_ver)?;
                 writeln!(f, "{}\n", mdfinfo4.hd_block)?;
-                let comments = &mdfinfo4
-                    .sharable
-                    .get_hd_comments(mdfinfo4.hd_block.hd_md_comment);
-                for c in comments.iter() {
-                    writeln!(f, "{} {}", c.0, c.1)?;
+                if let Some(hd) =
+                    mdfinfo4.sharable.get_hd_comments(mdfinfo4.hd_block.hd_md_comment)
+                {
+                    writeln!(f, "{hd}")?;
                 }
                 for (master, list) in self.get_master_channel_names_set().iter() {
                     if let Some(master_name) = master {

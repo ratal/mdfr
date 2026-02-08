@@ -276,18 +276,29 @@ fn mdf4_metadata(file: &mut File, mdfinfo4: &MdfInfo4) -> Result<()> {
             mdfinfo4.hd_block.hd_start_time_ns
         )
     })?;
-    let comments = mdfinfo4
+    if let Some(hd) = mdfinfo4
         .sharable
-        .get_hd_comments(mdfinfo4.hd_block.hd_md_comment);
-    comments
-        .iter()
-        .try_for_each(|(name, comment)| -> Result<(), Error> {
-            create_str_group_attr::<File>(file, name, comment).with_context(|| {
-                format!("failed writing attribute {} with value {}", name, comment,)
+        .get_hd_comments(mdfinfo4.hd_block.hd_md_comment)
+    {
+        if let Some(tx) = &hd.tx {
+            create_str_group_attr::<File>(file, "TX", tx)
+                .context("failed writing HD TX attribute")?;
+        }
+        if let Some(ts) = &hd.time_source {
+            create_str_group_attr::<File>(file, "time_source", ts)
+                .context("failed writing HD time_source attribute")?;
+        }
+        for (name, value) in &hd.constants {
+            create_str_group_attr::<File>(file, name, value).with_context(|| {
+                format!("failed writing HD constant {name} with value {value}")
             })?;
-            Ok(())
-        })
-        .context("failed writing hd comments")?;
+        }
+        for (name, value) in &hd.common_properties {
+            create_str_group_attr::<File>(file, name, &format!("{value}")).with_context(|| {
+                format!("failed writing HD property {name}")
+            })?;
+        }
+    }
     Ok(())
 }
 

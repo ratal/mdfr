@@ -487,7 +487,7 @@ impl MdfInfo4 {
                 key,
                 self.sharable.get_tx(block.at_tx_filename),
                 self.sharable.get_tx(block.at_tx_mimetype),
-                self.sharable.get_comments(block.at_md_comment)
+                self.sharable.get_md_comment(block.at_md_comment)
             ))
         }
         output
@@ -524,7 +524,7 @@ impl MdfInfo4 {
                 "FH[{}]: {}, comment: {:?}\n",
                 i,
                 fh,
-                self.sharable.get_comments(fh.fh_md_comment),
+                self.sharable.get_md_comment(fh.fh_md_comment),
             ));
         }
         output
@@ -537,7 +537,7 @@ impl MdfInfo4 {
                 "position: {}, name: {:?}, comment: {:?}, scope: {:?}, attachment references: {:?}, event type: {}\n",
                 key,
                 self.sharable.get_tx(block.ev_tx_name),
-                self.sharable.get_comments(block.ev_md_comment),
+                self.sharable.get_md_comment(block.ev_md_comment),
                 block.get_scope_links(),
                 block.get_attachment_links(),
                 block.ev_type,
@@ -737,9 +737,19 @@ impl MdfInfo4 {
     /// Formats header comments
     pub fn format_header_comments(&self) -> String {
         let mut output = String::new();
-        let comments = self.sharable.get_hd_comments(self.hd_block.hd_md_comment);
-        for (tag, text) in comments.iter() {
-            output.push_str(&format!("{}: {}\n", tag, text));
+        if let Some(hd) = self.sharable.get_hd_comments(self.hd_block.hd_md_comment) {
+            if let Some(tx) = &hd.tx {
+                output.push_str(&format!("TX: {tx}\n"));
+            }
+            if let Some(ts) = &hd.time_source {
+                output.push_str(&format!("time_source: {ts}\n"));
+            }
+            for (name, value) in &hd.constants {
+                output.push_str(&format!("const {name}: {value}\n"));
+            }
+            for (name, value) in &hd.common_properties {
+                output.push_str(&format!("{name}: {value}\n"));
+            }
         }
         output
     }
