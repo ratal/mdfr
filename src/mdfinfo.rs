@@ -32,7 +32,7 @@ use crate::data_holder::channel_data::ChannelData;
 use crate::mdfwriter::mdfwriter3::convert3to4;
 
 use self::mdfinfo3::build_channel_db3;
-use self::mdfinfo4::{At4Block, Ch4Block, Ev4Block, FhBlock};
+use self::mdfinfo4::{At4Block, Ch4Block, Ev4Block, FhBlock, Si4Block, Sr4Block};
 use self::sym_buf_reader::SymBufReader;
 use crate::mdfreader::{DataSignature, MasterSignature};
 
@@ -574,6 +574,13 @@ impl MdfInfo {
             MdfInfo::V4(mdfinfo4) => Some(mdfinfo4.get_event_blocks()),
         }
     }
+    /// list file history entries
+    pub fn list_file_history(&mut self) -> String {
+        match self {
+            MdfInfo::V3(_) => String::new(),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.list_file_history(),
+        }
+    }
     /// get file history blocks
     pub fn get_file_history_blocks(&self) -> Option<Vec<FhBlock>> {
         match self {
@@ -616,42 +623,28 @@ impl MdfInfo {
             MdfInfo::V4(mdfinfo4) => mdfinfo4.list_sample_reductions(),
         }
     }
+    /// Get all source information blocks (MDF 4.x only)
+    pub fn get_source_information_blocks(&self) -> Option<HashMap<i64, Si4Block>> {
+        match self {
+            MdfInfo::V3(_) => None,
+            MdfInfo::V4(mdfinfo4) => Some(mdfinfo4.get_source_information_blocks()),
+        }
+    }
+    /// Get all sample reduction blocks across all channel groups (MDF 4.x only)
+    /// Returns a vector of (dg_position, rec_id, sr_blocks) tuples
+    pub fn get_sample_reduction_blocks(&self) -> Option<Vec<(i64, u64, Vec<Sr4Block>)>> {
+        match self {
+            MdfInfo::V3(_) => None,
+            MdfInfo::V4(mdfinfo4) => Some(mdfinfo4.get_sample_reduction_blocks()),
+        }
+    }
 }
 
 impl fmt::Display for MdfInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MdfInfo::V3(mdfinfo3) => {
-                writeln!(f, "Version : {}\n", mdfinfo3.id_block.id_ver)?;
-                writeln!(
-                    f,
-                    "Header :\n Author: {}  Organisation:{}\n",
-                    mdfinfo3.hd_block.hd_author, mdfinfo3.hd_block.hd_organization
-                )?;
-                writeln!(
-                    f,
-                    "Project: {}  Subject:{}\n",
-                    mdfinfo3.hd_block.hd_project, mdfinfo3.hd_block.hd_subject
-                )?;
-                writeln!(
-                    f,
-                    "Date: {:?}  Time:{:?}\n",
-                    mdfinfo3.hd_block.hd_date, mdfinfo3.hd_block.hd_time
-                )?;
-                writeln!(f, "Comments: {}", mdfinfo3.hd_comment)?;
-                writeln!(f, "\n")
-            }
-            MdfInfo::V4(mdfinfo4) => {
-                writeln!(f, "Version : {}", mdfinfo4.id_block.id_ver)?;
-                writeln!(f, "{}\n", mdfinfo4.hd_block)?;
-                let comments = &mdfinfo4
-                    .sharable
-                    .get_hd_comments(mdfinfo4.hd_block.hd_md_comment);
-                for c in comments.iter() {
-                    writeln!(f, "{} {}", c.0, c.1)?;
-                }
-                writeln!(f, "\n")
-            }
+            MdfInfo::V3(mdfinfo3) => write!(f, "{}", mdfinfo3),
+            MdfInfo::V4(mdfinfo4) => write!(f, "{}", mdfinfo4),
         }
     }
 }

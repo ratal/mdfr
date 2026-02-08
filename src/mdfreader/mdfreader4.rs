@@ -355,14 +355,15 @@ fn read_data(
     Ok(position)
 }
 
-/// Reads and concatenates data from any data block type (##DT, ##SD, ##VD, ##DZ, ##DL, ##HL).
+/// Reads and concatenates data from any data block type (##DT, ##SD, ##VD, ##RD, ##RV, ##DZ, ##DL, ##HL).
 /// The block id must already have been read. Returns concatenated raw bytes and updated position.
 fn read_all_blocks_to_bytes(
     rdr: &mut BufReader<&File>,
     id: [u8; 4],
     mut position: i64,
 ) -> Result<Option<(Vec<u8>, i64)>> {
-    if id == *b"##DT" || id == *b"##SD" || id == *b"##VD" {
+    // ##DT, ##SD, ##VD are regular data blocks; ##RD, ##RV are reduction data blocks (same format)
+    if id == *b"##DT" || id == *b"##SD" || id == *b"##VD" || id == *b"##RD" || id == *b"##RV" {
         let block_header: Dt4Block = rdr.read_le().context("Could not read data block header")?;
         let mut buf = vec![0u8; block_header.len as usize - 24];
         rdr.read_exact(&mut buf)
@@ -1841,7 +1842,24 @@ fn read_ds(
                                     .compo
                                     .as_ref()
                                     .map(|c| ((**ds_block).clone(), c.clone()))
+                            } else if ds_block.ds_mode == 1 {
+                                // Data description mode - data layout is described by an external
+                                // attachment file (e.g., FIBEX, DBC, ARXML) pointed to by ds_cn_composition.
+                                // This mode is not yet fully supported.
+                                warn!(
+                                    "Channel '{}' uses data description mode (ds_mode=1). \
+                                    Data layout is described by an external attachment. \
+                                    This mode requires external description file parsing \
+                                    (FIBEX, DBC, ARXML) which is not yet implemented. \
+                                    Data will be stored as raw bytes.",
+                                    cn.unique_name
+                                );
+                                None
                             } else {
+                                warn!(
+                                    "Channel '{}' has unknown DSBLOCK mode: {}",
+                                    cn.unique_name, ds_block.ds_mode
+                                );
                                 None
                             }
                         } else {
@@ -2029,3 +2047,8 @@ fn store_decoded_values_in_channel(
     }
     Ok(())
 }
+
+// =============================================================================
+// Sample Reduction Data Reading (RDBLOCK/RVBLOCK/RIBLOCK)
+// =============================================================================
+
