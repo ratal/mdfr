@@ -1,10 +1,10 @@
 //! Channel Array block (CABLOCK) for MDF4
 use anyhow::{Context, Error, Result};
-use binrw::{BinReaderExt, binrw};
-use byteorder::{LittleEndian, ReadBytesExt};
+use binrw::{BinReaderExt, BinWriterExt, binrw};
+use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::collections::VecDeque;
 use std::fmt::{self, Display};
-use std::io::Cursor;
+use std::io::{Cursor, Seek, Write};
 
 use super::block_header::Blockheader4Short;
 use crate::data_holder::tensor_arrow::Order;
@@ -108,6 +108,190 @@ impl Ca4Block {
             2 => "DG Template",
             _ => "Unknown",
         }
+    }
+    /// Calculate the number of links based on storage type and flags
+    fn calculate_link_count(&self) -> u64 {
+        let d = self.ca_ndim as u64;
+        let pnd = self.ca_dim_size.iter().product::<u64>().max(1);
+        let mut links: u64 = 1; // ca_composition (always present)
+        if self.ca_storage == 2 {
+            links += pnd; // ca_data
+        }
+        if self.ca_flags & 0b1 != 0 {
+            links += d * 3; // ca_dynamic_size
+        }
+        if self.ca_flags & 0b10 != 0 {
+            links += d * 3; // ca_input_quantity
+        }
+        if self.ca_flags & 0b100 != 0 {
+            links += 3; // ca_output_quantity
+        }
+        if self.ca_flags & 0b1000 != 0 {
+            links += 3; // ca_comparison_quantity
+        }
+        if self.ca_flags & 0b10000 != 0 {
+            links += d; // ca_cc_axis_conversion
+        }
+        if (self.ca_flags & 0b10000 != 0) && (self.ca_flags & 0b100000 == 0) {
+            links += d * 3; // ca_axis (axis flag set, fixed axes NOT set)
+        }
+        links
+    }
+    /// Calculate the total block length in bytes
+    pub fn calculate_block_len(&self) -> u64 {
+        let d = self.ca_ndim as u64;
+        let n_links = self.calculate_link_count();
+        // header_short(16) + link_count(8) + links(n*8) + members(16) + dim_size(D*8)
+        let mut len: u64 = 16 + 8 + n_links * 8 + 16 + d * 8;
+        // axis_value: present if fixed axis flag (bit 5) is set
+        if let Some(ref vals) = self.ca_axis_value {
+            len += vals.len() as u64 * 8;
+        }
+        // cycle_count: present if storage >= 1
+        if let Some(ref vals) = self.ca_cycle_count {
+            len += vals.len() as u64 * 8;
+        }
+        len
+    }
+    /// Prepare CA block for writing: zero unmappable link values, recalculate sizes
+    pub fn prepare_for_write(&mut self) {
+        // Zero all link Vec values (keep structure for correct link count)
+        self.ca_composition = 0;
+        if let Some(ref mut data) = self.ca_data {
+            data.iter_mut().for_each(|v| *v = 0);
+        }
+        if let Some(ref mut ds) = self.ca_dynamic_size {
+            ds.iter_mut().for_each(|v| *v = 0);
+        }
+        if let Some(ref mut iq) = self.ca_input_quantity {
+            iq.iter_mut().for_each(|v| *v = 0);
+        }
+        if let Some(ref mut oq) = self.ca_output_quantity {
+            oq.iter_mut().for_each(|v| *v = 0);
+        }
+        if let Some(ref mut cq) = self.ca_comparison_quantity {
+            cq.iter_mut().for_each(|v| *v = 0);
+        }
+        if let Some(ref mut cc) = self.ca_cc_axis_conversion {
+            cc.iter_mut().for_each(|v| *v = 0);
+        }
+        if let Some(ref mut ax) = self.ca_axis {
+            ax.iter_mut().for_each(|v| *v = 0);
+        }
+        // Recalculate
+        self.ca_links = self.calculate_link_count();
+        self.ca_len = self.calculate_block_len();
+    }
+    /// Write the full CA block to a buffer
+    pub fn write_to<W: Write + Seek>(&self, buffer: &mut W) -> Result<()> {
+        // Write short header
+        let header = Blockheader4Short {
+            hdr_id: self.ca_id,
+            hdr_gap: self.reserved,
+            hdr_len: self.ca_len,
+        };
+        buffer
+            .write_le(&header)
+            .context("Could not write CA block header")?;
+        // Write link count
+        buffer
+            .write_le(&self.ca_links)
+            .context("Could not write CA link count")?;
+        // Write links in spec order
+        buffer
+            .write_le(&self.ca_composition)
+            .context("Could not write ca_composition")?;
+        if let Some(ref data) = self.ca_data {
+            for val in data {
+                buffer
+                    .write_le(val)
+                    .context("Could not write ca_data link")?;
+            }
+        }
+        if let Some(ref ds) = self.ca_dynamic_size {
+            for val in ds {
+                buffer
+                    .write_le(val)
+                    .context("Could not write ca_dynamic_size link")?;
+            }
+        }
+        if let Some(ref iq) = self.ca_input_quantity {
+            for val in iq {
+                buffer
+                    .write_le(val)
+                    .context("Could not write ca_input_quantity link")?;
+            }
+        }
+        if let Some(ref oq) = self.ca_output_quantity {
+            for val in oq {
+                buffer
+                    .write_le(val)
+                    .context("Could not write ca_output_quantity link")?;
+            }
+        }
+        if let Some(ref cq) = self.ca_comparison_quantity {
+            for val in cq {
+                buffer
+                    .write_le(val)
+                    .context("Could not write ca_comparison_quantity link")?;
+            }
+        }
+        if let Some(ref cc) = self.ca_cc_axis_conversion {
+            for val in cc {
+                buffer
+                    .write_le(val)
+                    .context("Could not write ca_cc_axis_conversion link")?;
+            }
+        }
+        if let Some(ref ax) = self.ca_axis {
+            for val in ax {
+                buffer
+                    .write_le(val)
+                    .context("Could not write ca_axis link")?;
+            }
+        }
+        // Write members
+        buffer
+            .write_le(&self.ca_type)
+            .context("Could not write ca_type")?;
+        buffer
+            .write_le(&self.ca_storage)
+            .context("Could not write ca_storage")?;
+        buffer
+            .write_le(&self.ca_ndim)
+            .context("Could not write ca_ndim")?;
+        buffer
+            .write_le(&self.ca_flags)
+            .context("Could not write ca_flags")?;
+        buffer
+            .write_le(&self.ca_byte_offset_base)
+            .context("Could not write ca_byte_offset_base")?;
+        buffer
+            .write_le(&self.ca_inval_bit_pos_base)
+            .context("Could not write ca_inval_bit_pos_base")?;
+        // Write dim_size array
+        for dim in &self.ca_dim_size {
+            buffer
+                .write_le(dim)
+                .context("Could not write ca_dim_size")?;
+        }
+        // Write axis_value if present
+        if let Some(ref vals) = self.ca_axis_value {
+            for v in vals {
+                buffer
+                    .write_f64::<LittleEndian>(*v)
+                    .context("Could not write ca_axis_value")?;
+            }
+        }
+        // Write cycle_count if present
+        if let Some(ref vals) = self.ca_cycle_count {
+            for v in vals {
+                buffer
+                    .write_le(v)
+                    .context("Could not write ca_cycle_count")?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -296,7 +480,7 @@ pub(super) fn parse_ca_block(
 
     let mut val = vec![0i64; (ca_members.ca_ndim * 3) as usize];
     let ca_axis: Option<Vec<i64>> =
-        if ((ca_members.ca_flags & 0b10000) > 0) & ((ca_members.ca_flags & 0b100000) > 0) {
+        if ((ca_members.ca_flags & 0b10000) > 0) && ((ca_members.ca_flags & 0b100000) == 0) {
             ca_block
                 .read_i64_into::<LittleEndian>(&mut val)
                 .context("Could not read ca_axis")?;

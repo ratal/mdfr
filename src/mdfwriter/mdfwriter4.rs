@@ -15,7 +15,7 @@ use crate::{
     mdfinfo::{
         MdfInfo,
         mdfinfo4::{
-            At4Block, BlockType, Blockheader4, Ca4Block, Ca4BlockMembers, Cg4, Cg4Block, Cn4,
+            At4Block, BlockType, Blockheader4, Ca4Block, Cg4, Cg4Block, Cn4,
             Cn4Block, Compo, Composition, Dg4, Dg4Block, Dz4Block, Ev4Block, FhBlock, Ld4Block,
             MdfInfo4, MetaData, MetaDataBlockType, Si4Block, default_short_header,
         },
@@ -740,27 +740,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
 fn write_composition(buffer: &mut Cursor<Vec<u8>>, compo: &Composition) -> Result<()> {
     match &compo.block {
         Compo::CA(c) => {
-            let header = Blockheader4Short {
-                hdr_id: [35, 35, 67, 65], // ##CA
-                hdr_len: c.ca_len,
-                ..Default::default()
-            };
-            buffer
-                .write_le(&header)
-                .context("Could not write CABlock header")?;
-            buffer
-                .write_le(&1u64)
-                .context("error writing number of links in CA Block")?;
-            let ca_composition: u64 = 0;
-            buffer
-                .write_le(&ca_composition)
-                .context("Could not write CABlock ca_composition")?;
-            let mut ca_block = Ca4BlockMembers::default();
-            ca_block.ca_ndim = c.ca_ndim;
-            ca_block.ca_dim_size.clone_from(&c.ca_dim_size);
-            buffer
-                .write_le(&ca_block)
-                .context("Could not write CABlock members")?;
+            c.write_to(buffer).context("Could not write CA block")?;
         }
         Compo::DS(ds) => {
             let header = Blockheader4Short {
@@ -1177,22 +1157,36 @@ fn create_blocks(
         let data_ndim = data.ndim();
         let mut composition: Option<Composition> = None;
         if data_ndim > 1 {
-            let data_dim_size = cn
+            let data_dim_size: Vec<u64> = cn
                 .data
                 .shape()
                 .0
                 .iter()
                 .skip(1)
                 .map(|x| *x as u64)
-                .collect::<Vec<_>>();
-            // data_dim_size.remove(0);
-            let mut ca_block = Ca4Block::default();
-            cg_block.cg_data_bytes = cn.list_size as u32 * byte_count;
+                .collect();
 
+            // Preserve source CA block if available, else create default
+            let mut ca_block =
+                if let Some(ref source_compo) = cn.composition
+                    && let Compo::CA(ref source_ca) = source_compo.block
+                {
+                    let mut ca = (**source_ca).clone();
+                    ca.prepare_for_write();
+                    ca
+                } else {
+                    Ca4Block::default()
+                };
+
+            cg_block.cg_data_bytes = cn.list_size as u32 * byte_count;
             cn_block.cn_composition = pointer;
+
+            // Override dims from actual data shape
             ca_block.ca_ndim = data_ndim as u16;
-            ca_block.ca_dim_size.clone_from(&data_dim_size);
-            ca_block.ca_len = 48 + 8 * data_ndim as u64;
+            ca_block.ca_dim_size = data_dim_size;
+            // Recalculate after dim changes
+            ca_block.ca_len = ca_block.calculate_block_len();
+
             pointer += ca_block.ca_len as i64;
             composition = Some(Composition {
                 block: Compo::CA(Box::new(ca_block)),
