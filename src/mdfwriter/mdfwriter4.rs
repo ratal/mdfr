@@ -1181,8 +1181,8 @@ fn create_blocks(
             cg_block.cg_data_bytes = cn.list_size as u32 * byte_count;
             cn_block.cn_composition = pointer;
 
-            // Override dims from actual data shape
-            ca_block.ca_ndim = data_ndim as u16;
+            // Override dims from actual data shape (data_ndim includes sample count, ca_ndim does not)
+            ca_block.ca_ndim = (data_ndim - 1) as u16;
             ca_block.ca_dim_size = data_dim_size;
             // Recalculate after dim changes
             ca_block.ca_len = ca_block.calculate_block_len();
