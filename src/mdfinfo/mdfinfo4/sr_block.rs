@@ -16,7 +16,7 @@ pub struct Sr4Block {
     pub sr_cycle_count: u64,
     /// Length of sample interval used to calculate the reduction records (unit depends on sr_sync_type)
     pub sr_interval: f64,
-    /// Sync type: 1=time(s), 2=angle(rad), 3=distance(m), 4=index
+    /// Sync type: 1=time(s), 2=angle(rad), 3=distance(m), 4=index, 5=frequency(Hz)
     pub sr_sync_type: u8,
     /// Flags: bit 0 = invalidation bytes present, bit 1 = dominant invalidation bit
     pub sr_flags: u8,
@@ -57,6 +57,8 @@ pub const SR_SYNC_ANGLE: u8 = 2;
 pub const SR_SYNC_DISTANCE: u8 = 3;
 /// SR sync type: Index based (sample count)
 pub const SR_SYNC_INDEX: u8 = 4;
+/// SR sync type: Frequency based (Hz)
+pub const SR_SYNC_FREQUENCY: u8 = 5;
 
 impl Sr4Block {
     /// Returns true if invalidation bytes are present in reduction records
@@ -72,6 +74,7 @@ impl Sr4Block {
             SR_SYNC_ANGLE => "Angle (radians)",
             SR_SYNC_DISTANCE => "Distance (meters)",
             SR_SYNC_INDEX => "Index (samples)",
+            SR_SYNC_FREQUENCY => "Frequency (Hz)",
             _ => "Unknown",
         }
     }

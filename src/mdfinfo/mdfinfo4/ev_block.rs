@@ -81,6 +81,8 @@ pub const EV_S_ANGLE: u8 = 2;
 pub const EV_S_DISTANCE: u8 = 3;
 /// Index sync
 pub const EV_S_INDEX: u8 = 4;
+/// Frequency sync
+pub const EV_S_FREQUENCY: u8 = 5;
 
 // Event cause constants (ev_cause)
 /// Unknown/other cause
@@ -121,6 +123,7 @@ impl Ev4Block {
             EV_S_ANGLE => "Angle",
             EV_S_DISTANCE => "Distance",
             EV_S_INDEX => "Index",
+            EV_S_FREQUENCY => "Frequency",
             _ => "Unknown",
         }
     }
