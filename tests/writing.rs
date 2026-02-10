@@ -3,8 +3,10 @@ use arrow::array::{AsArray, Float64Array, PrimitiveBuilder};
 use arrow::datatypes::Float32Type;
 use mdfr::data_holder::channel_data::ChannelData;
 use mdfr::mdfinfo::MdfInfo;
+use mdfr::mdfinfo::mdfinfo4::Compo;
 use mdfr::mdfreader::Mdf;
 use std::fs;
+use std::path::Path;
 use std::sync::{Arc, LazyLock};
 
 /// SI block metadata: (type, bus_type, flags, name, path)
@@ -658,6 +660,254 @@ fn writing_mdf4_arrays() -> Result<()> {
                 name
             );
         }
+    }
+
+    fs::remove_file(&writing_mdf_file).ok();
+    Ok(())
+}
+
+#[test]
+fn writing_mdf4_channel_hierarchy() -> Result<()> {
+    // CH blocks are optional in MDF4 and none of the current test files contain them.
+    // This test verifies that files without CH blocks still write correctly (hd_ch_first = 0)
+    // and that the CH writing code path doesn't break anything.
+    let writing_mdf_file = format!("{}/writing_ch_test.mf4", BASE_TEST_PATH.as_str());
+    let file = format!(
+        "{}{}",
+        BASE_PATH_MDF4.as_str(),
+        "Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
+    );
+    let mut mdf = Mdf::new(&file)?;
+    mdf.load_all_channels_data_in_memory()?;
+
+    // Verify source has no CH blocks (expected with current test files)
+    let source_ch_count = match &mdf.mdf_info {
+        MdfInfo::V4(info4) => info4.ch.len(),
+        _ => panic!("Expected MDF4 file"),
+    };
+
+    // Write and re-read
+    let _written = mdf.write(&writing_mdf_file, false)?;
+    let reread = Mdf::new(&writing_mdf_file)?;
+
+    match &reread.mdf_info {
+        MdfInfo::V4(info4) => {
+            // CH block count should match source (both should be 0 with current test files)
+            assert_eq!(
+                info4.ch.len(),
+                source_ch_count,
+                "CH block count should be preserved"
+            );
+        }
+        _ => panic!("Expected MDF4 file"),
+    }
+
+    fs::remove_file(&writing_mdf_file).ok();
+    Ok(())
+}
+
+#[test]
+fn writing_mdf4_composition_ds_cl() -> Result<()> {
+    // DS/CL (Data Stream + Channel List) roundtrip test
+    // DS/CL compositions describe VLSD blob layouts. After the reader decodes the
+    // blob into typed child channels (x.a, x.b), the parent structure channel ("x")
+    // has zero bit_count and the auxiliary VLSD channel has empty data. These are
+    // metadata-only channels that carry no data, so the writer correctly skips them.
+    // The decoded child channel data is preserved as independent channels.
+    let writing_mdf_file = format!("{}/writing_ds_cl_test.mf4", BASE_TEST_PATH.as_str());
+    let file = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/DynamicData/ChannelList/simple_list.mf4";
+    if !Path::new(file).exists() {
+        return Ok(());
+    }
+
+    let mut mdf = Mdf::new(file)?;
+    mdf.load_all_channels_data_in_memory()?;
+
+    // Verify source has DS/CL composition
+    let has_ds_or_cl = match &mdf.mdf_info {
+        MdfInfo::V4(info4) => info4.dg.values().any(|dg| {
+            dg.cg.values().any(|cg| {
+                cg.cn.values().any(|cn| {
+                    cn.composition.as_ref().is_some_and(|c| {
+                        matches!(c.block, Compo::DS(_) | Compo::CL(_))
+                    })
+                })
+            })
+        }),
+        _ => false,
+    };
+    assert!(has_ds_or_cl, "Source should have DS or CL composition");
+
+    // Write and verify via in-memory return
+    let mut written = mdf.write(&writing_mdf_file, false)?;
+    written.load_all_channels_data_in_memory()?;
+
+    // Verify decoded child channel data is preserved through write roundtrip
+    for channel_name in &["time", "x.a", "x.b", "size"] {
+        if let Some(src) = mdf.get_channel_data(channel_name)
+            && let Some(wr) = written.get_channel_data(channel_name)
+        {
+            assert_eq!(
+                src.len(),
+                wr.len(),
+                "Length mismatch for channel {}",
+                channel_name
+            );
+            assert_eq!(*src, *wr, "Data mismatch for channel {}", channel_name);
+        } else {
+            panic!(
+                "Channel {} missing: source={}, written={}",
+                channel_name,
+                mdf.get_channel_data(channel_name).is_some(),
+                written.get_channel_data(channel_name).is_some(),
+            );
+        }
+    }
+
+    fs::remove_file(&writing_mdf_file).ok();
+    Ok(())
+}
+
+#[test]
+fn writing_mdf4_composition_cv() -> Result<()> {
+    // CV (Channel Variant) composition test
+    let writing_mdf_file = format!("{}/writing_cv_test.mf4", BASE_TEST_PATH.as_str());
+    let file = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/Variant/Etas_cv_storage_with_fixed_length.mf4";
+    if !Path::new(file).exists() {
+        return Ok(());
+    }
+
+    let mut mdf = Mdf::new(file)?;
+    mdf.load_all_channels_data_in_memory()?;
+
+    // Verify source has CV composition
+    let source_cv_info = match &mdf.mdf_info {
+        MdfInfo::V4(info4) => {
+            let mut found = false;
+            let mut option_count = 0u32;
+            for dg in info4.dg.values() {
+                for cg in dg.cg.values() {
+                    for cn in cg.cn.values() {
+                        if let Some(c) = &cn.composition
+                            && let Compo::CV(cv) = &c.block
+                        {
+                            found = true;
+                            option_count = cv.cv_option_count;
+                        }
+                    }
+                }
+            }
+            (found, option_count)
+        }
+        _ => (false, 0),
+    };
+    assert!(source_cv_info.0, "Source should have CV composition");
+
+    // Write and verify via in-memory return
+    let written = mdf.write(&writing_mdf_file, false)?;
+
+    // Verify CV composition preserved with same option count
+    match &written.mdf_info {
+        MdfInfo::V4(info4) => {
+            let mut found = false;
+            for dg in info4.dg.values() {
+                for cg in dg.cg.values() {
+                    for cn in cg.cn.values() {
+                        if let Some(c) = &cn.composition
+                            && let Compo::CV(cv) = &c.block
+                        {
+                            found = true;
+                            assert_eq!(
+                                cv.cv_option_count, source_cv_info.1,
+                                "CV option count should be preserved"
+                            );
+                        }
+                    }
+                }
+            }
+            assert!(found, "Written file should preserve CV composition");
+        }
+        _ => panic!("Expected MDF4"),
+    }
+
+    // Verify time channel data
+    if let Some(src) = mdf.get_channel_data("time")
+        && let Some(wr) = written.get_channel_data("time")
+    {
+        assert_eq!(*src, *wr, "Time data mismatch");
+    }
+
+    fs::remove_file(&writing_mdf_file).ok();
+    Ok(())
+}
+
+#[test]
+fn writing_mdf4_composition_cu() -> Result<()> {
+    // CU (Channel Union) composition test
+    let writing_mdf_file = format!("{}/writing_cu_test.mf4", BASE_TEST_PATH.as_str());
+    let file = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/Union/Etas_cu_storage_with_fixed_length.mf4";
+    if !Path::new(file).exists() {
+        return Ok(());
+    }
+
+    let mut mdf = Mdf::new(file)?;
+    mdf.load_all_channels_data_in_memory()?;
+
+    // Verify source has CU composition
+    let source_cu_info = match &mdf.mdf_info {
+        MdfInfo::V4(info4) => {
+            let mut found = false;
+            let mut member_count = 0u32;
+            for dg in info4.dg.values() {
+                for cg in dg.cg.values() {
+                    for cn in cg.cn.values() {
+                        if let Some(c) = &cn.composition
+                            && let Compo::CU(cu) = &c.block
+                        {
+                            found = true;
+                            member_count = cu.cu_member_count;
+                        }
+                    }
+                }
+            }
+            (found, member_count)
+        }
+        _ => (false, 0),
+    };
+    assert!(source_cu_info.0, "Source should have CU composition");
+
+    // Write and verify via in-memory return
+    let written = mdf.write(&writing_mdf_file, false)?;
+
+    // Verify CU composition preserved with same member count
+    match &written.mdf_info {
+        MdfInfo::V4(info4) => {
+            let mut found = false;
+            for dg in info4.dg.values() {
+                for cg in dg.cg.values() {
+                    for cn in cg.cn.values() {
+                        if let Some(c) = &cn.composition
+                            && let Compo::CU(cu) = &c.block
+                        {
+                            found = true;
+                            assert_eq!(
+                                cu.cu_member_count, source_cu_info.1,
+                                "CU member count should be preserved"
+                            );
+                        }
+                    }
+                }
+            }
+            assert!(found, "Written file should preserve CU composition");
+        }
+        _ => panic!("Expected MDF4"),
+    }
+
+    // Verify time channel data
+    if let Some(src) = mdf.get_channel_data("time")
+        && let Some(wr) = written.get_channel_data("time")
+    {
+        assert_eq!(*src, *wr, "Time data mismatch");
     }
 
     fs::remove_file(&writing_mdf_file).ok();

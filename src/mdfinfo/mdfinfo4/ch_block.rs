@@ -48,6 +48,12 @@ pub struct Ch4Block {
 }
 
 impl Ch4Block {
+    /// Calculate the total block size (header + links + data)
+    pub fn calculate_block_size(&self) -> i64 {
+        // 16 (short header) + 8 (link count) + 8*ch_links (links) + 8 (data members)
+        16 + 8 + (self.ch_links * 8) as i64 + 8
+    }
+
     /// Returns the hierarchy type as a string description
     pub fn get_type_str(&self) -> &'static str {
         match self.ch_type {

@@ -15,7 +15,7 @@ use crate::{
     mdfinfo::{
         MdfInfo,
         mdfinfo4::{
-            At4Block, BlockType, Blockheader4, Ca4Block, Cg4, Cg4Block, Cn4,
+            At4Block, BlockType, Blockheader4, Ca4Block, Cg4, Cg4Block, Ch4Block, Cn4,
             Cn4Block, Compo, Composition, Dg4, Dg4Block, Dz4Block, Ev4Block, FhBlock, Ld4Block,
             MdfInfo4, MetaData, MetaDataBlockType, Si4Block, default_short_header,
         },
@@ -390,6 +390,118 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
         last_dg.block.dg_dg_next = 0;
     }
 
+    // Build position maps for DG/CG/CN remapping (needed for CH block element triplets)
+    let mut dg_position_map: HashMap<i64, i64> = HashMap::new();
+    let mut cg_position_map: HashMap<i64, i64> = HashMap::new();
+    let mut cn_position_map: HashMap<i64, i64> = HashMap::new();
+    for (name, (_, old_dg, (old_cg, _), (old_cn, _))) in info.channel_names_set.iter() {
+        if let Some((_, new_dg, (new_cg, _), (new_cn, _))) =
+            new_info.channel_names_set.get(name)
+        {
+            dg_position_map.insert(*old_dg, *new_dg);
+            cg_position_map.insert(*old_cg, *new_cg);
+            cn_position_map.insert(*old_cn, *new_cn);
+        }
+    }
+
+    // Copy CH blocks (channel hierarchy) from source file
+    type ChBlockEntry = (i64, Ch4Block, Option<MetaData>, Option<MetaData>);
+    let mut ch_blocks: Vec<ChBlockEntry> = Vec::new();
+    let mut ch_position_map: HashMap<i64, i64> = HashMap::new();
+
+    if !info.ch.is_empty() {
+        new_info.hd_block.hd_ch_first = pointer;
+
+        // Sort source CH blocks by position for deterministic sibling/child link order
+        let mut sorted_ch: Vec<(i64, &Ch4Block)> =
+            info.ch.iter().map(|(k, v)| (*k, v)).collect();
+        sorted_ch.sort_by_key(|(pos, _)| *pos);
+
+        // Pass 1: Assign positions and collect metadata
+        for (orig_pos, ch) in &sorted_ch {
+            let new_ch_position = pointer;
+            ch_position_map.insert(*orig_pos, new_ch_position);
+
+            let ch_name_md = if ch.ch_tx_name != 0 {
+                info.sharable.md_tx.get(&ch.ch_tx_name).cloned()
+            } else {
+                None
+            };
+            let ch_comment_md = if ch.ch_md_comment != 0 {
+                info.sharable.md_tx.get(&ch.ch_md_comment).cloned()
+            } else {
+                None
+            };
+
+            pointer += ch.calculate_block_size();
+            if let Some(ref md) = ch_name_md {
+                pointer += md.block.hdr_len as i64;
+            }
+            if let Some(ref md) = ch_comment_md {
+                pointer += md.block.hdr_len as i64;
+            }
+
+            ch_blocks.push((*orig_pos, (*ch).clone(), ch_name_md, ch_comment_md));
+        }
+
+        // Pass 2: Remap all links
+        for (orig_pos, ch, name_md, comment_md) in ch_blocks.iter_mut() {
+            // Remap sibling and child links
+            ch.ch_ch_next = if ch.ch_ch_next > 0 {
+                ch_position_map.get(&ch.ch_ch_next).copied().unwrap_or(0)
+            } else {
+                0
+            };
+            ch.ch_ch_first = if ch.ch_ch_first > 0 {
+                ch_position_map.get(&ch.ch_ch_first).copied().unwrap_or(0)
+            } else {
+                0
+            };
+
+            // Remap TX name and MD comment to positions after the CH block itself
+            let new_ch_pos = ch_position_map.get(orig_pos).copied().unwrap_or(0);
+            let block_size = ch.calculate_block_size();
+            let mut meta_offset = new_ch_pos + block_size;
+
+            if let Some(md) = name_md.as_ref() {
+                ch.ch_tx_name = meta_offset;
+                meta_offset += md.block.hdr_len as i64;
+            } else {
+                ch.ch_tx_name = 0;
+            }
+            ch.ch_md_comment = if comment_md.is_some() {
+                meta_offset
+            } else {
+                0
+            };
+
+            // Remap element triplets (DG, CG, CN positions)
+            for i in 0..ch.ch_element_count as usize {
+                let base = i * 3;
+                if base + 2 < ch.ch_element.len() {
+                    ch.ch_element[base] = dg_position_map
+                        .get(&ch.ch_element[base])
+                        .copied()
+                        .unwrap_or(0);
+                    ch.ch_element[base + 1] = cg_position_map
+                        .get(&ch.ch_element[base + 1])
+                        .copied()
+                        .unwrap_or(0);
+                    ch.ch_element[base + 2] = cn_position_map
+                        .get(&ch.ch_element[base + 2])
+                        .copied()
+                        .unwrap_or(0);
+                }
+            }
+        }
+
+        // Store in new_info
+        for (orig_pos, ch, _, _) in &ch_blocks {
+            let new_pos = ch_position_map.get(orig_pos).copied().unwrap_or(0);
+            new_info.ch.insert(new_pos, ch.clone());
+        }
+    }
+
     // thread writing the channels data first as block size can be unknown due to compression
     let (tx, rx) = bounded::<Vec<u8>>(n_channels);
     let fname = Arc::new(Mutex::new(file_name.to_string()));
@@ -683,6 +795,69 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
         }
     }
 
+    // Writes CHBLOCKs (channel hierarchy)
+    for (_orig_pos, ch, ch_name_md, ch_comment_md) in &ch_blocks {
+        // Write CH block short header
+        let ch_header = Blockheader4Short {
+            hdr_id: [35, 35, 67, 72], // ##CH
+            hdr_gap: [0u8; 4],
+            hdr_len: ch.calculate_block_size() as u64,
+        };
+        buffer
+            .write_le(&ch_header)
+            .context("Could not write CHBlock header")?;
+
+        // Write link count
+        buffer
+            .write_le(&ch.ch_links)
+            .context("Could not write CHBlock link count")?;
+
+        // Write fixed links
+        buffer
+            .write_le(&ch.ch_ch_next)
+            .context("Could not write ch_ch_next")?;
+        buffer
+            .write_le(&ch.ch_ch_first)
+            .context("Could not write ch_ch_first")?;
+        buffer
+            .write_le(&ch.ch_tx_name)
+            .context("Could not write ch_tx_name")?;
+        buffer
+            .write_le(&ch.ch_md_comment)
+            .context("Could not write ch_md_comment")?;
+
+        // Write element links (DG/CG/CN triplets)
+        for elem in &ch.ch_element {
+            buffer
+                .write_le(elem)
+                .context("Could not write ch_element link")?;
+        }
+
+        // Write data members
+        buffer
+            .write_le(&ch.ch_element_count)
+            .context("Could not write ch_element_count")?;
+        buffer
+            .write_le(&ch.ch_type)
+            .context("Could not write ch_type")?;
+        buffer
+            .write_all(&ch.ch_reserved)
+            .context("Could not write ch_reserved")?;
+
+        // Write TX name block if present
+        if let Some(name_md) = ch_name_md {
+            name_md
+                .write(&mut buffer)
+                .context("Failed writing CH name")?;
+        }
+        // Write MD comment block if present
+        if let Some(comment_md) = ch_comment_md {
+            comment_md
+                .write(&mut buffer)
+                .context("Failed writing CH comment")?;
+        }
+    }
+
     // Writes DG+CG+CN blocks
     for (_position, dg) in new_info.dg.iter() {
         buffer
@@ -801,6 +976,56 @@ fn write_composition(buffer: &mut Cursor<Vec<u8>>, compo: &Composition) -> Resul
         write_composition(buffer, nested)?;
     }
     Ok(())
+}
+
+/// Calculate the serialized size of a composition tree (for position tracking)
+fn calculate_composition_size(compo: &Composition) -> i64 {
+    let block_size: i64 = match &compo.block {
+        Compo::CA(c) => c.ca_len as i64,
+        Compo::DS(ds) => (16 + 8 + ds.ds_links * 8 + 8) as i64,
+        Compo::CL(_) => 48,
+        Compo::CV(cv) => {
+            (16 + 8 + cv.cv_n_links * 8 + 4 + 4 + cv.cv_option_count as u64 * 8) as i64
+        }
+        Compo::CU(cu) => (16 + 8 + cu.cu_n_links * 8 + 4 + 4) as i64,
+        Compo::CN(cn) => cn.header.hdr_len as i64,
+    };
+    let nested = compo
+        .compo
+        .as_ref()
+        .map_or(0, |n| calculate_composition_size(n));
+    block_size + nested
+}
+
+/// Zero internal CN-referencing links in a composition tree.
+/// Preserves block types, flags, and data members but zeroes links to CN blocks
+/// from the old file (whose positions are invalid after writing).
+fn zero_composition_links(compo: &mut Composition) {
+    match &mut compo.block {
+        Compo::DS(ds) => ds.links.iter_mut().for_each(|l| *l = 0),
+        Compo::CL(cl) => {
+            cl.cl_composition = 0;
+            cl.cl_cn_size = 0;
+        }
+        Compo::CV(cv) => {
+            cv.cv_cn_discriminator = 0;
+            cv.cv_cn_option.iter_mut().for_each(|l| *l = 0);
+        }
+        Compo::CU(cu) => cu.cu_cn_member.iter_mut().for_each(|l| *l = 0),
+        Compo::CN(cn) => {
+            cn.block.cn_composition = 0;
+            cn.block.cn_tx_name = 0;
+            cn.block.cn_md_unit = 0;
+            cn.block.cn_md_comment = 0;
+            cn.block.cn_data = 0;
+            cn.block.cn_cc_conversion = 0;
+            cn.block.set_si_source(0);
+        }
+        Compo::CA(ca) => ca.prepare_for_write(),
+    }
+    if let Some(ref mut nested) = compo.compo {
+        zero_composition_links(nested);
+    }
 }
 
 /// Writes the data blocks
@@ -1192,6 +1417,19 @@ fn create_blocks(
                 block: Compo::CA(Box::new(ca_block)),
                 compo: None,
             });
+        } else if let Some(ref source_compo) = cn.composition {
+            // Preserve non-CA composition from source (DS, CL, CV, CU, CN)
+            match &source_compo.block {
+                Compo::CA(_) => {} // Already handled above for data_ndim > 1
+                _ => {
+                    let mut cloned = source_compo.clone();
+                    zero_composition_links(&mut cloned);
+                    let compo_size = calculate_composition_size(&cloned);
+                    cn_block.cn_composition = pointer;
+                    pointer += compo_size;
+                    composition = Some(cloned);
+                }
+            }
         }
 
         dg_block.dg_dg_next = pointer;
