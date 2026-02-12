@@ -1,4 +1,7 @@
-//! Sample Reduction block (SRBLOCK) for MDF4
+//! Sample Reduction block (SRBLOCK) for MDF4 — spec section 6.29, Table 72
+//!
+//! Provides pre-calculated statistics (mean, min, max) for efficient display of large
+//! datasets. Linked from a CGBLOCK. Sync types: time, angle, distance, index, frequency.
 use binrw::binrw;
 use std::fmt::{self, Display};
 

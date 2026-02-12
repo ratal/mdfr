@@ -1,4 +1,7 @@
-//! Channel block (CNBLOCK) for MDF4
+//! Channel block (CNBLOCK) for MDF4 — spec section 6.6, Tables 22-29
+//!
+//! The CNBLOCK is the central block describing a single channel: its data type,
+//! bit position/length in the record, sync type, composition, source, and conversion.
 use anyhow::{Context, Result};
 use arrow::array::{BooleanBufferBuilder, UInt8Builder, UInt16Builder, UInt32Builder};
 use binrw::{BinReaderExt, binrw};

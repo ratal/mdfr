@@ -1,4 +1,8 @@
-//! Channel Conversion block (CCBLOCK) for MDF4
+//! Channel Conversion block (CCBLOCK) for MDF4 — spec section 6.7, Tables 30-39
+//!
+//! Defines the conversion rule to transform raw channel values to physical values.
+//! Supports 12 conversion types (Table 31): identity, linear, rational, polynomial,
+//! tabular (value-to-value, value-to-text), algebraic formula, and more.
 use anyhow::{Context, Result};
 use binrw::{BinReaderExt, binrw};
 use std::fmt::{self, Display};
@@ -9,7 +13,7 @@ use super::block_header::{parse_block_short, read_meta_data, SharableBlocks};
 use super::metadata::BlockType;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 
-/// Cc4 Channel Conversion block struct
+/// CCBLOCK structure (MDF 4.2 spec, Table 30)
 #[derive(Debug, Clone)]
 #[binrw]
 #[br(little)]

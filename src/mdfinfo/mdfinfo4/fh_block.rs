@@ -1,4 +1,7 @@
-//! File History block (FHBLOCK) for MDF4
+//! File History block (FHBLOCK) for MDF4 — spec section 6.3, Table 18
+//!
+//! Each FHBLOCK records a creation or modification event with a timestamp and
+//! an optional MD comment. FHBLOCKs form a linked list from `hd_fh_first`.
 use anyhow::{Context, Result};
 use binrw::{BinReaderExt, binrw};
 use chrono::{DateTime, Local};
@@ -10,7 +13,7 @@ use super::block_header::{read_meta_data, SharableBlocks};
 use super::metadata::BlockType;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 
-/// Fh4 (File History) block struct, including the header
+/// FHBLOCK structure (MDF 4.2 spec, Table 18)
 #[derive(Debug, Copy, Clone)]
 #[binrw]
 #[br(little)]
@@ -82,7 +85,7 @@ impl Display for FhBlock {
     }
 }
 
-/// Fh4 (File History) block struct parser
+/// Parses a single FHBLOCK from the file at the given target position.
 fn parse_fh_block(
     rdr: &mut SymBufReader<&File>,
     target: i64,
@@ -102,7 +105,8 @@ fn parse_fh_block(
 
 pub type Fh = Vec<FhBlock>;
 
-/// parses File History blocks along with its linked comments returns a vect of Fh4 block with comments
+/// Parses the FHBLOCK linked list starting from `target`, including MD comments.
+/// Returns a Vec of all FHBLOCKs in the chain.
 pub fn parse_fh(
     rdr: &mut SymBufReader<&File>,
     sharable: &mut SharableBlocks,

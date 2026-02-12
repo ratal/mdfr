@@ -1,4 +1,8 @@
-//! Block header structures, metadata parsing, and sharable blocks for MDF4
+//! Block header structures, metadata parsing, and sharable blocks for MDF4 — spec section 5.2, Table 2
+//!
+//! Every MDF4 block starts with a header: 4-byte ID ("##XX"), 4 reserved bytes,
+//! 8-byte length, and 8-byte link count. This module also manages SharableBlocks
+//! (CC, SI, TX, MD blocks) stored in a global hashmap for deduplication.
 use anyhow::{Context, Result};
 use binrw::{BinReaderExt, binrw};
 use std::collections::HashMap;
@@ -12,7 +16,7 @@ use super::metadata::{BlockType, HdComment, MdComment, MetaData, MetaDataBlockTy
 use super::si_block::Si4Block;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 
-/// MDF4 - common block Header
+/// MDF4 block header (spec Table 2) — common 24-byte prefix for all blocks
 #[derive(Debug, Copy, Clone)]
 #[binrw]
 #[br(little)]

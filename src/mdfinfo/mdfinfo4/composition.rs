@@ -1,4 +1,12 @@
-//! Composition blocks (DS, CL, CV, CU) and composition parsing for MDF4
+//! Composition blocks (DS, CL, CV, CU) and composition parsing for MDF4 — spec sections 6.24-6.27, Tables 67-70
+//!
+//! Compositions describe how a channel's data is structured internally:
+//! - DS (Dynamic Size, Table 67): variable-length fields in a VLSD blob
+//! - CL (Channel List, Table 68): named fields in a VLSD blob
+//! - CV (Column Variable-length, Table 69): variable-length column in fixed records
+//! - CU (Column Unordered, Table 70): unordered variable-length column
+//! - CA (Channel Array): N-dimensional arrays (handled in ca_block.rs)
+//! - CN (nested channel): structure composition via CN→CN chain
 use anyhow::{Context, Result, bail};
 use binrw::{BinReaderExt, binrw};
 use std::collections::HashMap;
@@ -15,8 +23,7 @@ use crate::mdfinfo::sym_buf_reader::SymBufReader;
 /// type alias for composition parse result
 pub type CompositionParseResult = (Composition, i64, usize, (Vec<usize>, Order), usize, CnType);
 
-/// contains composition blocks (CN or CA)
-/// can optionally point to another composition
+/// Recursive composition tree. Each node holds a `Compo` block and optionally chains to another composition.
 #[derive(Debug, Clone)]
 #[repr(C)]
 pub struct Composition {
@@ -24,7 +31,7 @@ pub struct Composition {
     pub compo: Option<Box<Composition>>,
 }
 
-/// enum allowing to nest CA or CN blocks for a composition
+/// Composition block variant — one of CA, CN, CL, CV, CU, or DS
 #[derive(Debug, Clone)]
 #[repr(C)]
 pub enum Compo {

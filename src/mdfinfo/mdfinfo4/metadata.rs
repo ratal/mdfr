@@ -1,4 +1,8 @@
-//! MetaData struct and related types for MDF4 TX/MD blocks
+//! MetaData struct and related types for MDF4 TX/MD blocks — spec section 4.5
+//!
+//! TX blocks hold plain text strings. MD blocks hold XML metadata conforming to
+//! schema-specific XSD definitions (Tables 13-54). The `MetaData` struct wraps
+//! both forms and supports lazy XML parsing via `parse_xml()`.
 use anyhow::{Context, Result};
 use binrw::BinWriterExt;
 use std::collections::HashMap;

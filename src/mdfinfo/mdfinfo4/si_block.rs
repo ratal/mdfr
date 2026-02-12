@@ -1,4 +1,7 @@
-//! Source Information block (SIBLOCK) for MDF4
+//! Source Information block (SIBLOCK) for MDF4 — spec section 6.9, Tables 44-46
+//!
+//! Describes the source of a channel or channel group (ECU, bus, tool, etc.).
+//! SIBLOCKs are sharable and stored in the SharableBlocks hashmap.
 use anyhow::Result;
 use binrw::binrw;
 use std::fmt::{self, Display};

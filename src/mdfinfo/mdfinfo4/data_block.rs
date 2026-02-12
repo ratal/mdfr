@@ -1,4 +1,9 @@
-//! Data blocks (DT, DL, DZ, LD, HL, GD) for MDF4
+//! Data blocks (DT, DL, DZ, LD, HL, GD) for MDF4 — spec sections 6.12-6.17, Tables 55-63
+//!
+//! These blocks store raw channel data. DTBLOCK holds plain data, DZBLOCK holds
+//! compressed data (zlib/LZ4/zstd, transposition), DLBLOCK chains data blocks,
+//! HLBLOCK is a header list for DZBLOCK chains, LDBLOCK is a list for sorted data,
+//! and GDBLOCK guards MDF 4.3 features in unsorted data.
 use anyhow::{Context, Result, bail};
 use binrw::{BinReaderExt, binrw};
 use flate2::read::ZlibDecoder;
@@ -10,7 +15,7 @@ use std::io::{BufReader, Cursor, Read};
 use std::str;
 use zstd::Decoder as ZstdDecoder;
 
-/// Generic Data block struct, without the Id
+/// DTBLOCK structure (MDF 4.2 spec, Table 55) — plain data storage
 #[derive(Debug, PartialEq, Eq, Default, Clone)]
 #[binrw]
 #[br(little)]
@@ -32,7 +37,7 @@ impl Display for Dt4Block {
     }
 }
 
-/// DL4 Data List block struct
+/// DLBLOCK structure (MDF 4.2 spec, Table 56) — chains data blocks
 #[derive(Debug, PartialEq, Eq, Default, Clone)]
 #[binrw]
 #[br(little)]
@@ -172,7 +177,7 @@ pub fn parse_dz(rdr: &mut BufReader<&File>) -> Result<(Vec<u8>, Dz4Block)> {
     Ok((data, block))
 }
 
-/// DZ4 Data List block struct
+/// DZBLOCK structure (MDF 4.2 spec, Table 57) — compressed data block
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[binrw]
 #[br(little)]
@@ -253,7 +258,7 @@ impl Display for Dz4Block {
     }
 }
 
-/// DL4 Data List block struct
+/// LDBLOCK structure (MDF 4.2 spec, Table 61) — list data block for sorted data
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[binrw]
 #[br(little)]
@@ -373,7 +378,7 @@ pub fn parser_ld4_block(
     Ok((block, position))
 }
 
-/// HL4 Data List block struct
+/// HLBLOCK structure (MDF 4.2 spec, Table 58) — header list for DZBLOCK chains
 #[derive(Debug, PartialEq, Eq, Default, Clone)]
 #[binrw]
 #[br(little)]
@@ -425,9 +430,7 @@ impl Display for Hl4Block {
     }
 }
 
-/// GD4 Guard Block struct (MDF 4.3)
-/// Used to safeguard newly introduced features against incompatible readers
-/// Note: gd_reserved is not included as its size varies based on gd_len
+/// GDBLOCK structure (MDF 4.3 spec, Table 63) — guards 4.3 features in unsorted data
 #[derive(Debug, PartialEq, Eq, Default, Clone)]
 #[binrw]
 #[br(little)]

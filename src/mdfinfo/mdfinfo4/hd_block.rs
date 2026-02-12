@@ -1,4 +1,7 @@
-//! Header block (HDBLOCK) for MDF4
+//! Header block (HDBLOCK) for MDF4 — spec section 6.1, Tables 13-14
+//!
+//! The HDBLOCK is the root of the block hierarchy. It contains the start timestamp,
+//! time zone information, and links to DG, FH, CH, AT, and EV blocks.
 use anyhow::{Context, Result};
 use binrw::{BinReaderExt, binrw};
 use chrono::{DateTime, Local};
@@ -10,7 +13,7 @@ use super::block_header::{read_meta_data, SharableBlocks};
 use super::metadata::BlockType;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 
-/// Hd4 (Header) block structure
+/// HDBLOCK structure (MDF 4.2 spec, Table 13)
 #[derive(Debug, Copy, Clone)]
 #[binrw]
 #[br(little)]
@@ -97,7 +100,8 @@ impl fmt::Display for Hd4 {
     }
 }
 
-/// Hd4 block struct parser
+/// Parses the HDBLOCK at file offset 168 (after the 64-byte ID block + 104-byte HD header).
+/// Also reads the HD metadata comment block (Table 14).
 pub fn hd4_parser(
     rdr: &mut SymBufReader<&File>,
     sharable: &mut SharableBlocks,

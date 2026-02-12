@@ -1,4 +1,7 @@
-//! Channel Hierarchy block (CHBLOCK) for MDF4
+//! Channel Hierarchy block (CHBLOCK) for MDF4 — spec section 6.2, Tables 15-17
+//!
+//! CHBLOCKs organize channels into a display hierarchy tree (groups, functions,
+//! input/output variables). The hierarchy is separate from the DG→CG→CN data structure.
 use anyhow::{Context, Result};
 use binrw::{BinReaderExt, binrw};
 use std::collections::HashMap;
@@ -9,7 +12,7 @@ use super::block_header::{parse_block_short, read_meta_data, SharableBlocks};
 use super::metadata::BlockType;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 
-/// Ch4Block struct
+/// CHBLOCK structure (MDF 4.2 spec, Table 15)
 #[derive(Debug, PartialEq, Eq, Default, Clone)]
 #[binrw]
 #[br(little)]

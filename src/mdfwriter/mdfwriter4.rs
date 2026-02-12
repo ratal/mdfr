@@ -1,4 +1,12 @@
-//! Writer of data in memory into mdf4.2 file
+//! MDF 4.2 file writer — spec sections 5-6
+//!
+//! Writes in-memory channel data to an MDF 4.2 file. The writer always produces
+//! sorted data (one DG per channel, `dg_rec_id_size=0`), converting VLSC channels
+//! to fixed-length. Two-phase approach:
+//! - **Phase 1** (sequential): builds the metadata block hierarchy (HD→FH, EV, AT, SI, DG→CG→CN)
+//!   and calculates file positions for each block.
+//! - **Phase 2** (parallel): writes raw channel data blocks (DV/DZ/SD) via crossbeam channel,
+//!   using rayon for parallel compression.
 use std::{
     collections::{HashMap, HashSet},
     fs::OpenOptions,
@@ -33,7 +41,11 @@ use parking_lot::Mutex;
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 use std::fs::File;
 
-/// writes mdf4.2 file
+/// Main entry point: writes an MDF 4.2 file from in-memory `Mdf` data.
+///
+/// Converts MDF3 sources to MDF4 if needed. Preserves file history (FH), events (EV),
+/// attachments (AT), source info (SI), and channel hierarchy (CH) from the source file.
+/// Supports optional zlib compression for data blocks.
 pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> {
     let info: MdfInfo4 = match &mdf.mdf_info {
         MdfInfo::V3(mdfinfo3) => convert3to4(mdfinfo3, file_name)
@@ -911,7 +923,8 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
     })
 }
 
-/// Writes a composition block (CA, DS, CL, CU, CV, CN) and any nested composition recursively
+/// Writes a composition block (CA, DS, CL, CU, CV, CN) and any nested composition recursively.
+/// Each block type has its own header format and serialization logic.
 fn write_composition(buffer: &mut Cursor<Vec<u8>>, compo: &Composition) -> Result<()> {
     match &compo.block {
         Compo::CA(c) => {
@@ -1028,7 +1041,8 @@ fn zero_composition_links(compo: &mut Composition) {
     }
 }
 
-/// Writes the data blocks
+/// Serializes DV/DZ data blocks (and optional LD/DI blocks) into a byte buffer.
+/// The LD block links are adjusted to absolute file positions.
 fn write_data_blocks(
     position: i64,
     mut ld_block: Option<Ld4Block>,
@@ -1098,7 +1112,7 @@ fn write_data_blocks(
     Ok(buffer.into_inner())
 }
 
-/// Writes the SD block for VLSD channels
+/// Serializes an SD/DZ block for VLSD channels into a byte buffer.
 fn write_sd_block(
     _position: i64,
     data_block: (DataBlock, usize, Vec<u8>),
@@ -1135,7 +1149,8 @@ fn write_sd_block(
     Ok(buffer.into_inner())
 }
 
-/// Create a LDBlock
+/// Creates an LDBLOCK (list data block, spec Table 61) to wrap DV+DI block pairs.
+/// Sets `ld_flags` bit 7 if an invalidation mask is present.
 fn create_ld(m: &Option<NullBuffer>, offset: &mut i64) -> Option<Ld4Block> {
     let mut ld_block = Ld4Block::default();
     ld_block.ld_count = 1;
@@ -1153,7 +1168,7 @@ fn create_ld(m: &Option<NullBuffer>, offset: &mut i64) -> Option<Ld4Block> {
     Some(ld_block)
 }
 
-/// Create a DV Block
+/// Creates an uncompressed DVBLOCK (data values, spec Table 55 with ##DV ID).
 fn create_dv(data: &ChannelData, offset: &mut i64) -> Result<(DataBlock, usize, Vec<u8>), Error> {
     let mut dv_block = Blockheader4 {
         hdr_id: [35, 35, 68, 86], // ##DV
@@ -1171,14 +1186,15 @@ fn create_dv(data: &ChannelData, offset: &mut i64) -> Result<(DataBlock, usize, 
     Ok((DataBlock::DvDi(dv_block), byte_aligned, data_bytes))
 }
 
-/// Enumeration of data block types
+/// Writer-internal enum: either a compressed DZBLOCK or an uncompressed DV/DI/SD block.
 #[derive(Debug, Clone)]
 enum DataBlock {
     DZ(Dz4Block),
     DvDi(Blockheader4),
 }
 
-/// Create a DZ Block of DV type
+/// Creates a zlib-compressed DZBLOCK wrapping DV data (spec Table 57).
+/// Falls back to uncompressed DV if compression increases size.
 fn create_dz_dv(
     data: &ChannelData,
     offset: &mut i64,
@@ -1206,7 +1222,7 @@ fn create_dz_dv(
     Ok((dv_dz_block, byte_aligned, data_bytes))
 }
 
-/// Create a DI Block
+/// Creates an uncompressed DIBLOCK (data invalidation, ##DI) for the validity mask.
 fn create_di(mask: &NullBuffer, offset: &mut i64) -> Result<Option<(DataBlock, Vec<u8>)>> {
     let mut dv_invalid_block = Blockheader4 {
         hdr_id: [35, 35, 68, 73], // ##DI
@@ -1224,7 +1240,8 @@ fn create_di(mask: &NullBuffer, offset: &mut i64) -> Result<Option<(DataBlock, V
     Ok(Some((DataBlock::DvDi(dv_invalid_block), invalid_data)))
 }
 
-/// Create a DZ Block of DI type
+/// Creates a zlib-compressed DZBLOCK wrapping DI invalidation data.
+/// Falls back to uncompressed DI if compression increases size.
 fn create_dz_di(
     mask: &NullBuffer,
     offset: &mut i64,
@@ -1252,7 +1269,10 @@ fn create_dz_di(
     }
 }
 
-/// Creates the dg and following data strutures in the new mdfinfo from the old one
+/// Creates one DG→CG→CN block set for a single channel (sorted layout).
+/// Handles master/data channel distinction, VLSD detection, TX/MD metadata,
+/// SI source remapping, CA array composition, and DS/CL/CV/CU preservation.
+/// Skips channels with `bit_count==0` or empty data.
 #[allow(clippy::too_many_arguments)]
 fn create_blocks(
     new_info: &mut MdfInfo4,
@@ -1489,7 +1509,9 @@ fn create_blocks(
     Ok(pointer)
 }
 
-/// supports only data and master channels
+/// Maps source cn_type to writer cn_type (spec Table 23).
+/// VLSC (7) and other special types are converted to fixed-length (0).
+/// Master channel types (2,3) are mapped to virtual master (2).
 fn cn_type_writer(cn_type: u8, is_vlsd: bool) -> Result<u8> {
     // not all types are supported
     match cn_type {
@@ -1511,7 +1533,8 @@ fn cn_type_writer(cn_type: u8, is_vlsd: bool) -> Result<u8> {
     }
 }
 
-/// Check if the channel data is variable-length (Utf8 or VariableSizeByteArray)
+/// Returns true if the channel data is variable-length (Utf8 or VariableSizeByteArray),
+/// requiring VLSD storage with an SDBLOCK instead of inline record data.
 fn is_vlsd_data(data: &ChannelData) -> bool {
     matches!(
         data,
@@ -1519,7 +1542,8 @@ fn is_vlsd_data(data: &ChannelData) -> bool {
     )
 }
 
-/// Convert ChannelData to SDBLOCK format (u32 length prefix + data for each value)
+/// Converts ChannelData to SDBLOCK format: each value is stored as a u32 length prefix
+/// followed by the raw bytes (with null terminator for UTF-8 strings).
 fn to_sd_bytes(data: &ChannelData) -> Result<Vec<u8>, Error> {
     match data {
         ChannelData::Utf8(a) => {
@@ -1578,7 +1602,7 @@ fn calculate_sd_size(data: &ChannelData) -> usize {
     }
 }
 
-/// Create an SD Block (Signal Data block for VLSD channels)
+/// Creates an uncompressed SDBLOCK (signal data, ##SD) for VLSD channels.
 fn create_sd(data: &ChannelData, offset: &mut i64) -> Result<(DataBlock, usize, Vec<u8>), Error> {
     let mut sd_block = Blockheader4 {
         hdr_id: [35, 35, 83, 68], // ##SD
@@ -1594,7 +1618,8 @@ fn create_sd(data: &ChannelData, offset: &mut i64) -> Result<(DataBlock, usize, 
     Ok((DataBlock::DvDi(sd_block), byte_aligned, data_bytes))
 }
 
-/// Create a DZ Block of SD type (compressed SDBLOCK)
+/// Creates a zlib-compressed DZBLOCK wrapping SD signal data.
+/// Falls back to uncompressed SD if compression increases size.
 fn create_dz_sd(
     data: &ChannelData,
     offset: &mut i64,

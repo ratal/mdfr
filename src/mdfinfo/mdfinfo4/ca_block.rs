@@ -1,4 +1,7 @@
-//! Channel Array block (CABLOCK) for MDF4
+//! Channel Array block (CABLOCK) for MDF4 — spec section 6.8, Tables 40-43
+//!
+//! Describes N-dimensional arrays of channel values. Supports multiple storage types
+//! (CN template, CG template, DG template) and array types (plain, lookup, axis).
 use anyhow::{Context, Error, Result};
 use binrw::{BinReaderExt, BinWriterExt, binrw};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
@@ -12,7 +15,7 @@ use crate::data_holder::tensor_arrow::Order;
 /// type alias for Ca4Block parse result
 pub type CaBlockParseResult = (Ca4Block, (Vec<usize>, Order), usize, usize);
 
-/// Ca4 Channel Array block struct
+/// CABLOCK structure (MDF 4.2 spec, Table 40)
 #[derive(Debug, PartialEq, Clone)]
 #[repr(C)]
 pub struct Ca4Block {

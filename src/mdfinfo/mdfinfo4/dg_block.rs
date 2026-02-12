@@ -1,4 +1,7 @@
-//! Data Group block (DGBLOCK) for MDF4
+//! Data Group block (DGBLOCK) for MDF4 — spec section 6.4, Table 19
+//!
+//! Each DGBLOCK groups one or more CGBLOCKs that share the same data block.
+//! DGBLOCKs form a linked list from `hd_dg_first`.
 use anyhow::{Context, Result};
 use binrw::{BinReaderExt, binrw};
 use std::collections::{BTreeMap, HashMap};
@@ -11,7 +14,7 @@ use super::cg_block::{Cg4, parse_cg4, CG_F_VLSC, CG_F_VLSD};
 use super::metadata::BlockType;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 
-/// Dg4 Data Group block struct
+/// DGBLOCK structure (MDF 4.2 spec, Table 19)
 #[derive(Debug, Copy, Clone)]
 #[binrw]
 #[br(little)]
@@ -62,7 +65,7 @@ impl Display for Dg4Block {
     }
 }
 
-/// Dg4 (Data Group) block struct parser with comments
+/// Parses a single DGBLOCK and its MD comment from the file.
 fn parse_dg4_block(
     rdr: &mut SymBufReader<&File>,
     sharable: &mut SharableBlocks,
@@ -86,7 +89,7 @@ fn parse_dg4_block(
     Ok((dg, position))
 }
 
-/// Dg4 struct wrapping block, comments and linked CG
+/// Parsed DG wrapper: the DGBLOCK and its linked CGBLOCKs (keyed by record ID)
 #[derive(Debug, Clone)]
 #[repr(C)]
 pub struct Dg4 {
@@ -108,7 +111,9 @@ impl Display for Dg4 {
     }
 }
 
-/// Parser for Dg4 and all linked blocks (cg, cn, cc, ca, si)
+/// Parses the DG→CG→CN block hierarchy. Traverses the DGBLOCK linked list
+/// starting from `target` (`hd_dg_first`). Returns BTreeMap keyed by file position,
+/// plus total CG and CN counts.
 pub fn parse_dg4(
     rdr: &mut SymBufReader<&File>,
     target: i64,
@@ -158,7 +163,8 @@ pub fn parse_dg4(
     Ok((dg, position, n_cg, n_cn))
 }
 
-/// Try to link VLSD/VLSC Channel Groups with matching channel in other groups
+/// Links VLSD/VLSC channel groups (CG flag bit 0/1) to their matching CN in other groups.
+/// A channel references a VLSD CG via `cn_data` pointing to the CG's block position.
 fn identify_vlsd_cg(cg: &mut HashMap<u64, Cg4>) {
     // First find all VLSD/VLSC Channel Groups
     let mut vlsd: HashMap<i64, u64> = HashMap::new();

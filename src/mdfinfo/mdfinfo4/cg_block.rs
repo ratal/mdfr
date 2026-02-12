@@ -1,4 +1,7 @@
-//! Channel Group block (CGBLOCK) for MDF4
+//! Channel Group block (CGBLOCK) for MDF4 — spec section 6.5, Tables 20-21
+//!
+//! A CGBLOCK describes a group of channels with the same record layout (same record
+//! length and record ID). Flags in Table 21 define special CG types: VLSD, VLSC, bus events.
 use anyhow::{Context, Error, Result};
 use arrow::array::{Array, ArrayRef, UInt32Array, UnionArray};
 use arrow::buffer::ScalarBuffer;

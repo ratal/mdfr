@@ -1,4 +1,7 @@
-//! Attachment block (ATBLOCK) for MDF4
+//! Attachment block (ATBLOCK) for MDF4 — spec section 6.10, Table 47
+//!
+//! Stores or references external files (e.g. calibration data, images) attached to the MDF file.
+//! Attachments can be embedded or external, with optional MD5 checksum verification.
 use anyhow::{Context, Result};
 use binrw::{BinReaderExt, binrw};
 use log::warn;

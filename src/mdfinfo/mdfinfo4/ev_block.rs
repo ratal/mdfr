@@ -1,4 +1,7 @@
-//! Event block (EVBLOCK) for MDF4
+//! Event block (EVBLOCK) for MDF4 — spec section 6.11, Tables 48-54
+//!
+//! Describes events that occurred during measurement (triggers, markers, etc.).
+//! Each event has a type, sync domain, cause, and can reference parent/range events.
 use anyhow::{Context, Result};
 use binrw::{BinReaderExt, binrw};
 use std::collections::HashMap;
