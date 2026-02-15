@@ -19,7 +19,7 @@ jobs:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v3
-      - name: Install latest Rust nightly
+      - name: Install latest Rust stable
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
@@ -42,7 +42,7 @@ jobs:
         env:
           MATURIN_PASSWORD: ${{ secrets.PYPI_TOKEN }}
         run: |
-          rustup override set nightly
+          rustup override set stable
           export RUSTFLAGS='-C target-feature=+fxsr,+sse,+sse2,+sse3,+sse4.1,+sse4.2'
           maturin publish \
           --no-sdist \

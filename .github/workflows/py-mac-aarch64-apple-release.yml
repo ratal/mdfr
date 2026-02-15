@@ -16,7 +16,7 @@ jobs:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v3
-      - name: Install latest Rust nightly
+      - name: Install latest Rust stable
         uses: actions-rs/toolchain@v1
         with:
           toolchain: stable
@@ -32,7 +32,7 @@ jobs:
       - name: Prepare maturin publish
         shell: bash
         run: |
-          rustup override set nightly
+          rustup override set stable
           brew install hdf5@2.0
       - name: maturin publish
         uses: messense/maturin-action@v1

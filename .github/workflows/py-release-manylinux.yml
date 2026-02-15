@@ -37,7 +37,7 @@ jobs:
         env:
           MATURIN_PASSWORD: ${{ secrets.PYPI_TOKEN }}
         with:
-          rust-toolchain: nightly
+          rust-toolchain: stable
           target: aarch64-unknown-linux-gnu
           maturin-version: latest
           command: publish
