@@ -553,3 +553,242 @@ fn test_event_signals_channels() -> Result<()> {
 
     Ok(())
 }
+
+// ── MdfInfo4 API Methods ─────────────────────────────────────────────────────
+
+#[test]
+fn test_mdf4_summary_and_format() -> Result<()> {
+    let file = format!("{}Simple/ETAS_SimpleSorted.mf4", BASE_PATH.as_str());
+    let mut mdf = Mdf::new(&file)?;
+    mdf.load_all_channels_data_in_memory()?;
+
+    // Exercise MdfInfo4::summary() and format_channels() via pattern match
+    match &mdf.mdf_info {
+        MdfInfo::V4(info4) => {
+            let summary = info4.summary();
+            assert!(summary.contains("MDF4"));
+            assert!(summary.contains("DGs"));
+            assert!(summary.contains("channels"));
+
+            // format_channels without data
+            let channels_no_data = info4.format_channels(false);
+            assert!(!channels_no_data.is_empty());
+
+            // format_channels with data
+            let channels_with_data = info4.format_channels(true);
+            assert!(!channels_with_data.is_empty());
+            // With data loaded, should contain length indicators
+            assert!(channels_with_data.contains("["));
+
+            // Display trait for MdfInfo4
+            let display = format!("{}", info4);
+            assert!(!display.is_empty());
+            assert!(display.contains("MDF4"));
+        }
+        _ => panic!("expected MDF4"),
+    }
+
+    // Display trait for MdfInfo
+    let info_display = format!("{}", mdf.mdf_info);
+    assert!(!info_display.is_empty());
+
+    // Display trait for Mdf
+    let mdf_display = format!("{mdf}");
+    assert!(!mdf_display.is_empty());
+
+    Ok(())
+}
+
+#[test]
+fn test_mdf4_channel_api_methods() -> Result<()> {
+    let file = format!("{}Simple/ETAS_SimpleSorted.mf4", BASE_PATH.as_str());
+    let mut mdf = Mdf::new(&file)?;
+    mdf.load_all_channels_data_in_memory()?;
+
+    let channels = mdf.get_channel_names_set();
+    assert!(!channels.is_empty());
+
+    // Pick a channel name
+    let channel_name = channels.iter().next().unwrap().clone();
+
+    // get_channel_master
+    let _master = mdf.get_channel_master(&channel_name);
+
+    // get_channel_master_type
+    let _master_type = mdf.get_channel_master_type(&channel_name);
+
+    // get_channel_unit / set_channel_unit
+    let _unit = mdf.get_channel_unit(&channel_name)?;
+    mdf.set_channel_unit(&channel_name, "m/s");
+    let unit = mdf.get_channel_unit(&channel_name)?;
+    assert_eq!(unit, Some("m/s".to_string()));
+
+    // get_channel_desc / set_channel_desc
+    let _desc = mdf.get_channel_desc(&channel_name)?;
+    mdf.set_channel_desc(&channel_name, "Test description");
+    let desc = mdf.get_channel_desc(&channel_name)?;
+    assert_eq!(desc, Some("Test description".to_string()));
+
+    // get_master_channel_names_set
+    let master_map = mdf.get_master_channel_names_set();
+    assert!(!master_map.is_empty());
+
+    // get_channel_names_cg_set (via MdfInfo)
+    let cg_set = mdf.mdf_info.get_channel_names_cg_set(&channel_name);
+    assert!(!cg_set.is_empty());
+
+    // is_unfinalized / get_unfin_flags
+    let _unfinalized = mdf.is_unfinalized();
+    let _flags = mdf.get_unfin_flags();
+
+    // list_sample_reductions (via Mdf)
+    let _sr = mdf.list_sample_reductions();
+
+    Ok(())
+}
+
+#[test]
+fn test_mdf4_rename_and_remove_channel() -> Result<()> {
+    let file = format!("{}Simple/ETAS_SimpleSorted.mf4", BASE_PATH.as_str());
+    let mut mdf = Mdf::new(&file)?;
+    mdf.load_all_channels_data_in_memory()?;
+
+    let channels = mdf.get_channel_names_set();
+    let original_count = channels.len();
+    assert!(original_count >= 2, "need at least 2 channels");
+
+    // Pick a non-master channel to rename
+    let channel_name = channels.iter().next().unwrap().clone();
+
+    // rename_channel
+    mdf.rename_channel(&channel_name, "renamed_channel");
+    let new_channels = mdf.get_channel_names_set();
+    assert!(new_channels.contains("renamed_channel"));
+    assert!(!new_channels.contains(&channel_name));
+    assert_eq!(new_channels.len(), original_count);
+
+    // remove_channel
+    mdf.remove_channel("renamed_channel");
+    let after_remove = mdf.get_channel_names_set();
+    assert!(!after_remove.contains("renamed_channel"));
+    assert_eq!(after_remove.len(), original_count - 1);
+
+    Ok(())
+}
+
+#[test]
+fn test_mdf4_clear_channel_data() -> Result<()> {
+    let file = format!("{}Simple/ETAS_SimpleSorted.mf4", BASE_PATH.as_str());
+    let mut mdf = Mdf::new(&file)?;
+    mdf.load_all_channels_data_in_memory()?;
+
+    // Verify data is loaded
+    let channels = mdf.get_channel_names_set();
+    let channel_name = channels.iter().next().unwrap().clone();
+    assert!(mdf.get_channel_data(&channel_name).is_some());
+
+    // clear_all_channel_data_from_memory
+    mdf.clear_all_channel_data_from_memory()?;
+
+    // After clearing, channel data should be empty
+    if let Some(data) = mdf.get_channel_data(&channel_name) {
+        assert!(data.is_empty(), "data should be empty after clearing");
+    }
+
+    Ok(())
+}
+
+// ── MDF3 API Methods (exercises V3 delegator paths) ──────────────────────────
+
+#[test]
+fn test_mdf3_api_methods() -> Result<()> {
+    let file = "test_files/test_mdf3.mdf";
+    let mut mdf = Mdf::new(file)?;
+    mdf.load_all_channels_data_in_memory()?;
+
+    // Version check
+    assert_eq!(mdf.get_version(), 310);
+
+    // MDF3 is never unfinalized
+    assert!(!mdf.is_unfinalized());
+    assert_eq!(mdf.get_unfin_flags(), (0, 0));
+
+    let channels = mdf.get_channel_names_set();
+    assert!(!channels.is_empty());
+
+    let channel_name = channels.iter().next().unwrap().clone();
+
+    // get_channel_unit
+    let _unit = mdf.get_channel_unit(&channel_name)?;
+
+    // get_channel_desc
+    let _desc = mdf.get_channel_desc(&channel_name)?;
+
+    // get_channel_master
+    let _master = mdf.get_channel_master(&channel_name);
+
+    // get_channel_master_type
+    let _master_type = mdf.get_channel_master_type(&channel_name);
+
+    // get_channel_data
+    let _data = mdf.get_channel_data(&channel_name);
+
+    // get_channel_names_cg_set
+    let cg_set = mdf.mdf_info.get_channel_names_cg_set(&channel_name);
+    assert!(!cg_set.is_empty());
+
+    // get_master_channel_names_set
+    let master_map = mdf.get_master_channel_names_set();
+    assert!(!master_map.is_empty());
+
+    // V3 block accessor methods return None/empty
+    assert!(mdf.mdf_info.get_event_blocks().is_none());
+    assert!(mdf.mdf_info.get_attachement_blocks().is_none());
+    assert!(mdf.mdf_info.get_file_history_blocks().is_none());
+    assert!(mdf.mdf_info.get_source_information_blocks().is_none());
+    assert!(mdf.mdf_info.get_sample_reduction_blocks().is_none());
+    assert!(mdf.mdf_info.get_channel_hierarchy_blocks().is_none());
+
+    // V3 list methods return empty strings
+    let events = mdf.mdf_info.list_events();
+    assert!(events.is_empty());
+    let attachments = mdf.mdf_info.list_attachments();
+    assert!(attachments.is_empty());
+    let fh = mdf.mdf_info.list_file_history();
+    assert!(fh.is_empty());
+    let si = mdf.mdf_info.list_source_information();
+    assert!(si.is_empty());
+    let sr = mdf.mdf_info.list_sample_reductions();
+    assert!(sr.is_empty());
+    let ch = mdf.mdf_info.list_channel_hierarchy();
+    assert!(ch.is_empty());
+
+    // set_channel_unit (V3)
+    mdf.mdf_info.set_channel_unit(&channel_name, "kg");
+
+    // set_channel_desc (V3)
+    mdf.mdf_info.set_channel_desc(&channel_name, "test desc");
+
+    // rename_channel (V3)
+    let second_channel = channels.iter().nth(1).unwrap().clone();
+    mdf.rename_channel(&second_channel, "renamed_v3");
+    assert!(mdf.get_channel_names_set().contains("renamed_v3"));
+
+    // remove_channel (V3)
+    mdf.remove_channel("renamed_v3");
+    assert!(!mdf.get_channel_names_set().contains("renamed_v3"));
+
+    // clear_channel_data_from_memory (V3)
+    let remaining = mdf.get_channel_names_set();
+    mdf.clear_channel_data_from_memory(remaining)?;
+
+    // Display for MDF3 Mdf
+    let display = format!("{mdf}");
+    assert!(display.contains("Version"));
+
+    // Display for MdfInfo V3
+    let info_display = format!("{}", mdf.mdf_info);
+    assert!(!info_display.is_empty());
+
+    Ok(())
+}

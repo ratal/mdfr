@@ -1390,4 +1390,306 @@ mod tests {
         md.parse_xml().unwrap();
         assert!(md.md_comment.is_none());
     }
+
+    // ── Comprehensive Display tests for all comment types ──
+
+    #[test]
+    fn test_md_names_display_all_fields() {
+        let names = MdNames {
+            name: Some("ch1".into()),
+            display: Some("Channel 1".into()),
+            vendor: Some("Acme Corp".into()),
+            description: Some("Test channel".into()),
+        };
+        let s = format!("{names}");
+        assert!(s.contains("name=ch1"));
+        assert!(s.contains("display=Channel 1"));
+        assert!(s.contains("vendor=Acme Corp"));
+        assert!(s.contains("desc=Test channel"));
+    }
+
+    #[test]
+    fn test_hd_comment_display_full() {
+        let mut constants = HashMap::new();
+        constants.insert("pi".into(), "3.14".into());
+        let mut props = HashMap::new();
+        props.insert("author".into(), PropertyValue::Value("tester".into()));
+        let hd = HdComment {
+            tx: Some("measurement".into()),
+            time_source: Some("GPS".into()),
+            constants,
+            common_properties: props,
+        };
+        let s = format!("{hd}");
+        assert!(s.contains("measurement"));
+        assert!(s.contains("time_source=GPS"));
+        assert!(s.contains("constants=1"));
+        assert!(s.contains("props=1"));
+    }
+
+    #[test]
+    fn test_fh_comment_display_full() {
+        let fh = FhComment {
+            tx: Some("created".into()),
+            tool_id: Some("mdfr".into()),
+            tool_vendor: Some("ratalco".into()),
+            tool_version: Some("0.6".into()),
+            user_name: Some("tester".into()),
+            common_properties: HashMap::new(),
+        };
+        let s = format!("{fh}");
+        assert!(s.contains("created"));
+        assert!(s.contains("tool=mdfr"));
+        assert!(s.contains("vendor=ratalco"));
+        assert!(s.contains("v0.6"));
+        assert!(s.contains("user=tester"));
+    }
+
+    #[test]
+    fn test_cn_comment_display() {
+        let cn = CnComment {
+            tx: Some("Engine speed".into()),
+            names: MdNames {
+                name: Some("RPM".into()),
+                display: Some("Engine RPM".into()),
+                ..Default::default()
+            },
+            formula: Some("x * 0.1".into()),
+            address: Some("0x1234".into()),
+            axis_monotony: Some("increasing".into()),
+            ..Default::default()
+        };
+        let s = format!("{cn}");
+        assert!(s.contains("Engine speed"));
+        assert!(s.contains("names("));
+        assert!(s.contains("formula=x * 0.1"));
+        assert!(s.contains("addr=0x1234"));
+        assert!(s.contains("monotony=increasing"));
+    }
+
+    #[test]
+    fn test_cg_comment_display() {
+        let cg = CgComment {
+            tx: Some("Group 1".into()),
+            names: MdNames {
+                name: Some("CG_1".into()),
+                ..Default::default()
+            },
+            common_properties: HashMap::new(),
+        };
+        let s = format!("{cg}");
+        assert!(s.contains("Group 1"));
+        assert!(s.contains("names("));
+    }
+
+    #[test]
+    fn test_cc_comment_display() {
+        let cc = CcComment {
+            tx: Some("Linear".into()),
+            names: MdNames {
+                name: Some("conv1".into()),
+                ..Default::default()
+            },
+            formula: Some("2*x+1".into()),
+            common_properties: HashMap::new(),
+        };
+        let s = format!("{cc}");
+        assert!(s.contains("Linear"));
+        assert!(s.contains("names("));
+        assert!(s.contains("formula=2*x+1"));
+    }
+
+    #[test]
+    fn test_si_comment_display() {
+        let si = SiComment {
+            tx: Some("ECU source".into()),
+            names: MdNames {
+                name: Some("ECU_1".into()),
+                ..Default::default()
+            },
+            protocol: Some("CAN".into()),
+            ..Default::default()
+        };
+        let s = format!("{si}");
+        assert!(s.contains("ECU source"));
+        assert!(s.contains("protocol=CAN"));
+        assert!(s.contains("names("));
+    }
+
+    #[test]
+    fn test_ev_comment_display() {
+        let ev = EvComment {
+            tx: Some("trigger".into()),
+            pre_trigger_interval: Some(1.5),
+            post_trigger_interval: Some(3.0),
+            formula: Some("x > 100".into()),
+            timeout: Some(10.0),
+            common_properties: HashMap::new(),
+        };
+        let s = format!("{ev}");
+        assert!(s.contains("trigger"));
+        assert!(s.contains("pre_trigger=1.5"));
+        assert!(s.contains("post_trigger=3"));
+        assert!(s.contains("formula=x > 100"));
+        assert!(s.contains("timeout=10"));
+    }
+
+    #[test]
+    fn test_at_comment_display() {
+        let mut props = HashMap::new();
+        props.insert("mime".into(), PropertyValue::Value("image/png".into()));
+        let at = AtComment {
+            tx: Some("attachment".into()),
+            common_properties: props,
+        };
+        let s = format!("{at}");
+        assert!(s.contains("attachment"));
+        assert!(s.contains("props=1"));
+    }
+
+    #[test]
+    fn test_ch_comment_display() {
+        let ch = ChComment {
+            tx: Some("hierarchy".into()),
+            names: MdNames {
+                name: Some("Group1".into()),
+                ..Default::default()
+            },
+            common_properties: HashMap::new(),
+        };
+        let s = format!("{ch}");
+        assert!(s.contains("hierarchy"));
+        assert!(s.contains("names("));
+    }
+
+    #[test]
+    fn test_dg_comment_display() {
+        let mut props = HashMap::new();
+        props.insert("key".into(), PropertyValue::Value("val".into()));
+        let dg = DgComment {
+            tx: Some("data group".into()),
+            common_properties: props,
+        };
+        let s = format!("{dg}");
+        assert!(s.contains("data group"));
+        assert!(s.contains("props=1"));
+    }
+
+    #[test]
+    fn test_md_comment_display_all_variants() {
+        // Fh
+        let fh = MdComment::Fh(FhComment {
+            tx: Some("fh_text".into()),
+            ..Default::default()
+        });
+        assert!(format!("{fh}").contains("fh_text"));
+
+        // Cn
+        let cn = MdComment::Cn(CnComment {
+            tx: Some("cn_text".into()),
+            ..Default::default()
+        });
+        assert!(format!("{cn}").contains("cn_text"));
+
+        // Cg
+        let cg = MdComment::Cg(CgComment {
+            tx: Some("cg_text".into()),
+            ..Default::default()
+        });
+        assert!(format!("{cg}").contains("cg_text"));
+
+        // Cc
+        let cc = MdComment::Cc(CcComment {
+            tx: Some("cc_text".into()),
+            ..Default::default()
+        });
+        assert!(format!("{cc}").contains("cc_text"));
+
+        // Si
+        let si = MdComment::Si(SiComment {
+            tx: Some("si_text".into()),
+            ..Default::default()
+        });
+        assert!(format!("{si}").contains("si_text"));
+
+        // Ev
+        let ev = MdComment::Ev(EvComment {
+            tx: Some("ev_text".into()),
+            ..Default::default()
+        });
+        assert!(format!("{ev}").contains("ev_text"));
+
+        // At
+        let at = MdComment::At(AtComment {
+            tx: Some("at_text".into()),
+            ..Default::default()
+        });
+        assert!(format!("{at}").contains("at_text"));
+
+        // Ch
+        let ch = MdComment::Ch(ChComment {
+            tx: Some("ch_text".into()),
+            ..Default::default()
+        });
+        assert!(format!("{ch}").contains("ch_text"));
+
+        // Dg
+        let dg = MdComment::Dg(DgComment {
+            tx: Some("dg_text".into()),
+            ..Default::default()
+        });
+        assert!(format!("{dg}").contains("dg_text"));
+    }
+
+    #[test]
+    fn test_md_comment_get_tx_all_variants() {
+        // Cn
+        let cn = MdComment::Cn(CnComment {
+            tx: Some("cn_tx".into()),
+            ..Default::default()
+        });
+        assert_eq!(cn.get_tx(), Some("cn_tx"));
+
+        // Cg
+        let cg = MdComment::Cg(CgComment {
+            tx: Some("cg_tx".into()),
+            ..Default::default()
+        });
+        assert_eq!(cg.get_tx(), Some("cg_tx"));
+
+        // Cc
+        let cc = MdComment::Cc(CcComment {
+            tx: Some("cc_tx".into()),
+            ..Default::default()
+        });
+        assert_eq!(cc.get_tx(), Some("cc_tx"));
+
+        // Si
+        let si = MdComment::Si(SiComment {
+            tx: Some("si_tx".into()),
+            ..Default::default()
+        });
+        assert_eq!(si.get_tx(), Some("si_tx"));
+
+        // At
+        let at = MdComment::At(AtComment {
+            tx: Some("at_tx".into()),
+            ..Default::default()
+        });
+        assert_eq!(at.get_tx(), Some("at_tx"));
+
+        // Ch
+        let ch = MdComment::Ch(ChComment {
+            tx: Some("ch_tx".into()),
+            ..Default::default()
+        });
+        assert_eq!(ch.get_tx(), Some("ch_tx"));
+
+        // Dg
+        let dg = MdComment::Dg(DgComment {
+            tx: Some("dg_tx".into()),
+            ..Default::default()
+        });
+        assert_eq!(dg.get_tx(), Some("dg_tx"));
+    }
 }
