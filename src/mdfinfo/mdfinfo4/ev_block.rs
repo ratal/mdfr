@@ -350,10 +350,11 @@ mod tests {
 
     #[test]
     fn test_ev_get_sync_value() {
-        let mut ev = Ev4Block::default();
-
-        ev.ev_sync_base_value = 1000;
-        ev.ev_sync_factor = 1e-9;
+        let mut ev = Ev4Block {
+            ev_sync_base_value: 1000,
+            ev_sync_factor: 1e-9,
+            ..Default::default()
+        };
         assert!((ev.get_sync_value() - 1e-6).abs() < 1e-15);
 
         ev.ev_sync_base_value = 0;
@@ -416,9 +417,10 @@ mod tests {
 
     #[test]
     fn test_ev_calculate_block_size() {
-        let mut ev = Ev4Block::default();
-
-        ev.ev_links = 5;
+        let mut ev = Ev4Block {
+            ev_links: 5,
+            ..Default::default()
+        };
         assert_eq!(ev.calculate_block_size(), 16 + 8 + 5 * 8 + 32); // 96
 
         ev.ev_links = 8;
@@ -427,13 +429,15 @@ mod tests {
 
     #[test]
     fn test_ev_display() {
-        let mut ev = Ev4Block::default();
-        ev.ev_type = EV_T_TRIGGER;
-        ev.ev_sync_type = EV_S_TIME;
-        ev.ev_cause = EV_C_USER;
-        ev.ev_range_type = 0;
-        ev.ev_scope_count = 3;
-        ev.ev_attachment_count = 1;
+        let ev = Ev4Block {
+            ev_type: EV_T_TRIGGER,
+            ev_sync_type: EV_S_TIME,
+            ev_cause: EV_C_USER,
+            ev_range_type: 0,
+            ev_scope_count: 3,
+            ev_attachment_count: 1,
+            ..Default::default()
+        };
 
         let display = format!("{ev}");
         assert!(display.contains("EV:"));

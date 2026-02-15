@@ -277,11 +277,13 @@ mod tests {
 
     #[test]
     fn test_at_display() {
-        let mut at = At4Block::default();
-        at.at_original_size = 1024;
-        at.at_embedded_size = 512;
-        at.at_flags = 0b1; // embedded
-        at.at_creator_index = 1;
+        let mut at = At4Block {
+            at_original_size: 1024,
+            at_embedded_size: 512,
+            at_flags: 0b1, // embedded
+            at_creator_index: 1,
+            ..Default::default()
+        };
 
         let display = format!("{at}");
         assert!(display.contains("AT:"));
