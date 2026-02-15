@@ -2230,3 +2230,175 @@ fn bitfield_text_table(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arrow::array::{Float64Builder, Int32Builder, UInt16Builder};
+
+    #[test]
+    fn test_linear_calculation() {
+        // v * p2 + p1 where p1=10.0, p2=2.0
+        let p1 = 10.0;
+        let p2 = 2.0;
+
+        // Int32
+        let mut builder = Int32Builder::new();
+        builder.append_value(0);
+        builder.append_value(1);
+        builder.append_value(5);
+        builder.append_value(-3);
+        let result = linear_calculation(&mut builder, p1, p2).unwrap();
+        let values = result.values_slice();
+        assert_eq!(values.len(), 4);
+        assert!((values[0] - 10.0).abs() < 1e-12); // 0*2+10
+        assert!((values[1] - 12.0).abs() < 1e-12); // 1*2+10
+        assert!((values[2] - 20.0).abs() < 1e-12); // 5*2+10
+        assert!((values[3] - 4.0).abs() < 1e-12); // -3*2+10
+
+        // Float64
+        let mut builder = Float64Builder::new();
+        builder.append_value(1.5);
+        builder.append_value(2.5);
+        let result = linear_calculation(&mut builder, p1, p2).unwrap();
+        let values = result.values_slice();
+        assert!((values[0] - 13.0).abs() < 1e-12); // 1.5*2+10
+        assert!((values[1] - 15.0).abs() < 1e-12); // 2.5*2+10
+
+        // UInt16
+        let mut builder = UInt16Builder::new();
+        builder.append_value(100);
+        builder.append_value(0);
+        let result = linear_calculation(&mut builder, p1, p2).unwrap();
+        let values = result.values_slice();
+        assert!((values[0] - 210.0).abs() < 1e-12); // 100*2+10
+        assert!((values[1] - 10.0).abs() < 1e-12); // 0*2+10
+    }
+
+    #[test]
+    fn test_rational_calculation() {
+        // (x²*p1 + x*p2 + p3) / (x²*p4 + x*p5 + p6)
+        // Simple linear: p1=0, p2=2, p3=1, p4=0, p5=0, p6=1 → (2x+1)/1
+        let cc_val = vec![0.0, 2.0, 1.0, 0.0, 0.0, 1.0];
+
+        let mut builder = Int32Builder::new();
+        builder.append_value(0);
+        builder.append_value(1);
+        builder.append_value(5);
+        let result = rational_calculation(&builder, &cc_val).unwrap();
+        let values = result.values_slice();
+        assert!((values[0] - 1.0).abs() < 1e-12); // (0+0+1)/1
+        assert!((values[1] - 3.0).abs() < 1e-12); // (0+2+1)/1
+        assert!((values[2] - 11.0).abs() < 1e-12); // (0+10+1)/1
+
+        // Quadratic: p1=1, p2=0, p3=0, p4=0, p5=0, p6=1 → x²
+        let cc_val = vec![1.0, 0.0, 0.0, 0.0, 0.0, 1.0];
+        let mut builder = Float64Builder::new();
+        builder.append_value(3.0);
+        builder.append_value(4.0);
+        let result = rational_calculation(&builder, &cc_val).unwrap();
+        let values = result.values_slice();
+        assert!((values[0] - 9.0).abs() < 1e-12); // 3²
+        assert!((values[1] - 16.0).abs() < 1e-12); // 4²
+    }
+
+    #[test]
+    fn test_value_to_value_with_interpolation_primitive() {
+        // Table pairs: x=0→y=0, x=10→y=100, x=20→y=200
+        let keys = [0.0, 0.0, 10.0, 100.0, 20.0, 200.0];
+        let val: Vec<(&f64, &f64)> = keys.iter().tuples().collect();
+
+        let mut builder = Float64Builder::new();
+        builder.append_value(0.0); // exact → 0
+        builder.append_value(5.0); // interpolate → 50
+        builder.append_value(10.0); // exact → 100
+        builder.append_value(15.0); // interpolate → 150
+        builder.append_value(-5.0); // below first → 0
+        builder.append_value(25.0); // above last → 200
+
+        let result = value_to_value_with_interpolation_primitive(&builder, val).unwrap();
+        let values = result.values_slice();
+        assert_eq!(values.len(), 6);
+        assert!((values[0] - 0.0).abs() < 1e-12);
+        assert!((values[1] - 50.0).abs() < 1e-12);
+        assert!((values[2] - 100.0).abs() < 1e-12);
+        assert!((values[3] - 150.0).abs() < 1e-12);
+        assert!((values[4] - 0.0).abs() < 1e-12);
+        assert!((values[5] - 200.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_value_to_value_without_interpolation_primitive() {
+        // Table pairs: x=0→y=0, x=10→y=100, x=20→y=200
+        let keys = [0.0, 0.0, 10.0, 100.0, 20.0, 200.0];
+        let val: Vec<(&f64, &f64)> = keys.iter().tuples().collect();
+
+        let mut builder = Float64Builder::new();
+        builder.append_value(0.0); // exact → 0
+        builder.append_value(3.0); // nearer to x=0 (dist=3) than x=10 (dist=7) → 0
+        builder.append_value(7.0); // nearer to x=10 (dist=3) than x=0 (dist=7) → 100
+        builder.append_value(10.0); // exact → 100
+        builder.append_value(-5.0); // below first → 0
+        builder.append_value(25.0); // above last → 200
+
+        let result = value_to_value_without_interpolation_primitive(&mut builder, val).unwrap();
+        let values = result.values_slice();
+        assert_eq!(values.len(), 6);
+        assert!((values[0] - 0.0).abs() < 1e-12);
+        assert!((values[1] - 0.0).abs() < 1e-12);
+        assert!((values[2] - 100.0).abs() < 1e-12);
+        assert!((values[3] - 100.0).abs() < 1e-12);
+        assert!((values[4] - 0.0).abs() < 1e-12);
+        assert!((values[5] - 200.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_value_range_to_value_table() {
+        // Ranges: (key_min, key_max, value)
+        let val = vec![
+            (0.0, 10.0, 100.0),
+            (10.0, 20.0, 200.0),
+            (20.0, 30.0, 300.0),
+        ];
+        let default = -1.0;
+
+        let mut builder = Float64Builder::new();
+        builder.append_value(0.0); // exact match on key_min=0 → 100
+        builder.append_value(10.0); // exact match on key_min=10 → 200
+        builder.append_value(20.0); // exact match on key_min=20 → 300
+        builder.append_value(-5.0); // below all ranges → default
+        builder.append_value(25.0); // above last key_min but within last upper bound → 300
+
+        let result = value_range_to_value_table_calculation(&builder, &val, &default).unwrap();
+        let values = result.values_slice();
+        assert_eq!(values.len(), 5);
+        assert!((values[0] - 100.0).abs() < 1e-12);
+        assert!((values[1] - 200.0).abs() < 1e-12);
+        assert!((values[2] - 300.0).abs() < 1e-12);
+        assert!((values[3] - (-1.0)).abs() < 1e-12);
+        assert!((values[4] - 300.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_algebraic_conversion_primitive() {
+        // Expression: X * 2 + 1
+        let parser = fasteval::Parser::new();
+        let mut slab = fasteval::Slab::new();
+        let compiled = parser.parse("X * 2 + 1", &mut slab.ps).unwrap();
+        let compiled = compiled.from(&slab.ps).compile(&slab.ps, &mut slab.cs);
+
+        let mut builder = Float64Builder::new();
+        builder.append_value(0.0); // → 1
+        builder.append_value(1.0); // → 3
+        builder.append_value(5.0); // → 11
+        builder.append_value(-3.0); // → -5
+
+        let result = alegbraic_conversion_primitive(&compiled, &slab, &builder).unwrap();
+        let values = result.values_slice();
+        assert_eq!(values.len(), 4);
+        assert!((values[0] - 1.0).abs() < 1e-12);
+        assert!((values[1] - 3.0).abs() < 1e-12);
+        assert!((values[2] - 11.0).abs() < 1e-12);
+        assert!((values[3] - (-5.0)).abs() < 1e-12);
+    }
+}

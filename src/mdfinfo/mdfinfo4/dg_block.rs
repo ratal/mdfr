@@ -192,3 +192,85 @@ fn identify_vlsd_cg(cg: &mut HashMap<u64, Cg4>) {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use super::super::block_header::default_short_header;
+    use super::super::cg_block::Cg4Block;
+    use super::super::cn_block::Cn4;
+    use super::super::metadata::BlockType;
+    use std::collections::HashSet;
+
+    #[test]
+    fn test_dg_block_display() {
+        let dg = Dg4Block::default();
+        let display = format!("{dg}");
+        assert!(display.contains("DG:"));
+        assert!(display.contains("rec_id_size=0"));
+
+        let dg = Dg4Block {
+            dg_rec_id_size: 2,
+            ..Default::default()
+        };
+        let display = format!("{dg}");
+        assert!(display.contains("rec_id_size=2"));
+    }
+
+    #[test]
+    fn test_dg_display() {
+        // Empty DG
+        let dg = Dg4 {
+            block: Dg4Block::default(),
+            cg: HashMap::new(),
+        };
+        let display = format!("{dg}");
+        assert!(display.contains("0 channel groups"));
+        assert!(display.contains("0 channels"));
+
+        // DG with 2 CGs, one with 3 channels and one with 2
+        let mut cg_map = HashMap::new();
+        let mut cn1: HashMap<i32, Cn4> = HashMap::new();
+        cn1.insert(0, Cn4::default());
+        cn1.insert(8, Cn4::default());
+        cn1.insert(16, Cn4::default());
+        let cg1 = Cg4 {
+            header: default_short_header(BlockType::CG),
+            block: Cg4Block::default(),
+            cn: cn1,
+            master_channel_name: None,
+            channel_names: HashSet::new(),
+            record_length: 24,
+            block_position: 100,
+            vlsd_cg: None,
+            invalid_bytes: None,
+            sr: vec![],
+        };
+        cg_map.insert(0, cg1);
+
+        let mut cn2: HashMap<i32, Cn4> = HashMap::new();
+        cn2.insert(0, Cn4::default());
+        cn2.insert(8, Cn4::default());
+        let cg2 = Cg4 {
+            header: default_short_header(BlockType::CG),
+            block: Cg4Block::default(),
+            cn: cn2,
+            master_channel_name: None,
+            channel_names: HashSet::new(),
+            record_length: 16,
+            block_position: 200,
+            vlsd_cg: None,
+            invalid_bytes: None,
+            sr: vec![],
+        };
+        cg_map.insert(1, cg2);
+
+        let dg = Dg4 {
+            block: Dg4Block::default(),
+            cg: cg_map,
+        };
+        let display = format!("{dg}");
+        assert!(display.contains("2 channel groups"));
+        assert!(display.contains("5 channels"));
+    }
+}

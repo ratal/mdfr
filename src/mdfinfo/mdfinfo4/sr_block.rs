@@ -95,3 +95,79 @@ impl Display for Sr4Block {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sr_default() {
+        let sr = Sr4Block::default();
+        assert_eq!(sr.sr_sr_next, 0);
+        assert_eq!(sr.sr_data, 0);
+        assert_eq!(sr.sr_cycle_count, 0);
+        assert_eq!(sr.sr_interval, 0.0);
+        assert_eq!(sr.sr_sync_type, 1); // default is time
+        assert_eq!(sr.sr_flags, 0);
+    }
+
+    #[test]
+    fn test_sr_has_invalidation_bytes() {
+        let mut sr = Sr4Block::default();
+        assert!(!sr.has_invalidation_bytes());
+
+        sr.sr_flags = SR_F_INVALIDATION_BYTES;
+        assert!(sr.has_invalidation_bytes());
+
+        sr.sr_flags = SR_F_DOMINANT_INVALIDATION; // bit 1 only
+        assert!(!sr.has_invalidation_bytes());
+
+        sr.sr_flags = SR_F_INVALIDATION_BYTES | SR_F_DOMINANT_INVALIDATION;
+        assert!(sr.has_invalidation_bytes());
+    }
+
+    #[test]
+    fn test_sr_get_sync_type_str() {
+        let mut sr = Sr4Block {
+            sr_sync_type: SR_SYNC_TIME,
+            ..Default::default()
+        };
+        assert_eq!(sr.get_sync_type_str(), "Time (seconds)");
+
+        sr.sr_sync_type = SR_SYNC_ANGLE;
+        assert_eq!(sr.get_sync_type_str(), "Angle (radians)");
+
+        sr.sr_sync_type = SR_SYNC_DISTANCE;
+        assert_eq!(sr.get_sync_type_str(), "Distance (meters)");
+
+        sr.sr_sync_type = SR_SYNC_INDEX;
+        assert_eq!(sr.get_sync_type_str(), "Index (samples)");
+
+        sr.sr_sync_type = SR_SYNC_FREQUENCY;
+        assert_eq!(sr.get_sync_type_str(), "Frequency (Hz)");
+
+        sr.sr_sync_type = 0;
+        assert_eq!(sr.get_sync_type_str(), "Unknown");
+
+        sr.sr_sync_type = 255;
+        assert_eq!(sr.get_sync_type_str(), "Unknown");
+    }
+
+    #[test]
+    fn test_sr_display() {
+        let sr = Sr4Block {
+            sr_cycle_count: 1000,
+            sr_interval: 0.01,
+            sr_sync_type: SR_SYNC_TIME,
+            sr_flags: SR_F_INVALIDATION_BYTES,
+            ..Default::default()
+        };
+
+        let display = format!("{sr}");
+        assert!(display.contains("SR:"));
+        assert!(display.contains("cycle_count=1000"));
+        assert!(display.contains("interval=0.01"));
+        assert!(display.contains("Time (seconds)"));
+        assert!(display.contains("flags=0x01"));
+    }
+}

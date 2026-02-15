@@ -136,3 +136,60 @@ pub(super) fn read_cc(
     sharable.cc.insert(*target, cc_block);
     Ok(position)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_cc(cc_type: u8, ref_count: u16, val_count: u16) -> Cc4Block {
+        Cc4Block {
+            cc_links: 4,
+            cc_tx_name: 0,
+            cc_md_unit: 0,
+            cc_md_comment: 0,
+            cc_cc_inverse: 0,
+            cc_ref: vec![],
+            cc_type,
+            cc_precision: 0,
+            cc_flags: 0,
+            cc_ref_count: ref_count,
+            cc_val_count: val_count,
+            cc_phy_range_min: 0.0,
+            cc_phy_range_max: 0.0,
+            cc_val: CcVal::Real(vec![]),
+        }
+    }
+
+    #[test]
+    fn test_cc_get_cc_type_str() {
+        let expected = [
+            (0, "Identity"),
+            (1, "Linear"),
+            (2, "Rational"),
+            (3, "Algebraic"),
+            (4, "ValueToValueInterpolation"),
+            (5, "ValueToValue"),
+            (6, "ValueRangeToValue"),
+            (7, "ValueToText"),
+            (8, "ValueRangeToText"),
+            (9, "TextToValue"),
+            (10, "TextToText"),
+            (11, "BitfieldToText"),
+            (255, "Unknown"),
+        ];
+        for (val, name) in expected {
+            let cc = make_cc(val, 0, 0);
+            assert_eq!(cc.get_cc_type_str(), name, "cc_type={val}");
+        }
+    }
+
+    #[test]
+    fn test_cc_display() {
+        let cc = make_cc(1, 2, 3);
+        let display = format!("{cc}");
+        assert!(display.contains("CC:"));
+        assert!(display.contains("Linear"));
+        assert!(display.contains("refs=2"));
+        assert!(display.contains("vals=3"));
+    }
+}

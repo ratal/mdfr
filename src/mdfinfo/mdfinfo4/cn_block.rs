@@ -808,3 +808,145 @@ pub(super) fn parse_cn4_block(
 
     Ok((cn_struct, position, n_cn, cns))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cn_get_cn_type_str() {
+        let mut cn = Cn4Block::default();
+        let expected = [
+            (0, "Fixed"),
+            (1, "VLSD"),
+            (2, "Master"),
+            (3, "Virtual Master"),
+            (4, "Sync"),
+            (5, "MLSD"),
+            (6, "Virtual Data"),
+            (7, "VLSC"),
+            (255, "Unknown"),
+        ];
+        for (val, name) in expected {
+            cn.cn_type = val;
+            assert_eq!(cn.get_cn_type_str(), name, "cn_type={val}");
+        }
+    }
+
+    #[test]
+    fn test_cn_get_sync_type_str() {
+        let mut cn = Cn4Block::default();
+        let expected = [
+            (0, "None"),
+            (1, "Time"),
+            (2, "Angle"),
+            (3, "Distance"),
+            (4, "Index"),
+            (5, "Frequency"),
+            (255, "Unknown"),
+        ];
+        for (val, name) in expected {
+            cn.cn_sync_type = val;
+            assert_eq!(cn.get_sync_type_str(), name, "cn_sync_type={val}");
+        }
+    }
+
+    #[test]
+    fn test_cn_get_data_type_str() {
+        let mut cn = Cn4Block::default();
+        let expected = [
+            (0, "UInt LE"),
+            (1, "UInt BE"),
+            (2, "Int LE"),
+            (3, "Int BE"),
+            (4, "Float LE"),
+            (5, "Float BE"),
+            (6, "String ISO-8859-1"),
+            (7, "String UTF-8"),
+            (8, "String UTF-16 LE"),
+            (9, "String UTF-16 BE"),
+            (10, "Byte Array"),
+            (11, "MIME Sample"),
+            (12, "MIME Stream"),
+            (13, "CANopen Date"),
+            (14, "CANopen Time"),
+            (15, "Complex LE"),
+            (16, "Complex BE"),
+            (255, "Unknown"),
+        ];
+        for (val, name) in expected {
+            cn.cn_data_type = val;
+            assert_eq!(cn.get_data_type_str(), name, "cn_data_type={val}");
+        }
+    }
+
+    #[test]
+    fn test_cn_cn_size() {
+        // Non-VLSC type returns None
+        let cn = Cn4Block::default(); // cn_type = 0
+        assert!(cn.cn_cn_size().is_none());
+
+        // VLSC with no extra links returns None
+        let cn = Cn4Block {
+            cn_type: 7,
+            ..Default::default()
+        };
+        assert!(cn.cn_cn_size().is_none()); // links is empty
+
+        // VLSC with extra links returns first link
+        let cn = Cn4Block {
+            cn_type: 7,
+            cn_links: 9,
+            links: vec![12345],
+            ..Default::default()
+        };
+        assert_eq!(cn.cn_cn_size(), Some(12345));
+    }
+
+    #[test]
+    fn test_cn_get_set_si_source() {
+        let mut cn = Cn4Block::default();
+        assert_eq!(cn.get_si_source(), 0);
+
+        cn.set_si_source(42);
+        assert_eq!(cn.get_si_source(), 42);
+    }
+
+    #[test]
+    fn test_cn_block_display() {
+        let cn = Cn4Block {
+            cn_type: 2,
+            cn_data_type: 4,
+            cn_bit_count: 64,
+            cn_byte_offset: 8,
+            ..Default::default()
+        };
+        let display = format!("{cn}");
+        assert!(display.contains("CN:"));
+        assert!(display.contains("Master"));
+        assert!(display.contains("Float LE"));
+        assert!(display.contains("bits=64"));
+        assert!(display.contains("byte_offset=8"));
+    }
+
+    #[test]
+    fn test_cn4_display() {
+        let cn4 = Cn4 {
+            unique_name: "speed".to_string(),
+            pos_byte_beg: 16,
+            n_bytes: 8,
+            block: Cn4Block {
+                cn_type: 0,
+                cn_sync_type: 1,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let display = format!("{cn4}");
+        assert!(display.contains("speed"));
+        assert!(display.contains("byte 16"));
+        assert!(display.contains("8 bytes"));
+        assert!(display.contains("Fixed"));
+        assert!(display.contains("Time"));
+    }
+}

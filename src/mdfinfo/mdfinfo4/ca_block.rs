@@ -521,3 +521,169 @@ pub(super) fn parse_ca_block(
         pnd,
     ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default() {
+        let ca = Ca4Block::default();
+        assert_eq!(ca.ca_id, [35, 35, 67, 65]); // ##CA
+        assert_eq!(ca.ca_type, 0);
+        assert_eq!(ca.ca_storage, 0);
+        assert_eq!(ca.ca_ndim, 1);
+        assert_eq!(ca.ca_flags, 0);
+        assert!(ca.ca_dim_size.is_empty());
+        assert!(ca.ca_data.is_none());
+        assert!(ca.ca_axis_value.is_none());
+        assert!(ca.ca_cycle_count.is_none());
+    }
+
+    #[test]
+    fn test_get_ca_type_str() {
+        let mut ca = Ca4Block::default();
+        let expected = [
+            (0, "Array"),
+            (1, "ScalingAxis"),
+            (2, "LookUp"),
+            (3, "IntervalAxis"),
+            (4, "ClassificationResult"),
+            (255, "Unknown"),
+        ];
+        for (val, name) in expected {
+            ca.ca_type = val;
+            assert_eq!(ca.get_ca_type_str(), name, "ca_type={val}");
+        }
+    }
+
+    #[test]
+    fn test_get_storage_str() {
+        let mut ca = Ca4Block::default();
+        let expected = [
+            (0, "CN Template"),
+            (1, "CG Template"),
+            (2, "DG Template"),
+            (255, "Unknown"),
+        ];
+        for (val, name) in expected {
+            ca.ca_storage = val;
+            assert_eq!(ca.get_storage_str(), name, "ca_storage={val}");
+        }
+    }
+
+    #[test]
+    fn test_calculate_block_len() {
+        // Default: 1 link (ca_composition), no optional fields, ndim=1
+        let ca = Ca4Block {
+            ca_ndim: 1,
+            ca_dim_size: vec![5],
+            ..Default::default()
+        };
+        // 16 (header) + 8 (link count) + 1*8 (links) + 16 (members) + 1*8 (dim_size) = 56
+        assert_eq!(ca.calculate_block_len(), 56);
+
+        // With DG template storage (adds pnd=5 data links)
+        let ca = Ca4Block {
+            ca_ndim: 1,
+            ca_storage: 2,
+            ca_dim_size: vec![5],
+            ..Default::default()
+        };
+        // links = 1 + 5 = 6
+        // 16 + 8 + 6*8 + 16 + 1*8 = 96
+        assert_eq!(ca.calculate_block_len(), 96);
+
+        // With axis_value
+        let ca = Ca4Block {
+            ca_ndim: 1,
+            ca_dim_size: vec![3],
+            ca_axis_value: Some(vec![1.0, 2.0, 3.0]),
+            ..Default::default()
+        };
+        // 56 + 3*8 = 80
+        assert_eq!(ca.calculate_block_len(), 80);
+    }
+
+    #[test]
+    fn test_calculate_link_count_with_flags() {
+        // No flags: just ca_composition = 1
+        let ca = Ca4Block {
+            ca_ndim: 2,
+            ca_dim_size: vec![3, 4],
+            ..Default::default()
+        };
+        assert_eq!(ca.calculate_block_len(), 16 + 8 + 8 + 16 + 2 * 8); // 64
+
+        // Dynamic size flag (bit 0): adds D*3 = 6 links
+        let ca = Ca4Block {
+            ca_ndim: 2,
+            ca_dim_size: vec![3, 4],
+            ca_flags: 0b1,
+            ..Default::default()
+        };
+        // links = 1 + 6 = 7
+        assert_eq!(ca.calculate_block_len(), 16 + 8 + 7 * 8 + 16 + 2 * 8);
+
+        // Axis flag without fixed axes (bit 4 set, bit 5 clear): adds D + D*3
+        let ca = Ca4Block {
+            ca_ndim: 2,
+            ca_dim_size: vec![3, 4],
+            ca_flags: 0b10000,
+            ..Default::default()
+        };
+        // links = 1 + 2 + 6 = 9 (ca_cc_axis_conversion + ca_axis)
+        assert_eq!(ca.calculate_block_len(), 16 + 8 + 9 * 8 + 16 + 2 * 8);
+
+        // Axis flag with fixed axes (bits 4+5 set): adds D only (no ca_axis)
+        let ca = Ca4Block {
+            ca_ndim: 2,
+            ca_dim_size: vec![3, 4],
+            ca_flags: 0b110000,
+            ..Default::default()
+        };
+        // links = 1 + 2 = 3
+        assert_eq!(ca.calculate_block_len(), 16 + 8 + 3 * 8 + 16 + 2 * 8);
+    }
+
+    #[test]
+    fn test_prepare_for_write() {
+        let mut ca = Ca4Block {
+            ca_ndim: 1,
+            ca_dim_size: vec![3],
+            ca_composition: 1000,
+            ca_data: Some(vec![100, 200, 300]),
+            ca_storage: 2,
+            ca_dynamic_size: Some(vec![10, 20, 30]),
+            ca_flags: 0b1,
+            ..Default::default()
+        };
+        ca.prepare_for_write();
+
+        assert_eq!(ca.ca_composition, 0);
+        assert_eq!(ca.ca_data, Some(vec![0, 0, 0]));
+        assert_eq!(ca.ca_dynamic_size, Some(vec![0, 0, 0]));
+        // links recalculated: 1 + 3 (data) + 3 (dynamic_size) = 7
+        assert_eq!(ca.ca_links, 7);
+    }
+
+    #[test]
+    fn test_display() {
+        let ca = Ca4Block::default();
+        let display = format!("{ca}");
+        assert!(display.contains("CA:"));
+        assert!(display.contains("Array"));
+        assert!(display.contains("CN Template"));
+
+        let ca = Ca4Block {
+            ca_type: 2,
+            ca_storage: 1,
+            ca_dim_size: vec![3, 4],
+            ..Default::default()
+        };
+        let display = format!("{ca}");
+        assert!(display.contains("LookUp"));
+        assert!(display.contains("CG Template"));
+        assert!(display.contains("[3, 4]"));
+    }
+}

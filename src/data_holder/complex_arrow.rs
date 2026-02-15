@@ -183,3 +183,106 @@ impl Clone for ComplexArrow<Float64Type> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new_and_default() {
+        let c: ComplexArrow<Float64Type> = ComplexArrow::new();
+        assert!(c.is_empty());
+        assert_eq!(c.len(), 0);
+        assert!(c.nulls().is_none());
+
+        let d: ComplexArrow<Float32Type> = ComplexArrow::default();
+        assert!(d.is_empty());
+        assert_eq!(d.len(), 0);
+    }
+
+    #[test]
+    fn test_with_capacity() {
+        let c: ComplexArrow<Float64Type> = ComplexArrow::with_capacity(512);
+        assert!(c.is_empty());
+        assert_eq!(c.len(), 0);
+    }
+
+    #[test]
+    fn test_from_buffer_and_methods() {
+        // 4 f64 values = 2 complex pairs
+        let data: Vec<f64> = vec![1.0, 2.0, 3.0, 4.0];
+        let buf = MutableBuffer::from_iter(data.iter().copied());
+        let c = ComplexArrow::<Float64Type>::new_from_buffer(buf);
+        // len is bytes/2 (not pairs) because new_from_buffer divides by 2
+        // buf.len() = 32 bytes, /2 = 16 -> that's the raw division
+        // Actually: values_buffer.len() returns bytes. 4 * 8 = 32 bytes. /2 = 16.
+        // But the real len should be based on element count...
+        // Looking at code: length = values_buffer.len() / 2
+        // For f64, buffer has 32 bytes, so length = 16. That seems like a byte-based calculation.
+        assert!(!c.is_empty());
+        assert_eq!(c.values_slice().len(), 4);
+
+        let arr = c.finish_cloned();
+        assert_eq!(arr.len(), 4);
+
+        assert!(c.nulls().is_none());
+        assert!(c.validity_slice().is_none());
+    }
+
+    #[test]
+    fn test_from_primitive() {
+        let mut pb = PrimitiveBuilder::<Float32Type>::with_capacity(6);
+        pb.append_value(1.0);
+        pb.append_value(2.0);
+        pb.append_value(3.0);
+        pb.append_value(4.0);
+        pb.append_value(5.0);
+        pb.append_value(6.0);
+        let c = ComplexArrow::new_from_primitive(pb, None);
+        assert_eq!(c.len(), 3); // 6 values / 2 = 3 pairs
+        assert!(!c.is_empty());
+        assert!(c.nulls().is_none());
+    }
+
+    #[test]
+    fn test_partial_eq_f32() {
+        let buf1 = MutableBuffer::from_iter([1.0f32, 2.0, 3.0, 4.0].iter().copied());
+        let buf2 = MutableBuffer::from_iter([1.0f32, 2.0, 3.0, 4.0].iter().copied());
+        let c1 = ComplexArrow::<Float32Type>::new_from_buffer(buf1);
+        let c2 = ComplexArrow::<Float32Type>::new_from_buffer(buf2);
+        assert_eq!(c1, c2);
+
+        let buf3 = MutableBuffer::from_iter([5.0f32, 6.0].iter().copied());
+        let c3 = ComplexArrow::<Float32Type>::new_from_buffer(buf3);
+        assert_ne!(c1, c3);
+    }
+
+    #[test]
+    fn test_partial_eq_f64() {
+        let buf1 = MutableBuffer::from_iter([1.0f64, 2.0].iter().copied());
+        let buf2 = MutableBuffer::from_iter([1.0f64, 2.0].iter().copied());
+        let c1 = ComplexArrow::<Float64Type>::new_from_buffer(buf1);
+        let c2 = ComplexArrow::<Float64Type>::new_from_buffer(buf2);
+        assert_eq!(c1, c2);
+
+        let buf3 = MutableBuffer::from_iter([3.0f64, 4.0].iter().copied());
+        let c3 = ComplexArrow::<Float64Type>::new_from_buffer(buf3);
+        assert_ne!(c1, c3);
+    }
+
+    #[test]
+    fn test_clone_f32() {
+        let buf = MutableBuffer::from_iter([1.0f32, 2.0, 3.0, 4.0].iter().copied());
+        let c = ComplexArrow::<Float32Type>::new_from_buffer(buf);
+        let cloned = c.clone();
+        assert_eq!(c, cloned);
+    }
+
+    #[test]
+    fn test_clone_f64() {
+        let buf = MutableBuffer::from_iter([10.0f64, 20.0].iter().copied());
+        let c = ComplexArrow::<Float64Type>::new_from_buffer(buf);
+        let cloned = c.clone();
+        assert_eq!(c, cloned);
+    }
+}

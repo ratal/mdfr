@@ -128,3 +128,46 @@ pub fn parse_fh(
     }
     Ok((fh, position))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default() {
+        let fh = FhBlock::default();
+        assert_eq!(fh.fh_fh_next, 0);
+        assert_eq!(fh.fh_md_comment, 0);
+        assert!(fh.fh_time_ns > 0); // current time
+    }
+
+    #[test]
+    fn test_display_utc() {
+        let fh = FhBlock {
+            fh_time_ns: 1_700_000_000_000_000_000, // 2023-11-14T22:13:20 UTC
+            fh_time_flags: 0,                       // UTC
+            fh_tz_offset_min: 0,
+            fh_dst_offset_min: 0,
+            ..Default::default()
+        };
+        let display = format!("{fh}");
+        assert!(display.contains("FH:"));
+        assert!(display.contains("2023-11-14"));
+        assert!(display.contains("UTC"));
+        assert!(display.contains("tz_offset=0min"));
+    }
+
+    #[test]
+    fn test_display_local() {
+        let fh = FhBlock {
+            fh_time_ns: 1_700_000_000_000_000_000,
+            fh_time_flags: 0b1, // local time
+            fh_tz_offset_min: 60,
+            fh_dst_offset_min: 0,
+            ..Default::default()
+        };
+        let display = format!("{fh}");
+        assert!(display.contains("local"));
+        assert!(display.contains("tz_offset=60min"));
+    }
+}

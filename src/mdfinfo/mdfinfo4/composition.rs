@@ -528,3 +528,160 @@ pub(super) fn parse_composition(
         bail!("Unknown composition block type")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── Ds4Block tests ──
+
+    #[test]
+    fn test_ds_getters() {
+        // Empty links
+        let ds = Ds4Block::default();
+        assert_eq!(ds.ds_cn_composition(), 0);
+        assert_eq!(ds.ds_cn_alignment_start(), 0);
+        assert_eq!(ds.ds_data(), 0);
+        assert_eq!(ds.ds_md_comment(), 0);
+
+        // Populated links
+        let ds = Ds4Block {
+            ds_links: 4,
+            links: vec![100, 200, 300, 400],
+            ds_version: 430,
+            ds_mode: 0,
+            ds_reserved: [0; 5],
+        };
+        assert_eq!(ds.ds_cn_composition(), 100);
+        assert_eq!(ds.ds_cn_alignment_start(), 200);
+        assert_eq!(ds.ds_data(), 300);
+        assert_eq!(ds.ds_md_comment(), 400);
+    }
+
+    #[test]
+    fn test_ds_mode_helpers() {
+        let ds = Ds4Block {
+            ds_mode: DS_MODE_DATA_STREAM,
+            ..Default::default()
+        };
+        assert!(ds.is_data_stream_mode());
+        assert!(!ds.is_data_description_mode());
+        assert_eq!(ds.get_mode_str(), "Data Stream Mode");
+
+        let ds = Ds4Block {
+            ds_mode: DS_MODE_DATA_DESCRIPTION,
+            ..Default::default()
+        };
+        assert!(!ds.is_data_stream_mode());
+        assert!(ds.is_data_description_mode());
+        assert_eq!(ds.get_mode_str(), "Data Description Mode");
+
+        let ds = Ds4Block {
+            ds_mode: 99,
+            ..Default::default()
+        };
+        assert_eq!(ds.get_mode_str(), "Unknown Mode");
+    }
+
+    #[test]
+    fn test_ds_display() {
+        let ds = Ds4Block {
+            ds_links: 4,
+            links: vec![100, 200, 300, 400],
+            ds_version: 430,
+            ds_mode: 0,
+            ds_reserved: [0; 5],
+        };
+        let display = format!("{ds}");
+        assert!(display.contains("DS:"));
+        assert!(display.contains("Data Stream Mode"));
+        assert!(display.contains("version=430"));
+        assert!(display.contains("links=4"));
+    }
+
+    // ── Cl4Block tests ──
+
+    #[test]
+    fn test_cl_display() {
+        let cl = Cl4Block {
+            cl_links: 2,
+            cl_composition: 0,
+            cl_cn_size: 0,
+            cl_flags: 0x0003,
+            cl_alignment: 4,
+            cl_bit_offset: 2,
+            cl_byte_offset: 16,
+        };
+        let display = format!("{cl}");
+        assert!(display.contains("CL:"));
+        assert!(display.contains("flags=0x0003"));
+        assert!(display.contains("alignment=4"));
+        assert!(display.contains("bit_offset=2"));
+        assert!(display.contains("byte_offset=16"));
+    }
+
+    // ── Cv4Block tests ──
+
+    #[test]
+    fn test_cv_display() {
+        let cv = Cv4Block {
+            cv_option_count: 3,
+            ..Default::default()
+        };
+        let display = format!("{cv}");
+        assert!(display.contains("CV:"));
+        assert!(display.contains("3 options"));
+    }
+
+    // ── Cu4Block tests ──
+
+    #[test]
+    fn test_cu_display() {
+        let cu = Cu4Block {
+            cu_member_count: 5,
+            ..Default::default()
+        };
+        let display = format!("{cu}");
+        assert!(display.contains("CU:"));
+        assert!(display.contains("5 members"));
+    }
+
+    // ── Compo & Composition Display ──
+
+    #[test]
+    fn test_compo_display() {
+        let ds = Compo::DS(Box::<Ds4Block>::default());
+        let display = format!("{ds}");
+        assert!(display.contains("DS("));
+
+        let cl = Compo::CL(Box::<Cl4Block>::default());
+        assert!(format!("{cl}").contains("CL("));
+
+        let cv = Compo::CV(Box::<Cv4Block>::default());
+        assert!(format!("{cv}").contains("CV("));
+
+        let cu = Compo::CU(Box::<Cu4Block>::default());
+        assert!(format!("{cu}").contains("CU("));
+    }
+
+    #[test]
+    fn test_composition_display() {
+        let comp = Composition {
+            block: Compo::DS(Box::<Ds4Block>::default()),
+            compo: None,
+        };
+        let display = format!("{comp}");
+        assert!(display.contains("Composition:"));
+        assert!(!display.contains("nested"));
+
+        let nested = Composition {
+            block: Compo::DS(Box::<Ds4Block>::default()),
+            compo: Some(Box::new(Composition {
+                block: Compo::CL(Box::<Cl4Block>::default()),
+                compo: None,
+            })),
+        };
+        let display = format!("{nested}");
+        assert!(display.contains("(nested)"));
+    }
+}

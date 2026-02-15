@@ -1964,3 +1964,343 @@ impl fmt::Display for ChannelData {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arrow::buffer::MutableBuffer;
+
+    fn make_int32(vals: &[i32]) -> ChannelData {
+        let mut b = PrimitiveBuilder::<Int32Type>::new();
+        for v in vals {
+            b.append_value(*v);
+        }
+        ChannelData::Int32(b)
+    }
+
+    fn make_uint16(vals: &[u16]) -> ChannelData {
+        let mut b = PrimitiveBuilder::<UInt16Type>::new();
+        for v in vals {
+            b.append_value(*v);
+        }
+        ChannelData::UInt16(b)
+    }
+
+    fn make_float64(vals: &[f64]) -> ChannelData {
+        let mut b = PrimitiveBuilder::<Float64Type>::new();
+        for v in vals {
+            b.append_value(*v);
+        }
+        ChannelData::Float64(b)
+    }
+
+    fn make_utf8(vals: &[&str]) -> ChannelData {
+        let mut b = LargeStringBuilder::new();
+        for v in vals {
+            b.append_value(v);
+        }
+        ChannelData::Utf8(b)
+    }
+
+    fn make_var_binary(vals: &[&[u8]]) -> ChannelData {
+        let mut b = LargeBinaryBuilder::new();
+        for v in vals {
+            b.append_value(v);
+        }
+        ChannelData::VariableSizeByteArray(b)
+    }
+
+    fn make_fixed_binary(size: i32, vals: &[&[u8]]) -> ChannelData {
+        let mut b = FixedSizeBinaryBuilder::new(size);
+        for v in vals {
+            b.append_value(v).unwrap();
+        }
+        ChannelData::FixedSizeByteArray(b)
+    }
+
+    fn make_array_d_float64() -> ChannelData {
+        let buf = MutableBuffer::from_iter([1.0f64, 2.0, 3.0, 4.0, 5.0, 6.0].iter().copied());
+        ChannelData::ArrayDFloat64(TensorArrow::new_from_buffer(
+            buf,
+            vec![2, 3],
+            Order::RowMajor,
+        ))
+    }
+
+    #[test]
+    fn test_is_empty_and_len() {
+        let empty = ChannelData::Int32(PrimitiveBuilder::new());
+        assert!(empty.is_empty());
+        assert_eq!(empty.len(), 0);
+
+        let cd = make_int32(&[1, 5, -3]);
+        assert!(!cd.is_empty());
+        assert_eq!(cd.len(), 3);
+
+        let cd = make_uint16(&[10, 200]);
+        assert_eq!(cd.len(), 2);
+
+        let cd = make_float64(&[1.1, 2.2, 3.3]);
+        assert_eq!(cd.len(), 3);
+
+        let cd = make_utf8(&["hello", "world"]);
+        assert_eq!(cd.len(), 2);
+
+        let cd = make_var_binary(&[b"abc", b"de"]);
+        assert_eq!(cd.len(), 2);
+
+        let cd = make_fixed_binary(4, &[b"abcd"]);
+        assert_eq!(cd.len(), 1);
+    }
+
+    #[test]
+    fn test_bit_count() {
+        assert_eq!(make_int32(&[1]).bit_count(), 32);
+        assert_eq!(make_uint16(&[1]).bit_count(), 16);
+        assert_eq!(make_float64(&[1.0]).bit_count(), 64);
+
+        // Complex32 = 64 bits (2x32)
+        let c = ChannelData::Complex32(ComplexArrow::new());
+        assert_eq!(c.bit_count(), 64);
+
+        // Utf8: max string "hello" = 5 bytes = 40 bits
+        let cd = make_utf8(&["hello", "hi"]);
+        assert_eq!(cd.bit_count(), 5 * 8);
+
+        // VariableSizeByteArray: max "abc" = 3 bytes = 24 bits
+        let cd = make_var_binary(&[b"abc", b"de"]);
+        assert_eq!(cd.bit_count(), 3 * 8);
+
+        // FixedSizeByteArray(4) = 32 bits
+        let cd = make_fixed_binary(4, &[b"abcd"]);
+        assert_eq!(cd.bit_count(), 4 * 8);
+
+        // ArrayDFloat64 = 64 bits
+        let cd = make_array_d_float64();
+        assert_eq!(cd.bit_count(), 64);
+    }
+
+    #[test]
+    fn test_byte_count() {
+        assert_eq!(make_int32(&[1]).byte_count(), 4);
+        assert_eq!(make_uint16(&[1]).byte_count(), 2);
+        assert_eq!(make_float64(&[1.0]).byte_count(), 8);
+
+        let cd = make_utf8(&["hello"]);
+        assert_eq!(cd.byte_count(), 5);
+
+        let cd = make_var_binary(&[b"abc"]);
+        assert_eq!(cd.byte_count(), 3);
+
+        let cd = make_fixed_binary(4, &[b"abcd"]);
+        assert_eq!(cd.byte_count(), 4);
+    }
+
+    #[test]
+    fn test_data_type_le_be() {
+        // LE
+        assert_eq!(make_int32(&[1]).data_type(false), 2);
+        assert_eq!(make_uint16(&[1]).data_type(false), 0);
+        assert_eq!(make_float64(&[1.0]).data_type(false), 4);
+        assert_eq!(make_utf8(&["x"]).data_type(false), 7);
+        assert_eq!(make_var_binary(&[b"x"]).data_type(false), 10);
+
+        // BE
+        assert_eq!(make_int32(&[1]).data_type(true), 3);
+        assert_eq!(make_uint16(&[1]).data_type(true), 1);
+        assert_eq!(make_float64(&[1.0]).data_type(true), 5);
+        assert_eq!(make_utf8(&["x"]).data_type(true), 7);
+    }
+
+    #[test]
+    fn test_arrow_data_type() {
+        assert_eq!(make_int32(&[1]).arrow_data_type(), DataType::Int32);
+        assert_eq!(make_uint16(&[1]).arrow_data_type(), DataType::UInt16);
+        assert_eq!(make_float64(&[1.0]).arrow_data_type(), DataType::Float64);
+        assert_eq!(make_utf8(&["x"]).arrow_data_type(), DataType::LargeUtf8);
+        assert_eq!(
+            make_var_binary(&[b"x"]).arrow_data_type(),
+            DataType::LargeBinary
+        );
+        assert_eq!(
+            make_fixed_binary(4, &[b"abcd"]).arrow_data_type(),
+            DataType::FixedSizeBinary(4)
+        );
+
+        let c32 = ChannelData::Complex32(ComplexArrow::new());
+        assert_eq!(c32.arrow_data_type(), DataType::Float32);
+
+        let ad = make_array_d_float64();
+        assert_eq!(ad.arrow_data_type(), DataType::Float64);
+    }
+
+    #[test]
+    fn test_ndim_and_shape() {
+        let cd = make_int32(&[1, 2, 3]);
+        assert_eq!(cd.ndim(), 1);
+        assert_eq!(cd.shape(), (vec![3], Order::RowMajor));
+
+        let cd = make_utf8(&["a", "b"]);
+        assert_eq!(cd.ndim(), 1);
+        assert_eq!(cd.shape(), (vec![2], Order::RowMajor));
+
+        let cd = make_array_d_float64();
+        assert_eq!(cd.ndim(), 2);
+        assert_eq!(cd.shape(), (vec![2, 3], Order::RowMajor));
+    }
+
+    #[test]
+    fn test_min_max() {
+        let cd = make_int32(&[1, 5, -3]);
+        assert_eq!(cd.min_max(), (Some(-3.0), Some(5.0)));
+
+        let cd = make_uint16(&[10, 200]);
+        assert_eq!(cd.min_max(), (Some(10.0), Some(200.0)));
+
+        let cd = make_float64(&[1.1, 2.2, 3.3]);
+        assert_eq!(cd.min_max(), (Some(1.1), Some(3.3)));
+
+        // Complex -> (None, None)
+        let c = ChannelData::Complex32(ComplexArrow::new());
+        assert_eq!(c.min_max(), (None, None));
+
+        // Utf8 -> (None, None)
+        let cd = make_utf8(&["a"]);
+        assert_eq!(cd.min_max(), (None, None));
+
+        // Empty -> (None, None)
+        let cd = ChannelData::Int32(PrimitiveBuilder::new());
+        assert_eq!(cd.min_max(), (None, None));
+
+        // ArrayDFloat64
+        let cd = make_array_d_float64();
+        assert_eq!(cd.min_max(), (Some(1.0), Some(6.0)));
+    }
+
+    #[test]
+    fn test_to_u64_vec() {
+        let cd = make_int32(&[1, 5]);
+        assert!(cd.to_u64_vec().is_some());
+
+        let cd = make_uint16(&[10, 200]);
+        assert_eq!(cd.to_u64_vec(), Some(vec![10, 200]));
+
+        let cd = make_float64(&[1.0]);
+        assert!(cd.to_u64_vec().is_none());
+
+        let cd = make_utf8(&["a"]);
+        assert!(cd.to_u64_vec().is_none());
+    }
+
+    #[test]
+    fn test_as_u64_slice() {
+        let mut b = PrimitiveBuilder::<UInt64Type>::new();
+        b.append_value(42);
+        b.append_value(99);
+        let cd = ChannelData::UInt64(b);
+        assert_eq!(cd.as_u64_slice(), Some([42u64, 99].as_slice()));
+
+        let cd = make_int32(&[1]);
+        assert!(cd.as_u64_slice().is_none());
+    }
+
+    #[test]
+    fn test_zeros_virtual() {
+        let cd = make_int32(&[1]);
+        let result = cd
+            .zeros(3, 5, 0, (vec![5], Order::RowMajor))
+            .unwrap();
+        assert_eq!(result.len(), 5);
+        assert!(matches!(result, ChannelData::UInt64(_)));
+        assert_eq!(result.to_u64_vec(), Some(vec![0, 1, 2, 3, 4]));
+
+        let result = cd
+            .zeros(6, 3, 0, (vec![3], Order::RowMajor))
+            .unwrap();
+        assert_eq!(result.to_u64_vec(), Some(vec![0, 1, 2]));
+    }
+
+    #[test]
+    fn test_zeros_regular() {
+        let cd = make_int32(&[1]);
+        let result = cd
+            .zeros(0, 10, 4, (vec![10], Order::RowMajor))
+            .unwrap();
+        assert!(matches!(result, ChannelData::Int32(_)));
+        assert_eq!(result.len(), 10);
+        assert!(!result.is_empty());
+
+        let cd = make_float64(&[1.0]);
+        let result = cd
+            .zeros(0, 5, 8, (vec![5], Order::RowMajor))
+            .unwrap();
+        assert!(matches!(result, ChannelData::Float64(_)));
+        assert_eq!(result.len(), 5);
+    }
+
+    #[test]
+    fn test_finish_cloned() {
+        let cd = make_int32(&[1, 2, 3]);
+        let arr = cd.finish_cloned();
+        assert_eq!(arr.len(), 3);
+
+        let cd = make_utf8(&["a", "b"]);
+        let arr = cd.finish_cloned();
+        assert_eq!(arr.len(), 2);
+
+        let cd = make_float64(&[1.0]);
+        let arr = cd.finish_cloned();
+        assert_eq!(arr.len(), 1);
+    }
+
+    #[test]
+    fn test_data_type_init() {
+        // UInt8: cn_type=0, cn_data_type=0, n_bytes=1
+        let cd = data_type_init(0, 0, 1, 1, 0).unwrap();
+        assert!(matches!(cd, ChannelData::UInt8(_)));
+
+        // Int32: cn_type=0, cn_data_type=2, n_bytes=4
+        let cd = data_type_init(0, 2, 4, 1, 0).unwrap();
+        assert!(matches!(cd, ChannelData::Int32(_)));
+
+        // Float64: cn_type=0, cn_data_type=4, n_bytes=8
+        let cd = data_type_init(0, 4, 8, 1, 0).unwrap();
+        assert!(matches!(cd, ChannelData::Float64(_)));
+
+        // Utf8: cn_type=0, cn_data_type=7, n_bytes=10
+        let cd = data_type_init(0, 7, 10, 1, 0).unwrap();
+        assert!(matches!(cd, ChannelData::Utf8(_)));
+
+        // FixedSizeByteArray: cn_type=0, cn_data_type=10, n_bytes=4
+        let cd = data_type_init(0, 10, 4, 1, 0).unwrap();
+        assert!(matches!(cd, ChannelData::FixedSizeByteArray(_)));
+
+        // VLSC: cn_type=7, small bytes
+        let cd = data_type_init(7, 0, 1, 1, 0).unwrap();
+        assert!(matches!(cd, ChannelData::UInt8(_)));
+
+        // VLSC: cn_type=7, 8 bytes
+        let cd = data_type_init(7, 0, 8, 1, 0).unwrap();
+        assert!(matches!(cd, ChannelData::UInt64(_)));
+
+        // Virtual: cn_type=3
+        let cd = data_type_init(3, 0, 0, 1, 0).unwrap();
+        assert!(matches!(cd, ChannelData::UInt64(_)));
+
+        // Array: list_size > 1, UInt16
+        let cd = data_type_init(0, 0, 2, 4, 0).unwrap();
+        assert!(matches!(cd, ChannelData::ArrayDUInt16(_)));
+
+        // Array: list_size > 1, Float32
+        let cd = data_type_init(0, 4, 4, 4, 0).unwrap();
+        assert!(matches!(cd, ChannelData::ArrayDFloat32(_)));
+    }
+
+    #[test]
+    fn test_display() {
+        let cd = make_int32(&[1, 2]);
+        let display = format!("{cd}");
+        assert!(display.contains('1'));
+        assert!(display.contains('2'));
+    }
+}

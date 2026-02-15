@@ -286,3 +286,56 @@ impl SharableBlocks {
         SharableBlocks { md_tx, cc, si }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_blockheader4_default() {
+        let h = Blockheader4::default();
+        assert_eq!(h.hdr_id, [35, 35, 84, 88]); // ##TX
+        assert_eq!(h.hdr_len, 24);
+        assert_eq!(h.hdr_links, 0);
+    }
+
+    #[test]
+    fn test_blockheader4_display() {
+        let h = Blockheader4::default();
+        let display = format!("{h}");
+        assert!(display.contains("##TX"));
+        assert!(display.contains("len=24"));
+        assert!(display.contains("links=0"));
+    }
+
+    #[test]
+    fn test_blockheader4short_default() {
+        let h = Blockheader4Short::default();
+        assert_eq!(h.hdr_id, [35, 35, 67, 78]); // ##CN
+        assert_eq!(h.hdr_len, 160);
+    }
+
+    #[test]
+    fn test_blockheader4short_display() {
+        let h = Blockheader4Short::default();
+        let display = format!("{h}");
+        assert!(display.contains("##CN"));
+        assert!(display.contains("len=160"));
+    }
+
+    #[test]
+    fn test_default_short_header() {
+        let cg = default_short_header(BlockType::CG);
+        assert_eq!(cg.hdr_id, [35, 35, 67, 71]); // ##CG
+        assert_eq!(cg.hdr_len, 104);
+
+        let cn = default_short_header(BlockType::CN);
+        assert_eq!(cn.hdr_id, [35, 35, 67, 78]); // ##CN
+        assert_eq!(cn.hdr_len, 160);
+
+        // Wildcard falls through to CN defaults
+        let other = default_short_header(BlockType::HD);
+        assert_eq!(other.hdr_id, [35, 35, 67, 78]);
+        assert_eq!(other.hdr_len, 160);
+    }
+}

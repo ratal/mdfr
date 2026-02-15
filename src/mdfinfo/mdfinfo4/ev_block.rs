@@ -192,6 +192,31 @@ impl Ev4Block {
     }
 }
 
+impl Default for Ev4Block {
+    fn default() -> Self {
+        Ev4Block {
+            ev_links: 5,
+            ev_ev_next: 0,
+            ev_ev_parent: 0,
+            ev_ev_range: 0,
+            ev_tx_name: 0,
+            ev_md_comment: 0,
+            links: Vec::new(),
+            ev_type: 0,
+            ev_sync_type: 0,
+            ev_range_type: 0,
+            ev_cause: 0,
+            ev_flags: 0,
+            ev_reserved: [0; 3],
+            ev_scope_count: 0,
+            ev_attachment_count: 0,
+            ev_creator_index: 0,
+            ev_sync_base_value: 0,
+            ev_sync_factor: 0.0,
+        }
+    }
+}
+
 impl Display for Ev4Block {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -255,4 +280,168 @@ pub fn parse_ev4(
         }
     }
     Ok((ev, position))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ev_get_event_type_str() {
+        let mut ev = Ev4Block::default();
+        let expected = [
+            (EV_T_RECORDING, "Recording"),
+            (EV_T_RECORDING_INTERRUPT, "Recording Interrupt"),
+            (EV_T_ACQUISITION_INTERRUPT, "Acquisition Interrupt"),
+            (EV_T_TRIGGER, "Trigger"),
+            (EV_T_MARKER, "Marker"),
+            (255, "Unknown"),
+        ];
+        for (val, name) in expected {
+            ev.ev_type = val;
+            assert_eq!(ev.get_event_type_str(), name, "ev_type={val}");
+        }
+    }
+
+    #[test]
+    fn test_ev_get_sync_type_str() {
+        let mut ev = Ev4Block::default();
+        let expected = [
+            (EV_S_NONE, "None"),
+            (EV_S_TIME, "Time"),
+            (EV_S_ANGLE, "Angle"),
+            (EV_S_DISTANCE, "Distance"),
+            (EV_S_INDEX, "Index"),
+            (EV_S_FREQUENCY, "Frequency"),
+            (255, "Unknown"),
+        ];
+        for (val, name) in expected {
+            ev.ev_sync_type = val;
+            assert_eq!(ev.get_sync_type_str(), name, "ev_sync_type={val}");
+        }
+    }
+
+    #[test]
+    fn test_ev_get_cause_str() {
+        let mut ev = Ev4Block::default();
+        let expected = [
+            (EV_C_OTHER, "Other/Unknown"),
+            (EV_C_ERROR, "Error"),
+            (EV_C_TOOL, "Tool Internal"),
+            (EV_C_SCRIPT, "Script"),
+            (EV_C_USER, "User"),
+            (255, "Unknown"),
+        ];
+        for (val, name) in expected {
+            ev.ev_cause = val;
+            assert_eq!(ev.get_cause_str(), name, "ev_cause={val}");
+        }
+    }
+
+    #[test]
+    fn test_ev_get_range_type_str() {
+        let mut ev = Ev4Block::default();
+        let expected = [(0, "Point"), (1, "Beginning"), (2, "End"), (255, "Unknown")];
+        for (val, name) in expected {
+            ev.ev_range_type = val;
+            assert_eq!(ev.get_range_type_str(), name, "ev_range_type={val}");
+        }
+    }
+
+    #[test]
+    fn test_ev_get_sync_value() {
+        let mut ev = Ev4Block::default();
+
+        ev.ev_sync_base_value = 1000;
+        ev.ev_sync_factor = 1e-9;
+        assert!((ev.get_sync_value() - 1e-6).abs() < 1e-15);
+
+        ev.ev_sync_base_value = 0;
+        ev.ev_sync_factor = 1.0;
+        assert_eq!(ev.get_sync_value(), 0.0);
+
+        ev.ev_sync_base_value = -100;
+        ev.ev_sync_factor = 0.5;
+        assert_eq!(ev.get_sync_value(), -50.0);
+    }
+
+    #[test]
+    fn test_ev_get_scope_links() {
+        let mut ev = Ev4Block::default();
+
+        // Empty links, scope_count=0
+        assert!(ev.get_scope_links().is_empty());
+
+        // scope_count > 0 but links empty
+        ev.ev_scope_count = 2;
+        assert!(ev.get_scope_links().is_empty());
+
+        // Populated links with scope_count=2
+        ev.links = vec![100, 200, 300, 400];
+        ev.ev_scope_count = 2;
+        assert_eq!(ev.get_scope_links(), &[100, 200]);
+
+        // scope_count > links.len()
+        ev.ev_scope_count = 10;
+        assert_eq!(ev.get_scope_links(), &[100, 200, 300, 400]);
+    }
+
+    #[test]
+    fn test_ev_get_attachment_links() {
+        let mut ev = Ev4Block::default();
+
+        // Empty links
+        assert!(ev.get_attachment_links().is_empty());
+
+        // attachment_count > 0 but links empty
+        ev.ev_attachment_count = 1;
+        assert!(ev.get_attachment_links().is_empty());
+
+        // scope_count=2, attachment_count=1, links has enough
+        ev.links = vec![100, 200, 300, 400];
+        ev.ev_scope_count = 2;
+        ev.ev_attachment_count = 1;
+        assert_eq!(ev.get_attachment_links(), &[300]);
+
+        // scope_count=0, attachment_count=2
+        ev.ev_scope_count = 0;
+        ev.ev_attachment_count = 2;
+        assert_eq!(ev.get_attachment_links(), &[100, 200]);
+
+        // start >= links.len()
+        ev.ev_scope_count = 10;
+        ev.ev_attachment_count = 1;
+        assert!(ev.get_attachment_links().is_empty());
+    }
+
+    #[test]
+    fn test_ev_calculate_block_size() {
+        let mut ev = Ev4Block::default();
+
+        ev.ev_links = 5;
+        assert_eq!(ev.calculate_block_size(), 16 + 8 + 5 * 8 + 32); // 96
+
+        ev.ev_links = 8;
+        assert_eq!(ev.calculate_block_size(), 16 + 8 + 8 * 8 + 32); // 120
+    }
+
+    #[test]
+    fn test_ev_display() {
+        let mut ev = Ev4Block::default();
+        ev.ev_type = EV_T_TRIGGER;
+        ev.ev_sync_type = EV_S_TIME;
+        ev.ev_cause = EV_C_USER;
+        ev.ev_range_type = 0;
+        ev.ev_scope_count = 3;
+        ev.ev_attachment_count = 1;
+
+        let display = format!("{ev}");
+        assert!(display.contains("EV:"));
+        assert!(display.contains("Trigger"));
+        assert!(display.contains("Time"));
+        assert!(display.contains("User"));
+        assert!(display.contains("Point"));
+        assert!(display.contains("scopes=3"));
+        assert!(display.contains("attachments=1"));
+    }
 }

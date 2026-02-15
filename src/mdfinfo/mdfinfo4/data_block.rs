@@ -463,3 +463,208 @@ impl Display for Gd4Block {
         write!(f, "GD: min_version={}.{}.{}", major, minor, patch)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── Dz4Block tests ──
+
+    #[test]
+    fn test_dz_default() {
+        let dz = Dz4Block::default();
+        assert_eq!(dz.dz_org_block_type, [68, 86]); // "DV"
+        assert_eq!(dz.dz_zip_type, 0);
+        assert_eq!(dz.dz_org_data_length, 0);
+        assert_eq!(dz.dz_data_length, 0);
+    }
+
+    #[test]
+    fn test_dz_get_compression_str() {
+        let mut dz = Dz4Block::default();
+        let expected = [
+            (0, "Deflate"),
+            (1, "Deflate+Transpose"),
+            (2, "Zstd"),
+            (3, "Zstd+Transpose"),
+            (4, "LZ4"),
+            (5, "LZ4+Transpose"),
+            (254, "Custom"),
+            (255, "Unknown"),
+        ];
+        for (val, name) in expected {
+            dz.dz_zip_type = val;
+            assert_eq!(dz.get_compression_str(), name, "dz_zip_type={val}");
+        }
+    }
+
+    #[test]
+    fn test_dz_display() {
+        let dz = Dz4Block {
+            dz_org_data_length: 1000,
+            dz_data_length: 500,
+            ..Default::default()
+        };
+
+        let display = format!("{dz}");
+        assert!(display.contains("DZ:"));
+        assert!(display.contains("Deflate"));
+        assert!(display.contains("org_type=DV"));
+        assert!(display.contains("compressed=500"));
+        assert!(display.contains("original=1000"));
+        assert!(display.contains("ratio=50.0%"));
+
+        // Edge case: org_size=0
+        let dz = Dz4Block::default();
+        let display = format!("{dz}");
+        assert!(display.contains("ratio=0.0%"));
+    }
+
+    // ── Ld4Block tests ──
+
+    #[test]
+    fn test_ld_default() {
+        let ld = Ld4Block::default();
+        assert_eq!(ld.ld_len, 56);
+        assert_eq!(ld.ld_n_links, 2);
+        assert_eq!(ld.ld_count, 1);
+        assert_eq!(ld.ld_flags, 0);
+        assert_eq!(ld.ld_flags_ext, 0);
+        assert!(ld.ld_links.is_empty());
+    }
+
+    #[test]
+    fn test_ld_data_simple() {
+        // Non-interleaved: links returned as-is
+        let ld = Ld4Block {
+            ld_count: 3,
+            ld_links: vec![100, 200, 300],
+            ..Default::default()
+        };
+        let data = ld.ld_data();
+        assert_eq!(data, vec![100, 200, 300]);
+    }
+
+    #[test]
+    fn test_ld_data_interleaved_by_flag() {
+        // Interleaved via ld_flags_ext bit 7
+        let ld = Ld4Block {
+            ld_count: 2,
+            ld_flags_ext: 1u8 << 7,
+            ld_links: vec![100, 101, 200, 201],
+            ..Default::default()
+        };
+        let data = ld.ld_data();
+        assert_eq!(data, vec![100, 200]); // step_by(2)
+    }
+
+    #[test]
+    fn test_ld_data_interleaved_by_count() {
+        // Interleaved detected by links.len() == 2 * ld_count
+        let ld = Ld4Block {
+            ld_count: 2,
+            ld_links: vec![100, 101, 200, 201],
+            ..Default::default()
+        };
+        let data = ld.ld_data();
+        assert_eq!(data, vec![100, 200]);
+    }
+
+    #[test]
+    fn test_ld_invalid_data() {
+        // Non-interleaved: empty result
+        let ld = Ld4Block {
+            ld_count: 2,
+            ld_links: vec![100, 200],
+            ..Default::default()
+        };
+        assert!(ld.ld_invalid_data().is_empty());
+
+        // Interleaved: odd positions are invalid blocks
+        let ld = Ld4Block {
+            ld_count: 2,
+            ld_flags_ext: 1u8 << 7,
+            ld_links: vec![100, 101, 200, 201],
+            ..Default::default()
+        };
+        let invalid = ld.ld_invalid_data();
+        assert_eq!(invalid, vec![101, 201]);
+    }
+
+    #[test]
+    fn test_ld_display() {
+        // With equal_sample_count
+        let ld = Ld4Block {
+            ld_equal_sample_count: Some(1000),
+            ld_flags: 0b1,
+            ..Default::default()
+        };
+        let display = format!("{ld}");
+        assert!(display.contains("LD:"));
+        assert!(display.contains("sample_count=1000"));
+
+        // With offsets
+        let ld2 = Ld4Block {
+            ld_count: 3,
+            ld_sample_offset: vec![0, 100, 200],
+            ..Default::default()
+        };
+        let display2 = format!("{ld2}");
+        assert!(display2.contains("3 offsets"));
+    }
+
+    // ── Hl4Block tests ──
+
+    #[test]
+    fn test_hl_get_zip_type_str() {
+        let expected = [
+            (0, "Deflate"),
+            (1, "Deflate+Transpose"),
+            (2, "Zstd"),
+            (3, "Zstd+Transpose"),
+            (4, "LZ4"),
+            (5, "LZ4+Transpose"),
+            (255, "Unknown"),
+        ];
+        for (val, name) in expected {
+            let hl = Hl4Block {
+                hl_zip_type: val,
+                ..Default::default()
+            };
+            assert_eq!(hl.get_zip_type_str(), name, "hl_zip_type={val}");
+        }
+    }
+
+    #[test]
+    fn test_hl_display() {
+        let hl = Hl4Block {
+            hl_flags: 0x0001,
+            hl_zip_type: 2,
+            ..Default::default()
+        };
+        let display = format!("{hl}");
+        assert!(display.contains("HL:"));
+        assert!(display.contains("flags=0x0001"));
+        assert!(display.contains("zip_type=Zstd"));
+    }
+
+    // ── Gd4Block tests ──
+
+    #[test]
+    fn test_gd_display() {
+        let gd = Gd4Block {
+            gd_version: 430,
+            ..Default::default()
+        };
+        let display = format!("{gd}");
+        assert!(display.contains("GD:"));
+        assert!(display.contains("min_version=4.3.0"));
+
+        let gd = Gd4Block {
+            gd_version: 410,
+            ..Default::default()
+        };
+        let display = format!("{gd}");
+        assert!(display.contains("min_version=4.1.0"));
+    }
+}

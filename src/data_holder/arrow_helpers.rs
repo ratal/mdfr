@@ -239,3 +239,158 @@ fn mdf_data_type(data_type: &DataType, endian: bool) -> u8 {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arrow::array::{
+        BinaryBuilder, BooleanArray, Date32Array, Date64Array, FixedSizeBinaryBuilder,
+        Float32Array, Float64Array, Int16Array, Int32Array, Int64Array, Int8Array,
+        LargeBinaryBuilder, LargeStringBuilder, NullArray, StringBuilder,
+        TimestampNanosecondArray, UInt16Array, UInt32Array, UInt64Array, UInt8Array,
+    };
+
+    // ── bit_count tests ──
+
+    #[test]
+    fn test_bit_count_primitives() {
+        assert_eq!(arrow_bit_count(&NullArray::new(1)), 0);
+        assert_eq!(arrow_bit_count(&BooleanArray::from(vec![true])), 8);
+        assert_eq!(arrow_bit_count(&Int8Array::from(vec![1])), 8);
+        assert_eq!(arrow_bit_count(&Int16Array::from(vec![1])), 16);
+        assert_eq!(arrow_bit_count(&Int32Array::from(vec![1])), 32);
+        assert_eq!(arrow_bit_count(&Int64Array::from(vec![1])), 64);
+        assert_eq!(arrow_bit_count(&UInt8Array::from(vec![1])), 8);
+        assert_eq!(arrow_bit_count(&UInt16Array::from(vec![1])), 16);
+        assert_eq!(arrow_bit_count(&UInt32Array::from(vec![1])), 32);
+        assert_eq!(arrow_bit_count(&UInt64Array::from(vec![1])), 64);
+        assert_eq!(arrow_bit_count(&Float32Array::from(vec![1.0])), 32);
+        assert_eq!(arrow_bit_count(&Float64Array::from(vec![1.0])), 64);
+    }
+
+    #[test]
+    fn test_bit_count_temporal() {
+        assert_eq!(
+            arrow_bit_count(&TimestampNanosecondArray::from(vec![1])),
+            64
+        );
+        assert_eq!(arrow_bit_count(&Date32Array::from(vec![1])), 32);
+        assert_eq!(arrow_bit_count(&Date64Array::from(vec![1])), 64);
+    }
+
+    #[test]
+    fn test_bit_count_strings() {
+        let mut builder = StringBuilder::new();
+        builder.append_value("hello"); // 5 bytes
+        builder.append_value("hi"); // 2 bytes
+        let array = builder.finish();
+        assert_eq!(arrow_bit_count(&array), 5 * 8); // max is 5 bytes
+
+        let mut builder = LargeStringBuilder::new();
+        builder.append_value("abc");
+        let array = builder.finish();
+        assert_eq!(arrow_bit_count(&array), 3 * 8);
+    }
+
+    #[test]
+    fn test_bit_count_binary() {
+        let mut builder = BinaryBuilder::new();
+        builder.append_value(b"abcd");
+        let array = builder.finish();
+        assert_eq!(arrow_bit_count(&array), 4 * 8);
+
+        let mut builder = LargeBinaryBuilder::new();
+        builder.append_value(b"ab");
+        let array = builder.finish();
+        assert_eq!(arrow_bit_count(&array), 2 * 8);
+
+        let mut builder = FixedSizeBinaryBuilder::new(3);
+        builder.append_value(b"abc").unwrap();
+        let array = builder.finish();
+        assert_eq!(arrow_bit_count(&array), 3 * 8);
+    }
+
+    // ── byte_count tests ──
+
+    #[test]
+    fn test_byte_count_primitives() {
+        assert_eq!(arrow_byte_count(&NullArray::new(1)), 0);
+        assert_eq!(arrow_byte_count(&BooleanArray::from(vec![true])), 1);
+        assert_eq!(arrow_byte_count(&Int8Array::from(vec![1])), 1);
+        assert_eq!(arrow_byte_count(&Int16Array::from(vec![1])), 2);
+        assert_eq!(arrow_byte_count(&Int32Array::from(vec![1])), 4);
+        assert_eq!(arrow_byte_count(&Int64Array::from(vec![1])), 8);
+        assert_eq!(arrow_byte_count(&UInt8Array::from(vec![1])), 1);
+        assert_eq!(arrow_byte_count(&UInt16Array::from(vec![1])), 2);
+        assert_eq!(arrow_byte_count(&UInt32Array::from(vec![1])), 4);
+        assert_eq!(arrow_byte_count(&UInt64Array::from(vec![1])), 8);
+        assert_eq!(arrow_byte_count(&Float32Array::from(vec![1.0])), 4);
+        assert_eq!(arrow_byte_count(&Float64Array::from(vec![1.0])), 8);
+    }
+
+    #[test]
+    fn test_byte_count_strings() {
+        let mut builder = StringBuilder::new();
+        builder.append_value("hello"); // 5 bytes
+        let array = builder.finish();
+        assert_eq!(arrow_byte_count(&array), 5);
+
+        let mut builder = LargeStringBuilder::new();
+        builder.append_value("abc");
+        let array = builder.finish();
+        assert_eq!(arrow_byte_count(&array), 3);
+    }
+
+    // ── mdf_data_type tests ──
+
+    #[test]
+    fn test_mdf_data_type_le() {
+        // LE (endian=false)
+        assert_eq!(arrow_to_mdf_data_type(&NullArray::new(1), false), 0);
+        assert_eq!(
+            arrow_to_mdf_data_type(&BooleanArray::from(vec![true]), false),
+            0
+        );
+        assert_eq!(arrow_to_mdf_data_type(&Int32Array::from(vec![1]), false), 2);
+        assert_eq!(
+            arrow_to_mdf_data_type(&UInt32Array::from(vec![1]), false),
+            0
+        );
+        assert_eq!(
+            arrow_to_mdf_data_type(&Float64Array::from(vec![1.0]), false),
+            4
+        );
+
+        let mut builder = StringBuilder::new();
+        builder.append_value("x");
+        let array = builder.finish();
+        assert_eq!(arrow_to_mdf_data_type(&array, false), 7); // UTF-8
+
+        let mut builder = BinaryBuilder::new();
+        builder.append_value(b"x");
+        let array = builder.finish();
+        assert_eq!(arrow_to_mdf_data_type(&array, false), 10); // Byte Array
+    }
+
+    #[test]
+    fn test_mdf_data_type_be() {
+        // BE (endian=true)
+        assert_eq!(arrow_to_mdf_data_type(&NullArray::new(1), true), 1);
+        assert_eq!(arrow_to_mdf_data_type(&Int32Array::from(vec![1]), true), 3);
+        assert_eq!(arrow_to_mdf_data_type(&UInt32Array::from(vec![1]), true), 1);
+        assert_eq!(
+            arrow_to_mdf_data_type(&Float64Array::from(vec![1.0]), true),
+            5
+        );
+
+        let mut builder = StringBuilder::new();
+        builder.append_value("x");
+        let array = builder.finish();
+        assert_eq!(arrow_to_mdf_data_type(&array, true), 7); // UTF-8 same for both
+
+        let mut builder = BinaryBuilder::new();
+        builder.append_value(b"x");
+        let array = builder.finish();
+        assert_eq!(arrow_to_mdf_data_type(&array, true), 10); // Byte Array same
+    }
+}

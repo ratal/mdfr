@@ -116,3 +116,28 @@ pub fn hd4_parser(
     let position = read_meta_data(rdr, sharable, hd.hd_md_comment, 168, BlockType::HD)?;
     Ok((hd, position))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_default() {
+        let hd = Hd4::default();
+        assert_eq!(hd.hd_len, 104);
+        assert_eq!(hd.hd_link_counts, 6);
+        assert_eq!(hd.hd_dg_first, 0);
+        assert_eq!(hd.hd_fh_first, 0);
+    }
+
+    #[test]
+    fn test_display() {
+        let hd = Hd4 {
+            hd_start_time_ns: 1_700_000_000_000_000_000, // 2023-11-14T22:13:20 UTC
+            ..Default::default()
+        };
+        let display = format!("{hd}");
+        assert!(display.contains("Time :"));
+        assert!(display.contains("2023-11-14"));
+    }
+}

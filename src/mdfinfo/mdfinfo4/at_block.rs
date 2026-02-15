@@ -57,6 +57,29 @@ pub struct At4Block {
     // followed by embedded data depending of flag
 }
 
+impl Default for At4Block {
+    fn default() -> Self {
+        At4Block {
+            at_id: [35, 35, 65, 84], // ##AT
+            reserved: [0; 4],
+            at_len: 96,
+            at_links: 4,
+            at_at_next: 0,
+            at_tx_filename: 0,
+            at_tx_mimetype: 0,
+            at_md_comment: 0,
+            at_flags: 0,
+            at_creator_index: 0,
+            at_zip_type: 0,
+            at_path_syntax: 0,
+            at_reserved: [0; 2],
+            at_md5_checksum: [0; 16],
+            at_original_size: 0,
+            at_embedded_size: 0,
+        }
+    }
+}
+
 impl At4Block {
     /// Returns true if this attachment has embedded data
     pub fn is_embedded(&self) -> bool {
@@ -192,4 +215,85 @@ pub fn parse_at4(
         }
     }
     Ok((at, position))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_at_is_embedded() {
+        let mut at = At4Block::default();
+        assert!(!at.is_embedded());
+
+        at.at_flags = 0b1;
+        assert!(at.is_embedded());
+
+        at.at_flags = 0b11; // both bits set
+        assert!(at.is_embedded());
+    }
+
+    #[test]
+    fn test_at_is_compressed() {
+        let mut at = At4Block::default();
+        assert!(!at.is_compressed());
+
+        at.at_flags = 0b10;
+        assert!(at.is_compressed());
+    }
+
+    #[test]
+    fn test_at_has_md5_checksum() {
+        let mut at = At4Block::default();
+        assert!(!at.has_md5_checksum());
+
+        at.at_flags = 0b100;
+        assert!(at.has_md5_checksum());
+    }
+
+    #[test]
+    fn test_at_get_compression_str() {
+        let mut at = At4Block::default();
+        // Not compressed → None
+        assert_eq!(at.get_compression_str(), "None");
+
+        // Compressed with various zip types
+        at.at_flags = 0b10;
+        at.at_zip_type = 0;
+        assert_eq!(at.get_compression_str(), "Deflate");
+        at.at_zip_type = 1;
+        assert_eq!(at.get_compression_str(), "Deflate");
+        at.at_zip_type = 2;
+        assert_eq!(at.get_compression_str(), "Zstd");
+        at.at_zip_type = 3;
+        assert_eq!(at.get_compression_str(), "Zstd");
+        at.at_zip_type = 4;
+        assert_eq!(at.get_compression_str(), "LZ4");
+        at.at_zip_type = 5;
+        assert_eq!(at.get_compression_str(), "LZ4");
+        at.at_zip_type = 255;
+        assert_eq!(at.get_compression_str(), "Unknown");
+    }
+
+    #[test]
+    fn test_at_display() {
+        let mut at = At4Block::default();
+        at.at_original_size = 1024;
+        at.at_embedded_size = 512;
+        at.at_flags = 0b1; // embedded
+        at.at_creator_index = 1;
+
+        let display = format!("{at}");
+        assert!(display.contains("AT:"));
+        assert!(display.contains("embedded"));
+        assert!(display.contains("size=512"));
+        assert!(display.contains("original=1024"));
+        assert!(display.contains("compression=None"));
+        assert!(display.contains("creator_index=1"));
+
+        // External
+        at.at_flags = 0;
+        let display = format!("{at}");
+        assert!(display.contains("external"));
+    }
 }

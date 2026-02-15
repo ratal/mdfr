@@ -808,3 +808,57 @@ pub(super) fn parse_cg4(
     }
     Ok((cg, position, n_cg, n_cn))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cg_get_flags_str() {
+        let mut cg = Cg4Block::default();
+        assert_eq!(cg.get_flags_str(), "None");
+
+        // Individual flags
+        cg.cg_flags = CG_F_VLSD;
+        assert_eq!(cg.get_flags_str(), "VLSD");
+
+        cg.cg_flags = CG_F_VLSC;
+        assert_eq!(cg.get_flags_str(), "VLSC");
+
+        cg.cg_flags = CG_F_EVENT_SIGNAL_GROUP;
+        assert_eq!(cg.get_flags_str(), "EventSignal");
+
+        cg.cg_flags = CG_F_RAW_SENSOR_EVENT;
+        assert_eq!(cg.get_flags_str(), "RawSensor");
+
+        cg.cg_flags = CG_F_PROTOCOL_EVENT;
+        assert_eq!(cg.get_flags_str(), "ProtocolEvent");
+
+        cg.cg_flags = 0b1000; // RemoteMaster (bit 3)
+        assert_eq!(cg.get_flags_str(), "RemoteMaster");
+
+        // Combination
+        cg.cg_flags = CG_F_VLSD | CG_F_EVENT_SIGNAL_GROUP;
+        assert!(cg.get_flags_str().contains("VLSD"));
+        assert!(cg.get_flags_str().contains("EventSignal"));
+    }
+
+    #[test]
+    fn test_cg_display() {
+        let cg = Cg4Block {
+            cg_record_id: 1,
+            cg_cycle_count: 1000,
+            cg_data_bytes: 64,
+            cg_inval_bytes: 2,
+            cg_flags: CG_F_VLSD,
+            ..Default::default()
+        };
+        let display = format!("{cg}");
+        assert!(display.contains("CG:"));
+        assert!(display.contains("rec_id=1"));
+        assert!(display.contains("cycles=1000"));
+        assert!(display.contains("data_bytes=64"));
+        assert!(display.contains("inval_bytes=2"));
+        assert!(display.contains("VLSD"));
+    }
+}
