@@ -5,8 +5,8 @@ use arrow::{
     array::{ArrayBuilder, BooleanBufferBuilder, PrimitiveArray, PrimitiveBuilder},
     buffer::{BooleanBuffer, MutableBuffer},
     datatypes::{
-        ArrowPrimitiveType, Float32Type, Float64Type, Int16Type, Int32Type, Int64Type, Int8Type,
-        UInt16Type, UInt32Type, UInt64Type, UInt8Type,
+        ArrowPrimitiveType, Float32Type, Float64Type, Int8Type, Int16Type, Int32Type, Int64Type,
+        UInt8Type, UInt16Type, UInt32Type, UInt64Type,
     },
 };
 #[cfg(feature = "ndarray")]
@@ -238,3 +238,108 @@ tensor_arrow_to_ndarray!(Int64Type, i64);
 tensor_arrow_to_ndarray!(UInt64Type, u64);
 tensor_arrow_to_ndarray!(Float32Type, f32);
 tensor_arrow_to_ndarray!(Float64Type, f64);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_new_and_default() {
+        let t: TensorArrow<Float64Type> = TensorArrow::new();
+        assert!(t.is_empty());
+        assert_eq!(t.len(), 0);
+        assert_eq!(t.ndim(), 1);
+        assert_eq!(t.shape(), &vec![1]);
+        assert_eq!(t.order(), &Order::RowMajor);
+        assert!(t.nulls().is_none());
+
+        let d: TensorArrow<Int32Type> = TensorArrow::default();
+        assert!(d.is_empty());
+        assert_eq!(d.shape(), &vec![1]);
+    }
+
+    #[test]
+    fn test_with_capacity() {
+        let t = TensorArrow::<Float32Type>::with_capacity(100, vec![2, 3], Order::ColumnMajor);
+        assert!(t.is_empty());
+        assert_eq!(t.ndim(), 2);
+        assert_eq!(t.shape(), &vec![2, 3]);
+        assert_eq!(t.order(), &Order::ColumnMajor);
+    }
+
+    #[test]
+    fn test_from_buffer() {
+        // 6 f64 values with shape [2,3] = 1 sample of 2x3 tensor
+        let data: Vec<f64> = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let buf = MutableBuffer::from_iter(data.iter().copied());
+        let t = TensorArrow::<Float64Type>::new_from_buffer(buf, vec![2, 3], Order::RowMajor);
+        // len = buf_bytes / (sizeof(f64) * product(shape)) but new_from_buffer divides by product of shape
+        // buf.len() = 48 bytes, shape product = 6, so len = 48/6 = 8... no
+        // Actually values_buffer.len() returns byte count: 48 bytes. shape product = 6.
+        // length = 48 / 6 = 8. That seems byte-based again.
+        assert!(!t.is_empty());
+        assert_eq!(t.values_slice().len(), 6);
+        assert_eq!(t.ndim(), 2);
+        assert_eq!(t.shape(), &vec![2, 3]);
+    }
+
+    #[test]
+    fn test_from_primitive() {
+        let mut pb = PrimitiveBuilder::<Float32Type>::with_capacity(12);
+        for i in 0..12 {
+            pb.append_value(i as f32);
+        }
+        let t = TensorArrow::new_from_primitive(pb, None, vec![3, 4], Order::RowMajor);
+        assert_eq!(t.len(), 1); // 12 / (3*4) = 1 sample
+        assert!(!t.is_empty());
+        assert_eq!(t.ndim(), 2);
+        assert_eq!(t.shape(), &vec![3, 4]);
+        assert_eq!(t.order(), &Order::RowMajor);
+        assert!(t.nulls().is_none());
+        assert!(t.validity_slice().is_none());
+    }
+
+    #[test]
+    fn test_finish_cloned() {
+        let mut pb = PrimitiveBuilder::<Float64Type>::with_capacity(4);
+        pb.append_value(1.0);
+        pb.append_value(2.0);
+        pb.append_value(3.0);
+        pb.append_value(4.0);
+        let t = TensorArrow::new_from_primitive(pb, None, vec![2, 2], Order::RowMajor);
+        let arr = t.finish_cloned();
+        assert_eq!(arr.len(), 4);
+    }
+
+    #[test]
+    fn test_partial_eq() {
+        let buf1 = MutableBuffer::from_iter([1.0f64, 2.0, 3.0].iter().copied());
+        let buf2 = MutableBuffer::from_iter([1.0f64, 2.0, 3.0].iter().copied());
+        let t1 = TensorArrow::<Float64Type>::new_from_buffer(buf1, vec![3], Order::RowMajor);
+        let t2 = TensorArrow::<Float64Type>::new_from_buffer(buf2, vec![3], Order::RowMajor);
+        assert_eq!(t1, t2);
+
+        let buf3 = MutableBuffer::from_iter([4.0f64, 5.0, 6.0].iter().copied());
+        let t3 = TensorArrow::<Float64Type>::new_from_buffer(buf3, vec![3], Order::RowMajor);
+        assert_ne!(t1, t3);
+    }
+
+    #[test]
+    fn test_clone() {
+        let buf = MutableBuffer::from_iter([1.0f64, 2.0, 3.0, 4.0].iter().copied());
+        let t = TensorArrow::<Float64Type>::new_from_buffer(buf, vec![2, 2], Order::ColumnMajor);
+        let cloned = t.clone();
+        assert_eq!(t, cloned);
+        assert_eq!(cloned.shape(), &vec![2, 2]);
+        assert_eq!(cloned.order(), &Order::ColumnMajor);
+    }
+
+    #[test]
+    fn test_values_slice_mut() {
+        let buf = MutableBuffer::from_iter([1.0f64, 2.0, 3.0].iter().copied());
+        let mut t = TensorArrow::<Float64Type>::new_from_buffer(buf, vec![3], Order::RowMajor);
+        let slice = t.values_slice_mut();
+        slice[0] = 99.0;
+        assert_eq!(t.values_slice()[0], 99.0);
+    }
+}

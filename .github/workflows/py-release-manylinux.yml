@@ -2,9 +2,9 @@ name: Create Python release manylinux
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   build_manylinux:
@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [ '3.9', '3.10' , "3.11", "3.12"]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-python@v4
@@ -25,9 +25,9 @@ jobs:
         uses: messense/maturin-action@v1
         env:
           MATURIN_PASSWORD: ${{ secrets.PYPI_TOKEN }}
-          RUSTFLAGS: '-C target-feature=+fxsr,+sse,+sse2,+sse3,+ssse3,+sse4.1,+sse4.2,+popcnt,+avx,+fma'
+          RUSTFLAGS: "-C target-feature=+fxsr,+sse,+sse2,+sse3,+ssse3,+sse4.1,+sse4.2,+popcnt,+avx,+fma"
         with:
-          rust-toolchain: nightly
+          rust-toolchain: stable
           maturin-version: latest
           manylinux: auto
           command: publish
@@ -37,7 +37,7 @@ jobs:
         env:
           MATURIN_PASSWORD: ${{ secrets.PYPI_TOKEN }}
         with:
-          rust-toolchain: nightly
+          rust-toolchain: stable
           target: aarch64-unknown-linux-gnu
           maturin-version: latest
           command: publish

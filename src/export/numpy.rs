@@ -1,11 +1,11 @@
 //! this module provides methods to get directly channelData into python
 
-use arrow::array::{make_array, Array, ArrayData};
+use arrow::array::{Array, ArrayData, UnionArray, make_array};
 use arrow::pyarrow::PyArrowType;
 
 use numpy::npyffi::types::NPY_ORDER;
 use numpy::{PyArrayMethods, ToPyArray};
-use pyo3::{prelude::*, Bound};
+use pyo3::{Bound, prelude::*};
 
 use crate::data_holder::channel_data::ChannelData;
 use crate::data_holder::tensor_arrow::Order;
@@ -133,6 +133,13 @@ impl<'py> IntoPyObject<'py> for ChannelData {
                 Ok(strings
                     .into_pyobject(py)
                     .expect("error converting Utf8 array into python object"))
+            }
+            ChannelData::Union(array) => {
+                let arrow_data = to_py_array(py, Arc::new(UnionArray::from(array.to_data())))
+                    .expect("error converting Union array into python object");
+                Ok(arrow_data
+                    .into_pyobject(py)
+                    .expect("error converting Union PyArrow into python object"))
             }
         }
     }

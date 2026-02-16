@@ -2,9 +2,9 @@ name: Create Python release windows macos
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 env:
   CARGO_TERM_COLOR: always
@@ -16,37 +16,37 @@ jobs:
     strategy:
       matrix:
         os: ["windows-latest"]
-        python-version: ["3.9", "3.10", "3.11", "3.12"]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
-        - uses: actions/checkout@v3
-        - name: Install latest Rust nightly
-          uses: actions-rs/toolchain@v1
-          with:
-            toolchain: nightly
-            override: true
-            components: rustfmt, clippy
-        - name: Set up Python
-          uses: actions/setup-python@v4
-          with:
-            python-version: ${{ matrix.python-version }}
-        - name: Install dependencies
-          shell: pwsh
-          run: |
-            python -m pip install --upgrade pip
-            pip install maturin
-            C:\msys64\usr\bin\wget.exe -q -O hdf5.zip https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.10/hdf5-1.10.11/bin/windows/hdf5-1.10.11-Std-win10_64-vs16.zip
-            7z x hdf5.zip -y
-            msiexec /i hdf\\HDF5-1.10.11-win64.msi /quiet /qn /norestart
-        - name: Maturin publish
-          shell: bash
-          env:
-            MATURIN_PASSWORD: ${{ secrets.PYPI_TOKEN }}
-          run: |
-            rustup override set nightly
-            export RUSTFLAGS='-C target-feature=+fxsr,+sse,+sse2,+sse3,+sse4.1,+sse4.2'
-            maturin publish \
-            --no-sdist \
-            --skip-existing \
-            -o wheels \
-            -i python \
-            --username __token__ \
+      - uses: actions/checkout@v3
+      - name: Install latest Rust stable
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          components: rustfmt, clippy
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          pip install maturin
+          C:\msys64\usr\bin\wget.exe -q -O hdf5.zip https://support.hdfgroup.org/ftp/HDF5/releases/hdf5-1.13/hdf5-1.13.0/bin/windows/hdf5-1.13.0-Std-win10_64-vs15.zip
+          7z x hdf5.zip -y
+          msiexec /i hdf\\HDF5-1.13.0-win64.msi /quiet /qn /norestart
+      - name: Maturin publish
+        shell: bash
+        env:
+          MATURIN_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          rustup override set stable
+          export RUSTFLAGS='-C target-feature=+fxsr,+sse,+sse2,+sse3,+sse4.1,+sse4.2'
+          maturin publish \
+          --no-sdist \
+          --skip-existing \
+          -o wheels \
+          -i python \
+          --username __token__ \

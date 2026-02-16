@@ -3,6 +3,7 @@ pub mod conversions3;
 pub mod conversions4;
 pub mod data_read3;
 pub mod data_read4;
+pub mod datastream_decoder;
 pub mod mdfreader3;
 pub mod mdfreader4;
 use std::collections::{HashMap, HashSet};
@@ -92,6 +93,18 @@ impl Mdf {
     /// gets the version of mdf file
     pub fn get_version(&self) -> u16 {
         self.mdf_info.get_version()
+    }
+    /// returns true if the file was marked as unfinalized
+    pub fn is_unfinalized(&self) -> bool {
+        self.mdf_info.is_unfinalized()
+    }
+    /// returns the standard and custom unfinalization flags (0, 0) if finalized or MDF3
+    pub fn get_unfin_flags(&self) -> (u16, u16) {
+        self.mdf_info.get_unfin_flags()
+    }
+    /// List sample reduction blocks for all channel groups (MDF 4.x only)
+    pub fn list_sample_reductions(&self) -> String {
+        self.mdf_info.list_sample_reductions()
     }
     /// returns channel's unit string
     pub fn get_channel_unit(&self, channel_name: &str) -> Result<Option<String>> {
@@ -338,11 +351,10 @@ impl fmt::Display for Mdf {
             MdfInfo::V4(mdfinfo4) => {
                 writeln!(f, "Version : {}", mdfinfo4.id_block.id_ver)?;
                 writeln!(f, "{}\n", mdfinfo4.hd_block)?;
-                let comments = &mdfinfo4
-                    .sharable
-                    .get_hd_comments(mdfinfo4.hd_block.hd_md_comment);
-                for c in comments.iter() {
-                    writeln!(f, "{} {}", c.0, c.1)?;
+                if let Some(hd) =
+                    mdfinfo4.sharable.get_hd_comments(mdfinfo4.hd_block.hd_md_comment)
+                {
+                    writeln!(f, "{hd}")?;
                 }
                 for (master, list) in self.get_master_channel_names_set().iter() {
                     if let Some(master_name) = master {

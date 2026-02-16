@@ -283,27 +283,63 @@ impl MdfInfo3 {
             cn.description = desc.to_string();
         }
     }
+    /// Returns a concise one-line summary of the MDF3 file
+    pub fn summary(&self) -> String {
+        let total_channels = self.channel_names_set.len();
+        let total_dgs = self.dg.len();
+        format!(
+            "MDF3 v{}: {} DGs, {} channels",
+            self.id_block.id_ver, total_dgs, total_channels
+        )
+    }
+    /// Formats the channel list with optional data preview
+    pub fn format_channels(&self, _show_data: bool) -> String {
+        let mut output = String::new();
+        for (master, list) in self.get_master_channel_names_set().iter() {
+            if let Some(master_name) = master {
+                output.push_str(&format!("\nMaster: {}\n", master_name));
+            } else {
+                output.push_str("\nWithout Master channel\n");
+            }
+            for channel in list.iter() {
+                let unit = self.get_channel_unit(channel);
+                let desc = self.get_channel_desc(channel);
+                output.push_str(&format!("  {} ", channel));
+                if let Some(u) = unit {
+                    output.push_str(&format!("\"{}\" ", u));
+                }
+                if let Some(d) = desc
+                    && !d.is_empty()
+                {
+                    output.push_str(&format!("// {}", d));
+                }
+                output.push('\n');
+            }
+        }
+        output
+    }
+    /// Formats header info
+    pub fn format_header(&self) -> String {
+        format!(
+            "Author: {}  Organisation: {}\nProject: {}  Subject: {}\nDate: {:?}  Time: {:?}\nComments: {}",
+            self.hd_block.hd_author,
+            self.hd_block.hd_organization,
+            self.hd_block.hd_project,
+            self.hd_block.hd_subject,
+            self.hd_block.hd_date,
+            self.hd_block.hd_time,
+            self.hd_comment
+        )
+    }
 }
 
 /// MdfInfo3 display implementation
 impl fmt::Display for MdfInfo3 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "MdfInfo3: {}", self.file_name)?;
-        writeln!(f, "Version : {}\n", self.id_block.id_ver)?;
-        writeln!(f, "{}\n", self.hd_block)?;
-        for (master, list) in self.get_master_channel_names_set().iter() {
-            if let Some(master_name) = master {
-                writeln!(f, "\nMaster: {master_name}\n")?;
-            } else {
-                writeln!(f, "\nWithout Master channel\n")?;
-            }
-            for channel in list.iter() {
-                let unit = self.get_channel_unit(channel);
-                let desc = self.get_channel_desc(channel);
-                writeln!(f, " {channel} {unit:?} {desc:?} \n")?;
-            }
-        }
-        writeln!(f, "\n")
+        writeln!(f, "{}", self.summary())?;
+        writeln!(f, "File: {}", self.file_name)?;
+        writeln!(f, "{}", self.format_header())?;
+        write!(f, "{}", self.format_channels(false))
     }
 }
 

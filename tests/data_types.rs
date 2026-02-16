@@ -9,7 +9,8 @@ use std::fs;
 use std::sync::LazyLock;
 
 static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(|| {
-    "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/".to_string()
+    "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/"
+        .to_string()
 });
 
 static BASE_TEST_PATH: LazyLock<String> =
@@ -124,7 +125,11 @@ fn real_types() -> Result<()> {
     let mut mdf = Mdf::new(&file_name)?;
     mdf.load_all_channels_data_in_memory()?;
 
-    let file_name = format!("{}{}", BASE_PATH_MDF4.as_str(), "Halffloat/halffloat_sinus.mf4");
+    let file_name = format!(
+        "{}{}",
+        BASE_PATH_MDF4.as_str(),
+        "Halffloat/halffloat_sinus.mf4"
+    );
     let mut mdf = Mdf::new(&file_name)?;
     mdf.load_all_channels_data_in_memory()?;
 

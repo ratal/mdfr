@@ -1,6 +1,6 @@
 //! this module implements low level data reading for mdf3 files.
 use crate::mdfinfo::mdfinfo3::Cn3;
-use anyhow::{bail, Context, Error, Result};
+use anyhow::{Context, Error, Result, bail};
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
 use encoding_rs::WINDOWS_1252;
 use half::f16;

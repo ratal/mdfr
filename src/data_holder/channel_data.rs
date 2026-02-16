@@ -6,12 +6,12 @@ use arrow::array::{
     Array, ArrayBuilder, ArrayData, ArrayRef, BinaryArray, BooleanBufferBuilder,
     FixedSizeBinaryArray, FixedSizeBinaryBuilder, FixedSizeListArray, Int8Builder,
     LargeBinaryArray, LargeBinaryBuilder, LargeStringArray, LargeStringBuilder, PrimitiveBuilder,
-    StringArray, as_primitive_array,
+    StringArray, UnionArray, as_primitive_array,
 };
 use arrow::buffer::{MutableBuffer, NullBuffer};
 use arrow::datatypes::{
-    DataType, Float32Type, Float64Type, Int8Type, Int16Type, Int32Type, Int64Type, UInt8Type,
-    UInt16Type, UInt32Type, UInt64Type,
+    DataType, Float16Type, Float32Type, Float64Type, Int8Type, Int16Type, Int32Type, Int64Type,
+    UInt8Type, UInt16Type, UInt32Type, UInt64Type,
 };
 use arrow::util::display::{ArrayFormatter, FormatOptions};
 use itertools::Itertools;
@@ -57,6 +57,7 @@ pub enum ChannelData {
     ArrayDInt64(TensorArrow<Int64Type>),
     ArrayDUInt64(TensorArrow<UInt64Type>),
     ArrayDFloat64(TensorArrow<Float64Type>),
+    Union(UnionArray),
 }
 
 impl PartialEq for ChannelData {
@@ -91,6 +92,7 @@ impl PartialEq for ChannelData {
             (Self::ArrayDInt64(l0), Self::ArrayDInt64(r0)) => l0 == r0,
             (Self::ArrayDUInt64(l0), Self::ArrayDUInt64(r0)) => l0 == r0,
             (Self::ArrayDFloat64(l0), Self::ArrayDFloat64(r0)) => l0 == r0,
+            (Self::Union(l0), Self::Union(r0)) => l0.to_data() == r0.to_data(),
             _ => false,
         }
     }
@@ -205,6 +207,9 @@ impl Clone for ChannelData {
             Self::ArrayDInt64(arg0) => Self::ArrayDInt64(arg0.clone()),
             Self::ArrayDUInt64(arg0) => Self::ArrayDUInt64(arg0.clone()),
             Self::ArrayDFloat64(arg0) => Self::ArrayDFloat64(arg0.clone()),
+            Self::Union(arg0) => {
+                Self::Union(UnionArray::from(arg0.to_data()))
+            }
         }
     }
 }
@@ -370,6 +375,9 @@ impl ChannelData {
                         shape.1,
                     )))
                 }
+                ChannelData::Union(_) => {
+                    bail!("Union channels cannot be zero-initialized")
+                }
             }
         }
     }
@@ -401,6 +409,7 @@ impl ChannelData {
             ChannelData::ArrayDInt64(data) => data.is_empty(),
             ChannelData::ArrayDUInt64(data) => data.is_empty(),
             ChannelData::ArrayDFloat64(data) => data.is_empty(),
+            ChannelData::Union(data) => data.is_empty(),
         }
     }
     /// flatten length of tensor
@@ -431,6 +440,7 @@ impl ChannelData {
             ChannelData::ArrayDInt64(data) => data.len(),
             ChannelData::ArrayDUInt64(data) => data.len(),
             ChannelData::ArrayDFloat64(data) => data.len(),
+            ChannelData::Union(data) => data.len(),
         }
     }
     /// returns the max bit count of each values in array
@@ -481,6 +491,7 @@ impl ChannelData {
             ChannelData::ArrayDInt64(_) => 64,
             ChannelData::ArrayDUInt64(_) => 64,
             ChannelData::ArrayDFloat64(_) => 64,
+            ChannelData::Union(_) => self.byte_count() * 8,
         }
     }
     /// returns the max byte count of each values in array
@@ -527,6 +538,43 @@ impl ChannelData {
             ChannelData::ArrayDInt64(_) => 8,
             ChannelData::ArrayDUInt64(_) => 8,
             ChannelData::ArrayDFloat64(_) => 8,
+            ChannelData::Union(a) => {
+                // Union byte size is the max of all member sizes
+                if let DataType::Union(fields, _) = a.data_type() {
+                    fields
+                        .iter()
+                        .filter_map(|(_, field)| {
+                            field.data_type().primitive_width().map(|w| w as u32)
+                        })
+                        .max()
+                        .unwrap_or(0)
+                } else {
+                    0
+                }
+            }
+        }
+    }
+    /// Extracts integer channel values as a Vec<u64>.
+    /// Returns None for non-integer types.
+    pub fn to_u64_vec(&self) -> Option<Vec<u64>> {
+        match self {
+            ChannelData::UInt8(a) => Some(a.values_slice().iter().map(|&v| v as u64).collect()),
+            ChannelData::UInt16(a) => Some(a.values_slice().iter().map(|&v| v as u64).collect()),
+            ChannelData::UInt32(a) => Some(a.values_slice().iter().map(|&v| v as u64).collect()),
+            ChannelData::UInt64(a) => Some(a.values_slice().to_vec()),
+            ChannelData::Int8(a) => Some(a.values_slice().iter().map(|&v| v as u64).collect()),
+            ChannelData::Int16(a) => Some(a.values_slice().iter().map(|&v| v as u64).collect()),
+            ChannelData::Int32(a) => Some(a.values_slice().iter().map(|&v| v as u64).collect()),
+            ChannelData::Int64(a) => Some(a.values_slice().iter().map(|&v| v as u64).collect()),
+            _ => None,
+        }
+    }
+    /// Returns a borrowed slice of u64 values if the data is already UInt64.
+    /// Zero-copy alternative to to_u64_vec() for the common case.
+    pub fn as_u64_slice(&self) -> Option<&[u64]> {
+        match self {
+            ChannelData::UInt64(a) => Some(a.values_slice()),
+            _ => None,
         }
     }
     /// returns mdf4 data type
@@ -559,6 +607,7 @@ impl ChannelData {
                 ChannelData::ArrayDUInt64(_) => 1,
                 ChannelData::ArrayDFloat64(_) => 5,
                 ChannelData::Utf8(_) => 7,
+                ChannelData::Union(_) => 10,
             }
         } else {
             // LE
@@ -588,6 +637,7 @@ impl ChannelData {
                 ChannelData::ArrayDUInt64(_) => 0,
                 ChannelData::ArrayDFloat64(_) => 4,
                 ChannelData::Utf8(_) => 7,
+                ChannelData::Union(_) => 10,
             }
         }
     }
@@ -621,6 +671,7 @@ impl ChannelData {
             ChannelData::ArrayDUInt64(_a) => DataType::UInt64,
             ChannelData::ArrayDFloat64(_a) => DataType::Float64,
             ChannelData::Utf8(_) => DataType::LargeUtf8,
+            ChannelData::Union(a) => a.data_type().clone(),
         }
     }
     /// returns raw bytes vectors from ndarray
@@ -753,6 +804,55 @@ impl ChannelData {
                 .iter()
                 .flat_map(|x| x.to_ne_bytes())
                 .collect()),
+            ChannelData::Union(a) => {
+                // Union has fixed-length records equal to the max member size.
+                // For each row, extract the active child's raw bytes, zero-padded
+                // to the union byte count.
+                let union_byte_count = self.byte_count() as usize;
+                if union_byte_count == 0 {
+                    return Ok(Vec::new());
+                }
+                let n = a.len();
+                let mut bytes = vec![0u8; n * union_byte_count];
+                let is_dense = matches!(
+                    a.data_type(),
+                    DataType::Union(_, arrow::datatypes::UnionMode::Dense)
+                );
+                // Pre-compute child metadata per type_id to avoid per-row to_data() calls
+                let mut children_meta: std::collections::HashMap<i8, (ArrayData, usize)> =
+                    std::collections::HashMap::new();
+                if let DataType::Union(fields, _) = a.data_type() {
+                    for (type_id, _) in fields.iter() {
+                        let child = a.child(type_id);
+                        if let Some(elem_size) = child.data_type().primitive_width() {
+                            children_meta.insert(type_id, (child.to_data(), elem_size));
+                        }
+                    }
+                }
+                for i in 0..n {
+                    let type_id = a.type_id(i);
+                    if let Some((child_data, elem_size)) = children_meta.get(&type_id) {
+                        let child_offset = if is_dense {
+                            a.value_offset(i)
+                        } else {
+                            i
+                        };
+                        if let Some(buffer) = child_data.buffers().first() {
+                            let start = (child_data.offset() + child_offset) * elem_size;
+                            let end = start + elem_size;
+                            let copy_len = (*elem_size).min(union_byte_count);
+                            if end <= buffer.len() {
+                                bytes[i * union_byte_count..i * union_byte_count + copy_len]
+                                    .copy_from_slice(
+                                        &buffer.as_slice()[start..start + copy_len],
+                                    );
+                            }
+                        }
+                    }
+                    // Non-primitive children (strings, etc.) are left as zero bytes
+                }
+                Ok(bytes)
+            }
         }
     }
     /// returns the number of dimensions of the channel
@@ -783,6 +883,7 @@ impl ChannelData {
             ChannelData::ArrayDUInt64(a) => a.ndim(),
             ChannelData::ArrayDFloat64(a) => a.ndim(),
             ChannelData::Utf8(_) => 1,
+            ChannelData::Union(_) => 1,
         }
     }
     /// returns the shape of channel
@@ -813,6 +914,7 @@ impl ChannelData {
             ChannelData::ArrayDInt64(a) => (a.shape().clone(), a.order().clone()),
             ChannelData::ArrayDUInt64(a) => (a.shape().clone(), a.order().clone()),
             ChannelData::ArrayDFloat64(a) => (a.shape().clone(), a.order().clone()),
+            ChannelData::Union(a) => (vec![a.len(); 1], Order::RowMajor),
         }
     }
     /// returns optional tuple of minimum and maximum values contained in the channel
@@ -955,6 +1057,7 @@ impl ChannelData {
                 (min, max)
             }
             ChannelData::Utf8(_) => (None, None),
+            ChannelData::Union(_) => (None, None),
         }
     }
     /// convert channel arrow data into dyn Array
@@ -985,6 +1088,7 @@ impl ChannelData {
             ChannelData::ArrayDInt64(a) => Arc::new(a.finish_cloned()) as ArrayRef,
             ChannelData::ArrayDUInt64(a) => Arc::new(a.finish_cloned()) as ArrayRef,
             ChannelData::ArrayDFloat64(a) => Arc::new(a.finish_cloned()) as ArrayRef,
+            ChannelData::Union(a) => Arc::new(UnionArray::from(a.to_data())) as ArrayRef,
         }
     }
     /// convert channel arrow data into dyn Array
@@ -1015,6 +1119,7 @@ impl ChannelData {
             ChannelData::ArrayDInt64(a) => Arc::new(a.finish()) as ArrayRef,
             ChannelData::ArrayDUInt64(a) => Arc::new(a.finish()) as ArrayRef,
             ChannelData::ArrayDFloat64(a) => Arc::new(a.finish()) as ArrayRef,
+            ChannelData::Union(a) => Arc::new(UnionArray::from(a.to_data())) as ArrayRef,
         }
     }
     /// Convert ChannelData into ArrayData
@@ -1045,6 +1150,7 @@ impl ChannelData {
             ChannelData::ArrayDInt64(a) => a.finish_cloned().to_data(),
             ChannelData::ArrayDUInt64(a) => a.finish_cloned().to_data(),
             ChannelData::ArrayDFloat64(a) => a.finish_cloned().to_data(),
+            ChannelData::Union(a) => a.to_data(),
         }
     }
     /// Change the validity mask of the channel
@@ -1141,6 +1247,86 @@ impl ChannelData {
             ChannelData::ArrayDFloat64(a) => {
                 a.set_validity(mask);
             }
+            ChannelData::Union(a) => {
+                // Apply the validity mask to each child array in the union.
+                // In MDF, the invalidation bit applies to the whole union per record.
+                // For sparse unions, every child gets the same mask.
+                // For dense unions, the mask is mapped per-child via type_ids/offsets.
+                let validity_mask = mask.finish();
+                let data = a.to_data();
+                let n_children = data.child_data().len();
+                let is_dense = data.buffers().len() > 1; // dense has type_ids + offsets buffers
+
+                if is_dense {
+                    // Dense union: map validity per-child using type_ids and offsets
+                    let type_ids = a.type_ids();
+                    // Pre-count child sizes for capacity allocation
+                    let mut child_sizes = vec![0usize; n_children];
+                    for &tid in type_ids.iter() {
+                        if let Some(count) = child_sizes.get_mut(tid as usize) {
+                            *count += 1;
+                        }
+                    }
+                    let mut child_nulls: Vec<Vec<bool>> = child_sizes
+                        .iter()
+                        .map(|&sz| Vec::with_capacity(sz))
+                        .collect();
+                    for (i, &tid) in type_ids.iter().enumerate() {
+                        let valid = validity_mask.value(i);
+                        if let Some(child_vec) = child_nulls.get_mut(tid as usize) {
+                            child_vec.push(valid);
+                        }
+                    }
+                    let new_children: Vec<ArrayData> = data
+                        .child_data()
+                        .iter()
+                        .enumerate()
+                        .map(|(idx, child)| {
+                            let child_mask = &child_nulls[idx];
+                            let mut null_builder =
+                                BooleanBufferBuilder::new(child_mask.len());
+                            for &v in child_mask {
+                                null_builder.append(v);
+                            }
+                            let null_buffer = NullBuffer::new(null_builder.finish());
+                            child
+                                .clone()
+                                .into_builder()
+                                .null_bit_buffer(Some(null_buffer.into_inner().into_inner()))
+                                .build()
+                                .unwrap_or_else(|_| child.clone())
+                        })
+                        .collect();
+                    let new_data = data
+                        .into_builder()
+                        .child_data(new_children)
+                        .build()
+                        .unwrap_or_else(|_| a.to_data());
+                    *a = UnionArray::from(new_data);
+                } else {
+                    // Sparse union: apply same mask to all children
+                    let null_buffer = NullBuffer::new(validity_mask);
+                    let null_bit_buffer = null_buffer.into_inner().into_inner();
+                    let new_children: Vec<ArrayData> = data
+                        .child_data()
+                        .iter()
+                        .map(|child| {
+                            child
+                                .clone()
+                                .into_builder()
+                                .null_bit_buffer(Some(null_bit_buffer.clone()))
+                                .build()
+                                .unwrap_or_else(|_| child.clone())
+                        })
+                        .collect();
+                    let new_data = data
+                        .into_builder()
+                        .child_data(new_children)
+                        .build()
+                        .unwrap_or_else(|_| a.to_data());
+                    *a = UnionArray::from(new_data);
+                }
+            }
         }
         Ok(())
     }
@@ -1172,6 +1358,7 @@ impl ChannelData {
             ChannelData::ArrayDInt64(a) => a.finish_cloned().nulls().cloned(),
             ChannelData::ArrayDUInt64(a) => a.finish_cloned().nulls().cloned(),
             ChannelData::ArrayDFloat64(a) => a.finish_cloned().nulls().cloned(),
+            ChannelData::Union(a) => a.logical_nulls(),
         }
     }
     /// Returns the channel's validity mask as a slice
@@ -1202,6 +1389,7 @@ impl ChannelData {
             ChannelData::ArrayDInt64(a) => a.validity_slice(),
             ChannelData::ArrayDUInt64(a) => a.validity_slice(),
             ChannelData::ArrayDFloat64(a) => a.validity_slice(),
+            ChannelData::Union(_) => None,
         }
     }
     /// returns True if a validity mask is existing for the channel
@@ -1232,6 +1420,7 @@ impl ChannelData {
             ChannelData::ArrayDInt64(a) => a.nulls().is_some(),
             ChannelData::ArrayDUInt64(a) => a.nulls().is_some(),
             ChannelData::ArrayDFloat64(a) => a.nulls().is_some(),
+            ChannelData::Union(a) => a.logical_nulls().is_some(),
         }
     }
     /// converts the ChannelData into a ArrayRef
@@ -1262,6 +1451,7 @@ impl ChannelData {
             ChannelData::ArrayDInt64(a) => Arc::new(a.finish_cloned()) as ArrayRef,
             ChannelData::ArrayDUInt64(a) => Arc::new(a.finish_cloned()) as ArrayRef,
             ChannelData::ArrayDFloat64(a) => Arc::new(a.finish_cloned()) as ArrayRef,
+            ChannelData::Union(a) => Arc::new(UnionArray::from(a.to_data())) as ArrayRef,
         }
     }
     #[cfg(feature = "numpy")]
@@ -1368,6 +1558,10 @@ impl ChannelData {
             ChannelData::ArrayDFloat64(a) => NumpyDType {
                 shape: a.shape().to_vec(),
                 kind: "f8".to_string(),
+            },
+            ChannelData::Union(a) => NumpyDType {
+                shape: vec![a.len()],
+                kind: "O".to_string(),
             },
         }
     }
@@ -1620,7 +1814,14 @@ pub fn try_from(value: &dyn Array) -> Result<ChannelData, Error> {
             data.iter().for_each(|v| new_data.append_option(v));
             Ok(ChannelData::UInt64(new_data))
         }
-        DataType::Float16 => todo!(),
+        DataType::Float16 => {
+            let data = as_primitive_array::<Float16Type>(value);
+            let mut new_data = PrimitiveBuilder::<Float32Type>::with_capacity(data.len());
+            data.iter().for_each(|v| {
+                new_data.append_option(v.map(|f| f.to_f32()))
+            });
+            Ok(ChannelData::Float32(new_data))
+        }
         DataType::Float32 => {
             let data = as_primitive_array::<Float32Type>(value);
             let mut new_data = PrimitiveBuilder::with_capacity(data.len());
@@ -1740,7 +1941,14 @@ pub fn try_from(value: &dyn Array) -> Result<ChannelData, Error> {
                 bail!("FixedSizeList is not of size 2, to be used for complex")
             }
         }
-        _ => todo!(),
+        DataType::Union(_, _) => {
+            let array = value
+                .as_any()
+                .downcast_ref::<UnionArray>()
+                .context("could not downcast to UnionArray")?;
+            Ok(ChannelData::Union(UnionArray::from(array.to_data())))
+        }
+        dt => bail!("Arrow data type {dt} is not supported for conversion to ChannelData"),
     }
 }
 
@@ -1754,5 +1962,345 @@ impl fmt::Display for ChannelData {
             write!(f, " {}", displayer.value(i))?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arrow::buffer::MutableBuffer;
+
+    fn make_int32(vals: &[i32]) -> ChannelData {
+        let mut b = PrimitiveBuilder::<Int32Type>::new();
+        for v in vals {
+            b.append_value(*v);
+        }
+        ChannelData::Int32(b)
+    }
+
+    fn make_uint16(vals: &[u16]) -> ChannelData {
+        let mut b = PrimitiveBuilder::<UInt16Type>::new();
+        for v in vals {
+            b.append_value(*v);
+        }
+        ChannelData::UInt16(b)
+    }
+
+    fn make_float64(vals: &[f64]) -> ChannelData {
+        let mut b = PrimitiveBuilder::<Float64Type>::new();
+        for v in vals {
+            b.append_value(*v);
+        }
+        ChannelData::Float64(b)
+    }
+
+    fn make_utf8(vals: &[&str]) -> ChannelData {
+        let mut b = LargeStringBuilder::new();
+        for v in vals {
+            b.append_value(v);
+        }
+        ChannelData::Utf8(b)
+    }
+
+    fn make_var_binary(vals: &[&[u8]]) -> ChannelData {
+        let mut b = LargeBinaryBuilder::new();
+        for v in vals {
+            b.append_value(v);
+        }
+        ChannelData::VariableSizeByteArray(b)
+    }
+
+    fn make_fixed_binary(size: i32, vals: &[&[u8]]) -> ChannelData {
+        let mut b = FixedSizeBinaryBuilder::new(size);
+        for v in vals {
+            b.append_value(v).unwrap();
+        }
+        ChannelData::FixedSizeByteArray(b)
+    }
+
+    fn make_array_d_float64() -> ChannelData {
+        let buf = MutableBuffer::from_iter([1.0f64, 2.0, 3.0, 4.0, 5.0, 6.0].iter().copied());
+        ChannelData::ArrayDFloat64(TensorArrow::new_from_buffer(
+            buf,
+            vec![2, 3],
+            Order::RowMajor,
+        ))
+    }
+
+    #[test]
+    fn test_is_empty_and_len() {
+        let empty = ChannelData::Int32(PrimitiveBuilder::new());
+        assert!(empty.is_empty());
+        assert_eq!(empty.len(), 0);
+
+        let cd = make_int32(&[1, 5, -3]);
+        assert!(!cd.is_empty());
+        assert_eq!(cd.len(), 3);
+
+        let cd = make_uint16(&[10, 200]);
+        assert_eq!(cd.len(), 2);
+
+        let cd = make_float64(&[1.1, 2.2, 3.3]);
+        assert_eq!(cd.len(), 3);
+
+        let cd = make_utf8(&["hello", "world"]);
+        assert_eq!(cd.len(), 2);
+
+        let cd = make_var_binary(&[b"abc", b"de"]);
+        assert_eq!(cd.len(), 2);
+
+        let cd = make_fixed_binary(4, &[b"abcd"]);
+        assert_eq!(cd.len(), 1);
+    }
+
+    #[test]
+    fn test_bit_count() {
+        assert_eq!(make_int32(&[1]).bit_count(), 32);
+        assert_eq!(make_uint16(&[1]).bit_count(), 16);
+        assert_eq!(make_float64(&[1.0]).bit_count(), 64);
+
+        // Complex32 = 64 bits (2x32)
+        let c = ChannelData::Complex32(ComplexArrow::new());
+        assert_eq!(c.bit_count(), 64);
+
+        // Utf8: max string "hello" = 5 bytes = 40 bits
+        let cd = make_utf8(&["hello", "hi"]);
+        assert_eq!(cd.bit_count(), 5 * 8);
+
+        // VariableSizeByteArray: max "abc" = 3 bytes = 24 bits
+        let cd = make_var_binary(&[b"abc", b"de"]);
+        assert_eq!(cd.bit_count(), 3 * 8);
+
+        // FixedSizeByteArray(4) = 32 bits
+        let cd = make_fixed_binary(4, &[b"abcd"]);
+        assert_eq!(cd.bit_count(), 4 * 8);
+
+        // ArrayDFloat64 = 64 bits
+        let cd = make_array_d_float64();
+        assert_eq!(cd.bit_count(), 64);
+    }
+
+    #[test]
+    fn test_byte_count() {
+        assert_eq!(make_int32(&[1]).byte_count(), 4);
+        assert_eq!(make_uint16(&[1]).byte_count(), 2);
+        assert_eq!(make_float64(&[1.0]).byte_count(), 8);
+
+        let cd = make_utf8(&["hello"]);
+        assert_eq!(cd.byte_count(), 5);
+
+        let cd = make_var_binary(&[b"abc"]);
+        assert_eq!(cd.byte_count(), 3);
+
+        let cd = make_fixed_binary(4, &[b"abcd"]);
+        assert_eq!(cd.byte_count(), 4);
+    }
+
+    #[test]
+    fn test_data_type_le_be() {
+        // LE
+        assert_eq!(make_int32(&[1]).data_type(false), 2);
+        assert_eq!(make_uint16(&[1]).data_type(false), 0);
+        assert_eq!(make_float64(&[1.0]).data_type(false), 4);
+        assert_eq!(make_utf8(&["x"]).data_type(false), 7);
+        assert_eq!(make_var_binary(&[b"x"]).data_type(false), 10);
+
+        // BE
+        assert_eq!(make_int32(&[1]).data_type(true), 3);
+        assert_eq!(make_uint16(&[1]).data_type(true), 1);
+        assert_eq!(make_float64(&[1.0]).data_type(true), 5);
+        assert_eq!(make_utf8(&["x"]).data_type(true), 7);
+    }
+
+    #[test]
+    fn test_arrow_data_type() {
+        assert_eq!(make_int32(&[1]).arrow_data_type(), DataType::Int32);
+        assert_eq!(make_uint16(&[1]).arrow_data_type(), DataType::UInt16);
+        assert_eq!(make_float64(&[1.0]).arrow_data_type(), DataType::Float64);
+        assert_eq!(make_utf8(&["x"]).arrow_data_type(), DataType::LargeUtf8);
+        assert_eq!(
+            make_var_binary(&[b"x"]).arrow_data_type(),
+            DataType::LargeBinary
+        );
+        assert_eq!(
+            make_fixed_binary(4, &[b"abcd"]).arrow_data_type(),
+            DataType::FixedSizeBinary(4)
+        );
+
+        let c32 = ChannelData::Complex32(ComplexArrow::new());
+        assert_eq!(c32.arrow_data_type(), DataType::Float32);
+
+        let ad = make_array_d_float64();
+        assert_eq!(ad.arrow_data_type(), DataType::Float64);
+    }
+
+    #[test]
+    fn test_ndim_and_shape() {
+        let cd = make_int32(&[1, 2, 3]);
+        assert_eq!(cd.ndim(), 1);
+        assert_eq!(cd.shape(), (vec![3], Order::RowMajor));
+
+        let cd = make_utf8(&["a", "b"]);
+        assert_eq!(cd.ndim(), 1);
+        assert_eq!(cd.shape(), (vec![2], Order::RowMajor));
+
+        let cd = make_array_d_float64();
+        assert_eq!(cd.ndim(), 2);
+        assert_eq!(cd.shape(), (vec![2, 3], Order::RowMajor));
+    }
+
+    #[test]
+    fn test_min_max() {
+        let cd = make_int32(&[1, 5, -3]);
+        assert_eq!(cd.min_max(), (Some(-3.0), Some(5.0)));
+
+        let cd = make_uint16(&[10, 200]);
+        assert_eq!(cd.min_max(), (Some(10.0), Some(200.0)));
+
+        let cd = make_float64(&[1.1, 2.2, 3.3]);
+        assert_eq!(cd.min_max(), (Some(1.1), Some(3.3)));
+
+        // Complex -> (None, None)
+        let c = ChannelData::Complex32(ComplexArrow::new());
+        assert_eq!(c.min_max(), (None, None));
+
+        // Utf8 -> (None, None)
+        let cd = make_utf8(&["a"]);
+        assert_eq!(cd.min_max(), (None, None));
+
+        // Empty -> (None, None)
+        let cd = ChannelData::Int32(PrimitiveBuilder::new());
+        assert_eq!(cd.min_max(), (None, None));
+
+        // ArrayDFloat64
+        let cd = make_array_d_float64();
+        assert_eq!(cd.min_max(), (Some(1.0), Some(6.0)));
+    }
+
+    #[test]
+    fn test_to_u64_vec() {
+        let cd = make_int32(&[1, 5]);
+        assert!(cd.to_u64_vec().is_some());
+
+        let cd = make_uint16(&[10, 200]);
+        assert_eq!(cd.to_u64_vec(), Some(vec![10, 200]));
+
+        let cd = make_float64(&[1.0]);
+        assert!(cd.to_u64_vec().is_none());
+
+        let cd = make_utf8(&["a"]);
+        assert!(cd.to_u64_vec().is_none());
+    }
+
+    #[test]
+    fn test_as_u64_slice() {
+        let mut b = PrimitiveBuilder::<UInt64Type>::new();
+        b.append_value(42);
+        b.append_value(99);
+        let cd = ChannelData::UInt64(b);
+        assert_eq!(cd.as_u64_slice(), Some([42u64, 99].as_slice()));
+
+        let cd = make_int32(&[1]);
+        assert!(cd.as_u64_slice().is_none());
+    }
+
+    #[test]
+    fn test_zeros_virtual() {
+        let cd = make_int32(&[1]);
+        let result = cd
+            .zeros(3, 5, 0, (vec![5], Order::RowMajor))
+            .unwrap();
+        assert_eq!(result.len(), 5);
+        assert!(matches!(result, ChannelData::UInt64(_)));
+        assert_eq!(result.to_u64_vec(), Some(vec![0, 1, 2, 3, 4]));
+
+        let result = cd
+            .zeros(6, 3, 0, (vec![3], Order::RowMajor))
+            .unwrap();
+        assert_eq!(result.to_u64_vec(), Some(vec![0, 1, 2]));
+    }
+
+    #[test]
+    fn test_zeros_regular() {
+        let cd = make_int32(&[1]);
+        let result = cd
+            .zeros(0, 10, 4, (vec![10], Order::RowMajor))
+            .unwrap();
+        assert!(matches!(result, ChannelData::Int32(_)));
+        assert_eq!(result.len(), 10);
+        assert!(!result.is_empty());
+
+        let cd = make_float64(&[1.0]);
+        let result = cd
+            .zeros(0, 5, 8, (vec![5], Order::RowMajor))
+            .unwrap();
+        assert!(matches!(result, ChannelData::Float64(_)));
+        assert_eq!(result.len(), 5);
+    }
+
+    #[test]
+    fn test_finish_cloned() {
+        let cd = make_int32(&[1, 2, 3]);
+        let arr = cd.finish_cloned();
+        assert_eq!(arr.len(), 3);
+
+        let cd = make_utf8(&["a", "b"]);
+        let arr = cd.finish_cloned();
+        assert_eq!(arr.len(), 2);
+
+        let cd = make_float64(&[1.0]);
+        let arr = cd.finish_cloned();
+        assert_eq!(arr.len(), 1);
+    }
+
+    #[test]
+    fn test_data_type_init() {
+        // UInt8: cn_type=0, cn_data_type=0, n_bytes=1
+        let cd = data_type_init(0, 0, 1, 1, 0).unwrap();
+        assert!(matches!(cd, ChannelData::UInt8(_)));
+
+        // Int32: cn_type=0, cn_data_type=2, n_bytes=4
+        let cd = data_type_init(0, 2, 4, 1, 0).unwrap();
+        assert!(matches!(cd, ChannelData::Int32(_)));
+
+        // Float64: cn_type=0, cn_data_type=4, n_bytes=8
+        let cd = data_type_init(0, 4, 8, 1, 0).unwrap();
+        assert!(matches!(cd, ChannelData::Float64(_)));
+
+        // Utf8: cn_type=0, cn_data_type=7, n_bytes=10
+        let cd = data_type_init(0, 7, 10, 1, 0).unwrap();
+        assert!(matches!(cd, ChannelData::Utf8(_)));
+
+        // FixedSizeByteArray: cn_type=0, cn_data_type=10, n_bytes=4
+        let cd = data_type_init(0, 10, 4, 1, 0).unwrap();
+        assert!(matches!(cd, ChannelData::FixedSizeByteArray(_)));
+
+        // VLSC: cn_type=7, small bytes
+        let cd = data_type_init(7, 0, 1, 1, 0).unwrap();
+        assert!(matches!(cd, ChannelData::UInt8(_)));
+
+        // VLSC: cn_type=7, 8 bytes
+        let cd = data_type_init(7, 0, 8, 1, 0).unwrap();
+        assert!(matches!(cd, ChannelData::UInt64(_)));
+
+        // Virtual: cn_type=3
+        let cd = data_type_init(3, 0, 0, 1, 0).unwrap();
+        assert!(matches!(cd, ChannelData::UInt64(_)));
+
+        // Array: list_size > 1, UInt16
+        let cd = data_type_init(0, 0, 2, 4, 0).unwrap();
+        assert!(matches!(cd, ChannelData::ArrayDUInt16(_)));
+
+        // Array: list_size > 1, Float32
+        let cd = data_type_init(0, 4, 4, 4, 0).unwrap();
+        assert!(matches!(cd, ChannelData::ArrayDFloat32(_)));
+    }
+
+    #[test]
+    fn test_display() {
+        let cd = make_int32(&[1, 2]);
+        let display = format!("{cd}");
+        assert!(display.contains('1'));
+        assert!(display.contains('2'));
     }
 }
