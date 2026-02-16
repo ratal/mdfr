@@ -1,44 +1,47 @@
-name: Create macOs universal2/aarch64-apple-darwin python release
+name: Create macOS aarch64 python release
 
 on:
   push:
     branches: ["main"]
-  pull_request:
-    branches: ["main"]
 
 jobs:
   build:
-    name: Create Release
-    runs-on: ${{ matrix.os }}
+    name: Build macOS wheels
+    runs-on: macos-latest
     strategy:
       matrix:
-        os: ["macos-latest"]
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v3
-      - name: Install latest Rust stable
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-          components: rustfmt, clippy
-      - name: Setup universal2 targets for Rust
-        run: |
-          rustup target add aarch64-apple-darwin
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Prepare maturin publish
-        shell: bash
-        run: |
-          rustup override set stable
-          brew install hdf5@2.0
-      - name: maturin publish
-        uses: messense/maturin-action@v1
-        env:
-          MATURIN_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
         with:
+          rust-toolchain: stable
           maturin-version: latest
-          command: publish
-          args: --target aarch64-apple-darwin --skip-existing --no-sdist -o wheels -i python -u __token__
+          target: aarch64-apple-darwin
+          command: build
+          args: --release -o dist -i python
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-macos-${{ matrix.python-version }}
+          path: dist/*.whl
+
+  publish:
+    name: Publish to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheel-macos-*
+          merge-multiple: true
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_TOKEN }}
+          skip-existing: true
