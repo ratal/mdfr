@@ -13,9 +13,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Build
-      run: cargo build --verbose
+      run: cargo build --verbose --no-default-features --features parquet
     - name: Run tests
-      run: cargo test tests::basic_test --verbose
-
+      run: cargo test tests::basic_test --verbose --no-default-features --features parquet
