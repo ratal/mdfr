@@ -1638,7 +1638,7 @@ pub fn read_channels_from_bytes(
                     let c_vlsd_channel = Arc::clone(&vlsd_channels);
                     let mut vlsd_channel = c_vlsd_channel
                         .lock()
-                        .expect("Could not get lock from vlsd channel arc vec");
+                        .unwrap_or_else(|e| e.into_inner());
                     vlsd_channel.push((cn.block.cn_type, *rec_pos));
                 }
             } else {
@@ -1669,7 +1669,7 @@ pub fn read_channels_from_bytes(
                     let c_vlsd_channel = Arc::clone(&vlsd_channels);
                     let mut vlsd_channel = c_vlsd_channel
                         .lock()
-                        .expect("Could not get lock from vlsd channel arc vec");
+                        .unwrap_or_else(|e| e.into_inner());
                     vlsd_channel.push((cn.block.cn_type, *rec_pos));
                 }
             }
