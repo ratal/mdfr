@@ -1956,8 +1956,10 @@ impl fmt::Display for ChannelData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let format_option = FormatOptions::new();
         let data = self.as_ref();
-        let displayer =
-            ArrayFormatter::try_new(&data, &format_option).map_err(|_| std::fmt::Error)?;
+        let displayer = ArrayFormatter::try_new(&data, &format_option).map_err(|e| {
+            log::warn!("ChannelData Display: ArrayFormatter failed: {e}");
+            std::fmt::Error
+        })?;
         for i in 0..self.len() {
             write!(f, " {}", displayer.value(i))?;
         }
