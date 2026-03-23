@@ -518,7 +518,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
     let (tx, rx) = bounded::<Vec<u8>>(n_channels);
     let fname = Arc::new(Mutex::new(file_name.to_string()));
     let sfname = Arc::clone(&fname);
-    thread::spawn(move || -> Result<(), Error> {
+    let writer_handle = thread::spawn(move || -> Result<(), Error> {
         let file_name = Arc::clone(&sfname);
         let file = file_name.lock();
         let f: File = OpenOptions::new()
@@ -538,6 +538,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
                 .write_all(&buffer)
                 .context("Could not write data blocks buffer")?;
         }
+        writer.flush().context("Could not flush data blocks")?;
         Ok(())
     });
 
@@ -629,6 +630,10 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
             Ok(())
         })?;
     drop(tx);
+    writer_handle
+        .join()
+        .map_err(|e| anyhow::anyhow!("Data writer thread panicked: {:?}", e))
+        .and_then(|r| r)?;
 
     let file_name = Arc::clone(&fname);
     let file = file_name.lock();
