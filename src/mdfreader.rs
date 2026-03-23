@@ -319,30 +319,30 @@ impl fmt::Display for Mdf {
                 writeln!(f, "Comments: {}", mdfinfo3.hd_comment)?;
                 for (master, list) in self.get_master_channel_names_set().iter() {
                     if let Some(master_name) = master {
-                        writeln!(f, "\nMaster: {master_name}")
-                            .expect("cannot print master channel name");
+                        writeln!(f, "\nMaster: {master_name}")?;
                     } else {
-                        writeln!(f, "\nWithout Master channel")
-                            .expect("cannot print thre is no master channel");
+                        writeln!(f, "\nWithout Master channel")?;
                     }
                     for channel in list.iter() {
-                        writeln!(f, " {channel} ").expect("cannot print channel name");
+                        writeln!(f, " {channel} ")?;
                         if let Some(data) = self.get_channel_data(channel)
                             && !data.is_empty()
                         {
                             let array = &data.as_ref();
                             let displayer = ArrayFormatter::try_new(array, &format_option)
-                                .map_err(|_| std::fmt::Error)?;
-                            write!(f, "{}", displayer.value(0)).expect("cannot channel data");
-                            write!(f, " ").expect("cannot print simple space character");
-                            write!(f, "{}", displayer.value(data.len() - 1))
-                                .expect("cannot channel data");
+                                .map_err(|e| {
+                                    log::warn!("Mdf Display: ArrayFormatter failed: {e}");
+                                    std::fmt::Error
+                                })?;
+                            write!(f, "{}", displayer.value(0))?;
+                            write!(f, " ")?;
+                            write!(f, "{}", displayer.value(data.len() - 1))?;
                         }
                         if let Ok(Some(unit)) = self.get_channel_unit(channel) {
-                            writeln!(f, " {unit} ").expect("cannot print channel unit");
+                            writeln!(f, " {unit} ")?;
                         }
                         if let Ok(Some(desc)) = self.get_channel_desc(channel) {
-                            writeln!(f, " {desc} ").expect("cannot print channel desc");
+                            writeln!(f, " {desc} ")?;
                         }
                     }
                 }
@@ -358,30 +358,30 @@ impl fmt::Display for Mdf {
                 }
                 for (master, list) in self.get_master_channel_names_set().iter() {
                     if let Some(master_name) = master {
-                        writeln!(f, "\nMaster: {master_name}")
-                            .expect("cannot print master channel name");
+                        writeln!(f, "\nMaster: {master_name}")?;
                     } else {
-                        writeln!(f, "\nWithout Master channel")
-                            .expect("cannot print thre is no master channel");
+                        writeln!(f, "\nWithout Master channel")?;
                     }
                     for channel in list.iter() {
-                        writeln!(f, " {channel} ").expect("cannot print channel name");
+                        writeln!(f, " {channel} ")?;
                         if let Some(data) = self.get_channel_data(channel)
                             && !data.is_empty()
                         {
                             let array = &data.as_ref();
                             let displayer = ArrayFormatter::try_new(array, &format_option)
-                                .map_err(|_| std::fmt::Error)?;
-                            write!(f, "{}", displayer.value(0)).expect("cannot channel data");
-                            write!(f, " ").expect("cannot print simple space character");
-                            write!(f, "{}", displayer.value(data.len() - 1))
-                                .expect("cannot channel data");
+                                .map_err(|e| {
+                                    log::warn!("Mdf Display: ArrayFormatter failed: {e}");
+                                    std::fmt::Error
+                                })?;
+                            write!(f, "{}", displayer.value(0))?;
+                            write!(f, " ")?;
+                            write!(f, "{}", displayer.value(data.len() - 1))?;
                         }
                         if let Ok(Some(unit)) = self.get_channel_unit(channel) {
-                            writeln!(f, " {unit} ").expect("cannot print channel unit");
+                            writeln!(f, " {unit} ")?;
                         }
                         if let Ok(Some(desc)) = self.get_channel_desc(channel) {
-                            writeln!(f, " {desc} ").expect("cannot print channel desc");
+                            writeln!(f, " {desc} ")?;
                         }
                     }
                 }
