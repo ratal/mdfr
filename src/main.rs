@@ -21,7 +21,7 @@ fn main() -> Result<(), Error> {
     init();
     let matches = Command::new("mdfr")
         .bin_name("mdfr")
-        .version("0.6.3")
+        .version(env!("CARGO_PKG_VERSION"))
         .author("Aymeric Rateau <aymeric.rateau@gmail.com>")
         .about("reads ASAM mdf file")
         .arg(
@@ -63,7 +63,8 @@ fn main() -> Result<(), Error> {
                 .required(false)
                 .num_args(1)
                 .value_name("ALGORITHM")
-                .help("Compression algorithm for writing data in parquet file, valid values are snappy, gzip, lzo, lz4, zstd, brotli. Default is uncompressed"),
+                .value_parser(["snappy", "gzip", "lzo", "lz4", "zstd", "brotli"])
+                .help("Compression algorithm for writing data in parquet file. Default is uncompressed"),
         )
         .arg(
             Arg::new("export_to_hdf5")
@@ -80,7 +81,8 @@ fn main() -> Result<(), Error> {
                 .required(false)
                 .num_args(1)
                 .value_name("FILTER")
-                .help("Compression algorithm for writing data in hdf5 file, valid values are deflate and lzf. Default is uncompressed"),
+                .value_parser(["deflate", "lzf"])
+                .help("Compression filter for writing data in hdf5 file. Default is uncompressed"),
         )
         .arg(
             Arg::new("info")
