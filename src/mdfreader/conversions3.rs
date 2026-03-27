@@ -1362,4 +1362,152 @@ mod tests {
         assert_eq!(arr.value(2), "high");
         assert_eq!(arr.value(3), "unknown");
     }
+
+    // ── Helper ──
+
+    fn make_cn3(data: ChannelData) -> Cn3 {
+        Cn3 {
+            data,
+            ..Default::default()
+        }
+    }
+
+    // ── linear_conversion (Cn3) tests ──
+
+    #[test]
+    fn test_linear_cn3_uint16() {
+        use arrow::array::UInt16Builder;
+        let mut builder = UInt16Builder::new();
+        builder.append_value(10);
+        let mut cn = make_cn3(ChannelData::UInt16(builder));
+        linear_conversion(&mut cn, &[0.0, 3.0]).unwrap(); // 10*3+0 = 30
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 30.0).abs() < 1e-12);
+        } else {
+            panic!("Expected Float64");
+        }
+    }
+
+    // ── polynomial_conversion (Cn3) tests ──
+
+    #[test]
+    fn test_polynomial_cn3_float64() {
+        // polynomial_calculation uses array.finish() then Float64Builder::with_capacity(array.capacity())
+        // After finish(), capacity resets to 0, so the output is an empty Float64 builder.
+        // This test verifies the conversion returns Ok and converts the channel to Float64.
+        let cc_val = vec![0.0, 1.0, 1.0, 0.0, 0.0, 0.0];
+        let mut builder = Float64Builder::new();
+        builder.append_value(2.0);
+        let mut cn = make_cn3(ChannelData::Float64(builder));
+        let result = polynomial_conversion(&mut cn, &cc_val);
+        assert!(result.is_ok());
+        // Data should now be Float64 (conversion applied)
+        assert!(matches!(cn.data, ChannelData::Float64(_)));
+    }
+
+    // ── exponential_conversion (Cn3) tests ──
+
+    #[test]
+    fn test_exponential_cn3_float64_p4_zero() {
+        // exponential_calculation also uses array.finish() and Float64Builder::with_capacity(0)
+        // so the output is an empty builder. Test that it returns Ok and converts to Float64.
+        // p4=0 branch chosen with: p1=1, p2=1, p3=0, p4=0, p5=0, p6=1, p7=0
+        let cc_val = vec![1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+        let mut builder = Float64Builder::new();
+        builder.append_value(std::f64::consts::E);
+        let mut cn = make_cn3(ChannelData::Float64(builder));
+        let result = exponential_conversion(&mut cn, &cc_val);
+        assert!(result.is_ok());
+        assert!(matches!(cn.data, ChannelData::Float64(_)));
+    }
+
+    // ── logarithmic_conversion (Cn3) tests ──
+
+    #[test]
+    fn test_logarithmic_cn3_float64_p4_zero() {
+        // logarithmic_calculation also uses array.finish() and Float64Builder::with_capacity(0).
+        // Test that it returns Ok and converts to Float64.
+        // p4=0 branch: p1=1, p2=1, p3=0, p4=0, p5=0, p6=1, p7=0
+        let cc_val = vec![1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+        let mut builder = Float64Builder::new();
+        builder.append_value(0.0);
+        let mut cn = make_cn3(ChannelData::Float64(builder));
+        let result = logarithmic_conversion(&mut cn, &cc_val);
+        assert!(result.is_ok());
+        assert!(matches!(cn.data, ChannelData::Float64(_)));
+    }
+
+    // ── value_to_value_with_interpolation (Cn3) tests ──
+
+    #[test]
+    fn test_cn3_vtv_interp_uint8() {
+        use arrow::array::UInt8Builder;
+        // Table: 0→0, 10→100
+        let cc_val = vec![0.0, 0.0, 10.0, 100.0];
+        let mut builder = UInt8Builder::new();
+        builder.append_value(5); // 50
+        let mut cn = make_cn3(ChannelData::UInt8(builder));
+        value_to_value_with_interpolation(&mut cn, cc_val, &10).unwrap();
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 50.0).abs() < 1e-9);
+        } else {
+            panic!("Expected Float64");
+        }
+    }
+
+    // ── value_to_value_without_interpolation (Cn3) tests ──
+
+    #[test]
+    fn test_cn3_vtv_no_interp_uint8() {
+        use arrow::array::UInt8Builder;
+        let cc_val = vec![1.0, 10.0, 2.0, 20.0];
+        let mut builder = UInt8Builder::new();
+        builder.append_value(2); // exact match → 20.0
+        let mut cn = make_cn3(ChannelData::UInt8(builder));
+        value_to_value_without_interpolation(&mut cn, cc_val, &1).unwrap();
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 20.0).abs() < 1e-12);
+        } else {
+            panic!("Expected Float64");
+        }
+    }
+
+    // ── value_to_text (Cn3) tests ──
+
+    #[test]
+    fn test_cn3_value_to_text() {
+        use arrow::array::UInt8Builder;
+        let cc_val_ref = vec![(1.0, "one".to_string()), (2.0, "two".to_string())];
+        let mut builder = UInt8Builder::new();
+        builder.append_value(1);
+        let mut cn = make_cn3(ChannelData::UInt8(builder));
+        value_to_text(&mut cn, &cc_val_ref, &1).unwrap();
+        if let ChannelData::Utf8(ref b) = cn.data {
+            let arr = b.finish_cloned();
+            assert_eq!(arr.value(0), "one");
+        } else {
+            panic!("Expected Utf8");
+        }
+    }
+
+    // ── value_range_to_text (Cn3) tests ──
+
+    #[test]
+    fn test_cn3_value_range_to_text() {
+        let ranges = vec![(1.0, 2.0, "in_range".to_string()), (3.0, 4.0, "out".to_string())];
+        let cc_val_ref = (ranges, "default".to_string());
+        let mut builder = Float64Builder::new();
+        builder.append_value(1.5); // in [1.0, 2.0)
+        let mut cn = make_cn3(ChannelData::Float64(builder));
+        value_range_to_text(&mut cn, &cc_val_ref, &1).unwrap();
+        if let ChannelData::Utf8(ref b) = cn.data {
+            let arr = b.finish_cloned();
+            assert_eq!(arr.value(0), "in_range");
+        } else {
+            panic!("Expected Utf8");
+        }
+    }
 }

@@ -34,6 +34,8 @@ pub const CG_F_EVENT_SIGNAL_GROUP: u16 = 1 << 4;
 pub const CG_F_VLSC: u16 = 1 << 5;
 /// Bit 6: Raw sensor event channel group
 pub const CG_F_RAW_SENSOR_EVENT: u16 = 1 << 6;
+/// Bit 3: Remote master — the master channel resides in a different channel group
+pub const CG_F_REMOTE_MASTER: u16 = 1 << 3;
 /// Bit 7: Protocol event channel group
 pub const CG_F_PROTOCOL_EVENT: u16 = 1 << 7;
 use super::si_block::Si4Block;
@@ -127,7 +129,7 @@ impl Cg4Block {
         if (self.cg_flags & CG_F_PROTOCOL_EVENT) != 0 {
             flags.push("ProtocolEvent");
         }
-        if (self.cg_flags & 0b1000) != 0 {
+        if (self.cg_flags & CG_F_REMOTE_MASTER) != 0 {
             // Bit 3: Remote master
             flags.push("RemoteMaster");
         }
@@ -834,7 +836,7 @@ mod tests {
         cg.cg_flags = CG_F_PROTOCOL_EVENT;
         assert_eq!(cg.get_flags_str(), "ProtocolEvent");
 
-        cg.cg_flags = 0b1000; // RemoteMaster (bit 3)
+        cg.cg_flags = CG_F_REMOTE_MASTER;
         assert_eq!(cg.get_flags_str(), "RemoteMaster");
 
         // Combination

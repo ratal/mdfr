@@ -27,7 +27,9 @@ pub type CompositionParseResult = (Composition, i64, usize, (Vec<usize>, Order),
 #[derive(Debug, Clone)]
 #[repr(C)]
 pub struct Composition {
+    /// The composition block at this level (CA, CN, CL, CV, CU, or DS).
     pub block: Compo,
+    /// Optional next composition in the chain (e.g. nested CA inside another CA).
     pub compo: Option<Box<Composition>>,
 }
 
@@ -35,11 +37,17 @@ pub struct Composition {
 #[derive(Debug, Clone)]
 #[repr(C)]
 pub enum Compo {
+    /// Channel Array block: N-dimensional array layout (spec section 6.18)
     CA(Box<Ca4Block>),
+    /// Nested Channel block: structure composition via CN→CN chain
     CN(Box<Cn4>),
+    /// Channel List: named fields packed into a VLSD blob (spec section 6.25)
     CL(Box<Cl4Block>),
+    /// Column Variable-length: variable-length column in fixed-length records (spec section 6.26)
     CV(Box<Cv4Block>),
+    /// Column Unordered: unordered variable-length column (spec section 6.27)
     CU(Box<Cu4Block>),
+    /// Dynamic Size: variable-length fields in a VLSD blob (spec section 6.24)
     DS(Box<Ds4Block>),
 }
 

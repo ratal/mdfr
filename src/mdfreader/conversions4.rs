@@ -2401,4 +2401,285 @@ mod tests {
         assert!((values[2] - 11.0).abs() < 1e-12);
         assert!((values[3] - (-5.0)).abs() < 1e-12);
     }
+
+    // ── Helper for higher-level conversion tests ──
+
+    fn make_cn4_with_data(data: ChannelData) -> Cn4 {
+        Cn4 {
+            data,
+            ..Default::default()
+        }
+    }
+
+    // ── linear_conversion (Cn4) tests ──
+
+    #[test]
+    fn test_linear_cn4_uint8() {
+        use arrow::array::UInt8Builder;
+        let mut builder = UInt8Builder::new();
+        builder.append_value(2);
+        builder.append_value(4);
+        let mut cn = make_cn4_with_data(ChannelData::UInt8(builder));
+        linear_conversion(&mut cn, &[1.0, 2.0]).unwrap(); // p1=1, p2=2 → v*2+1
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 5.0).abs() < 1e-12); // 2*2+1
+            assert!((vals[1] - 9.0).abs() < 1e-12); // 4*2+1
+        } else {
+            panic!("Expected Float64 after linear conversion");
+        }
+    }
+
+    #[test]
+    fn test_linear_cn4_int16() {
+        use arrow::array::Int16Builder;
+        let mut builder = Int16Builder::new();
+        builder.append_value(10);
+        let mut cn = make_cn4_with_data(ChannelData::Int16(builder));
+        linear_conversion(&mut cn, &[0.0, 0.5]).unwrap();
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 5.0).abs() < 1e-12); // 10*0.5+0
+        } else {
+            panic!("Expected Float64");
+        }
+    }
+
+    #[test]
+    fn test_linear_cn4_array_d_int16() {
+        use arrow::array::Int16Builder;
+        use crate::data_holder::tensor_arrow::{Order, TensorArrow};
+        use arrow::datatypes::Int16Type;
+        let mut builder = Int16Builder::new();
+        builder.append_value(1);
+        builder.append_value(2);
+        let tensor = TensorArrow::<Int16Type>::new_from_primitive(builder, None, vec![2], Order::RowMajor);
+        let mut cn = make_cn4_with_data(ChannelData::ArrayDInt16(tensor));
+        linear_conversion(&mut cn, &[0.0, 3.0]).unwrap();
+        if let ChannelData::ArrayDFloat64(ref t) = cn.data {
+            let vals = t.values_slice();
+            assert!((vals[0] - 3.0).abs() < 1e-12);
+            assert!((vals[1] - 6.0).abs() < 1e-12);
+        } else {
+            panic!("Expected ArrayDFloat64");
+        }
+    }
+
+    #[test]
+    fn test_linear_cn4_array_d_float64() {
+        use arrow::datatypes::Float64Type;
+        use crate::data_holder::tensor_arrow::{Order, TensorArrow};
+        let mut builder = Float64Builder::new();
+        builder.append_value(1.0);
+        let tensor = TensorArrow::<Float64Type>::new_from_primitive(builder, None, vec![1], Order::RowMajor);
+        let mut cn = make_cn4_with_data(ChannelData::ArrayDFloat64(tensor));
+        linear_conversion(&mut cn, &[0.0, 2.0]).unwrap();
+        if let ChannelData::ArrayDFloat64(ref t) = cn.data {
+            let vals = t.values_slice();
+            assert!((vals[0] - 2.0).abs() < 1e-12);
+        } else {
+            panic!("Expected ArrayDFloat64");
+        }
+    }
+
+    #[test]
+    fn test_linear_cn4_utf8_warn() {
+        use arrow::array::LargeStringBuilder;
+        // Utf8 data should produce a warn but NOT change data type and should return Ok
+        let mut cn = make_cn4_with_data(ChannelData::Utf8(LargeStringBuilder::new()));
+        let result = linear_conversion(&mut cn, &[1.0, 2.0]);
+        assert!(result.is_ok());
+        // data type unchanged
+        assert!(matches!(cn.data, ChannelData::Utf8(_)));
+    }
+
+    #[test]
+    fn test_linear_cn4_identity_no_op() {
+        use arrow::array::UInt8Builder;
+        let mut builder = UInt8Builder::new();
+        builder.append_value(7);
+        let mut cn = make_cn4_with_data(ChannelData::UInt8(builder));
+        // p1=0, p2=1 is identity → no change
+        linear_conversion(&mut cn, &[0.0, 1.0]).unwrap();
+        // data type should remain UInt8 (identity skipped)
+        assert!(matches!(cn.data, ChannelData::UInt8(_)));
+    }
+
+    // ── rational_conversion (Cn4) tests ──
+
+    #[test]
+    fn test_rational_cn4_float64() {
+        // identity rational: (0*x^2 + 1*x + 0) / (0*x^2 + 0*x + 1) = x
+        let cc_val = vec![0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+        let mut builder = Float64Builder::new();
+        builder.append_value(2.0);
+        let mut cn = make_cn4_with_data(ChannelData::Float64(builder));
+        rational_conversion(&mut cn, &cc_val).unwrap();
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 2.0).abs() < 1e-12);
+        } else {
+            panic!("Expected Float64");
+        }
+    }
+
+    #[test]
+    fn test_rational_cn4_uint8() {
+        // (0*x^2 + 1*x + 0) / (0*x^2 + 0*x + 2) = x/2
+        let cc_val = vec![0.0, 1.0, 0.0, 0.0, 0.0, 2.0];
+        use arrow::array::UInt8Builder;
+        let mut builder = UInt8Builder::new();
+        builder.append_value(4);
+        let mut cn = make_cn4_with_data(ChannelData::UInt8(builder));
+        rational_conversion(&mut cn, &cc_val).unwrap();
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 2.0).abs() < 1e-12);
+        } else {
+            panic!("Expected Float64");
+        }
+    }
+
+    // ── value_to_value_with_interpolation (Cn4) tests ──
+
+    #[test]
+    fn test_vtv_interp_cn4_float64() {
+        // cc_val: pairs (x, y) interleaved: 1.0→10.0, 2.0→20.0
+        let cc_val = vec![1.0, 10.0, 2.0, 20.0];
+        let mut builder = Float64Builder::new();
+        builder.append_value(1.5); // interpolated: 15.0
+        let mut cn = make_cn4_with_data(ChannelData::Float64(builder));
+        value_to_value_with_interpolation(&mut cn, cc_val).unwrap();
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 15.0).abs() < 1e-9);
+        } else {
+            panic!("Expected Float64");
+        }
+    }
+
+    #[test]
+    fn test_vtv_interp_cn4_uint8() {
+        // cc_val: 0→0, 10→100
+        let cc_val = vec![0.0, 0.0, 10.0, 100.0];
+        use arrow::array::UInt8Builder;
+        let mut builder = UInt8Builder::new();
+        builder.append_value(5); // 50
+        let mut cn = make_cn4_with_data(ChannelData::UInt8(builder));
+        value_to_value_with_interpolation(&mut cn, cc_val).unwrap();
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 50.0).abs() < 1e-9);
+        } else {
+            panic!("Expected Float64");
+        }
+    }
+
+    #[test]
+    fn test_vtv_interp_cn4_array_d_uint8() {
+        use arrow::array::UInt8Builder;
+        use arrow::datatypes::UInt8Type;
+        use crate::data_holder::tensor_arrow::{Order, TensorArrow};
+        let cc_val = vec![0.0, 0.0, 10.0, 100.0];
+        let mut builder = UInt8Builder::new();
+        builder.append_value(5);
+        let tensor = TensorArrow::<UInt8Type>::new_from_primitive(builder, None, vec![1], Order::RowMajor);
+        let mut cn = make_cn4_with_data(ChannelData::ArrayDUInt8(tensor));
+        value_to_value_with_interpolation(&mut cn, cc_val).unwrap();
+        assert!(matches!(cn.data, ChannelData::ArrayDFloat64(_)));
+    }
+
+    #[test]
+    fn test_vtv_interp_cn4_int64_noop() {
+        use arrow::array::Int64Builder;
+        // Int64 not handled in value_to_value_with_interpolation (falls through to warn)
+        let mut builder = Int64Builder::new();
+        builder.append_value(5);
+        let mut cn = make_cn4_with_data(ChannelData::Int64(builder));
+        let result = value_to_value_with_interpolation(&mut cn, vec![0.0, 0.0, 10.0, 100.0]);
+        assert!(result.is_ok());
+    }
+
+    // ── value_to_value_without_interpolation (Cn4) tests ──
+
+    #[test]
+    fn test_vtv_no_interp_cn4_float64() {
+        let cc_val = vec![1.0, 100.0, 2.0, 200.0];
+        let mut builder = Float64Builder::new();
+        builder.append_value(1.0); // exact match → 100.0
+        let mut cn = make_cn4_with_data(ChannelData::Float64(builder));
+        value_to_value_without_interpolation(&mut cn, cc_val).unwrap();
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 100.0).abs() < 1e-12);
+        } else {
+            panic!("Expected Float64");
+        }
+    }
+
+    #[test]
+    fn test_vtv_no_interp_cn4_uint8() {
+        use arrow::array::UInt8Builder;
+        let cc_val = vec![1.0, 10.0, 2.0, 20.0];
+        let mut builder = UInt8Builder::new();
+        builder.append_value(2); // exact match → 20.0
+        let mut cn = make_cn4_with_data(ChannelData::UInt8(builder));
+        value_to_value_without_interpolation(&mut cn, cc_val).unwrap();
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 20.0).abs() < 1e-12);
+        } else {
+            panic!("Expected Float64");
+        }
+    }
+
+    // ── value_range_to_value_table (Cn4) tests ──
+
+    #[test]
+    fn test_vrv_cn4_float64() {
+        // cc_val groups of 3: (min, max, out_val)
+        // Range [1.0, 2.0] → 100.0
+        let cc_val = vec![1.0, 2.0, 100.0];
+        let mut builder = Float64Builder::new();
+        builder.append_value(1.5); // in [1.0, 2.0] → 100.0
+        let mut cn = make_cn4_with_data(ChannelData::Float64(builder));
+        value_range_to_value_table(&mut cn, cc_val).unwrap();
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 100.0).abs() < 1e-12);
+        } else {
+            panic!("Expected Float64");
+        }
+    }
+
+    #[test]
+    fn test_vrv_cn4_uint8() {
+        use arrow::array::UInt8Builder;
+        // Range [0.0, 10.0] → 42.0
+        let cc_val = vec![0.0, 10.0, 42.0];
+        let mut builder = UInt8Builder::new();
+        builder.append_value(5); // in [0, 10]
+        let mut cn = make_cn4_with_data(ChannelData::UInt8(builder));
+        value_range_to_value_table(&mut cn, cc_val).unwrap();
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 42.0).abs() < 1e-12);
+        } else {
+            panic!("Expected Float64");
+        }
+    }
+
+    #[test]
+    fn test_vrv_cn4_array_d_warn() {
+        use arrow::array::Int8Builder;
+        use arrow::datatypes::Int8Type;
+        use crate::data_holder::tensor_arrow::{Order, TensorArrow};
+        let mut builder = Int8Builder::new();
+        builder.append_value(5);
+        let tensor = TensorArrow::<Int8Type>::new_from_primitive(builder, None, vec![1], Order::RowMajor);
+        let mut cn = make_cn4_with_data(ChannelData::ArrayDInt8(tensor));
+        // ArrayDInt8 falls through to warn path
+        let result = value_range_to_value_table(&mut cn, vec![0.0, 10.0, 42.0]);
+        assert!(result.is_ok());
+    }
 }

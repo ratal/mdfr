@@ -315,3 +315,52 @@ fn complex_types() -> Result<()> {
     mdf.load_all_channels_data_in_memory()?;
     Ok(())
 }
+
+#[test]
+fn string_no_zero_termination() -> Result<()> {
+    let file_name = format!(
+        "{}{}{}",
+        BASE_PATH_MDF4.as_str(),
+        "DataTypes/StringTypes/",
+        "Vector_Strings_NoZeroTermination_MDF430.mf4"
+    );
+    let mut mdf = Mdf::new(&file_name)?;
+    mdf.load_all_channels_data_in_memory()?;
+    let names = mdf.get_channel_names_set();
+    assert!(!names.is_empty(), "No channels in no-zero-termination string file");
+    Ok(())
+}
+
+#[test]
+fn half_float_values() -> Result<()> {
+    let file_name = format!(
+        "{}{}",
+        BASE_PATH_MDF4.as_str(),
+        "Halffloat/halffloat_sinus.mf4"
+    );
+    let mut mdf = Mdf::new(&file_name)?;
+    mdf.load_all_channels_data_in_memory()?;
+
+    // The file contains at least one channel; verify it loaded successfully
+    let names = mdf.get_channel_names_set();
+    assert!(!names.is_empty(), "No channels found in halffloat file");
+
+    // Find a channel with float data and check it has values
+    let has_data = names
+        .iter()
+        .any(|name| mdf.get_channel_data(name).map_or(false, |d| !d.is_empty()));
+    assert!(has_data, "No non-empty channel data in halffloat file");
+
+    // Half-float channels are decoded as Float32 or Float64
+    let has_float_channel = names.iter().any(|name| {
+        mdf.get_channel_data(name).map_or(false, |d| {
+            matches!(d, ChannelData::Float32(_) | ChannelData::Float64(_))
+        })
+    });
+    assert!(
+        has_float_channel,
+        "Expected at least one Float32/Float64 channel decoded from half-float"
+    );
+
+    Ok(())
+}
