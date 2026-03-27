@@ -47,6 +47,8 @@ pub unsafe extern "C" fn free_mdf(mdf: *mut Mdf) {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_version(mdf: *const Mdf) -> c_ushort {
     unsafe {
+        // SAFETY: caller guarantees mdf is either null or a valid pointer returned by new_mdf().
+        // as_ref() handles the null case safely.
         if let Some(mdf) = mdf.as_ref() {
             mdf.get_version()
         } else {
@@ -56,13 +58,16 @@ pub unsafe extern "C" fn get_version(mdf: *const Mdf) -> c_ushort {
 }
 
 /// returns channel's unit string
-/// if no unit is existing for this channel, returns a null pointer
+/// if no unit is existing for this channel, returns a null pointer.
+/// The returned pointer is heap-allocated; caller must free it with `libc::free()`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_channel_unit(
     mdf: *const Mdf,
     channel_name: *const c_char,
 ) -> *const c_char {
     unsafe {
+        // SAFETY: caller guarantees both pointers are either null or valid null-terminated C strings.
+        // Null is checked before dereferencing. CStr::from_ptr requires a valid, null-terminated string.
         if mdf.is_null() || channel_name.is_null() {
             return std::ptr::null();
         }
@@ -85,13 +90,15 @@ pub unsafe extern "C" fn get_channel_unit(
 }
 
 /// returns channel's description string
-/// if no description is existing for this channel, returns null pointer
+/// if no description is existing for this channel, returns null pointer.
+/// The returned pointer is heap-allocated; caller must free it with `libc::free()`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_channel_desc(
     mdf: *const Mdf,
     channel_name: *const libc::c_char,
 ) -> *const c_char {
     unsafe {
+        // SAFETY: caller guarantees both pointers are either null or valid null-terminated C strings.
         if mdf.is_null() || channel_name.is_null() {
             return std::ptr::null();
         }
@@ -114,13 +121,15 @@ pub unsafe extern "C" fn get_channel_desc(
 }
 
 /// returns channel's associated master channel name string
-/// if no master channel existing, returns null pointer
+/// if no master channel existing, returns null pointer.
+/// The returned pointer is heap-allocated; caller must free it with `libc::free()`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_channel_master(
     mdf: *const Mdf,
     channel_name: *const libc::c_char,
 ) -> *const c_char {
     unsafe {
+        // SAFETY: caller guarantees both pointers are either null or valid null-terminated C strings.
         if mdf.is_null() || channel_name.is_null() {
             return std::ptr::null();
         }
@@ -151,6 +160,7 @@ pub unsafe extern "C" fn get_channel_master_type(
     channel_name: *const libc::c_char,
 ) -> c_uchar {
     unsafe {
+        // SAFETY: caller guarantees both pointers are either null or valid null-terminated C strings.
         if mdf.is_null() || channel_name.is_null() {
             return 0;
         }
@@ -167,10 +177,13 @@ pub unsafe extern "C" fn get_channel_master_type(
 }
 
 /// returns a sorted array of strings of all channel names contained in file.
-/// The returned pointer is heap-allocated; call `free_channel_names_set()` to free it.
+/// The returned pointer is heap-allocated; call `free_channel_names_set(ptr, len)` to free it,
+/// where `len` is the number of channel names (obtained separately, e.g. via a count function).
+/// Returns null on null input.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_channel_names_set(mdf: *const Mdf) -> *const *mut c_char {
     unsafe {
+        // SAFETY: caller guarantees mdf is either null or a valid pointer from new_mdf().
         if let Some(mdf) = mdf.as_ref() {
             let set = mdf.get_channel_names_set();
             let mut s = set.into_iter().collect::<Vec<String>>();
@@ -182,6 +195,9 @@ pub unsafe extern "C" fn get_channel_names_set(mdf: *const Mdf) -> *const *mut c
                 .collect::<Vec<*mut c_char>>();
             cstring_vec.shrink_to_fit();
             let p = cstring_vec.as_ptr();
+            // SAFETY: We intentionally leak the Vec here to transfer ownership of the
+            // backing allocation to the caller. The pointer remains valid until
+            // free_channel_names_set() is called with the correct length.
             std::mem::forget(cstring_vec);
             p
         } else {
@@ -213,6 +229,7 @@ pub unsafe extern "C" fn free_channel_names_set(ptr: *mut *mut c_char, len: usiz
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn load_all_channels_data_in_memory(mdf: *mut Mdf) {
     unsafe {
+        // SAFETY: caller guarantees mdf is either null or a valid pointer from new_mdf().
         if let Some(mdf) = mdf.as_mut()
             && let Err(e) = mdf.load_all_channels_data_in_memory()
         {
@@ -230,6 +247,8 @@ pub unsafe extern "C" fn get_channel_array(
     channel_name: *const libc::c_char,
 ) -> *mut FFI_ArrowArray {
     unsafe {
+        // SAFETY: caller guarantees both pointers are either null or valid null-terminated C strings,
+        // and mdf is a valid pointer from new_mdf().
         if mdf.is_null() || channel_name.is_null() {
             return std::ptr::null_mut();
         }
