@@ -1951,7 +1951,7 @@ fn store_decoded_values_in_channel(
             }
             ChannelData::Int16(builder) => {
                 if value_bytes.len() >= 2 {
-                    let val = if cn.endian {
+                    let val = if cn.endian.is_big() {
                         i16::from_be_bytes(value_bytes[..2].try_into()?)
                     } else {
                         i16::from_le_bytes(value_bytes[..2].try_into()?)
@@ -1961,7 +1961,7 @@ fn store_decoded_values_in_channel(
             }
             ChannelData::UInt16(builder) => {
                 if value_bytes.len() >= 2 {
-                    let val = if cn.endian {
+                    let val = if cn.endian.is_big() {
                         u16::from_be_bytes(value_bytes[..2].try_into()?)
                     } else {
                         u16::from_le_bytes(value_bytes[..2].try_into()?)
@@ -1971,7 +1971,7 @@ fn store_decoded_values_in_channel(
             }
             ChannelData::Int32(builder) => {
                 if value_bytes.len() >= 4 {
-                    let val = if cn.endian {
+                    let val = if cn.endian.is_big() {
                         i32::from_be_bytes(value_bytes[..4].try_into()?)
                     } else {
                         i32::from_le_bytes(value_bytes[..4].try_into()?)
@@ -1981,7 +1981,7 @@ fn store_decoded_values_in_channel(
             }
             ChannelData::UInt32(builder) => {
                 if value_bytes.len() >= 4 {
-                    let val = if cn.endian {
+                    let val = if cn.endian.is_big() {
                         u32::from_be_bytes(value_bytes[..4].try_into()?)
                     } else {
                         u32::from_le_bytes(value_bytes[..4].try_into()?)
@@ -1991,7 +1991,7 @@ fn store_decoded_values_in_channel(
             }
             ChannelData::Float32(builder) => {
                 if value_bytes.len() >= 4 {
-                    let val = if cn.endian {
+                    let val = if cn.endian.is_big() {
                         f32::from_be_bytes(value_bytes[..4].try_into()?)
                     } else {
                         f32::from_le_bytes(value_bytes[..4].try_into()?)
@@ -2001,7 +2001,7 @@ fn store_decoded_values_in_channel(
             }
             ChannelData::Int64(builder) => {
                 if value_bytes.len() >= 8 {
-                    let val = if cn.endian {
+                    let val = if cn.endian.is_big() {
                         i64::from_be_bytes(value_bytes[..8].try_into()?)
                     } else {
                         i64::from_le_bytes(value_bytes[..8].try_into()?)
@@ -2011,7 +2011,7 @@ fn store_decoded_values_in_channel(
             }
             ChannelData::UInt64(builder) => {
                 if value_bytes.len() >= 8 {
-                    let val = if cn.endian {
+                    let val = if cn.endian.is_big() {
                         u64::from_be_bytes(value_bytes[..8].try_into()?)
                     } else {
                         u64::from_le_bytes(value_bytes[..8].try_into()?)
@@ -2021,7 +2021,7 @@ fn store_decoded_values_in_channel(
             }
             ChannelData::Float64(builder) => {
                 if value_bytes.len() >= 8 {
-                    let val = if cn.endian {
+                    let val = if cn.endian.is_big() {
                         f64::from_be_bytes(value_bytes[..8].try_into()?)
                     } else {
                         f64::from_le_bytes(value_bytes[..8].try_into()?)

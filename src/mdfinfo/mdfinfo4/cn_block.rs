@@ -18,6 +18,34 @@ use super::cc_block::read_cc;
 use super::composition::{parse_composition, Composition};
 use super::ev_block::{Ev4Block, parse_ev4_block};
 
+/// Byte order for channel data.
+///
+/// `false`/`Little` = little-endian (default for most modern platforms and MDF files).
+/// `true`/`Big` = big-endian.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Endianness {
+    /// Little-endian (LSB first)
+    #[default]
+    Little,
+    /// Big-endian (MSB first)
+    Big,
+}
+
+impl Endianness {
+    /// Returns `true` if big-endian.
+    #[inline]
+    pub fn is_big(self) -> bool {
+        self == Endianness::Big
+    }
+}
+
+impl From<bool> for Endianness {
+    /// Converts from a raw bool: `true` → `Big`, `false` → `Little`.
+    fn from(big: bool) -> Self {
+        if big { Endianness::Big } else { Endianness::Little }
+    }
+}
+
 // Channel (CN) flags - cn_flags field (u32)
 /// Bit 13: Event signal - channel contains event data, cn_data points to template EVBLOCK
 pub const CN_F_EVENT_SIGNAL: u32 = 1 << 13;
@@ -38,6 +66,137 @@ pub const CN_F_PROTOCOL_EVENT: u32 = 1 << 19;
 #[allow(dead_code)]
 pub const CN_F_DATA_DESCRIPTION_MODE: u32 = 1 << 20;
 use super::si_block::Si4Block;
+
+/// Channel type (cn_type field) — spec section 6.6, Table 25
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CnChannelType {
+    /// 0: Fixed-length data channel (normal signal)
+    FixedLength = 0,
+    /// 1: Variable-length signal data (VLSD)
+    Vlsd = 1,
+    /// 2: Master channel (fixed length)
+    Master = 2,
+    /// 3: Virtual master channel (generated time/angle axis, no raw data)
+    VirtualMaster = 3,
+    /// 4: Synchronisation channel (references an attachment)
+    Synchronisation = 4,
+    /// 5: Maximum-length data channel
+    MaxLength = 5,
+    /// 6: Virtual data channel (generated data, no raw data)
+    VirtualData = 6,
+    /// 7: VLSC channel (stores offsets into VD block, MDF 4.3)
+    Vlsc = 7,
+}
+
+impl TryFrom<u8> for CnChannelType {
+    type Error = u8;
+    fn try_from(v: u8) -> Result<Self, u8> {
+        match v {
+            0 => Ok(Self::FixedLength),
+            1 => Ok(Self::Vlsd),
+            2 => Ok(Self::Master),
+            3 => Ok(Self::VirtualMaster),
+            4 => Ok(Self::Synchronisation),
+            5 => Ok(Self::MaxLength),
+            6 => Ok(Self::VirtualData),
+            7 => Ok(Self::Vlsc),
+            other => Err(other),
+        }
+    }
+}
+
+/// Channel sync type (cn_sync_type field) — spec section 6.6, Table 26
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CnSyncType {
+    /// 0: No synchronisation (normal data channel)
+    #[default]
+    None = 0,
+    /// 1: Time synchronisation (seconds)
+    Time = 1,
+    /// 2: Angle synchronisation (radians)
+    Angle = 2,
+    /// 3: Distance synchronisation (meters)
+    Distance = 3,
+    /// 4: Index synchronisation (zero-based sample index)
+    Index = 4,
+}
+
+impl TryFrom<u8> for CnSyncType {
+    type Error = u8;
+    fn try_from(v: u8) -> Result<Self, u8> {
+        match v {
+            0 => Ok(Self::None),
+            1 => Ok(Self::Time),
+            2 => Ok(Self::Angle),
+            3 => Ok(Self::Distance),
+            4 => Ok(Self::Index),
+            other => Err(other),
+        }
+    }
+}
+
+/// Channel data type (cn_data_type field) — spec section 6.6, Table 27
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CnDataType {
+    /// 0: Unsigned integer, little-endian
+    UIntLE = 0,
+    /// 1: Unsigned integer, big-endian
+    UIntBE = 1,
+    /// 2: Signed integer, little-endian
+    IntLE = 2,
+    /// 3: Signed integer, big-endian
+    IntBE = 3,
+    /// 4: IEEE 754 float, little-endian
+    FloatLE = 4,
+    /// 5: IEEE 754 float, big-endian
+    FloatBE = 5,
+    /// 6: String (SBC/ISO-8859-1)
+    StringSbc = 6,
+    /// 7: String (UTF-8)
+    StringUtf8 = 7,
+    /// 8: String (UTF-16 LE)
+    StringUtf16LE = 8,
+    /// 9: String (UTF-16 BE)
+    StringUtf16BE = 9,
+    /// 10: Byte array
+    ByteArray = 10,
+    /// 11: MIME sample
+    MimeSample = 11,
+    /// 12: MIME stream
+    MimeStream = 12,
+    /// 13: CANopen date
+    CanopenDate = 13,
+    /// 14: CANopen time
+    CanopenTime = 14,
+    /// 15: Complex number, little-endian
+    ComplexLE = 15,
+    /// 16: Complex number, big-endian
+    ComplexBE = 16,
+    /// 17: String with BOM (Unicode with byte-order mark)
+    StringBom = 17,
+}
+
+impl TryFrom<u8> for CnDataType {
+    type Error = u8;
+    fn try_from(v: u8) -> Result<Self, u8> {
+        match v {
+            0 => Ok(Self::UIntLE), 1 => Ok(Self::UIntBE),
+            2 => Ok(Self::IntLE),  3 => Ok(Self::IntBE),
+            4 => Ok(Self::FloatLE), 5 => Ok(Self::FloatBE),
+            6 => Ok(Self::StringSbc), 7 => Ok(Self::StringUtf8),
+            8 => Ok(Self::StringUtf16LE), 9 => Ok(Self::StringUtf16BE),
+            10 => Ok(Self::ByteArray),
+            11 => Ok(Self::MimeSample), 12 => Ok(Self::MimeStream),
+            13 => Ok(Self::CanopenDate), 14 => Ok(Self::CanopenTime),
+            15 => Ok(Self::ComplexLE), 16 => Ok(Self::ComplexBE),
+            17 => Ok(Self::StringBom),
+            other => Err(other),
+        }
+    }
+}
 
 /// Cn4 Channel block struct
 #[derive(Debug, PartialEq, Clone)]
@@ -165,6 +324,21 @@ impl Cn4Block {
     pub fn set_si_source(&mut self, si_source: i64) {
         self.cn_si_source = si_source;
     }
+    /// Returns the typed channel type. Returns `Err(raw_value)` if the value is out of spec.
+    #[allow(dead_code)]
+    pub fn cn_channel_type(&self) -> Result<CnChannelType, u8> {
+        CnChannelType::try_from(self.cn_type)
+    }
+    /// Returns the typed sync type. Returns `Err(raw_value)` if the value is out of spec.
+    #[allow(dead_code)]
+    pub fn cn_sync_type_enum(&self) -> Result<CnSyncType, u8> {
+        CnSyncType::try_from(self.cn_sync_type)
+    }
+    /// Returns the typed data type. Returns `Err(raw_value)` if the value is out of spec.
+    #[allow(dead_code)]
+    pub fn cn_data_type_enum(&self) -> Result<CnDataType, u8> {
+        CnDataType::try_from(self.cn_data_type)
+    }
     /// Returns a string representation of the channel type (cn_type)
     pub fn get_cn_type_str(&self) -> &'static str {
         match self.cn_type {
@@ -242,19 +416,21 @@ pub struct Cn4 {
     pub block: Cn4Block,
     /// unique channel name string
     pub unique_name: String,
+    /// absolute file position of this CN block
     pub block_position: i64,
     /// beginning position of channel in record
     pub pos_byte_beg: u32,
     /// number of bytes taken by channel in record
     pub n_bytes: u32,
+    /// optional composition (CA array, nested CN structure, DS/CL/CV/CU VLSD layout)
     pub composition: Option<Composition>,
     /// channel data
     pub data: ChannelData,
-    /// false = little endian
-    pub endian: bool,
-    /// List size: 1 for normal primitive, 2 for complex, pnd for arrays
+    /// byte order of the channel's raw data
+    pub endian: Endianness,
+    /// number of elements per sample: 1 for scalars, 2 for complex, N for arrays
     pub list_size: usize,
-    // Shape of array
+    /// shape of array data: (dimension sizes, storage order); scalar channels use an empty vec
     pub shape: (Vec<usize>, Order),
     /// optional invalid mask array, invalid byte position in record, invalid byte mask
     pub invalid_mask: Option<(Option<BooleanBufferBuilder>, usize, u8)>,
@@ -453,7 +629,7 @@ fn can_open_date(
         n_bytes: 2,
         composition: None,
         data: ChannelData::UInt16(UInt16Builder::new()),
-        endian: false,
+        endian: Endianness::Little,
         list_size: 1,
         shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
@@ -474,7 +650,7 @@ fn can_open_date(
         n_bytes: 1,
         composition: None,
         data: ChannelData::UInt8(UInt8Builder::new()),
-        endian: false,
+        endian: Endianness::Little,
         list_size: 1,
         shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
@@ -495,7 +671,7 @@ fn can_open_date(
         n_bytes: 1,
         composition: None,
         data: ChannelData::UInt8(UInt8Builder::new()),
-        endian: false,
+        endian: Endianness::Little,
         list_size: 1,
         shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
@@ -516,7 +692,7 @@ fn can_open_date(
         n_bytes: 1,
         composition: None,
         data: ChannelData::UInt8(UInt8Builder::new()),
-        endian: false,
+        endian: Endianness::Little,
         list_size: 1,
         shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
@@ -537,7 +713,7 @@ fn can_open_date(
         n_bytes: 1,
         composition: None,
         data: ChannelData::UInt8(UInt8Builder::new()),
-        endian: false,
+        endian: Endianness::Little,
         list_size: 1,
         shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
@@ -558,7 +734,7 @@ fn can_open_date(
         n_bytes: 1,
         composition: None,
         data: ChannelData::UInt8(UInt8Builder::new()),
-        endian: false,
+        endian: Endianness::Little,
         list_size: 1,
         shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
@@ -584,7 +760,7 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         n_bytes: 4,
         composition: None,
         data: ChannelData::UInt32(UInt32Builder::new()),
-        endian: false,
+        endian: Endianness::Little,
         list_size: 1,
         shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
@@ -605,7 +781,7 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         n_bytes: 2,
         composition: None,
         data: ChannelData::UInt16(UInt16Builder::new()),
-        endian: false,
+        endian: Endianness::Little,
         list_size: 1,
         shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
@@ -754,26 +930,26 @@ pub(super) fn parse_cn4_block(
         }
     }
 
-    let mut endian: bool = false; // Little endian by default
+    let mut endian = Endianness::Little; // Little endian by default
     if block.cn_data_type == 0
         || block.cn_data_type == 2
         || block.cn_data_type == 4
         || block.cn_data_type == 8
         || block.cn_data_type == 15
     {
-        endian = false; // little endian
+        endian = Endianness::Little;
     } else if block.cn_data_type == 1
         || block.cn_data_type == 3
         || block.cn_data_type == 5
         || block.cn_data_type == 9
         || block.cn_data_type == 16
     {
-        endian = true; // big endian
+        endian = Endianness::Big;
     }
     // For VLSC/VLSD channels, cn_data_type describes the signal data block encoding
     // (e.g. UTF-16 BE), not the byte order of the integer offsets stored in the DT block.
     if block.cn_type == 1 || block.cn_type == 7 {
-        endian = false;
+        endian = Endianness::Little;
     }
     let data_type = block.cn_data_type;
     let cn_type = block.cn_type;
