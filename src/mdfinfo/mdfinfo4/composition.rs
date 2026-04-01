@@ -318,13 +318,13 @@ pub(super) fn parse_composition(
 
     if block_header_short.hdr_id == "##CA".as_bytes() {
         // Channel Array
-        let (block, mut shape, _snd, array_size) =
+        let (block, mut shape, _snd, mut array_size) =
             parse_ca_block(&mut block, block_header_short, cg_cycle_count)
                 .context("Failed parsing CA block")?;
         position = pos;
         let ca_composition: Option<Box<Composition>>;
         if block.ca_composition != 0 {
-            let (ca, pos, _array_size, s, n_cns, cnss) = parse_composition(
+            let (ca, pos, inner_array_size, s, n_cns, cnss) = parse_composition(
                 rdr,
                 block.ca_composition,
                 position,
@@ -333,7 +333,21 @@ pub(super) fn parse_composition(
                 cg_cycle_count,
             )
             .context("Failed parsing composition block from CA block")?;
-            shape = s;
+            // If the inner composition is another CA block (array of arrays), combine
+            // the outer CA's dimensions with the inner CA's dimensions:
+            //   outer shape = [cg_cycle_count, d1, ..., dm]
+            //   inner shape = [cg_cycle_count, e1, ..., en]
+            //   combined    = [cg_cycle_count, d1, ..., dm, e1, ..., en]
+            // array_size (= total elements, used as list_size for reading) must also be
+            // the product of all dimensions: outer_pnd * inner_pnd.
+            // For any other inner block type (CN axis channel, etc.) the outer CA's
+            // ca_dim_size already encodes the full array shape — keep it unchanged.
+            if matches!(&ca.block, Compo::CA(_)) {
+                let mut combined = shape.0.clone();
+                combined.extend_from_slice(&s.0[1..]);
+                shape = (combined, shape.1);
+                array_size *= inner_array_size;
+            }
             position = pos;
             cns = cnss;
             n_cn += n_cns;
