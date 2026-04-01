@@ -992,6 +992,11 @@ where
         .zip(values)
         .for_each(|(new_a, v)| {
             let a: f64 = (*v).as_();
+            // MDF4 spec 6.17.7 (cc_type=5, value to value without interpolation):
+            // - Exact match: return value[i]
+            // - Below first key: return value[0]
+            // - Above last key: return value[n-1]
+            // - Between keys: return nearest neighbor; if equidistant, use lower key's value
             *new_a = match val
                 .binary_search_by(|&(xi, _)| xi.partial_cmp(&a).unwrap_or(Ordering::Equal))
             {
@@ -1001,6 +1006,7 @@ where
                 Err(idx) => {
                     let (x0, y0) = val[idx - 1];
                     let (x1, y1) = val[idx];
+                    // spec: if (Int - key[i]) > (key[i+1] - Int) use upper, else lower
                     if (a - x0) > (x1 - a) { *y1 } else { *y0 }
                 }
             };
@@ -1201,6 +1207,7 @@ fn value_range_to_value_table_calculation<T: ArrowPrimitiveType>(
     array: &PrimitiveBuilder<T>,
     val: &[(f64, f64, f64)],
     default_value: &f64,
+    inclusive_upper: bool,
 ) -> Result<PrimitiveBuilder<Float64Type>, Error>
 where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
@@ -1213,15 +1220,30 @@ where
         .zip(values)
         .for_each(|(new_a, v)| {
             let a: f64 = (*v).as_();
+            // MDF4 spec 6.17.8 (cc_type=6, value range to value):
+            // - For float types (cn_data_type > 3): key_min[i] ≤ Int < key_max[i] (exclusive upper)
+            // - For integer types (cn_data_type ≤ 3): key_min[i] ≤ Int ≤ key_max[i] (both inclusive)
+            // Ranges are sorted ascending and shall not overlap (key_max[i-1] ≤ key_min[i]).
+            // For touching boundaries with float data, a == key_min[i] → range i wins (not i-1).
+            // Binary search on min keys handles both cases naturally:
+            //   Ok(idx): a == min[idx] → range idx includes a as its lower bound ✓
+            //   Err(idx): min[idx-1] < a < min[idx] → check if a < max[idx-1] (exclusive upper)
             *new_a = match val
                 .binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a).unwrap_or(Ordering::Equal))
             {
                 Ok(idx) => val[idx].2,
-                Err(0) => *default_value,
-                Err(idx) if (idx >= val.len() && a <= val[idx - 1].1) => val[idx - 1].2,
+                Err(0) => *default_value,  // below the minimum of all lower bounds
                 Err(idx) => {
-                    if a <= val[idx].1 {
-                        val[idx].2
+                    // min[idx-1] < a < min[idx]: candidate is range idx-1
+                    // Float: upper exclusive (a < max[idx-1])
+                    // Integer: upper inclusive (a <= max[idx-1])
+                    let in_range = if inclusive_upper {
+                        a <= val[idx - 1].1
+                    } else {
+                        a < val[idx - 1].1
+                    };
+                    if in_range {
+                        val[idx - 1].2
                     } else {
                         *default_value
                     }
@@ -1243,64 +1265,65 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>) -> Result<(), Erro
         val.push((*a, *b, *c));
     }
     let default_value = cc_val[cc_val.len() - 1];
+    // MDF4 spec 6.17.8: integer data uses inclusive upper bound; float data uses exclusive upper.
     match &mut cn.data {
         ChannelData::Int8(a) => {
             cn.data = ChannelData::Float64(
-                value_range_to_value_table_calculation(a, &val, &default_value)
+                value_range_to_value_table_calculation(a, &val, &default_value, true)
                     .context("failed value range to value table conversion of i8 channel")?,
             );
         }
         ChannelData::UInt8(a) => {
             cn.data = ChannelData::Float64(
-                value_range_to_value_table_calculation(a, &val, &default_value)
+                value_range_to_value_table_calculation(a, &val, &default_value, true)
                     .context("failed value range to value table conversion of u8 channel")?,
             );
         }
         ChannelData::Int16(a) => {
             cn.data = ChannelData::Float64(
-                value_range_to_value_table_calculation(a, &val, &default_value)
+                value_range_to_value_table_calculation(a, &val, &default_value, true)
                     .context("failed value range to value table conversion of i16 channel")?,
             );
         }
         ChannelData::UInt16(a) => {
             cn.data = ChannelData::Float64(
-                value_range_to_value_table_calculation(a, &val, &default_value)
+                value_range_to_value_table_calculation(a, &val, &default_value, true)
                     .context("failed value range to value table conversion of u16 channel")?,
             );
         }
         ChannelData::Int32(a) => {
             cn.data = ChannelData::Float64(
-                value_range_to_value_table_calculation(a, &val, &default_value)
+                value_range_to_value_table_calculation(a, &val, &default_value, true)
                     .context("failed value range to value table conversion of i32 channel")?,
             );
         }
         ChannelData::UInt32(a) => {
             cn.data = ChannelData::Float64(
-                value_range_to_value_table_calculation(a, &val, &default_value)
+                value_range_to_value_table_calculation(a, &val, &default_value, true)
                     .context("failed value range to value table conversion of u32 channel")?,
             );
         }
         ChannelData::Float32(a) => {
             cn.data = ChannelData::Float64(
-                value_range_to_value_table_calculation(a, &val, &default_value)
+                value_range_to_value_table_calculation(a, &val, &default_value, false)
                     .context("failed value range to value table conversion of f32 channel")?,
             );
         }
         ChannelData::Int64(a) => {
             cn.data = ChannelData::Float64(
-                value_range_to_value_table_calculation(a, &val, &default_value)
+                value_range_to_value_table_calculation(a, &val, &default_value, true)
                     .context("failed value range to value table conversion of i64 channel")?,
             );
         }
         ChannelData::UInt64(a) => {
             cn.data = ChannelData::Float64(
-                value_range_to_value_table_calculation(a, &val, &default_value)
+                value_range_to_value_table_calculation(a, &val, &default_value, true)
                     .context("failed value range to value table conversion of u64 channel")?,
             );
         }
         ChannelData::Float64(a) => {
             cn.data = ChannelData::Float64(
-                value_range_to_value_table_calculation(a, &val, &default_value)
+                value_range_to_value_table_calculation(a, &val, &default_value, false)
                     .context("failed value range to value table conversion of f64 channel")?,
             );
         }
@@ -2329,27 +2352,27 @@ mod tests {
 
     #[test]
     fn test_value_to_value_without_interpolation_primitive() {
-        // Table pairs: x=0→y=0, x=10→y=100, x=20→y=200
+        // Table pairs: x=0→y=0, x=10→y=100, x=20→y=200 (MDF4 spec 6.17.7)
         let keys = [0.0, 0.0, 10.0, 100.0, 20.0, 200.0];
         let val: Vec<(&f64, &f64)> = keys.iter().tuples().collect();
 
         let mut builder = Float64Builder::new();
-        builder.append_value(0.0); // exact → 0
-        builder.append_value(3.0); // nearer to x=0 (dist=3) than x=10 (dist=7) → 0
-        builder.append_value(7.0); // nearer to x=10 (dist=3) than x=0 (dist=7) → 100
-        builder.append_value(10.0); // exact → 100
-        builder.append_value(-5.0); // below first → 0
-        builder.append_value(25.0); // above last → 200
+        builder.append_value(0.0);   // exact match → 0
+        builder.append_value(3.0);   // between key[0]=0 and key[1]=10, nearer to 0 → 0
+        builder.append_value(7.0);   // between key[0]=0 and key[1]=10, nearer to 10 → 100
+        builder.append_value(10.0);  // exact match → 100
+        builder.append_value(-5.0);  // below first key → value[0] = 0
+        builder.append_value(25.0);  // above last key → value[n-1] = 200
 
         let result = value_to_value_without_interpolation_primitive(&mut builder, val).unwrap();
         let values = result.values_slice();
         assert_eq!(values.len(), 6);
-        assert!((values[0] - 0.0).abs() < 1e-12);
-        assert!((values[1] - 0.0).abs() < 1e-12);
-        assert!((values[2] - 100.0).abs() < 1e-12);
-        assert!((values[3] - 100.0).abs() < 1e-12);
-        assert!((values[4] - 0.0).abs() < 1e-12);
-        assert!((values[5] - 200.0).abs() < 1e-12);
+        assert!((values[0] - 0.0).abs() < 1e-12);   // exact → 0
+        assert!((values[1] - 0.0).abs() < 1e-12);   // nearest key=0 → 0
+        assert!((values[2] - 100.0).abs() < 1e-12); // nearest key=10 → 100
+        assert!((values[3] - 100.0).abs() < 1e-12); // exact → 100
+        assert!((values[4] - 0.0).abs() < 1e-12);   // below first → value[0]=0
+        assert!((values[5] - 200.0).abs() < 1e-12); // above last → value[n-1]=200
     }
 
     #[test]
@@ -2369,7 +2392,7 @@ mod tests {
         builder.append_value(-5.0); // below all ranges → default
         builder.append_value(25.0); // above last key_min but within last upper bound → 300
 
-        let result = value_range_to_value_table_calculation(&builder, &val, &default).unwrap();
+        let result = value_range_to_value_table_calculation(&builder, &val, &default, false).unwrap();
         let values = result.values_slice();
         assert_eq!(values.len(), 5);
         assert!((values[0] - 100.0).abs() < 1e-12);
@@ -2377,6 +2400,30 @@ mod tests {
         assert!((values[2] - 300.0).abs() < 1e-12);
         assert!((values[3] - (-1.0)).abs() < 1e-12);
         assert!((values[4] - 300.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_value_range_float_touching_boundaries() {
+        // Replicate the Vector_ValueRange2ValueConversion.mf4 CC table (float [lo, hi) semantics)
+        let val = vec![
+            (-10.0f64, -7.0, -1.0), // range 0
+            (-7.0, -5.0, 0.0),      // range 1 (touching: min=-7 == max of range 0)
+            (-5.0, 0.0, 1.0),
+        ];
+        let default = -1.0f64;
+
+        let mut builder = Float64Builder::new();
+        builder.append_value(-9.0); // in range 0 [-10,-7): -10<=-9<-7 → True → -1
+        builder.append_value(-7.0); // at touching boundary: Ok(1)→range 1→ 0 (not range 0 since -7 is not < -7)
+        builder.append_value(-6.0); // in range 1: -7<=-6<-5 → True → 0
+        builder.append_value(100.0); // above all ranges → default -1
+
+        let result = value_range_to_value_table_calculation(&builder, &val, &default, false).unwrap();
+        let values = result.values_slice();
+        assert!((values[0] - (-1.0)).abs() < 1e-12, "raw=-9 should be -1, got {}", values[0]);
+        assert!((values[1] - 0.0).abs() < 1e-12, "raw=-7 should be 0, got {}", values[1]);
+        assert!((values[2] - 0.0).abs() < 1e-12, "raw=-6 should be 0, got {}", values[2]);
+        assert!((values[3] - (-1.0)).abs() < 1e-12, "raw=100 should be -1, got {}", values[3]);
     }
 
     #[test]
