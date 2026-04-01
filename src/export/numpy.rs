@@ -63,7 +63,7 @@ impl<'py> IntoPyObject<'py> for ChannelData {
                     .chunks(binary_array.value_length() as usize)
                     .map(|x| x.to_vec())
                     .collect();
-                out.into_pyobject(py).map_err(Into::into)
+                out.into_pyobject(py)
             }
             ChannelData::ArrayDInt8(array) => {
                 let flat = array.values_slice().to_pyarray(py);
@@ -128,12 +128,12 @@ impl<'py> IntoPyObject<'py> for ChannelData {
             ChannelData::Utf8(array) => {
                 let string_array = array.finish_cloned();
                 let strings: Vec<Option<&str>> = string_array.iter().collect();
-                strings.into_pyobject(py).map_err(Into::into)
+                strings.into_pyobject(py)
             }
             ChannelData::Union(array) => {
                 let arrow_data =
                     to_py_array(py, Arc::new(UnionArray::from(array.to_data())))?;
-                arrow_data.into_pyobject(py).map_err(Into::into)
+                arrow_data.into_pyobject(py)
             }
         }
     }

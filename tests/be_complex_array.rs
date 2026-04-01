@@ -63,8 +63,17 @@ fn cg4(b: &mut Vec<u8>, cn: i64, cycles: u64, data_bytes: u32) {
     pu64(b,6); pi64(b,0); pi64(b,cn); pi64(b,0); pi64(b,0); pi64(b,0); pi64(b,0);
     pu64(b,0); pu64(b,cycles); pu16(b,0); pu16(b,0); zeros(b,4); pu32(b,data_bytes); pu32(b,0);
 }
-fn cn4(b: &mut Vec<u8>, cn_type: u8, sync: u8, dtype: u8, byte_off: u32, bits: u32,
-       next: i64, tx: i64, cc: i64) {
+/// `(cn_type, sync, dtype)` — channel kind descriptor
+type CnDesc = (u8, u8, u8);
+/// `(byte_offset, bit_count)` — data layout
+type CnSpan = (u32, u32);
+/// `(cn_next, cn_name_tx, cn_cc)` — block links
+type CnRefs = (i64, i64, i64);
+
+fn cn4(b: &mut Vec<u8>, desc: CnDesc, span: CnSpan, refs: CnRefs) {
+    let (cn_type, sync, dtype) = desc;
+    let (byte_off, bits) = span;
+    let (next, tx, cc) = refs;
     b.extend_from_slice(b"##CN"); zeros(b,4); pu64(b,160);
     pu64(b,8); pi64(b,next); pi64(b,0); pi64(b,tx); pi64(b,0); pi64(b,cc);
     pi64(b,0); pi64(b,0); pi64(b,0);
@@ -74,9 +83,10 @@ fn cn4(b: &mut Vec<u8>, cn_type: u8, sync: u8, dtype: u8, byte_off: u32, bits: u
     pf64(b,0.0); pf64(b,0.0); pf64(b,0.0); pf64(b,0.0); pf64(b,0.0); pf64(b,0.0);
 }
 /// Like `cn4` but with a non-zero `composition` link (second link = CA block offset).
-#[allow(clippy::too_many_arguments)]
-fn cn4_ca(b: &mut Vec<u8>, cn_type: u8, sync: u8, dtype: u8, byte_off: u32, bits: u32,
-          next: i64, tx: i64, cc: i64, composition: i64) {
+fn cn4_ca(b: &mut Vec<u8>, desc: CnDesc, span: CnSpan, refs: CnRefs, composition: i64) {
+    let (cn_type, sync, dtype) = desc;
+    let (byte_off, bits) = span;
+    let (next, tx, cc) = refs;
     b.extend_from_slice(b"##CN"); zeros(b,4); pu64(b,160);
     pu64(b,8); pi64(b,next); pi64(b,composition); pi64(b,tx); pi64(b,0); pi64(b,cc);
     pi64(b,0); pi64(b,0); pi64(b,0);
@@ -141,9 +151,9 @@ fn create_be_scalars() -> Result<()> {
     fh(&mut b);                    debug_assert_eq!(b.len(), 224);
     dg4(&mut b, 288, 965);        debug_assert_eq!(b.len(), 288);
     cg4(&mut b, 392, 4, 18);      debug_assert_eq!(b.len(), 392);
-    cn4(&mut b, 2, 1, 4,  0, 64, 552, 872, 0); debug_assert_eq!(b.len(), 552);
-    cn4(&mut b, 0, 0, 3,  8, 16, 712, 903, 0); debug_assert_eq!(b.len(), 712); // dtype=3=IntBE
-    cn4(&mut b, 0, 0, 5, 10, 64,   0, 934, 0); debug_assert_eq!(b.len(), 872); // dtype=5=FloatBE
+    cn4(&mut b, (2,1,4),  (0,64),  (552,872,0)); debug_assert_eq!(b.len(), 552);
+    cn4(&mut b, (0,0,3),  (8,16),  (712,903,0)); debug_assert_eq!(b.len(), 712); // dtype=3=IntBE
+    cn4(&mut b, (0,0,5),  (10,64), (0,934,0));   debug_assert_eq!(b.len(), 872); // dtype=5=FloatBE
     tx(&mut b, "master");          debug_assert_eq!(b.len(), 903);
     tx(&mut b, "be_i16");          debug_assert_eq!(b.len(), 934);
     tx(&mut b, "be_f64");          debug_assert_eq!(b.len(), 965);
@@ -193,8 +203,8 @@ fn create_complex_f32_le() -> Result<()> {
     fh(&mut b);                    debug_assert_eq!(b.len(), 224);
     dg4(&mut b, 288, 775);        debug_assert_eq!(b.len(), 288);
     cg4(&mut b, 392, 4, 16);      debug_assert_eq!(b.len(), 392);
-    cn4(&mut b, 2, 1, 4,  0, 64, 552, 712, 0); debug_assert_eq!(b.len(), 552);
-    cn4(&mut b, 0, 0, 15, 8, 64,   0, 743, 0); debug_assert_eq!(b.len(), 712); // dtype=15=ComplexLE
+    cn4(&mut b, (2,1,4),  (0,64), (552,712,0)); debug_assert_eq!(b.len(), 552);
+    cn4(&mut b, (0,0,15), (8,64), (0,743,0));   debug_assert_eq!(b.len(), 712); // dtype=15=ComplexLE
     tx(&mut b, "master");          debug_assert_eq!(b.len(), 743);
     tx(&mut b, "cx32_ch");         debug_assert_eq!(b.len(), 775);
 
@@ -245,9 +255,9 @@ fn create_array_f64_le() -> Result<()> {
     dg4(&mut b, 288, 831);        debug_assert_eq!(b.len(), 288);
     cg4(&mut b, 392, 4, 32);      debug_assert_eq!(b.len(), 392);
     // CN master: no CA block → composition=0, use plain cn4
-    cn4(&mut b, 2, 1, 4,  0, 64, 552, 712, 0);          debug_assert_eq!(b.len(), 552);
+    cn4(&mut b, (2,1,4), (0,64), (552,712,0));            debug_assert_eq!(b.len(), 552);
     // CN_arr: composition link points to CA block at 775
-    cn4_ca(&mut b, 0, 0, 4, 8, 64, 0, 743, 0, 775);     debug_assert_eq!(b.len(), 712);
+    cn4_ca(&mut b, (0,0,4), (8,64), (0,743,0), 775);     debug_assert_eq!(b.len(), 712);
     tx(&mut b, "master");          debug_assert_eq!(b.len(), 743);
     tx(&mut b, "arr_f64");         debug_assert_eq!(b.len(), 775);
     ca1d(&mut b, 3);               debug_assert_eq!(b.len(), 831);
@@ -428,10 +438,10 @@ fn create_ld_be_channels() -> Result<()> {
     cg4(&mut b, 1216, 4, 2);                  debug_assert_eq!(b.len(), 792); // CG3
     cg4(&mut b, 1376, 4, 4);                  debug_assert_eq!(b.len(), 896); // CG4
     // CNs: dtype=3(IntBE), 5(FloatBE), 1(UIntBE), 5(FloatBE)
-    cn4(&mut b, 0, 0, 3, 0, 16, 0, 1536, 0); debug_assert_eq!(b.len(), 1056); // bei16
-    cn4(&mut b, 0, 0, 5, 0, 64, 0, 1566, 0); debug_assert_eq!(b.len(), 1216); // bef64
-    cn4(&mut b, 0, 0, 1, 0, 16, 0, 1596, 0); debug_assert_eq!(b.len(), 1376); // beu16
-    cn4(&mut b, 0, 0, 5, 0, 32, 0, 1626, 0); debug_assert_eq!(b.len(), 1536); // bef32
+    cn4(&mut b, (0,0,3), (0,16), (0,1536,0)); debug_assert_eq!(b.len(), 1056); // bei16
+    cn4(&mut b, (0,0,5), (0,64), (0,1566,0)); debug_assert_eq!(b.len(), 1216); // bef64
+    cn4(&mut b, (0,0,1), (0,16), (0,1596,0)); debug_assert_eq!(b.len(), 1376); // beu16
+    cn4(&mut b, (0,0,5), (0,32), (0,1626,0)); debug_assert_eq!(b.len(), 1536); // bef32
     // TX blocks
     tx(&mut b, "bei16");                       debug_assert_eq!(b.len(), 1566);
     tx(&mut b, "bef64");                       debug_assert_eq!(b.len(), 1596);

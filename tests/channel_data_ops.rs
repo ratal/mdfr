@@ -3,12 +3,11 @@
 //! or cover additional variants to improve overall code coverage.
 
 use arrow::array::{
-    Array, ArrayBuilder, FixedSizeBinaryBuilder, Float64Builder, Int8Builder, Int16Builder,
-    Int32Builder, Int64Builder, LargeStringBuilder, UInt8Builder, UInt16Builder, UInt32Builder,
-    UInt64Builder,
+    Array, FixedSizeBinaryBuilder, Float64Builder, Int8Builder, Int16Builder, Int32Builder,
+    Int64Builder, LargeStringBuilder, UInt8Builder, UInt16Builder, UInt32Builder, UInt64Builder,
 };
 use arrow::buffer::MutableBuffer;
-use arrow::datatypes::{Float64Type, Int16Type, Int8Type, UInt8Type, UInt32Type, UInt64Type};
+use arrow::datatypes::{Float64Type, Int8Type, Int16Type, UInt8Type, UInt32Type, UInt64Type};
 use mdfr::data_holder::channel_data::ChannelData;
 use mdfr::data_holder::complex_arrow::ComplexArrow;
 use mdfr::data_holder::tensor_arrow::{Order, TensorArrow};
@@ -21,9 +20,7 @@ use mdfr::data_holder::tensor_arrow::{Order, TensorArrow};
 fn test_zeros_virtual_channel_cn_type_3() {
     // cn_type 3 always returns UInt64 counter regardless of self type.
     let cd = ChannelData::Float64(Float64Builder::new());
-    let result = cd
-        .zeros(3, 5, 8, (vec![1], Order::RowMajor))
-        .unwrap();
+    let result = cd.zeros(3, 5, 8, (vec![1], Order::RowMajor)).unwrap();
     assert!(matches!(result, ChannelData::UInt64(_)));
     assert_eq!(result.len(), 5);
     assert_eq!(result.to_u64_vec(), Some(vec![0, 1, 2, 3, 4]));
@@ -32,9 +29,7 @@ fn test_zeros_virtual_channel_cn_type_3() {
 #[test]
 fn test_zeros_virtual_channel_cn_type_6() {
     let cd = ChannelData::Float64(Float64Builder::new());
-    let result = cd
-        .zeros(6, 3, 8, (vec![1], Order::RowMajor))
-        .unwrap();
+    let result = cd.zeros(6, 3, 8, (vec![1], Order::RowMajor)).unwrap();
     assert!(matches!(result, ChannelData::UInt64(_)));
     assert_eq!(result.len(), 3);
     assert_eq!(result.to_u64_vec(), Some(vec![0, 1, 2]));
@@ -44,9 +39,7 @@ fn test_zeros_virtual_channel_cn_type_6() {
 fn test_zeros_array_d_int16() {
     let cd = ChannelData::ArrayDInt16(TensorArrow::new());
     // shape=[2,3] → product=6, buffer = 6 i16 = 12 bytes
-    let result = cd
-        .zeros(0, 4, 6, (vec![2, 3], Order::RowMajor))
-        .unwrap();
+    let result = cd.zeros(0, 4, 6, (vec![2, 3], Order::RowMajor)).unwrap();
     assert!(matches!(result, ChannelData::ArrayDInt16(_)));
     // len = buffer_bytes / shape_product = 12 / 6 = 2
     assert!(!result.is_empty());
@@ -59,9 +52,7 @@ fn test_zeros_array_d_int16() {
 #[test]
 fn test_zeros_array_d_uint8() {
     let cd = ChannelData::ArrayDUInt8(TensorArrow::new());
-    let result = cd
-        .zeros(0, 5, 1, (vec![4], Order::RowMajor))
-        .unwrap();
+    let result = cd.zeros(0, 5, 1, (vec![4], Order::RowMajor)).unwrap();
     assert!(matches!(result, ChannelData::ArrayDUInt8(_)));
     assert!(!result.is_empty());
 }
@@ -69,9 +60,7 @@ fn test_zeros_array_d_uint8() {
 #[test]
 fn test_zeros_fixed_size_byte() {
     let cd = ChannelData::FixedSizeByteArray(FixedSizeBinaryBuilder::with_capacity(1, 4));
-    let result = cd
-        .zeros(0, 3, 4, (vec![1], Order::RowMajor))
-        .unwrap();
+    let result = cd.zeros(0, 3, 4, (vec![1], Order::RowMajor)).unwrap();
     assert!(matches!(result, ChannelData::FixedSizeByteArray(_)));
     assert_eq!(result.len(), 0); // zeros creates empty builder with capacity
 }
@@ -81,9 +70,7 @@ fn test_zeros_complex32() {
     let cd = ChannelData::Complex32(ComplexArrow::new());
     // zeros creates vec![0f32; cycle_count*2] = 2*2=4 f32 = 16 bytes
     // ComplexArrow::new_from_buffer: len = byte_len / 2 = 16 / 2 = 8
-    let result = cd
-        .zeros(0, 2, 8, (vec![1], Order::RowMajor))
-        .unwrap();
+    let result = cd.zeros(0, 2, 8, (vec![1], Order::RowMajor)).unwrap();
     assert!(matches!(result, ChannelData::Complex32(_)));
     assert!(!result.is_empty());
 }
@@ -93,9 +80,7 @@ fn test_zeros_complex64() {
     let cd = ChannelData::Complex64(ComplexArrow::new());
     // zeros creates vec![0f64; cycle_count*2] = 3*2=6 f64 = 48 bytes
     // ComplexArrow::new_from_buffer: len = byte_len / 2 = 48 / 2 = 24
-    let result = cd
-        .zeros(0, 3, 16, (vec![1], Order::RowMajor))
-        .unwrap();
+    let result = cd.zeros(0, 3, 16, (vec![1], Order::RowMajor)).unwrap();
     assert!(matches!(result, ChannelData::Complex64(_)));
     assert!(!result.is_empty());
 }
@@ -115,9 +100,7 @@ fn test_zeros_array_d_float64() {
     let cd = ChannelData::ArrayDFloat64(TensorArrow::new());
     // For ArrayDFloat64, zeros uses cycle_count * shape product
     // cycle_count=2, shape=[1] → buffer = 2*1 f64 = 16 bytes, len = 16/1 = 16
-    let result = cd
-        .zeros(0, 2, 8, (vec![1], Order::RowMajor))
-        .unwrap();
+    let result = cd.zeros(0, 2, 8, (vec![1], Order::RowMajor)).unwrap();
     assert!(matches!(result, ChannelData::ArrayDFloat64(_)));
     assert!(!result.is_empty());
 }
@@ -125,9 +108,7 @@ fn test_zeros_array_d_float64() {
 #[test]
 fn test_zeros_array_d_int32() {
     let cd = ChannelData::ArrayDInt32(TensorArrow::new());
-    let result = cd
-        .zeros(0, 3, 4, (vec![3], Order::RowMajor))
-        .unwrap();
+    let result = cd.zeros(0, 3, 4, (vec![3], Order::RowMajor)).unwrap();
     assert!(matches!(result, ChannelData::ArrayDInt32(_)));
     if let ChannelData::ArrayDInt32(ta) = &result {
         assert!(ta.values_slice().iter().all(|&v| v == 0));
