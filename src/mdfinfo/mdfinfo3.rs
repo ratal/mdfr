@@ -16,6 +16,7 @@ use std::io::{Cursor, prelude::*};
 use crate::data_holder::channel_data::{ChannelData, data_type_init};
 use crate::data_holder::tensor_arrow::Order;
 use crate::mdfinfo::IdBlock;
+use crate::mdfinfo::mdfinfo4::Endianness;
 
 use super::sym_buf_reader::SymBufReader;
 
@@ -871,8 +872,8 @@ pub struct Cn3 {
     pub n_bytes: u16,
     /// channel data
     pub data: ChannelData,
-    /// false = little endian
-    pub endian: bool,
+    /// byte order of the channel's raw data
+    pub endian: Endianness,
     /// True if channel is valid = contains data converted
     pub channel_data_valid: bool,
 }
@@ -1060,16 +1061,16 @@ fn parse_cn3_block(
         position = parse_ce(rdr, block1.cn_ce_source, position, sharable, encoding)?;
     }
 
-    let mut endian: bool = false; // Little endian by default
+    let mut endian = Endianness::Little; // Little endian by default
     if block2.cn_data_type >= 13 {
-        endian = false; // little endian
+        endian = Endianness::Little;
     } else if block2.cn_data_type >= 9 {
-        endian = true; // big endian
+        endian = Endianness::Big;
     } else if block2.cn_data_type <= 3 {
         if default_byte_order == 0 {
-            endian = false; // little endian
+            endian = Endianness::Little;
         } else {
-            endian = true; // big endian
+            endian = Endianness::Big;
         }
     }
     let data_type = convert_data_type_3to4(block2.cn_data_type);
@@ -1134,7 +1135,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         pos_byte_beg,
         n_bytes: 2,
         data: ChannelData::UInt16(UInt16Builder::new()),
-        endian: false,
+        endian: Endianness::Little,
         channel_data_valid: false,
     };
     let block2 = Cn3Block2 {
@@ -1153,7 +1154,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         pos_byte_beg: pos_byte_beg + 2,
         n_bytes: 1,
         data: ChannelData::UInt8(UInt8Builder::new()),
-        endian: false,
+        endian: Endianness::Little,
         channel_data_valid: false,
     };
     let block2 = Cn3Block2 {
@@ -1172,7 +1173,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         pos_byte_beg: pos_byte_beg + 3,
         n_bytes: 1,
         data: ChannelData::UInt8(UInt8Builder::new()),
-        endian: false,
+        endian: Endianness::Little,
         channel_data_valid: false,
     };
     let block2 = Cn3Block2 {
@@ -1191,7 +1192,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         pos_byte_beg: pos_byte_beg + 4,
         n_bytes: 1,
         data: ChannelData::UInt8(UInt8Builder::new()),
-        endian: false,
+        endian: Endianness::Little,
         channel_data_valid: false,
     };
     let block2 = Cn3Block2 {
@@ -1210,7 +1211,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         pos_byte_beg: pos_byte_beg + 5,
         n_bytes: 1,
         data: ChannelData::UInt8(UInt8Builder::new()),
-        endian: false,
+        endian: Endianness::Little,
         channel_data_valid: false,
     };
     let block2 = Cn3Block2 {
@@ -1229,7 +1230,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         pos_byte_beg: pos_byte_beg + 7,
         n_bytes: 1,
         data: ChannelData::UInt8(UInt8Builder::new()),
-        endian: false,
+        endian: Endianness::Little,
         channel_data_valid: false,
     };
     (date_ms, min, hour, day, month, year)
@@ -1258,7 +1259,7 @@ fn can_open_time(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3) {
         pos_byte_beg,
         n_bytes: 4,
         data: ChannelData::UInt32(UInt32Builder::new()),
-        endian: false,
+        endian: Endianness::Little,
         channel_data_valid: false,
     };
     let block2 = Cn3Block2 {
@@ -1277,7 +1278,7 @@ fn can_open_time(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3) {
         pos_byte_beg: pos_byte_beg + 4,
         n_bytes: 2,
         data: ChannelData::UInt16(UInt16Builder::new()),
-        endian: false,
+        endian: Endianness::Little,
         channel_data_valid: false,
     };
     (ms, days)

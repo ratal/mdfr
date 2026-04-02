@@ -258,9 +258,15 @@ fn lookup_value_range_to_value() -> Result<()> {
     let mut mdf = Mdf::new(&file_name)?;
     mdf.load_all_channels_data_in_memory()?;
     if let Some(data) = mdf.get_channel_data("Data channel") {
+        // Spec 6.17.8: float data uses [lo, hi) exclusive upper bound.
+        // Raw data: -15…14 (step 1).  CC ranges:
+        //   [-10,-7)→-1, [-7,-5)→0, [-5,0)→1, [0,2)→2, [2,5)→3,
+        //   [5,6)→5, [6,8.5)→6, [8.5,10)→7, [10,12)→8, [12,14)→9, default=-1
+        // Values -15…-11 are below all ranges → default -1.
+        // Value 14 equals the exclusive upper of last range → default -1.
         let vect = Vec::from([
-            -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 2.0, 2.0, 2.0, 2.0, 2.0,
-            3.0, 3.0, 5.0, 5.0, 5.0, 6.0, 7.0, 7.0, 8.0, 8.0, 9.0, 9.0, 9.0, 9.0,
+            -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 2.0,
+            2.0, 3.0, 3.0, 3.0, 5.0, 6.0, 6.0, 6.0, 7.0, 8.0, 8.0, 9.0, 9.0, -1.0,
         ]);
         assert_eq!(
             &ChannelData::Float64(Float64Builder::new_from_buffer(vect.into(), None)),

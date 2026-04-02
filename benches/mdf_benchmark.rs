@@ -25,12 +25,23 @@ static WRITING_FILE3: LazyLock<String> = LazyLock::new(|| format!("{}test.dat", 
 static PARQUET_FILE: LazyLock<String> = LazyLock::new(|| format!("{}test.parquet", MDFR_PATH));
 
 fn python_launch() {
-    Command::new("python3")
-        .arg("-m")
-        .arg("timeit")
-        .arg("import mdfreader; yop=mdfreader.Mdf('/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/DataList/Vector_SD_List.MF4')")
-        .spawn()
-        .expect("mdfinfo command failed to start");
+    // Check if mdfreader is available before running the comparison
+    let check = Command::new("python3")
+        .args(["-c", "import mdfreader"])
+        .output();
+    match check {
+        Ok(out) if out.status.success() => {
+            Command::new("python3")
+                .arg("-m")
+                .arg("timeit")
+                .arg("import mdfreader; yop=mdfreader.Mdf('/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/ASAM_COMMON_MDF_V4-1-0/Base_Standard/Examples/DataList/Vector_SD_List.MF4')")
+                .spawn()
+                .expect("mdfinfo command failed to start");
+        }
+        _ => {
+            println!("skipping Python mdfreader comparison (module not available)");
+        }
+    }
 }
 
 pub fn criterion_benchmark(c: &mut Criterion) {

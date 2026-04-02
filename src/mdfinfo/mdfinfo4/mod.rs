@@ -335,7 +335,7 @@ impl MdfInfo4 {
             unique_name: channel_name.to_string(),
             data,
             block: cn_block,
-            endian: machine_endian,
+            endian: Endianness::from(machine_endian),
             block_position: cn_pos,
             pos_byte_beg: 0,
             n_bytes,

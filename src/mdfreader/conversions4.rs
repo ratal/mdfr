@@ -992,6 +992,11 @@ where
         .zip(values)
         .for_each(|(new_a, v)| {
             let a: f64 = (*v).as_();
+            // MDF4 spec 6.17.7 (cc_type=5, value to value without interpolation):
+            // - Exact match: return value[i]
+            // - Below first key: return value[0]
+            // - Above last key: return value[n-1]
+            // - Between keys: return nearest neighbor; if equidistant, use lower key's value
             *new_a = match val
                 .binary_search_by(|&(xi, _)| xi.partial_cmp(&a).unwrap_or(Ordering::Equal))
             {
@@ -1001,6 +1006,7 @@ where
                 Err(idx) => {
                     let (x0, y0) = val[idx - 1];
                     let (x1, y1) = val[idx];
+                    // spec: if (Int - key[i]) > (key[i+1] - Int) use upper, else lower
                     if (a - x0) > (x1 - a) { *y1 } else { *y0 }
                 }
             };
@@ -1201,6 +1207,7 @@ fn value_range_to_value_table_calculation<T: ArrowPrimitiveType>(
     array: &PrimitiveBuilder<T>,
     val: &[(f64, f64, f64)],
     default_value: &f64,
+    inclusive_upper: bool,
 ) -> Result<PrimitiveBuilder<Float64Type>, Error>
 where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
@@ -1213,15 +1220,30 @@ where
         .zip(values)
         .for_each(|(new_a, v)| {
             let a: f64 = (*v).as_();
+            // MDF4 spec 6.17.8 (cc_type=6, value range to value):
+            // - For float types (cn_data_type > 3): key_min[i] ≤ Int < key_max[i] (exclusive upper)
+            // - For integer types (cn_data_type ≤ 3): key_min[i] ≤ Int ≤ key_max[i] (both inclusive)
+            // Ranges are sorted ascending and shall not overlap (key_max[i-1] ≤ key_min[i]).
+            // For touching boundaries with float data, a == key_min[i] → range i wins (not i-1).
+            // Binary search on min keys handles both cases naturally:
+            //   Ok(idx): a == min[idx] → range idx includes a as its lower bound ✓
+            //   Err(idx): min[idx-1] < a < min[idx] → check if a < max[idx-1] (exclusive upper)
             *new_a = match val
                 .binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a).unwrap_or(Ordering::Equal))
             {
                 Ok(idx) => val[idx].2,
-                Err(0) => *default_value,
-                Err(idx) if (idx >= val.len() && a <= val[idx - 1].1) => val[idx - 1].2,
+                Err(0) => *default_value,  // below the minimum of all lower bounds
                 Err(idx) => {
-                    if a <= val[idx].1 {
-                        val[idx].2
+                    // min[idx-1] < a < min[idx]: candidate is range idx-1
+                    // Float: upper exclusive (a < max[idx-1])
+                    // Integer: upper inclusive (a <= max[idx-1])
+                    let in_range = if inclusive_upper {
+                        a <= val[idx - 1].1
+                    } else {
+                        a < val[idx - 1].1
+                    };
+                    if in_range {
+                        val[idx - 1].2
                     } else {
                         *default_value
                     }
@@ -1243,64 +1265,65 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>) -> Result<(), Erro
         val.push((*a, *b, *c));
     }
     let default_value = cc_val[cc_val.len() - 1];
+    // MDF4 spec 6.17.8: integer data uses inclusive upper bound; float data uses exclusive upper.
     match &mut cn.data {
         ChannelData::Int8(a) => {
             cn.data = ChannelData::Float64(
-                value_range_to_value_table_calculation(a, &val, &default_value)
+                value_range_to_value_table_calculation(a, &val, &default_value, true)
                     .context("failed value range to value table conversion of i8 channel")?,
             );
         }
         ChannelData::UInt8(a) => {
             cn.data = ChannelData::Float64(
-                value_range_to_value_table_calculation(a, &val, &default_value)
+                value_range_to_value_table_calculation(a, &val, &default_value, true)
                     .context("failed value range to value table conversion of u8 channel")?,
             );
         }
         ChannelData::Int16(a) => {
             cn.data = ChannelData::Float64(
-                value_range_to_value_table_calculation(a, &val, &default_value)
+                value_range_to_value_table_calculation(a, &val, &default_value, true)
                     .context("failed value range to value table conversion of i16 channel")?,
             );
         }
         ChannelData::UInt16(a) => {
             cn.data = ChannelData::Float64(
-                value_range_to_value_table_calculation(a, &val, &default_value)
+                value_range_to_value_table_calculation(a, &val, &default_value, true)
                     .context("failed value range to value table conversion of u16 channel")?,
             );
         }
         ChannelData::Int32(a) => {
             cn.data = ChannelData::Float64(
-                value_range_to_value_table_calculation(a, &val, &default_value)
+                value_range_to_value_table_calculation(a, &val, &default_value, true)
                     .context("failed value range to value table conversion of i32 channel")?,
             );
         }
         ChannelData::UInt32(a) => {
             cn.data = ChannelData::Float64(
-                value_range_to_value_table_calculation(a, &val, &default_value)
+                value_range_to_value_table_calculation(a, &val, &default_value, true)
                     .context("failed value range to value table conversion of u32 channel")?,
             );
         }
         ChannelData::Float32(a) => {
             cn.data = ChannelData::Float64(
-                value_range_to_value_table_calculation(a, &val, &default_value)
+                value_range_to_value_table_calculation(a, &val, &default_value, false)
                     .context("failed value range to value table conversion of f32 channel")?,
             );
         }
         ChannelData::Int64(a) => {
             cn.data = ChannelData::Float64(
-                value_range_to_value_table_calculation(a, &val, &default_value)
+                value_range_to_value_table_calculation(a, &val, &default_value, true)
                     .context("failed value range to value table conversion of i64 channel")?,
             );
         }
         ChannelData::UInt64(a) => {
             cn.data = ChannelData::Float64(
-                value_range_to_value_table_calculation(a, &val, &default_value)
+                value_range_to_value_table_calculation(a, &val, &default_value, true)
                     .context("failed value range to value table conversion of u64 channel")?,
             );
         }
         ChannelData::Float64(a) => {
             cn.data = ChannelData::Float64(
-                value_range_to_value_table_calculation(a, &val, &default_value)
+                value_range_to_value_table_calculation(a, &val, &default_value, false)
                     .context("failed value range to value table conversion of f64 channel")?,
             );
         }
@@ -2329,27 +2352,27 @@ mod tests {
 
     #[test]
     fn test_value_to_value_without_interpolation_primitive() {
-        // Table pairs: x=0→y=0, x=10→y=100, x=20→y=200
+        // Table pairs: x=0→y=0, x=10→y=100, x=20→y=200 (MDF4 spec 6.17.7)
         let keys = [0.0, 0.0, 10.0, 100.0, 20.0, 200.0];
         let val: Vec<(&f64, &f64)> = keys.iter().tuples().collect();
 
         let mut builder = Float64Builder::new();
-        builder.append_value(0.0); // exact → 0
-        builder.append_value(3.0); // nearer to x=0 (dist=3) than x=10 (dist=7) → 0
-        builder.append_value(7.0); // nearer to x=10 (dist=3) than x=0 (dist=7) → 100
-        builder.append_value(10.0); // exact → 100
-        builder.append_value(-5.0); // below first → 0
-        builder.append_value(25.0); // above last → 200
+        builder.append_value(0.0);   // exact match → 0
+        builder.append_value(3.0);   // between key[0]=0 and key[1]=10, nearer to 0 → 0
+        builder.append_value(7.0);   // between key[0]=0 and key[1]=10, nearer to 10 → 100
+        builder.append_value(10.0);  // exact match → 100
+        builder.append_value(-5.0);  // below first key → value[0] = 0
+        builder.append_value(25.0);  // above last key → value[n-1] = 200
 
         let result = value_to_value_without_interpolation_primitive(&mut builder, val).unwrap();
         let values = result.values_slice();
         assert_eq!(values.len(), 6);
-        assert!((values[0] - 0.0).abs() < 1e-12);
-        assert!((values[1] - 0.0).abs() < 1e-12);
-        assert!((values[2] - 100.0).abs() < 1e-12);
-        assert!((values[3] - 100.0).abs() < 1e-12);
-        assert!((values[4] - 0.0).abs() < 1e-12);
-        assert!((values[5] - 200.0).abs() < 1e-12);
+        assert!((values[0] - 0.0).abs() < 1e-12);   // exact → 0
+        assert!((values[1] - 0.0).abs() < 1e-12);   // nearest key=0 → 0
+        assert!((values[2] - 100.0).abs() < 1e-12); // nearest key=10 → 100
+        assert!((values[3] - 100.0).abs() < 1e-12); // exact → 100
+        assert!((values[4] - 0.0).abs() < 1e-12);   // below first → value[0]=0
+        assert!((values[5] - 200.0).abs() < 1e-12); // above last → value[n-1]=200
     }
 
     #[test]
@@ -2369,7 +2392,7 @@ mod tests {
         builder.append_value(-5.0); // below all ranges → default
         builder.append_value(25.0); // above last key_min but within last upper bound → 300
 
-        let result = value_range_to_value_table_calculation(&builder, &val, &default).unwrap();
+        let result = value_range_to_value_table_calculation(&builder, &val, &default, false).unwrap();
         let values = result.values_slice();
         assert_eq!(values.len(), 5);
         assert!((values[0] - 100.0).abs() < 1e-12);
@@ -2377,6 +2400,30 @@ mod tests {
         assert!((values[2] - 300.0).abs() < 1e-12);
         assert!((values[3] - (-1.0)).abs() < 1e-12);
         assert!((values[4] - 300.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_value_range_float_touching_boundaries() {
+        // Replicate the Vector_ValueRange2ValueConversion.mf4 CC table (float [lo, hi) semantics)
+        let val = vec![
+            (-10.0f64, -7.0, -1.0), // range 0
+            (-7.0, -5.0, 0.0),      // range 1 (touching: min=-7 == max of range 0)
+            (-5.0, 0.0, 1.0),
+        ];
+        let default = -1.0f64;
+
+        let mut builder = Float64Builder::new();
+        builder.append_value(-9.0); // in range 0 [-10,-7): -10<=-9<-7 → True → -1
+        builder.append_value(-7.0); // at touching boundary: Ok(1)→range 1→ 0 (not range 0 since -7 is not < -7)
+        builder.append_value(-6.0); // in range 1: -7<=-6<-5 → True → 0
+        builder.append_value(100.0); // above all ranges → default -1
+
+        let result = value_range_to_value_table_calculation(&builder, &val, &default, false).unwrap();
+        let values = result.values_slice();
+        assert!((values[0] - (-1.0)).abs() < 1e-12, "raw=-9 should be -1, got {}", values[0]);
+        assert!((values[1] - 0.0).abs() < 1e-12, "raw=-7 should be 0, got {}", values[1]);
+        assert!((values[2] - 0.0).abs() < 1e-12, "raw=-6 should be 0, got {}", values[2]);
+        assert!((values[3] - (-1.0)).abs() < 1e-12, "raw=100 should be -1, got {}", values[3]);
     }
 
     #[test]
@@ -2400,5 +2447,286 @@ mod tests {
         assert!((values[1] - 3.0).abs() < 1e-12);
         assert!((values[2] - 11.0).abs() < 1e-12);
         assert!((values[3] - (-5.0)).abs() < 1e-12);
+    }
+
+    // ── Helper for higher-level conversion tests ──
+
+    fn make_cn4_with_data(data: ChannelData) -> Cn4 {
+        Cn4 {
+            data,
+            ..Default::default()
+        }
+    }
+
+    // ── linear_conversion (Cn4) tests ──
+
+    #[test]
+    fn test_linear_cn4_uint8() {
+        use arrow::array::UInt8Builder;
+        let mut builder = UInt8Builder::new();
+        builder.append_value(2);
+        builder.append_value(4);
+        let mut cn = make_cn4_with_data(ChannelData::UInt8(builder));
+        linear_conversion(&mut cn, &[1.0, 2.0]).unwrap(); // p1=1, p2=2 → v*2+1
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 5.0).abs() < 1e-12); // 2*2+1
+            assert!((vals[1] - 9.0).abs() < 1e-12); // 4*2+1
+        } else {
+            panic!("Expected Float64 after linear conversion");
+        }
+    }
+
+    #[test]
+    fn test_linear_cn4_int16() {
+        use arrow::array::Int16Builder;
+        let mut builder = Int16Builder::new();
+        builder.append_value(10);
+        let mut cn = make_cn4_with_data(ChannelData::Int16(builder));
+        linear_conversion(&mut cn, &[0.0, 0.5]).unwrap();
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 5.0).abs() < 1e-12); // 10*0.5+0
+        } else {
+            panic!("Expected Float64");
+        }
+    }
+
+    #[test]
+    fn test_linear_cn4_array_d_int16() {
+        use arrow::array::Int16Builder;
+        use crate::data_holder::tensor_arrow::{Order, TensorArrow};
+        use arrow::datatypes::Int16Type;
+        let mut builder = Int16Builder::new();
+        builder.append_value(1);
+        builder.append_value(2);
+        let tensor = TensorArrow::<Int16Type>::new_from_primitive(builder, None, vec![2], Order::RowMajor);
+        let mut cn = make_cn4_with_data(ChannelData::ArrayDInt16(tensor));
+        linear_conversion(&mut cn, &[0.0, 3.0]).unwrap();
+        if let ChannelData::ArrayDFloat64(ref t) = cn.data {
+            let vals = t.values_slice();
+            assert!((vals[0] - 3.0).abs() < 1e-12);
+            assert!((vals[1] - 6.0).abs() < 1e-12);
+        } else {
+            panic!("Expected ArrayDFloat64");
+        }
+    }
+
+    #[test]
+    fn test_linear_cn4_array_d_float64() {
+        use arrow::datatypes::Float64Type;
+        use crate::data_holder::tensor_arrow::{Order, TensorArrow};
+        let mut builder = Float64Builder::new();
+        builder.append_value(1.0);
+        let tensor = TensorArrow::<Float64Type>::new_from_primitive(builder, None, vec![1], Order::RowMajor);
+        let mut cn = make_cn4_with_data(ChannelData::ArrayDFloat64(tensor));
+        linear_conversion(&mut cn, &[0.0, 2.0]).unwrap();
+        if let ChannelData::ArrayDFloat64(ref t) = cn.data {
+            let vals = t.values_slice();
+            assert!((vals[0] - 2.0).abs() < 1e-12);
+        } else {
+            panic!("Expected ArrayDFloat64");
+        }
+    }
+
+    #[test]
+    fn test_linear_cn4_utf8_warn() {
+        use arrow::array::LargeStringBuilder;
+        // Utf8 data should produce a warn but NOT change data type and should return Ok
+        let mut cn = make_cn4_with_data(ChannelData::Utf8(LargeStringBuilder::new()));
+        let result = linear_conversion(&mut cn, &[1.0, 2.0]);
+        assert!(result.is_ok());
+        // data type unchanged
+        assert!(matches!(cn.data, ChannelData::Utf8(_)));
+    }
+
+    #[test]
+    fn test_linear_cn4_identity_no_op() {
+        use arrow::array::UInt8Builder;
+        let mut builder = UInt8Builder::new();
+        builder.append_value(7);
+        let mut cn = make_cn4_with_data(ChannelData::UInt8(builder));
+        // p1=0, p2=1 is identity → no change
+        linear_conversion(&mut cn, &[0.0, 1.0]).unwrap();
+        // data type should remain UInt8 (identity skipped)
+        assert!(matches!(cn.data, ChannelData::UInt8(_)));
+    }
+
+    // ── rational_conversion (Cn4) tests ──
+
+    #[test]
+    fn test_rational_cn4_float64() {
+        // identity rational: (0*x^2 + 1*x + 0) / (0*x^2 + 0*x + 1) = x
+        let cc_val = vec![0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+        let mut builder = Float64Builder::new();
+        builder.append_value(2.0);
+        let mut cn = make_cn4_with_data(ChannelData::Float64(builder));
+        rational_conversion(&mut cn, &cc_val).unwrap();
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 2.0).abs() < 1e-12);
+        } else {
+            panic!("Expected Float64");
+        }
+    }
+
+    #[test]
+    fn test_rational_cn4_uint8() {
+        // (0*x^2 + 1*x + 0) / (0*x^2 + 0*x + 2) = x/2
+        let cc_val = vec![0.0, 1.0, 0.0, 0.0, 0.0, 2.0];
+        use arrow::array::UInt8Builder;
+        let mut builder = UInt8Builder::new();
+        builder.append_value(4);
+        let mut cn = make_cn4_with_data(ChannelData::UInt8(builder));
+        rational_conversion(&mut cn, &cc_val).unwrap();
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 2.0).abs() < 1e-12);
+        } else {
+            panic!("Expected Float64");
+        }
+    }
+
+    // ── value_to_value_with_interpolation (Cn4) tests ──
+
+    #[test]
+    fn test_vtv_interp_cn4_float64() {
+        // cc_val: pairs (x, y) interleaved: 1.0→10.0, 2.0→20.0
+        let cc_val = vec![1.0, 10.0, 2.0, 20.0];
+        let mut builder = Float64Builder::new();
+        builder.append_value(1.5); // interpolated: 15.0
+        let mut cn = make_cn4_with_data(ChannelData::Float64(builder));
+        value_to_value_with_interpolation(&mut cn, cc_val).unwrap();
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 15.0).abs() < 1e-9);
+        } else {
+            panic!("Expected Float64");
+        }
+    }
+
+    #[test]
+    fn test_vtv_interp_cn4_uint8() {
+        // cc_val: 0→0, 10→100
+        let cc_val = vec![0.0, 0.0, 10.0, 100.0];
+        use arrow::array::UInt8Builder;
+        let mut builder = UInt8Builder::new();
+        builder.append_value(5); // 50
+        let mut cn = make_cn4_with_data(ChannelData::UInt8(builder));
+        value_to_value_with_interpolation(&mut cn, cc_val).unwrap();
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 50.0).abs() < 1e-9);
+        } else {
+            panic!("Expected Float64");
+        }
+    }
+
+    #[test]
+    fn test_vtv_interp_cn4_array_d_uint8() {
+        use arrow::array::UInt8Builder;
+        use arrow::datatypes::UInt8Type;
+        use crate::data_holder::tensor_arrow::{Order, TensorArrow};
+        let cc_val = vec![0.0, 0.0, 10.0, 100.0];
+        let mut builder = UInt8Builder::new();
+        builder.append_value(5);
+        let tensor = TensorArrow::<UInt8Type>::new_from_primitive(builder, None, vec![1], Order::RowMajor);
+        let mut cn = make_cn4_with_data(ChannelData::ArrayDUInt8(tensor));
+        value_to_value_with_interpolation(&mut cn, cc_val).unwrap();
+        assert!(matches!(cn.data, ChannelData::ArrayDFloat64(_)));
+    }
+
+    #[test]
+    fn test_vtv_interp_cn4_int64_noop() {
+        use arrow::array::Int64Builder;
+        // Int64 not handled in value_to_value_with_interpolation (falls through to warn)
+        let mut builder = Int64Builder::new();
+        builder.append_value(5);
+        let mut cn = make_cn4_with_data(ChannelData::Int64(builder));
+        let result = value_to_value_with_interpolation(&mut cn, vec![0.0, 0.0, 10.0, 100.0]);
+        assert!(result.is_ok());
+    }
+
+    // ── value_to_value_without_interpolation (Cn4) tests ──
+
+    #[test]
+    fn test_vtv_no_interp_cn4_float64() {
+        let cc_val = vec![1.0, 100.0, 2.0, 200.0];
+        let mut builder = Float64Builder::new();
+        builder.append_value(1.0); // exact match → 100.0
+        let mut cn = make_cn4_with_data(ChannelData::Float64(builder));
+        value_to_value_without_interpolation(&mut cn, cc_val).unwrap();
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 100.0).abs() < 1e-12);
+        } else {
+            panic!("Expected Float64");
+        }
+    }
+
+    #[test]
+    fn test_vtv_no_interp_cn4_uint8() {
+        use arrow::array::UInt8Builder;
+        let cc_val = vec![1.0, 10.0, 2.0, 20.0];
+        let mut builder = UInt8Builder::new();
+        builder.append_value(2); // exact match → 20.0
+        let mut cn = make_cn4_with_data(ChannelData::UInt8(builder));
+        value_to_value_without_interpolation(&mut cn, cc_val).unwrap();
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 20.0).abs() < 1e-12);
+        } else {
+            panic!("Expected Float64");
+        }
+    }
+
+    // ── value_range_to_value_table (Cn4) tests ──
+
+    #[test]
+    fn test_vrv_cn4_float64() {
+        // cc_val groups of 3: (min, max, out_val)
+        // Range [1.0, 2.0] → 100.0
+        let cc_val = vec![1.0, 2.0, 100.0];
+        let mut builder = Float64Builder::new();
+        builder.append_value(1.5); // in [1.0, 2.0] → 100.0
+        let mut cn = make_cn4_with_data(ChannelData::Float64(builder));
+        value_range_to_value_table(&mut cn, cc_val).unwrap();
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 100.0).abs() < 1e-12);
+        } else {
+            panic!("Expected Float64");
+        }
+    }
+
+    #[test]
+    fn test_vrv_cn4_uint8() {
+        use arrow::array::UInt8Builder;
+        // Range [0.0, 10.0] → 42.0
+        let cc_val = vec![0.0, 10.0, 42.0];
+        let mut builder = UInt8Builder::new();
+        builder.append_value(5); // in [0, 10]
+        let mut cn = make_cn4_with_data(ChannelData::UInt8(builder));
+        value_range_to_value_table(&mut cn, cc_val).unwrap();
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 42.0).abs() < 1e-12);
+        } else {
+            panic!("Expected Float64");
+        }
+    }
+
+    #[test]
+    fn test_vrv_cn4_array_d_warn() {
+        use arrow::array::Int8Builder;
+        use arrow::datatypes::Int8Type;
+        use crate::data_holder::tensor_arrow::{Order, TensorArrow};
+        let mut builder = Int8Builder::new();
+        builder.append_value(5);
+        let tensor = TensorArrow::<Int8Type>::new_from_primitive(builder, None, vec![1], Order::RowMajor);
+        let mut cn = make_cn4_with_data(ChannelData::ArrayDInt8(tensor));
+        // ArrayDInt8 falls through to warn path
+        let result = value_range_to_value_table(&mut cn, vec![0.0, 10.0, 42.0]);
+        assert!(result.is_ok());
     }
 }

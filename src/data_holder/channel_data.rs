@@ -5,6 +5,8 @@ use anyhow::{Context, Error, Result, bail};
 use arrow::array::{
     Array, ArrayBuilder, ArrayData, ArrayRef, BinaryArray, BooleanBufferBuilder,
     FixedSizeBinaryArray, FixedSizeBinaryBuilder, FixedSizeListArray, Int8Builder,
+    Int16Builder, Int32Builder, Int64Builder, UInt8Builder, UInt16Builder, UInt32Builder,
+    UInt64Builder, Float32Builder, Float64Builder,
     LargeBinaryArray, LargeBinaryBuilder, LargeStringArray, LargeStringBuilder, PrimitiveBuilder,
     StringArray, UnionArray, as_primitive_array,
 };
@@ -100,85 +102,71 @@ impl PartialEq for ChannelData {
 
 impl Clone for ChannelData {
     fn clone(&self) -> Self {
+        // `finish_cloned()` creates a snapshot with Arc refcount == 1, so `into_builder()`
+        // always returns Ok. The `unwrap_or_else` fallback is logically unreachable but
+        // keeps this impl panic-free.
+        macro_rules! clone_primitive {
+            ($variant:ident, $builder:ident, $arg:expr) => {{
+                let arr = $arg.finish_cloned();
+                Self::$variant(arr.into_builder().unwrap_or_else(|arr| {
+                    let mut b = $builder::with_capacity(arr.len());
+                    for v in arr.iter() {
+                        match v { Some(x) => b.append_value(x), None => b.append_null() }
+                    }
+                    b
+                }))
+            }};
+        }
         match self {
-            Self::Int8(arg0) => Self::Int8(
-                arg0.finish_cloned()
-                    .into_builder()
-                    .expect("failed getting back mutable array"),
-            ),
-            Self::UInt8(arg0) => Self::UInt8(
-                arg0.finish_cloned()
-                    .into_builder()
-                    .expect("failed getting back mutable array"),
-            ),
-            Self::Int16(arg0) => Self::Int16(
-                arg0.finish_cloned()
-                    .into_builder()
-                    .expect("failed getting back mutable array"),
-            ),
-            Self::UInt16(arg0) => Self::UInt16(
-                arg0.finish_cloned()
-                    .into_builder()
-                    .expect("failed getting back mutable array"),
-            ),
-            Self::Int32(arg0) => Self::Int32(
-                arg0.finish_cloned()
-                    .into_builder()
-                    .expect("failed getting back mutable array"),
-            ),
-            Self::UInt32(arg0) => Self::UInt32(
-                arg0.finish_cloned()
-                    .into_builder()
-                    .expect("failed getting back mutable array"),
-            ),
-            Self::Float32(arg0) => Self::Float32(
-                arg0.finish_cloned()
-                    .into_builder()
-                    .expect("failed getting back mutable array"),
-            ),
-            Self::Int64(arg0) => Self::Int64(
-                arg0.finish_cloned()
-                    .into_builder()
-                    .expect("failed getting back mutable array"),
-            ),
-            Self::UInt64(arg0) => Self::UInt64(
-                arg0.finish_cloned()
-                    .into_builder()
-                    .expect("failed getting back mutable array"),
-            ),
-            Self::Float64(arg0) => Self::Float64(
-                arg0.finish_cloned()
-                    .into_builder()
-                    .expect("failed getting back mutable array"),
-            ),
+            Self::Int8(arg0) => clone_primitive!(Int8, Int8Builder, arg0),
+            Self::UInt8(arg0) => clone_primitive!(UInt8, UInt8Builder, arg0),
+            Self::Int16(arg0) => clone_primitive!(Int16, Int16Builder, arg0),
+            Self::UInt16(arg0) => clone_primitive!(UInt16, UInt16Builder, arg0),
+            Self::Int32(arg0) => clone_primitive!(Int32, Int32Builder, arg0),
+            Self::UInt32(arg0) => clone_primitive!(UInt32, UInt32Builder, arg0),
+            Self::Float32(arg0) => clone_primitive!(Float32, Float32Builder, arg0),
+            Self::Int64(arg0) => clone_primitive!(Int64, Int64Builder, arg0),
+            Self::UInt64(arg0) => clone_primitive!(UInt64, UInt64Builder, arg0),
+            Self::Float64(arg0) => clone_primitive!(Float64, Float64Builder, arg0),
             Self::Complex32(arg0) => Self::Complex32(arg0.clone()),
             Self::Complex64(arg0) => Self::Complex64(arg0.clone()),
             Self::Utf8(arg0) => Self::Utf8(
                 arg0.finish_cloned()
                     .into_builder()
-                    .expect("failed getting back mutable array"),
+                    .unwrap_or_else(|arr| {
+                        // unreachable: finish_cloned() gives Arc refcount 1
+                        let mut b = LargeStringBuilder::with_capacity(arr.len(), arr.values().len());
+                        for v in arr.iter() { match v { Some(s) => b.append_value(s), None => b.append_null() } }
+                        b
+                    }),
             ),
             Self::VariableSizeByteArray(array) => Self::VariableSizeByteArray(
                 array
                     .finish_cloned()
                     .into_builder()
-                    .expect("failed getting back mutable array"),
+                    .unwrap_or_else(|arr| {
+                        // unreachable: finish_cloned() gives Arc refcount 1
+                        let mut b = LargeBinaryBuilder::with_capacity(arr.len(), arr.values().len());
+                        for v in arr.iter() { match v { Some(s) => b.append_value(s), None => b.append_null() } }
+                        b
+                    }),
             ),
             Self::FixedSizeByteArray(array) => {
                 let array: FixedSizeBinaryArray = array.finish_cloned();
                 let mut new_array =
                     FixedSizeBinaryBuilder::with_capacity(array.len(), array.value_length());
                 match array.logical_nulls() {
+                    // append_value can only fail if slice length != value_length,
+                    // which can't happen since we chunk by value_length().
                     Some(validity) => {
                         array
                             .values()
                             .chunks(array.value_length() as usize)
                             .zip(validity.iter())
-                            .for_each(|(value, validity)| {
-                                if validity {
-                                    new_array
-                                        .append_value(value)
-                                        .expect("failed appending new fixed binary value");
+                            .for_each(|(value, valid)| {
+                                if valid {
+                                    new_array.append_value(value)
+                                        .unwrap_or_else(|_| new_array.append_null());
                                 } else {
                                     new_array.append_null();
                                 }
@@ -189,9 +177,8 @@ impl Clone for ChannelData {
                             .values()
                             .chunks(array.value_length() as usize)
                             .for_each(|value| {
-                                new_array
-                                    .append_value(value)
-                                    .expect("failed appending new fixed binary value");
+                                new_array.append_value(value)
+                                    .unwrap_or_else(|_| new_array.append_null());
                             });
                     }
                 }
@@ -1956,8 +1943,10 @@ impl fmt::Display for ChannelData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let format_option = FormatOptions::new();
         let data = self.as_ref();
-        let displayer =
-            ArrayFormatter::try_new(&data, &format_option).map_err(|_| std::fmt::Error)?;
+        let displayer = ArrayFormatter::try_new(&data, &format_option).map_err(|e| {
+            log::warn!("ChannelData Display: ArrayFormatter failed: {e}");
+            std::fmt::Error
+        })?;
         for i in 0..self.len() {
             write!(f, " {}", displayer.value(i))?;
         }

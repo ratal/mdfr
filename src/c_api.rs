@@ -4,7 +4,9 @@ use arrow::ffi::{FFI_ArrowArray, to_ffi};
 use libc::c_char;
 use std::ffi::{CStr, CString, c_uchar, c_ushort};
 
-/// create a new mdf from a file and its metadata
+/// create a new mdf from a file and its metadata.
+/// Returns a heap-allocated Mdf pointer, or null on error.
+/// Caller must free the returned pointer with `free_mdf()`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn new_mdf(file_name: *const c_char) -> *mut Mdf {
     unsafe {
@@ -16,108 +18,135 @@ pub unsafe extern "C" fn new_mdf(file_name: *const c_char) -> *mut Mdf {
         // - points to valid, initialized data
         // - points to memory ending in a null byte
         // - won't be mutated for the duration of this function call
-        let f = CStr::from_ptr(file_name)
-            .to_str()
-            .expect("Could not convert into utf8 the file name string");
+        if file_name.is_null() {
+            return std::ptr::null_mut();
+        }
+        let f = match CStr::from_ptr(file_name).to_str() {
+            Ok(s) => s,
+            Err(_) => return std::ptr::null_mut(),
+        };
         match Mdf::new(f) {
-            Ok(mut mdf) => {
-                let p: *mut Mdf = &mut mdf;
-                std::mem::forget(mdf);
-                p
-            }
-            Err(e) => panic!("{e:?}"),
+            Ok(mdf) => Box::into_raw(Box::new(mdf)),
+            Err(_) => std::ptr::null_mut(),
         }
     }
 }
 
-/// returns mdf file version
+/// frees an Mdf object previously returned by `new_mdf()`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn free_mdf(mdf: *mut Mdf) {
+    unsafe {
+        if !mdf.is_null() {
+            // SAFETY: mdf was created by Box::into_raw in new_mdf(); we reconstruct and drop it.
+            drop(Box::from_raw(mdf));
+        }
+    }
+}
+
+/// returns mdf file version. Returns 0 on null pointer.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_version(mdf: *const Mdf) -> c_ushort {
     unsafe {
+        // SAFETY: caller guarantees mdf is either null or a valid pointer returned by new_mdf().
+        // as_ref() handles the null case safely.
         if let Some(mdf) = mdf.as_ref() {
             mdf.get_version()
         } else {
-            panic!("Null pointer given for Mdf Rust object")
+            0
         }
     }
 }
 
 /// returns channel's unit string
-/// if no unit is existing for this channel, returns a null pointer
+/// if no unit is existing for this channel, returns a null pointer.
+/// The returned pointer is heap-allocated; caller must free it with `libc::free()`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_channel_unit(
     mdf: *const Mdf,
     channel_name: *const c_char,
 ) -> *const c_char {
     unsafe {
-        let name = CStr::from_ptr(channel_name)
-            .to_str()
-            .expect("Could not convert into utf8 the file name string");
+        // SAFETY: caller guarantees both pointers are either null or valid null-terminated C strings.
+        // Null is checked before dereferencing. CStr::from_ptr requires a valid, null-terminated string.
+        if mdf.is_null() || channel_name.is_null() {
+            return std::ptr::null();
+        }
+        let name = match CStr::from_ptr(channel_name).to_str() {
+            Ok(s) => s,
+            Err(_) => return std::ptr::null(),
+        };
         if let Some(mdf) = mdf.as_ref() {
             match mdf.get_channel_unit(name) {
-                Ok(unit) => match unit {
-                    Some(unit) => CString::new(unit)
-                        .expect("CString::new failed because of internal 0 byte")
-                        .into_raw(),
-                    None => std::ptr::null::<c_char>(), // null pointer
+                Ok(Some(unit)) => match CString::new(unit) {
+                    Ok(cs) => cs.into_raw(),
+                    Err(_) => std::ptr::null(),
                 },
-                Err(e) => panic!("{}", e),
+                _ => std::ptr::null(),
             }
         } else {
-            panic!("Null pointer given for Mdf Rust object")
+            std::ptr::null()
         }
     }
 }
 
 /// returns channel's description string
-/// if no description is existing for this channel, returns null pointer
+/// if no description is existing for this channel, returns null pointer.
+/// The returned pointer is heap-allocated; caller must free it with `libc::free()`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_channel_desc(
     mdf: *const Mdf,
     channel_name: *const libc::c_char,
 ) -> *const c_char {
     unsafe {
-        let name = CStr::from_ptr(channel_name)
-            .to_str()
-            .expect("Could not convert into utf8 the file name string");
+        // SAFETY: caller guarantees both pointers are either null or valid null-terminated C strings.
+        if mdf.is_null() || channel_name.is_null() {
+            return std::ptr::null();
+        }
+        let name = match CStr::from_ptr(channel_name).to_str() {
+            Ok(s) => s,
+            Err(_) => return std::ptr::null(),
+        };
         if let Some(mdf) = mdf.as_ref() {
             match mdf.get_channel_desc(name) {
-                Ok(desc) => {
-                    match desc {
-                        Some(desc) => CString::new(desc)
-                            .expect("CString::new failed because of internal 0 byte")
-                            .into_raw(),
-                        None => std::ptr::null::<c_char>(), // null pointer
-                    }
-                }
-                Err(e) => panic!("{}", e),
+                Ok(Some(desc)) => match CString::new(desc) {
+                    Ok(cs) => cs.into_raw(),
+                    Err(_) => std::ptr::null(),
+                },
+                _ => std::ptr::null(),
             }
         } else {
-            panic!("Null pointer given for Mdf Rust object")
+            std::ptr::null()
         }
     }
 }
 
 /// returns channel's associated master channel name string
-/// if no master channel existing, returns null pointer
+/// if no master channel existing, returns null pointer.
+/// The returned pointer is heap-allocated; caller must free it with `libc::free()`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_channel_master(
     mdf: *const Mdf,
     channel_name: *const libc::c_char,
 ) -> *const c_char {
     unsafe {
-        let name = CStr::from_ptr(channel_name)
-            .to_str()
-            .expect("Could not convert into utf8 the file name string");
+        // SAFETY: caller guarantees both pointers are either null or valid null-terminated C strings.
+        if mdf.is_null() || channel_name.is_null() {
+            return std::ptr::null();
+        }
+        let name = match CStr::from_ptr(channel_name).to_str() {
+            Ok(s) => s,
+            Err(_) => return std::ptr::null(),
+        };
         if let Some(mdf) = mdf.as_ref() {
             match mdf.get_channel_master(name) {
-                Some(st) => CString::new(st)
-                    .expect("CString::new failed because of internal 0 byte")
-                    .into_raw(),
-                None => std::ptr::null::<c_char>(), // null pointer
+                Some(st) => match CString::new(st) {
+                    Ok(cs) => cs.into_raw(),
+                    Err(_) => std::ptr::null(),
+                },
+                None => std::ptr::null(),
             }
         } else {
-            panic!("Null pointer given for Mdf Rust object")
+            std::ptr::null()
         }
     }
 }
@@ -131,39 +160,68 @@ pub unsafe extern "C" fn get_channel_master_type(
     channel_name: *const libc::c_char,
 ) -> c_uchar {
     unsafe {
-        let name = CStr::from_ptr(channel_name)
-            .to_str()
-            .expect("Could not convert into utf8 the file name string");
+        // SAFETY: caller guarantees both pointers are either null or valid null-terminated C strings.
+        if mdf.is_null() || channel_name.is_null() {
+            return 0;
+        }
+        let name = match CStr::from_ptr(channel_name).to_str() {
+            Ok(s) => s,
+            Err(_) => return 0,
+        };
         if let Some(mdf) = mdf.as_ref() {
             mdf.get_channel_master_type(name)
         } else {
-            panic!("Null pointer given for Mdf Rust object")
+            0
         }
     }
 }
 
-/// returns a sorted array of strings of all channel names contained in file
+/// returns a sorted array of strings of all channel names contained in file.
+/// The returned pointer is heap-allocated; call `free_channel_names_set(ptr, len)` to free it,
+/// where `len` is the number of channel names (obtained separately, e.g. via a count function).
+/// Returns null on null input.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_channel_names_set(mdf: *const Mdf) -> *const *mut c_char {
     unsafe {
+        // SAFETY: caller guarantees mdf is either null or a valid pointer from new_mdf().
         if let Some(mdf) = mdf.as_ref() {
             let set = mdf.get_channel_names_set();
             let mut s = set.into_iter().collect::<Vec<String>>();
             s.sort();
-            let cstring_vec = s
+            let mut cstring_vec = s
                 .iter()
-                .map(|e| {
-                    CString::new(e.to_string())
-                        .expect("CString::new failed because of internal 0 byte")
-                        .into_raw()
-                })
+                .filter_map(|e| CString::new(e.as_str()).ok())
+                .map(|cs| cs.into_raw())
                 .collect::<Vec<*mut c_char>>();
+            cstring_vec.shrink_to_fit();
             let p = cstring_vec.as_ptr();
+            // SAFETY: We intentionally leak the Vec here to transfer ownership of the
+            // backing allocation to the caller. The pointer remains valid until
+            // free_channel_names_set() is called with the correct length.
             std::mem::forget(cstring_vec);
             p
         } else {
-            panic!("Null pointer given for Mdf Rust object")
+            std::ptr::null()
         }
+    }
+}
+
+/// frees a channel names array returned by `get_channel_names_set()`.
+/// `len` must match the number of channels returned.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn free_channel_names_set(ptr: *mut *mut c_char, len: usize) {
+    unsafe {
+        if ptr.is_null() {
+            return;
+        }
+        // SAFETY: ptr and each element were allocated by Rust (CString::into_raw / Vec::into_raw_parts).
+        let slice = std::slice::from_raw_parts_mut(ptr, len);
+        for p in slice.iter_mut() {
+            if !p.is_null() {
+                drop(CString::from_raw(*p));
+            }
+        }
+        drop(Vec::from_raw_parts(ptr, len, len));
     }
 }
 
@@ -171,40 +229,57 @@ pub unsafe extern "C" fn get_channel_names_set(mdf: *const Mdf) -> *const *mut c
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn load_all_channels_data_in_memory(mdf: *mut Mdf) {
     unsafe {
-        if let Some(mdf) = mdf.as_mut() {
-            match mdf.load_all_channels_data_in_memory() {
-                Ok(_) => {}
-                Err(e) => panic!("{}", e),
-            }
-        } else {
-            panic!("Null pointer given for Mdf Rust object")
+        // SAFETY: caller guarantees mdf is either null or a valid pointer from new_mdf().
+        if let Some(mdf) = mdf.as_mut()
+            && let Err(e) = mdf.load_all_channels_data_in_memory()
+        {
+            log::error!("load_all_channels_data_in_memory failed: {e}");
         }
     }
 }
 
-/// returns channel's arrow Array.
-/// null pointer returned if not found
+/// returns channel's arrow Array as a heap-allocated pointer.
+/// Caller must free it with `free_channel_array()`.
+/// Returns null pointer if channel not found.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_channel_array(
     mdf: *const Mdf,
     channel_name: *const libc::c_char,
-) -> *const FFI_ArrowArray {
+) -> *mut FFI_ArrowArray {
     unsafe {
-        let name = CStr::from_ptr(channel_name)
-            .to_str()
-            .expect("Could not convert into utf8 the file name string");
+        // SAFETY: caller guarantees both pointers are either null or valid null-terminated C strings,
+        // and mdf is a valid pointer from new_mdf().
+        if mdf.is_null() || channel_name.is_null() {
+            return std::ptr::null_mut();
+        }
+        let name = match CStr::from_ptr(channel_name).to_str() {
+            Ok(s) => s,
+            Err(_) => return std::ptr::null_mut(),
+        };
         if let Some(mdf) = mdf.as_ref() {
             match mdf.get_channel_data(name) {
-                Some(data) => {
-                    let (array, _) =
-                        to_ffi(&data.to_data()).expect("ffi failed converting arrow array into C");
-                    let array_ptr: *const FFI_ArrowArray = &array;
-                    array_ptr
-                }
-                None => std::ptr::null::<FFI_ArrowArray>(), // null pointers
+                Some(data) => match to_ffi(&data.to_data()) {
+                    Ok((array, _)) => Box::into_raw(Box::new(array)),
+                    Err(e) => {
+                        log::error!("get_channel_array: FFI conversion failed: {e}");
+                        std::ptr::null_mut()
+                    }
+                },
+                None => std::ptr::null_mut(),
             }
         } else {
-            panic!("Null pointer given for Mdf Rust object")
+            std::ptr::null_mut()
+        }
+    }
+}
+
+/// frees an FFI_ArrowArray returned by `get_channel_array()`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn free_channel_array(array: *mut FFI_ArrowArray) {
+    unsafe {
+        if !array.is_null() {
+            // SAFETY: array was created by Box::into_raw in get_channel_array().
+            drop(Box::from_raw(array));
         }
     }
 }
@@ -229,25 +304,25 @@ pub unsafe extern "C" fn export_to_parquet(
         // - points to valid, initialized data
         // - points to memory ending in a null byte
         // - won't be mutated for the duration of this function call
-        let name = CStr::from_ptr(file_name)
-            .to_str()
-            .expect("Could not convert into utf8 the file name string");
+        if mdf.is_null() || file_name.is_null() {
+            return;
+        }
+        let name = match CStr::from_ptr(file_name).to_str() {
+            Ok(s) => s,
+            Err(_) => return,
+        };
         let comp = if compression.is_null() {
             None
         } else {
-            Some(
-                CStr::from_ptr(compression)
-                    .to_str()
-                    .expect("Could not convert into utf8 the compression string"),
-            )
-        };
-        if let Some(mdf) = mdf.as_ref() {
-            match mdf.export_to_parquet(name, comp) {
-                Ok(_) => {}
-                Err(e) => panic!("{}", e),
+            match CStr::from_ptr(compression).to_str() {
+                Ok(s) => Some(s),
+                Err(_) => return,
             }
-        } else {
-            panic!("Null pointer given for Mdf Rust object")
+        };
+        if let Some(mdf) = mdf.as_ref()
+            && let Err(e) = mdf.export_to_parquet(name, comp)
+        {
+            log::error!("export_to_parquet failed: {e}");
         }
     }
 }
@@ -256,7 +331,7 @@ pub unsafe extern "C" fn export_to_parquet(
 // Compression can be one of the following strings
 // "deflate", "lzf"
 //  or null pointer if no compression wanted
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[cfg(feature = "hdf5")]
 pub unsafe extern "C" fn export_to_hdf5(
     mdf: *const Mdf,
@@ -271,24 +346,26 @@ pub unsafe extern "C" fn export_to_hdf5(
     // - points to valid, initialized data
     // - points to memory ending in a null byte
     // - won't be mutated for the duration of this function call
-    let name = CStr::from_ptr(file_name)
-        .to_str()
-        .expect("Could not convert into utf8 the file name string");
-    let comp = if compression.is_null() {
-        None
-    } else {
-        Some(
-            CStr::from_ptr(compression)
-                .to_str()
-                .expect("Could not convert into utf8 the compression string"),
-        )
-    };
-    if let Some(mdf) = mdf.as_ref() {
-        match mdf.export_to_hdf5(name, comp) {
-            Ok(_) => {}
-            Err(e) => panic!("{}", e),
+    unsafe {
+        if mdf.is_null() || file_name.is_null() {
+            return;
         }
-    } else {
-        panic!("Null pointer given for Mdf Rust object")
+        let name = match CStr::from_ptr(file_name).to_str() {
+            Ok(s) => s,
+            Err(_) => return,
+        };
+        let comp = if compression.is_null() {
+            None
+        } else {
+            match CStr::from_ptr(compression).to_str() {
+                Ok(s) => Some(s),
+                Err(_) => return,
+            }
+        };
+        if let Some(mdf) = mdf.as_ref() {
+            if let Err(e) = mdf.export_to_hdf5(name, comp) {
+                log::error!("export_to_hdf5 failed: {e}");
+            }
+        }
     }
 }

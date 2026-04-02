@@ -429,6 +429,44 @@ fn read_hl(rdr: &mut BufReader<&File>, mut position: i64) -> Result<(i64, [u8; 4
     Ok((position, id))
 }
 
+/// Reads VLSD data from a chain of DL sub-blocks (##SD or ##DZ) without reinitialising arrays.
+/// Used by read_sd to process DL-chained VLSD data for a single channel.
+fn read_vlsd_from_dl_blocks(
+    rdr: &mut BufReader<&File>,
+    dl_blocks: Vec<Dl4Block>,
+    mut position: i64,
+    cn: &mut Cn4,
+    decoder: &mut Dec,
+) -> Result<i64> {
+    let mut previous_index: usize = 0;
+    for dl in dl_blocks {
+        for data_pointer in dl.dl_data {
+            rdr.seek_relative(data_pointer - position)
+                .context("Could not reach VLSD sub-block from DL")?;
+            let mut id = [0u8; 4];
+            rdr.read_exact(&mut id)
+                .context("could not read VLSD sub-block id")?;
+            let mut data = if id == *b"##DZ" {
+                let (dt, block_header) = parse_dz(rdr)?;
+                position = data_pointer + block_header.len as i64;
+                dt
+            } else {
+                // ##SD block (same header layout as Dt4Block)
+                let block_header: Dt4Block = rdr
+                    .read_le()
+                    .context("Could not read VLSD sub-block header")?;
+                let mut buf = vec![0u8; (block_header.len - 24) as usize];
+                rdr.read_exact(&mut buf)
+                    .context("Could not read VLSD sub-block data")?;
+                position = data_pointer + block_header.len as i64;
+                buf
+            };
+            previous_index = read_vlsd_from_bytes(&mut data, cn, previous_index, decoder)?;
+        }
+    }
+    Ok(position)
+}
+
 /// Reads Signal Data Block containing VLSD channel, pointed by cn_data
 fn read_sd(
     rdr: &mut BufReader<&File>,
@@ -436,7 +474,7 @@ fn read_sd(
     vlsd_channels: &[(u8, i32)],
     mut position: i64,
     decoder: &mut Dec,
-    channel_names_to_read_in_dg: &HashSet<String>,
+    _channel_names_to_read_in_dg: &HashSet<String>,
 ) -> Result<i64> {
     for channel_group in dg.cg.values_mut() {
         for (cn_type, rec_pos) in vlsd_channels {
@@ -468,28 +506,10 @@ fn read_sd(
                     let (pos, _id) = read_hl(rdr, position)?;
                     position = pos;
                     let (dl_blocks, pos) = parser_dl4(rdr, position)?;
-                    let (pos, _vlsd) = parser_dl4_sorted(
-                        rdr,
-                        dl_blocks,
-                        pos,
-                        channel_group,
-                        decoder,
-                        rec_pos,
-                        channel_names_to_read_in_dg,
-                    )?;
-                    position = pos;
+                    position = read_vlsd_from_dl_blocks(rdr, dl_blocks, pos, cn, decoder)?;
                 } else if "##DL".as_bytes() == id {
                     let (dl_blocks, pos) = parser_dl4(rdr, position)?;
-                    let (pos, _vlsd) = parser_dl4_sorted(
-                        rdr,
-                        dl_blocks,
-                        pos,
-                        channel_group,
-                        decoder,
-                        rec_pos,
-                        channel_names_to_read_in_dg,
-                    )?;
-                    position = pos;
+                    position = read_vlsd_from_dl_blocks(rdr, dl_blocks, pos, cn, decoder)?;
                 }
             }
         }
@@ -609,9 +629,16 @@ fn read_vlsd_from_bytes(
                     u32::from_le_bytes(len.try_into().context("Could not read length")?) as usize;
                 if (position + length + 4) <= data_length {
                     position += std::mem::size_of::<u32>();
-                    // Types 6 (SBC) and 7 (UTF-8) have null terminator to strip
+                    // From MDF 4.3, null terminator is optional in VLSD strings.
+                    // Strip trailing \0 only if actually present (check the last byte).
                     let record_len = match cn_data_type {
-                        6 | 7 => if length > 0 { length - 1 } else { 0 },
+                        6 | 7 => {
+                            if length > 0 && data[position + length - 1] == 0 {
+                                length - 1
+                            } else {
+                                length
+                            }
+                        }
                         _ => length,
                     };
                     let record = &data[position..position + record_len];
@@ -998,11 +1025,9 @@ fn parser_dl4_sorted(
             let mut id = [0u8; 4];
             rdr.read_exact(&mut id)
                 .context("could not read data block id")?;
-            let block_length: usize;
             if id == "##DZ".as_bytes() {
                 let (dt, block_header) = parse_dz(rdr)?;
                 data.extend(dt);
-                block_length = block_header.dz_org_data_length as usize;
                 position = data_pointer + block_header.len as i64;
                 id[2..].copy_from_slice(&block_header.dz_org_block_type[..]);
             } else {
@@ -1011,9 +1036,11 @@ fn parser_dl4_sorted(
                 rdr.read_exact(&mut buf)
                     .context("Could not read DT block data")?;
                 data.extend(buf);
-                block_length = (block_header.len - 24) as usize;
                 position = data_pointer + block_header.len as i64;
             }
+            // Use data.len() as block_length so that a partial-record tail carried over
+            // from the previous block (split records) is included in the count.
+            let block_length = data.len();
             // Copies full sized records in block into channels arrays
 
             if id == "##SD".as_bytes() {
@@ -1420,15 +1447,22 @@ fn read_all_channels_unsorted_from_bytes(
     // From sorted data block, copies data in channels arrays
     for (rec_id, (index, record_data)) in record_counter.iter_mut() {
         if let Some(channel_group) = dg.cg.get_mut(rec_id) {
+            let record_length = channel_group.record_length as usize;
+            let n_records = if record_length > 0 {
+                record_data.len() / record_length
+            } else {
+                0
+            };
             read_channels_from_bytes(
                 record_data,
                 &mut channel_group.cn,
-                channel_group.record_length as usize,
+                record_length,
                 *index,
                 channel_names_to_read_in_dg,
                 true,
             )
             .context("failed reading channels from bytes after reading unsorted data")?;
+            *index += n_records; // advance write position for next DL block
             record_data.clear(); // clears data for new block, keeping capacity
         }
     }
@@ -1951,7 +1985,7 @@ fn store_decoded_values_in_channel(
             }
             ChannelData::Int16(builder) => {
                 if value_bytes.len() >= 2 {
-                    let val = if cn.endian {
+                    let val = if cn.endian.is_big() {
                         i16::from_be_bytes(value_bytes[..2].try_into()?)
                     } else {
                         i16::from_le_bytes(value_bytes[..2].try_into()?)
@@ -1961,7 +1995,7 @@ fn store_decoded_values_in_channel(
             }
             ChannelData::UInt16(builder) => {
                 if value_bytes.len() >= 2 {
-                    let val = if cn.endian {
+                    let val = if cn.endian.is_big() {
                         u16::from_be_bytes(value_bytes[..2].try_into()?)
                     } else {
                         u16::from_le_bytes(value_bytes[..2].try_into()?)
@@ -1971,7 +2005,7 @@ fn store_decoded_values_in_channel(
             }
             ChannelData::Int32(builder) => {
                 if value_bytes.len() >= 4 {
-                    let val = if cn.endian {
+                    let val = if cn.endian.is_big() {
                         i32::from_be_bytes(value_bytes[..4].try_into()?)
                     } else {
                         i32::from_le_bytes(value_bytes[..4].try_into()?)
@@ -1981,7 +2015,7 @@ fn store_decoded_values_in_channel(
             }
             ChannelData::UInt32(builder) => {
                 if value_bytes.len() >= 4 {
-                    let val = if cn.endian {
+                    let val = if cn.endian.is_big() {
                         u32::from_be_bytes(value_bytes[..4].try_into()?)
                     } else {
                         u32::from_le_bytes(value_bytes[..4].try_into()?)
@@ -1991,7 +2025,7 @@ fn store_decoded_values_in_channel(
             }
             ChannelData::Float32(builder) => {
                 if value_bytes.len() >= 4 {
-                    let val = if cn.endian {
+                    let val = if cn.endian.is_big() {
                         f32::from_be_bytes(value_bytes[..4].try_into()?)
                     } else {
                         f32::from_le_bytes(value_bytes[..4].try_into()?)
@@ -2001,7 +2035,7 @@ fn store_decoded_values_in_channel(
             }
             ChannelData::Int64(builder) => {
                 if value_bytes.len() >= 8 {
-                    let val = if cn.endian {
+                    let val = if cn.endian.is_big() {
                         i64::from_be_bytes(value_bytes[..8].try_into()?)
                     } else {
                         i64::from_le_bytes(value_bytes[..8].try_into()?)
@@ -2011,7 +2045,7 @@ fn store_decoded_values_in_channel(
             }
             ChannelData::UInt64(builder) => {
                 if value_bytes.len() >= 8 {
-                    let val = if cn.endian {
+                    let val = if cn.endian.is_big() {
                         u64::from_be_bytes(value_bytes[..8].try_into()?)
                     } else {
                         u64::from_le_bytes(value_bytes[..8].try_into()?)
@@ -2021,7 +2055,7 @@ fn store_decoded_values_in_channel(
             }
             ChannelData::Float64(builder) => {
                 if value_bytes.len() >= 8 {
-                    let val = if cn.endian {
+                    let val = if cn.endian.is_big() {
                         f64::from_be_bytes(value_bytes[..8].try_into()?)
                     } else {
                         f64::from_le_bytes(value_bytes[..8].try_into()?)

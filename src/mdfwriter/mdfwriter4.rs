@@ -24,8 +24,8 @@ use crate::{
         MdfInfo,
         mdfinfo4::{
             At4Block, BlockType, Blockheader4, Ca4Block, Cg4, Cg4Block, Ch4Block, Cn4,
-            Cn4Block, Compo, Composition, Dg4, Dg4Block, Dz4Block, Ev4Block, FhBlock, Ld4Block,
-            MdfInfo4, MetaData, MetaDataBlockType, Si4Block, default_short_header,
+            Cn4Block, Compo, Composition, Dg4, Dg4Block, Dz4Block, Endianness, Ev4Block,
+            FhBlock, Ld4Block, MdfInfo4, MetaData, MetaDataBlockType, Si4Block, default_short_header,
         },
     },
     mdfreader::Mdf,
@@ -518,7 +518,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
     let (tx, rx) = bounded::<Vec<u8>>(n_channels);
     let fname = Arc::new(Mutex::new(file_name.to_string()));
     let sfname = Arc::clone(&fname);
-    thread::spawn(move || -> Result<(), Error> {
+    let writer_handle = thread::spawn(move || -> Result<(), Error> {
         let file_name = Arc::clone(&sfname);
         let file = file_name.lock();
         let f: File = OpenOptions::new()
@@ -538,6 +538,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
                 .write_all(&buffer)
                 .context("Could not write data blocks buffer")?;
         }
+        writer.flush().context("Could not flush data blocks")?;
         Ok(())
     });
 
@@ -558,6 +559,12 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
                             if is_vlsd {
                                 // VLSD channel: write SD block, set cn_data
                                 let mut offset: i64 = 0;
+
+                                let data_pointer = Arc::clone(&data_pointer);
+                                let mut locked_data_pointer = data_pointer.lock();
+                                cn.block.cn_data = *locked_data_pointer;
+                                // For VLSD, dg_data is not used (set to 0)
+                                dg.block.dg_data = 0;
                                 let data_block = if compression {
                                     create_dz_sd(data, &mut offset)
                                         .context("failed creating dz or sd block")?
@@ -565,12 +572,6 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
                                     create_sd(data, &mut offset)
                                         .context("failed creating sd block")?
                                 };
-
-                                let data_pointer = Arc::clone(&data_pointer);
-                                let mut locked_data_pointer = data_pointer.lock();
-                                cn.block.cn_data = *locked_data_pointer;
-                                // For VLSD, dg_data is not used (set to 0)
-                                dg.block.dg_data = 0;
                                 *locked_data_pointer += offset;
                                 let buffer =
                                     write_sd_block(cn.block.cn_data, data_block, offset as usize)?;
@@ -629,6 +630,10 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
             Ok(())
         })?;
     drop(tx);
+    writer_handle
+        .join()
+        .map_err(|e| anyhow::anyhow!("Data writer thread panicked: {:?}", e))
+        .and_then(|r| r)?;
 
     let file_name = Arc::clone(&fname);
     let file = file_name.lock();
@@ -1466,7 +1471,7 @@ fn create_blocks(
             )
             .with_context(|| format!("failed initilising array for channel {}", cn.unique_name))?,
             block: cn_block,
-            endian: machine_endian,
+            endian: Endianness::from(machine_endian),
             block_position: cn_position,
             pos_byte_beg: 0,
             n_bytes: cg_block.cg_data_bytes,

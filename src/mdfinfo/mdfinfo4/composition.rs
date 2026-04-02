@@ -27,7 +27,9 @@ pub type CompositionParseResult = (Composition, i64, usize, (Vec<usize>, Order),
 #[derive(Debug, Clone)]
 #[repr(C)]
 pub struct Composition {
+    /// The composition block at this level (CA, CN, CL, CV, CU, or DS).
     pub block: Compo,
+    /// Optional next composition in the chain (e.g. nested CA inside another CA).
     pub compo: Option<Box<Composition>>,
 }
 
@@ -35,11 +37,17 @@ pub struct Composition {
 #[derive(Debug, Clone)]
 #[repr(C)]
 pub enum Compo {
+    /// Channel Array block: N-dimensional array layout (spec section 6.18)
     CA(Box<Ca4Block>),
+    /// Nested Channel block: structure composition via CN→CN chain
     CN(Box<Cn4>),
+    /// Channel List: named fields packed into a VLSD blob (spec section 6.25)
     CL(Box<Cl4Block>),
+    /// Column Variable-length: variable-length column in fixed-length records (spec section 6.26)
     CV(Box<Cv4Block>),
+    /// Column Unordered: unordered variable-length column (spec section 6.27)
     CU(Box<Cu4Block>),
+    /// Dynamic Size: variable-length fields in a VLSD blob (spec section 6.24)
     DS(Box<Ds4Block>),
 }
 
@@ -310,13 +318,13 @@ pub(super) fn parse_composition(
 
     if block_header_short.hdr_id == "##CA".as_bytes() {
         // Channel Array
-        let (block, mut shape, _snd, array_size) =
+        let (block, mut shape, _snd, mut array_size) =
             parse_ca_block(&mut block, block_header_short, cg_cycle_count)
                 .context("Failed parsing CA block")?;
         position = pos;
         let ca_composition: Option<Box<Composition>>;
         if block.ca_composition != 0 {
-            let (ca, pos, _array_size, s, n_cns, cnss) = parse_composition(
+            let (ca, pos, inner_array_size, s, n_cns, cnss) = parse_composition(
                 rdr,
                 block.ca_composition,
                 position,
@@ -325,7 +333,21 @@ pub(super) fn parse_composition(
                 cg_cycle_count,
             )
             .context("Failed parsing composition block from CA block")?;
-            shape = s;
+            // If the inner composition is another CA block (array of arrays), combine
+            // the outer CA's dimensions with the inner CA's dimensions:
+            //   outer shape = [cg_cycle_count, d1, ..., dm]
+            //   inner shape = [cg_cycle_count, e1, ..., en]
+            //   combined    = [cg_cycle_count, d1, ..., dm, e1, ..., en]
+            // array_size (= total elements, used as list_size for reading) must also be
+            // the product of all dimensions: outer_pnd * inner_pnd.
+            // For any other inner block type (CN axis channel, etc.) the outer CA's
+            // ca_dim_size already encodes the full array shape — keep it unchanged.
+            if matches!(&ca.block, Compo::CA(_)) {
+                let mut combined = shape.0.clone();
+                combined.extend_from_slice(&s.0[1..]);
+                shape = (combined, shape.1);
+                array_size *= inner_array_size;
+            }
             position = pos;
             cns = cnss;
             n_cn += n_cns;
