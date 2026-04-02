@@ -1,6 +1,6 @@
 [package]
 name = "mdfr"
-version = "0.6.5"
+version = "0.6.6"
 description = "A package for reading and writing MDF files"
 authors = ["ratal <ratal@ratal.org>"]
 edition = "2024"
@@ -52,7 +52,7 @@ arrow = { version = "58.1.0", features = [
     "ffi",
 ] } # for efficient data storing in memory
 env_logger = "0.11.10"
-libc = "0.2.183" # for the C api
+libc = "0.2.184" # for the C api
 numpy = { version = "0.28", optional = true } # to export in numpy
 polars = { version = "0.53", features = [
     "dtype-full",
@@ -66,7 +66,7 @@ hdf5 = { version = "0.8", optional = true, features = [
 ndarray = { version = "0.17", optional = true } # to convert arraw data into ndarray, needed for hdf5
 
 [dependencies.pyo3]
-version = "0.28.2"
+version = "0.28.3"
 features = ["extension-module", "num-complex", "anyhow"]
 optional = true
 

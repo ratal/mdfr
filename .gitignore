@@ -22,3 +22,4 @@ test_files/test.parquet
 pyvenv.cfg
 /.continue
 test_files/synthetic
+.claude/settings.json
