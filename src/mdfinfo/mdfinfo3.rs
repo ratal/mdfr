@@ -3,7 +3,7 @@ use anyhow::{Context, Error, Result};
 use arrow::array::{UInt8Builder, UInt16Builder, UInt32Builder};
 use binrw::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
-use chrono::NaiveDate;
+use chrono::{DateTime, FixedOffset, NaiveDate, TimeZone};
 use encoding_rs::Encoding;
 use log::info;
 use std::cmp::Ordering;
@@ -546,16 +546,43 @@ pub fn hd3_parser(
 /// Hd3 display implementation
 impl fmt::Display for Hd3 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(
-            f,
-            "Date : {}:{}:{}, Time: {}:{}:{} ",
-            self.hd_date.0,
-            self.hd_date.1,
-            self.hd_date.2,
-            self.hd_time.0,
-            self.hd_time.1,
-            self.hd_time.2,
-        )?;
+        // If we have a nanosecond timestamp (MDF >= 3.2), prefer it for display
+        if let Some(time_ns) = self.hd_start_time_ns {
+            let sec = (time_ns / 1_000_000_000) as i64;
+            let nsec = (time_ns % 1_000_000_000) as u32;
+
+            let datetime_str = if let Some(offset_min) = self.hd_time_offset {
+                // UTC time offset is available: apply it to produce a
+                // proper RFC 3339 datetime including the ±HH:MM offset
+                let offset_secs = (offset_min as i32) * 60;
+                match FixedOffset::east_opt(offset_secs) {
+                    Some(offset) => offset
+                        .timestamp_opt(sec, nsec)
+                        .single()
+                        .map(|dt| dt.to_rfc3339())
+                        .unwrap_or_else(|| "Invalid timestamp".to_string()),
+                    None => "Invalid offset".to_string(),
+                }
+            } else {
+                // No offset info — timestamp is stored as local time
+                DateTime::from_timestamp(sec, nsec)
+                    .map(|dt| format!("{} (local)", dt.format("%Y-%m-%dT%H:%M:%S%.f")))
+                    .unwrap_or_else(|| "Invalid timestamp".to_string())
+            };
+            writeln!(f, "Time : {datetime_str}")?;
+        } else {
+            // MDF < 3.2: fall back to raw DD:MM:YYYY / HH:MM:SS fields
+            writeln!(
+                f,
+                "Date : {}:{}:{}, Time: {}:{}:{} ",
+                self.hd_date.0,
+                self.hd_date.1,
+                self.hd_date.2,
+                self.hd_time.0,
+                self.hd_time.1,
+                self.hd_time.2,
+            )?;
+        }
         writeln!(f, "Author: {}", self.hd_author)?;
         writeln!(f, "Organization: {}", self.hd_organization)?;
         writeln!(f, "Project: {}", self.hd_project)?;

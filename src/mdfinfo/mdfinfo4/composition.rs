@@ -13,10 +13,10 @@ use std::collections::HashMap;
 use std::fmt::{self, Display};
 use std::fs::File;
 
+use super::block_header::SharableBlocks;
 use super::block_header::parse_block_short;
 use super::ca_block::{Ca4Block, parse_ca_block};
 use super::cn_block::{Cn4, CnType, RecordLayout, parse_cn4};
-use super::block_header::SharableBlocks;
 use crate::data_holder::tensor_arrow::Order;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 

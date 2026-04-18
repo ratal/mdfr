@@ -245,9 +245,9 @@ mod tests {
     use super::*;
     use arrow::array::{
         BinaryBuilder, BooleanArray, Date32Array, Date64Array, FixedSizeBinaryBuilder,
-        Float32Array, Float64Array, Int16Array, Int32Array, Int64Array, Int8Array,
-        LargeBinaryBuilder, LargeStringBuilder, NullArray, StringBuilder,
-        TimestampNanosecondArray, UInt16Array, UInt32Array, UInt64Array, UInt8Array,
+        Float32Array, Float64Array, Int8Array, Int16Array, Int32Array, Int64Array,
+        LargeBinaryBuilder, LargeStringBuilder, NullArray, StringBuilder, TimestampNanosecondArray,
+        UInt8Array, UInt16Array, UInt32Array, UInt64Array,
     };
 
     // ── bit_count tests ──

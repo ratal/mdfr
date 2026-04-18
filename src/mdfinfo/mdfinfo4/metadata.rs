@@ -465,7 +465,9 @@ fn extract_text<'a>(node: roxmltree::Node<'a, 'a>, tag_name: &str) -> Option<Str
 /// Parse `<names>`, `<path>`, or `<bus>` block into MdNames (default language only)
 fn parse_names(node: roxmltree::Node, tag_name: &str) -> MdNames {
     let mut names = MdNames::default();
-    if let Some(names_node) = node.children().find(|n| n.is_element() && n.has_tag_name(tag_name))
+    if let Some(names_node) = node
+        .children()
+        .find(|n| n.is_element() && n.has_tag_name(tag_name))
     {
         names.name = extract_text(names_node, "name");
         names.display = extract_text(names_node, "display");
@@ -508,7 +510,10 @@ fn parse_properties_children(node: roxmltree::Node, props: &mut HashMap<String, 
             "list" => {
                 if let Some(name) = child.attribute("name") {
                     let mut items = Vec::new();
-                    for li in child.children().filter(|n| n.is_element() && n.has_tag_name("li")) {
+                    for li in child
+                        .children()
+                        .filter(|n| n.is_element() && n.has_tag_name("li"))
+                    {
                         let mut item = HashMap::new();
                         parse_properties_children(li, &mut item);
                         items.push(item);
@@ -589,9 +594,11 @@ impl MetaData {
     /// Returns the text from TX Block or TX's tag text from MD Block
     pub fn get_tx(&self) -> Result<Option<String>, anyhow::Error> {
         match self.block_type {
-            MetaDataBlockType::MdParsed => {
-                Ok(self.md_comment.as_ref().and_then(|mc| mc.get_tx()).map(|s| s.to_string()))
-            }
+            MetaDataBlockType::MdParsed => Ok(self
+                .md_comment
+                .as_ref()
+                .and_then(|mc| mc.get_tx())
+                .map(|s| s.to_string())),
             MetaDataBlockType::MdBlock => {
                 // extract TX tag from xml
                 let comment: String = self
@@ -820,10 +827,10 @@ impl MetaData {
             Ok(doc) => {
                 let root = doc.root_element();
                 ev.tx = extract_text(root, "TX");
-                ev.pre_trigger_interval = extract_text(root, "pre_trigger_interval")
-                    .and_then(|s| s.parse().ok());
-                ev.post_trigger_interval = extract_text(root, "post_trigger_interval")
-                    .and_then(|s| s.parse().ok());
+                ev.pre_trigger_interval =
+                    extract_text(root, "pre_trigger_interval").and_then(|s| s.parse().ok());
+                ev.post_trigger_interval =
+                    extract_text(root, "post_trigger_interval").and_then(|s| s.parse().ok());
                 ev.formula = extract_text(root, "formula");
                 ev.timeout = extract_text(root, "timeout").and_then(|s| s.parse().ok());
                 ev.common_properties = parse_common_properties(root);
@@ -1242,8 +1249,10 @@ mod tests {
         assert_eq!(format!("{}", PropertyValue::Value("hello".into())), "hello");
         assert!(format!("{}", PropertyValue::Tree(HashMap::new())).contains("tree(0 items)"));
         assert!(format!("{}", PropertyValue::List(vec![])).contains("list(0 items)"));
-        assert!(format!("{}", PropertyValue::EList(vec!["a".into(), "b".into()]))
-            .contains("elist(2 items)"));
+        assert!(
+            format!("{}", PropertyValue::EList(vec!["a".into(), "b".into()]))
+                .contains("elist(2 items)")
+        );
     }
 
     #[test]

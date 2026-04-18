@@ -46,7 +46,11 @@ impl Default for Blockheader4 {
 impl Display for Blockheader4 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let id = str::from_utf8(&self.hdr_id).unwrap_or("????");
-        write!(f, "Block: {} len={} links={}", id, self.hdr_len, self.hdr_links)
+        write!(
+            f,
+            "Block: {} len={} links={}",
+            id, self.hdr_len, self.hdr_links
+        )
     }
 }
 

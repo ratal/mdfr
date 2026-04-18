@@ -1497,7 +1497,10 @@ mod tests {
 
     #[test]
     fn test_cn3_value_range_to_text() {
-        let ranges = vec![(1.0, 2.0, "in_range".to_string()), (3.0, 4.0, "out".to_string())];
+        let ranges = vec![
+            (1.0, 2.0, "in_range".to_string()),
+            (3.0, 4.0, "out".to_string()),
+        ];
         let cc_val_ref = (ranges, "default".to_string());
         let mut builder = Float64Builder::new();
         builder.append_value(1.5); // in [1.0, 2.0)

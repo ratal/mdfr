@@ -289,14 +289,12 @@ fn mdf4_metadata(file: &mut File, mdfinfo4: &MdfInfo4) -> Result<()> {
                 .context("failed writing HD time_source attribute")?;
         }
         for (name, value) in &hd.constants {
-            create_str_group_attr::<File>(file, name, value).with_context(|| {
-                format!("failed writing HD constant {name} with value {value}")
-            })?;
+            create_str_group_attr::<File>(file, name, value)
+                .with_context(|| format!("failed writing HD constant {name} with value {value}"))?;
         }
         for (name, value) in &hd.common_properties {
-            create_str_group_attr::<File>(file, name, &format!("{value}")).with_context(|| {
-                format!("failed writing HD property {name}")
-            })?;
+            create_str_group_attr::<File>(file, name, &format!("{value}"))
+                .with_context(|| format!("failed writing HD property {name}"))?;
         }
     }
     Ok(())

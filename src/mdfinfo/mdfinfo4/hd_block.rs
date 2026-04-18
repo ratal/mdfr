@@ -4,12 +4,12 @@
 //! time zone information, and links to DG, FH, CH, AT, and EV blocks.
 use anyhow::{Context, Result};
 use binrw::{BinReaderExt, binrw};
-use chrono::{DateTime, Local};
+use chrono::{DateTime, FixedOffset, Local, TimeZone};
 use std::fmt;
 use std::fs::File;
 use std::io::{Cursor, Read};
 
-use super::block_header::{read_meta_data, SharableBlocks};
+use super::block_header::{SharableBlocks, read_meta_data};
 use super::metadata::BlockType;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 
@@ -93,10 +93,39 @@ impl Default for Hd4 {
 /// Hd4 display implementation
 impl fmt::Display for Hd4 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let sec = self.hd_start_time_ns / 1000000000;
-        let nsec = (self.hd_start_time_ns - sec * 1000000000) as u32;
-        let naive = DateTime::from_timestamp(sec as i64, nsec).unwrap_or_default();
-        writeln!(f, "Time : {} ", naive.to_rfc3339())
+        let sec = (self.hd_start_time_ns / 1_000_000_000) as i64;
+        let nsec = (self.hd_start_time_ns % 1_000_000_000) as u32;
+
+        // Bit 1 of hd_time_flags: time offsets (tz + dst) are valid
+        let offsets_valid = self.hd_time_flags & 0b10 != 0;
+        // Bit 0 of hd_time_flags: timestamp is local time (not UTC)
+        let is_local = self.hd_time_flags & 0b01 != 0;
+
+        let datetime_str = if offsets_valid {
+            // Total offset = timezone offset + DST offset, in seconds
+            let total_offset_secs =
+                (self.hd_tz_offset_min as i32 + self.hd_dst_offset_min as i32) * 60;
+            match FixedOffset::east_opt(total_offset_secs) {
+                Some(offset) => offset
+                    .timestamp_opt(sec, nsec)
+                    .single()
+                    .map(|dt| dt.to_rfc3339())
+                    .unwrap_or_else(|| "Invalid timestamp".to_string()),
+                None => "Invalid offset".to_string(),
+            }
+        } else if is_local {
+            // Local time stored, no valid offset info — display as-is with +00:00 annotation
+            DateTime::from_timestamp(sec, nsec)
+                .map(|dt| format!("{} (local, no offset)", dt.format("%Y-%m-%dT%H:%M:%S%.f")))
+                .unwrap_or_else(|| "Invalid timestamp".to_string())
+        } else {
+            // Pure UTC
+            DateTime::from_timestamp(sec, nsec)
+                .map(|dt| dt.to_rfc3339())
+                .unwrap_or_else(|| "Invalid timestamp".to_string())
+        };
+
+        writeln!(f, "Time : {datetime_str}")
     }
 }
 

@@ -4,6 +4,7 @@
 //! sub-modules per block type for maintainability.
 
 // Sub-modules
+pub mod at_block;
 mod block_header;
 mod ca_block;
 mod cc_block;
@@ -19,7 +20,6 @@ mod hd_block;
 mod metadata;
 mod si_block;
 mod sr_block;
-pub mod at_block;
 
 // Re-exports for backward compatibility
 pub use at_block::*;
@@ -52,8 +52,8 @@ use arrow::array::Array;
 
 use crate::data_holder::channel_data::{ChannelData, try_from};
 use crate::data_holder::tensor_arrow::Order;
-use crate::mdfreader::{DataSignature, MasterSignature};
 use crate::mdfinfo::IdBlock;
+use crate::mdfreader::{DataSignature, MasterSignature};
 
 /// MdfInfo4 is the struct holding whole metadata of mdf4.x files
 /// * blocks with unique links are at top level like attachment, events and file history
@@ -850,7 +850,7 @@ pub fn build_channel_db(
         });
     });
     // identifying master channels
-    let avg_ncn_per_cg = if n_cg > 0 { n_cn / n_cg } else { 0 };
+    let avg_ncn_per_cg = n_cn.checked_div(n_cg).unwrap_or(0);
     dg.iter_mut().for_each(|(_dg_position, dg)| {
         dg.cg.iter_mut().for_each(|(_record_id, cg)| {
             let mut cg_channel_list: HashSet<String> = HashSet::with_capacity(avg_ncn_per_cg);

@@ -53,8 +53,7 @@ pub fn mdfreader4<'a>(
                 // Let's find channel names to read in this data group
                 channel_names_present_in_dg = HashSet::new();
                 for channel_group in dg.cg.values() {
-                    channel_names_present_in_dg
-                        .extend(channel_group.channel_names.iter().cloned());
+                    channel_names_present_in_dg.extend(channel_group.channel_names.iter().cloned());
                 }
                 let channel_names_to_read_in_dg: HashSet<_> = channel_names_present_in_dg
                     .intersection(channel_names)
@@ -642,7 +641,12 @@ fn read_vlsd_from_bytes(
                         _ => length,
                     };
                     let record = &data[position..position + record_len];
-                    array.append_value(decode_string_bytes(record, cn_data_type, decoder, &mut str_buf)?);
+                    array.append_value(decode_string_bytes(
+                        record,
+                        cn_data_type,
+                        decoder,
+                        &mut str_buf,
+                    )?);
                     position += length;
                     remaining = data_length - position;
                     nrecord += 1;
@@ -712,7 +716,12 @@ fn read_vlsc_from_bytes(
                 let length = *size as usize;
                 if start + length <= data_length && length > 0 {
                     let record = &data[start..start + length];
-                    array.append_value(decode_string_bytes(record, cn_data_type, decoder, &mut str_buf)?);
+                    array.append_value(decode_string_bytes(
+                        record,
+                        cn_data_type,
+                        decoder,
+                        &mut str_buf,
+                    )?);
                     max_position = max_position.max(start + length);
                 } else if length == 0 {
                     array.append_value("");
@@ -1048,11 +1057,7 @@ fn parser_dl4_sorted(
                     previous_index = read_vlsd_from_bytes(&mut data, cn, previous_index, decoder)?;
                 }
             } else {
-                let n_record_chunk = if record_length > 0 {
-                    block_length / record_length
-                } else {
-                    0
-                };
+                let n_record_chunk = block_length.checked_div(record_length).unwrap_or(0);
                 if previous_index >= cg_cycle_count || n_record_chunk == 0 {
                     continue;
                 }
@@ -1321,8 +1326,7 @@ fn read_all_channels_unsorted_from_bytes(
                 // VLSD or VLSC channel (Variable Length Signal Data/Size Channel)
                 if remaining >= 4 + dg_rec_id_size {
                     let len = &data[position + dg_rec_id_size..position + vlsd_data_start_offset];
-                    let length: usize =
-                        u32::from_le_bytes(len.try_into().unwrap()) as usize;
+                    let length: usize = u32::from_le_bytes(len.try_into().unwrap()) as usize;
                     remaining = data_length - position - vlsd_data_start_offset;
                     if remaining >= length {
                         position += vlsd_data_start_offset;
@@ -1361,17 +1365,20 @@ fn read_all_channels_unsorted_from_bytes(
                                                 } else {
                                                     dst.clear();
                                                     if target_cn.block.cn_data_type == 6 {
-                                                        let (_result, _size, _replacement) = decoder
-                                                            .windows_1252
-                                                            .decode_to_string(record, &mut dst, false);
+                                                        let (_result, _size, _replacement) =
+                                                            decoder.windows_1252.decode_to_string(
+                                                                record, &mut dst, false,
+                                                            );
                                                     } else if target_cn.block.cn_data_type == 8 {
-                                                        let (_result, _size, _replacement) = decoder
-                                                            .utf_16_le
-                                                            .decode_to_string(record, &mut dst, false);
+                                                        let (_result, _size, _replacement) =
+                                                            decoder.utf_16_le.decode_to_string(
+                                                                record, &mut dst, false,
+                                                            );
                                                     } else if target_cn.block.cn_data_type == 9 {
-                                                        let (_result, _size, _replacement) = decoder
-                                                            .utf_16_be
-                                                            .decode_to_string(record, &mut dst, false);
+                                                        let (_result, _size, _replacement) =
+                                                            decoder.utf_16_be.decode_to_string(
+                                                                record, &mut dst, false,
+                                                            );
                                                     } else if target_cn.block.cn_data_type == 17 {
                                                         // Unicode with BOM
                                                         let bom = Bom::from(record);
@@ -1384,8 +1391,10 @@ fn read_all_channels_unsorted_from_bytes(
                                                                 bail!("not implemented BOM type");
                                                             }
                                                         };
-                                                        let (_result, _size, _replacement) = bom_decoder
-                                                            .decode_to_string(record, &mut dst, false);
+                                                        let (_result, _size, _replacement) =
+                                                            bom_decoder.decode_to_string(
+                                                                record, &mut dst, false,
+                                                            );
                                                     } else {
                                                         bail!(
                                                             "channel data type is not correct for a text"
@@ -1448,11 +1457,7 @@ fn read_all_channels_unsorted_from_bytes(
     for (rec_id, (index, record_data)) in record_counter.iter_mut() {
         if let Some(channel_group) = dg.cg.get_mut(rec_id) {
             let record_length = channel_group.record_length as usize;
-            let n_records = if record_length > 0 {
-                record_data.len() / record_length
-            } else {
-                0
-            };
+            let n_records = record_data.len().checked_div(record_length).unwrap_or(0);
             read_channels_from_bytes(
                 record_data,
                 &mut channel_group.cn,
@@ -1488,9 +1493,7 @@ fn decode_string_bytes<'a>(
         6 => {
             buf.clear();
             buf.reserve(record.len());
-            let _ = decoder
-                .windows_1252
-                .decode_to_string(record, buf, false);
+            let _ = decoder.windows_1252.decode_to_string(record, buf, false);
             Ok(buf.as_str())
         }
         7 => Ok(str::from_utf8(record).context("Found invalid UTF-8")?),
@@ -1507,25 +1510,17 @@ fn decode_string_bytes<'a>(
             Ok(buf.trim_end_matches('\0'))
         }
         17 => {
-            if record.len() >= 3
-                && record[0] == 0xEF
-                && record[1] == 0xBB
-                && record[2] == 0xBF
-            {
+            if record.len() >= 3 && record[0] == 0xEF && record[1] == 0xBB && record[2] == 0xBF {
                 Ok(str::from_utf8(&record[3..]).context("Found invalid UTF-8 with BOM")?)
             } else if record.len() >= 2 && record[0] == 0xFF && record[1] == 0xFE {
                 buf.clear();
                 buf.reserve(record.len());
-                let _ = decoder
-                    .utf_16_le
-                    .decode_to_string(&record[2..], buf, false);
+                let _ = decoder.utf_16_le.decode_to_string(&record[2..], buf, false);
                 Ok(buf.trim_end_matches('\0'))
             } else if record.len() >= 2 && record[0] == 0xFE && record[1] == 0xFF {
                 buf.clear();
                 buf.reserve(record.len());
-                let _ = decoder
-                    .utf_16_be
-                    .decode_to_string(&record[2..], buf, false);
+                let _ = decoder.utf_16_be.decode_to_string(&record[2..], buf, false);
                 Ok(buf.trim_end_matches('\0'))
             } else {
                 Ok(str::from_utf8(record).context("Found invalid UTF-8 (no BOM)")?)
@@ -1973,95 +1968,75 @@ fn store_decoded_values_in_channel(
     let mut str_buf = String::new();
     for value_bytes in values {
         match &mut cn.data {
-            ChannelData::Int8(builder) => {
-                if !value_bytes.is_empty() {
-                    builder.append_value(value_bytes[0] as i8);
-                }
+            ChannelData::Int8(builder) if !value_bytes.is_empty() => {
+                builder.append_value(value_bytes[0] as i8);
             }
-            ChannelData::UInt8(builder) => {
-                if !value_bytes.is_empty() {
-                    builder.append_value(value_bytes[0]);
-                }
+            ChannelData::UInt8(builder) if !value_bytes.is_empty() => {
+                builder.append_value(value_bytes[0]);
             }
-            ChannelData::Int16(builder) => {
-                if value_bytes.len() >= 2 {
-                    let val = if cn.endian.is_big() {
-                        i16::from_be_bytes(value_bytes[..2].try_into()?)
-                    } else {
-                        i16::from_le_bytes(value_bytes[..2].try_into()?)
-                    };
-                    builder.append_value(val);
-                }
+            ChannelData::Int16(builder) if value_bytes.len() >= 2 => {
+                let val = if cn.endian.is_big() {
+                    i16::from_be_bytes(value_bytes[..2].try_into()?)
+                } else {
+                    i16::from_le_bytes(value_bytes[..2].try_into()?)
+                };
+                builder.append_value(val);
             }
-            ChannelData::UInt16(builder) => {
-                if value_bytes.len() >= 2 {
-                    let val = if cn.endian.is_big() {
-                        u16::from_be_bytes(value_bytes[..2].try_into()?)
-                    } else {
-                        u16::from_le_bytes(value_bytes[..2].try_into()?)
-                    };
-                    builder.append_value(val);
-                }
+            ChannelData::UInt16(builder) if value_bytes.len() >= 2 => {
+                let val = if cn.endian.is_big() {
+                    u16::from_be_bytes(value_bytes[..2].try_into()?)
+                } else {
+                    u16::from_le_bytes(value_bytes[..2].try_into()?)
+                };
+                builder.append_value(val);
             }
-            ChannelData::Int32(builder) => {
-                if value_bytes.len() >= 4 {
-                    let val = if cn.endian.is_big() {
-                        i32::from_be_bytes(value_bytes[..4].try_into()?)
-                    } else {
-                        i32::from_le_bytes(value_bytes[..4].try_into()?)
-                    };
-                    builder.append_value(val);
-                }
+            ChannelData::Int32(builder) if value_bytes.len() >= 4 => {
+                let val = if cn.endian.is_big() {
+                    i32::from_be_bytes(value_bytes[..4].try_into()?)
+                } else {
+                    i32::from_le_bytes(value_bytes[..4].try_into()?)
+                };
+                builder.append_value(val);
             }
-            ChannelData::UInt32(builder) => {
-                if value_bytes.len() >= 4 {
-                    let val = if cn.endian.is_big() {
-                        u32::from_be_bytes(value_bytes[..4].try_into()?)
-                    } else {
-                        u32::from_le_bytes(value_bytes[..4].try_into()?)
-                    };
-                    builder.append_value(val);
-                }
+            ChannelData::UInt32(builder) if value_bytes.len() >= 4 => {
+                let val = if cn.endian.is_big() {
+                    u32::from_be_bytes(value_bytes[..4].try_into()?)
+                } else {
+                    u32::from_le_bytes(value_bytes[..4].try_into()?)
+                };
+                builder.append_value(val);
             }
-            ChannelData::Float32(builder) => {
-                if value_bytes.len() >= 4 {
-                    let val = if cn.endian.is_big() {
-                        f32::from_be_bytes(value_bytes[..4].try_into()?)
-                    } else {
-                        f32::from_le_bytes(value_bytes[..4].try_into()?)
-                    };
-                    builder.append_value(val);
-                }
+            ChannelData::Float32(builder) if value_bytes.len() >= 4 => {
+                let val = if cn.endian.is_big() {
+                    f32::from_be_bytes(value_bytes[..4].try_into()?)
+                } else {
+                    f32::from_le_bytes(value_bytes[..4].try_into()?)
+                };
+                builder.append_value(val);
             }
-            ChannelData::Int64(builder) => {
-                if value_bytes.len() >= 8 {
-                    let val = if cn.endian.is_big() {
-                        i64::from_be_bytes(value_bytes[..8].try_into()?)
-                    } else {
-                        i64::from_le_bytes(value_bytes[..8].try_into()?)
-                    };
-                    builder.append_value(val);
-                }
+            ChannelData::Int64(builder) if value_bytes.len() >= 8 => {
+                let val = if cn.endian.is_big() {
+                    i64::from_be_bytes(value_bytes[..8].try_into()?)
+                } else {
+                    i64::from_le_bytes(value_bytes[..8].try_into()?)
+                };
+                builder.append_value(val);
             }
-            ChannelData::UInt64(builder) => {
-                if value_bytes.len() >= 8 {
-                    let val = if cn.endian.is_big() {
-                        u64::from_be_bytes(value_bytes[..8].try_into()?)
-                    } else {
-                        u64::from_le_bytes(value_bytes[..8].try_into()?)
-                    };
-                    builder.append_value(val);
-                }
+            ChannelData::UInt64(builder) if value_bytes.len() >= 8 => {
+                let val = if cn.endian.is_big() {
+                    u64::from_be_bytes(value_bytes[..8].try_into()?)
+                } else {
+                    u64::from_le_bytes(value_bytes[..8].try_into()?)
+                };
+                builder.append_value(val);
             }
-            ChannelData::Float64(builder) => {
-                if value_bytes.len() >= 8 {
-                    let val = if cn.endian.is_big() {
-                        f64::from_be_bytes(value_bytes[..8].try_into()?)
-                    } else {
-                        f64::from_le_bytes(value_bytes[..8].try_into()?)
-                    };
-                    builder.append_value(val);
-                }
+            ChannelData::Float64(builder) if value_bytes.len() >= 8 => {
+                let val = if cn.endian.is_big() {
+                    f64::from_be_bytes(value_bytes[..8].try_into()?)
+                } else {
+                    f64::from_le_bytes(value_bytes[..8].try_into()?)
+                };
+                builder.append_value(val);
             }
             ChannelData::Utf8(builder) => {
                 builder.append_value(decode_string_bytes(
@@ -2085,4 +2060,3 @@ fn store_decoded_values_in_channel(
 // =============================================================================
 // Sample Reduction Data Reading (RDBLOCK/RVBLOCK/RIBLOCK)
 // =============================================================================
-

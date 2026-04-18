@@ -9,8 +9,8 @@ use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{Cursor, Read};
 
-use super::block_header::{read_meta_data, SharableBlocks};
-use super::cg_block::{Cg4, parse_cg4, CG_F_VLSC, CG_F_VLSD};
+use super::block_header::{SharableBlocks, read_meta_data};
+use super::cg_block::{CG_F_VLSC, CG_F_VLSD, Cg4, parse_cg4};
 use super::metadata::BlockType;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 
@@ -195,11 +195,11 @@ fn identify_vlsd_cg(cg: &mut HashMap<u64, Cg4>) {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::block_header::default_short_header;
     use super::super::cg_block::Cg4Block;
     use super::super::cn_block::Cn4;
     use super::super::metadata::BlockType;
+    use super::*;
     use std::collections::HashSet;
 
     #[test]

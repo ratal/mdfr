@@ -158,18 +158,12 @@ pub fn read_one_channel_array(
                     if cn.endian.is_big() {
                         for (i, value) in data_bytes.chunks(std::mem::size_of::<f16>()).enumerate()
                         {
-                            data[i] = f16::from_be_bytes(
-                                value.try_into().unwrap(),
-                            )
-                            .to_f32();
+                            data[i] = f16::from_be_bytes(value.try_into().unwrap()).to_f32();
                         }
                     } else {
                         for (i, value) in data_bytes.chunks(std::mem::size_of::<f16>()).enumerate()
                         {
-                            data[i] = f16::from_le_bytes(
-                                value.try_into().unwrap(),
-                            )
-                            .to_f32();
+                            data[i] = f16::from_le_bytes(value.try_into().unwrap()).to_f32();
                         }
                     }
                 }
@@ -287,18 +281,12 @@ pub fn read_one_channel_array(
                     if cn.endian.is_big() {
                         for (i, value) in data_bytes.chunks(std::mem::size_of::<f16>()).enumerate()
                         {
-                            data[i] = f16::from_be_bytes(
-                                value.try_into().unwrap(),
-                            )
-                            .to_f32();
+                            data[i] = f16::from_be_bytes(value.try_into().unwrap()).to_f32();
                         }
                     } else {
                         for (i, value) in data_bytes.chunks(std::mem::size_of::<f16>()).enumerate()
                         {
-                            data[i] = f16::from_le_bytes(
-                                value.try_into().unwrap(),
-                            )
-                            .to_f32();
+                            data[i] = f16::from_le_bytes(value.try_into().unwrap()).to_f32();
                         }
                     }
                 } else if n_bytes <= 8 {
@@ -306,16 +294,12 @@ pub fn read_one_channel_array(
                     if cn.endian.is_big() {
                         for (i, value) in data_bytes.chunks(std::mem::size_of::<f32>()).enumerate()
                         {
-                            data[i] = f32::from_be_bytes(
-                                value.try_into().unwrap(),
-                            );
+                            data[i] = f32::from_be_bytes(value.try_into().unwrap());
                         }
                     } else {
                         for (i, value) in data_bytes.chunks(std::mem::size_of::<f32>()).enumerate()
                         {
-                            data[i] = f32::from_le_bytes(
-                                value.try_into().unwrap(),
-                            );
+                            data[i] = f32::from_le_bytes(value.try_into().unwrap());
                         }
                     }
                 }
@@ -324,15 +308,11 @@ pub fn read_one_channel_array(
                 let data = a.values().values_slice_mut();
                 if cn.endian.is_big() {
                     for (i, value) in data_bytes.chunks(std::mem::size_of::<f64>()).enumerate() {
-                        data[i] = f64::from_be_bytes(
-                            value.try_into().unwrap(),
-                        );
+                        data[i] = f64::from_be_bytes(value.try_into().unwrap());
                     }
                 } else {
                     for (i, value) in data_bytes.chunks(std::mem::size_of::<f64>()).enumerate() {
-                        data[i] = f64::from_le_bytes(
-                            value.try_into().unwrap(),
-                        );
+                        data[i] = f64::from_le_bytes(value.try_into().unwrap());
                     }
                 }
             }
@@ -412,11 +392,7 @@ pub fn read_one_channel_array(
                 Cursor::new(data_bytes)
                     .read_i8_into(&mut buf)
                     .context("Could not read i8 array")?;
-                *a = TensorArrow::new_from_buffer(
-                    buf.into(),
-                    shape_dims,
-                    shape_order,
-                );
+                *a = TensorArrow::new_from_buffer(buf.into(), shape_dims, shape_order);
             }
             ChannelData::ArrayDUInt8(a) => {
                 *a = TensorArrow::new_from_buffer(
@@ -436,11 +412,7 @@ pub fn read_one_channel_array(
                         .read_i16_into::<LittleEndian>(&mut buf)
                         .context("Could not read le i16 array")?;
                 }
-                *a = TensorArrow::new_from_buffer(
-                    buf.into(),
-                    shape_dims,
-                    shape_order,
-                );
+                *a = TensorArrow::new_from_buffer(buf.into(), shape_dims, shape_order);
             }
             ChannelData::ArrayDUInt16(a) => {
                 let mut buf = vec![0; cycle_count * list_size];
@@ -453,11 +425,7 @@ pub fn read_one_channel_array(
                         .read_u16_into::<LittleEndian>(&mut buf)
                         .context("Could not read le 16 array")?;
                 }
-                *a = TensorArrow::new_from_buffer(
-                    buf.into(),
-                    shape_dims,
-                    shape_order,
-                );
+                *a = TensorArrow::new_from_buffer(buf.into(), shape_dims, shape_order);
             }
             ChannelData::ArrayDInt32(a) => {
                 let mut buf = vec![0i32; cycle_count * list_size];
@@ -484,11 +452,7 @@ pub fn read_one_channel_array(
                         .read_i32_into::<LittleEndian>(&mut buf)
                         .context("Could not read le i32 array")?;
                 }
-                *a = TensorArrow::new_from_buffer(
-                    buf.into(),
-                    shape_dims,
-                    shape_order,
-                );
+                *a = TensorArrow::new_from_buffer(buf.into(), shape_dims, shape_order);
             }
             ChannelData::ArrayDUInt32(a) => {
                 let mut buf = vec![0; cycle_count * list_size];
@@ -515,11 +479,7 @@ pub fn read_one_channel_array(
                         .read_u32_into::<LittleEndian>(&mut buf)
                         .context("Could not read le u32 array")?;
                 }
-                *a = TensorArrow::new_from_buffer(
-                    buf.into(),
-                    shape_dims,
-                    shape_order,
-                );
+                *a = TensorArrow::new_from_buffer(buf.into(), shape_dims, shape_order);
             }
             ChannelData::ArrayDFloat32(a) => {
                 let mut buf = vec![0f32; cycle_count * list_size];
@@ -527,10 +487,7 @@ pub fn read_one_channel_array(
                     if n_bytes == 2 {
                         for (i, value) in data_bytes.chunks(std::mem::size_of::<f16>()).enumerate()
                         {
-                            buf[i] = f16::from_be_bytes(
-                                value.try_into().unwrap(),
-                            )
-                            .to_f32();
+                            buf[i] = f16::from_be_bytes(value.try_into().unwrap()).to_f32();
                         }
                     } else {
                         Cursor::new(data_bytes)
@@ -539,20 +496,14 @@ pub fn read_one_channel_array(
                     }
                 } else if n_bytes == 2 {
                     for (i, value) in data_bytes.chunks(std::mem::size_of::<f16>()).enumerate() {
-                        buf[i] =
-                            f16::from_le_bytes(value.try_into().unwrap())
-                                .to_f32();
+                        buf[i] = f16::from_le_bytes(value.try_into().unwrap()).to_f32();
                     }
                 } else {
                     Cursor::new(data_bytes)
                         .read_f32_into::<LittleEndian>(&mut buf)
                         .context("Could not read le f32 array")?;
                 }
-                *a = TensorArrow::new_from_buffer(
-                    buf.into(),
-                    shape_dims,
-                    shape_order,
-                );
+                *a = TensorArrow::new_from_buffer(buf.into(), shape_dims, shape_order);
             }
             ChannelData::ArrayDInt64(a) => {
                 let mut buf = vec![0; cycle_count * list_size];
@@ -579,11 +530,7 @@ pub fn read_one_channel_array(
                             .context("Could not read le i48")?;
                     }
                 }
-                *a = TensorArrow::new_from_buffer(
-                    buf.into(),
-                    shape_dims,
-                    shape_order,
-                );
+                *a = TensorArrow::new_from_buffer(buf.into(), shape_dims, shape_order);
             }
             ChannelData::ArrayDUInt64(a) => {
                 let mut buf = vec![0; cycle_count * list_size];
@@ -642,11 +589,7 @@ pub fn read_one_channel_array(
                         }
                     }
                 }
-                *a = TensorArrow::new_from_buffer(
-                    buf.into(),
-                    shape_dims,
-                    shape_order,
-                );
+                *a = TensorArrow::new_from_buffer(buf.into(), shape_dims, shape_order);
             }
             ChannelData::ArrayDFloat64(a) => {
                 let mut buf = vec![0f64; cycle_count * (list_size)];
@@ -659,11 +602,7 @@ pub fn read_one_channel_array(
                         .read_f64_into::<LittleEndian>(&mut buf)
                         .context("Could not read le f64 array")?;
                 }
-                *a = TensorArrow::new_from_buffer(
-                    buf.into(),
-                    shape_dims,
-                    shape_order,
-                );
+                *a = TensorArrow::new_from_buffer(buf.into(), shape_dims, shape_order);
             }
             ChannelData::Union(_) => {} // Union channels are constructed post-read
         }
@@ -707,16 +646,14 @@ pub fn read_channels_from_bytes(
                         let data = a.values_slice_mut();
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i8>()];
-                            data[i + previous_index] =
-                                i8::from_le_bytes(value.try_into().unwrap());
+                            data[i + previous_index] = i8::from_le_bytes(value.try_into().unwrap());
                         }
                     }
                     ChannelData::UInt8(a) => {
                         let data = a.values_slice_mut();
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u8>()];
-                            data[i + previous_index] =
-                                u8::from_le_bytes(value.try_into().unwrap());
+                            data[i + previous_index] = u8::from_le_bytes(value.try_into().unwrap());
                         }
                     }
                     ChannelData::Int16(a) => {
@@ -725,17 +662,15 @@ pub fn read_channels_from_bytes(
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record
                                     [pos_byte_beg..pos_byte_beg + std::mem::size_of::<i16>()];
-                                data[i + previous_index] = i16::from_be_bytes(
-                                    value.try_into().unwrap(),
-                                );
+                                data[i + previous_index] =
+                                    i16::from_be_bytes(value.try_into().unwrap());
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record
                                     [pos_byte_beg..pos_byte_beg + std::mem::size_of::<i16>()];
-                                data[i + previous_index] = i16::from_le_bytes(
-                                    value.try_into().unwrap(),
-                                );
+                                data[i + previous_index] =
+                                    i16::from_le_bytes(value.try_into().unwrap());
                             }
                         }
                     }
@@ -745,17 +680,15 @@ pub fn read_channels_from_bytes(
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record
                                     [pos_byte_beg..pos_byte_beg + std::mem::size_of::<u16>()];
-                                data[i + previous_index] = u16::from_be_bytes(
-                                    value.try_into().unwrap(),
-                                );
+                                data[i + previous_index] =
+                                    u16::from_be_bytes(value.try_into().unwrap());
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record
                                     [pos_byte_beg..pos_byte_beg + std::mem::size_of::<u16>()];
-                                data[i + previous_index] = u16::from_le_bytes(
-                                    value.try_into().unwrap(),
-                                );
+                                data[i + previous_index] =
+                                    u16::from_le_bytes(value.try_into().unwrap());
                             }
                         }
                     }
@@ -781,17 +714,15 @@ pub fn read_channels_from_bytes(
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record
                                     [pos_byte_beg..pos_byte_beg + std::mem::size_of::<i32>()];
-                                data[i + previous_index] = i32::from_be_bytes(
-                                    value.try_into().unwrap(),
-                                );
+                                data[i + previous_index] =
+                                    i32::from_be_bytes(value.try_into().unwrap());
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record
                                     [pos_byte_beg..pos_byte_beg + std::mem::size_of::<i32>()];
-                                data[i + previous_index] = i32::from_le_bytes(
-                                    value.try_into().unwrap(),
-                                );
+                                data[i + previous_index] =
+                                    i32::from_le_bytes(value.try_into().unwrap());
                             }
                         }
                     }
@@ -817,17 +748,15 @@ pub fn read_channels_from_bytes(
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record
                                     [pos_byte_beg..pos_byte_beg + std::mem::size_of::<u32>()];
-                                data[i + previous_index] = u32::from_be_bytes(
-                                    value.try_into().unwrap(),
-                                );
+                                data[i + previous_index] =
+                                    u32::from_be_bytes(value.try_into().unwrap());
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record
                                     [pos_byte_beg..pos_byte_beg + std::mem::size_of::<u32>()];
-                                data[i + previous_index] = u32::from_le_bytes(
-                                    value.try_into().unwrap(),
-                                );
+                                data[i + previous_index] =
+                                    u32::from_le_bytes(value.try_into().unwrap());
                             }
                         }
                     }
@@ -838,36 +767,30 @@ pub fn read_channels_from_bytes(
                                 for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                     value = &record
                                         [pos_byte_beg..pos_byte_beg + std::mem::size_of::<f16>()];
-                                    data[i + previous_index] = f16::from_be_bytes(
-                                        value.try_into().unwrap(),
-                                    )
-                                    .to_f32();
+                                    data[i + previous_index] =
+                                        f16::from_be_bytes(value.try_into().unwrap()).to_f32();
                                 }
                             } else {
                                 for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                     value = &record
                                         [pos_byte_beg..pos_byte_beg + std::mem::size_of::<f32>()];
-                                    data[i + previous_index] = f32::from_be_bytes(
-                                        value.try_into().unwrap(),
-                                    );
+                                    data[i + previous_index] =
+                                        f32::from_be_bytes(value.try_into().unwrap());
                                 }
                             }
                         } else if n_bytes == 2 {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record
                                     [pos_byte_beg..pos_byte_beg + std::mem::size_of::<f16>()];
-                                data[i + previous_index] = f16::from_le_bytes(
-                                    value.try_into().unwrap(),
-                                )
-                                .to_f32();
+                                data[i + previous_index] =
+                                    f16::from_le_bytes(value.try_into().unwrap()).to_f32();
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record
                                     [pos_byte_beg..pos_byte_beg + std::mem::size_of::<f32>()];
-                                data[i + previous_index] = f32::from_le_bytes(
-                                    value.try_into().unwrap(),
-                                );
+                                data[i + previous_index] =
+                                    f32::from_le_bytes(value.try_into().unwrap());
                             }
                         }
                     }
@@ -877,9 +800,8 @@ pub fn read_channels_from_bytes(
                             if n_bytes == 8 {
                                 for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                     value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                    data[i + previous_index] = i64::from_be_bytes(
-                                        value.try_into().unwrap(),
-                                    );
+                                    data[i + previous_index] =
+                                        i64::from_be_bytes(value.try_into().unwrap());
                                 }
                             } else if n_bytes == 6 {
                                 for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -892,9 +814,8 @@ pub fn read_channels_from_bytes(
                         } else if n_bytes == 8 {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                data[i + previous_index] = i64::from_le_bytes(
-                                    value.try_into().unwrap(),
-                                );
+                                data[i + previous_index] =
+                                    i64::from_le_bytes(value.try_into().unwrap());
                             }
                         } else if n_bytes == 6 {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -911,9 +832,8 @@ pub fn read_channels_from_bytes(
                             if n_bytes == 8 {
                                 for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                     value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                    data[i + previous_index] = u64::from_be_bytes(
-                                        value.try_into().unwrap(),
-                                    );
+                                    data[i + previous_index] =
+                                        u64::from_be_bytes(value.try_into().unwrap());
                                 }
                             } else if n_bytes == 7 {
                                 let mut buf = [0u8; std::mem::size_of::<u64>()];
@@ -943,9 +863,8 @@ pub fn read_channels_from_bytes(
                         } else if n_bytes == 8 {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                data[i + previous_index] = u64::from_le_bytes(
-                                    value.try_into().unwrap(),
-                                );
+                                data[i + previous_index] =
+                                    u64::from_le_bytes(value.try_into().unwrap());
                             }
                         } else if n_bytes == 7 {
                             // little endian
@@ -978,17 +897,15 @@ pub fn read_channels_from_bytes(
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record
                                     [pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
-                                data[i + previous_index] = f64::from_be_bytes(
-                                    value.try_into().unwrap(),
-                                );
+                                data[i + previous_index] =
+                                    f64::from_be_bytes(value.try_into().unwrap());
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record
                                     [pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];
-                                data[i + previous_index] = f64::from_le_bytes(
-                                    value.try_into().unwrap(),
-                                );
+                                data[i + previous_index] =
+                                    f64::from_le_bytes(value.try_into().unwrap());
                             }
                         }
                     }
@@ -1207,9 +1124,8 @@ pub fn read_channels_from_bytes(
                             for j in 0..cn.list_size {
                                 value = &record[pos_byte_beg + j * std::mem::size_of::<i8>()
                                     ..pos_byte_beg + (j + 1) * std::mem::size_of::<i8>()];
-                                data[(i + previous_index) * cn.list_size + j] = i8::from_le_bytes(
-                                    value.try_into().unwrap(),
-                                );
+                                data[(i + previous_index) * cn.list_size + j] =
+                                    i8::from_le_bytes(value.try_into().unwrap());
                             }
                         }
                     }
@@ -1219,9 +1135,8 @@ pub fn read_channels_from_bytes(
                             for j in 0..cn.list_size {
                                 value = &record[pos_byte_beg + j * std::mem::size_of::<u8>()
                                     ..pos_byte_beg + (j + 1) * std::mem::size_of::<u8>()];
-                                data[(i + previous_index) * cn.list_size + j] = u8::from_le_bytes(
-                                    value.try_into().unwrap(),
-                                );
+                                data[(i + previous_index) * cn.list_size + j] =
+                                    u8::from_le_bytes(value.try_into().unwrap());
                             }
                         }
                     }
@@ -1564,9 +1479,7 @@ pub fn read_channels_from_bytes(
                                     value = &record[pos_byte_beg + j * n_bytes
                                         ..pos_byte_beg + (j + 1) * n_bytes];
                                     data[(i + previous_index) * cn.list_size + j] =
-                                        u64::from_le_bytes(
-                                            value.try_into().unwrap(),
-                                        );
+                                        u64::from_le_bytes(value.try_into().unwrap());
                                 }
                             }
                         } else if n_bytes == 7 {
@@ -1616,9 +1529,7 @@ pub fn read_channels_from_bytes(
                                     value = &record[pos_byte_beg + j * std::mem::size_of::<u64>()
                                         ..pos_byte_beg + (j + 1) * std::mem::size_of::<u64>()];
                                     data[(i + previous_index) * cn.list_size + j] =
-                                        f64::from_be_bytes(
-                                            value.try_into().unwrap(),
-                                        );
+                                        f64::from_be_bytes(value.try_into().unwrap());
                                 }
                             }
                         } else {
@@ -1627,9 +1538,7 @@ pub fn read_channels_from_bytes(
                                     value = &record[pos_byte_beg + j * std::mem::size_of::<u64>()
                                         ..pos_byte_beg + (j + 1) * std::mem::size_of::<u64>()];
                                     data[(i + previous_index) * cn.list_size + j] =
-                                        f64::from_le_bytes(
-                                            value.try_into().unwrap(),
-                                        );
+                                        f64::from_le_bytes(value.try_into().unwrap());
                                 }
                             }
                         }
@@ -1639,9 +1548,7 @@ pub fn read_channels_from_bytes(
                 // VLSC channels: offsets were read above, now mark for VD block processing
                 if cn.block.cn_type == 7 {
                     let c_vlsd_channel = Arc::clone(&vlsd_channels);
-                    let mut vlsd_channel = c_vlsd_channel
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner());
+                    let mut vlsd_channel = c_vlsd_channel.lock().unwrap_or_else(|e| e.into_inner());
                     vlsd_channel.push((cn.block.cn_type, *rec_pos));
                 }
             } else {
@@ -1670,9 +1577,7 @@ pub fn read_channels_from_bytes(
                     // CN_F_DATA_STREAM_MODE: Data Stream - DS Block points to data
                     // ca_storage == 5: Dynamic array storage
                     let c_vlsd_channel = Arc::clone(&vlsd_channels);
-                    let mut vlsd_channel = c_vlsd_channel
-                        .lock()
-                        .unwrap_or_else(|e| e.into_inner());
+                    let mut vlsd_channel = c_vlsd_channel.lock().unwrap_or_else(|e| e.into_inner());
                     vlsd_channel.push((cn.block.cn_type, *rec_pos));
                 }
             }

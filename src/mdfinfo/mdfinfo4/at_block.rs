@@ -11,7 +11,7 @@ use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{Cursor, Read};
 
-use super::block_header::{read_meta_data, SharableBlocks};
+use super::block_header::{SharableBlocks, read_meta_data};
 use super::data_block::decompress_data;
 use super::metadata::BlockType;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
@@ -113,7 +113,11 @@ impl At4Block {
 
 impl Display for At4Block {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let storage = if self.is_embedded() { "embedded" } else { "external" };
+        let storage = if self.is_embedded() {
+            "embedded"
+        } else {
+            "external"
+        };
         let compression = self.get_compression_str();
         write!(
             f,

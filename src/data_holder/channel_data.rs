@@ -4,11 +4,10 @@ use crate::mdfinfo::mdfinfo4::CN_F_DATA_STREAM_MODE;
 use anyhow::{Context, Error, Result, bail};
 use arrow::array::{
     Array, ArrayBuilder, ArrayData, ArrayRef, BinaryArray, BooleanBufferBuilder,
-    FixedSizeBinaryArray, FixedSizeBinaryBuilder, FixedSizeListArray, Int8Builder,
-    Int16Builder, Int32Builder, Int64Builder, UInt8Builder, UInt16Builder, UInt32Builder,
-    UInt64Builder, Float32Builder, Float64Builder,
-    LargeBinaryArray, LargeBinaryBuilder, LargeStringArray, LargeStringBuilder, PrimitiveBuilder,
-    StringArray, UnionArray, as_primitive_array,
+    FixedSizeBinaryArray, FixedSizeBinaryBuilder, FixedSizeListArray, Float32Builder,
+    Float64Builder, Int8Builder, Int16Builder, Int32Builder, Int64Builder, LargeBinaryArray,
+    LargeBinaryBuilder, LargeStringArray, LargeStringBuilder, PrimitiveBuilder, StringArray,
+    UInt8Builder, UInt16Builder, UInt32Builder, UInt64Builder, UnionArray, as_primitive_array,
 };
 use arrow::buffer::{MutableBuffer, NullBuffer};
 use arrow::datatypes::{
@@ -111,7 +110,10 @@ impl Clone for ChannelData {
                 Self::$variant(arr.into_builder().unwrap_or_else(|arr| {
                     let mut b = $builder::with_capacity(arr.len());
                     for v in arr.iter() {
-                        match v { Some(x) => b.append_value(x), None => b.append_null() }
+                        match v {
+                            Some(x) => b.append_value(x),
+                            None => b.append_null(),
+                        }
                     }
                     b
                 }))
@@ -130,26 +132,31 @@ impl Clone for ChannelData {
             Self::Float64(arg0) => clone_primitive!(Float64, Float64Builder, arg0),
             Self::Complex32(arg0) => Self::Complex32(arg0.clone()),
             Self::Complex64(arg0) => Self::Complex64(arg0.clone()),
-            Self::Utf8(arg0) => Self::Utf8(
-                arg0.finish_cloned()
-                    .into_builder()
-                    .unwrap_or_else(|arr| {
-                        // unreachable: finish_cloned() gives Arc refcount 1
-                        let mut b = LargeStringBuilder::with_capacity(arr.len(), arr.values().len());
-                        for v in arr.iter() { match v { Some(s) => b.append_value(s), None => b.append_null() } }
-                        b
-                    }),
-            ),
+            Self::Utf8(arg0) => {
+                Self::Utf8(arg0.finish_cloned().into_builder().unwrap_or_else(|arr| {
+                    // unreachable: finish_cloned() gives Arc refcount 1
+                    let mut b = LargeStringBuilder::with_capacity(arr.len(), arr.values().len());
+                    for v in arr.iter() {
+                        match v {
+                            Some(s) => b.append_value(s),
+                            None => b.append_null(),
+                        }
+                    }
+                    b
+                }))
+            }
             Self::VariableSizeByteArray(array) => Self::VariableSizeByteArray(
-                array
-                    .finish_cloned()
-                    .into_builder()
-                    .unwrap_or_else(|arr| {
-                        // unreachable: finish_cloned() gives Arc refcount 1
-                        let mut b = LargeBinaryBuilder::with_capacity(arr.len(), arr.values().len());
-                        for v in arr.iter() { match v { Some(s) => b.append_value(s), None => b.append_null() } }
-                        b
-                    }),
+                array.finish_cloned().into_builder().unwrap_or_else(|arr| {
+                    // unreachable: finish_cloned() gives Arc refcount 1
+                    let mut b = LargeBinaryBuilder::with_capacity(arr.len(), arr.values().len());
+                    for v in arr.iter() {
+                        match v {
+                            Some(s) => b.append_value(s),
+                            None => b.append_null(),
+                        }
+                    }
+                    b
+                }),
             ),
             Self::FixedSizeByteArray(array) => {
                 let array: FixedSizeBinaryArray = array.finish_cloned();
@@ -165,7 +172,8 @@ impl Clone for ChannelData {
                             .zip(validity.iter())
                             .for_each(|(value, valid)| {
                                 if valid {
-                                    new_array.append_value(value)
+                                    new_array
+                                        .append_value(value)
                                         .unwrap_or_else(|_| new_array.append_null());
                                 } else {
                                     new_array.append_null();
@@ -177,7 +185,8 @@ impl Clone for ChannelData {
                             .values()
                             .chunks(array.value_length() as usize)
                             .for_each(|value| {
-                                new_array.append_value(value)
+                                new_array
+                                    .append_value(value)
                                     .unwrap_or_else(|_| new_array.append_null());
                             });
                     }
@@ -194,9 +203,7 @@ impl Clone for ChannelData {
             Self::ArrayDInt64(arg0) => Self::ArrayDInt64(arg0.clone()),
             Self::ArrayDUInt64(arg0) => Self::ArrayDUInt64(arg0.clone()),
             Self::ArrayDFloat64(arg0) => Self::ArrayDFloat64(arg0.clone()),
-            Self::Union(arg0) => {
-                Self::Union(UnionArray::from(arg0.to_data()))
-            }
+            Self::Union(arg0) => Self::Union(UnionArray::from(arg0.to_data())),
         }
     }
 }
@@ -819,20 +826,14 @@ impl ChannelData {
                 for i in 0..n {
                     let type_id = a.type_id(i);
                     if let Some((child_data, elem_size)) = children_meta.get(&type_id) {
-                        let child_offset = if is_dense {
-                            a.value_offset(i)
-                        } else {
-                            i
-                        };
+                        let child_offset = if is_dense { a.value_offset(i) } else { i };
                         if let Some(buffer) = child_data.buffers().first() {
                             let start = (child_data.offset() + child_offset) * elem_size;
                             let end = start + elem_size;
                             let copy_len = (*elem_size).min(union_byte_count);
                             if end <= buffer.len() {
                                 bytes[i * union_byte_count..i * union_byte_count + copy_len]
-                                    .copy_from_slice(
-                                        &buffer.as_slice()[start..start + copy_len],
-                                    );
+                                    .copy_from_slice(&buffer.as_slice()[start..start + copy_len]);
                             }
                         }
                     }
@@ -1270,8 +1271,7 @@ impl ChannelData {
                         .enumerate()
                         .map(|(idx, child)| {
                             let child_mask = &child_nulls[idx];
-                            let mut null_builder =
-                                BooleanBufferBuilder::new(child_mask.len());
+                            let mut null_builder = BooleanBufferBuilder::new(child_mask.len());
                             for &v in child_mask {
                                 null_builder.append(v);
                             }
@@ -1804,9 +1804,8 @@ pub fn try_from(value: &dyn Array) -> Result<ChannelData, Error> {
         DataType::Float16 => {
             let data = as_primitive_array::<Float16Type>(value);
             let mut new_data = PrimitiveBuilder::<Float32Type>::with_capacity(data.len());
-            data.iter().for_each(|v| {
-                new_data.append_option(v.map(|f| f.to_f32()))
-            });
+            data.iter()
+                .for_each(|v| new_data.append_option(v.map(|f| f.to_f32())));
             Ok(ChannelData::Float32(new_data))
         }
         DataType::Float32 => {
@@ -2196,33 +2195,25 @@ mod tests {
     #[test]
     fn test_zeros_virtual() {
         let cd = make_int32(&[1]);
-        let result = cd
-            .zeros(3, 5, 0, (vec![5], Order::RowMajor))
-            .unwrap();
+        let result = cd.zeros(3, 5, 0, (vec![5], Order::RowMajor)).unwrap();
         assert_eq!(result.len(), 5);
         assert!(matches!(result, ChannelData::UInt64(_)));
         assert_eq!(result.to_u64_vec(), Some(vec![0, 1, 2, 3, 4]));
 
-        let result = cd
-            .zeros(6, 3, 0, (vec![3], Order::RowMajor))
-            .unwrap();
+        let result = cd.zeros(6, 3, 0, (vec![3], Order::RowMajor)).unwrap();
         assert_eq!(result.to_u64_vec(), Some(vec![0, 1, 2]));
     }
 
     #[test]
     fn test_zeros_regular() {
         let cd = make_int32(&[1]);
-        let result = cd
-            .zeros(0, 10, 4, (vec![10], Order::RowMajor))
-            .unwrap();
+        let result = cd.zeros(0, 10, 4, (vec![10], Order::RowMajor)).unwrap();
         assert!(matches!(result, ChannelData::Int32(_)));
         assert_eq!(result.len(), 10);
         assert!(!result.is_empty());
 
         let cd = make_float64(&[1.0]);
-        let result = cd
-            .zeros(0, 5, 8, (vec![5], Order::RowMajor))
-            .unwrap();
+        let result = cd.zeros(0, 5, 8, (vec![5], Order::RowMajor)).unwrap();
         assert!(matches!(result, ChannelData::Float64(_)));
         assert_eq!(result.len(), 5);
     }

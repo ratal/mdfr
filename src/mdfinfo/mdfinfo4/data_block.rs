@@ -239,8 +239,7 @@ impl Dz4Block {
 
 impl Display for Dz4Block {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let org_type =
-            str::from_utf8(&self.dz_org_block_type).unwrap_or("??");
+        let org_type = str::from_utf8(&self.dz_org_block_type).unwrap_or("??");
         let ratio = if self.dz_org_data_length > 0 {
             (self.dz_data_length as f64 / self.dz_org_data_length as f64) * 100.0
         } else {

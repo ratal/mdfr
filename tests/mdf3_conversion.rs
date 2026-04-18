@@ -2,9 +2,8 @@ use anyhow::Result;
 use mdfr::mdfreader::Mdf;
 use std::sync::LazyLock;
 
-static MDF3_PATH: LazyLock<String> = LazyLock::new(|| {
-    "/home/ratal/workspace/mdfreader/mdfreader/tests/mdf3/".to_string()
-});
+static MDF3_PATH: LazyLock<String> =
+    LazyLock::new(|| "/home/ratal/workspace/mdfreader/mdfreader/tests/mdf3/".to_string());
 
 /// Helper: load a file and all its channel data
 fn load_mdf3(filename: &str) -> Result<Mdf> {

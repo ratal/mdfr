@@ -327,7 +327,10 @@ fn string_no_zero_termination() -> Result<()> {
     let mut mdf = Mdf::new(&file_name)?;
     mdf.load_all_channels_data_in_memory()?;
     let names = mdf.get_channel_names_set();
-    assert!(!names.is_empty(), "No channels in no-zero-termination string file");
+    assert!(
+        !names.is_empty(),
+        "No channels in no-zero-termination string file"
+    );
     Ok(())
 }
 

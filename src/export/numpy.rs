@@ -131,8 +131,7 @@ impl<'py> IntoPyObject<'py> for ChannelData {
                 strings.into_pyobject(py)
             }
             ChannelData::Union(array) => {
-                let arrow_data =
-                    to_py_array(py, Arc::new(UnionArray::from(array.to_data())))?;
+                let arrow_data = to_py_array(py, Arc::new(UnionArray::from(array.to_data())))?;
                 arrow_data.into_pyobject(py)
             }
         }

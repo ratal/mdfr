@@ -2,21 +2,23 @@
 //!
 //! The CNBLOCK is the central block describing a single channel: its data type,
 //! bit position/length in the record, sync type, composition, source, and conversion.
+use crate::data_holder::channel_data::{ChannelData, data_type_init};
+use crate::data_holder::tensor_arrow::Order;
+use crate::mdfinfo::sym_buf_reader::SymBufReader;
 use anyhow::{Context, Result};
 use arrow::array::{BooleanBufferBuilder, UInt8Builder, UInt16Builder, UInt32Builder};
 use binrw::{BinReaderExt, binrw};
 use std::collections::HashMap;
 use std::fmt::{self, Display};
 use std::fs::File;
-use crate::data_holder::channel_data::{ChannelData, data_type_init};
-use crate::data_holder::tensor_arrow::Order;
-use crate::mdfinfo::sym_buf_reader::SymBufReader;
 
-use super::block_header::{parse_block_short, read_meta_data, Blockheader4Short, SharableBlocks, default_short_header};
-use super::metadata::BlockType;
+use super::block_header::{
+    Blockheader4Short, SharableBlocks, default_short_header, parse_block_short, read_meta_data,
+};
 use super::cc_block::read_cc;
-use super::composition::{parse_composition, Composition};
+use super::composition::{Composition, parse_composition};
 use super::ev_block::{Ev4Block, parse_ev4_block};
+use super::metadata::BlockType;
 
 /// Byte order for channel data.
 ///
@@ -42,7 +44,11 @@ impl Endianness {
 impl From<bool> for Endianness {
     /// Converts from a raw bool: `true` → `Big`, `false` → `Little`.
     fn from(big: bool) -> Self {
-        if big { Endianness::Big } else { Endianness::Little }
+        if big {
+            Endianness::Big
+        } else {
+            Endianness::Little
+        }
     }
 }
 
@@ -183,15 +189,23 @@ impl TryFrom<u8> for CnDataType {
     type Error = u8;
     fn try_from(v: u8) -> Result<Self, u8> {
         match v {
-            0 => Ok(Self::UIntLE), 1 => Ok(Self::UIntBE),
-            2 => Ok(Self::IntLE),  3 => Ok(Self::IntBE),
-            4 => Ok(Self::FloatLE), 5 => Ok(Self::FloatBE),
-            6 => Ok(Self::StringSbc), 7 => Ok(Self::StringUtf8),
-            8 => Ok(Self::StringUtf16LE), 9 => Ok(Self::StringUtf16BE),
+            0 => Ok(Self::UIntLE),
+            1 => Ok(Self::UIntBE),
+            2 => Ok(Self::IntLE),
+            3 => Ok(Self::IntBE),
+            4 => Ok(Self::FloatLE),
+            5 => Ok(Self::FloatBE),
+            6 => Ok(Self::StringSbc),
+            7 => Ok(Self::StringUtf8),
+            8 => Ok(Self::StringUtf16LE),
+            9 => Ok(Self::StringUtf16BE),
             10 => Ok(Self::ByteArray),
-            11 => Ok(Self::MimeSample), 12 => Ok(Self::MimeStream),
-            13 => Ok(Self::CanopenDate), 14 => Ok(Self::CanopenTime),
-            15 => Ok(Self::ComplexLE), 16 => Ok(Self::ComplexBE),
+            11 => Ok(Self::MimeSample),
+            12 => Ok(Self::MimeStream),
+            13 => Ok(Self::CanopenDate),
+            14 => Ok(Self::CanopenTime),
+            15 => Ok(Self::ComplexLE),
+            16 => Ok(Self::ComplexBE),
             17 => Ok(Self::StringBom),
             other => Err(other),
         }

@@ -9,7 +9,7 @@ use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{Cursor, Read};
 
-use super::block_header::{read_meta_data, SharableBlocks};
+use super::block_header::{SharableBlocks, read_meta_data};
 use super::metadata::BlockType;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 
@@ -145,7 +145,7 @@ mod tests {
     fn test_display_utc() {
         let fh = FhBlock {
             fh_time_ns: 1_700_000_000_000_000_000, // 2023-11-14T22:13:20 UTC
-            fh_time_flags: 0,                       // UTC
+            fh_time_flags: 0,                      // UTC
             fh_tz_offset_min: 0,
             fh_dst_offset_min: 0,
             ..Default::default()

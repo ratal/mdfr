@@ -403,11 +403,9 @@ pub fn decode_channel_list(
         // Size is number of bytes - need to calculate element count
         // For simple types, divide by element size
         let element_size = element_cn.block.cn_bit_count.div_ceil(8) as usize;
-        if element_size > 0 {
-            (size_value as usize) / element_size
-        } else {
-            0
-        }
+        (size_value as usize)
+            .checked_div(element_size)
+            .unwrap_or_default()
     };
 
     for i in 0..element_count {
@@ -629,8 +627,7 @@ fn decode_composition_record(
             if let Ok((idx, _name, value)) =
                 decode_channel_variant(data, cv_block, &option_channels, disc_value, stream_state)
                 && idx < option_channels.len()
-                && let Some(&rec_pos) =
-                    index.pos_to_rec.get(&option_channels[idx].block_position)
+                && let Some(&rec_pos) = index.pos_to_rec.get(&option_channels[idx].block_position)
             {
                 result.entry(rec_pos).or_default().push(value);
             }
@@ -767,7 +764,7 @@ mod tests {
     #[test]
     fn test_final_byte_offset_bit_packed() {
         // alignment == 255: result = (aligned_offset + byte_offset*8 + bit_offset) / 8
-        assert_eq!(calculate_final_byte_offset(0, 255, 1, 4), 1);  // (0 + 8 + 4) / 8 = 1
+        assert_eq!(calculate_final_byte_offset(0, 255, 1, 4), 1); // (0 + 8 + 4) / 8 = 1
         assert_eq!(calculate_final_byte_offset(16, 255, 0, 4), 2); // (16 + 0 + 4) / 8 = 2
     }
 
@@ -861,7 +858,8 @@ mod tests {
         stream_state.alignment_offset = 0;
         // When decode_single_channel_value is called, it should reset alignment_offset
         // to byte_position (= 6), then calculate the aligned offset from there
-        let (bytes, _consumed) = decode_single_channel_value(&data, &cn, &mut stream_state).unwrap();
+        let (bytes, _consumed) =
+            decode_single_channel_value(&data, &cn, &mut stream_state).unwrap();
         assert_eq!(bytes.len(), 1);
         // alignment_offset should have been reset to 6 before calculation
         // aligned_offset for cn_alignment=0 = current_byte_pos = 6
@@ -886,7 +884,8 @@ mod tests {
         let member_channels: Vec<&Cn4> = vec![&cn_a, &cn_b];
         let mut stream_state = StreamState::new();
 
-        let result = decode_channel_union(&data, &cu_block, &member_channels, &mut stream_state).unwrap();
+        let result =
+            decode_channel_union(&data, &cu_block, &member_channels, &mut stream_state).unwrap();
         assert!(result.contains_key("chan_a"));
         assert!(result.contains_key("chan_b"));
         // Both start at 0, each consume 2 bytes (16 bits). max_end = 16 bits.
@@ -907,7 +906,8 @@ mod tests {
         let member_channels: Vec<&Cn4> = vec![&cn_small, &cn_large];
         let mut stream_state = StreamState::new();
 
-        let result = decode_channel_union(&data, &cu_block, &member_channels, &mut stream_state).unwrap();
+        let result =
+            decode_channel_union(&data, &cu_block, &member_channels, &mut stream_state).unwrap();
         assert!(result.contains_key("small"));
         assert!(result.contains_key("large"));
         // max_end is 32 bits (4 bytes from cn_large)
@@ -936,7 +936,8 @@ mod tests {
         let mut stream_state = StreamState::new();
 
         let (idx, name, bytes) =
-            decode_channel_variant(&data, &cv_block, &option_channels, 0, &mut stream_state).unwrap();
+            decode_channel_variant(&data, &cv_block, &option_channels, 0, &mut stream_state)
+                .unwrap();
         assert_eq!(idx, 0);
         assert_eq!(name, "opt0");
         assert_eq!(bytes, vec![0xAA]);
@@ -962,7 +963,8 @@ mod tests {
         let mut stream_state = StreamState::new();
 
         let (idx, name, _bytes) =
-            decode_channel_variant(&data, &cv_block, &option_channels, 2, &mut stream_state).unwrap();
+            decode_channel_variant(&data, &cv_block, &option_channels, 2, &mut stream_state)
+                .unwrap();
         assert_eq!(idx, 2);
         assert_eq!(name, "opt2");
     }
@@ -981,7 +983,8 @@ mod tests {
         let option_channels: Vec<&Cn4> = vec![&cn_opt0];
         let mut stream_state = StreamState::new();
 
-        let result = decode_channel_variant(&data, &cv_block, &option_channels, 99, &mut stream_state);
+        let result =
+            decode_channel_variant(&data, &cv_block, &option_channels, 99, &mut stream_state);
         assert!(result.is_err());
     }
 
@@ -1002,7 +1005,8 @@ mod tests {
         let element_cn = make_cn4(0, 8, 0, 0, 0, 0);
         let mut stream_state = StreamState::new();
 
-        let elements = decode_channel_list(&data, &cl_block, &element_cn, 3, &mut stream_state).unwrap();
+        let elements =
+            decode_channel_list(&data, &cl_block, &element_cn, 3, &mut stream_state).unwrap();
         assert_eq!(elements.len(), 3);
         assert_eq!(elements[0], vec![10u8]);
         assert_eq!(elements[1], vec![20u8]);
@@ -1024,7 +1028,8 @@ mod tests {
         let element_cn = make_cn4(0, 8, 0, 0, 0, 0); // 1 byte per element
         let mut stream_state = StreamState::new();
 
-        let elements = decode_channel_list(&data, &cl_block, &element_cn, 4, &mut stream_state).unwrap();
+        let elements =
+            decode_channel_list(&data, &cl_block, &element_cn, 4, &mut stream_state).unwrap();
         assert_eq!(elements.len(), 4);
     }
 
@@ -1039,7 +1044,8 @@ mod tests {
         let element_cn = make_cn4(0, 8, 0, 0, 0, 0);
         let mut stream_state = StreamState::new();
 
-        let elements = decode_channel_list(&data, &cl_block, &element_cn, 0, &mut stream_state).unwrap();
+        let elements =
+            decode_channel_list(&data, &cl_block, &element_cn, 0, &mut stream_state).unwrap();
         assert_eq!(elements.len(), 0);
     }
 

@@ -308,7 +308,10 @@ fn writing_mdf4_file_history() -> Result<()> {
             }
             // New FH block has valid timestamp
             let new_fh = &info4.fh[source_fh_count];
-            assert!(new_fh.fh_time_ns > 0, "New FH block should have valid timestamp");
+            assert!(
+                new_fh.fh_time_ns > 0,
+                "New FH block should have valid timestamp"
+            );
         }
         _ => panic!("Expected MDF4 file"),
     }
@@ -329,25 +332,21 @@ fn writing_mdf4_source_information() -> Result<()> {
     mdf.load_all_channels_data_in_memory()?;
 
     // Capture source SI unique content tuples using public API
-    let mut source_si_set: Vec<SiInfo> =
-        match &mdf.mdf_info {
-            MdfInfo::V4(info4) => {
-                let si_blocks = info4.get_source_information_blocks();
-                assert!(
-                    !si_blocks.is_empty(),
-                    "Source file should have SI blocks"
-                );
-                si_blocks
-                    .values()
-                    .map(|si| {
-                        let name = si.get_si_source_name(&info4.sharable).ok().flatten();
-                        let path = si.get_si_path_name(&info4.sharable).ok().flatten();
-                        (si.si_type, si.si_bus_type, si.si_flags, name, path)
-                    })
-                    .collect()
-            }
-            _ => panic!("Expected MDF4 file"),
-        };
+    let mut source_si_set: Vec<SiInfo> = match &mdf.mdf_info {
+        MdfInfo::V4(info4) => {
+            let si_blocks = info4.get_source_information_blocks();
+            assert!(!si_blocks.is_empty(), "Source file should have SI blocks");
+            si_blocks
+                .values()
+                .map(|si| {
+                    let name = si.get_si_source_name(&info4.sharable).ok().flatten();
+                    let path = si.get_si_path_name(&info4.sharable).ok().flatten();
+                    (si.si_type, si.si_bus_type, si.si_flags, name, path)
+                })
+                .collect()
+        }
+        _ => panic!("Expected MDF4 file"),
+    };
     source_si_set.sort();
     source_si_set.dedup();
 
@@ -358,10 +357,7 @@ fn writing_mdf4_source_information() -> Result<()> {
     match &reread.mdf_info {
         MdfInfo::V4(info4) => {
             let si_blocks = info4.get_source_information_blocks();
-            assert!(
-                !si_blocks.is_empty(),
-                "Written file should have SI blocks"
-            );
+            assert!(!si_blocks.is_empty(), "Written file should have SI blocks");
             let mut reread_si_set: Vec<SiInfo> = si_blocks
                 .values()
                 .map(|si| {
@@ -451,7 +447,11 @@ fn writing_mdf4_events() -> Result<()> {
         if let Some(src_data) = mdf.get_channel_data(name)
             && let Some(reread_data) = reread.get_channel_data(name)
         {
-            assert_eq!(*src_data, *reread_data, "Data mismatch for channel {}", name);
+            assert_eq!(
+                *src_data, *reread_data,
+                "Data mismatch for channel {}",
+                name
+            );
         }
     }
 
@@ -471,25 +471,27 @@ fn writing_mdf4_attachments() -> Result<()> {
     mdf.load_all_channels_data_in_memory()?;
 
     // Capture source attachment metadata as sorted tuples (sort by filename)
-    let mut source_at_info: Vec<AtInfo> =
-        match &mdf.mdf_info {
-            MdfInfo::V4(info4) => {
-                assert!(
-                    !info4.at.is_empty(),
-                    "Source file should have attachments"
-                );
-                info4
-                    .at
-                    .values()
-                    .map(|(at, data)| {
-                        let filename = info4.sharable.get_tx(at.at_tx_filename).ok().flatten();
-                        let mimetype = info4.sharable.get_tx(at.at_tx_mimetype).ok().flatten();
-                        (filename, mimetype, at.at_flags, at.at_original_size, data.clone())
-                    })
-                    .collect()
-            }
-            _ => panic!("Expected MDF4 file"),
-        };
+    let mut source_at_info: Vec<AtInfo> = match &mdf.mdf_info {
+        MdfInfo::V4(info4) => {
+            assert!(!info4.at.is_empty(), "Source file should have attachments");
+            info4
+                .at
+                .values()
+                .map(|(at, data)| {
+                    let filename = info4.sharable.get_tx(at.at_tx_filename).ok().flatten();
+                    let mimetype = info4.sharable.get_tx(at.at_tx_mimetype).ok().flatten();
+                    (
+                        filename,
+                        mimetype,
+                        at.at_flags,
+                        at.at_original_size,
+                        data.clone(),
+                    )
+                })
+                .collect()
+        }
+        _ => panic!("Expected MDF4 file"),
+    };
     source_at_info.sort_by(|a, b| a.0.cmp(&b.0));
     let source_at_count = source_at_info.len();
 
@@ -501,16 +503,21 @@ fn writing_mdf4_attachments() -> Result<()> {
     match &reread.mdf_info {
         MdfInfo::V4(info4) => {
             assert_eq!(info4.at.len(), source_at_count, "Attachment count mismatch");
-            let mut reread_at_info: Vec<AtInfo> =
-                info4
-                    .at
-                    .values()
-                    .map(|(at, data)| {
-                        let filename = info4.sharable.get_tx(at.at_tx_filename).ok().flatten();
-                        let mimetype = info4.sharable.get_tx(at.at_tx_mimetype).ok().flatten();
-                        (filename, mimetype, at.at_flags, at.at_original_size, data.clone())
-                    })
-                    .collect();
+            let mut reread_at_info: Vec<AtInfo> = info4
+                .at
+                .values()
+                .map(|(at, data)| {
+                    let filename = info4.sharable.get_tx(at.at_tx_filename).ok().flatten();
+                    let mimetype = info4.sharable.get_tx(at.at_tx_mimetype).ok().flatten();
+                    (
+                        filename,
+                        mimetype,
+                        at.at_flags,
+                        at.at_original_size,
+                        data.clone(),
+                    )
+                })
+                .collect();
             reread_at_info.sort_by(|a, b| a.0.cmp(&b.0));
 
             for (i, (src, rr)) in source_at_info.iter().zip(reread_at_info.iter()).enumerate() {
@@ -530,7 +537,11 @@ fn writing_mdf4_attachments() -> Result<()> {
         if let Some(src_data) = mdf.get_channel_data(name)
             && let Some(reread_data) = reread.get_channel_data(name)
         {
-            assert_eq!(*src_data, *reread_data, "Data mismatch for channel {}", name);
+            assert_eq!(
+                *src_data, *reread_data,
+                "Data mismatch for channel {}",
+                name
+            );
         }
     }
 
@@ -570,7 +581,10 @@ fn writing_mdf4_vlsd() -> Result<()> {
     let reread_time = reread
         .get_channel_data(time_channel)
         .expect("Time channel should have data after re-read");
-    assert_eq!(src_time, *reread_time, "Time data mismatch (no compression)");
+    assert_eq!(
+        src_time, *reread_time,
+        "Time data mismatch (no compression)"
+    );
 
     // Write with compression — verify file is valid
     let _written = mdf.write(&writing_mdf_file, true)?;
@@ -584,7 +598,10 @@ fn writing_mdf4_vlsd() -> Result<()> {
     let reread_time = reread
         .get_channel_data(time_channel)
         .expect("Time channel should have data after compressed re-read");
-    assert_eq!(src_time, *reread_time, "Time data mismatch (with compression)");
+    assert_eq!(
+        src_time, *reread_time,
+        "Time data mismatch (with compression)"
+    );
 
     // Test SBC encoding
     let file = format!(
@@ -648,7 +665,10 @@ fn writing_mdf4_arrays() -> Result<()> {
     // Write and verify channel data is preserved via in-memory return
     let written = mdf.write(&writing_mdf_file, false)?;
     let written_names = written.get_channel_names_set();
-    assert_eq!(source_names, written_names, "Channel names should be preserved");
+    assert_eq!(
+        source_names, written_names,
+        "Channel names should be preserved"
+    );
 
     for name in &source_names {
         if let Some(src_data) = mdf.get_channel_data(name)
@@ -728,9 +748,9 @@ fn writing_mdf4_composition_ds_cl() -> Result<()> {
         MdfInfo::V4(info4) => info4.dg.values().any(|dg| {
             dg.cg.values().any(|cg| {
                 cg.cn.values().any(|cn| {
-                    cn.composition.as_ref().is_some_and(|c| {
-                        matches!(c.block, Compo::DS(_) | Compo::CL(_))
-                    })
+                    cn.composition
+                        .as_ref()
+                        .is_some_and(|c| matches!(c.block, Compo::DS(_) | Compo::CL(_)))
                 })
             })
         }),

@@ -145,8 +145,7 @@ impl MdfInfo {
             warn!(
                 "Unfinalized MDF file detected (id_unfin_flags=0x{:04X}, id_custom_unfin_flags=0x{:04X}). \
                  Data may be incomplete or metadata may be inaccurate.",
-                id_unfin_flags,
-                id_custom_unfin_flags,
+                id_unfin_flags, id_custom_unfin_flags,
             );
             if id_unfin_flags & UNFIN_CG_CYCLE_COUNTERS != 0 {
                 warn!("  Bit 0: CG/CA cycle counters may be incorrect");

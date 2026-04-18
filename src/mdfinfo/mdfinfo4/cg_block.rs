@@ -19,11 +19,11 @@ use crate::data_holder::channel_data::ChannelData;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 
 use super::block_header::{
-    parse_block_header_short, parse_block_short, read_meta_data, Blockheader4Short, SharableBlocks,
+    Blockheader4Short, SharableBlocks, parse_block_header_short, parse_block_short, read_meta_data,
 };
-use super::metadata::BlockType;
-use super::cn_block::{parse_cn4, Cn4, CnType};
+use super::cn_block::{Cn4, CnType, parse_cn4};
 use super::composition::Compo;
+use super::metadata::BlockType;
 
 // Channel Group (CG) flags - cg_flags field (u16)
 /// Bit 0: VLSD channel group (Variable Length Signal Data)

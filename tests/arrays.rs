@@ -82,7 +82,10 @@ fn array_with_fixed_axes() -> Result<()> {
     mdf.load_all_channels_data_in_memory()?;
 
     let names = mdf.get_channel_names_set();
-    assert!(!names.is_empty(), "No channels in Vector_ArrayWithFixedAxes.MF4");
+    assert!(
+        !names.is_empty(),
+        "No channels in Vector_ArrayWithFixedAxes.MF4"
+    );
 
     Ok(())
 }
@@ -101,7 +104,10 @@ fn array_classification_porsche() -> Result<()> {
     mdf.load_all_channels_data_in_memory()?;
 
     let names = mdf.get_channel_names_set();
-    assert!(!names.is_empty(), "No channels in Porsche_2D_classification_result.mf4");
+    assert!(
+        !names.is_empty(),
+        "No channels in Porsche_2D_classification_result.mf4"
+    );
 
     Ok(())
 }
@@ -114,8 +120,7 @@ fn array_classification_porsche() -> Result<()> {
 fn array_round_trip_write() -> Result<()> {
     use std::fs;
 
-    let out_file =
-        "/home/ratal/workspace/mdfr/test_files/arrays_round_trip_test.mf4";
+    let out_file = "/home/ratal/workspace/mdfr/test_files/arrays_round_trip_test.mf4";
 
     let file = format!(
         "{}Simple/Vector_MeasurementArrays.mf4",
@@ -189,10 +194,7 @@ fn array_channels_min_max() -> Result<()> {
                 let (min, max) = data.min_max();
                 // If there is data, min and max should be populated for numeric arrays
                 if min.is_some() && max.is_some() {
-                    assert!(
-                        min.unwrap() <= max.unwrap(),
-                        "min > max for channel {name}"
-                    );
+                    assert!(min.unwrap() <= max.unwrap(), "min > max for channel {name}");
                 }
                 found_array = true;
             }

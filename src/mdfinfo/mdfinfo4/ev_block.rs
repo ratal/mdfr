@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::fmt::{self, Display};
 use std::fs::File;
 
-use super::block_header::{parse_block_short, read_meta_data, SharableBlocks};
+use super::block_header::{SharableBlocks, parse_block_short, read_meta_data};
 use super::metadata::BlockType;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 

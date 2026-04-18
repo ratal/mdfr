@@ -24,7 +24,10 @@ fn test_events_markers() -> Result<()> {
 
     // list_events exercises EV block iteration + TX/MD lookup
     let events_list = mdf.mdf_info.list_events();
-    assert!(!events_list.is_empty(), "list_events should return non-empty string");
+    assert!(
+        !events_list.is_empty(),
+        "list_events should return non-empty string"
+    );
 
     // get_event_blocks returns all EV blocks
     let event_blocks = mdf.mdf_info.get_event_blocks();
@@ -71,8 +74,6 @@ fn test_events_recording() -> Result<()> {
     let event_blocks = event_blocks.unwrap();
     assert!(!event_blocks.is_empty());
 
-
-
     // Exercise individual event block lookup and sync value computation
     for (&pos, ev) in &event_blocks {
         let single = mdf.mdf_info.get_event_block(pos);
@@ -101,8 +102,6 @@ fn test_events_trigger() -> Result<()> {
     assert!(event_blocks.is_some());
     let event_blocks = event_blocks.unwrap();
     assert!(!event_blocks.is_empty());
-
-
 
     // Check parent event relationships
     let has_parent = event_blocks.values().any(|ev| ev.ev_ev_parent != 0);
@@ -144,11 +143,16 @@ fn test_attachments_embedded() -> Result<()> {
 
         // Should be able to retrieve embedded data
         let data = mdf.mdf_info.get_attachment_embedded_data(pos);
-        assert!(data.is_some(), "should have embedded data at position {}", pos);
+        assert!(
+            data.is_some(),
+            "should have embedded data at position {}",
+            pos
+        );
         let data = data.unwrap();
         assert!(!data.is_empty(), "embedded data should not be empty");
         assert_eq!(
-            data.len() as u64, at.at_original_size,
+            data.len() as u64,
+            at.at_original_size,
             "data length should match original size"
         );
 

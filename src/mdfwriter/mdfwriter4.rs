@@ -23,9 +23,9 @@ use crate::{
     mdfinfo::{
         MdfInfo,
         mdfinfo4::{
-            At4Block, BlockType, Blockheader4, Ca4Block, Cg4, Cg4Block, Ch4Block, Cn4,
-            Cn4Block, Compo, Composition, Dg4, Dg4Block, Dz4Block, Endianness, Ev4Block,
-            FhBlock, Ld4Block, MdfInfo4, MetaData, MetaDataBlockType, Si4Block, default_short_header,
+            At4Block, BlockType, Blockheader4, Ca4Block, Cg4, Cg4Block, Ch4Block, Cn4, Cn4Block,
+            Compo, Composition, Dg4, Dg4Block, Dz4Block, Endianness, Ev4Block, FhBlock, Ld4Block,
+            MdfInfo4, MetaData, MetaDataBlockType, Si4Block, default_short_header,
         },
     },
     mdfreader::Mdf,
@@ -407,9 +407,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
     let mut cg_position_map: HashMap<i64, i64> = HashMap::new();
     let mut cn_position_map: HashMap<i64, i64> = HashMap::new();
     for (name, (_, old_dg, (old_cg, _), (old_cn, _))) in info.channel_names_set.iter() {
-        if let Some((_, new_dg, (new_cg, _), (new_cn, _))) =
-            new_info.channel_names_set.get(name)
-        {
+        if let Some((_, new_dg, (new_cg, _), (new_cn, _))) = new_info.channel_names_set.get(name) {
             dg_position_map.insert(*old_dg, *new_dg);
             cg_position_map.insert(*old_cg, *new_cg);
             cn_position_map.insert(*old_cn, *new_cn);
@@ -425,8 +423,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
         new_info.hd_block.hd_ch_first = pointer;
 
         // Sort source CH blocks by position for deterministic sibling/child link order
-        let mut sorted_ch: Vec<(i64, &Ch4Block)> =
-            info.ch.iter().map(|(k, v)| (*k, v)).collect();
+        let mut sorted_ch: Vec<(i64, &Ch4Block)> = info.ch.iter().map(|(k, v)| (*k, v)).collect();
         sorted_ch.sort_by_key(|(pos, _)| *pos);
 
         // Pass 1: Assign positions and collect metadata
@@ -481,11 +478,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
             } else {
                 ch.ch_tx_name = 0;
             }
-            ch.ch_md_comment = if comment_md.is_some() {
-                meta_offset
-            } else {
-                0
-            };
+            ch.ch_md_comment = if comment_md.is_some() { meta_offset } else { 0 };
 
             // Remap element triplets (DG, CG, CN positions)
             for i in 0..ch.ch_element_count as usize {
@@ -1417,16 +1410,15 @@ fn create_blocks(
                 .collect();
 
             // Preserve source CA block if available, else create default
-            let mut ca_block =
-                if let Some(ref source_compo) = cn.composition
-                    && let Compo::CA(ref source_ca) = source_compo.block
-                {
-                    let mut ca = (**source_ca).clone();
-                    ca.prepare_for_write();
-                    ca
-                } else {
-                    Ca4Block::default()
-                };
+            let mut ca_block = if let Some(ref source_compo) = cn.composition
+                && let Compo::CA(ref source_ca) = source_compo.block
+            {
+                let mut ca = (**source_ca).clone();
+                ca.prepare_for_write();
+                ca
+            } else {
+                Ca4Block::default()
+            };
 
             cg_block.cg_data_bytes = cn.list_size as u32 * byte_count;
             cn_block.cn_composition = pointer;

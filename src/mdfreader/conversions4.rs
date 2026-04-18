@@ -792,14 +792,10 @@ where
 {
     let values = array.values_slice();
     let mut new_array = vec![0f64; values.len()];
-    new_array
-        .iter_mut()
-        .zip(values)
-        .for_each(|(new_a, v)| {
-            let a: f64 = (*v).as_();
-            *new_a = match val
-                .binary_search_by(|&(xi, _)| xi.partial_cmp(&a).unwrap_or(Ordering::Equal))
-            {
+    new_array.iter_mut().zip(values).for_each(|(new_a, v)| {
+        let a: f64 = (*v).as_();
+        *new_a =
+            match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a).unwrap_or(Ordering::Equal)) {
                 Ok(idx) => *val[idx].1,
                 Err(0) => *val[0].1,
                 Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -809,7 +805,7 @@ where
                     (y0 * (x1 - a) + y1 * (a - x0)) / (x1 - x0)
                 }
             };
-        });
+    });
     Ok(PrimitiveBuilder::new_from_buffer(
         new_array.into(),
         array
@@ -987,19 +983,15 @@ where
 {
     let values = array.values_slice();
     let mut new_array = vec![0f64; values.len()];
-    new_array
-        .iter_mut()
-        .zip(values)
-        .for_each(|(new_a, v)| {
-            let a: f64 = (*v).as_();
-            // MDF4 spec 6.17.7 (cc_type=5, value to value without interpolation):
-            // - Exact match: return value[i]
-            // - Below first key: return value[0]
-            // - Above last key: return value[n-1]
-            // - Between keys: return nearest neighbor; if equidistant, use lower key's value
-            *new_a = match val
-                .binary_search_by(|&(xi, _)| xi.partial_cmp(&a).unwrap_or(Ordering::Equal))
-            {
+    new_array.iter_mut().zip(values).for_each(|(new_a, v)| {
+        let a: f64 = (*v).as_();
+        // MDF4 spec 6.17.7 (cc_type=5, value to value without interpolation):
+        // - Exact match: return value[i]
+        // - Below first key: return value[0]
+        // - Above last key: return value[n-1]
+        // - Between keys: return nearest neighbor; if equidistant, use lower key's value
+        *new_a =
+            match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a).unwrap_or(Ordering::Equal)) {
                 Ok(idx) => *val[idx].1,
                 Err(0) => *val[0].1,
                 Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -1010,7 +1002,7 @@ where
                     if (a - x0) > (x1 - a) { *y1 } else { *y0 }
                 }
             };
-        });
+    });
     Ok(PrimitiveBuilder::new_from_buffer(
         new_array.into(),
         array
@@ -1215,41 +1207,38 @@ where
 {
     let values = array.values_slice();
     let mut new_array = vec![0f64; values.len()];
-    new_array
-        .iter_mut()
-        .zip(values)
-        .for_each(|(new_a, v)| {
-            let a: f64 = (*v).as_();
-            // MDF4 spec 6.17.8 (cc_type=6, value range to value):
-            // - For float types (cn_data_type > 3): key_min[i] ≤ Int < key_max[i] (exclusive upper)
-            // - For integer types (cn_data_type ≤ 3): key_min[i] ≤ Int ≤ key_max[i] (both inclusive)
-            // Ranges are sorted ascending and shall not overlap (key_max[i-1] ≤ key_min[i]).
-            // For touching boundaries with float data, a == key_min[i] → range i wins (not i-1).
-            // Binary search on min keys handles both cases naturally:
-            //   Ok(idx): a == min[idx] → range idx includes a as its lower bound ✓
-            //   Err(idx): min[idx-1] < a < min[idx] → check if a < max[idx-1] (exclusive upper)
-            *new_a = match val
-                .binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a).unwrap_or(Ordering::Equal))
-            {
-                Ok(idx) => val[idx].2,
-                Err(0) => *default_value,  // below the minimum of all lower bounds
-                Err(idx) => {
-                    // min[idx-1] < a < min[idx]: candidate is range idx-1
-                    // Float: upper exclusive (a < max[idx-1])
-                    // Integer: upper inclusive (a <= max[idx-1])
-                    let in_range = if inclusive_upper {
-                        a <= val[idx - 1].1
-                    } else {
-                        a < val[idx - 1].1
-                    };
-                    if in_range {
-                        val[idx - 1].2
-                    } else {
-                        *default_value
-                    }
+    new_array.iter_mut().zip(values).for_each(|(new_a, v)| {
+        let a: f64 = (*v).as_();
+        // MDF4 spec 6.17.8 (cc_type=6, value range to value):
+        // - For float types (cn_data_type > 3): key_min[i] ≤ Int < key_max[i] (exclusive upper)
+        // - For integer types (cn_data_type ≤ 3): key_min[i] ≤ Int ≤ key_max[i] (both inclusive)
+        // Ranges are sorted ascending and shall not overlap (key_max[i-1] ≤ key_min[i]).
+        // For touching boundaries with float data, a == key_min[i] → range i wins (not i-1).
+        // Binary search on min keys handles both cases naturally:
+        //   Ok(idx): a == min[idx] → range idx includes a as its lower bound ✓
+        //   Err(idx): min[idx-1] < a < min[idx] → check if a < max[idx-1] (exclusive upper)
+        *new_a = match val
+            .binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a).unwrap_or(Ordering::Equal))
+        {
+            Ok(idx) => val[idx].2,
+            Err(0) => *default_value, // below the minimum of all lower bounds
+            Err(idx) => {
+                // min[idx-1] < a < min[idx]: candidate is range idx-1
+                // Float: upper exclusive (a < max[idx-1])
+                // Integer: upper inclusive (a <= max[idx-1])
+                let in_range = if inclusive_upper {
+                    a <= val[idx - 1].1
+                } else {
+                    a < val[idx - 1].1
+                };
+                if in_range {
+                    val[idx - 1].2
+                } else {
+                    *default_value
                 }
-            };
-        });
+            }
+        };
+    });
     Ok(PrimitiveBuilder::new_from_buffer(
         new_array.into(),
         array
@@ -2110,18 +2099,10 @@ where
                             }
                             TextOrScaleConversion::Scale(conv) => {
                                 if let Some(n) = name {
-                                    new_a = format!(
-                                        "{} | {} = {}",
-                                        new_a,
-                                        n,
-                                        conv.eval_to_txt(a_f64)
-                                    );
+                                    new_a =
+                                        format!("{} | {} = {}", new_a, n, conv.eval_to_txt(a_f64));
                                 } else {
-                                    new_a = format!(
-                                        "{} | {}",
-                                        new_a,
-                                        conv.eval_to_txt(a_f64)
-                                    );
+                                    new_a = format!("{} | {}", new_a, conv.eval_to_txt(a_f64));
                                 }
                             }
                             _ => {
@@ -2143,9 +2124,10 @@ where
                     }
                 }
                 (ValueOrValueRangeToText::ValueRangeToText(txt, def, keys), name) => {
-                    let matched_key = keys.iter().enumerate().find(|&x| {
-                        (x.1.min <= a_f64) && (a_f64 <= x.1.max)
-                    });
+                    let matched_key = keys
+                        .iter()
+                        .enumerate()
+                        .find(|&x| (x.1.min <= a_f64) && (a_f64 <= x.1.max));
                     if let Some(key) = matched_key {
                         match &txt[key.0] {
                             TextOrScaleConversion::Txt(txt) => {
@@ -2157,18 +2139,10 @@ where
                             }
                             TextOrScaleConversion::Scale(conv) => {
                                 if let Some(n) = name {
-                                    new_a = format!(
-                                        "{} | {} = {}",
-                                        new_a,
-                                        n,
-                                        conv.eval_to_txt(a_f64)
-                                    );
+                                    new_a =
+                                        format!("{} | {} = {}", new_a, n, conv.eval_to_txt(a_f64));
                                 } else {
-                                    new_a = format!(
-                                        "{} | {}",
-                                        new_a,
-                                        conv.eval_to_txt(a_f64)
-                                    );
+                                    new_a = format!("{} | {}", new_a, conv.eval_to_txt(a_f64));
                                 }
                             }
                             _ => {
@@ -2186,18 +2160,10 @@ where
                             }
                             DefaultTextOrScaleConversion::DefaultScale(conv) => {
                                 if let Some(n) = name {
-                                    new_a = format!(
-                                        "{} | {} = {}",
-                                        new_a,
-                                        n,
-                                        conv.eval_to_txt(a_f64)
-                                    );
+                                    new_a =
+                                        format!("{} | {} = {}", new_a, n, conv.eval_to_txt(a_f64));
                                 } else {
-                                    new_a = format!(
-                                        "{} | {}",
-                                        new_a,
-                                        conv.eval_to_txt(a_f64)
-                                    );
+                                    new_a = format!("{} | {}", new_a, conv.eval_to_txt(a_f64));
                                 }
                             }
                             _ => {
@@ -2357,32 +2323,28 @@ mod tests {
         let val: Vec<(&f64, &f64)> = keys.iter().tuples().collect();
 
         let mut builder = Float64Builder::new();
-        builder.append_value(0.0);   // exact match → 0
-        builder.append_value(3.0);   // between key[0]=0 and key[1]=10, nearer to 0 → 0
-        builder.append_value(7.0);   // between key[0]=0 and key[1]=10, nearer to 10 → 100
-        builder.append_value(10.0);  // exact match → 100
-        builder.append_value(-5.0);  // below first key → value[0] = 0
-        builder.append_value(25.0);  // above last key → value[n-1] = 200
+        builder.append_value(0.0); // exact match → 0
+        builder.append_value(3.0); // between key[0]=0 and key[1]=10, nearer to 0 → 0
+        builder.append_value(7.0); // between key[0]=0 and key[1]=10, nearer to 10 → 100
+        builder.append_value(10.0); // exact match → 100
+        builder.append_value(-5.0); // below first key → value[0] = 0
+        builder.append_value(25.0); // above last key → value[n-1] = 200
 
         let result = value_to_value_without_interpolation_primitive(&mut builder, val).unwrap();
         let values = result.values_slice();
         assert_eq!(values.len(), 6);
-        assert!((values[0] - 0.0).abs() < 1e-12);   // exact → 0
-        assert!((values[1] - 0.0).abs() < 1e-12);   // nearest key=0 → 0
+        assert!((values[0] - 0.0).abs() < 1e-12); // exact → 0
+        assert!((values[1] - 0.0).abs() < 1e-12); // nearest key=0 → 0
         assert!((values[2] - 100.0).abs() < 1e-12); // nearest key=10 → 100
         assert!((values[3] - 100.0).abs() < 1e-12); // exact → 100
-        assert!((values[4] - 0.0).abs() < 1e-12);   // below first → value[0]=0
+        assert!((values[4] - 0.0).abs() < 1e-12); // below first → value[0]=0
         assert!((values[5] - 200.0).abs() < 1e-12); // above last → value[n-1]=200
     }
 
     #[test]
     fn test_value_range_to_value_table() {
         // Ranges: (key_min, key_max, value)
-        let val = vec![
-            (0.0, 10.0, 100.0),
-            (10.0, 20.0, 200.0),
-            (20.0, 30.0, 300.0),
-        ];
+        let val = vec![(0.0, 10.0, 100.0), (10.0, 20.0, 200.0), (20.0, 30.0, 300.0)];
         let default = -1.0;
 
         let mut builder = Float64Builder::new();
@@ -2392,7 +2354,8 @@ mod tests {
         builder.append_value(-5.0); // below all ranges → default
         builder.append_value(25.0); // above last key_min but within last upper bound → 300
 
-        let result = value_range_to_value_table_calculation(&builder, &val, &default, false).unwrap();
+        let result =
+            value_range_to_value_table_calculation(&builder, &val, &default, false).unwrap();
         let values = result.values_slice();
         assert_eq!(values.len(), 5);
         assert!((values[0] - 100.0).abs() < 1e-12);
@@ -2418,12 +2381,29 @@ mod tests {
         builder.append_value(-6.0); // in range 1: -7<=-6<-5 → True → 0
         builder.append_value(100.0); // above all ranges → default -1
 
-        let result = value_range_to_value_table_calculation(&builder, &val, &default, false).unwrap();
+        let result =
+            value_range_to_value_table_calculation(&builder, &val, &default, false).unwrap();
         let values = result.values_slice();
-        assert!((values[0] - (-1.0)).abs() < 1e-12, "raw=-9 should be -1, got {}", values[0]);
-        assert!((values[1] - 0.0).abs() < 1e-12, "raw=-7 should be 0, got {}", values[1]);
-        assert!((values[2] - 0.0).abs() < 1e-12, "raw=-6 should be 0, got {}", values[2]);
-        assert!((values[3] - (-1.0)).abs() < 1e-12, "raw=100 should be -1, got {}", values[3]);
+        assert!(
+            (values[0] - (-1.0)).abs() < 1e-12,
+            "raw=-9 should be -1, got {}",
+            values[0]
+        );
+        assert!(
+            (values[1] - 0.0).abs() < 1e-12,
+            "raw=-7 should be 0, got {}",
+            values[1]
+        );
+        assert!(
+            (values[2] - 0.0).abs() < 1e-12,
+            "raw=-6 should be 0, got {}",
+            values[2]
+        );
+        assert!(
+            (values[3] - (-1.0)).abs() < 1e-12,
+            "raw=100 should be -1, got {}",
+            values[3]
+        );
     }
 
     #[test]
@@ -2494,13 +2474,14 @@ mod tests {
 
     #[test]
     fn test_linear_cn4_array_d_int16() {
-        use arrow::array::Int16Builder;
         use crate::data_holder::tensor_arrow::{Order, TensorArrow};
+        use arrow::array::Int16Builder;
         use arrow::datatypes::Int16Type;
         let mut builder = Int16Builder::new();
         builder.append_value(1);
         builder.append_value(2);
-        let tensor = TensorArrow::<Int16Type>::new_from_primitive(builder, None, vec![2], Order::RowMajor);
+        let tensor =
+            TensorArrow::<Int16Type>::new_from_primitive(builder, None, vec![2], Order::RowMajor);
         let mut cn = make_cn4_with_data(ChannelData::ArrayDInt16(tensor));
         linear_conversion(&mut cn, &[0.0, 3.0]).unwrap();
         if let ChannelData::ArrayDFloat64(ref t) = cn.data {
@@ -2514,11 +2495,12 @@ mod tests {
 
     #[test]
     fn test_linear_cn4_array_d_float64() {
-        use arrow::datatypes::Float64Type;
         use crate::data_holder::tensor_arrow::{Order, TensorArrow};
+        use arrow::datatypes::Float64Type;
         let mut builder = Float64Builder::new();
         builder.append_value(1.0);
-        let tensor = TensorArrow::<Float64Type>::new_from_primitive(builder, None, vec![1], Order::RowMajor);
+        let tensor =
+            TensorArrow::<Float64Type>::new_from_primitive(builder, None, vec![1], Order::RowMajor);
         let mut cn = make_cn4_with_data(ChannelData::ArrayDFloat64(tensor));
         linear_conversion(&mut cn, &[0.0, 2.0]).unwrap();
         if let ChannelData::ArrayDFloat64(ref t) = cn.data {
@@ -2624,13 +2606,14 @@ mod tests {
 
     #[test]
     fn test_vtv_interp_cn4_array_d_uint8() {
+        use crate::data_holder::tensor_arrow::{Order, TensorArrow};
         use arrow::array::UInt8Builder;
         use arrow::datatypes::UInt8Type;
-        use crate::data_holder::tensor_arrow::{Order, TensorArrow};
         let cc_val = vec![0.0, 0.0, 10.0, 100.0];
         let mut builder = UInt8Builder::new();
         builder.append_value(5);
-        let tensor = TensorArrow::<UInt8Type>::new_from_primitive(builder, None, vec![1], Order::RowMajor);
+        let tensor =
+            TensorArrow::<UInt8Type>::new_from_primitive(builder, None, vec![1], Order::RowMajor);
         let mut cn = make_cn4_with_data(ChannelData::ArrayDUInt8(tensor));
         value_to_value_with_interpolation(&mut cn, cc_val).unwrap();
         assert!(matches!(cn.data, ChannelData::ArrayDFloat64(_)));
@@ -2718,12 +2701,13 @@ mod tests {
 
     #[test]
     fn test_vrv_cn4_array_d_warn() {
+        use crate::data_holder::tensor_arrow::{Order, TensorArrow};
         use arrow::array::Int8Builder;
         use arrow::datatypes::Int8Type;
-        use crate::data_holder::tensor_arrow::{Order, TensorArrow};
         let mut builder = Int8Builder::new();
         builder.append_value(5);
-        let tensor = TensorArrow::<Int8Type>::new_from_primitive(builder, None, vec![1], Order::RowMajor);
+        let tensor =
+            TensorArrow::<Int8Type>::new_from_primitive(builder, None, vec![1], Order::RowMajor);
         let mut cn = make_cn4_with_data(ChannelData::ArrayDInt8(tensor));
         // ArrayDInt8 falls through to warn path
         let result = value_range_to_value_table(&mut cn, vec![0.0, 10.0, 42.0]);

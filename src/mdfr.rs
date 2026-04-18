@@ -756,17 +756,13 @@ pyplot.show()
         match &mut self.0.mdf_info {
             MdfInfo::V3(mdfinfo3) => {
                 // Use helper methods for header
-                writeln!(output, "{}", mdfinfo3.summary())
-                    .context("cannot print summary")?;
-                writeln!(output, "{}", mdfinfo3.format_header())
-                    .context("cannot print header")?;
+                writeln!(output, "{}", mdfinfo3.summary()).context("cannot print summary")?;
+                writeln!(output, "{}", mdfinfo3.format_header()).context("cannot print header")?;
             }
             MdfInfo::V4(mdfinfo4) => {
                 // Use helper methods for header
-                writeln!(output, "{}", mdfinfo4.summary())
-                    .context("cannot print summary")?;
-                writeln!(output, "{}", mdfinfo4.hd_block)
-                    .context("cannot print header block")?;
+                writeln!(output, "{}", mdfinfo4.summary()).context("cannot print summary")?;
+                writeln!(output, "{}", mdfinfo4.hd_block).context("cannot print header block")?;
                 let header_comments = mdfinfo4.format_header_comments();
                 if !header_comments.is_empty() {
                     write!(output, "{}", header_comments)
@@ -810,10 +806,12 @@ pyplot.show()
                     .context("cannot print no master channel")?;
             }
             for channel in list.iter() {
-                let unit = self.get_channel_unit(channel.to_string())
+                let unit = self
+                    .get_channel_unit(channel.to_string())
                     .context("failed getting channel unit")?
                     .unwrap_or_default();
-                let desc = self.get_channel_desc(channel.to_string())
+                let desc = self
+                    .get_channel_desc(channel.to_string())
                     .context("failed getting channel description")?
                     .unwrap_or_default();
                 write!(output, "  {channel} ").context("cannot print channel name")?;
@@ -821,12 +819,16 @@ pyplot.show()
                 if let Some(data) = self.0.get_channel_data(channel)
                     && !data.is_empty()
                 {
-                    write!(output, "[{}] ", data.len())
-                        .context("cannot print data length")?;
+                    write!(output, "[{}] ", data.len()).context("cannot print data length")?;
                     let array = &data.as_ref();
                     if let Ok(displayer) = ArrayFormatter::try_new(array, &format_option) {
-                        write!(output, "{} .. {} ", displayer.value(0), displayer.value(data.len() - 1))
-                            .context("cannot print data preview")?;
+                        write!(
+                            output,
+                            "{} .. {} ",
+                            displayer.value(0),
+                            displayer.value(data.len() - 1)
+                        )
+                        .context("cannot print data preview")?;
                     }
                 }
                 if !unit.is_empty() {

@@ -351,8 +351,9 @@ impl fmt::Display for Mdf {
             MdfInfo::V4(mdfinfo4) => {
                 writeln!(f, "Version : {}", mdfinfo4.id_block.id_ver)?;
                 writeln!(f, "{}\n", mdfinfo4.hd_block)?;
-                if let Some(hd) =
-                    mdfinfo4.sharable.get_hd_comments(mdfinfo4.hd_block.hd_md_comment)
+                if let Some(hd) = mdfinfo4
+                    .sharable
+                    .get_hd_comments(mdfinfo4.hd_block.hd_md_comment)
                 {
                     writeln!(f, "{hd}")?;
                 }

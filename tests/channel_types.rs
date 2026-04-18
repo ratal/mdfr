@@ -312,7 +312,11 @@ fn vlsc_channels() -> Result<()> {
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
         if let Some(data) = mdf.get_channel_data("data") {
-            assert!(!data.is_empty(), "VLSC data should not be empty in {}", file);
+            assert!(
+                !data.is_empty(),
+                "VLSC data should not be empty in {}",
+                file
+            );
         } else {
             panic!("VLSC data channel not found in {}", file);
         }
@@ -327,7 +331,11 @@ fn vlsc_channels() -> Result<()> {
         let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
         if let Some(data) = mdf.get_channel_data("data") {
-            assert!(!data.is_empty(), "VLSC data should not be empty in {}", file);
+            assert!(
+                !data.is_empty(),
+                "VLSC data should not be empty in {}",
+                file
+            );
         } else {
             panic!("VLSC data channel not found in {}", file);
         }
