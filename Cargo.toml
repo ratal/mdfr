@@ -13,6 +13,9 @@ readme = "README.md"
 
 [features]
 default = ["numpy", "parquet", "polars"]
+# Expose pyo3's extension-module as a top-level feature so cargo test (without this flag)
+# links against libpython, enabling embedded-Python tests.  maturin auto-enables this.
+extension-module = ["pyo3/extension-module"]
 numpy = ["dep:numpy", "dep:pyo3"]
 polars = ["dep:polars", "dep:numpy", "dep:pyo3"] # numpy and pyo3 are required transitive deps for polars Python interop
 parquet = ["dep:parquet"]
@@ -21,7 +24,7 @@ ndarray = ["dep:ndarray"]
 hdf5-mpio = ["hdf5/mpio"]
 
 [dependencies]
-clap = "4.6.0" # for input arguments
+clap = "4.6.1" # for input arguments
 anyhow = { version = "1.0.102", features = ["backtrace"] } # error handling
 log = "0.4" # to log events
 byteorder = "1.4" # for bytes conversions
@@ -31,7 +34,7 @@ half = "2.7" # for f16 handling
 encoding_rs = "0.8" # for endian management and bytes to text conversion (utf8, SBC, UTF16)
 unicode-bom = "2.0"
 codepage = "0.1" # to convert code page into encoding
-chrono = "0.4.41" # for time conversion
+chrono = "0.4.44" # for time conversion
 rayon = "1.11" # for general purpose parallel computations
 crossbeam-channel = "0.5" # for efficient channel between threads
 parking_lot = "0.12" # for efficient mutex
@@ -67,7 +70,7 @@ ndarray = { version = "0.17", optional = true } # to convert arraw data into nda
 
 [dependencies.pyo3]
 version = "0.28.3"
-features = ["extension-module", "num-complex", "anyhow"]
+features = ["num-complex", "anyhow"]
 optional = true
 
 [dev-dependencies]
