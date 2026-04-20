@@ -293,6 +293,46 @@ impl Mdf {
     pub fn write(&mut self, file_name: &str, compression: bool) -> Result<Mdf> {
         mdfwriter4(self, file_name, compression)
     }
+    /// Returns a Polars [`Series`] for the named channel.
+    ///
+    /// The channel must already be loaded in memory. Returns an error if the
+    /// channel is not found or has an unsupported type.
+    #[cfg(feature = "polars")]
+    pub fn get_channel_polars_series(
+        &self,
+        channel_name: &str,
+    ) -> polars::prelude::PolarsResult<polars::prelude::Series> {
+        let data = self.get_channel_data(channel_name).ok_or_else(|| {
+            polars::prelude::PolarsError::ColumnNotFound(
+                format!("channel '{channel_name}' not found").into(),
+            )
+        })?;
+        crate::export::polars::channel_data_to_series(channel_name, data)
+    }
+    /// Returns a Polars [`DataFrame`] for all channels sharing `master_channel_name`.
+    ///
+    /// Pass `None` for channels that have no master. All channels in the group
+    /// (including the master itself) become columns. Channels with unsupported
+    /// types are silently skipped. All channels must already be loaded in memory.
+    #[cfg(feature = "polars")]
+    pub fn get_channel_polars_dataframe(
+        &self,
+        master_channel_name: Option<&str>,
+    ) -> polars::prelude::PolarsResult<polars::prelude::DataFrame> {
+        crate::export::polars::mdf_master_to_dataframe(self, master_channel_name)
+    }
+    /// Returns one Polars [`DataFrame`] per channel group (one per master channel).
+    ///
+    /// The map key is the master channel name (`None` = channels without a master).
+    /// All channels must already be loaded in memory.
+    #[cfg(feature = "polars")]
+    pub fn get_polars_dataframes(
+        &self,
+    ) -> polars::prelude::PolarsResult<
+        std::collections::HashMap<Option<String>, polars::prelude::DataFrame>,
+    > {
+        crate::export::polars::mdf_to_dataframes(self)
+    }
 }
 
 impl fmt::Display for Mdf {
