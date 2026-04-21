@@ -49,7 +49,7 @@ pub fn mdfreader4<'a>(
                 utf_16_le: UTF_16LE.new_decoder(),
             };
             // read file data
-            for (_dg_position, dg) in info.dg.iter_mut() {
+            for (_dg_position, dg) in &mut info.dg {
                 // Let's find channel names to read in this data group
                 channel_names_present_in_dg = HashSet::new();
                 for channel_group in dg.cg.values() {
@@ -304,7 +304,7 @@ fn read_data(
         }
         [35, 35, 68, 71] => {
             // ##DG
-            bail!("Weird, a DG block type {:?}", id) // should never happen
+            bail!("Weird, a DG block type {id:?}") // should never happen
         }
         [35, 35, 71, 68] => {
             // ##GD - Guard Block (MDF 4.3)
@@ -349,7 +349,7 @@ fn read_data(
                 .context("failed reading guarded data block from GDBLOCK")?;
             }
         }
-        _ => bail!("Unknown data block type {:?}", id), // should never happen
+        _ => bail!("Unknown data block type {id:?}"), // should never happen
     }
     Ok(position)
 }
@@ -791,7 +791,7 @@ fn parser_ld4(
         if id == "##DZ".as_bytes() {
             let (dt, block_header) =
                 parse_dz(rdr).context("failed parsing dz block pointed by ld4 block")?;
-            for (_rec_pos, cn) in channel_group.cn.iter_mut() {
+            for (_rec_pos, cn) in &mut channel_group.cn {
                 read_one_channel_array(&dt, cn, channel_group.block.cg_cycle_count as usize)
                     .context("failed reading one channel array from DZ")?;
             }
@@ -801,7 +801,7 @@ fn parser_ld4(
             let mut buf = vec![0u8; block_header.len as usize - 24];
             rdr.read_exact(&mut buf)
                 .context("Could not read Dt4 block")?;
-            for (_rec_pos, cn) in channel_group.cn.iter_mut() {
+            for (_rec_pos, cn) in &mut channel_group.cn {
                 read_one_channel_array(&buf, cn, channel_group.block.cg_cycle_count as usize)
                     .context("failed reading one channel array")?;
             }

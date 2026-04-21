@@ -132,8 +132,8 @@ impl MdfInfo3 {
     /// returns a hashmap for which master channel names are keys and values its corresponding set of channel names
     pub fn get_master_channel_names_set(&self) -> HashMap<Option<String>, HashSet<String>> {
         let mut channel_master_list: HashMap<Option<String>, HashSet<String>> = HashMap::new();
-        for (_dg_position, dg) in self.dg.iter() {
-            for (_record_id, cg) in dg.cg.iter() {
+        for (_dg_position, dg) in &self.dg {
+            for (_record_id, cg) in &dg.cg {
                 if let Some(list) = channel_master_list.get_mut(&None) {
                     list.extend(list.clone());
                 } else {
@@ -296,23 +296,23 @@ impl MdfInfo3 {
     /// Formats the channel list with optional data preview
     pub fn format_channels(&self, _show_data: bool) -> String {
         let mut output = String::new();
-        for (master, list) in self.get_master_channel_names_set().iter() {
+        for (master, list) in &self.get_master_channel_names_set() {
             if let Some(master_name) = master {
-                output.push_str(&format!("\nMaster: {}\n", master_name));
+                output.push_str(&format!("\nMaster: {master_name}\n"));
             } else {
                 output.push_str("\nWithout Master channel\n");
             }
-            for channel in list.iter() {
+            for channel in list {
                 let unit = self.get_channel_unit(channel);
                 let desc = self.get_channel_desc(channel);
-                output.push_str(&format!("  {} ", channel));
+                output.push_str(&format!("  {channel} "));
                 if let Some(u) = unit {
-                    output.push_str(&format!("\"{}\" ", u));
+                    output.push_str(&format!("\"{u}\" "));
                 }
                 if let Some(d) = desc
                     && !d.is_empty()
                 {
-                    output.push_str(&format!("// {}", d));
+                    output.push_str(&format!("// {d}"));
                 }
                 output.push('\n');
             }
@@ -1461,7 +1461,7 @@ pub fn parse_cc3_block(
             let mut pairs: Vec<(f64, String)> =
                 vec![(0.0f64, String::with_capacity(32)); cc_block.cc_size as usize];
             let mut buf = vec![0u8; 32];
-            for pair in pairs.iter_mut() {
+            for pair in &mut pairs {
                 pair.0 = rdr
                     .read_f64::<LittleEndian>()
                     .context("Could not read text table conversion value parameters")?;
@@ -1504,7 +1504,7 @@ pub fn parse_cc3_block(
             let (_block_header, default_string, pos) =
                 parse_tx(rdr, default_text_pointer, position, encoding)?;
             position = pos;
-            for (low_range, high_range, text_pointer) in pairs_pointer.iter() {
+            for (low_range, high_range, text_pointer) in &pairs_pointer {
                 let (_block_header, text, pos) = parse_tx(rdr, *text_pointer, position, encoding)?;
                 position = pos;
                 pairs_string.push((*low_range, *high_range, text));
@@ -1674,8 +1674,8 @@ pub fn build_channel_db3(
     let mut master_channel_list: HashMap<u32, String> = HashMap::with_capacity(n_cg as usize);
     // creating channel list for whole file and making channel names unique
     for (dg_position, dg) in dg.iter_mut() {
-        for (record_id, cg) in dg.cg.iter_mut() {
-            for (cn_position, cn) in cg.cn.iter_mut() {
+        for (record_id, cg) in &mut dg.cg {
+            for (cn_position, cn) in &mut cg.cn {
                 if channel_list.contains_key(&cn.unique_name) {
                     let mut changed: bool = false;
                     let space_char = String::from(" ");
@@ -1720,13 +1720,13 @@ pub fn build_channel_db3(
     }
     // identifying master channels
     for (_dg_position, dg) in dg.iter_mut() {
-        for (_record_id, cg) in dg.cg.iter_mut() {
+        for (_record_id, cg) in &mut dg.cg {
             let mut cg_channel_list: HashSet<String> =
                 HashSet::with_capacity(cg.block.cg_n_channels as usize);
             let master_channel_name: Option<String> = master_channel_list
                 .get(&cg.block_position)
-                .map(|name| name.to_string());
-            for (_cn_record_position, cn) in cg.cn.iter_mut() {
+                .map(std::string::ToString::to_string);
+            for (_cn_record_position, cn) in &mut cg.cn {
                 cg_channel_list.insert(cn.unique_name.clone());
                 // assigns master in channel_list
                 if let Some(id) = channel_list.get_mut(&cn.unique_name) {

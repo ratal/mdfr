@@ -136,7 +136,7 @@ impl Clone for ChannelData {
                 Self::Utf8(arg0.finish_cloned().into_builder().unwrap_or_else(|arr| {
                     // unreachable: finish_cloned() gives Arc refcount 1
                     let mut b = LargeStringBuilder::with_capacity(arr.len(), arr.values().len());
-                    for v in arr.iter() {
+                    for v in &arr {
                         match v {
                             Some(s) => b.append_value(s),
                             None => b.append_null(),
@@ -149,7 +149,7 @@ impl Clone for ChannelData {
                 array.finish_cloned().into_builder().unwrap_or_else(|arr| {
                     // unreachable: finish_cloned() gives Arc refcount 1
                     let mut b = LargeBinaryBuilder::with_capacity(arr.len(), arr.values().len());
-                    for v in arr.iter() {
+                    for v in &arr {
                         match v {
                             Some(s) => b.append_value(s),
                             None => b.append_null(),
@@ -1250,7 +1250,7 @@ impl ChannelData {
                     let type_ids = a.type_ids();
                     // Pre-count child sizes for capacity allocation
                     let mut child_sizes = vec![0usize; n_children];
-                    for &tid in type_ids.iter() {
+                    for &tid in type_ids {
                         if let Some(count) = child_sizes.get_mut(tid as usize) {
                             *count += 1;
                         }
@@ -1805,7 +1805,7 @@ pub fn try_from(value: &dyn Array) -> Result<ChannelData, Error> {
             let data = as_primitive_array::<Float16Type>(value);
             let mut new_data = PrimitiveBuilder::<Float32Type>::with_capacity(data.len());
             data.iter()
-                .for_each(|v| new_data.append_option(v.map(|f| f.to_f32())));
+                .for_each(|v| new_data.append_option(v.map(half::f16::to_f32)));
             Ok(ChannelData::Float32(new_data))
         }
         DataType::Float32 => {

@@ -141,7 +141,7 @@ pub fn decompress_data(
             return Ok(data);
         }
         _ => {
-            bail!("not implemented compression algorithm: {}", zip_type)
+            bail!("not implemented compression algorithm: {zip_type}")
         }
     };
     // transpose data
@@ -350,7 +350,7 @@ impl Display for Ld4Block {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let sample_count = self
             .ld_equal_sample_count
-            .map(|c| format!("{}", c))
+            .map(|c| format!("{c}"))
             .unwrap_or_else(|| format!("{} offsets", self.ld_sample_offset.len()));
         write!(
             f,
@@ -459,7 +459,7 @@ impl Display for Gd4Block {
         let major = self.gd_version / 100;
         let minor = (self.gd_version % 100) / 10;
         let patch = self.gd_version % 10;
-        write!(f, "GD: min_version={}.{}.{}", major, minor, patch)
+        write!(f, "GD: min_version={major}.{minor}.{patch}")
     }
 }
 

@@ -62,7 +62,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
     let mut fh_blocks: Vec<(FhBlock, MetaData)> = Vec::new();
 
     // Copy existing FH blocks from source file
-    for fh in info.fh.iter() {
+    for fh in &info.fh {
         let mut new_fh = *fh;
         let _fh_position = pointer;
         pointer += 56; // FH block size
@@ -124,7 +124,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
     if !info.ev.is_empty() {
         new_info.hd_block.hd_ev_first = pointer;
 
-        for (orig_pos, ev) in info.ev.iter() {
+        for (orig_pos, ev) in &info.ev {
             let ev_block_position = pointer;
 
             // Create copies of TX/MD blocks for event name and comment
@@ -205,7 +205,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
     if !info.at.is_empty() {
         new_info.hd_block.hd_at_first = pointer;
 
-        for (orig_pos, (at, embedded_data)) in info.at.iter() {
+        for (orig_pos, (at, embedded_data)) in &info.at {
             let at_block_position = pointer;
 
             // Create copies of TX/MD blocks for filename, mimetype, and comment
@@ -299,7 +299,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
     let mut si_blocks: Vec<SiBlockEntry> = Vec::new();
     let mut si_position_map: HashMap<i64, i64> = HashMap::new();
 
-    for (orig_pos, si) in info.sharable.si.iter() {
+    for (orig_pos, si) in &info.sharable.si {
         let new_si_position = pointer;
         si_position_map.insert(*orig_pos, new_si_position);
 
@@ -343,8 +343,8 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
     new_info.hd_block.hd_dg_first = pointer;
 
     // builds meta data blocks for the new file
-    for (_dg_position, dg) in info.dg.iter() {
-        for (_record_id, cg) in dg.cg.iter() {
+    for (_dg_position, dg) in &info.dg {
+        for (_record_id, cg) in &dg.cg {
             let mut cg_cg_master: i64 = 0;
 
             // find master channel and start to write blocks for it
@@ -375,7 +375,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
             }
 
             // create the other non master channel blocks
-            for (_cn_record_position, cn) in cg.cn.iter() {
+            for (_cn_record_position, cn) in &cg.cn {
                 // not master channel
                 if cn.block.cn_type != 2
                     && cn.block.cn_type != 3
@@ -406,7 +406,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
     let mut dg_position_map: HashMap<i64, i64> = HashMap::new();
     let mut cg_position_map: HashMap<i64, i64> = HashMap::new();
     let mut cn_position_map: HashMap<i64, i64> = HashMap::new();
-    for (name, (_, old_dg, (old_cg, _), (old_cn, _))) in info.channel_names_set.iter() {
+    for (name, (_, old_dg, (old_cg, _), (old_cn, _))) in &info.channel_names_set {
         if let Some((_, new_dg, (new_cg, _), (new_cn, _))) = new_info.channel_names_set.get(name) {
             dg_position_map.insert(*old_dg, *new_dg);
             cg_position_map.insert(*old_cg, *new_cg);
@@ -454,7 +454,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
         }
 
         // Pass 2: Remap all links
-        for (orig_pos, ch, name_md, comment_md) in ch_blocks.iter_mut() {
+        for (orig_pos, ch, name_md, comment_md) in &mut ch_blocks {
             // Remap sibling and child links
             ch.ch_ch_next = if ch.ch_ch_next > 0 {
                 ch_position_map.get(&ch.ch_ch_next).copied().unwrap_or(0)
@@ -540,8 +540,8 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
         .dg
         .par_iter_mut()
         .try_for_each(|(_dg_block_position, dg)| -> Result<(), Error> {
-            for (_rec_id, cg) in dg.cg.iter_mut() {
-                for (_rec_pos, cn) in cg.cn.iter_mut() {
+            for (_rec_id, cg) in &mut dg.cg {
+                for (_rec_pos, cn) in &mut cg.cn {
                     let dt = mdf.get_channel_data(&cn.unique_name);
                     if let Some(data) = dt {
                         let m = data.validity();
@@ -625,7 +625,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
     drop(tx);
     writer_handle
         .join()
-        .map_err(|e| anyhow::anyhow!("Data writer thread panicked: {:?}", e))
+        .map_err(|e| anyhow::anyhow!("Data writer thread panicked: {e:?}"))
         .and_then(|r| r)?;
 
     let file_name = Arc::clone(&fname);
@@ -869,18 +869,18 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
     }
 
     // Writes DG+CG+CN blocks
-    for (_position, dg) in new_info.dg.iter() {
+    for (_position, dg) in &new_info.dg {
         buffer
             .write_le(&dg.block)
             .context("Could not write CGBlock")?;
-        for (_red_id, cg) in dg.cg.iter() {
+        for (_red_id, cg) in &dg.cg {
             buffer
                 .write_le(&cg.header)
                 .context("Could not write CGBlock header")?;
             buffer
                 .write_le(&cg.block)
                 .context("Could not write CGBlock")?;
-            for (_rec_pos, cn) in cg.cn.iter() {
+            for (_rec_pos, cn) in &cg.cn {
                 buffer
                     .write_le(&cn.header)
                     .context("Could not write CNBlock header")?;

@@ -178,7 +178,7 @@ fn identify_vlsd_cg(cg: &mut HashMap<u64, Cg4>) {
         // try to find corresponding channel in other channel group
         let mut vlsd_matching: HashMap<u64, (u64, i32)> = HashMap::new();
         for (target_rec_id, channel_group) in cg.iter() {
-            for (target_rec_pos, cn) in channel_group.cn.iter() {
+            for (target_rec_pos, cn) in &channel_group.cn {
                 if let Some(vlsd_rec_id) = vlsd.get(&cn.block.cn_data) {
                     // Found matching channel with VLSD_CG
                     vlsd_matching.insert(*vlsd_rec_id, (*target_rec_id, *target_rec_pos));

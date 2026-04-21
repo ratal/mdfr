@@ -1712,7 +1712,7 @@ where
         keys.push(key);
     }
     let mut txt: Vec<TextOrScaleConversion> = Vec::with_capacity(n_keys);
-    for pointer in cc_ref.iter() {
+    for pointer in cc_ref {
         match sharable.get_tx(*pointer) {
             Ok(Some(t)) => {
                 txt.push(TextOrScaleConversion::Txt(t));
@@ -1896,7 +1896,7 @@ fn text_to_text_calculation(
 ) -> LargeStringBuilder {
     let pairs: Vec<(&i64, &i64)> = cc_ref.iter().tuples().collect();
     let mut table: HashMap<String, Option<String>> = HashMap::with_capacity(cc_ref.len());
-    for ccref in pairs.iter() {
+    for ccref in &pairs {
         if let Ok(Some(key)) = sharable.get_tx(*ccref.0) {
             match sharable.get_tx(*ccref.1) {
                 Ok(Some(txt)) => {
@@ -1968,7 +1968,7 @@ where
 {
     let mut table: Vec<(ValueOrValueRangeToText, Option<String>)> =
         Vec::with_capacity(cc_ref.len());
-    for pointer in cc_ref.iter() {
+    for pointer in cc_ref {
         if let Some(cc) = sharable.cc.get(pointer) {
             let name: Option<String>;
             if cc.cc_tx_name != 0 {
@@ -2037,7 +2037,7 @@ where
                             keys.push(key);
                         }
                         let mut txt: Vec<TextOrScaleConversion> = Vec::with_capacity(n_keys);
-                        for pointer in cc.cc_ref.iter() {
+                        for pointer in &cc.cc_ref {
                             match sharable.get_tx(*pointer) {
                                 Ok(Some(t)) => {
                                     txt.push(TextOrScaleConversion::Txt(t));

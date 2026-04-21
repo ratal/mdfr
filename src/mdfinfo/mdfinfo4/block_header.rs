@@ -219,15 +219,15 @@ pub struct SharableBlocks {
 impl fmt::Display for SharableBlocks {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "MD TX comments : \n")?;
-        for (_k, c) in self.md_tx.iter() {
+        for (_k, c) in &self.md_tx {
             writeln!(f, "{c}")?;
         }
         writeln!(f, "CC : \n")?;
-        for (position, cc) in self.cc.iter() {
+        for (position, cc) in &self.cc {
             writeln!(f, "Position: {position}  Text: {cc:?}")?;
         }
         writeln!(f, "SI : ")?;
-        for (position, si) in self.si.iter() {
+        for (position, si) in &self.si {
             writeln!(f, "Position: {position}  Text: {si:?}")?;
         }
         writeln!(f, "finished")

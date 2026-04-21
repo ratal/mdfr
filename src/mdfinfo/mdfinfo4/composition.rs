@@ -54,12 +54,12 @@ pub enum Compo {
 impl Display for Compo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Compo::CA(ca) => write!(f, "CA({})", ca),
-            Compo::CN(cn) => write!(f, "CN({})", cn),
-            Compo::CL(cl) => write!(f, "CL({})", cl),
-            Compo::CV(cv) => write!(f, "CV({})", cv),
-            Compo::CU(cu) => write!(f, "CU({})", cu),
-            Compo::DS(ds) => write!(f, "DS({})", ds),
+            Compo::CA(ca) => write!(f, "CA({ca})"),
+            Compo::CN(cn) => write!(f, "CN({cn})"),
+            Compo::CL(cl) => write!(f, "CL({cl})"),
+            Compo::CV(cv) => write!(f, "CV({cv})"),
+            Compo::CU(cu) => write!(f, "CU({cu})"),
+            Compo::DS(ds) => write!(f, "DS({ds})"),
         }
     }
 }

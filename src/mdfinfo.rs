@@ -143,9 +143,8 @@ impl MdfInfo {
         let is_unfinalized = id.id_file_id == UNFINALIZED_ID || id_unfin_flags != 0;
         if is_unfinalized {
             warn!(
-                "Unfinalized MDF file detected (id_unfin_flags=0x{:04X}, id_custom_unfin_flags=0x{:04X}). \
+                "Unfinalized MDF file detected (id_unfin_flags=0x{id_unfin_flags:04X}, id_custom_unfin_flags=0x{id_custom_unfin_flags:04X}). \
                  Data may be incomplete or metadata may be inaccurate.",
-                id_unfin_flags, id_custom_unfin_flags,
             );
             if id_unfin_flags & UNFIN_CG_CYCLE_COUNTERS != 0 {
                 warn!("  Bit 0: CG/CA cycle counters may be incorrect");
@@ -176,8 +175,7 @@ impl MdfInfo {
             }
             if id_custom_unfin_flags != 0 {
                 warn!(
-                    "  Custom finalization flags set (tool-specific): 0x{:04X}",
-                    id_custom_unfin_flags
+                    "  Custom finalization flags set (tool-specific): 0x{id_custom_unfin_flags:04X}"
                 );
             }
         }
@@ -645,8 +643,8 @@ impl MdfInfo {
 impl fmt::Display for MdfInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MdfInfo::V3(mdfinfo3) => write!(f, "{}", mdfinfo3),
-            MdfInfo::V4(mdfinfo4) => write!(f, "{}", mdfinfo4),
+            MdfInfo::V3(mdfinfo3) => write!(f, "{mdfinfo3}"),
+            MdfInfo::V4(mdfinfo4) => write!(f, "{mdfinfo4}"),
         }
     }
 }

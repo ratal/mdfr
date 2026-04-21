@@ -191,7 +191,7 @@ pub unsafe extern "C" fn get_channel_names_set(mdf: *const Mdf) -> *const *mut c
             let mut cstring_vec = s
                 .iter()
                 .filter_map(|e| CString::new(e.as_str()).ok())
-                .map(|cs| cs.into_raw())
+                .map(std::ffi::CString::into_raw)
                 .collect::<Vec<*mut c_char>>();
             cstring_vec.shrink_to_fit();
             let p = cstring_vec.as_ptr();

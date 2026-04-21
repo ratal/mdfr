@@ -69,8 +69,8 @@ pub fn export_to_parquet(
             )?;
         }
         MdfInfo::V3(mdfinfo3) => {
-            for (_dg_block_position, dg) in mdfinfo3.dg.iter() {
-                for (rec_id, cg) in dg.cg.iter() {
+            for (_dg_block_position, dg) in &mdfinfo3.dg {
+                for (rec_id, cg) in &dg.cg {
                     mdf3_cg_to_parquet(file_name, mdfinfo3, rec_id, cg, parquet_compression)
                         .context("failed converting Channel Group 3 to parquet")?;
                 }

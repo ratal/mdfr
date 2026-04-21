@@ -61,7 +61,7 @@ impl<'py> IntoPyObject<'py> for ChannelData {
                 let out: Vec<Vec<u8>> = binary_array
                     .values()
                     .chunks(binary_array.value_length() as usize)
-                    .map(|x| x.to_vec())
+                    .map(<[u8]>::to_vec)
                     .collect();
                 out.into_pyobject(py)
             }

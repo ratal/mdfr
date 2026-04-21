@@ -464,8 +464,7 @@ impl Cg4 {
 
                 let Some(disc_cn) = discriminator_cn else {
                     log::warn!(
-                        "CV discriminator channel not found for block_position {}",
-                        discriminator_ptr
+                        "CV discriminator channel not found for block_position {discriminator_ptr}"
                     );
                     continue;
                 };
@@ -516,7 +515,7 @@ impl Cg4 {
 
             if all_same_type {
                 // All options have the same type: use existing merge path
-                let template = option_data.iter().find_map(|o| o.clone());
+                let template = option_data.iter().find_map(std::clone::Clone::clone);
 
                 // Second pass: update parent channel (mutable borrow)
                 if let Some(parent_cn) = self.cn.get_mut(&parent_rec_pos)
@@ -587,7 +586,7 @@ impl Cg4 {
                         }
                     }
                     Err(e) => {
-                        log::warn!("Failed to create dense UnionArray for CV variant: {}", e);
+                        log::warn!("Failed to create dense UnionArray for CV variant: {e}");
                     }
                 }
             }
@@ -642,8 +641,7 @@ impl Cg4 {
 
             if member_info.is_empty() {
                 log::warn!(
-                    "CU member channels not found for parent at rec_pos {}",
-                    parent_rec_pos
+                    "CU member channels not found for parent at rec_pos {parent_rec_pos}"
                 );
                 continue;
             }
@@ -672,7 +670,7 @@ impl Cg4 {
             ) {
                 Ok(arr) => arr,
                 Err(e) => {
-                    log::warn!("Failed to create UnionArray for CU channel: {}", e);
+                    log::warn!("Failed to create UnionArray for CU channel: {e}");
                     continue;
                 }
             };

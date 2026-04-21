@@ -357,13 +357,13 @@ impl fmt::Display for Mdf {
                     mdfinfo3.hd_block.hd_date, mdfinfo3.hd_block.hd_time
                 )?;
                 writeln!(f, "Comments: {}", mdfinfo3.hd_comment)?;
-                for (master, list) in self.get_master_channel_names_set().iter() {
+                for (master, list) in &self.get_master_channel_names_set() {
                     if let Some(master_name) = master {
                         writeln!(f, "\nMaster: {master_name}")?;
                     } else {
                         writeln!(f, "\nWithout Master channel")?;
                     }
-                    for channel in list.iter() {
+                    for channel in list {
                         writeln!(f, " {channel} ")?;
                         if let Some(data) = self.get_channel_data(channel)
                             && !data.is_empty()
@@ -397,13 +397,13 @@ impl fmt::Display for Mdf {
                 {
                     writeln!(f, "{hd}")?;
                 }
-                for (master, list) in self.get_master_channel_names_set().iter() {
+                for (master, list) in &self.get_master_channel_names_set() {
                     if let Some(master_name) = master {
                         writeln!(f, "\nMaster: {master_name}")?;
                     } else {
                         writeln!(f, "\nWithout Master channel")?;
                     }
-                    for channel in list.iter() {
+                    for channel in list {
                         writeln!(f, " {channel} ")?;
                         if let Some(data) = self.get_channel_data(channel)
                             && !data.is_empty()

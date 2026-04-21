@@ -190,8 +190,8 @@ impl MdfInfo4 {
     /// returns a hashmap for which master channel names are keys and values its corresponding set of channel names
     pub fn get_master_channel_names_set(&self) -> HashMap<Option<String>, HashSet<String>> {
         let mut channel_master_list: HashMap<Option<String>, HashSet<String>> = HashMap::new();
-        for (_dg_position, dg) in self.dg.iter() {
-            for (_record_id, cg) in dg.cg.iter() {
+        for (_dg_position, dg) in &self.dg {
+            for (_record_id, cg) in &dg.cg {
                 if let Some(list) = channel_master_list.get_mut(&cg.master_channel_name) {
                     list.extend(cg.channel_names.clone());
                 } else {
@@ -481,7 +481,7 @@ impl MdfInfo4 {
     /// list attachments
     pub fn list_attachments(&mut self) -> String {
         let mut output = String::new();
-        for (key, (block, _embedded_data)) in self.at.iter() {
+        for (key, (block, _embedded_data)) in &self.at {
             output.push_str(&format!(
                 "position: {}, filename: {:?}, mimetype: {:?}, comment: {:?}\n ",
                 key,
@@ -511,7 +511,7 @@ impl MdfInfo4 {
     /// get all attachment blocks
     pub fn get_attachment_blocks(&self) -> HashMap<i64, At4Block> {
         let mut output: HashMap<i64, At4Block> = HashMap::new();
-        for (key, (block, _data)) in self.at.iter() {
+        for (key, (block, _data)) in &self.at {
             output.insert(*key, *block);
         }
         output
@@ -532,7 +532,7 @@ impl MdfInfo4 {
     /// list events
     pub fn list_events(&mut self) -> String {
         let mut output = String::new();
-        for (key, block) in self.ev.iter() {
+        for (key, block) in &self.ev {
             output.push_str(&format!(
                 "position: {}, name: {:?}, comment: {:?}, scope: {:?}, attachment references: {:?}, event type: {}\n",
                 key,
@@ -548,8 +548,8 @@ impl MdfInfo4 {
     /// list sample reduction blocks for all channel groups
     pub fn list_sample_reductions(&self) -> String {
         let mut output = String::new();
-        for (_dg_pos, dg) in self.dg.iter() {
-            for (rec_id, cg) in dg.cg.iter() {
+        for (_dg_pos, dg) in &self.dg {
+            for (rec_id, cg) in &dg.cg {
                 if !cg.sr.is_empty() {
                     output.push_str(&format!(
                         "Channel group (rec_id={}): {} sample reduction(s)\n",
@@ -575,8 +575,8 @@ impl MdfInfo4 {
     /// Returns a vector of (dg_position, rec_id, sr_blocks) tuples
     pub fn get_sample_reduction_blocks(&self) -> Vec<(i64, u64, Vec<Sr4Block>)> {
         let mut result = Vec::new();
-        for (&dg_pos, dg) in self.dg.iter() {
-            for (&rec_id, cg) in dg.cg.iter() {
+        for (&dg_pos, dg) in &self.dg {
+            for (&rec_id, cg) in &dg.cg {
                 if !cg.sr.is_empty() {
                     result.push((dg_pos, rec_id, cg.sr.clone()));
                 }
@@ -587,7 +587,7 @@ impl MdfInfo4 {
     /// list source information blocks
     pub fn list_source_information(&self) -> String {
         let mut output = String::new();
-        for (key, block) in self.sharable.si.iter() {
+        for (key, block) in &self.sharable.si {
             output.push_str(&format!(
                 "position: {}, name: {:?}, path: {:?}, type: {}, bus: {}\n",
                 key,
@@ -673,8 +673,7 @@ impl MdfInfo4 {
                     let cg_pos = block.ch_element[base_idx + 1];
                     let cn_pos = block.ch_element[base_idx + 2];
                     output.push_str(&format!(
-                        "{}  -> DG:{} CG:{} CN:{}\n",
-                        indent, dg_pos, cg_pos, cn_pos
+                        "{indent}  -> DG:{dg_pos} CG:{cg_pos} CN:{cn_pos}\n"
                     ));
                 }
             }
@@ -705,16 +704,16 @@ impl MdfInfo4 {
     /// If `show_data` is true, shows first and last values for channels with data
     pub fn format_channels(&self, show_data: bool) -> String {
         let mut output = String::new();
-        for (master, list) in self.get_master_channel_names_set().iter() {
+        for (master, list) in &self.get_master_channel_names_set() {
             if let Some(master_name) = master {
-                output.push_str(&format!("\nMaster: {}\n", master_name));
+                output.push_str(&format!("\nMaster: {master_name}\n"));
             } else {
                 output.push_str("\nWithout Master channel\n");
             }
-            for channel in list.iter() {
+            for channel in list {
                 let unit = self.get_channel_unit(channel).ok().flatten();
                 let desc = self.get_channel_desc(channel).ok().flatten();
-                output.push_str(&format!("  {} ", channel));
+                output.push_str(&format!("  {channel} "));
                 if show_data
                     && let Some(data) = self.get_channel_data(channel)
                     && !data.is_empty()
@@ -722,12 +721,12 @@ impl MdfInfo4 {
                     output.push_str(&format!("[{}] ", data.len()));
                 }
                 if let Some(u) = unit {
-                    output.push_str(&format!("\"{}\" ", u));
+                    output.push_str(&format!("\"{u}\" "));
                 }
                 if let Some(d) = desc
                     && !d.is_empty()
                 {
-                    output.push_str(&format!("// {}", d));
+                    output.push_str(&format!("// {d}"));
                 }
                 output.push('\n');
             }
@@ -774,7 +773,7 @@ impl fmt::Display for MdfInfo4 {
         writeln!(f, "{}", self.hd_block)?;
         let header_comments = self.format_header_comments();
         if !header_comments.is_empty() {
-            writeln!(f, "{}", header_comments)?;
+            writeln!(f, "{header_comments}")?;
         }
         write!(f, "{}", self.format_channels(false))
     }

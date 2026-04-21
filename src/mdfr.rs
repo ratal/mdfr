@@ -137,7 +137,7 @@ impl Mdfr {
         };
         pyo3::Python::attach(|py| {
             Ok(data
-                .map(|d| d.get_dtype())
+                .map(super::data_holder::channel_data::ChannelData::get_dtype)
                 .into_pyobject(py)
                 .context("error converting dtype into python object")?
                 .into())
@@ -765,7 +765,7 @@ pyplot.show()
                 writeln!(output, "{}", mdfinfo4.hd_block).context("cannot print header block")?;
                 let header_comments = mdfinfo4.format_header_comments();
                 if !header_comments.is_empty() {
-                    write!(output, "{}", header_comments)
+                    write!(output, "{header_comments}")
                         .context("cannot print header comments")?;
                 }
                 // MDF4-specific sections
@@ -773,31 +773,31 @@ pyplot.show()
                 if !si_info.is_empty() {
                     writeln!(output, "\n--- Source Information ---")
                         .context("cannot print source info header")?;
-                    write!(output, "{}", si_info).context("cannot print source information")?;
+                    write!(output, "{si_info}").context("cannot print source information")?;
                 }
                 let at_info = mdfinfo4.list_attachments();
                 if !at_info.is_empty() {
                     writeln!(output, "\n--- Attachments ---")
                         .context("cannot print attachments header")?;
-                    write!(output, "{}", at_info).context("cannot print attachments")?;
+                    write!(output, "{at_info}").context("cannot print attachments")?;
                 }
                 let ev_info = mdfinfo4.list_events();
                 if !ev_info.is_empty() {
                     writeln!(output, "\n--- Events ---").context("cannot print events header")?;
-                    write!(output, "{}", ev_info).context("cannot print events")?;
+                    write!(output, "{ev_info}").context("cannot print events")?;
                 }
                 let ch_info = mdfinfo4.list_channel_hierarchy();
                 if !ch_info.is_empty() {
                     writeln!(output, "\n--- Channel Hierarchy ---")
                         .context("cannot print channel hierarchy header")?;
-                    write!(output, "{}", ch_info).context("cannot print channel hierarchy")?;
+                    write!(output, "{ch_info}").context("cannot print channel hierarchy")?;
                 }
             }
         }
 
         // Channels section (common for both versions, with data preview)
         writeln!(output, "\n--- Channels ---").context("cannot print channels header")?;
-        for (master, list) in self.0.mdf_info.get_master_channel_names_set().iter() {
+        for (master, list) in &self.0.mdf_info.get_master_channel_names_set() {
             if let Some(master_name) = master {
                 writeln!(output, "\nMaster: {master_name}")
                     .context("cannot print master channel name")?;
@@ -805,7 +805,7 @@ pyplot.show()
                 writeln!(output, "\nWithout Master channel")
                     .context("cannot print no master channel")?;
             }
-            for channel in list.iter() {
+            for channel in list {
                 let unit = self
                     .get_channel_unit(channel.to_string())
                     .context("failed getting channel unit")?
@@ -832,10 +832,10 @@ pyplot.show()
                     }
                 }
                 if !unit.is_empty() {
-                    write!(output, "\"{}\" ", unit).context("cannot print unit")?;
+                    write!(output, "\"{unit}\" ").context("cannot print unit")?;
                 }
                 if !desc.is_empty() {
-                    write!(output, "// {}", desc).context("cannot print description")?;
+                    write!(output, "// {desc}").context("cannot print description")?;
                 }
                 writeln!(output).context("cannot print newline")?;
             }

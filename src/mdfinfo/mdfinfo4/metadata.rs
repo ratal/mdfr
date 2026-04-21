@@ -459,7 +459,7 @@ fn extract_text<'a>(node: roxmltree::Node<'a, 'a>, tag_name: &str) -> Option<Str
     node.children()
         .find(|n| n.is_element() && n.has_tag_name(tag_name))
         .and_then(|n| n.text())
-        .map(|s| s.to_string())
+        .map(std::string::ToString::to_string)
 }
 
 /// Parse `<names>`, `<path>`, or `<bus>` block into MdNames (default language only)
@@ -491,7 +491,7 @@ fn parse_common_properties(node: roxmltree::Node) -> CommonProperties {
 
 /// Parse children of a common_properties or tree node
 fn parse_properties_children(node: roxmltree::Node, props: &mut HashMap<String, PropertyValue>) {
-    for child in node.children().filter(|n| n.is_element()) {
+    for child in node.children().filter(roxmltree::Node::is_element) {
         let tag = child.tag_name().name();
         match tag {
             "e" => {
@@ -526,7 +526,7 @@ fn parse_properties_children(node: roxmltree::Node, props: &mut HashMap<String, 
                     let items: Vec<String> = child
                         .children()
                         .filter(|n| n.is_element() && n.has_tag_name("eli"))
-                        .filter_map(|n| n.text().map(|s| s.to_string()))
+                        .filter_map(|n| n.text().map(std::string::ToString::to_string))
                         .collect();
                     props.insert(name.to_string(), PropertyValue::EList(items));
                 }
@@ -598,7 +598,7 @@ impl MetaData {
                 .md_comment
                 .as_ref()
                 .and_then(|mc| mc.get_tx())
-                .map(|s| s.to_string())),
+                .map(std::string::ToString::to_string)),
             MetaDataBlockType::MdBlock => {
                 // extract TX tag from xml
                 let comment: String = self
