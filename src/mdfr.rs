@@ -150,7 +150,7 @@ impl Mdfr {
         pyo3::Python::attach(|py| {
             let mut py_serie = Ok(Python::None(py));
             if let Some(array) = mdf.get_channel_data(channel_name) {
-                py_serie = rust_arrow_to_py_series(array.as_ref(), channel_name.to_string());
+                py_serie = rust_arrow_to_py_series(array.as_ref(), channel_name);
             };
             py_serie
         })
@@ -168,7 +168,7 @@ impl Mdfr {
                     series_dict
                         .set_item(
                             channel.clone(),
-                            rust_arrow_to_py_series(channel_data.as_ref(), channel)
+                            rust_arrow_to_py_series(channel_data.as_ref(), &channel)
                                 .context("Could not convert to python series")?,
                         )
                         .context("could not store the serie in dict")?;
@@ -765,8 +765,7 @@ pyplot.show()
                 writeln!(output, "{}", mdfinfo4.hd_block).context("cannot print header block")?;
                 let header_comments = mdfinfo4.format_header_comments();
                 if !header_comments.is_empty() {
-                    write!(output, "{header_comments}")
-                        .context("cannot print header comments")?;
+                    write!(output, "{header_comments}").context("cannot print header comments")?;
                 }
                 // MDF4-specific sections
                 let si_info = mdfinfo4.list_source_information();

@@ -189,18 +189,15 @@ impl MdfInfo4 {
     }
     /// returns a hashmap for which master channel names are keys and values its corresponding set of channel names
     pub fn get_master_channel_names_set(&self) -> HashMap<Option<String>, HashSet<String>> {
-        let mut channel_master_list: HashMap<Option<String>, HashSet<String>> = HashMap::new();
-        for (_dg_position, dg) in &self.dg {
-            for (_record_id, cg) in &dg.cg {
-                if let Some(list) = channel_master_list.get_mut(&cg.master_channel_name) {
-                    list.extend(cg.channel_names.clone());
-                } else {
-                    channel_master_list
-                        .insert(cg.master_channel_name.clone(), cg.channel_names.clone());
-                }
+        let mut map: HashMap<Option<String>, HashSet<String>> = HashMap::new();
+        for dg in self.dg.values() {
+            for cg in dg.cg.values() {
+                map.entry(cg.master_channel_name.clone())
+                    .or_default()
+                    .extend(cg.channel_names.iter().cloned());
             }
         }
-        channel_master_list
+        map
     }
     /// empty the channels' ndarray
     pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) -> Result<()> {

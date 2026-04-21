@@ -131,18 +131,15 @@ impl MdfInfo3 {
     }
     /// returns a hashmap for which master channel names are keys and values its corresponding set of channel names
     pub fn get_master_channel_names_set(&self) -> HashMap<Option<String>, HashSet<String>> {
-        let mut channel_master_list: HashMap<Option<String>, HashSet<String>> = HashMap::new();
-        for (_dg_position, dg) in &self.dg {
-            for (_record_id, cg) in &dg.cg {
-                if let Some(list) = channel_master_list.get_mut(&None) {
-                    list.extend(list.clone());
-                } else {
-                    channel_master_list
-                        .insert(cg.master_channel_name.clone(), cg.channel_names.clone());
-                }
+        let mut map: HashMap<Option<String>, HashSet<String>> = HashMap::new();
+        for dg in self.dg.values() {
+            for cg in dg.cg.values() {
+                map.entry(cg.master_channel_name.clone())
+                    .or_default()
+                    .extend(cg.channel_names.iter().cloned());
             }
         }
-        channel_master_list
+        map
     }
     // empty the channels' ndarray
     pub fn clear_channel_data_from_memory(
@@ -479,14 +476,26 @@ pub fn hd3_parser(
         .parse::<u32>()
         .context("Could not parse sec")?;
     let hd_time = (hour, minute, sec);
-    let mut hd_author: String = encoding.decode(&block.hd_author).0.into();
-    hd_author = hd_author.trim_end_matches(char::from(0)).to_string();
-    let mut hd_organization: String = encoding.decode(&block.hd_organization).0.into();
-    hd_organization = hd_organization.trim_end_matches(char::from(0)).to_string();
-    let mut hd_project: String = encoding.decode(&block.hd_project).0.into();
-    hd_project = hd_project.trim_end_matches(char::from(0)).to_string();
-    let mut hd_subject: String = encoding.decode(&block.hd_subject).0.into();
-    hd_subject = hd_subject.trim_end_matches(char::from(0)).to_string();
+    let hd_author: String = encoding
+        .decode(&block.hd_author)
+        .0
+        .trim_end_matches(char::from(0))
+        .to_string();
+    let hd_organization: String = encoding
+        .decode(&block.hd_organization)
+        .0
+        .trim_end_matches(char::from(0))
+        .to_string();
+    let hd_project: String = encoding
+        .decode(&block.hd_project)
+        .0
+        .trim_end_matches(char::from(0))
+        .to_string();
+    let hd_subject: String = encoding
+        .decode(&block.hd_subject)
+        .0
+        .trim_end_matches(char::from(0))
+        .to_string();
     let hd_start_time_ns: Option<u64>;
     let hd_time_offset: Option<i16>;
     let hd_time_quality: Option<u16>;
@@ -618,7 +627,7 @@ pub fn parse_tx(
     rdr.read_exact(&mut comment_raw)
         .context("Could not read comment raw data")?;
     let (comment, _encoding, error_flag) = encoding.decode(&comment_raw);
-    let comment: String = comment.to_string().trim_end_matches(char::from(0)).into();
+    let comment: String = comment.trim_end_matches(char::from(0)).to_string();
     if error_flag {
         info!("errors reading {comment}");
     }
@@ -1035,7 +1044,7 @@ fn parse_cn3_block(
     }
 
     let (name, _encoding, error_flag) = encoding.decode(&block1.cn_short_name);
-    let mut unique_name = name.to_string().trim_end_matches(char::from(0)).to_string();
+    let mut unique_name = name.trim_end_matches(char::from(0)).to_string();
     if block2.cn_tx_long_name != 0 {
         // Reads TX long name
         let (_, name, pos) = parse_tx(rdr, block2.cn_tx_long_name, position, encoding)?;
@@ -1047,7 +1056,7 @@ fn parse_cn3_block(
     }
 
     let (desc, _encoding, error_flag) = encoding.decode(&desc);
-    let description = desc.to_string().trim_end_matches(char::from(0)).to_string();
+    let description = desc.trim_end_matches(char::from(0)).to_string();
     if error_flag {
         info!("errors reading channel description {description}");
     }

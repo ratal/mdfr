@@ -403,7 +403,7 @@ mod polars_tests {
         init();
         let arr: Arc<dyn arrow::array::Array> =
             Arc::new(Float64Array::from(vec![1.0f64, 2.0, 3.0, 4.0]));
-        let result = rust_arrow_to_py_series(arr, "ch".to_string()).unwrap();
+        let result = rust_arrow_to_py_series(arr, "ch").unwrap();
         Python::attach(|py| {
             let obj = result.bind(py);
             // rust_arrow_to_py_series returns a polars Series
@@ -418,7 +418,7 @@ mod polars_tests {
     fn polars_series_values_match() {
         init();
         let arr: Arc<dyn arrow::array::Array> = Arc::new(Int64Array::from(vec![1_i64, 2, 3, 4]));
-        let result = rust_arrow_to_py_series(arr, "vals".to_string()).unwrap();
+        let result = rust_arrow_to_py_series(arr, "vals").unwrap();
         Python::attach(|py| {
             let obj = result.bind(py);
             let values: Vec<i64> = obj.call_method0("to_list").unwrap().extract().unwrap();

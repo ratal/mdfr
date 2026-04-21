@@ -640,9 +640,7 @@ impl Cg4 {
                 .collect();
 
             if member_info.is_empty() {
-                log::warn!(
-                    "CU member channels not found for parent at rec_pos {parent_rec_pos}"
-                );
+                log::warn!("CU member channels not found for parent at rec_pos {parent_rec_pos}");
                 continue;
             }
 

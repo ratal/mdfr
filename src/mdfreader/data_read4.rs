@@ -1548,7 +1548,9 @@ pub fn read_channels_from_bytes(
                 // VLSC channels: offsets were read above, now mark for VD block processing
                 if cn.block.cn_type == 7 {
                     let c_vlsd_channel = Arc::clone(&vlsd_channels);
-                    let mut vlsd_channel = c_vlsd_channel.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                    let mut vlsd_channel = c_vlsd_channel
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
                     vlsd_channel.push((cn.block.cn_type, *rec_pos));
                 }
             } else {
@@ -1577,7 +1579,9 @@ pub fn read_channels_from_bytes(
                     // CN_F_DATA_STREAM_MODE: Data Stream - DS Block points to data
                     // ca_storage == 5: Dynamic array storage
                     let c_vlsd_channel = Arc::clone(&vlsd_channels);
-                    let mut vlsd_channel = c_vlsd_channel.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                    let mut vlsd_channel = c_vlsd_channel
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner);
                     vlsd_channel.push((cn.block.cn_type, *rec_pos));
                 }
             }

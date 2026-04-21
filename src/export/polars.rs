@@ -45,10 +45,7 @@ macro_rules! complex_to_list {
 }
 
 /// Converts an iterator of `Option<&[u8]>` items into a polars Binary `Series`.
-fn bytes_iter_to_series<'a>(
-    name: &str,
-    iter: impl Iterator<Item = Option<&'a [u8]>>,
-) -> Series {
+fn bytes_iter_to_series<'a>(name: &str, iter: impl Iterator<Item = Option<&'a [u8]>>) -> Series {
     let v: Vec<Vec<u8>> = iter.map(|x| x.unwrap_or(&[]).to_vec()).collect();
     Series::new(name.into(), v)
 }
@@ -69,15 +66,15 @@ pub fn channel_data_to_series(name: &str, data: &ChannelData) -> PolarsResult<Se
     use ChannelData::*;
     Ok(match data {
         // ── scalar numerics ──────────────────────────────────────────────────
-        Int8(b)    => Series::new(name.into(), b.finish_cloned().values().as_ref()),
-        UInt8(b)   => Series::new(name.into(), b.finish_cloned().values().as_ref()),
-        Int16(b)   => Series::new(name.into(), b.finish_cloned().values().as_ref()),
-        UInt16(b)  => Series::new(name.into(), b.finish_cloned().values().as_ref()),
-        Int32(b)   => Series::new(name.into(), b.finish_cloned().values().as_ref()),
-        UInt32(b)  => Series::new(name.into(), b.finish_cloned().values().as_ref()),
+        Int8(b) => Series::new(name.into(), b.finish_cloned().values().as_ref()),
+        UInt8(b) => Series::new(name.into(), b.finish_cloned().values().as_ref()),
+        Int16(b) => Series::new(name.into(), b.finish_cloned().values().as_ref()),
+        UInt16(b) => Series::new(name.into(), b.finish_cloned().values().as_ref()),
+        Int32(b) => Series::new(name.into(), b.finish_cloned().values().as_ref()),
+        UInt32(b) => Series::new(name.into(), b.finish_cloned().values().as_ref()),
         Float32(b) => Series::new(name.into(), b.finish_cloned().values().as_ref()),
-        Int64(b)   => Series::new(name.into(), b.finish_cloned().values().as_ref()),
-        UInt64(b)  => Series::new(name.into(), b.finish_cloned().values().as_ref()),
+        Int64(b) => Series::new(name.into(), b.finish_cloned().values().as_ref()),
+        UInt64(b) => Series::new(name.into(), b.finish_cloned().values().as_ref()),
         Float64(b) => Series::new(name.into(), b.finish_cloned().values().as_ref()),
 
         // ── strings ──────────────────────────────────────────────────────────
@@ -102,15 +99,15 @@ pub fn channel_data_to_series(name: &str, data: &ChannelData) -> PolarsResult<Se
         Complex64(cx) => complex_to_list!(name, cx, Float64Type, DataType::Float64),
 
         // ── tensor arrays (flat sample per row) ───────────────────────────────
-        ArrayDInt8(ta)    => tensor_to_list!(name, ta, Int8Type,    DataType::Int8),
-        ArrayDUInt8(ta)   => tensor_to_list!(name, ta, UInt8Type,   DataType::UInt8),
-        ArrayDInt16(ta)   => tensor_to_list!(name, ta, Int16Type,   DataType::Int16),
-        ArrayDUInt16(ta)  => tensor_to_list!(name, ta, UInt16Type,  DataType::UInt16),
-        ArrayDInt32(ta)   => tensor_to_list!(name, ta, Int32Type,   DataType::Int32),
-        ArrayDUInt32(ta)  => tensor_to_list!(name, ta, UInt32Type,  DataType::UInt32),
+        ArrayDInt8(ta) => tensor_to_list!(name, ta, Int8Type, DataType::Int8),
+        ArrayDUInt8(ta) => tensor_to_list!(name, ta, UInt8Type, DataType::UInt8),
+        ArrayDInt16(ta) => tensor_to_list!(name, ta, Int16Type, DataType::Int16),
+        ArrayDUInt16(ta) => tensor_to_list!(name, ta, UInt16Type, DataType::UInt16),
+        ArrayDInt32(ta) => tensor_to_list!(name, ta, Int32Type, DataType::Int32),
+        ArrayDUInt32(ta) => tensor_to_list!(name, ta, UInt32Type, DataType::UInt32),
         ArrayDFloat32(ta) => tensor_to_list!(name, ta, Float32Type, DataType::Float32),
-        ArrayDInt64(ta)   => tensor_to_list!(name, ta, Int64Type,   DataType::Int64),
-        ArrayDUInt64(ta)  => tensor_to_list!(name, ta, UInt64Type,  DataType::UInt64),
+        ArrayDInt64(ta) => tensor_to_list!(name, ta, Int64Type, DataType::Int64),
+        ArrayDUInt64(ta) => tensor_to_list!(name, ta, UInt64Type, DataType::UInt64),
         ArrayDFloat64(ta) => tensor_to_list!(name, ta, Float64Type, DataType::Float64),
 
         // ── union (unsupported) ───────────────────────────────────────────────
@@ -191,16 +188,14 @@ pub fn mdf_to_dataframes(mdf: &Mdf) -> PolarsResult<HashMap<Option<String>, Data
 
 /// Converts a rust Apache Arrow array into a Python polars Series via PyArrow FFI.
 #[allow(dead_code)] // used from src/mdfr.rs (PyO3 bindings), invisible to the bin target
-pub fn rust_arrow_to_py_series(array: Arc<dyn Array>, name: String) -> PyResult<Py<PyAny>> {
+pub fn rust_arrow_to_py_series(array: Arc<dyn Array>, name: &str) -> PyResult<Py<PyAny>> {
     pyo3::Python::attach(|py| {
-        let pyarrow_array =
-            to_py_array(py, array).expect("failed to convert arrow array to pyarrow array");
-        let polars = py.import("polars").expect("could not import polars");
-        let pyname = PyList::new(py, [&name]).expect("error creating name list");
+        let pyarrow_array = to_py_array(py, array)?;
+        let polars = py.import("polars")?;
+        let pyname = PyList::new(py, [name])?;
         let out = polars
             .unbind()
-            .call_method1(py, "from_arrow", (pyarrow_array, pyname))
-            .expect("method from_arrow not existing");
+            .call_method1(py, "from_arrow", (pyarrow_array, pyname))?;
         Ok(out)
     })
 }
