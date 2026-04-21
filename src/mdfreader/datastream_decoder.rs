@@ -1078,8 +1078,10 @@ mod tests {
         builder.append_value(1);
         builder.append_value(2);
         builder.append_value(3);
-        let mut cn = Cn4::default();
-        cn.data = ChannelData::UInt8(builder);
+        let cn = Cn4 {
+            data: ChannelData::UInt8(builder),
+            ..Default::default()
+        };
         let result = extract_channel_values_as_u64(&cn).unwrap();
         assert_eq!(result, vec![1u64, 2, 3]);
     }
@@ -1088,8 +1090,10 @@ mod tests {
     fn test_extract_u64_from_utf8_fails() {
         use crate::data_holder::channel_data::ChannelData;
         use arrow::array::LargeStringBuilder;
-        let mut cn = Cn4::default();
-        cn.data = ChannelData::Utf8(LargeStringBuilder::new());
+        let cn = Cn4 {
+            data: ChannelData::Utf8(LargeStringBuilder::new()),
+            ..Default::default()
+        };
         let result = extract_channel_values_as_u64(&cn);
         assert!(result.is_err());
     }

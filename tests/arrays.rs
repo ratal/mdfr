@@ -48,7 +48,7 @@ fn array_simple_vector() -> Result<()> {
     // At least one channel should be an ArrayD type
     let has_array_channel = names
         .iter()
-        .any(|name| mdf.get_channel_data(name).map_or(false, is_array_channel));
+        .any(|name| mdf.get_channel_data(name).is_some_and(is_array_channel));
     assert!(
         has_array_channel,
         "Expected at least one ArrayD channel in Vector_MeasurementArrays.mf4"
@@ -166,11 +166,11 @@ fn array_channels_have_expected_ndim() -> Result<()> {
 
     let names = mdf.get_channel_names_set();
     for name in &names {
-        if let Some(data) = mdf.get_channel_data(name) {
-            if is_array_channel(data) {
-                // Array channels must have ndim >= 1
-                assert!(data.ndim() >= 1, "Array channel {name} has ndim < 1");
-            }
+        if let Some(data) = mdf.get_channel_data(name)
+            && is_array_channel(data)
+        {
+            // Array channels must have ndim >= 1
+            assert!(data.ndim() >= 1, "Array channel {name} has ndim < 1");
         }
     }
 
@@ -189,15 +189,16 @@ fn array_channels_min_max() -> Result<()> {
     let names = mdf.get_channel_names_set();
     let mut found_array = false;
     for name in &names {
-        if let Some(data) = mdf.get_channel_data(name) {
-            if is_array_channel(data) && !data.is_empty() {
-                let (min, max) = data.min_max();
-                // If there is data, min and max should be populated for numeric arrays
-                if min.is_some() && max.is_some() {
-                    assert!(min.unwrap() <= max.unwrap(), "min > max for channel {name}");
-                }
-                found_array = true;
+        if let Some(data) = mdf.get_channel_data(name)
+            && is_array_channel(data)
+            && !data.is_empty()
+        {
+            let (min, max) = data.min_max();
+            // If there is data, min and max should be populated for numeric arrays
+            if let (Some(lo), Some(hi)) = (min, max) {
+                assert!(lo <= hi, "min > max for channel {name}");
             }
+            found_array = true;
         }
     }
     assert!(found_array, "No non-empty array channels found");

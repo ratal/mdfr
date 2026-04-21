@@ -351,14 +351,13 @@ fn half_float_values() -> Result<()> {
     // Find a channel with float data and check it has values
     let has_data = names
         .iter()
-        .any(|name| mdf.get_channel_data(name).map_or(false, |d| !d.is_empty()));
+        .any(|name| mdf.get_channel_data(name).is_some_and(|d| !d.is_empty()));
     assert!(has_data, "No non-empty channel data in halffloat file");
 
     // Half-float channels are decoded as Float32 or Float64
     let has_float_channel = names.iter().any(|name| {
-        mdf.get_channel_data(name).map_or(false, |d| {
-            matches!(d, ChannelData::Float32(_) | ChannelData::Float64(_))
-        })
+        mdf.get_channel_data(name)
+            .is_some_and(|d| matches!(d, ChannelData::Float32(_) | ChannelData::Float64(_)))
     });
     assert!(
         has_float_channel,
