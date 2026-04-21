@@ -343,8 +343,8 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
     new_info.hd_block.hd_dg_first = pointer;
 
     // builds meta data blocks for the new file
-    for (_dg_position, dg) in &info.dg {
-        for (_record_id, cg) in &dg.cg {
+    for dg in info.dg.values() {
+        for cg in dg.cg.values() {
             let mut cg_cg_master: i64 = 0;
 
             // find master channel and start to write blocks for it
@@ -375,7 +375,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
             }
 
             // create the other non master channel blocks
-            for (_cn_record_position, cn) in &cg.cn {
+            for cn in cg.cn.values() {
                 // not master channel
                 if cn.block.cn_type != 2
                     && cn.block.cn_type != 3
@@ -540,8 +540,8 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
         .dg
         .par_iter_mut()
         .try_for_each(|(_dg_block_position, dg)| -> Result<(), Error> {
-            for (_rec_id, cg) in &mut dg.cg {
-                for (_rec_pos, cn) in &mut cg.cn {
+            for cg in dg.cg.values_mut() {
+                for cn in cg.cn.values_mut() {
                     let dt = mdf.get_channel_data(&cn.unique_name);
                     if let Some(data) = dt {
                         let m = data.validity();
@@ -869,18 +869,18 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
     }
 
     // Writes DG+CG+CN blocks
-    for (_position, dg) in &new_info.dg {
+    for dg in new_info.dg.values() {
         buffer
             .write_le(&dg.block)
             .context("Could not write CGBlock")?;
-        for (_red_id, cg) in &dg.cg {
+        for cg in dg.cg.values() {
             buffer
                 .write_le(&cg.header)
                 .context("Could not write CGBlock header")?;
             buffer
                 .write_le(&cg.block)
                 .context("Could not write CGBlock")?;
-            for (_rec_pos, cn) in &cg.cn {
+            for cn in cg.cn.values() {
                 buffer
                     .write_le(&cn.header)
                     .context("Could not write CNBlock header")?;

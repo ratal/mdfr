@@ -545,7 +545,7 @@ impl MdfInfo4 {
     /// list sample reduction blocks for all channel groups
     pub fn list_sample_reductions(&self) -> String {
         let mut output = String::new();
-        for (_dg_pos, dg) in &self.dg {
+        for dg in self.dg.values() {
             for (rec_id, cg) in &dg.cg {
                 if !cg.sr.is_empty() {
                     output.push_str(&format!(

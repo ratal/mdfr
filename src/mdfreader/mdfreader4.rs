@@ -49,7 +49,7 @@ pub fn mdfreader4<'a>(
                 utf_16_le: UTF_16LE.new_decoder(),
             };
             // read file data
-            for (_dg_position, dg) in &mut info.dg {
+            for dg in info.dg.values_mut() {
                 // Let's find channel names to read in this data group
                 channel_names_present_in_dg = HashSet::new();
                 for channel_group in dg.cg.values() {
@@ -791,7 +791,7 @@ fn parser_ld4(
         if id == "##DZ".as_bytes() {
             let (dt, block_header) =
                 parse_dz(rdr).context("failed parsing dz block pointed by ld4 block")?;
-            for (_rec_pos, cn) in &mut channel_group.cn {
+            for cn in channel_group.cn.values_mut() {
                 read_one_channel_array(&dt, cn, channel_group.block.cg_cycle_count as usize)
                     .context("failed reading one channel array from DZ")?;
             }
@@ -801,7 +801,7 @@ fn parser_ld4(
             let mut buf = vec![0u8; block_header.len as usize - 24];
             rdr.read_exact(&mut buf)
                 .context("Could not read Dt4 block")?;
-            for (_rec_pos, cn) in &mut channel_group.cn {
+            for cn in channel_group.cn.values_mut() {
                 read_one_channel_array(&buf, cn, channel_group.block.cg_cycle_count as usize)
                     .context("failed reading one channel array")?;
             }

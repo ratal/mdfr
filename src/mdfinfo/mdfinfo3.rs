@@ -1729,13 +1729,13 @@ pub fn build_channel_db3(
     }
     // identifying master channels
     for (_dg_position, dg) in dg.iter_mut() {
-        for (_record_id, cg) in &mut dg.cg {
+        for cg in dg.cg.values_mut() {
             let mut cg_channel_list: HashSet<String> =
                 HashSet::with_capacity(cg.block.cg_n_channels as usize);
             let master_channel_name: Option<String> = master_channel_list
                 .get(&cg.block_position)
                 .map(std::string::ToString::to_string);
-            for (_cn_record_position, cn) in &mut cg.cn {
+            for cn in cg.cn.values_mut() {
                 cg_channel_list.insert(cn.unique_name.clone());
                 // assigns master in channel_list
                 if let Some(id) = channel_list.get_mut(&cn.unique_name) {
