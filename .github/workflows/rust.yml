@@ -38,8 +38,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install Python dependencies
-        run: pip install polars numpy pyarrow maturin
+      - name: Create virtualenv and install Python dependencies
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install polars numpy pyarrow maturin
+          echo "VIRTUAL_ENV=$GITHUB_WORKSPACE/.venv" >> $GITHUB_ENV
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> $GITHUB_PATH
       - name: Build and install Python extension
         run: maturin develop --features "polars,numpy"
       - name: Run numpy/polars tests
