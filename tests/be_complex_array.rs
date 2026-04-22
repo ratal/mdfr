@@ -331,7 +331,11 @@ fn create_be_scalars() -> Result<()> {
     dt(&mut b, &recs);
     debug_assert_eq!(b.len(), 1061);
 
-    std::fs::write(BE_SCALARS_PATH, &b)?;
+    let tmp = format!("{}.tmp.{}", BE_SCALARS_PATH, std::process::id());
+    std::fs::write(&tmp, &b)?;
+    if std::fs::rename(&tmp, BE_SCALARS_PATH).is_err() {
+        std::fs::remove_file(&tmp).ok();
+    }
     Ok(())
 }
 
@@ -392,7 +396,11 @@ fn create_complex_f32_le() -> Result<()> {
     dt(&mut b, &recs);
     debug_assert_eq!(b.len(), 863);
 
-    std::fs::write(CX32_PATH, &b)?;
+    let tmp = format!("{}.tmp.{}", CX32_PATH, std::process::id());
+    std::fs::write(&tmp, &b)?;
+    if std::fs::rename(&tmp, CX32_PATH).is_err() {
+        std::fs::remove_file(&tmp).ok();
+    }
     Ok(())
 }
 
@@ -458,7 +466,11 @@ fn create_array_f64_le() -> Result<()> {
     dt(&mut b, &recs);
     debug_assert_eq!(b.len(), 983);
 
-    std::fs::write(ARR_F64_PATH, &b)?;
+    let tmp = format!("{}.tmp.{}", ARR_F64_PATH, std::process::id());
+    std::fs::write(&tmp, &b)?;
+    if std::fs::rename(&tmp, ARR_F64_PATH).is_err() {
+        std::fs::remove_file(&tmp).ok();
+    }
     Ok(())
 }
 
@@ -716,7 +728,11 @@ fn create_ld_be_channels() -> Result<()> {
         debug_assert_eq!(b.len(), 2040);
     }
 
-    std::fs::write(LD_BE_PATH, &b)?;
+    let tmp = format!("{}.tmp.{}", LD_BE_PATH, std::process::id());
+    std::fs::write(&tmp, &b)?;
+    if std::fs::rename(&tmp, LD_BE_PATH).is_err() {
+        std::fs::remove_file(&tmp).ok();
+    }
     Ok(())
 }
 

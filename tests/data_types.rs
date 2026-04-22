@@ -1,3 +1,6 @@
+#[path = "common.rs"]
+mod common;
+
 use anyhow::Result;
 use arrow::array::{
     FixedSizeBinaryBuilder, Float64Builder, Int16Builder, Int32Builder, Int64Builder,
@@ -5,16 +8,14 @@ use arrow::array::{
 };
 use mdfr::data_holder::channel_data::ChannelData;
 use mdfr::mdfreader::Mdf;
-use std::fs;
 use std::sync::LazyLock;
 
 static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(|| {
-    "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/"
-        .to_string()
+    format!(
+        "{}MDF4/MDF4.3/Base_Standard/Examples/",
+        common::mdfreader_tests_path()
+    )
 });
-
-static BASE_TEST_PATH: LazyLock<String> =
-    LazyLock::new(|| "/home/ratal/workspace/mdfr/test_files".to_string());
 
 #[test]
 fn data_types() -> Result<()> {
@@ -26,7 +27,8 @@ fn data_types() -> Result<()> {
         "DataTypes/StringTypes/".to_string(),
         "DataTypes/Complex/".to_string(),
     ];
-    let writing_mdf_file = format!("{}/data_types_test.mf4", BASE_TEST_PATH.as_str());
+    let tmp_file = tempfile::Builder::new().suffix(".mf4").tempfile()?;
+    let writing_mdf_file = tmp_file.path().to_str().unwrap().to_string();
 
     // Integer testing
     let file_name = format!(
@@ -106,8 +108,6 @@ fn data_types() -> Result<()> {
     let mut mdf = Mdf::new(&file_name)?;
     mdf.load_all_channels_data_in_memory()?;
 
-    // Cleanup temporary file
-    fs::remove_file(&writing_mdf_file).ok();
     Ok(())
 }
 
@@ -147,7 +147,8 @@ fn real_types() -> Result<()> {
 #[test]
 fn string_types() -> Result<()> {
     let list_of_paths = ["DataTypes/StringTypes/".to_string()];
-    let writing_mdf_file = format!("{}/string_types_test.mf4", BASE_TEST_PATH.as_str());
+    let tmp_file = tempfile::Builder::new().suffix(".mf4").tempfile()?;
+    let writing_mdf_file = tmp_file.path().to_str().unwrap().to_string();
 
     // StringTypes testing
     // UTF8
@@ -238,15 +239,14 @@ fn string_types() -> Result<()> {
         assert_eq!(expected_string_result, data.clone());
     }
 
-    // Cleanup temporary file
-    fs::remove_file(&writing_mdf_file).ok();
     Ok(())
 }
 
 #[test]
 fn byte_array_types() -> Result<()> {
     let list_of_paths = ["DataTypes/ByteArray/".to_string()];
-    let writing_mdf_file = format!("{}/byte_array_test.mf4", BASE_TEST_PATH.as_str());
+    let tmp_file = tempfile::Builder::new().suffix(".mf4").tempfile()?;
+    let writing_mdf_file = tmp_file.path().to_str().unwrap().to_string();
 
     // byteArray testing
     let file_name = format!(
@@ -297,8 +297,6 @@ fn byte_array_types() -> Result<()> {
         assert_eq!(&ChannelData::FixedSizeByteArray(byte_array), data);
     }
 
-    // Cleanup temporary file
-    fs::remove_file(&writing_mdf_file).ok();
     Ok(())
 }
 

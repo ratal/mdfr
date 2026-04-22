@@ -4,14 +4,19 @@
 //!
 //! These tests exercise the high-level accessor APIs using real MDF4.3 example files.
 
+#[path = "common.rs"]
+mod common;
+
 use anyhow::Result;
 use mdfr::mdfinfo::MdfInfo;
 use mdfr::mdfreader::Mdf;
 use std::sync::LazyLock;
 
 static BASE_PATH: LazyLock<String> = LazyLock::new(|| {
-    "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/"
-        .to_string()
+    format!(
+        "{}MDF4/MDF4.3/Base_Standard/Examples/",
+        common::mdfreader_tests_path()
+    )
 });
 
 // ── Events ──────────────────────────────────────────────────────────────────

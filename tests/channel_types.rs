@@ -1,3 +1,6 @@
+#[path = "common.rs"]
+mod common;
+
 use anyhow::Result;
 use arrow::array::{
     Array, AsArray, Float64Builder, Int32Builder, LargeStringBuilder, UInt16Builder, UInt64Builder,
@@ -9,8 +12,10 @@ use std::path::Path;
 use std::sync::LazyLock;
 
 static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(|| {
-    "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/"
-        .to_string()
+    format!(
+        "{}MDF4/MDF4.3/Base_Standard/Examples/",
+        common::mdfreader_tests_path()
+    )
 });
 
 #[test]
@@ -390,8 +395,11 @@ fn channel_list() -> Result<()> {
     // - x: parent structure (FixedSizeByteArray with CL block)
     // - x.a: first member (Int32) [0, 1000000000]
     // - x.b: second member (Float64) [0.0, 2.121995791e-314]
-    let file_name = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/DynamicData/ChannelList/simple_list.mf4";
-    let mut mdf = Mdf::new(file_name)?;
+    let file_name = format!(
+        "{}MDF4/MDF4.3/Base_Standard/Examples/DynamicData/ChannelList/simple_list.mf4",
+        common::mdfreader_tests_path()
+    );
+    let mut mdf = Mdf::new(&file_name)?;
     mdf.load_all_channels_data_in_memory()?;
 
     // Verify all channels are present
@@ -468,8 +476,11 @@ fn channel_variant() -> Result<()> {
     // - time: master channel (3 samples) [0.0, 1.0, 2.0]
     // - discriminator: variant selector (3 samples) [0, 1, 2]
     // - variant: merged variant data based on discriminator value
-    let file_name = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/Variant/Etas_cv_storage_with_fixed_length.mf4";
-    let mut mdf = Mdf::new(file_name)?;
+    let file_name = format!(
+        "{}MDF4/MDF4.3/Base_Standard/Examples/Variant/Etas_cv_storage_with_fixed_length.mf4",
+        common::mdfreader_tests_path()
+    );
+    let mut mdf = Mdf::new(&file_name)?;
     mdf.load_all_channels_data_in_memory()?;
 
     // Verify all 3 channels are present
@@ -552,8 +563,11 @@ fn data_stream_block() -> Result<()> {
     // DS Block (Data Stream) test
     // Note: DS blocks are implicitly tested via ChannelList (simple_list.mf4)
     // where the "x" channel uses DSBLOCK for data stream mode
-    let file_name = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/DynamicData/ChannelList/simple_list.mf4";
-    let mut mdf = Mdf::new(file_name)?;
+    let file_name = format!(
+        "{}MDF4/MDF4.3/Base_Standard/Examples/DynamicData/ChannelList/simple_list.mf4",
+        common::mdfreader_tests_path()
+    );
+    let mut mdf = Mdf::new(&file_name)?;
     mdf.load_all_channels_data_in_memory()?;
     // "x" channel uses DS block - verify it's readable
     assert!(
@@ -569,9 +583,12 @@ fn channel_union() -> Result<()> {
     // File: Etas_cu_storage_with_fixed_length.mf4 contains:
     // - time: master channel (3 samples) [0.0, 1.0, 2.0]
     // - union: union data storing different member types in same space
-    let file_name = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/Union/Etas_cu_storage_with_fixed_length.mf4";
-    if Path::new(file_name).exists() {
-        let mut mdf = Mdf::new(file_name)?;
+    let file_name = format!(
+        "{}MDF4/MDF4.3/Base_Standard/Examples/Union/Etas_cu_storage_with_fixed_length.mf4",
+        common::mdfreader_tests_path()
+    );
+    if Path::new(&file_name).exists() {
+        let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
 
         // Verify both channels present

@@ -532,6 +532,7 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
                 .context("Could not write data blocks buffer")?;
         }
         writer.flush().context("Could not flush data blocks")?;
+        f.sync_all().context("Could not sync data blocks to disk")?;
         Ok(())
     });
 
@@ -916,6 +917,11 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
         .write_all(&buffer.into_inner())
         .context("Could not write DG+CG+CN blocks")?;
     writer.flush().context("Could not flush file")?;
+    writer
+        .into_inner()
+        .map_err(|e| anyhow::anyhow!("BufWriter into_inner failed: {}", e))?
+        .sync_all()
+        .context("Could not sync file to disk")?;
     Ok(Mdf {
         mdf_info: MdfInfo::V4(Box::new(new_info)),
     })

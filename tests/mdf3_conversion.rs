@@ -1,9 +1,12 @@
+#[path = "common.rs"]
+mod common;
+
 use anyhow::Result;
 use mdfr::mdfreader::Mdf;
 use std::sync::LazyLock;
 
 static MDF3_PATH: LazyLock<String> =
-    LazyLock::new(|| "/home/ratal/workspace/mdfreader/mdfreader/tests/mdf3/".to_string());
+    LazyLock::new(|| format!("{}mdf3/", common::mdfreader_tests_path()));
 
 /// Helper: load a file and all its channel data
 fn load_mdf3(filename: &str) -> Result<Mdf> {

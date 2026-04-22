@@ -310,7 +310,11 @@ mod rust_polars_tests {
             pf64_be(&mut recs, raw_f64_be[i]);
         }
         dt(&mut b, &recs);
-        std::fs::write(PATH, &b)?;
+        let tmp = format!("{}.tmp.{}", PATH, std::process::id());
+        std::fs::write(&tmp, &b)?;
+        if std::fs::rename(&tmp, PATH).is_err() {
+            std::fs::remove_file(&tmp).ok();
+        }
         Ok(())
     }
 
@@ -394,13 +398,17 @@ mod polars_tests {
     use pyo3::prelude::*;
     use std::sync::Arc;
 
-    fn init() {
-        Python::initialize();
+    fn pyarrow_available() -> bool {
+        Python::attach(|py| py.import("pyarrow").is_ok())
     }
 
     #[test]
     fn polars_series_name_and_length() {
-        init();
+        Python::initialize();
+        if !pyarrow_available() {
+            eprintln!("SKIP: pyarrow not installed — run `pip install pyarrow`");
+            return;
+        }
         let arr: Arc<dyn arrow::array::Array> =
             Arc::new(Float64Array::from(vec![1.0f64, 2.0, 3.0, 4.0]));
         let result = rust_arrow_to_py_series(arr, "ch").unwrap();
@@ -416,7 +424,11 @@ mod polars_tests {
 
     #[test]
     fn polars_series_values_match() {
-        init();
+        Python::initialize();
+        if !pyarrow_available() {
+            eprintln!("SKIP: pyarrow not installed — run `pip install pyarrow`");
+            return;
+        }
         let arr: Arc<dyn arrow::array::Array> = Arc::new(Int64Array::from(vec![1_i64, 2, 3, 4]));
         let result = rust_arrow_to_py_series(arr, "vals").unwrap();
         Python::attach(|py| {

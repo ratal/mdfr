@@ -1,3 +1,6 @@
+#[path = "common.rs"]
+mod common;
+
 use anyhow::Result;
 use arrow::array::Float64Builder;
 use mdfr::data_holder::channel_data::ChannelData;
@@ -7,8 +10,10 @@ use std::path::Path;
 use std::sync::LazyLock;
 
 static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(|| {
-    "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/"
-        .to_string()
+    format!(
+        "{}MDF4/MDF4.3/Base_Standard/Examples/",
+        common::mdfreader_tests_path()
+    )
 });
 
 fn parse_info_folder(folder: &String) -> Result<()> {

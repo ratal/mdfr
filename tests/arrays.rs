@@ -2,14 +2,19 @@
 //! Tests read real MDF4.3 array example files and verify that array channels
 //! load correctly and survive a round-trip write.
 
+#[path = "common.rs"]
+mod common;
+
 use anyhow::Result;
 use mdfr::data_holder::channel_data::ChannelData;
 use mdfr::mdfreader::Mdf;
 use std::sync::LazyLock;
 
 static BASE_PATH_ARRAYS: LazyLock<String> = LazyLock::new(|| {
-    "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/Arrays/"
-        .to_string()
+    format!(
+        "{}MDF4/MDF4.3/Base_Standard/Examples/Arrays/",
+        common::mdfreader_tests_path()
+    )
 });
 
 /// Checks whether a `ChannelData` value is one of the ArrayD variants.
@@ -118,9 +123,8 @@ fn array_classification_porsche() -> Result<()> {
 
 #[test]
 fn array_round_trip_write() -> Result<()> {
-    use std::fs;
-
-    let out_file = "/home/ratal/workspace/mdfr/test_files/arrays_round_trip_test.mf4";
+    let tmp_file = tempfile::Builder::new().suffix(".mf4").tempfile()?;
+    let out_file_str = tmp_file.path().to_str().unwrap().to_string();
 
     let file = format!(
         "{}Simple/Vector_MeasurementArrays.mf4",
@@ -133,20 +137,17 @@ fn array_round_trip_write() -> Result<()> {
     assert!(!original_names.is_empty());
 
     // Write the file; the write itself should succeed
-    let mdf2 = mdf.write(out_file, false)?;
+    let mdf2 = mdf.write(&out_file_str, false)?;
 
     // The written file must exist and be non-empty
     assert!(
-        std::path::Path::new(out_file).exists(),
+        std::path::Path::new(&out_file_str).exists(),
         "Written file does not exist"
     );
 
     // The Mdf returned by write() should have at least the same channel names
     let written_names = mdf2.get_channel_names_set();
     assert!(!written_names.is_empty(), "Written file has no channels");
-
-    // Clean up temporary file
-    fs::remove_file(out_file).ok();
 
     Ok(())
 }

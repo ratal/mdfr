@@ -1,3 +1,6 @@
+#[path = "common.rs"]
+mod common;
+
 use anyhow::Result;
 use arrow::array::{AsArray, Float64Array, PrimitiveBuilder};
 use arrow::datatypes::Float32Type;
@@ -5,7 +8,6 @@ use mdfr::data_holder::channel_data::ChannelData;
 use mdfr::mdfinfo::MdfInfo;
 use mdfr::mdfinfo::mdfinfo4::Compo;
 use mdfr::mdfreader::Mdf;
-use std::fs;
 use std::path::Path;
 use std::sync::{Arc, LazyLock};
 
@@ -14,24 +16,20 @@ type SiInfo = (u8, u8, u8, Option<String>, Option<String>);
 /// AT block metadata: (filename, mimetype, flags, original_size, embedded_data)
 type AtInfo = (Option<String>, Option<String>, u16, u64, Option<Vec<u8>>);
 
-static MDFREADER_TESTS_PATH: &str = "/home/ratal/workspace/mdfreader/mdfreader/tests/";
-static MDFR_PATH: &str = "/home/ratal/workspace/mdfr/";
-
 static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(|| {
     format!(
         "{}MDF4/MDF4.3/Base_Standard/Examples/",
-        MDFREADER_TESTS_PATH
+        common::mdfreader_tests_path()
     )
 });
 
 static BASE_PATH_MDF3: LazyLock<String> =
-    LazyLock::new(|| format!("{}mdf3/", MDFREADER_TESTS_PATH));
-
-static BASE_TEST_PATH: LazyLock<String> = LazyLock::new(|| format!("{}test_files", MDFR_PATH));
+    LazyLock::new(|| format!("{}mdf3/", common::mdfreader_tests_path()));
 
 #[test]
 fn writing_mdf4() -> Result<()> {
-    let writing_mdf_file = format!("{}/writing_mdf4_test.mf4", BASE_TEST_PATH.as_str());
+    let tmp_file = tempfile::Builder::new().suffix(".mf4").tempfile()?;
+    let writing_mdf_file = tmp_file.path().to_str().unwrap().to_string();
 
     // write file with invalid channels
     let file = format!(
@@ -69,14 +67,13 @@ fn writing_mdf4() -> Result<()> {
         panic!("Channel not found");
     }
 
-    // Cleanup temporary file
-    fs::remove_file(&writing_mdf_file).ok();
     Ok(())
 }
 
 #[test]
 fn writing_mdf4_many_channels() -> Result<()> {
-    let writing_mdf_file = format!("{}/writing_many_channels_test.mf4", BASE_TEST_PATH.as_str());
+    let tmp_file = tempfile::Builder::new().suffix(".mf4").tempfile()?;
+    let writing_mdf_file = tmp_file.path().to_str().unwrap().to_string();
 
     // write file with many channels
     let file = format!("{}{}", BASE_PATH_MDF4.as_str(), &"Simple/test.mf4");
@@ -110,14 +107,13 @@ fn writing_mdf4_many_channels() -> Result<()> {
         panic!("Channel not found");
     }
 
-    // Cleanup temporary file
-    fs::remove_file(&writing_mdf_file).ok();
     Ok(())
 }
 
 #[test]
 fn mdf3_to_mdf4_conversion() -> Result<()> {
-    let writing_mdf_file = format!("{}/mdf3_to_mdf4_test.mf4", BASE_TEST_PATH.as_str());
+    let tmp_file = tempfile::Builder::new().suffix(".mf4").tempfile()?;
+    let writing_mdf_file = tmp_file.path().to_str().unwrap().to_string();
 
     //mdf3 conversion
     let file = format!(
@@ -134,8 +130,6 @@ fn mdf3_to_mdf4_conversion() -> Result<()> {
     let mdf4_data = mdf4.get_channel_data(channel_name3);
     assert_eq!(mdf3_data, mdf4_data);
 
-    // Cleanup temporary file
-    fs::remove_file(&writing_mdf_file).ok();
     Ok(())
 }
 
@@ -268,7 +262,8 @@ fn mdf_add_channel() -> Result<()> {
 
 #[test]
 fn writing_mdf4_file_history() -> Result<()> {
-    let writing_mdf_file = format!("{}/writing_fh_test.mf4", BASE_TEST_PATH.as_str());
+    let tmp_file = tempfile::Builder::new().suffix(".mf4").tempfile()?;
+    let writing_mdf_file = tmp_file.path().to_str().unwrap().to_string();
     let file = format!(
         "{}{}",
         BASE_PATH_MDF4.as_str(),
@@ -316,13 +311,13 @@ fn writing_mdf4_file_history() -> Result<()> {
         _ => panic!("Expected MDF4 file"),
     }
 
-    fs::remove_file(&writing_mdf_file).ok();
     Ok(())
 }
 
 #[test]
 fn writing_mdf4_source_information() -> Result<()> {
-    let writing_mdf_file = format!("{}/writing_si_test.mf4", BASE_TEST_PATH.as_str());
+    let tmp_file = tempfile::Builder::new().suffix(".mf4").tempfile()?;
+    let writing_mdf_file = tmp_file.path().to_str().unwrap().to_string();
     let file = format!(
         "{}{}",
         BASE_PATH_MDF4.as_str(),
@@ -377,13 +372,13 @@ fn writing_mdf4_source_information() -> Result<()> {
         _ => panic!("Expected MDF4 file"),
     }
 
-    fs::remove_file(&writing_mdf_file).ok();
     Ok(())
 }
 
 #[test]
 fn writing_mdf4_events() -> Result<()> {
-    let writing_mdf_file = format!("{}/writing_events_test.mf4", BASE_TEST_PATH.as_str());
+    let tmp_file = tempfile::Builder::new().suffix(".mf4").tempfile()?;
+    let writing_mdf_file = tmp_file.path().to_str().unwrap().to_string();
     let file = format!(
         "{}{}",
         BASE_PATH_MDF4.as_str(),
@@ -455,13 +450,13 @@ fn writing_mdf4_events() -> Result<()> {
         }
     }
 
-    fs::remove_file(&writing_mdf_file).ok();
     Ok(())
 }
 
 #[test]
 fn writing_mdf4_attachments() -> Result<()> {
-    let writing_mdf_file = format!("{}/writing_attachments_test.mf4", BASE_TEST_PATH.as_str());
+    let tmp_file = tempfile::Builder::new().suffix(".mf4").tempfile()?;
+    let writing_mdf_file = tmp_file.path().to_str().unwrap().to_string();
     let file = format!(
         "{}{}",
         BASE_PATH_MDF4.as_str(),
@@ -545,13 +540,13 @@ fn writing_mdf4_attachments() -> Result<()> {
         }
     }
 
-    fs::remove_file(&writing_mdf_file).ok();
     Ok(())
 }
 
 #[test]
 fn writing_mdf4_vlsd() -> Result<()> {
-    let writing_mdf_file = format!("{}/writing_vlsd_test.mf4", BASE_TEST_PATH.as_str());
+    let tmp_file = tempfile::Builder::new().suffix(".mf4").tempfile()?;
+    let writing_mdf_file = tmp_file.path().to_str().unwrap().to_string();
 
     let vlsd_channel = "Data channel";
     let time_channel = "Time channel";
@@ -628,13 +623,13 @@ fn writing_mdf4_vlsd() -> Result<()> {
         .expect("SBC Time channel should have data after re-read");
     assert_eq!(src_time, *reread_time, "SBC Time data mismatch");
 
-    fs::remove_file(&writing_mdf_file).ok();
     Ok(())
 }
 
 #[test]
 fn writing_mdf4_arrays() -> Result<()> {
-    let writing_mdf_file = format!("{}/writing_arrays_test.mf4", BASE_TEST_PATH.as_str());
+    let tmp_file = tempfile::Builder::new().suffix(".mf4").tempfile()?;
+    let writing_mdf_file = tmp_file.path().to_str().unwrap().to_string();
     let file = format!(
         "{}{}",
         BASE_PATH_MDF4.as_str(),
@@ -682,7 +677,6 @@ fn writing_mdf4_arrays() -> Result<()> {
         }
     }
 
-    fs::remove_file(&writing_mdf_file).ok();
     Ok(())
 }
 
@@ -691,7 +685,8 @@ fn writing_mdf4_channel_hierarchy() -> Result<()> {
     // CH blocks are optional in MDF4 and none of the current test files contain them.
     // This test verifies that files without CH blocks still write correctly (hd_ch_first = 0)
     // and that the CH writing code path doesn't break anything.
-    let writing_mdf_file = format!("{}/writing_ch_test.mf4", BASE_TEST_PATH.as_str());
+    let tmp_file = tempfile::Builder::new().suffix(".mf4").tempfile()?;
+    let writing_mdf_file = tmp_file.path().to_str().unwrap().to_string();
     let file = format!(
         "{}{}",
         BASE_PATH_MDF4.as_str(),
@@ -722,7 +717,6 @@ fn writing_mdf4_channel_hierarchy() -> Result<()> {
         _ => panic!("Expected MDF4 file"),
     }
 
-    fs::remove_file(&writing_mdf_file).ok();
     Ok(())
 }
 
@@ -734,13 +728,18 @@ fn writing_mdf4_composition_ds_cl() -> Result<()> {
     // has zero bit_count and the auxiliary VLSD channel has empty data. These are
     // metadata-only channels that carry no data, so the writer correctly skips them.
     // The decoded child channel data is preserved as independent channels.
-    let writing_mdf_file = format!("{}/writing_ds_cl_test.mf4", BASE_TEST_PATH.as_str());
-    let file = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/DynamicData/ChannelList/simple_list.mf4";
-    if !Path::new(file).exists() {
+    let tmp_file = tempfile::Builder::new().suffix(".mf4").tempfile()?;
+    let writing_mdf_file = tmp_file.path().to_str().unwrap().to_string();
+    let file = format!(
+        "{}{}",
+        common::mdfreader_tests_path(),
+        "MDF4/MDF4.3/Base_Standard/Examples/DynamicData/ChannelList/simple_list.mf4"
+    );
+    if !Path::new(&file).exists() {
         return Ok(());
     }
 
-    let mut mdf = Mdf::new(file)?;
+    let mut mdf = Mdf::new(&file)?;
     mdf.load_all_channels_data_in_memory()?;
 
     // Verify source has DS/CL composition
@@ -784,20 +783,24 @@ fn writing_mdf4_composition_ds_cl() -> Result<()> {
         }
     }
 
-    fs::remove_file(&writing_mdf_file).ok();
     Ok(())
 }
 
 #[test]
 fn writing_mdf4_composition_cv() -> Result<()> {
     // CV (Channel Variant) composition test
-    let writing_mdf_file = format!("{}/writing_cv_test.mf4", BASE_TEST_PATH.as_str());
-    let file = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/Variant/Etas_cv_storage_with_fixed_length.mf4";
-    if !Path::new(file).exists() {
+    let tmp_file = tempfile::Builder::new().suffix(".mf4").tempfile()?;
+    let writing_mdf_file = tmp_file.path().to_str().unwrap().to_string();
+    let file = format!(
+        "{}{}",
+        common::mdfreader_tests_path(),
+        "MDF4/MDF4.3/Base_Standard/Examples/Variant/Etas_cv_storage_with_fixed_length.mf4"
+    );
+    if !Path::new(&file).exists() {
         return Ok(());
     }
 
-    let mut mdf = Mdf::new(file)?;
+    let mut mdf = Mdf::new(&file)?;
     mdf.load_all_channels_data_in_memory()?;
 
     // Verify source has CV composition
@@ -857,20 +860,24 @@ fn writing_mdf4_composition_cv() -> Result<()> {
         assert_eq!(*src, *wr, "Time data mismatch");
     }
 
-    fs::remove_file(&writing_mdf_file).ok();
     Ok(())
 }
 
 #[test]
 fn writing_mdf4_composition_cu() -> Result<()> {
     // CU (Channel Union) composition test
-    let writing_mdf_file = format!("{}/writing_cu_test.mf4", BASE_TEST_PATH.as_str());
-    let file = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/Union/Etas_cu_storage_with_fixed_length.mf4";
-    if !Path::new(file).exists() {
+    let tmp_file = tempfile::Builder::new().suffix(".mf4").tempfile()?;
+    let writing_mdf_file = tmp_file.path().to_str().unwrap().to_string();
+    let file = format!(
+        "{}{}",
+        common::mdfreader_tests_path(),
+        "MDF4/MDF4.3/Base_Standard/Examples/Union/Etas_cu_storage_with_fixed_length.mf4"
+    );
+    if !Path::new(&file).exists() {
         return Ok(());
     }
 
-    let mut mdf = Mdf::new(file)?;
+    let mut mdf = Mdf::new(&file)?;
     mdf.load_all_channels_data_in_memory()?;
 
     // Verify source has CU composition
@@ -930,6 +937,5 @@ fn writing_mdf4_composition_cu() -> Result<()> {
         assert_eq!(*src, *wr, "Time data mismatch");
     }
 
-    fs::remove_file(&writing_mdf_file).ok();
     Ok(())
 }

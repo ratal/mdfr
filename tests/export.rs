@@ -1,45 +1,36 @@
-use anyhow::Result;
-use glob::glob;
-use mdfr::mdfreader::Mdf;
-use std::fs;
-use std::sync::LazyLock;
+#[path = "common.rs"]
+mod common;
 
-static MDFREADER_TESTS_PATH: &str = "/home/ratal/workspace/mdfreader/mdfreader/tests/";
-static MDFR_PATH: &str = "/home/ratal/workspace/mdfr/";
+use anyhow::Result;
+use mdfr::mdfreader::Mdf;
+use std::sync::LazyLock;
 
 static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(|| {
     format!(
         "{}MDF4/MDF4.3/Base_Standard/Examples/",
-        MDFREADER_TESTS_PATH
+        common::mdfreader_tests_path()
     )
 });
 
 static BASE_PATH_MDF3: LazyLock<String> =
-    LazyLock::new(|| format!("{}mdf3/", MDFREADER_TESTS_PATH));
-
-static BASE_TEST_PATH: LazyLock<String> = LazyLock::new(|| format!("{}test_files", MDFR_PATH));
-
-#[cfg(feature = "parquet")]
-static WRITING_PARQUET_FILE: LazyLock<String> =
-    LazyLock::new(|| format!("{}test_files/test_parquet", MDFR_PATH));
-
-#[cfg(feature = "hdf5")]
-static WRITING_HDF5_FILE: LazyLock<String> =
-    LazyLock::new(|| format!("{}test_files/test_hdf5.hdf5", MDFR_PATH));
+    LazyLock::new(|| format!("{}mdf3/", common::mdfreader_tests_path()));
 
 #[cfg(feature = "parquet")]
 #[test]
 fn export_to_parquet() -> Result<()> {
+    let tmp_dir = tempfile::tempdir()?;
+    let writing_parquet_file = tmp_dir.path().join("test_parquet");
+    let writing_parquet_file = writing_parquet_file.to_str().unwrap();
+
     // Export mdf4 to Parquet file
     let file = format!(
         "{}{}",
         BASE_PATH_MDF4.as_str(),
         &"Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
     );
-    let extension = "*.parquet";
     let mut mdf = Mdf::new(&file)?;
     mdf.load_all_channels_data_in_memory()?;
-    mdf.export_to_parquet(WRITING_PARQUET_FILE.as_str(), Some("zstd"))
+    mdf.export_to_parquet(writing_parquet_file, Some("zstd"))
         .expect("failed writing mdf4 parquet file");
 
     // Export mdf3 to Parquet file
@@ -50,30 +41,29 @@ fn export_to_parquet() -> Result<()> {
     );
     let mut mdf = Mdf::new(&file)?;
     mdf.load_all_channels_data_in_memory()?;
-    mdf.export_to_parquet(WRITING_PARQUET_FILE.as_str(), Some("snappy"))
+    mdf.export_to_parquet(writing_parquet_file, Some("snappy"))
         .expect("failed writing mdf3 parquet file");
 
-    // remove all generated parquet files
-    let pattern = format!("{}/{}", BASE_TEST_PATH.as_str(), extension);
-    for path in glob(&pattern).unwrap().filter_map(Result::ok) {
-        fs::remove_file(path)?;
-    }
+    // tmp_dir cleaned up on drop
     Ok(())
 }
 
 #[cfg(feature = "hdf5")]
 #[test]
 fn export_to_hdf5() -> Result<()> {
+    let tmp_dir = tempfile::tempdir()?;
+    let writing_hdf5_file = tmp_dir.path().join("test_hdf5.hdf5");
+    let writing_hdf5_file = writing_hdf5_file.to_str().unwrap();
+
     // Export mdf4 to HDF5 file
     let file = format!(
         "{}{}",
         BASE_PATH_MDF4.as_str(),
         &"Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
     );
-    let extension = "*.hdf5";
     let mut mdf = Mdf::new(&file)?;
     mdf.load_all_channels_data_in_memory()?;
-    mdf.export_to_hdf5(WRITING_HDF5_FILE.as_str(), Some(&"lzf"))
+    mdf.export_to_hdf5(writing_hdf5_file, Some(&"lzf"))
         .expect("failed writing mdf4 hdf5 file");
 
     // Export mdf3 to HDF5 file
@@ -84,13 +74,9 @@ fn export_to_hdf5() -> Result<()> {
     );
     let mut mdf = Mdf::new(&file)?;
     mdf.load_all_channels_data_in_memory()?;
-    mdf.export_to_hdf5(WRITING_HDF5_FILE.as_str(), Some(&"deflate"))
+    mdf.export_to_hdf5(writing_hdf5_file, Some(&"deflate"))
         .expect("failed writing mdf3 hdf5 file");
 
-    // remove all generated hdf5 files
-    let pattern = format!("{}/{}", BASE_TEST_PATH.as_str(), extension);
-    for path in glob(&pattern).unwrap().filter_map(Result::ok) {
-        fs::remove_file(path)?;
-    }
+    // tmp_dir cleaned up on drop
     Ok(())
 }
