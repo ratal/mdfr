@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Unzip local test fixtures
+        run: cd test_files && unzip -o test_mdf3.mdf.zip && unzip -o test_mdf4.mf4.zip
       - name: Build
         run: cargo build --verbose --no-default-features --features parquet
       - name: Unit tests

@@ -70,12 +70,16 @@ fn info_test() -> Result<()> {
     assert_eq!(mdf.get_version(), 410);
 
     file_name = "test_files/test_mdf3.mdf";
-    let mdf = Mdf::new(file_name)?;
-    assert_eq!(mdf.get_version(), 310);
+    if Path::new(file_name).exists() {
+        let mdf = Mdf::new(file_name)?;
+        assert_eq!(mdf.get_version(), 310);
+    }
 
     file_name = "test_files/test_mdf4.mf4";
-    let mdf = Mdf::new(file_name)?;
-    assert_eq!(mdf.get_version(), 400);
+    if Path::new(file_name).exists() {
+        let mdf = Mdf::new(file_name)?;
+        assert_eq!(mdf.get_version(), 400);
+    }
     Ok(())
 }
 
@@ -90,6 +94,9 @@ fn basic_test() -> Result<()> {
 
 #[test]
 fn parse_all_folders4() -> io::Result<()> {
+    if !Path::new(BASE_PATH_MDF4.as_str()).is_dir() {
+        return Ok(());
+    }
     let list_of_paths = [
         "Arrays/Classification".to_string(),
         "Arrays/Simple".to_string(),
@@ -155,12 +162,18 @@ fn parse_all_folders4() -> io::Result<()> {
 #[test]
 fn parse_all_folders3() -> io::Result<()> {
     let base_path = format!("{}mdf3/", common::mdfreader_tests_path());
+    if !Path::new(&base_path).is_dir() {
+        return Ok(());
+    }
     parse_info_folder(&base_path).unwrap();
     Ok(())
 }
 
 #[test]
 fn record_layout() -> Result<()> {
+    if !Path::new(BASE_PATH_MDF4.as_str()).is_dir() {
+        return Ok(());
+    }
     // Not byte aligned signals
     let file_name = format!(
         "{}{}",
@@ -195,6 +208,9 @@ fn record_layout() -> Result<()> {
 
 #[test]
 fn unsorted_data() -> Result<()> {
+    if !Path::new(BASE_PATH_MDF4.as_str()).is_dir() {
+        return Ok(());
+    }
     // VLSD
     let file_name = format!(
         "{}{}",
@@ -243,6 +259,9 @@ fn unsorted_data() -> Result<()> {
 
 #[test]
 fn bus_logging() -> Result<()> {
+    if !Path::new(BASE_PATH_MDF4.as_str()).is_dir() {
+        return Ok(());
+    }
     // sort bus
     let file_name = format!(
         "{}{}",
