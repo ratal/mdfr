@@ -454,39 +454,19 @@ impl Display for MetaData {
     }
 }
 
-/// Extract text content of a child element by tag name
-fn extract_text<'a>(node: roxmltree::Node<'a, 'a>, tag_name: &str) -> Option<String> {
-    node.children()
-        .find(|n| n.is_element() && n.has_tag_name(tag_name))
-        .and_then(|n| n.text())
-        .map(std::string::ToString::to_string)
-}
-
-/// Parse `<names>`, `<path>`, or `<bus>` block into MdNames (default language only)
-fn parse_names(node: roxmltree::Node, tag_name: &str) -> MdNames {
+/// Parse `<names>`, `<path>`, or `<bus>` element node into MdNames (single pass)
+fn parse_names_node(node: roxmltree::Node) -> MdNames {
     let mut names = MdNames::default();
-    if let Some(names_node) = node
-        .children()
-        .find(|n| n.is_element() && n.has_tag_name(tag_name))
-    {
-        names.name = extract_text(names_node, "name");
-        names.display = extract_text(names_node, "display");
-        names.vendor = extract_text(names_node, "vendor");
-        names.description = extract_text(names_node, "description");
+    for child in node.children().filter(roxmltree::Node::is_element) {
+        match child.tag_name().name() {
+            "name" => names.name = child.text().map(str::to_string),
+            "display" => names.display = child.text().map(str::to_string),
+            "vendor" => names.vendor = child.text().map(str::to_string),
+            "description" => names.description = child.text().map(str::to_string),
+            _ => {}
+        }
     }
     names
-}
-
-/// Recursively parse `<common_properties>` into CommonProperties
-fn parse_common_properties(node: roxmltree::Node) -> CommonProperties {
-    let mut props = CommonProperties::new();
-    if let Some(cp_node) = node
-        .children()
-        .find(|n| n.is_element() && n.has_tag_name("common_properties"))
-    {
-        parse_properties_children(cp_node, &mut props);
-    }
-    props
 }
 
 /// Parse children of a common_properties or tree node
@@ -536,16 +516,18 @@ fn parse_properties_children(node: roxmltree::Node, props: &mut HashMap<String, 
     }
 }
 
-/// Parse raster element: `<raster><min>v</min><max>v</max><avg>v</avg></raster>`
-fn parse_raster(node: roxmltree::Node) -> Option<(Option<f64>, Option<f64>, Option<f64>)> {
-    node.children()
-        .find(|n| n.is_element() && n.has_tag_name("raster"))
-        .map(|raster_node| {
-            let min = extract_text(raster_node, "min").and_then(|s| s.parse().ok());
-            let max = extract_text(raster_node, "max").and_then(|s| s.parse().ok());
-            let avg = extract_text(raster_node, "avg").and_then(|s| s.parse().ok());
-            (min, max, avg)
-        })
+/// Parse `<raster>` element node into (min, max, avg) tuple (single pass)
+fn parse_raster_node(node: roxmltree::Node) -> (Option<f64>, Option<f64>, Option<f64>) {
+    let (mut min, mut max, mut avg) = (None, None, None);
+    for child in node.children().filter(roxmltree::Node::is_element) {
+        match child.tag_name().name() {
+            "min" => min = child.text().and_then(|s| s.parse().ok()),
+            "max" => max = child.text().and_then(|s| s.parse().ok()),
+            "avg" => avg = child.text().and_then(|s| s.parse().ok()),
+            _ => {}
+        }
+    }
+    (min, max, avg)
 }
 
 impl MetaData {
@@ -600,13 +582,10 @@ impl MetaData {
                 .and_then(|mc| mc.get_tx())
                 .map(std::string::ToString::to_string)),
             MetaDataBlockType::MdBlock => {
-                // extract TX tag from xml
-                let comment: String = self
-                    .get_data_string()
-                    .context("failed getting data string to extract TX tag")?
-                    .trim_end_matches(['\n', '\r', ' '])
-                    .into();
-                match roxmltree::Document::parse(&comment) {
+                let xml_str = self
+                    .get_xml_str()
+                    .context("failed getting data string to extract TX tag")?;
+                match roxmltree::Document::parse(xml_str) {
                     Ok(md) => {
                         for node in md.root().descendants() {
                             if node.is_element()
@@ -620,7 +599,7 @@ impl MetaData {
                         Ok(None)
                     }
                     Err(e) => {
-                        log::warn!("Error parsing comment : \n{comment}\n{e}");
+                        log::warn!("Error parsing comment : \n{xml_str}\n{e}");
                         Ok(None)
                     }
                 }
@@ -642,58 +621,50 @@ impl MetaData {
             Some(&self.raw_data)
         }
     }
-    /// Decode string from raw_data field
-    pub fn get_data_string(&self) -> Result<String> {
-        match self.block_type {
-            MetaDataBlockType::MdParsed => Ok(String::new()),
-            _ => {
-                let comment = str::from_utf8(&self.raw_data).with_context(|| {
-                    format!("Invalid UTF-8 sequence in metadata: {:?}", self.raw_data)
-                })?;
-                let comment: String = comment.trim_end_matches(char::from(0)).into();
-                Ok(comment)
-            }
-        }
-    }
     /// allocate bytes to raw_data field, adjusting header length
     pub fn set_data_buffer(&mut self, data: &[u8]) {
         self.raw_data = [data, vec![0u8; 8 - data.len() % 8].as_slice()].concat();
         self.block.hdr_len = self.raw_data.len() as u64 + 24;
     }
-    /// Helper: get trimmed XML string from raw_data
-    fn get_xml_string(&self) -> Result<String> {
-        let s = self
-            .get_data_string()?
-            .trim_end_matches(['\n', '\r', ' '])
-            .to_string();
-        Ok(s)
+    /// Zero-allocation helper: borrow trimmed XML str from raw_data
+    fn get_xml_str(&self) -> Result<&str> {
+        let s = str::from_utf8(&self.raw_data).context("Invalid UTF-8 in metadata")?;
+        Ok(s.trim_end_matches(['\0', '\n', '\r', ' ']))
     }
     /// Parse HD block MD comment (hd_comment.xsd)
     pub fn parse_hd_comment(&mut self) -> Result<()> {
         let mut hd = HdComment::default();
-        let xml = self.get_xml_string()?;
-        match roxmltree::Document::parse(&xml) {
-            Ok(doc) => {
-                let root = doc.root_element();
-                hd.tx = extract_text(root, "TX");
-                hd.time_source = extract_text(root, "time_source");
-                if let Some(constants_node) = root
-                    .children()
-                    .find(|n| n.is_element() && n.has_tag_name("constants"))
-                {
-                    for c in constants_node
-                        .children()
-                        .filter(|n| n.is_element() && n.has_tag_name("const"))
-                    {
-                        if let (Some(name), Some(text)) = (c.attribute("name"), c.text()) {
-                            hd.constants.insert(name.to_string(), text.to_string());
+        {
+            let xml_str = self.get_xml_str()?;
+            match roxmltree::Document::parse(xml_str) {
+                Ok(doc) => {
+                    let root = doc.root_element();
+                    for child in root.children().filter(roxmltree::Node::is_element) {
+                        match child.tag_name().name() {
+                            "TX" => hd.tx = child.text().map(str::to_string),
+                            "time_source" => hd.time_source = child.text().map(str::to_string),
+                            "constants" => {
+                                for c in child
+                                    .children()
+                                    .filter(|n| n.is_element() && n.has_tag_name("const"))
+                                {
+                                    if let (Some(name), Some(text)) =
+                                        (c.attribute("name"), c.text())
+                                    {
+                                        hd.constants.insert(name.to_string(), text.to_string());
+                                    }
+                                }
+                            }
+                            "common_properties" => {
+                                parse_properties_children(child, &mut hd.common_properties)
+                            }
+                            _ => {}
                         }
                     }
                 }
-                hd.common_properties = parse_common_properties(root);
-            }
-            Err(e) => {
-                log::warn!("Could not parse HD MD comment : \n{xml}\n{e}");
+                Err(e) => {
+                    log::warn!("Could not parse HD MD comment : \n{xml_str}\n{e}");
+                }
             }
         }
         self.md_comment = Some(MdComment::Hd(hd));
@@ -724,18 +695,27 @@ impl MetaData {
     /// Parse FH block MD comment (fh_comment.xsd)
     fn parse_fh_comment(&mut self) -> Result<()> {
         let mut fh = FhComment::default();
-        let xml = self.get_xml_string()?;
-        match roxmltree::Document::parse(&xml) {
-            Ok(doc) => {
-                let root = doc.root_element();
-                fh.tx = extract_text(root, "TX");
-                fh.tool_id = extract_text(root, "tool_id");
-                fh.tool_vendor = extract_text(root, "tool_vendor");
-                fh.tool_version = extract_text(root, "tool_version");
-                fh.user_name = extract_text(root, "user_name");
-                fh.common_properties = parse_common_properties(root);
+        {
+            let xml_str = self.get_xml_str()?;
+            match roxmltree::Document::parse(xml_str) {
+                Ok(doc) => {
+                    let root = doc.root_element();
+                    for child in root.children().filter(roxmltree::Node::is_element) {
+                        match child.tag_name().name() {
+                            "TX" => fh.tx = child.text().map(str::to_string),
+                            "tool_id" => fh.tool_id = child.text().map(str::to_string),
+                            "tool_vendor" => fh.tool_vendor = child.text().map(str::to_string),
+                            "tool_version" => fh.tool_version = child.text().map(str::to_string),
+                            "user_name" => fh.user_name = child.text().map(str::to_string),
+                            "common_properties" => {
+                                parse_properties_children(child, &mut fh.common_properties)
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                Err(e) => log::warn!("Could not parse FH comment : \n{xml_str}\n{e}"),
             }
-            Err(e) => log::warn!("Could not parse FH comment : \n{xml}\n{e}"),
         }
         self.md_comment = Some(MdComment::Fh(fh));
         self.block_type = MetaDataBlockType::MdParsed;
@@ -744,21 +724,34 @@ impl MetaData {
     /// Parse CN block MD comment (cn_comment.xsd)
     fn parse_cn_comment(&mut self) -> Result<()> {
         let mut cn = CnComment::default();
-        let xml = self.get_xml_string()?;
-        match roxmltree::Document::parse(&xml) {
-            Ok(doc) => {
-                let root = doc.root_element();
-                cn.tx = extract_text(root, "TX");
-                cn.names = parse_names(root, "names");
-                cn.linker_name = extract_text(root, "linker_name");
-                cn.linker_address = extract_text(root, "linker_address");
-                cn.axis_monotony = extract_text(root, "axis_monotony");
-                cn.raster = parse_raster(root);
-                cn.formula = extract_text(root, "formula");
-                cn.address = extract_text(root, "address");
-                cn.common_properties = parse_common_properties(root);
+        {
+            let xml_str = self.get_xml_str()?;
+            match roxmltree::Document::parse(xml_str) {
+                Ok(doc) => {
+                    let root = doc.root_element();
+                    for child in root.children().filter(roxmltree::Node::is_element) {
+                        match child.tag_name().name() {
+                            "TX" => cn.tx = child.text().map(str::to_string),
+                            "names" => cn.names = parse_names_node(child),
+                            "linker_name" => cn.linker_name = child.text().map(str::to_string),
+                            "linker_address" => {
+                                cn.linker_address = child.text().map(str::to_string)
+                            }
+                            "axis_monotony" => {
+                                cn.axis_monotony = child.text().map(str::to_string)
+                            }
+                            "raster" => cn.raster = Some(parse_raster_node(child)),
+                            "formula" => cn.formula = child.text().map(str::to_string),
+                            "address" => cn.address = child.text().map(str::to_string),
+                            "common_properties" => {
+                                parse_properties_children(child, &mut cn.common_properties)
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                Err(e) => log::warn!("Could not parse CN comment : \n{xml_str}\n{e}"),
             }
-            Err(e) => log::warn!("Could not parse CN comment : \n{xml}\n{e}"),
         }
         self.md_comment = Some(MdComment::Cn(cn));
         self.block_type = MetaDataBlockType::MdParsed;
@@ -767,15 +760,24 @@ impl MetaData {
     /// Parse CG block MD comment (cg_comment.xsd)
     fn parse_cg_comment(&mut self) -> Result<()> {
         let mut cg = CgComment::default();
-        let xml = self.get_xml_string()?;
-        match roxmltree::Document::parse(&xml) {
-            Ok(doc) => {
-                let root = doc.root_element();
-                cg.tx = extract_text(root, "TX");
-                cg.names = parse_names(root, "names");
-                cg.common_properties = parse_common_properties(root);
+        {
+            let xml_str = self.get_xml_str()?;
+            match roxmltree::Document::parse(xml_str) {
+                Ok(doc) => {
+                    let root = doc.root_element();
+                    for child in root.children().filter(roxmltree::Node::is_element) {
+                        match child.tag_name().name() {
+                            "TX" => cg.tx = child.text().map(str::to_string),
+                            "names" => cg.names = parse_names_node(child),
+                            "common_properties" => {
+                                parse_properties_children(child, &mut cg.common_properties)
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                Err(e) => log::warn!("Could not parse CG comment : \n{xml_str}\n{e}"),
             }
-            Err(e) => log::warn!("Could not parse CG comment : \n{xml}\n{e}"),
         }
         self.md_comment = Some(MdComment::Cg(cg));
         self.block_type = MetaDataBlockType::MdParsed;
@@ -784,16 +786,25 @@ impl MetaData {
     /// Parse CC block MD comment (cc_comment.xsd)
     fn parse_cc_comment(&mut self) -> Result<()> {
         let mut cc = CcComment::default();
-        let xml = self.get_xml_string()?;
-        match roxmltree::Document::parse(&xml) {
-            Ok(doc) => {
-                let root = doc.root_element();
-                cc.tx = extract_text(root, "TX");
-                cc.names = parse_names(root, "names");
-                cc.formula = extract_text(root, "formula");
-                cc.common_properties = parse_common_properties(root);
+        {
+            let xml_str = self.get_xml_str()?;
+            match roxmltree::Document::parse(xml_str) {
+                Ok(doc) => {
+                    let root = doc.root_element();
+                    for child in root.children().filter(roxmltree::Node::is_element) {
+                        match child.tag_name().name() {
+                            "TX" => cc.tx = child.text().map(str::to_string),
+                            "names" => cc.names = parse_names_node(child),
+                            "formula" => cc.formula = child.text().map(str::to_string),
+                            "common_properties" => {
+                                parse_properties_children(child, &mut cc.common_properties)
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                Err(e) => log::warn!("Could not parse CC comment : \n{xml_str}\n{e}"),
             }
-            Err(e) => log::warn!("Could not parse CC comment : \n{xml}\n{e}"),
         }
         self.md_comment = Some(MdComment::Cc(cc));
         self.block_type = MetaDataBlockType::MdParsed;
@@ -802,18 +813,27 @@ impl MetaData {
     /// Parse SI block MD comment (si_comment.xsd)
     fn parse_si_comment(&mut self) -> Result<()> {
         let mut si = SiComment::default();
-        let xml = self.get_xml_string()?;
-        match roxmltree::Document::parse(&xml) {
-            Ok(doc) => {
-                let root = doc.root_element();
-                si.tx = extract_text(root, "TX");
-                si.names = parse_names(root, "names");
-                si.path = parse_names(root, "path");
-                si.bus = parse_names(root, "bus");
-                si.protocol = extract_text(root, "protocol");
-                si.common_properties = parse_common_properties(root);
+        {
+            let xml_str = self.get_xml_str()?;
+            match roxmltree::Document::parse(xml_str) {
+                Ok(doc) => {
+                    let root = doc.root_element();
+                    for child in root.children().filter(roxmltree::Node::is_element) {
+                        match child.tag_name().name() {
+                            "TX" => si.tx = child.text().map(str::to_string),
+                            "names" => si.names = parse_names_node(child),
+                            "path" => si.path = parse_names_node(child),
+                            "bus" => si.bus = parse_names_node(child),
+                            "protocol" => si.protocol = child.text().map(str::to_string),
+                            "common_properties" => {
+                                parse_properties_children(child, &mut si.common_properties)
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                Err(e) => log::warn!("Could not parse SI comment : \n{xml_str}\n{e}"),
             }
-            Err(e) => log::warn!("Could not parse SI comment : \n{xml}\n{e}"),
         }
         self.md_comment = Some(MdComment::Si(si));
         self.block_type = MetaDataBlockType::MdParsed;
@@ -822,20 +842,33 @@ impl MetaData {
     /// Parse EV block MD comment (ev_comment.xsd)
     fn parse_ev_comment(&mut self) -> Result<()> {
         let mut ev = EvComment::default();
-        let xml = self.get_xml_string()?;
-        match roxmltree::Document::parse(&xml) {
-            Ok(doc) => {
-                let root = doc.root_element();
-                ev.tx = extract_text(root, "TX");
-                ev.pre_trigger_interval =
-                    extract_text(root, "pre_trigger_interval").and_then(|s| s.parse().ok());
-                ev.post_trigger_interval =
-                    extract_text(root, "post_trigger_interval").and_then(|s| s.parse().ok());
-                ev.formula = extract_text(root, "formula");
-                ev.timeout = extract_text(root, "timeout").and_then(|s| s.parse().ok());
-                ev.common_properties = parse_common_properties(root);
+        {
+            let xml_str = self.get_xml_str()?;
+            match roxmltree::Document::parse(xml_str) {
+                Ok(doc) => {
+                    let root = doc.root_element();
+                    for child in root.children().filter(roxmltree::Node::is_element) {
+                        match child.tag_name().name() {
+                            "TX" => ev.tx = child.text().map(str::to_string),
+                            "pre_trigger_interval" => {
+                                ev.pre_trigger_interval =
+                                    child.text().and_then(|s| s.parse().ok())
+                            }
+                            "post_trigger_interval" => {
+                                ev.post_trigger_interval =
+                                    child.text().and_then(|s| s.parse().ok())
+                            }
+                            "formula" => ev.formula = child.text().map(str::to_string),
+                            "timeout" => ev.timeout = child.text().and_then(|s| s.parse().ok()),
+                            "common_properties" => {
+                                parse_properties_children(child, &mut ev.common_properties)
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                Err(e) => log::warn!("Could not parse EV comment : \n{xml_str}\n{e}"),
             }
-            Err(e) => log::warn!("Could not parse EV comment : \n{xml}\n{e}"),
         }
         self.md_comment = Some(MdComment::Ev(ev));
         self.block_type = MetaDataBlockType::MdParsed;
@@ -844,14 +877,23 @@ impl MetaData {
     /// Parse AT block MD comment (at_comment.xsd)
     fn parse_at_comment(&mut self) -> Result<()> {
         let mut at = AtComment::default();
-        let xml = self.get_xml_string()?;
-        match roxmltree::Document::parse(&xml) {
-            Ok(doc) => {
-                let root = doc.root_element();
-                at.tx = extract_text(root, "TX");
-                at.common_properties = parse_common_properties(root);
+        {
+            let xml_str = self.get_xml_str()?;
+            match roxmltree::Document::parse(xml_str) {
+                Ok(doc) => {
+                    let root = doc.root_element();
+                    for child in root.children().filter(roxmltree::Node::is_element) {
+                        match child.tag_name().name() {
+                            "TX" => at.tx = child.text().map(str::to_string),
+                            "common_properties" => {
+                                parse_properties_children(child, &mut at.common_properties)
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                Err(e) => log::warn!("Could not parse AT comment : \n{xml_str}\n{e}"),
             }
-            Err(e) => log::warn!("Could not parse AT comment : \n{xml}\n{e}"),
         }
         self.md_comment = Some(MdComment::At(at));
         self.block_type = MetaDataBlockType::MdParsed;
@@ -860,15 +902,24 @@ impl MetaData {
     /// Parse CH block MD comment (ch_comment.xsd)
     fn parse_ch_comment(&mut self) -> Result<()> {
         let mut ch = ChComment::default();
-        let xml = self.get_xml_string()?;
-        match roxmltree::Document::parse(&xml) {
-            Ok(doc) => {
-                let root = doc.root_element();
-                ch.tx = extract_text(root, "TX");
-                ch.names = parse_names(root, "names");
-                ch.common_properties = parse_common_properties(root);
+        {
+            let xml_str = self.get_xml_str()?;
+            match roxmltree::Document::parse(xml_str) {
+                Ok(doc) => {
+                    let root = doc.root_element();
+                    for child in root.children().filter(roxmltree::Node::is_element) {
+                        match child.tag_name().name() {
+                            "TX" => ch.tx = child.text().map(str::to_string),
+                            "names" => ch.names = parse_names_node(child),
+                            "common_properties" => {
+                                parse_properties_children(child, &mut ch.common_properties)
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                Err(e) => log::warn!("Could not parse CH comment : \n{xml_str}\n{e}"),
             }
-            Err(e) => log::warn!("Could not parse CH comment : \n{xml}\n{e}"),
         }
         self.md_comment = Some(MdComment::Ch(ch));
         self.block_type = MetaDataBlockType::MdParsed;
@@ -877,14 +928,23 @@ impl MetaData {
     /// Parse DG block MD comment (dg_comment.xsd)
     fn parse_dg_comment(&mut self) -> Result<()> {
         let mut dg = DgComment::default();
-        let xml = self.get_xml_string()?;
-        match roxmltree::Document::parse(&xml) {
-            Ok(doc) => {
-                let root = doc.root_element();
-                dg.tx = extract_text(root, "TX");
-                dg.common_properties = parse_common_properties(root);
+        {
+            let xml_str = self.get_xml_str()?;
+            match roxmltree::Document::parse(xml_str) {
+                Ok(doc) => {
+                    let root = doc.root_element();
+                    for child in root.children().filter(roxmltree::Node::is_element) {
+                        match child.tag_name().name() {
+                            "TX" => dg.tx = child.text().map(str::to_string),
+                            "common_properties" => {
+                                parse_properties_children(child, &mut dg.common_properties)
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                Err(e) => log::warn!("Could not parse DG comment : \n{xml_str}\n{e}"),
             }
-            Err(e) => log::warn!("Could not parse DG comment : \n{xml}\n{e}"),
         }
         self.md_comment = Some(MdComment::Dg(dg));
         self.block_type = MetaDataBlockType::MdParsed;
@@ -968,22 +1028,6 @@ mod tests {
 
         let tx = md.get_tx().unwrap();
         assert_eq!(tx, Some("test_channel".to_string()));
-    }
-
-    #[test]
-    fn test_metadata_get_data_string() {
-        let mut md = MetaData::new(MetaDataBlockType::TX, BlockType::CN);
-        md.set_data_buffer(b"hello world\0\0\0");
-
-        let s = md.get_data_string().unwrap();
-        assert_eq!(s, "hello world");
-
-        // MdParsed returns empty
-        let md2 = MetaData {
-            block_type: MetaDataBlockType::MdParsed,
-            ..MetaData::default()
-        };
-        assert_eq!(md2.get_data_string().unwrap(), "");
     }
 
     // ── XML parsing tests ──
