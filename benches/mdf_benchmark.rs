@@ -119,11 +119,35 @@ fn bench_local_synthetic(c: &mut Criterion) {
     group.finish();
 }
 
+/// Metadata-only parsing — calls only `Mdf::new()` (no data load) to isolate
+/// the cost of block header parsing and eager `parse_xml()` calls.
+fn bench_metadata(c: &mut Criterion) {
+    let base = MDF4_EXAMPLES.as_str();
+    let mut group = c.benchmark_group("metadata");
+    group.warm_up_time(Duration::from_secs(1));
+    group.sample_size(30);
+    group.measurement_time(Duration::from_secs(6));
+
+    for (name, rel) in [
+        ("mdf4_sorted_184mb", "Simple/error.mf4"),
+        ("mdf4_measure_47mb", "Simple/measure2.mf4"),
+        ("mdf4_compressed", "CompressedData/Simple/Vector_SingleDZ_Deflate.mf4"),
+    ] {
+        let path = format!("{base}{rel}");
+        group.bench_function(name, |b| {
+            b.iter(|| Mdf::new(black_box(&path)).expect("failed to open file"))
+        });
+    }
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_large_files,
     bench_medium_files,
     bench_decompression,
     bench_local_synthetic,
+    bench_metadata,
 );
 criterion_main!(benches);
