@@ -1,6 +1,4 @@
 //! command line interface to load mdf file and manipulate it.
-extern crate clap;
-
 use clap::{Arg, Command};
 mod data_holder;
 mod export;
@@ -11,14 +9,8 @@ use anyhow::{Context, Error, Result};
 use env_logger::Env;
 use log::info;
 
-fn init() {
-    let _ = env_logger::Builder::from_env(Env::default().default_filter_or("warn"))
-        .is_test(true)
-        .try_init();
-}
-
 fn main() -> Result<(), Error> {
-    init();
+    env_logger::Builder::from_env(Env::default().default_filter_or("warn")).init();
     let matches = Command::new("mdfr")
         .bin_name("mdfr")
         .version(env!("CARGO_PKG_VERSION"))
@@ -36,7 +28,6 @@ fn main() -> Result<(), Error> {
             Arg::new("write")
                 .long("write")
                 .short('w')
-                .required(false)
                 .num_args(1)
                 .value_name("FILE_NAME")
                 .help("write the read content into a new mdf4.3 file"),
@@ -52,7 +43,6 @@ fn main() -> Result<(), Error> {
             Arg::new("export_to_parquet")
                 .long("export_to_parquet")
                 .short('p')
-                .required(false)
                 .num_args(1)
                 .value_name("FILE_NAME")
                 .help("Converts mdf into parquet file, file name to be given without extension"),
@@ -60,7 +50,6 @@ fn main() -> Result<(), Error> {
         .arg(
             Arg::new("parquet_compression")
                 .long("parquet_compression")
-                .required(false)
                 .num_args(1)
                 .value_name("ALGORITHM")
                 .value_parser(["snappy", "gzip", "lzo", "lz4", "zstd", "brotli"])
@@ -70,7 +59,6 @@ fn main() -> Result<(), Error> {
             Arg::new("export_to_hdf5")
                 .long("export_to_hdf5")
                 .short('m')
-                .required(false)
                 .num_args(1)
                 .value_name("FILE_NAME")
                 .help("Converts mdf into hdf5 file, file name to be given without extension"),
@@ -78,7 +66,6 @@ fn main() -> Result<(), Error> {
         .arg(
             Arg::new("hdf5_compression")
                 .long("hdf5_compression")
-                .required(false)
                 .num_args(1)
                 .value_name("FILTER")
                 .value_parser(["deflate", "lzf"])
@@ -126,23 +113,25 @@ fn main() -> Result<(), Error> {
     }
 
     #[cfg(feature = "parquet")]
-    let parquet_compression = matches.get_one::<String>("parquet_compression");
-    #[cfg(feature = "parquet")]
-    if let Some(file_name) = parquet_file_name {
-        mdf_file
-            .export_to_parquet(file_name, parquet_compression.map(|x| &**x))
-            .with_context(|| format!("failed to export into parquet file {file_name}"))?;
-        info!("Wrote parquet file {file_name} with compression {parquet_compression:?}");
+    {
+        let parquet_compression = matches.get_one::<String>("parquet_compression");
+        if let Some(file_name) = parquet_file_name {
+            mdf_file
+                .export_to_parquet(file_name, parquet_compression.map(String::as_str))
+                .with_context(|| format!("failed to export into parquet file {file_name}"))?;
+            info!("Wrote parquet file {file_name} with compression {parquet_compression:?}");
+        }
     }
 
     #[cfg(feature = "hdf5")]
-    let hdf5_compression = matches.get_one::<String>("hdf5_compression");
-    #[cfg(feature = "hdf5")]
-    if let Some(file_name) = hdf5_file_name {
-        mdf_file
-            .export_to_hdf5(file_name, hdf5_compression.map(|x| &**x))
-            .with_context(|| format!("failed to export into hdf5 file {file_name}"))?;
-        info!("Wrote hdf5 file {file_name}");
+    {
+        let hdf5_compression = matches.get_one::<String>("hdf5_compression");
+        if let Some(file_name) = hdf5_file_name {
+            mdf_file
+                .export_to_hdf5(file_name, hdf5_compression.map(String::as_str))
+                .with_context(|| format!("failed to export into hdf5 file {file_name}"))?;
+            info!("Wrote hdf5 file {file_name}");
+        }
     }
 
     Ok(())

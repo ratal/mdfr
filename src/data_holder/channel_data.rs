@@ -751,7 +751,9 @@ impl ChannelData {
                 Ok(bytes)
             }
             // All 22 numeric variants (primitives, complex, ArrayD)
-            _ => dispatch_numeric!(self, a => Ok(a.values_slice().iter().flat_map(|x| x.to_ne_bytes()).collect())),
+            _ => {
+                dispatch_numeric!(self, a => Ok(a.values_slice().iter().flat_map(|x| x.to_ne_bytes()).collect()))
+            }
         }
     }
     /// returns the number of dimensions of the channel

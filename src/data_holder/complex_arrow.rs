@@ -1,10 +1,12 @@
 //! complex number stored in primitive builders, fixedsizearraybuilder being too restricted
 #[cfg(feature = "ndarray")]
 use anyhow::{Context, Error, Result};
+#[cfg(feature = "ndarray")]
+use arrow::datatypes::{Float32Type, Float64Type};
 use arrow::{
     array::{ArrayBuilder, BooleanBufferBuilder, PrimitiveArray, PrimitiveBuilder},
     buffer::{BooleanBuffer, MutableBuffer},
-    datatypes::{ArrowPrimitiveType, Float32Type, Float64Type},
+    datatypes::ArrowPrimitiveType,
 };
 #[cfg(feature = "ndarray")]
 use ndarray::{Array, Ix2};
@@ -51,8 +53,8 @@ impl<T: ArrowPrimitiveType> ComplexArrow<T> {
     ) -> Self {
         let length = primitive_builder.len() / 2;
         if let Some(null_buffer_builder) = null_buffer {
-            assert_eq!(null_buffer_builder.len() * 2, primitive_builder.len())
-        };
+            assert_eq!(null_buffer_builder.len() * 2, primitive_builder.len());
+        }
         let null_buffer_builder = null_buffer.cloned();
         Self {
             null_buffer_builder,
@@ -115,7 +117,7 @@ impl ComplexArrow<Float64Type> {
     /// to convert ComplexArrow into ndarray
     pub fn to_ndarray(&self) -> Result<Array<f64, Ix2>, Error> {
         let vector: Vec<f64> = self.values_builder.values_slice().to_vec();
-        Array::from_shape_vec((vector.len() / 2, 2), vector)
+        Array::from_shape_vec((self.len(), 2), vector)
             .context("Failed reshaping f64 complex arrow into ndarray")
     }
 }
@@ -126,53 +128,17 @@ impl<T: ArrowPrimitiveType> Default for ComplexArrow<T> {
     }
 }
 
-impl PartialEq for ComplexArrow<Float32Type> {
+impl<T: ArrowPrimitiveType> PartialEq for ComplexArrow<T>
+where
+    PrimitiveArray<T>: PartialEq,
+{
     fn eq(&self, other: &Self) -> bool {
-        if self.values_builder.finish_cloned() == other.values_builder.finish_cloned() {
-            match &self.null_buffer_builder {
-                Some(buffer) => match &other.null_buffer_builder {
-                    Some(other_buffer) => buffer == other_buffer,
-                    None => false,
-                },
-                None => other.null_buffer_builder.is_none(),
-            }
-        } else {
-            false
-        }
+        self.values_builder.finish_cloned() == other.values_builder.finish_cloned()
+            && self.null_buffer_builder == other.null_buffer_builder
     }
 }
 
-impl PartialEq for ComplexArrow<Float64Type> {
-    fn eq(&self, other: &Self) -> bool {
-        if self.values_builder.finish_cloned() == other.values_builder.finish_cloned() {
-            match &self.null_buffer_builder {
-                Some(buffer) => match &other.null_buffer_builder {
-                    Some(other_buffer) => buffer == other_buffer,
-                    None => false,
-                },
-                None => other.null_buffer_builder.is_none(),
-            }
-        } else {
-            false
-        }
-    }
-}
-
-impl Clone for ComplexArrow<Float32Type> {
-    fn clone(&self) -> Self {
-        Self {
-            null_buffer_builder: self.null_buffer_builder.clone(),
-            values_builder: self
-                .values_builder
-                .finish_cloned()
-                .into_builder()
-                .expect("failed getting builder from Primitive array"),
-            len: self.len,
-        }
-    }
-}
-
-impl Clone for ComplexArrow<Float64Type> {
+impl<T: ArrowPrimitiveType> Clone for ComplexArrow<T> {
     fn clone(&self) -> Self {
         Self {
             null_buffer_builder: self.null_buffer_builder.clone(),
@@ -189,6 +155,7 @@ impl Clone for ComplexArrow<Float64Type> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use arrow::datatypes::{Float32Type, Float64Type};
 
     #[test]
     fn test_new_and_default() {

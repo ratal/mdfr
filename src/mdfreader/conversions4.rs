@@ -175,35 +175,130 @@ macro_rules! apply_conversion_f64 {
         arrayd($ad:ident) => $arrayd_body:expr $(,)?
     ) => {
         match &mut $cn.data {
-            ChannelData::Int8($a)    => { $cn.data = ChannelData::Float64($scalar_body); }
-            ChannelData::UInt8($a)   => { $cn.data = ChannelData::Float64($scalar_body); }
-            ChannelData::Int16($a)   => { $cn.data = ChannelData::Float64($scalar_body); }
-            ChannelData::UInt16($a)  => { $cn.data = ChannelData::Float64($scalar_body); }
-            ChannelData::Int32($a)   => { $cn.data = ChannelData::Float64($scalar_body); }
-            ChannelData::UInt32($a)  => { $cn.data = ChannelData::Float64($scalar_body); }
-            ChannelData::Float32($a) => { $cn.data = ChannelData::Float64($scalar_body); }
-            ChannelData::Int64($a)   => { $cn.data = ChannelData::Float64($scalar_body); }
-            ChannelData::UInt64($a)  => { $cn.data = ChannelData::Float64($scalar_body); }
+            ChannelData::Int8($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::UInt8($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::Int16($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::UInt16($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::Int32($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::UInt32($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::Float32($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::Int64($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::UInt64($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
             ChannelData::Float64($af) => $f64_block,
             ChannelData::Complex32($ac) => {
-                $cn.data = ChannelData::Complex64(
-                    ComplexArrow::new_from_primitive($complex_body, $ac.nulls()));
+                $cn.data = ChannelData::Complex64(ComplexArrow::new_from_primitive(
+                    $complex_body,
+                    $ac.nulls(),
+                ));
             }
             ChannelData::Complex64($ac) => {
-                $cn.data = ChannelData::Complex64(
-                    ComplexArrow::new_from_primitive($complex_body, $ac.nulls()));
+                $cn.data = ChannelData::Complex64(ComplexArrow::new_from_primitive(
+                    $complex_body,
+                    $ac.nulls(),
+                ));
             }
-            ChannelData::ArrayDInt8($ad)    => { $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive($arrayd_body, $ad.nulls(), $ad.shape().clone(), $ad.order().clone())); }
-            ChannelData::ArrayDUInt8($ad)   => { $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive($arrayd_body, $ad.nulls(), $ad.shape().clone(), $ad.order().clone())); }
-            ChannelData::ArrayDInt16($ad)   => { $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive($arrayd_body, $ad.nulls(), $ad.shape().clone(), $ad.order().clone())); }
-            ChannelData::ArrayDUInt16($ad)  => { $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive($arrayd_body, $ad.nulls(), $ad.shape().clone(), $ad.order().clone())); }
-            ChannelData::ArrayDInt32($ad)   => { $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive($arrayd_body, $ad.nulls(), $ad.shape().clone(), $ad.order().clone())); }
-            ChannelData::ArrayDUInt32($ad)  => { $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive($arrayd_body, $ad.nulls(), $ad.shape().clone(), $ad.order().clone())); }
-            ChannelData::ArrayDFloat32($ad) => { $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive($arrayd_body, $ad.nulls(), $ad.shape().clone(), $ad.order().clone())); }
-            ChannelData::ArrayDInt64($ad)   => { $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive($arrayd_body, $ad.nulls(), $ad.shape().clone(), $ad.order().clone())); }
-            ChannelData::ArrayDUInt64($ad)  => { $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive($arrayd_body, $ad.nulls(), $ad.shape().clone(), $ad.order().clone())); }
-            ChannelData::ArrayDFloat64($ad) => { $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive($arrayd_body, $ad.nulls(), $ad.shape().clone(), $ad.order().clone())); }
-            _ => warn!("conversion of channel {} not possible, channel does not contain primitives", $cn.unique_name),
+            ChannelData::ArrayDInt8($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDUInt8($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDInt16($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDUInt16($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDInt32($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDUInt32($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDFloat32($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDInt64($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDUInt64($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDFloat64($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            _ => warn!(
+                "conversion of channel {} not possible, channel does not contain primitives",
+                $cn.unique_name
+            ),
         }
     };
 
@@ -215,27 +310,118 @@ macro_rules! apply_conversion_f64 {
         arrayd($ad:ident) => $arrayd_body:expr $(,)?
     ) => {
         match &mut $cn.data {
-            ChannelData::Int8($a)    => { $cn.data = ChannelData::Float64($scalar_body); }
-            ChannelData::UInt8($a)   => { $cn.data = ChannelData::Float64($scalar_body); }
-            ChannelData::Int16($a)   => { $cn.data = ChannelData::Float64($scalar_body); }
-            ChannelData::UInt16($a)  => { $cn.data = ChannelData::Float64($scalar_body); }
-            ChannelData::Int32($a)   => { $cn.data = ChannelData::Float64($scalar_body); }
-            ChannelData::UInt32($a)  => { $cn.data = ChannelData::Float64($scalar_body); }
-            ChannelData::Float32($a) => { $cn.data = ChannelData::Float64($scalar_body); }
-            ChannelData::Int64($a)   => { $cn.data = ChannelData::Float64($scalar_body); }
-            ChannelData::UInt64($a)  => { $cn.data = ChannelData::Float64($scalar_body); }
+            ChannelData::Int8($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::UInt8($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::Int16($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::UInt16($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::Int32($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::UInt32($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::Float32($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::Int64($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::UInt64($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
             ChannelData::Float64($af) => $f64_block,
-            ChannelData::ArrayDInt8($ad)    => { $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive($arrayd_body, $ad.nulls(), $ad.shape().clone(), $ad.order().clone())); }
-            ChannelData::ArrayDUInt8($ad)   => { $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive($arrayd_body, $ad.nulls(), $ad.shape().clone(), $ad.order().clone())); }
-            ChannelData::ArrayDInt16($ad)   => { $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive($arrayd_body, $ad.nulls(), $ad.shape().clone(), $ad.order().clone())); }
-            ChannelData::ArrayDUInt16($ad)  => { $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive($arrayd_body, $ad.nulls(), $ad.shape().clone(), $ad.order().clone())); }
-            ChannelData::ArrayDInt32($ad)   => { $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive($arrayd_body, $ad.nulls(), $ad.shape().clone(), $ad.order().clone())); }
-            ChannelData::ArrayDUInt32($ad)  => { $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive($arrayd_body, $ad.nulls(), $ad.shape().clone(), $ad.order().clone())); }
-            ChannelData::ArrayDFloat32($ad) => { $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive($arrayd_body, $ad.nulls(), $ad.shape().clone(), $ad.order().clone())); }
-            ChannelData::ArrayDInt64($ad)   => { $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive($arrayd_body, $ad.nulls(), $ad.shape().clone(), $ad.order().clone())); }
-            ChannelData::ArrayDUInt64($ad)  => { $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive($arrayd_body, $ad.nulls(), $ad.shape().clone(), $ad.order().clone())); }
-            ChannelData::ArrayDFloat64($ad) => { $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive($arrayd_body, $ad.nulls(), $ad.shape().clone(), $ad.order().clone())); }
-            _ => warn!("conversion of channel {} not possible, channel does not contain primitives", $cn.unique_name),
+            ChannelData::ArrayDInt8($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDUInt8($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDInt16($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDUInt16($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDInt32($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDUInt32($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDFloat32($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDInt64($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDUInt64($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDFloat64($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            _ => warn!(
+                "conversion of channel {} not possible, channel does not contain primitives",
+                $cn.unique_name
+            ),
         }
     };
 }
