@@ -551,12 +551,9 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
                             let is_vlsd = cn.block.cn_type == 1 && is_vlsd_data(data);
 
                             if is_vlsd {
-                                // VLSD channel: write SD block, set cn_data
+                                // VLSD channel: write SD block, set cn_data.
+                                // Compress before acquiring the lock to reduce contention.
                                 let mut offset: i64 = 0;
-
-                                let data_pointer = Arc::clone(&data_pointer);
-                                let mut locked_data_pointer = data_pointer.lock();
-                                cn.block.cn_data = *locked_data_pointer;
                                 // For VLSD, dg_data is not used (set to 0)
                                 dg.block.dg_data = 0;
                                 let data_block = if compression {
@@ -566,6 +563,10 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
                                     create_sd(data, &mut offset)
                                         .context("failed creating sd block")?
                                 };
+
+                                let data_pointer = Arc::clone(&data_pointer);
+                                let mut locked_data_pointer = data_pointer.lock();
+                                cn.block.cn_data = *locked_data_pointer;
                                 *locked_data_pointer += offset;
                                 let buffer =
                                     write_sd_block(cn.block.cn_data, data_block, offset as usize)?;

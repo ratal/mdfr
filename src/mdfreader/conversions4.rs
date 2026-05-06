@@ -21,15 +21,17 @@ use crate::data_holder::complex_arrow::ComplexArrow;
 
 /// convert all channel arrays into physical values as required by CCBlock content
 pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) -> Result<(), Error> {
-    for channel_group in dg.cg.values_mut() {
-        channel_group
-            .cn
-            .par_iter_mut()
-            .filter(|(_cn_record_position, cn)| !cn.data.is_empty())
-            .try_for_each(|(_rec_pos, cn): (&i32, &mut Cn4)| -> Result<(), Error> {
-                // Could be empty if only initialised
-                if let Some(conv) = sharable.cc.get(&cn.block.cn_cc_conversion) {
-                    match conv.cc_type {
+    dg.cg
+        .par_iter_mut()
+        .try_for_each(|(_, channel_group)| -> Result<(), Error> {
+            channel_group
+                .cn
+                .par_iter_mut()
+                .filter(|(_cn_record_position, cn)| !cn.data.is_empty())
+                .try_for_each(|(_rec_pos, cn): (&i32, &mut Cn4)| -> Result<(), Error> {
+                    // Could be empty if only initialised
+                    if let Some(conv) = sharable.cc.get(&cn.block.cn_cc_conversion) {
+                        match conv.cc_type {
                         1 => match &conv.cc_val {
                             CcVal::Real(cc_val) => {
                                 linear_conversion(cn, cc_val).with_context(|| {
@@ -149,10 +151,11 @@ pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) -> Result<(
                             conv.cc_type,
                         ),
                     }
-                }
-                Ok(())
-            })?
-    }
+                    }
+                    Ok(())
+                })?;
+            Ok(())
+        })?;
     Ok(())
 }
 

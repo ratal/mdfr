@@ -177,6 +177,18 @@ pub fn parse_dz(rdr: &mut BufReader<&File>) -> Result<(Vec<u8>, Dz4Block)> {
     Ok((data, block))
 }
 
+/// Reads a DZBlock header and raw compressed bytes without decompressing.
+/// Use `Dz4Block::decompress` in a parallel step to decompress independently.
+pub fn read_dz_raw(rdr: &mut BufReader<&File>) -> Result<(Dz4Block, Vec<u8>)> {
+    let block: Dz4Block = rdr
+        .read_le()
+        .context("Could not read into Dz4Block struct")?;
+    let mut buf = vec![0u8; block.dz_data_length as usize];
+    rdr.read_exact(&mut buf)
+        .context("Could not read Dz raw data")?;
+    Ok((block, buf))
+}
+
 /// DZBLOCK structure (MDF 4.2 spec, Table 57) — compressed data block
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[binrw]
@@ -234,6 +246,18 @@ impl Dz4Block {
             254 => "Custom",
             _ => "Unknown",
         }
+    }
+
+    /// Decompresses `buf` using this block's zip algorithm and parameters.
+    /// Designed for parallel pipelines: call `read_dz_raw` for I/O, then
+    /// decompress many blocks concurrently with `par_iter().map(|b| b.decompress(...))`.
+    pub fn decompress(self, buf: Vec<u8>) -> Result<Vec<u8>> {
+        decompress_data(
+            self.dz_zip_type,
+            self.dz_zip_parameter,
+            buf,
+            self.dz_org_data_length,
+        )
     }
 }
 

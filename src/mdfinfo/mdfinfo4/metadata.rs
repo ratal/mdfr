@@ -737,9 +737,7 @@ impl MetaData {
                             "linker_address" => {
                                 cn.linker_address = child.text().map(str::to_string)
                             }
-                            "axis_monotony" => {
-                                cn.axis_monotony = child.text().map(str::to_string)
-                            }
+                            "axis_monotony" => cn.axis_monotony = child.text().map(str::to_string),
                             "raster" => cn.raster = Some(parse_raster_node(child)),
                             "formula" => cn.formula = child.text().map(str::to_string),
                             "address" => cn.address = child.text().map(str::to_string),
@@ -851,12 +849,10 @@ impl MetaData {
                         match child.tag_name().name() {
                             "TX" => ev.tx = child.text().map(str::to_string),
                             "pre_trigger_interval" => {
-                                ev.pre_trigger_interval =
-                                    child.text().and_then(|s| s.parse().ok())
+                                ev.pre_trigger_interval = child.text().and_then(|s| s.parse().ok())
                             }
                             "post_trigger_interval" => {
-                                ev.post_trigger_interval =
-                                    child.text().and_then(|s| s.parse().ok())
+                                ev.post_trigger_interval = child.text().and_then(|s| s.parse().ok())
                             }
                             "formula" => ev.formula = child.text().map(str::to_string),
                             "timeout" => ev.timeout = child.text().and_then(|s| s.parse().ok()),

@@ -3,8 +3,8 @@ use crate::data_holder::channel_data::ChannelData;
 use crate::mdfinfo::MdfInfo;
 use crate::mdfinfo::mdfinfo4::{Blockheader4, Cg4, Cn4, Composition, Dg4, Ds4Block};
 use crate::mdfinfo::mdfinfo4::{
-    CG_F_VLSC, CG_F_VLSD, Dl4Block, Dt4Block, Gd4Block, Hl4Block, Ld4Block, parse_dz,
-    parser_dl4_block, parser_ld4_block,
+    CG_F_VLSC, CG_F_VLSD, Dl4Block, Dt4Block, Dz4Block, Gd4Block, Hl4Block, Ld4Block, parse_dz,
+    parser_dl4_block, parser_ld4_block, read_dz_raw,
 };
 use crate::mdfreader::conversions4::convert_all_channels;
 use crate::mdfreader::data_read4::read_channels_from_bytes;
@@ -851,7 +851,10 @@ fn parser_ld4(
     Ok(position)
 }
 
-/// reads DV and DI block containing several channels
+/// reads DV and DI block containing several channels.
+///
+/// Three-phase approach: (1) sequential I/O, (2) parallel decompression,
+/// (3) sequential record assembly — mirrors `parser_dl4_sorted`.
 fn read_dv_di(
     rdr: &mut BufReader<&File>,
     mut position: i64,
@@ -866,7 +869,6 @@ fn read_dv_di(
     } else {
         channel_group.block.cg_inval_bytes as usize
     };
-    // initialises the arrays
     initialise_arrays(
         channel_group,
         &channel_group.block.cg_cycle_count.clone(),
@@ -875,89 +877,43 @@ fn read_dv_di(
     .context("failed initialising arrays for dv di blocks")?;
     for ld in &ld_blocks {
         if !ld.ld_invalid_data().is_empty() && cg_inval_bytes > 0 {
-            // initialises the invalid bytes vector
             channel_group.invalid_bytes = Some(vec![0u8; cg_inval_bytes * cg_cycle_count]);
         }
     }
-    // Read all data blocks
-    let mut data: Vec<u8> = Vec::new();
-    let mut invalid_data: Vec<u8> = Vec::new();
-    let mut previous_index: usize = 0;
-    let mut previous_invalid_pos: usize = 0;
-    for ld in ld_blocks {
-        for data_pointer in ld.ld_data() {
-            // Reads DV or DZ block id
+
+    // Phase 1: Sequential I/O — collect all raw data and invalid blocks
+    let mut raw_data: Vec<RawCompBlock> = Vec::new();
+    let mut raw_invalid: Vec<RawCompBlock> = Vec::new();
+    for ld in &ld_blocks {
+        for &data_pointer in &ld.ld_data() {
             rdr.seek_relative(data_pointer - position)
                 .context("Could not reach DV or DZ block position")?;
             let mut id = [0u8; 4];
             rdr.read_exact(&mut id)
                 .context("could not read data block id from LD4")?;
-            let block_length: usize;
-            if id == "##DZ".as_bytes() {
-                let (dt, block_header) = parse_dz(rdr)?;
-                data.extend(dt);
-                block_length = block_header.dz_org_data_length as usize;
-                position = data_pointer + block_header.len as i64;
+            if id == *b"##DZ" {
+                let (header, buf) = read_dz_raw(rdr)?;
+                position = data_pointer + header.len as i64;
+                raw_data.push(RawCompBlock::Dz(header, buf));
             } else {
                 let block_header: Dt4Block =
                     rdr.read_le().context("Could not read DV block structure")?;
                 let mut buf = vec![0u8; (block_header.len - 24) as usize];
                 rdr.read_exact(&mut buf).context("Could not read DV data")?;
-                data.extend(buf);
-                block_length = (block_header.len - 24) as usize;
                 position = data_pointer + block_header.len as i64;
+                raw_data.push(RawCompBlock::Plain(buf));
             }
-            // Copies full sized records in block into channels arrays
-            let record_length = channel_group.record_length as usize;
-            let n_record_chunk = block_length / record_length;
-            if previous_index + n_record_chunk < cg_cycle_count {
-                read_channels_from_bytes(
-                    &data[..record_length * n_record_chunk],
-                    &mut channel_group.cn,
-                    record_length,
-                    previous_index,
-                    channel_names_to_read_in_dg,
-                    false,
-                )
-                .context("failed reading channels from dv di blocks")?;
-            } else {
-                // Some implementation are pre allocating equal length blocks
-                read_channels_from_bytes(
-                    &data[..record_length * (cg_cycle_count - previous_index)],
-                    &mut channel_group.cn,
-                    record_length,
-                    previous_index,
-                    channel_names_to_read_in_dg,
-                    false,
-                )
-                .context("failed reading channels from from dv di blocks")?;
-            }
-            // drop what has ben copied and keep remaining to be extended
-            let remaining = block_length % record_length;
-            if remaining > 0 {
-                // copies tail part at beginnning of vect
-                data.copy_within(record_length * n_record_chunk.., 0);
-                // clears the last part
-                data.truncate(remaining);
-            } else {
-                data.clear()
-            }
-            previous_index += n_record_chunk;
         }
-        // Invalid data reading
-        for data_pointer in ld.ld_invalid_data() {
-            // Reads DV or DZ block id
+        for &data_pointer in &ld.ld_invalid_data() {
             rdr.seek_relative(data_pointer - position)
                 .context("Could not reach invalid block position")?;
             let mut id = [0u8; 4];
             rdr.read_exact(&mut id)
                 .context("could not read data block id from ld4 invalid")?;
-            let block_length: usize;
-            if id == "##DZ".as_bytes() {
-                let (dt, block_header) = parse_dz(rdr)?;
-                invalid_data.extend(dt);
-                block_length = block_header.dz_org_data_length as usize;
-                position = data_pointer + block_header.len as i64;
+            if id == *b"##DZ" {
+                let (header, buf) = read_dz_raw(rdr)?;
+                position = data_pointer + header.len as i64;
+                raw_invalid.push(RawCompBlock::Dz(header, buf));
             } else {
                 let block_header: Dt4Block = rdr
                     .read_le()
@@ -965,19 +921,87 @@ fn read_dv_di(
                 let mut buf = vec![0u8; (block_header.len - 24) as usize];
                 rdr.read_exact(&mut buf)
                     .context("Could not read invalid data")?;
-                invalid_data.extend(buf);
-                block_length = (block_header.len - 24) as usize;
                 position = data_pointer + block_header.len as i64;
+                raw_invalid.push(RawCompBlock::Plain(buf));
             }
-            // Copies invalid data
-            if let Some(invalid) = &mut channel_group.invalid_bytes {
-                invalid[previous_invalid_pos..previous_invalid_pos + block_length]
-                    .copy_from_slice(&invalid_data);
-                previous_invalid_pos += block_length;
-            }
-            invalid_data.clear();
         }
     }
+
+    // Phase 2: Parallel decompression
+    let decompressed_data: Vec<Vec<u8>> = raw_data
+        .into_par_iter()
+        .map(|raw| -> Result<Vec<u8>> {
+            match raw {
+                RawCompBlock::Plain(d) => Ok(d),
+                RawCompBlock::Dz(header, buf) => header
+                    .decompress(buf)
+                    .context("failed decompressing DV DZ block"),
+            }
+        })
+        .collect::<Result<_>>()?;
+    let decompressed_invalid: Vec<Vec<u8>> = raw_invalid
+        .into_par_iter()
+        .map(|raw| -> Result<Vec<u8>> {
+            match raw {
+                RawCompBlock::Plain(d) => Ok(d),
+                RawCompBlock::Dz(header, buf) => header
+                    .decompress(buf)
+                    .context("failed decompressing DI DZ block"),
+            }
+        })
+        .collect::<Result<_>>()?;
+
+    // Phase 3: Sequential record assembly — use actual decompressed length (matches original
+    // parse_dz which updated dz_org_data_length = data.len() after decompression).
+    let record_length = channel_group.record_length as usize;
+    let mut data: Vec<u8> = Vec::new();
+    let mut previous_index: usize = 0;
+    for block_data in decompressed_data {
+        let block_length = block_data.len();
+        data.extend(block_data);
+        let n_record_chunk = block_length / record_length;
+        if previous_index + n_record_chunk < cg_cycle_count {
+            read_channels_from_bytes(
+                &data[..record_length * n_record_chunk],
+                &mut channel_group.cn,
+                record_length,
+                previous_index,
+                channel_names_to_read_in_dg,
+                false,
+            )
+            .context("failed reading channels from dv di blocks")?;
+        } else {
+            read_channels_from_bytes(
+                &data[..record_length * (cg_cycle_count - previous_index)],
+                &mut channel_group.cn,
+                record_length,
+                previous_index,
+                channel_names_to_read_in_dg,
+                false,
+            )
+            .context("failed reading channels from dv di blocks")?;
+        }
+        let remaining = block_length % record_length;
+        if remaining > 0 {
+            data.copy_within(record_length * n_record_chunk.., 0);
+            data.truncate(remaining);
+        } else {
+            data.clear();
+        }
+        previous_index += n_record_chunk;
+    }
+
+    // Phase 3b: Copy invalid data into the pre-allocated buffer
+    let mut previous_invalid_pos: usize = 0;
+    for block_data in decompressed_invalid {
+        let block_length = block_data.len();
+        if let Some(invalid) = &mut channel_group.invalid_bytes {
+            invalid[previous_invalid_pos..previous_invalid_pos + block_length]
+                .copy_from_slice(&block_data);
+            previous_invalid_pos += block_length;
+        }
+    }
+
     Ok(position)
 }
 
@@ -1003,7 +1027,16 @@ fn parser_dl4(rdr: &mut BufReader<&File>, mut position: i64) -> Result<(Vec<Dl4B
     Ok((dl_blocks, position))
 }
 
-/// Reads all sorted data blocks pointed by DL4 Blocks
+/// Raw (possibly compressed) DZ or plain DT block collected during sequential I/O.
+enum RawCompBlock {
+    Plain(Vec<u8>),
+    Dz(Dz4Block, Vec<u8>),
+}
+
+/// Reads all sorted data blocks pointed by DL4 Blocks.
+///
+/// Three-phase approach: (1) sequential I/O collects raw bytes, (2) Rayon
+/// decompresses all DZ blocks in parallel, (3) sequential record assembly.
 fn parser_dl4_sorted(
     rdr: &mut BufReader<&File>,
     dl_blocks: Vec<Dl4Block>,
@@ -1013,88 +1046,104 @@ fn parser_dl4_sorted(
     rec_pos: &i32,
     channel_names_to_read_in_dg: &HashSet<String>,
 ) -> Result<(i64, Vec<(u8, i32)>)> {
-    // initialises the arrays
     initialise_arrays(
         channel_group,
         &channel_group.block.cg_cycle_count.clone(),
         channel_names_to_read_in_dg,
     )
     .context("failed initialising arrays for sorted dl4 block")?;
-    // Read all data blocks
-    let mut data: Vec<u8> = Vec::new();
-    let mut previous_index: usize = 0;
+
     let cg_cycle_count = channel_group.block.cg_cycle_count as usize;
     let record_length = channel_group.record_length as usize;
     let mut vlsd_channels: Vec<(u8, i32)> = Vec::new();
-    for dl in dl_blocks {
-        for data_pointer in dl.dl_data {
-            // Reads DT or DZ block id
+
+    // Phase 1: Sequential I/O — collect raw blocks
+    let mut raw_entries: Vec<(bool, RawCompBlock)> = Vec::new(); // (is_sd, block)
+    for dl in &dl_blocks {
+        for &data_pointer in &dl.dl_data {
             rdr.seek_relative(data_pointer - position)
                 .context("Could not reach DV or DZ block position from DL4")?;
             let mut id = [0u8; 4];
             rdr.read_exact(&mut id)
                 .context("could not read data block id")?;
-            if id == "##DZ".as_bytes() {
-                let (dt, block_header) = parse_dz(rdr)?;
-                data.extend(dt);
-                position = data_pointer + block_header.len as i64;
-                id[2..].copy_from_slice(&block_header.dz_org_block_type[..]);
+            if id == *b"##DZ" {
+                let (header, compressed) = read_dz_raw(rdr)?;
+                let is_sd = header.dz_org_block_type == *b"SD";
+                position = data_pointer + header.len as i64;
+                raw_entries.push((is_sd, RawCompBlock::Dz(header, compressed)));
             } else {
-                let block_header: Dt4Block = rdr.read_le().context("Could not DT block header")?;
+                let block_header: Dt4Block =
+                    rdr.read_le().context("Could not read DT block header")?;
                 let mut buf = vec![0u8; (block_header.len - 24) as usize];
                 rdr.read_exact(&mut buf)
                     .context("Could not read DT block data")?;
-                data.extend(buf);
                 position = data_pointer + block_header.len as i64;
+                let is_sd = &id[2..4] == b"SD";
+                raw_entries.push((is_sd, RawCompBlock::Plain(buf)));
             }
-            // Use data.len() as block_length so that a partial-record tail carried over
-            // from the previous block (split records) is included in the count.
-            let block_length = data.len();
-            // Copies full sized records in block into channels arrays
+        }
+    }
 
-            if id == "##SD".as_bytes() {
-                if let Some(cn) = channel_group.cn.get_mut(rec_pos) {
-                    previous_index = read_vlsd_from_bytes(&mut data, cn, previous_index, decoder)?;
-                }
-            } else {
-                let n_record_chunk = block_length.checked_div(record_length).unwrap_or(0);
-                if previous_index >= cg_cycle_count || n_record_chunk == 0 {
-                    continue;
-                }
-                if previous_index + n_record_chunk < cg_cycle_count {
-                    vlsd_channels = read_channels_from_bytes(
-                        &data[..record_length * n_record_chunk],
-                        &mut channel_group.cn,
-                        record_length,
-                        previous_index,
-                        channel_names_to_read_in_dg,
-                        true,
-                    )
-                    .context("could not read channels from bytes")?;
-                } else {
-                    // Some implementation are pre allocating equal length blocks
-                    vlsd_channels = read_channels_from_bytes(
-                        &data[..record_length * (cg_cycle_count - previous_index)],
-                        &mut channel_group.cn,
-                        record_length,
-                        previous_index,
-                        channel_names_to_read_in_dg,
-                        true,
-                    )
-                    .context("could not read channels from bytes")?;
-                }
-                // drop what has ben copied and keep remaining to be extended
-                let remaining = block_length % record_length;
-                if remaining > 0 {
-                    // copies tail part at beginnning of vect
-                    data.copy_within(record_length * n_record_chunk.., 0);
-                    // clears the last part
-                    data.truncate(remaining);
-                } else {
-                    data.clear()
-                }
-                previous_index += n_record_chunk;
+    // Phase 2: Parallel decompression
+    let decompressed: Vec<(bool, Vec<u8>)> = raw_entries
+        .into_par_iter()
+        .map(|(is_sd, raw)| -> Result<(bool, Vec<u8>)> {
+            let data = match raw {
+                RawCompBlock::Plain(d) => d,
+                RawCompBlock::Dz(header, buf) => header
+                    .decompress(buf)
+                    .context("failed decompressing DZ block in DL4 sorted")?,
+            };
+            Ok((is_sd, data))
+        })
+        .collect::<Result<_>>()?;
+
+    // Phase 3: Sequential record assembly (same logic as original)
+    let mut data: Vec<u8> = Vec::new();
+    let mut previous_index: usize = 0;
+    for (is_sd, block_data) in decompressed {
+        data.extend(block_data);
+        // Use data.len() so a partial-record tail from the previous block is included.
+        let block_length = data.len();
+        if is_sd {
+            if let Some(cn) = channel_group.cn.get_mut(rec_pos) {
+                previous_index = read_vlsd_from_bytes(&mut data, cn, previous_index, decoder)?;
             }
+        } else {
+            let n_record_chunk = block_length.checked_div(record_length).unwrap_or(0);
+            if previous_index >= cg_cycle_count || n_record_chunk == 0 {
+                continue;
+            }
+            if previous_index + n_record_chunk < cg_cycle_count {
+                vlsd_channels = read_channels_from_bytes(
+                    &data[..record_length * n_record_chunk],
+                    &mut channel_group.cn,
+                    record_length,
+                    previous_index,
+                    channel_names_to_read_in_dg,
+                    true,
+                )
+                .context("could not read channels from bytes")?;
+            } else {
+                // Some implementations pre-allocate equal-length blocks
+                vlsd_channels = read_channels_from_bytes(
+                    &data[..record_length * (cg_cycle_count - previous_index)],
+                    &mut channel_group.cn,
+                    record_length,
+                    previous_index,
+                    channel_names_to_read_in_dg,
+                    true,
+                )
+                .context("could not read channels from bytes")?;
+            }
+            let remaining = block_length % record_length;
+            if remaining > 0 {
+                data.copy_within(record_length * n_record_chunk.., 0);
+                data.truncate(remaining);
+            } else {
+                data.clear();
+            }
+            previous_index += n_record_chunk;
         }
     }
     Ok((position, vlsd_channels))
@@ -1576,195 +1625,203 @@ fn apply_bit_mask_offset(
     channel_names_to_read_in_dg: &HashSet<String>,
 ) -> Result<(), Error> {
     // apply bit shift and masking
-    for channel_group in dg.cg.values_mut() {
-        channel_group
-            .cn
-            .par_iter_mut()
-            .filter(|(_cn_record_position, cn)| {
-                channel_names_to_read_in_dg.contains(&cn.unique_name)
-            })
-            .try_for_each(|(_rec_pos, cn): (&i32, &mut Cn4)| -> Result<(), Error> {
-                if cn.block.cn_data_type <= 3 {
-                    let left_shift =
-                        cn.n_bytes * 8 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
-                    let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
-                    if left_shift > 0 || right_shift > 0 {
-                        match &mut cn.data {
-                            ChannelData::Int8(array) => {
-                                let a = array.values_slice_mut();
-                                if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
-                                };
+    dg.cg
+        .par_iter_mut()
+        .try_for_each(|(_, channel_group)| -> Result<(), Error> {
+            channel_group
+                .cn
+                .par_iter_mut()
+                .filter(|(_cn_record_position, cn)| {
+                    channel_names_to_read_in_dg.contains(&cn.unique_name)
+                })
+                .try_for_each(|(_rec_pos, cn): (&i32, &mut Cn4)| -> Result<(), Error> {
+                    if cn.block.cn_data_type <= 3 {
+                        let left_shift = cn.n_bytes * 8
+                            - (cn.block.cn_bit_offset as u32)
+                            - cn.block.cn_bit_count;
+                        let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
+                        if left_shift > 0 || right_shift > 0 {
+                            match &mut cn.data {
+                                ChannelData::Int8(array) => {
+                                    let a = array.values_slice_mut();
+                                    if left_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x <<= left_shift)
+                                    };
+                                    if right_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x >>= right_shift)
+                                    };
+                                }
+                                ChannelData::UInt8(array) => {
+                                    let a = array.values_slice_mut();
+                                    if left_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x <<= left_shift)
+                                    };
+                                    if right_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x >>= right_shift)
+                                    };
+                                }
+                                ChannelData::Int16(array) => {
+                                    let a = array.values_slice_mut();
+                                    if left_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x <<= left_shift)
+                                    };
+                                    if right_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x >>= right_shift)
+                                    };
+                                }
+                                ChannelData::UInt16(array) => {
+                                    let a = array.values_slice_mut();
+                                    if left_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x <<= left_shift)
+                                    };
+                                    if right_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x >>= right_shift)
+                                    };
+                                }
+                                ChannelData::Int32(array) => {
+                                    let a = array.values_slice_mut();
+                                    if left_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x <<= left_shift)
+                                    };
+                                    if right_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x >>= right_shift)
+                                    };
+                                }
+                                ChannelData::UInt32(array) => {
+                                    let a = array.values_slice_mut();
+                                    if left_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x <<= left_shift)
+                                    };
+                                    if right_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x >>= right_shift)
+                                    };
+                                }
+                                ChannelData::Float32(_) => (),
+                                ChannelData::Int64(array) => {
+                                    let a = array.values_slice_mut();
+                                    let left_shift = 64
+                                        - (cn.block.cn_bit_offset as u32)
+                                        - cn.block.cn_bit_count;
+                                    let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
+                                    if left_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x <<= left_shift)
+                                    };
+                                    if right_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x >>= right_shift)
+                                    };
+                                }
+                                ChannelData::UInt64(array) => {
+                                    let a = array.values_slice_mut();
+                                    let left_shift = 64
+                                        - (cn.block.cn_bit_offset as u32)
+                                        - cn.block.cn_bit_count;
+                                    let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
+                                    if left_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x <<= left_shift)
+                                    };
+                                    if right_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x >>= right_shift)
+                                    };
+                                }
+                                ChannelData::Float64(_) => (),
+                                ChannelData::Complex32(_) => (),
+                                ChannelData::Complex64(_) => (),
+                                ChannelData::Utf8(_) => (),
+                                ChannelData::VariableSizeByteArray(_) => (),
+                                ChannelData::FixedSizeByteArray(_) => (),
+                                ChannelData::ArrayDInt8(array) => {
+                                    let a = array.values_slice_mut();
+                                    if left_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x <<= left_shift)
+                                    };
+                                    if right_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x >>= right_shift)
+                                    };
+                                }
+                                ChannelData::ArrayDUInt8(array) => {
+                                    let a = array.values_slice_mut();
+                                    if left_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x <<= left_shift)
+                                    };
+                                    if right_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x >>= right_shift)
+                                    };
+                                }
+                                ChannelData::ArrayDInt16(array) => {
+                                    let a = array.values_slice_mut();
+                                    if left_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x <<= left_shift)
+                                    };
+                                    if right_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x >>= right_shift)
+                                    };
+                                }
+                                ChannelData::ArrayDUInt16(array) => {
+                                    let a = array.values_slice_mut();
+                                    if left_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x <<= left_shift)
+                                    };
+                                    if right_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x >>= right_shift)
+                                    };
+                                }
+                                ChannelData::ArrayDInt32(array) => {
+                                    let a = array.values_slice_mut();
+                                    if left_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x <<= left_shift)
+                                    };
+                                    if right_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x >>= right_shift)
+                                    };
+                                }
+                                ChannelData::ArrayDUInt32(array) => {
+                                    let a = array.values_slice_mut();
+                                    if left_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x <<= left_shift)
+                                    };
+                                    if right_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x >>= right_shift)
+                                    };
+                                }
+                                ChannelData::ArrayDFloat32(_) => (),
+                                ChannelData::ArrayDInt64(array) => {
+                                    let a = array.values_slice_mut();
+                                    let left_shift = 64
+                                        - (cn.block.cn_bit_offset as u32)
+                                        - cn.block.cn_bit_count;
+                                    let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
+                                    if left_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x <<= left_shift)
+                                    };
+                                    if right_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x >>= right_shift)
+                                    };
+                                }
+                                ChannelData::ArrayDUInt64(array) => {
+                                    let a = array.values_slice_mut();
+                                    let left_shift = 64
+                                        - (cn.block.cn_bit_offset as u32)
+                                        - cn.block.cn_bit_count;
+                                    let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
+                                    if left_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x <<= left_shift)
+                                    };
+                                    if right_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x >>= right_shift)
+                                    };
+                                }
+                                ChannelData::ArrayDFloat64(_) => (),
+                                ChannelData::Union(_) => (),
                             }
-                            ChannelData::UInt8(array) => {
-                                let a = array.values_slice_mut();
-                                if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::Int16(array) => {
-                                let a = array.values_slice_mut();
-                                if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::UInt16(array) => {
-                                let a = array.values_slice_mut();
-                                if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::Int32(array) => {
-                                let a = array.values_slice_mut();
-                                if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::UInt32(array) => {
-                                let a = array.values_slice_mut();
-                                if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::Float32(_) => (),
-                            ChannelData::Int64(array) => {
-                                let a = array.values_slice_mut();
-                                let left_shift =
-                                    64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
-                                let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
-                                if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::UInt64(array) => {
-                                let a = array.values_slice_mut();
-                                let left_shift =
-                                    64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
-                                let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
-                                if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::Float64(_) => (),
-                            ChannelData::Complex32(_) => (),
-                            ChannelData::Complex64(_) => (),
-                            ChannelData::Utf8(_) => (),
-                            ChannelData::VariableSizeByteArray(_) => (),
-                            ChannelData::FixedSizeByteArray(_) => (),
-                            ChannelData::ArrayDInt8(array) => {
-                                let a = array.values_slice_mut();
-                                if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::ArrayDUInt8(array) => {
-                                let a = array.values_slice_mut();
-                                if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::ArrayDInt16(array) => {
-                                let a = array.values_slice_mut();
-                                if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::ArrayDUInt16(array) => {
-                                let a = array.values_slice_mut();
-                                if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::ArrayDInt32(array) => {
-                                let a = array.values_slice_mut();
-                                if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::ArrayDUInt32(array) => {
-                                let a = array.values_slice_mut();
-                                if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::ArrayDFloat32(_) => (),
-                            ChannelData::ArrayDInt64(array) => {
-                                let a = array.values_slice_mut();
-                                let left_shift =
-                                    64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
-                                let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
-                                if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::ArrayDUInt64(array) => {
-                                let a = array.values_slice_mut();
-                                let left_shift =
-                                    64 - (cn.block.cn_bit_offset as u32) - cn.block.cn_bit_count;
-                                let right_shift = left_shift + (cn.block.cn_bit_offset as u32);
-                                if left_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x <<= left_shift)
-                                };
-                                if right_shift > 0 {
-                                    a.iter_mut().for_each(|x| *x >>= right_shift)
-                                };
-                            }
-                            ChannelData::ArrayDFloat64(_) => (),
-                            ChannelData::Union(_) => (),
                         }
                     }
-                }
-                Ok(())
-            })
-            .with_context(|| {
-                format!("bit mask application failed for channel group {channel_group:?}")
-            })?
-    }
+                    Ok(())
+                })
+                .with_context(|| {
+                    format!("bit mask application failed for channel group {channel_group:?}")
+                })?;
+            Ok(())
+        })?;
     Ok(())
 }
 
