@@ -229,7 +229,7 @@ mod tests {
         assert!(display.contains("0 channels"));
 
         // DG with 2 CGs, one with 3 channels and one with 2
-        let mut cg_map = HashMap::new();
+        let mut cg_map: HashMap<u64, Cg4> = HashMap::new();
         let mut cn1: HashMap<i32, Cn4> = HashMap::new();
         cn1.insert(0, Cn4::default());
         cn1.insert(8, Cn4::default());

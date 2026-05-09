@@ -7,9 +7,8 @@ use std::sync::LazyLock;
 static TESTS_PATH: &str = "/home/ratal/workspace/mdfreader/mdfreader/tests/";
 const LOCAL_FILES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/test_files/");
 
-static MDF4_EXAMPLES: LazyLock<String> = LazyLock::new(|| {
-    format!("{}MDF4/MDF4.3/Base_Standard/Examples/", TESTS_PATH)
-});
+static MDF4_EXAMPLES: LazyLock<String> =
+    LazyLock::new(|| format!("{}MDF4/MDF4.3/Base_Standard/Examples/", TESTS_PATH));
 static MDF3_PATH: LazyLock<String> = LazyLock::new(|| format!("{}mdf3/", TESTS_PATH));
 
 fn read_and_load(path: &str) {
@@ -28,7 +27,9 @@ fn bench_large_files(c: &mut Criterion) {
     group.measurement_time(Duration::from_secs(25));
 
     let mdf4_path = format!("{base}Simple/error.mf4");
-    group.bench_function("mdf4_sorted_184mb", |b| b.iter(|| read_and_load(&mdf4_path)));
+    group.bench_function("mdf4_sorted_184mb", |b| {
+        b.iter(|| read_and_load(&mdf4_path))
+    });
 
     for (name, file) in [
         (
@@ -54,8 +55,14 @@ fn bench_medium_files(c: &mut Criterion) {
 
     for (name, rel) in [
         ("mdf4_measure_47mb", "Simple/measure2.mf4"),
-        ("mdf4_data_list_linked_11mb", "DataList/Vector_DL_Linked_List.MF4"),
-        ("mdf4_data_list_equal_8mb", "DataList/DT_EqualLength/Vector_DT_EqualLen.MF4"),
+        (
+            "mdf4_data_list_linked_11mb",
+            "DataList/Vector_DL_Linked_List.MF4",
+        ),
+        (
+            "mdf4_data_list_equal_8mb",
+            "DataList/DT_EqualLength/Vector_DT_EqualLen.MF4",
+        ),
     ] {
         let path = format!("{base}{rel}");
         group.bench_function(name, |b| b.iter(|| read_and_load(&path)));
@@ -106,10 +113,10 @@ fn bench_local_synthetic(c: &mut Criterion) {
     group.measurement_time(Duration::from_secs(5));
 
     for (name, rel) in [
-        ("array_f64_le", "synthetic/array_f64_le.mf4"),     // f64 array channels, LE
-        ("be_scalars", "synthetic/be_scalars.mf4"),         // big-endian byte-swap path
+        ("array_f64_le", "synthetic/array_f64_le.mf4"), // f64 array channels, LE
+        ("be_scalars", "synthetic/be_scalars.mf4"),     // big-endian byte-swap path
         ("complex_f32_le", "synthetic/complex_f32_le.mf4"), // complex number channels
-        ("int_linear_cc", "synthetic/int_linear_cc.mf4"),   // integer + linear CC conversion
+        ("int_linear_cc", "synthetic/int_linear_cc.mf4"), // integer + linear CC conversion
         ("ld_be_channels", "synthetic/ld_be_channels.mf4"), // linked data blocks, BE
     ] {
         let path = format!("{LOCAL_FILES}{rel}");
@@ -131,7 +138,10 @@ fn bench_metadata(c: &mut Criterion) {
     for (name, rel) in [
         ("mdf4_sorted_184mb", "Simple/error.mf4"),
         ("mdf4_measure_47mb", "Simple/measure2.mf4"),
-        ("mdf4_compressed", "CompressedData/Simple/Vector_SingleDZ_Deflate.mf4"),
+        (
+            "mdf4_compressed",
+            "CompressedData/Simple/Vector_SingleDZ_Deflate.mf4",
+        ),
     ] {
         let path = format!("{base}{rel}");
         group.bench_function(name, |b| {
