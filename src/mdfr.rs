@@ -19,6 +19,7 @@ use pyo3::exceptions::PyUnicodeDecodeError;
 use pyo3::ffi::c_str;
 use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyBytes, PyDict, PyList};
+use crate::mdfinfo::mdfinfo4::CompressionAlgorithm;
 
 #[pymodule]
 fn mdfr(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -32,6 +33,7 @@ struct Mdfr(Mdf);
 
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Mdfr>()?;
+    m.add_class::<CompressionAlgorithm>()?;
     Ok(())
 }
 
@@ -321,7 +323,7 @@ df=polars.DataFrame(series)
         Ok(())
     }
     /// writes file
-    pub fn write(&mut self, file_name: &str, compression: bool) -> PyResult<Mdfr> {
+    pub fn write(&mut self, file_name: &str, compression: CompressionAlgorithm) -> PyResult<Mdfr> {
         let Mdfr(mdf) = self;
         Ok(Mdfr(mdf.write(file_name, compression)?))
     }

@@ -25,6 +25,7 @@ use crate::mdfinfo::MdfInfo;
 use crate::mdfreader::mdfreader3::mdfreader3;
 use crate::mdfreader::mdfreader4::mdfreader4;
 use crate::mdfwriter::mdfwriter4::mdfwriter4;
+use crate::mdfinfo::mdfinfo4::CompressionAlgorithm;
 
 #[cfg(feature = "parquet")]
 use crate::export::parquet::export_dataframe_to_parquet;
@@ -290,7 +291,7 @@ impl Mdf {
         export_to_hdf5(self, file_name, compression)
     }
     /// Writes mdf4 file
-    pub fn write(&mut self, file_name: &str, compression: bool) -> Result<Mdf> {
+    pub fn write(&mut self, file_name: &str, compression: CompressionAlgorithm) -> Result<Mdf> {
         mdfwriter4(self, file_name, compression)
     }
     /// Returns a Polars [`Series`] for the named channel.

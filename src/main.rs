@@ -37,7 +37,15 @@ fn main() -> Result<(), Error> {
                 .long("compress")
                 .short('z')
                 .action(clap::ArgAction::SetTrue)
-                .help("compress data when writing into a new mdf4.3 file"),
+                .help("compress data when writing into a new mdf4.3 file (defaults to deflate)"),
+        )
+        .arg(
+            Arg::new("mdf4_compression")
+                .long("mdf4_compression")
+                .num_args(1)
+                .value_name("ALGORITHM")
+                .value_parser(["deflate", "deflate_transpose", "zstd", "zstd_transpose", "lz4", "lz4_transpose", "no_compression"])
+                .help("Compression algorithm for writing data in mdf4 file. Default is deflate_transpose"),
         )
         .arg(
             Arg::new("export_to_parquet")
@@ -102,11 +110,25 @@ fn main() -> Result<(), Error> {
         info!("loaded all channels data in memory from file {file_name}");
     }
 
-    let compression = matches.get_flag("compress");
+    let _compression = matches.get_flag("compress");
+    let mdf4_compression_str = matches.get_one::<String>("mdf4_compression").map(String::as_str);
+
+    let compression_algo = match mdf4_compression_str {
+        Some("deflate") => crate::mdfinfo::mdfinfo4::CompressionAlgorithm::Deflate,
+        Some("deflate_transpose") => crate::mdfinfo::mdfinfo4::CompressionAlgorithm::DeflateTranspose,
+        Some("zstd") => crate::mdfinfo::mdfinfo4::CompressionAlgorithm::Zstd,
+        Some("zstd_transpose") => crate::mdfinfo::mdfinfo4::CompressionAlgorithm::ZstdTranspose,
+        Some("lz4") => crate::mdfinfo::mdfinfo4::CompressionAlgorithm::Lz4,
+        Some("lz4_transpose") => crate::mdfinfo::mdfinfo4::CompressionAlgorithm::Lz4Transpose,
+        Some("no_compression") => crate::mdfinfo::mdfinfo4::CompressionAlgorithm::NoCompression,
+        None if _compression => crate::mdfinfo::mdfinfo4::CompressionAlgorithm::Deflate,
+        _ => crate::mdfinfo::mdfinfo4::CompressionAlgorithm::DeflateTranspose,
+    };
+
     if let Some(file_name) = mdf4_file_name {
-        mdf_file.write(file_name, compression)?;
-        if compression {
-            info!("Wrote mdf4 file {file_name} with compression");
+        mdf_file.write(file_name, compression_algo)?;
+        if compression_algo != crate::mdfinfo::mdfinfo4::CompressionAlgorithm::NoCompression {
+            info!("Wrote mdf4 file {file_name} with compression {:?}", compression_algo);
         } else {
             info!("Wrote mdf4 file {file_name} without compression");
         }

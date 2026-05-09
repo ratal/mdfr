@@ -38,6 +38,7 @@ use crossbeam_channel::bounded;
 use flate2::Compression;
 use flate2::write::ZlibEncoder;
 use parking_lot::Mutex;
+use crate::mdfinfo::mdfinfo4::CompressionAlgorithm;
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 use std::fs::File;
 
@@ -46,7 +47,7 @@ use std::fs::File;
 /// Converts MDF3 sources to MDF4 if needed. Preserves file history (FH), events (EV),
 /// attachments (AT), source info (SI), and channel hierarchy (CH) from the source file.
 /// Supports optional zlib compression for data blocks.
-pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> {
+pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: CompressionAlgorithm) -> Result<Mdf> {
     let info: MdfInfo4 = match &mdf.mdf_info {
         MdfInfo::V3(mdfinfo3) => convert3to4(mdfinfo3, file_name)
             .context("failed converting mdf version 3 into version 4")?,
@@ -556,8 +557,8 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
                                 let mut offset: i64 = 0;
                                 // For VLSD, dg_data is not used (set to 0)
                                 dg.block.dg_data = 0;
-                                let data_block = if compression {
-                                    create_dz_sd(data, &mut offset)
+                                let data_block = if compression != CompressionAlgorithm::NoCompression {
+                                    create_dz_sd(data, &mut offset, compression)
                                         .context("failed creating dz or sd block")?
                                 } else {
                                     create_sd(data, &mut offset)
@@ -576,12 +577,12 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
                                 // Regular channel: write DV/DZ block
                                 let mut offset: i64 = 0;
                                 let mut ld_block: Option<Ld4Block> = None;
-                                if compression || m.is_some() {
+                                if compression != CompressionAlgorithm::NoCompression || m.is_some() {
                                     ld_block = create_ld(&m, &mut offset);
                                 }
 
-                                let data_block = if compression {
-                                    create_dz_dv(data, &mut offset)
+                                let data_block = if compression != CompressionAlgorithm::NoCompression {
+                                    create_dz_dv(data, &mut offset, compression)
                                         .context("failed creating dz or dv block")?
                                 } else {
                                     create_dv(data, &mut offset)
@@ -595,8 +596,8 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: bool) -> Result<Mdf> 
                                     if let Some(ref mut ld) = ld_block {
                                         ld.ld_links.push(offset);
                                     }
-                                    if compression {
-                                        invalid_block = create_dz_di(&mask, &mut offset)
+                                    if compression != CompressionAlgorithm::NoCompression {
+                                        invalid_block = create_dz_di(&mask, &mut offset, compression)
                                             .context("failed creating dz or di block")?;
                                     } else {
                                         invalid_block = create_di(&mask, &mut offset)
@@ -1191,6 +1192,46 @@ fn create_dv(data: &ChannelData, offset: &mut i64) -> Result<(DataBlock, usize, 
     Ok((DataBlock::DvDi(dv_block), byte_aligned, data_bytes))
 }
 
+fn compress_bytes(bytes: &[u8], algo: CompressionAlgorithm, width: usize) -> Result<Vec<u8>, Error> {
+    let mut to_compress = bytes;
+    let mut transposed = Vec::new();
+
+    match algo {
+        CompressionAlgorithm::DeflateTranspose
+        | CompressionAlgorithm::ZstdTranspose
+        | CompressionAlgorithm::Lz4Transpose => {
+            if width > 0 && bytes.len() % width == 0 {
+                let height = bytes.len() / width;
+                transposed.resize(bytes.len(), 0);
+                transpose::transpose(bytes, &mut transposed, width, height);
+                to_compress = &transposed;
+            }
+        }
+        _ => {}
+    }
+
+    match algo {
+        CompressionAlgorithm::Deflate | CompressionAlgorithm::DeflateTranspose => {
+            let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());
+            encoder.write_all(to_compress).expect("Could not compress data");
+            Ok(encoder.finish().expect("failed finishing to compress data"))
+        }
+        CompressionAlgorithm::Zstd | CompressionAlgorithm::ZstdTranspose => {
+            let mut encoder = zstd::Encoder::new(Vec::new(), 0)?;
+            encoder.write_all(to_compress)?;
+            Ok(encoder.finish()?)
+        }
+        CompressionAlgorithm::Lz4 | CompressionAlgorithm::Lz4Transpose => {
+            let mut encoder = lz4::EncoderBuilder::new().build(Vec::new())?;
+            encoder.write_all(to_compress)?;
+            let (result, err) = encoder.finish();
+            err.context("lz4 compression failed")?;
+            Ok(result)
+        }
+        CompressionAlgorithm::NoCompression => Ok(bytes.to_vec()),
+    }
+}
+
 /// Writer-internal enum: either a compressed DZBLOCK or an uncompressed DV/DI/SD block.
 #[derive(Debug, Clone)]
 enum DataBlock {
@@ -1203,14 +1244,15 @@ enum DataBlock {
 fn create_dz_dv(
     data: &ChannelData,
     offset: &mut i64,
+    algo: CompressionAlgorithm,
 ) -> Result<(DataBlock, usize, Vec<u8>), Error> {
     let mut dz_block = Dz4Block::default();
+    dz_block.dz_zip_type = algo as u8;
+    dz_block.dz_zip_parameter = data.byte_count();
     let bytes = data
         .to_bytes()
         .context("failed converting array data into bytes for dz or dv block")?;
-    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());
-    encoder.write_all(&bytes).expect("Could not compress data");
-    let mut data_bytes = encoder.finish().expect("failed finishing to compress data");
+    let mut data_bytes = compress_bytes(&bytes, algo, data.byte_count() as usize)?;
     dz_block.dz_data_length = data_bytes.len() as u64;
     let dv_dz_block: DataBlock;
     let byte_aligned: usize;
@@ -1250,17 +1292,14 @@ fn create_di(mask: &NullBuffer, offset: &mut i64) -> Result<Option<(DataBlock, V
 fn create_dz_di(
     mask: &NullBuffer,
     offset: &mut i64,
+    algo: CompressionAlgorithm,
 ) -> Result<Option<(DataBlock, Vec<u8>)>, Error> {
     let mut dz_invalid_block = Dz4Block::default();
+    dz_invalid_block.dz_zip_type = algo as u8;
+    dz_invalid_block.dz_zip_parameter = 1;
     dz_invalid_block.dz_org_data_length = mask.len() as u64;
     let mask_bytes: Vec<u8> = mask.iter().map(|v| v as u8).collect();
-    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());
-    encoder
-        .write_all(&mask_bytes)
-        .expect("Could not compress invalid data");
-    let mut data_bytes = encoder
-        .finish()
-        .expect("failed finishing to compress invalid data");
+    let mut data_bytes = compress_bytes(&mask_bytes, algo, 1)?;
     dz_invalid_block.dz_data_length = data_bytes.len() as u64;
     if dz_invalid_block.dz_org_data_length < dz_invalid_block.dz_data_length {
         Ok(create_di(mask, offset)?)
@@ -1627,14 +1666,15 @@ fn create_sd(data: &ChannelData, offset: &mut i64) -> Result<(DataBlock, usize, 
 fn create_dz_sd(
     data: &ChannelData,
     offset: &mut i64,
+    algo: CompressionAlgorithm,
 ) -> Result<(DataBlock, usize, Vec<u8>), Error> {
     let mut dz_block = Dz4Block::default();
+    dz_block.dz_zip_type = algo as u8;
+    dz_block.dz_zip_parameter = data.byte_count();
     let bytes = to_sd_bytes(data).context("failed converting data to SD format")?;
     dz_block.dz_org_data_length = bytes.len() as u64;
 
-    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());
-    encoder.write_all(&bytes).expect("Could not compress data");
-    let mut data_bytes = encoder.finish().expect("failed finishing to compress data");
+    let mut data_bytes = compress_bytes(&bytes, algo, data.byte_count() as usize)?;
     dz_block.dz_data_length = data_bytes.len() as u64;
 
     let dz_sd_block: DataBlock;

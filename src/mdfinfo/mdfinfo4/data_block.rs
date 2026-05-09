@@ -15,6 +15,27 @@ use std::io::{BufReader, Cursor, Read};
 use std::str;
 use zstd::Decoder as ZstdDecoder;
 
+#[cfg(feature = "numpy")]
+use pyo3::prelude::*;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(feature = "numpy", pyclass(eq, eq_int, from_py_object))]
+pub enum CompressionAlgorithm {
+    NoCompression = 255,
+    Deflate = 0,
+    DeflateTranspose = 1,
+    Zstd = 2,
+    ZstdTranspose = 3,
+    Lz4 = 4,
+    Lz4Transpose = 5,
+}
+
+impl Default for CompressionAlgorithm {
+    fn default() -> Self {
+        Self::NoCompression
+    }
+}
+
 /// DTBLOCK structure (MDF 4.2 spec, Table 55) — plain data storage
 #[derive(Debug, PartialEq, Eq, Default, Clone)]
 #[binrw]
@@ -205,12 +226,12 @@ pub struct Dz4Block {
     // members
     /// "DT", "SD", "RD" or "DV", "DI", "RV", "RI"
     pub dz_org_block_type: [u8; 2],
-    /// Zip algorithm, 0 deflate, 1 transpose + deflate
-    dz_zip_type: u8,
+    /// Zip algorithm, 0 deflate, 1 transpose + deflate, 2 zstd, 3 transpose+zstd, 4 lz4, 5 transpose+lz4
+    pub dz_zip_type: u8,
     /// reserved
     dz_reserved: u8,
     /// Zip algorithm parameter
-    dz_zip_parameter: u32, //
+    pub dz_zip_parameter: u32, //
     /// length of uncompressed data
     pub dz_org_data_length: u64,
     /// length of compressed data
