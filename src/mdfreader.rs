@@ -21,7 +21,7 @@ use pyo3::prelude::*;
 
 //use crate::export::parquet::export_to_parquet;
 use crate::data_holder::channel_data::try_from;
-use crate::mdfinfo::MdfInfo;
+use crate::mdfinfo::{ChannelsDb, MdfInfo};
 use crate::mdfinfo::mdfinfo4::CompressionAlgorithm;
 use crate::mdfreader::mdfreader3::mdfreader3;
 use crate::mdfreader::mdfreader4::mdfreader4;
@@ -178,6 +178,10 @@ impl Mdf {
     /// returns a set of all channel names contained in file
     pub fn get_channel_names_set(&self) -> HashSet<String> {
         self.mdf_info.get_channel_names_set()
+    }
+    /// returns the full channel-name → position-tuple map
+    pub fn get_channels_db(&self) -> ChannelsDb {
+        self.mdf_info.get_channels_db()
     }
     /// returns a dict of master names keys for which values are a set of associated channel names
     pub fn get_master_channel_names_set(&self) -> HashMap<Option<String>, HashSet<String>> {

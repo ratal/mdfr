@@ -18,6 +18,10 @@ use std::str;
 use std::sync::Arc;
 
 pub mod mdfinfo3;
+
+/// Map from channel name to its position tuple: (master_name, dg_pos, cg_pos, rec_id, cn_pos, rec_pos).
+/// MDF3 files always have rec_pos = 0.
+pub type ChannelsDb = HashMap<String, (Option<String>, i64, i64, u64, i64, i32)>;
 pub mod mdfinfo4;
 pub mod sym_buf_reader;
 
@@ -475,6 +479,40 @@ impl MdfInfo {
             MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_master_type(channel_name),
         };
         master
+    }
+    /// returns the full channel-name → position-tuple map.
+    /// Tuple: (master_name, dg_pos, cg_pos, rec_id, cn_pos, rec_pos)
+    /// MDF3: rec_pos is always 0.
+    pub fn get_channels_db(&self) -> ChannelsDb {
+        match self {
+            MdfInfo::V3(m) => m
+                .channel_names_set
+                .iter()
+                .map(|(name, (master, dg, (cg, rec_id), cn))| {
+                    (
+                        name.clone(),
+                        (
+                            master.clone(),
+                            *dg as i64,
+                            *cg as i64,
+                            *rec_id as u64,
+                            *cn as i64,
+                            0i32,
+                        ),
+                    )
+                })
+                .collect(),
+            MdfInfo::V4(m) => m
+                .channel_names_set
+                .iter()
+                .map(|(name, (master, dg, (cg, rec_id), (cn, rec_pos)))| {
+                    (
+                        name.clone(),
+                        (master.clone(), *dg, *cg, *rec_id, *cn, *rec_pos),
+                    )
+                })
+                .collect(),
+        }
     }
     /// returns a set of all channel names contained in file
     pub fn get_channel_names_set(&self) -> HashSet<String> {

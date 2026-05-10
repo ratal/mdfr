@@ -4,7 +4,7 @@ use std::fmt::Write;
 
 use crate::data_holder::channel_data::ChannelData;
 
-use crate::mdfinfo::MdfInfo;
+use crate::mdfinfo::{ChannelsDb, MdfInfo};
 use crate::mdfreader::MasterSignature;
 use crate::mdfreader::Mdf;
 use anyhow::Context;
@@ -332,6 +332,11 @@ df=polars.DataFrame(series)
                 .into();
             Ok(channel_list)
         })
+    }
+    /// returns dict mapping channel name → (master_name, dg_pos, cg_pos, rec_id, cn_pos, rec_pos)
+    pub fn get_channels_db(&self) -> ChannelsDb {
+        let Mdfr(mdf) = self;
+        mdf.get_channels_db()
     }
     /// returns a dict of master names keys for which values are a set of associated channel names
     pub fn get_master_channel_names_set(&self) -> PyResult<Py<PyAny>> {

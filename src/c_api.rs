@@ -538,3 +538,75 @@ pub unsafe extern "C" fn get_subject(mdf: *const Mdf) -> *const c_char {
         std::ptr::null()
     }
 }
+
+/// Uniquely identifies a channel by its file position.
+/// master_name is heap-allocated; free it with `free_channel_id_master()`.
+/// master_name is NULL when the channel has no master.
+#[repr(C)]
+pub struct ChannelIdC {
+    pub master_name: *mut c_char,
+    pub dg_pos: i64,
+    pub cg_pos: i64,
+    pub rec_id: u64,
+    pub cn_pos: i64,
+    pub rec_pos: i32,
+}
+
+/// Fills `out` with the channel id for `channel_name`.
+/// Returns true if the channel was found, false otherwise.
+/// On success the caller owns `out.master_name` and must free it with
+/// `free_channel_id_master()`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn get_channel_id(
+    mdf: *const Mdf,
+    channel_name: *const c_char,
+    out: *mut ChannelIdC,
+) -> bool {
+    unsafe {
+        if mdf.is_null() || channel_name.is_null() || out.is_null() {
+            return false;
+        }
+        let Ok(name) = CStr::from_ptr(channel_name).to_str() else {
+            return false;
+        };
+        let Some(mdf) = mdf.as_ref() else {
+            return false;
+        };
+        let db = mdf.get_channels_db();
+        let Some((master, dg_pos, cg_pos, rec_id, cn_pos, rec_pos)) = db.get(name) else {
+            return false;
+        };
+        let master_ptr = match master {
+            Some(s) => match CString::new(s.as_str()) {
+                Ok(cs) => cs.into_raw(),
+                Err(_) => return false,
+            },
+            None => std::ptr::null_mut(),
+        };
+        (*out) = ChannelIdC {
+            master_name: master_ptr,
+            dg_pos: *dg_pos,
+            cg_pos: *cg_pos,
+            rec_id: *rec_id,
+            cn_pos: *cn_pos,
+            rec_pos: *rec_pos,
+        };
+        true
+    }
+}
+
+/// Frees the `master_name` string inside a `ChannelIdC` filled by `get_channel_id()`.
+/// Does nothing when `master_name` is NULL.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn free_channel_id_master(id: *mut ChannelIdC) {
+    unsafe {
+        if id.is_null() {
+            return;
+        }
+        let master = (*id).master_name;
+        if !master.is_null() {
+            drop(CString::from_raw(master));
+            (*id).master_name = std::ptr::null_mut();
+        }
+    }
+}
