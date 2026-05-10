@@ -15,11 +15,11 @@ use arrow::util::display::{ArrayFormatter, FormatOptions};
 use crate::export::numpy::array_to_rust;
 #[cfg(feature = "polars")]
 use crate::export::polars::rust_arrow_to_py_series;
+use crate::mdfinfo::mdfinfo4::CompressionAlgorithm;
 use pyo3::exceptions::PyUnicodeDecodeError;
 use pyo3::ffi::c_str;
 use pyo3::prelude::*;
 use pyo3::types::{IntoPyDict, PyBytes, PyDict, PyList};
-use crate::mdfinfo::mdfinfo4::CompressionAlgorithm;
 
 #[pymodule]
 fn mdfr(m: &Bound<'_, PyModule>) -> PyResult<()> {

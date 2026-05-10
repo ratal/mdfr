@@ -356,12 +356,22 @@ impl ChannelData {
                         None,
                     )))
                 }
-                ChannelData::Complex32(_) => Ok(ChannelData::Complex32(
-                    ComplexArrow::new_from_buffer(vec![0f32; cycle_count as usize * 2].into()),
-                )),
-                ChannelData::Complex64(_) => Ok(ChannelData::Complex64(
-                    ComplexArrow::new_from_buffer(vec![0f64; cycle_count as usize * 2].into()),
-                )),
+                ChannelData::Complex32(_) => {
+                    let n = shape.0.iter().product::<usize>();
+                    Ok(ChannelData::Complex32(ComplexArrow::new_from_buffer(
+                        vec![0f32; cycle_count as usize * n * 2].into(),
+                        shape.0,
+                        shape.1,
+                    )))
+                }
+                ChannelData::Complex64(_) => {
+                    let n = shape.0.iter().product::<usize>();
+                    Ok(ChannelData::Complex64(ComplexArrow::new_from_buffer(
+                        vec![0f64; cycle_count as usize * n * 2].into(),
+                        shape.0,
+                        shape.1,
+                    )))
+                }
                 ChannelData::Utf8(_) => Ok(ChannelData::Utf8(LargeStringBuilder::with_capacity(
                     cycle_count as usize,
                     n_bytes as usize,
@@ -1395,8 +1405,8 @@ pub fn data_type_init(
                         ))
                     }
                 }
-                11..=14 => {
-                    // MIME or CANopen date/time types - store as byte array for now
+                11 | 12 => {
+                    // MIME sample / stream — store as byte array (MIME type is in cn_unit)
                     if cn_type == 1 || cn_type == 7 || (cn_flags & CN_F_DATA_STREAM_MODE) != 0 {
                         Ok(ChannelData::VariableSizeByteArray(LargeBinaryBuilder::new()))
                     } else {
@@ -1404,6 +1414,10 @@ pub fn data_type_init(
                             FixedSizeBinaryBuilder::new(n_bytes as i32),
                         ))
                     }
+                }
+                13 | 14 => {
+                    // CANopen Date (7 bytes) / Time (6 bytes) → Int64 ms since Unix epoch
+                    Ok(ChannelData::Int64(PrimitiveBuilder::new()))
                 }
                 _ => {
                     unimplemented!("not implemented channel data type: {}", cn_data_type);
@@ -1449,24 +1463,11 @@ pub fn data_type_init(
                 }
             }
             15 | 16 => {
-                // complex
-                if list_size == 2 {
-                    if n_bytes <= 8 {
-                        Ok(ChannelData::Complex32(ComplexArrow::new()))
-                    } else {
-                        Ok(ChannelData::Complex64(ComplexArrow::new()))
-                    }
+                // complex (scalar list_size==2, or tensor list_size>2 — shape set later by zeros())
+                if n_bytes <= 8 {
+                    Ok(ChannelData::Complex32(ComplexArrow::new()))
                 } else {
-                    // tensor of complex
-                    if n_bytes <= 4 {
-                        unimplemented!(
-                            "Tensor of complex is not implemented, if needed, please inform"
-                        );
-                    } else {
-                        unimplemented!(
-                            "Tensor of complex is not implemented, if needed, please inform"
-                        );
-                    }
+                    Ok(ChannelData::Complex64(ComplexArrow::new()))
                 }
             }
             10 => {

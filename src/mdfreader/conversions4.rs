@@ -210,12 +210,16 @@ macro_rules! apply_conversion_f64 {
                 $cn.data = ChannelData::Complex64(ComplexArrow::new_from_primitive(
                     $complex_body,
                     $ac.nulls(),
+                    $ac.shape().clone(),
+                    $ac.order().clone(),
                 ));
             }
             ChannelData::Complex64($ac) => {
                 $cn.data = ChannelData::Complex64(ComplexArrow::new_from_primitive(
                     $complex_body,
                     $ac.nulls(),
+                    $ac.shape().clone(),
+                    $ac.order().clone(),
                 ));
             }
             ChannelData::ArrayDInt8($ad) => {

@@ -7,6 +7,7 @@ mod common;
 
 use anyhow::Result;
 use mdfr::data_holder::channel_data::ChannelData;
+use mdfr::mdfinfo::mdfinfo4::CompressionAlgorithm;
 use mdfr::mdfreader::Mdf;
 use std::sync::LazyLock;
 
@@ -137,7 +138,7 @@ fn array_round_trip_write() -> Result<()> {
     assert!(!original_names.is_empty());
 
     // Write the file; the write itself should succeed
-    let mdf2 = mdf.write(&out_file_str, false)?;
+    let mdf2 = mdf.write(&out_file_str, CompressionAlgorithm::NoCompression)?;
 
     // The written file must exist and be non-empty
     assert!(

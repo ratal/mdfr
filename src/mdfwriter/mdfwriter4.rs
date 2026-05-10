@@ -18,6 +18,7 @@ use std::{
 
 use super::mdfwriter3::convert3to4;
 use crate::mdfinfo::mdfinfo4::Blockheader4Short;
+use crate::mdfinfo::mdfinfo4::CompressionAlgorithm;
 use crate::{
     data_holder::channel_data::{ChannelData, data_type_init},
     mdfinfo::{
@@ -38,7 +39,6 @@ use crossbeam_channel::bounded;
 use flate2::Compression;
 use flate2::write::ZlibEncoder;
 use parking_lot::Mutex;
-use crate::mdfinfo::mdfinfo4::CompressionAlgorithm;
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 use std::fs::File;
 
@@ -557,13 +557,14 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: CompressionAlgorithm)
                                 let mut offset: i64 = 0;
                                 // For VLSD, dg_data is not used (set to 0)
                                 dg.block.dg_data = 0;
-                                let data_block = if compression != CompressionAlgorithm::NoCompression {
-                                    create_dz_sd(data, &mut offset, compression)
-                                        .context("failed creating dz or sd block")?
-                                } else {
-                                    create_sd(data, &mut offset)
-                                        .context("failed creating sd block")?
-                                };
+                                let data_block =
+                                    if compression != CompressionAlgorithm::NoCompression {
+                                        create_dz_sd(data, &mut offset, compression)
+                                            .context("failed creating dz or sd block")?
+                                    } else {
+                                        create_sd(data, &mut offset)
+                                            .context("failed creating sd block")?
+                                    };
 
                                 let data_pointer = Arc::clone(&data_pointer);
                                 let mut locked_data_pointer = data_pointer.lock();
@@ -577,17 +578,19 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: CompressionAlgorithm)
                                 // Regular channel: write DV/DZ block
                                 let mut offset: i64 = 0;
                                 let mut ld_block: Option<Ld4Block> = None;
-                                if compression != CompressionAlgorithm::NoCompression || m.is_some() {
+                                if compression != CompressionAlgorithm::NoCompression || m.is_some()
+                                {
                                     ld_block = create_ld(&m, &mut offset);
                                 }
 
-                                let data_block = if compression != CompressionAlgorithm::NoCompression {
-                                    create_dz_dv(data, &mut offset, compression)
-                                        .context("failed creating dz or dv block")?
-                                } else {
-                                    create_dv(data, &mut offset)
-                                        .context("failed creating dv block")?
-                                };
+                                let data_block =
+                                    if compression != CompressionAlgorithm::NoCompression {
+                                        create_dz_dv(data, &mut offset, compression)
+                                            .context("failed creating dz or dv block")?
+                                    } else {
+                                        create_dv(data, &mut offset)
+                                            .context("failed creating dv block")?
+                                    };
 
                                 // invalid mask existing
                                 let mut invalid_block: Option<(DataBlock, Vec<u8>)> = None;
@@ -597,8 +600,9 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: CompressionAlgorithm)
                                         ld.ld_links.push(offset);
                                     }
                                     if compression != CompressionAlgorithm::NoCompression {
-                                        invalid_block = create_dz_di(&mask, &mut offset, compression)
-                                            .context("failed creating dz or di block")?;
+                                        invalid_block =
+                                            create_dz_di(&mask, &mut offset, compression)
+                                                .context("failed creating dz or di block")?;
                                     } else {
                                         invalid_block = create_di(&mask, &mut offset)
                                             .context("failed creating di block")?;
@@ -1192,20 +1196,24 @@ fn create_dv(data: &ChannelData, offset: &mut i64) -> Result<(DataBlock, usize, 
     Ok((DataBlock::DvDi(dv_block), byte_aligned, data_bytes))
 }
 
-fn compress_bytes(bytes: &[u8], algo: CompressionAlgorithm, width: usize) -> Result<Vec<u8>, Error> {
+fn compress_bytes(
+    bytes: &[u8],
+    algo: CompressionAlgorithm,
+    width: usize,
+) -> Result<Vec<u8>, Error> {
     let mut to_compress = bytes;
     let mut transposed = Vec::new();
 
     match algo {
         CompressionAlgorithm::DeflateTranspose
         | CompressionAlgorithm::ZstdTranspose
-        | CompressionAlgorithm::Lz4Transpose => {
-            if width > 0 && bytes.len() % width == 0 {
-                let height = bytes.len() / width;
-                transposed.resize(bytes.len(), 0);
-                transpose::transpose(bytes, &mut transposed, width, height);
-                to_compress = &transposed;
-            }
+        | CompressionAlgorithm::Lz4Transpose
+            if width > 0 && bytes.len().is_multiple_of(width) =>
+        {
+            let height = bytes.len() / width;
+            transposed.resize(bytes.len(), 0);
+            transpose::transpose(bytes, &mut transposed, width, height);
+            to_compress = &transposed;
         }
         _ => {}
     }
@@ -1213,7 +1221,9 @@ fn compress_bytes(bytes: &[u8], algo: CompressionAlgorithm, width: usize) -> Res
     match algo {
         CompressionAlgorithm::Deflate | CompressionAlgorithm::DeflateTranspose => {
             let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());
-            encoder.write_all(to_compress).expect("Could not compress data");
+            encoder
+                .write_all(to_compress)
+                .expect("Could not compress data");
             Ok(encoder.finish().expect("failed finishing to compress data"))
         }
         CompressionAlgorithm::Zstd | CompressionAlgorithm::ZstdTranspose => {

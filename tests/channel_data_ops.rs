@@ -559,7 +559,11 @@ fn test_shape_complex32_with_data() {
     use arrow::datatypes::Float32Type;
     // 4 f32 values = 16 bytes; ComplexArrow::new_from_buffer: len = 16/2 = 8
     let buf = MutableBuffer::from_iter([1.0f32, 2.0, 3.0, 4.0].iter().copied());
-    let ca = mdfr::data_holder::complex_arrow::ComplexArrow::<Float32Type>::new_from_buffer(buf);
+    let ca = mdfr::data_holder::complex_arrow::ComplexArrow::<Float32Type>::new_from_buffer(
+        buf,
+        vec![1],
+        Order::RowMajor,
+    );
     let cd = ChannelData::Complex32(ca);
     let (shape, order) = cd.shape();
     assert_eq!(shape, vec![8]); // len = byte_len / 2 = 16/2 = 8

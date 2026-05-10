@@ -111,11 +111,15 @@ fn main() -> Result<(), Error> {
     }
 
     let _compression = matches.get_flag("compress");
-    let mdf4_compression_str = matches.get_one::<String>("mdf4_compression").map(String::as_str);
+    let mdf4_compression_str = matches
+        .get_one::<String>("mdf4_compression")
+        .map(String::as_str);
 
     let compression_algo = match mdf4_compression_str {
         Some("deflate") => crate::mdfinfo::mdfinfo4::CompressionAlgorithm::Deflate,
-        Some("deflate_transpose") => crate::mdfinfo::mdfinfo4::CompressionAlgorithm::DeflateTranspose,
+        Some("deflate_transpose") => {
+            crate::mdfinfo::mdfinfo4::CompressionAlgorithm::DeflateTranspose
+        }
         Some("zstd") => crate::mdfinfo::mdfinfo4::CompressionAlgorithm::Zstd,
         Some("zstd_transpose") => crate::mdfinfo::mdfinfo4::CompressionAlgorithm::ZstdTranspose,
         Some("lz4") => crate::mdfinfo::mdfinfo4::CompressionAlgorithm::Lz4,
@@ -128,7 +132,10 @@ fn main() -> Result<(), Error> {
     if let Some(file_name) = mdf4_file_name {
         mdf_file.write(file_name, compression_algo)?;
         if compression_algo != crate::mdfinfo::mdfinfo4::CompressionAlgorithm::NoCompression {
-            info!("Wrote mdf4 file {file_name} with compression {:?}", compression_algo);
+            info!(
+                "Wrote mdf4 file {file_name} with compression {:?}",
+                compression_algo
+            );
         } else {
             info!("Wrote mdf4 file {file_name} without compression");
         }

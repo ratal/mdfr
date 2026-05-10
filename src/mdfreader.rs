@@ -22,10 +22,10 @@ use pyo3::prelude::*;
 //use crate::export::parquet::export_to_parquet;
 use crate::data_holder::channel_data::try_from;
 use crate::mdfinfo::MdfInfo;
+use crate::mdfinfo::mdfinfo4::CompressionAlgorithm;
 use crate::mdfreader::mdfreader3::mdfreader3;
 use crate::mdfreader::mdfreader4::mdfreader4;
 use crate::mdfwriter::mdfwriter4::mdfwriter4;
-use crate::mdfinfo::mdfinfo4::CompressionAlgorithm;
 
 #[cfg(feature = "parquet")]
 use crate::export::parquet::export_dataframe_to_parquet;

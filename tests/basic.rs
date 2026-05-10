@@ -4,6 +4,7 @@ mod common;
 use anyhow::Result;
 use arrow::array::{Float64Builder, LargeStringBuilder, UInt64Builder};
 use mdfr::data_holder::channel_data::ChannelData;
+use mdfr::mdfinfo::mdfinfo4::CompressionAlgorithm;
 use mdfr::mdfreader::Mdf;
 use std::fs;
 use std::io;
@@ -88,7 +89,7 @@ fn basic_test() -> Result<()> {
     let file = "test_files/test_basic.mf4";
     let mut mdf = Mdf::new(file)?;
     mdf.load_all_channels_data_in_memory()?;
-    mdf.write("test_files/test.mf4", true)?;
+    mdf.write("test_files/test.mf4", CompressionAlgorithm::Deflate)?;
     Ok(())
 }
 
