@@ -414,6 +414,32 @@ df=polars.DataFrame(series)
         mdf.keep_channels(channel_names.into_iter().collect())?;
         Ok(())
     }
+    /// resamples channels in one master group to a uniform raster (seconds)
+    pub fn resample_group(&mut self, master_name: String, raster_s: f64) -> PyResult<()> {
+        let Mdfr(mdf) = self;
+        mdf.resample_group(&master_name, raster_s)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+    /// resamples all Time master groups to a uniform raster (seconds)
+    pub fn resample(&mut self, raster_s: f64) -> PyResult<()> {
+        let Mdfr(mdf) = self;
+        mdf.resample(raster_s)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+    /// appends other's data after self on the time axis (time-sequential concat)
+    pub fn concat_mdf(&mut self, other: &Mdfr) -> PyResult<()> {
+        let Mdfr(mdf) = self;
+        let Mdfr(other_mdf) = other;
+        mdf.concat_mdf(other_mdf)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+    /// imports channels from other into self (channel-axis join on shared time axis)
+    pub fn merge(&mut self, other: &Mdfr) -> PyResult<()> {
+        let Mdfr(mdf) = self;
+        let Mdfr(other_mdf) = other;
+        mdf.merge(other_mdf)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
     /// load all channels in memory
     pub fn load_all_channels_data_in_memory(&mut self) -> PyResult<()> {
         let Mdfr(mdf) = self;

@@ -584,6 +584,14 @@ impl MdfInfo {
         }
         Ok(())
     }
+    /// directly replaces a single channel's ChannelData (bypasses try_from, preserves Complex/TensorArrow)
+    pub fn replace_channel_data(&mut self, channel_name: &str, data: ChannelData) -> Result<()> {
+        match self {
+            MdfInfo::V3(m) => m.replace_channel_data(channel_name, data)?,
+            MdfInfo::V4(m) => m.replace_channel_data(channel_name, data)?,
+        }
+        Ok(())
+    }
     /// replaces each channel's data with the slice [start_idx, end_idx)
     pub fn slice_channels(
         &mut self,

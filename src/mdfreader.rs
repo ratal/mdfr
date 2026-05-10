@@ -20,9 +20,9 @@ use log::info;
 use pyo3::prelude::*;
 
 //use crate::export::parquet::export_to_parquet;
-use crate::data_holder::channel_data::try_from;
-use crate::mdfinfo::{ChannelsDb, MdfInfo};
+use crate::data_holder::channel_data::{interp_channel, try_from};
 use crate::mdfinfo::mdfinfo4::CompressionAlgorithm;
+use crate::mdfinfo::{ChannelsDb, MdfInfo};
 use crate::mdfreader::mdfreader3::mdfreader3;
 use crate::mdfreader::mdfreader4::mdfreader4;
 use crate::mdfwriter::mdfwriter4::mdfwriter4;
@@ -372,6 +372,240 @@ impl Mdf {
         channel_set.insert(master_name.to_string());
         self.mdf_info
             .slice_channels(&channel_set, start_idx, stop_idx)
+    }
+    /// resamples all channels in the master's group to a uniform `raster_s` second grid.
+    /// `master_name` must be a Time master (sync_type == 1) with Float64 data.
+    /// Float32/64 channels are linearly interpolated; all others use previous-value hold.
+    pub fn resample_group(&mut self, master_name: &str, raster_s: f64) -> Result<()> {
+        if self.mdf_info.get_channel_master_type(master_name) != 1 {
+            bail!("resample_group: '{master_name}' is not a Time master channel");
+        }
+        let old_master: Vec<f64> = match self.get_channel_data(master_name) {
+            Some(ChannelData::Float64(b)) => b.values_slice().to_vec(),
+            Some(_) => bail!("resample_group: master '{master_name}' is not Float64"),
+            None => bail!("resample_group: master '{master_name}' has no data loaded"),
+        };
+        if old_master.len() < 2 {
+            return Ok(());
+        }
+        let first = old_master[0];
+        let last = *old_master.last().unwrap();
+        // Build uniformly-spaced new master
+        let new_master: Vec<f64> = {
+            let n = ((last - first) / raster_s).floor() as usize + 1;
+            (0..n).map(|i| first + i as f64 * raster_s).collect()
+        };
+        // Collect channel data clones before taking mutable borrow
+        let mut channel_set = self.mdf_info.get_channel_names_cg_set(master_name);
+        channel_set.insert(master_name.to_string());
+        let cloned: Vec<(String, ChannelData)> = channel_set
+            .iter()
+            .filter_map(|name| {
+                let data = self.get_channel_data(name)?;
+                data.slice_range(0, data.len())
+                    .ok()
+                    .map(|d| (name.clone(), d))
+            })
+            .collect();
+        // Apply interpolated data
+        for (name, data) in cloned {
+            let new_data = if name == master_name {
+                let mut b = arrow::array::Float64Builder::with_capacity(new_master.len());
+                new_master.iter().for_each(|&v| b.append_value(v));
+                ChannelData::Float64(b)
+            } else {
+                interp_channel(&old_master, &data, &new_master)?
+            };
+            self.mdf_info.replace_channel_data(&name, new_data)?;
+        }
+        Ok(())
+    }
+    /// resamples every Time master group in the file to a uniform `raster_s` second grid.
+    pub fn resample(&mut self, raster_s: f64) -> Result<()> {
+        let masters: Vec<String> = self
+            .mdf_info
+            .get_master_channel_names_set()
+            .into_keys()
+            .flatten()
+            .filter(|name| self.mdf_info.get_channel_master_type(name) == 1)
+            .collect();
+        for master in masters {
+            self.resample_group(&master, raster_s)?;
+        }
+        Ok(())
+    }
+    /// appends `other` after `self` on the time axis.
+    /// For each shared Time master group, other's timestamps are offset so they follow self's last
+    /// timestamp. Channels present in only one file are null-padded for the missing span.
+    /// Both files must have their data loaded in memory before calling this.
+    pub fn concat_mdf(&mut self, other: &Mdf) -> Result<()> {
+        use arrow::array::new_null_array;
+        use arrow::compute::concat;
+        let self_masters: Vec<String> = self
+            .mdf_info
+            .get_master_channel_names_set()
+            .into_keys()
+            .flatten()
+            .filter(|name| self.mdf_info.get_channel_master_type(name) == 1)
+            .collect();
+        for master_name in self_masters {
+            // Collect self's channel set (owned)
+            let mut self_channels = self.mdf_info.get_channel_names_cg_set(&master_name);
+            self_channels.insert(master_name.clone());
+            // Check other has same master
+            if other.mdf_info.get_channel_master_type(&master_name) != 1 {
+                continue;
+            }
+            let other_channels: HashSet<String> = {
+                let mut s = other.mdf_info.get_channel_names_cg_set(&master_name);
+                s.insert(master_name.clone());
+                s
+            };
+            // Compute time offset: self_last + sample_interval - other_first
+            let self_master_vals: Vec<f64> = match self.get_channel_data(&master_name) {
+                Some(ChannelData::Float64(b)) => b.values_slice().to_vec(),
+                _ => continue,
+            };
+            let other_master_vals: Vec<f64> = match other.get_channel_data(&master_name) {
+                Some(ChannelData::Float64(b)) => b.values_slice().to_vec(),
+                _ => continue,
+            };
+            if self_master_vals.is_empty() || other_master_vals.is_empty() {
+                continue;
+            }
+            let self_len = self_master_vals.len();
+            let other_len = other_master_vals.len();
+            let delta = if self_master_vals.len() >= 2 {
+                self_master_vals[self_len - 1] - self_master_vals[self_len - 2]
+            } else {
+                0.0
+            };
+            let time_offset = self_master_vals[self_len - 1] + delta - other_master_vals[0];
+            // Collect clones before mutable borrow
+            let self_clones: HashMap<String, ChannelData> = self_channels
+                .iter()
+                .filter_map(|n| {
+                    let d = self.get_channel_data(n)?;
+                    d.slice_range(0, d.len()).ok().map(|c| (n.clone(), c))
+                })
+                .collect();
+            let other_clones: HashMap<String, ChannelData> = other_channels
+                .iter()
+                .filter_map(|n| {
+                    let d = other.get_channel_data(n)?;
+                    d.slice_range(0, d.len()).ok().map(|c| (n.clone(), c))
+                })
+                .collect();
+            // Channels in both: concatenate
+            for name in self_channels.iter() {
+                if let (Some(sd), Some(od)) = (self_clones.get(name), other_clones.get(name)) {
+                    if name == &master_name {
+                        // Build shifted other master
+                        let shifted: Vec<f64> =
+                            other_master_vals.iter().map(|&v| v + time_offset).collect();
+                        let mut b =
+                            arrow::array::Float64Builder::with_capacity(self_len + other_len);
+                        sd.finish_cloned()
+                            .as_any()
+                            .downcast_ref::<arrow::array::Float64Array>()
+                            .into_iter()
+                            .flat_map(|a| a.iter())
+                            .for_each(|v| b.append_option(v));
+                        shifted.iter().for_each(|&v| b.append_value(v));
+                        self.mdf_info
+                            .replace_channel_data(name, ChannelData::Float64(b))?;
+                    } else {
+                        let self_arr = sd.finish_cloned();
+                        let other_arr = od.finish_cloned();
+                        let combined = concat(&[self_arr.as_ref(), other_arr.as_ref()])?;
+                        self.mdf_info
+                            .replace_channel_data(name, try_from(&*combined)?)?;
+                    }
+                } else if let Some(sd) = self_clones.get(name) {
+                    // Only in self — append nulls for other's length
+                    let self_arr = sd.finish_cloned();
+                    let null_arr = new_null_array(self_arr.data_type(), other_len);
+                    let combined = concat(&[self_arr.as_ref(), null_arr.as_ref()])?;
+                    self.mdf_info
+                        .replace_channel_data(name, try_from(&*combined)?)?;
+                }
+            }
+            // Channels only in other — prepend nulls and add
+            for name in other_channels.iter() {
+                if self_channels.contains(name) || name == &master_name {
+                    continue;
+                }
+                if let Some(od) = other_clones.get(name) {
+                    let other_arr = od.finish_cloned();
+                    let null_arr = new_null_array(other_arr.data_type(), self_len);
+                    let combined = concat(&[null_arr.as_ref(), other_arr.as_ref()])?;
+                    self.add_channel(
+                        name.clone(),
+                        combined,
+                        Some(master_name.clone()),
+                        None,
+                        false,
+                        other.get_channel_unit(name).unwrap_or(None),
+                        None,
+                    )?;
+                }
+            }
+        }
+        Ok(())
+    }
+    /// imports channels from `other` into `self` (horizontal join on shared time axis).
+    /// Channels already present in `self` are skipped. Master channels from `other` are
+    /// added only when at least one of their data channels is being imported.
+    /// Both files must have their data loaded in memory before calling this.
+    pub fn merge(&mut self, other: &Mdf) -> Result<()> {
+        let self_channels = self.get_channel_names_set();
+        let other_masters = other.mdf_info.get_master_channel_names_set();
+        for (master_opt, channel_set) in other_masters {
+            let master_name = match &master_opt {
+                Some(m) => m.clone(),
+                None => continue,
+            };
+            // Determine which channels from this group need to be imported
+            let to_import: Vec<String> = channel_set
+                .into_iter()
+                .filter(|n| !self_channels.contains(n) && n != &master_name)
+                .collect();
+            if to_import.is_empty() {
+                continue;
+            }
+            // Add master first if not already in self
+            if !self_channels.contains(&master_name)
+                && let Some(master_data) = other.get_channel_data(&master_name)
+            {
+                let arr = master_data.finish_cloned();
+                let master_type = other.mdf_info.get_channel_master_type(&master_name);
+                self.add_channel(
+                    master_name.clone(),
+                    arr,
+                    None,
+                    Some(master_type),
+                    true,
+                    other.get_channel_unit(&master_name).unwrap_or(None),
+                    None,
+                )?;
+            }
+            // Add each data channel
+            for name in to_import {
+                if let Some(data) = other.get_channel_data(&name) {
+                    let arr = data.finish_cloned();
+                    self.add_channel(
+                        name.clone(),
+                        arr,
+                        Some(master_name.clone()),
+                        None,
+                        false,
+                        other.get_channel_unit(&name).unwrap_or(None),
+                        None,
+                    )?;
+                }
+            }
+        }
+        Ok(())
     }
     /// export to Parquet files, one for each channel group (or dataframe)
     #[cfg(feature = "parquet")]

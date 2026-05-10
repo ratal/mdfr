@@ -1817,6 +1817,365 @@ pub fn try_from(value: &dyn Array) -> Result<ChannelData, Error> {
     }
 }
 
+/// Interpolates `data` from `old_master` timestamps onto `new_master` timestamps.
+///
+/// Float32/Float64: linear interpolation.
+/// All other types (Int, UInt, string, bytes, Complex, TensorArrow, Union): previous-value hold.
+/// `old_master` must be non-empty and monotonically non-decreasing.
+pub fn interp_channel(
+    old_master: &[f64],
+    data: &ChannelData,
+    new_master: &[f64],
+) -> Result<ChannelData> {
+    if old_master.is_empty() || new_master.is_empty() {
+        return data.slice_range(0, 0);
+    }
+    let n = new_master.len();
+    // Helper: index of the sample to use for previous-value interpolation
+    let prev_idx = |t: f64| -> usize { old_master.partition_point(|&v| v <= t).saturating_sub(1) };
+    match data {
+        ChannelData::Float32(b) => {
+            let old = b.values_slice();
+            let mut builder = PrimitiveBuilder::<Float32Type>::with_capacity(n);
+            for &t in new_master {
+                let idx = old_master.partition_point(|&v| v <= t);
+                let v = if idx == 0 {
+                    old[0]
+                } else if idx >= old.len() {
+                    *old.last().unwrap()
+                } else {
+                    let alpha = ((t - old_master[idx - 1])
+                        / (old_master[idx] - old_master[idx - 1]))
+                        as f32;
+                    old[idx - 1] * (1.0 - alpha) + old[idx] * alpha
+                };
+                builder.append_value(v);
+            }
+            Ok(ChannelData::Float32(builder))
+        }
+        ChannelData::Float64(b) => {
+            let old = b.values_slice();
+            let mut builder = PrimitiveBuilder::<Float64Type>::with_capacity(n);
+            for &t in new_master {
+                let idx = old_master.partition_point(|&v| v <= t);
+                let v = if idx == 0 {
+                    old[0]
+                } else if idx >= old.len() {
+                    *old.last().unwrap()
+                } else {
+                    let alpha = (t - old_master[idx - 1]) / (old_master[idx] - old_master[idx - 1]);
+                    old[idx - 1] * (1.0 - alpha) + old[idx] * alpha
+                };
+                builder.append_value(v);
+            }
+            Ok(ChannelData::Float64(builder))
+        }
+        // Integer and UInt: previous-value hold
+        ChannelData::Int8(b) => {
+            let old = b.values_slice();
+            let mut builder = Int8Builder::with_capacity(n);
+            new_master.iter().for_each(|&t| {
+                builder.append_value(old[prev_idx(t)]);
+            });
+            Ok(ChannelData::Int8(builder))
+        }
+        ChannelData::UInt8(b) => {
+            let old = b.values_slice();
+            let mut builder = PrimitiveBuilder::<UInt8Type>::with_capacity(n);
+            new_master.iter().for_each(|&t| {
+                builder.append_value(old[prev_idx(t)]);
+            });
+            Ok(ChannelData::UInt8(builder))
+        }
+        ChannelData::Int16(b) => {
+            let old = b.values_slice();
+            let mut builder = PrimitiveBuilder::<Int16Type>::with_capacity(n);
+            new_master
+                .iter()
+                .for_each(|&t| builder.append_value(old[prev_idx(t)]));
+            Ok(ChannelData::Int16(builder))
+        }
+        ChannelData::UInt16(b) => {
+            let old = b.values_slice();
+            let mut builder = PrimitiveBuilder::<UInt16Type>::with_capacity(n);
+            new_master
+                .iter()
+                .for_each(|&t| builder.append_value(old[prev_idx(t)]));
+            Ok(ChannelData::UInt16(builder))
+        }
+        ChannelData::Int32(b) => {
+            let old = b.values_slice();
+            let mut builder = PrimitiveBuilder::<Int32Type>::with_capacity(n);
+            new_master
+                .iter()
+                .for_each(|&t| builder.append_value(old[prev_idx(t)]));
+            Ok(ChannelData::Int32(builder))
+        }
+        ChannelData::UInt32(b) => {
+            let old = b.values_slice();
+            let mut builder = PrimitiveBuilder::<UInt32Type>::with_capacity(n);
+            new_master
+                .iter()
+                .for_each(|&t| builder.append_value(old[prev_idx(t)]));
+            Ok(ChannelData::UInt32(builder))
+        }
+        ChannelData::Int64(b) => {
+            let old = b.values_slice();
+            let mut builder = PrimitiveBuilder::<Int64Type>::with_capacity(n);
+            new_master
+                .iter()
+                .for_each(|&t| builder.append_value(old[prev_idx(t)]));
+            Ok(ChannelData::Int64(builder))
+        }
+        ChannelData::UInt64(b) => {
+            let old = b.values_slice();
+            let mut builder = PrimitiveBuilder::<UInt64Type>::with_capacity(n);
+            new_master
+                .iter()
+                .for_each(|&t| builder.append_value(old[prev_idx(t)]));
+            Ok(ChannelData::UInt64(builder))
+        }
+        // String / bytes: previous-value hold via Arrow downcast
+        ChannelData::Utf8(b) => {
+            let arr = b.finish_cloned();
+            let arr = arr
+                .as_any()
+                .downcast_ref::<LargeStringArray>()
+                .context("interp_channel: Utf8 downcast failed")?;
+            let mut builder = LargeStringBuilder::with_capacity(n, 0);
+            new_master.iter().for_each(|&t| {
+                builder.append_value(arr.value(prev_idx(t)));
+            });
+            Ok(ChannelData::Utf8(builder))
+        }
+        ChannelData::VariableSizeByteArray(b) => {
+            let arr = b.finish_cloned();
+            let arr = arr
+                .as_any()
+                .downcast_ref::<LargeBinaryArray>()
+                .context("interp_channel: LargeBinary downcast failed")?;
+            let mut builder = LargeBinaryBuilder::with_capacity(n, 0);
+            new_master.iter().for_each(|&t| {
+                builder.append_value(arr.value(prev_idx(t)));
+            });
+            Ok(ChannelData::VariableSizeByteArray(builder))
+        }
+        ChannelData::FixedSizeByteArray(b) => {
+            let arr = b.finish_cloned();
+            let arr = arr
+                .as_any()
+                .downcast_ref::<FixedSizeBinaryArray>()
+                .context("interp_channel: FixedSizeBinary downcast failed")?;
+            let width = arr.value_length();
+            let mut builder = FixedSizeBinaryBuilder::with_capacity(n, width);
+            new_master.iter().for_each(|&t| {
+                builder
+                    .append_value(arr.value(prev_idx(t)))
+                    .unwrap_or_default();
+            });
+            Ok(ChannelData::FixedSizeByteArray(builder))
+        }
+        // Complex: previous-value hold by copying flat value pairs
+        ChannelData::Complex32(c) => {
+            let elem = c.shape().iter().product::<usize>() * 2;
+            let old = c.values_slice();
+            let vals: Vec<f32> = new_master
+                .iter()
+                .flat_map(|&t| {
+                    let i = prev_idx(t);
+                    old[i * elem..(i + 1) * elem].iter().copied()
+                })
+                .collect();
+            Ok(ChannelData::Complex32(ComplexArrow::new_from_buffer(
+                vals.into(),
+                c.shape().clone(),
+                c.order().clone(),
+            )))
+        }
+        ChannelData::Complex64(c) => {
+            let elem = c.shape().iter().product::<usize>() * 2;
+            let old = c.values_slice();
+            let vals: Vec<f64> = new_master
+                .iter()
+                .flat_map(|&t| {
+                    let i = prev_idx(t);
+                    old[i * elem..(i + 1) * elem].iter().copied()
+                })
+                .collect();
+            Ok(ChannelData::Complex64(ComplexArrow::new_from_buffer(
+                vals.into(),
+                c.shape().clone(),
+                c.order().clone(),
+            )))
+        }
+        // TensorArrow: previous-value hold
+        ChannelData::ArrayDInt8(t) => {
+            let elem = t.shape().iter().product::<usize>();
+            let old = t.values_slice();
+            let vals: Vec<i8> = new_master
+                .iter()
+                .flat_map(|&ts| {
+                    let i = prev_idx(ts);
+                    old[i * elem..(i + 1) * elem].iter().copied()
+                })
+                .collect();
+            Ok(ChannelData::ArrayDInt8(TensorArrow::new_from_buffer(
+                vals.into(),
+                t.shape().clone(),
+                t.order().clone(),
+            )))
+        }
+        ChannelData::ArrayDUInt8(t) => {
+            let elem = t.shape().iter().product::<usize>();
+            let old = t.values_slice();
+            let vals: Vec<u8> = new_master
+                .iter()
+                .flat_map(|&ts| {
+                    let i = prev_idx(ts);
+                    old[i * elem..(i + 1) * elem].iter().copied()
+                })
+                .collect();
+            Ok(ChannelData::ArrayDUInt8(TensorArrow::new_from_buffer(
+                vals.into(),
+                t.shape().clone(),
+                t.order().clone(),
+            )))
+        }
+        ChannelData::ArrayDInt16(t) => {
+            let elem = t.shape().iter().product::<usize>();
+            let old = t.values_slice();
+            let vals: Vec<i16> = new_master
+                .iter()
+                .flat_map(|&ts| {
+                    let i = prev_idx(ts);
+                    old[i * elem..(i + 1) * elem].iter().copied()
+                })
+                .collect();
+            Ok(ChannelData::ArrayDInt16(TensorArrow::new_from_buffer(
+                vals.into(),
+                t.shape().clone(),
+                t.order().clone(),
+            )))
+        }
+        ChannelData::ArrayDUInt16(t) => {
+            let elem = t.shape().iter().product::<usize>();
+            let old = t.values_slice();
+            let vals: Vec<u16> = new_master
+                .iter()
+                .flat_map(|&ts| {
+                    let i = prev_idx(ts);
+                    old[i * elem..(i + 1) * elem].iter().copied()
+                })
+                .collect();
+            Ok(ChannelData::ArrayDUInt16(TensorArrow::new_from_buffer(
+                vals.into(),
+                t.shape().clone(),
+                t.order().clone(),
+            )))
+        }
+        ChannelData::ArrayDInt32(t) => {
+            let elem = t.shape().iter().product::<usize>();
+            let old = t.values_slice();
+            let vals: Vec<i32> = new_master
+                .iter()
+                .flat_map(|&ts| {
+                    let i = prev_idx(ts);
+                    old[i * elem..(i + 1) * elem].iter().copied()
+                })
+                .collect();
+            Ok(ChannelData::ArrayDInt32(TensorArrow::new_from_buffer(
+                vals.into(),
+                t.shape().clone(),
+                t.order().clone(),
+            )))
+        }
+        ChannelData::ArrayDUInt32(t) => {
+            let elem = t.shape().iter().product::<usize>();
+            let old = t.values_slice();
+            let vals: Vec<u32> = new_master
+                .iter()
+                .flat_map(|&ts| {
+                    let i = prev_idx(ts);
+                    old[i * elem..(i + 1) * elem].iter().copied()
+                })
+                .collect();
+            Ok(ChannelData::ArrayDUInt32(TensorArrow::new_from_buffer(
+                vals.into(),
+                t.shape().clone(),
+                t.order().clone(),
+            )))
+        }
+        ChannelData::ArrayDFloat32(t) => {
+            let elem = t.shape().iter().product::<usize>();
+            let old = t.values_slice();
+            let vals: Vec<f32> = new_master
+                .iter()
+                .flat_map(|&ts| {
+                    let i = prev_idx(ts);
+                    old[i * elem..(i + 1) * elem].iter().copied()
+                })
+                .collect();
+            Ok(ChannelData::ArrayDFloat32(TensorArrow::new_from_buffer(
+                vals.into(),
+                t.shape().clone(),
+                t.order().clone(),
+            )))
+        }
+        ChannelData::ArrayDInt64(t) => {
+            let elem = t.shape().iter().product::<usize>();
+            let old = t.values_slice();
+            let vals: Vec<i64> = new_master
+                .iter()
+                .flat_map(|&ts| {
+                    let i = prev_idx(ts);
+                    old[i * elem..(i + 1) * elem].iter().copied()
+                })
+                .collect();
+            Ok(ChannelData::ArrayDInt64(TensorArrow::new_from_buffer(
+                vals.into(),
+                t.shape().clone(),
+                t.order().clone(),
+            )))
+        }
+        ChannelData::ArrayDUInt64(t) => {
+            let elem = t.shape().iter().product::<usize>();
+            let old = t.values_slice();
+            let vals: Vec<u64> = new_master
+                .iter()
+                .flat_map(|&ts| {
+                    let i = prev_idx(ts);
+                    old[i * elem..(i + 1) * elem].iter().copied()
+                })
+                .collect();
+            Ok(ChannelData::ArrayDUInt64(TensorArrow::new_from_buffer(
+                vals.into(),
+                t.shape().clone(),
+                t.order().clone(),
+            )))
+        }
+        ChannelData::ArrayDFloat64(t) => {
+            let elem = t.shape().iter().product::<usize>();
+            let old = t.values_slice();
+            let vals: Vec<f64> = new_master
+                .iter()
+                .flat_map(|&ts| {
+                    let i = prev_idx(ts);
+                    old[i * elem..(i + 1) * elem].iter().copied()
+                })
+                .collect();
+            Ok(ChannelData::ArrayDFloat64(TensorArrow::new_from_buffer(
+                vals.into(),
+                t.shape().clone(),
+                t.order().clone(),
+            )))
+        }
+        ChannelData::Union(_) => {
+            // Union channels are unsupported for interpolation; return a copy of the original
+            data.slice_range(0, data.len())
+        }
+    }
+}
+
 impl fmt::Display for ChannelData {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let format_option = FormatOptions::new();

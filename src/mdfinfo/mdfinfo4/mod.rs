@@ -218,6 +218,18 @@ impl MdfInfo4 {
         }
         Ok(())
     }
+    /// directly replaces a single channel's ChannelData (bypasses try_from)
+    pub fn replace_channel_data(&mut self, channel_name: &str, data: ChannelData) -> Result<()> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.channel_names_set.get(channel_name)
+            && let Some(dg) = self.dg.get_mut(dg_pos)
+            && let Some(cg) = dg.cg.get_mut(rec_id)
+            && let Some(cn) = cg.cn.get_mut(rec_pos)
+        {
+            cn.data = data;
+        }
+        Ok(())
+    }
     /// replaces each channel's data with the slice [start_idx, end_idx) for named channels
     pub fn slice_channels(
         &mut self,
