@@ -8,7 +8,7 @@ use crate::mdfinfo::{ChannelsDb, MdfInfo};
 use crate::mdfreader::MasterSignature;
 use crate::mdfreader::Mdf;
 use anyhow::Context;
-use arrow::array::ArrayData;
+use arrow::array::{Array, ArrayData};
 use arrow::pyarrow::PyArrowType;
 use arrow::util::display::{ArrayFormatter, FormatOptions};
 
@@ -307,6 +307,42 @@ df=polars.DataFrame(series)
             Ok(master_type)
         })
     }
+    /// returns measurement start time as a timezone-aware datetime
+    #[getter]
+    pub fn start_time(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let Mdfr(mdf) = self;
+        let ns = mdf.get_start_time_ns();
+        let offset_s = mdf.get_tz_offset_min() as i32 * 60;
+        let locals = pyo3::types::PyDict::new(py);
+        locals.set_item("ts", ns as f64 / 1e9)?;
+        locals.set_item("offset_s", offset_s)?;
+        Ok(py
+            .eval(
+                c_str!(
+                    "import datetime; \
+                     tz = datetime.timezone(datetime.timedelta(seconds=offset_s)); \
+                     datetime.datetime.fromtimestamp(ts, tz)"
+                ),
+                None,
+                Some(&locals),
+            )?
+            .unbind())
+    }
+    /// returns master channel data as an Arrow TimestampNanosecond array with timezone.
+    /// Raises ValueError if the channel has no Time master.
+    pub fn get_master_channel_datetimes(
+        &self,
+        channel_name: String,
+    ) -> PyResult<PyArrowType<ArrayData>> {
+        let Mdfr(mdf) = self;
+        mdf.get_master_channel_datetimes(&channel_name)
+            .map(|arr| PyArrowType(arr.into_data()))
+            .ok_or_else(|| {
+                pyo3::exceptions::PyValueError::new_err(format!(
+                    "no Time master for channel '{channel_name}'"
+                ))
+            })
+    }
     /// returns a set of all channel names contained in file
     pub fn get_channel_names_set(&self) -> PyResult<Py<PyAny>> {
         let Mdfr(mdf) = self;
@@ -364,6 +400,18 @@ df=polars.DataFrame(series)
     ) -> PyResult<()> {
         let Mdfr(mdf) = self;
         mdf.clear_channel_data_from_memory(channel_names)?;
+        Ok(())
+    }
+    /// slices all channels in the master's group to [start_s, stop_s] seconds
+    pub fn cut(&mut self, master_name: String, start_s: f64, stop_s: f64) -> PyResult<()> {
+        let Mdfr(mdf) = self;
+        mdf.cut(&master_name, start_s, stop_s)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+    /// keeps only the given channels; all others have their data cleared
+    pub fn keep_channels(&mut self, channel_names: Vec<String>) -> PyResult<()> {
+        let Mdfr(mdf) = self;
+        mdf.keep_channels(channel_names.into_iter().collect())?;
         Ok(())
     }
     /// load all channels in memory

@@ -159,6 +159,26 @@ impl MdfInfo3 {
         }
         Ok(())
     }
+    /// replaces each channel's data with the slice [start_idx, end_idx) for named channels
+    pub fn slice_channels(
+        &mut self,
+        channel_names: &HashSet<String>,
+        start_idx: usize,
+        end_idx: usize,
+    ) -> Result<(), Error> {
+        for channel_name in channel_names {
+            if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
+                self.channel_names_set.get(channel_name)
+                && let Some(dg) = self.dg.get_mut(dg_pos)
+                && let Some(cg) = dg.cg.get_mut(rec_id)
+                && let Some(cn) = cg.cn.get_mut(cn_pos)
+                && !cn.data.is_empty()
+            {
+                cn.data = cn.data.slice_range(start_idx, end_idx)?;
+            }
+        }
+        Ok(())
+    }
     /// Returns the channel's data ndarray if present in memory, otherwise None.
     pub fn get_channel_data_from_memory(&self, channel_name: &str) -> Option<&ChannelData> {
         let mut data: Option<&ChannelData> = None;
@@ -392,7 +412,7 @@ pub struct Hd3 {
     /// time stamp at which recording was started in nanosecond
     pub hd_start_time_ns: Option<u64>,
     /// time stamp at which recording was started in nanosecond
-    hd_time_offset: Option<i16>,
+    pub(crate) hd_time_offset: Option<i16>,
     /// time quality class
     hd_time_quality: Option<u16>,
     /// timer identification or time source

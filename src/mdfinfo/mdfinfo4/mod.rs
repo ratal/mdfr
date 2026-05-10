@@ -218,6 +218,26 @@ impl MdfInfo4 {
         }
         Ok(())
     }
+    /// replaces each channel's data with the slice [start_idx, end_idx) for named channels
+    pub fn slice_channels(
+        &mut self,
+        channel_names: &HashSet<String>,
+        start_idx: usize,
+        end_idx: usize,
+    ) -> Result<()> {
+        for channel_name in channel_names {
+            if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+                self.channel_names_set.get(channel_name)
+                && let Some(dg) = self.dg.get_mut(dg_pos)
+                && let Some(cg) = dg.cg.get_mut(rec_id)
+                && let Some(cn) = cg.cn.get_mut(rec_pos)
+                && !cn.data.is_empty()
+            {
+                cn.data = cn.data.slice_range(start_idx, end_idx)?;
+            }
+        }
+        Ok(())
+    }
     /// returns a new empty MdfInfo4 struct
     pub fn new(file_name: &str, n_channels: usize) -> MdfInfo4 {
         MdfInfo4 {

@@ -514,6 +514,26 @@ impl MdfInfo {
                 .collect(),
         }
     }
+    /// returns measurement start timestamp in nanoseconds since Unix epoch (1970-01-01 UTC)
+    pub fn get_start_time_ns(&self) -> u64 {
+        match self {
+            MdfInfo::V4(m) => m.hd_block.hd_start_time_ns,
+            MdfInfo::V3(m) => m.hd_block.hd_start_time_ns.unwrap_or(0),
+        }
+    }
+    /// returns timezone + DST offset in minutes; 0 when not recorded or not valid
+    pub fn get_tz_offset_min(&self) -> i16 {
+        match self {
+            MdfInfo::V4(m) => {
+                if m.hd_block.hd_time_flags & 0b10 != 0 {
+                    m.hd_block.hd_tz_offset_min + m.hd_block.hd_dst_offset_min
+                } else {
+                    0
+                }
+            }
+            MdfInfo::V3(m) => m.hd_block.hd_time_offset.unwrap_or(0),
+        }
+    }
     /// returns a set of all channel names contained in file
     pub fn get_channel_names_set(&self) -> HashSet<String> {
         let channel_list: HashSet<String> = match self {
@@ -561,6 +581,19 @@ impl MdfInfo {
                         )
                     })?;
             }
+        }
+        Ok(())
+    }
+    /// replaces each channel's data with the slice [start_idx, end_idx)
+    pub fn slice_channels(
+        &mut self,
+        channel_names: &HashSet<String>,
+        start_idx: usize,
+        end_idx: usize,
+    ) -> Result<()> {
+        match self {
+            MdfInfo::V3(m) => m.slice_channels(channel_names, start_idx, end_idx)?,
+            MdfInfo::V4(m) => m.slice_channels(channel_names, start_idx, end_idx)?,
         }
         Ok(())
     }

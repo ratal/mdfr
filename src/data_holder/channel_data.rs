@@ -458,6 +458,132 @@ impl ChannelData {
             }
         }
     }
+    /// returns a new ChannelData containing only elements [start, end).
+    /// For scalar/string/binary/union variants, uses Arrow's zero-copy slice then rebuilds.
+    /// For Complex and TensorArrow variants, copies the flat value bytes for the requested range.
+    pub fn slice_range(&self, start: usize, end: usize) -> Result<ChannelData> {
+        let len = end.saturating_sub(start);
+        match self {
+            // Scalar, string, binary, union — try_from handles these correctly after Arrow slice
+            ChannelData::Int8(_)
+            | ChannelData::UInt8(_)
+            | ChannelData::Int16(_)
+            | ChannelData::UInt16(_)
+            | ChannelData::Int32(_)
+            | ChannelData::UInt32(_)
+            | ChannelData::Float32(_)
+            | ChannelData::Int64(_)
+            | ChannelData::UInt64(_)
+            | ChannelData::Float64(_)
+            | ChannelData::Utf8(_)
+            | ChannelData::VariableSizeByteArray(_)
+            | ChannelData::FixedSizeByteArray(_)
+            | ChannelData::Union(_) => {
+                let arr = self.finish_cloned();
+                try_from(&*arr.slice(start, len))
+            }
+            // Complex — values are interleaved (re0, im0, re1, im1, …)
+            ChannelData::Complex32(c) => {
+                let n = c.shape().iter().product::<usize>() * 2;
+                let vals: Vec<f32> = c.values_slice()[start * n..end * n].to_vec();
+                Ok(ChannelData::Complex32(ComplexArrow::new_from_buffer(
+                    vals.into(),
+                    c.shape().clone(),
+                    c.order().clone(),
+                )))
+            }
+            ChannelData::Complex64(c) => {
+                let n = c.shape().iter().product::<usize>() * 2;
+                let vals: Vec<f64> = c.values_slice()[start * n..end * n].to_vec();
+                Ok(ChannelData::Complex64(ComplexArrow::new_from_buffer(
+                    vals.into(),
+                    c.shape().clone(),
+                    c.order().clone(),
+                )))
+            }
+            // TensorArrow — each logical element spans elem_count flat values
+            ChannelData::ArrayDInt8(t) => {
+                let n = t.shape().iter().product::<usize>();
+                Ok(ChannelData::ArrayDInt8(TensorArrow::new_from_buffer(
+                    t.values_slice()[start * n..end * n].to_vec().into(),
+                    t.shape().clone(),
+                    t.order().clone(),
+                )))
+            }
+            ChannelData::ArrayDUInt8(t) => {
+                let n = t.shape().iter().product::<usize>();
+                Ok(ChannelData::ArrayDUInt8(TensorArrow::new_from_buffer(
+                    t.values_slice()[start * n..end * n].to_vec().into(),
+                    t.shape().clone(),
+                    t.order().clone(),
+                )))
+            }
+            ChannelData::ArrayDInt16(t) => {
+                let n = t.shape().iter().product::<usize>();
+                Ok(ChannelData::ArrayDInt16(TensorArrow::new_from_buffer(
+                    t.values_slice()[start * n..end * n].to_vec().into(),
+                    t.shape().clone(),
+                    t.order().clone(),
+                )))
+            }
+            ChannelData::ArrayDUInt16(t) => {
+                let n = t.shape().iter().product::<usize>();
+                Ok(ChannelData::ArrayDUInt16(TensorArrow::new_from_buffer(
+                    t.values_slice()[start * n..end * n].to_vec().into(),
+                    t.shape().clone(),
+                    t.order().clone(),
+                )))
+            }
+            ChannelData::ArrayDInt32(t) => {
+                let n = t.shape().iter().product::<usize>();
+                Ok(ChannelData::ArrayDInt32(TensorArrow::new_from_buffer(
+                    t.values_slice()[start * n..end * n].to_vec().into(),
+                    t.shape().clone(),
+                    t.order().clone(),
+                )))
+            }
+            ChannelData::ArrayDUInt32(t) => {
+                let n = t.shape().iter().product::<usize>();
+                Ok(ChannelData::ArrayDUInt32(TensorArrow::new_from_buffer(
+                    t.values_slice()[start * n..end * n].to_vec().into(),
+                    t.shape().clone(),
+                    t.order().clone(),
+                )))
+            }
+            ChannelData::ArrayDFloat32(t) => {
+                let n = t.shape().iter().product::<usize>();
+                Ok(ChannelData::ArrayDFloat32(TensorArrow::new_from_buffer(
+                    t.values_slice()[start * n..end * n].to_vec().into(),
+                    t.shape().clone(),
+                    t.order().clone(),
+                )))
+            }
+            ChannelData::ArrayDInt64(t) => {
+                let n = t.shape().iter().product::<usize>();
+                Ok(ChannelData::ArrayDInt64(TensorArrow::new_from_buffer(
+                    t.values_slice()[start * n..end * n].to_vec().into(),
+                    t.shape().clone(),
+                    t.order().clone(),
+                )))
+            }
+            ChannelData::ArrayDUInt64(t) => {
+                let n = t.shape().iter().product::<usize>();
+                Ok(ChannelData::ArrayDUInt64(TensorArrow::new_from_buffer(
+                    t.values_slice()[start * n..end * n].to_vec().into(),
+                    t.shape().clone(),
+                    t.order().clone(),
+                )))
+            }
+            ChannelData::ArrayDFloat64(t) => {
+                let n = t.shape().iter().product::<usize>();
+                Ok(ChannelData::ArrayDFloat64(TensorArrow::new_from_buffer(
+                    t.values_slice()[start * n..end * n].to_vec().into(),
+                    t.shape().clone(),
+                    t.order().clone(),
+                )))
+            }
+        }
+    }
     /// checks is if ndarray is empty
     pub fn is_empty(&self) -> bool {
         dispatch_all!(self, a => a.is_empty())

@@ -12,8 +12,8 @@ use std::fs::{File, OpenOptions};
 use std::io::BufReader;
 use std::sync::Arc;
 
-use anyhow::{Context, Error, Result};
-use arrow::array::Array;
+use anyhow::{Context, Error, Result, bail};
+use arrow::array::{Array, TimestampNanosecondArray};
 use arrow::util::display::{ArrayFormatter, FormatOptions};
 use log::info;
 #[cfg(feature = "numpy")]
@@ -179,6 +179,43 @@ impl Mdf {
     pub fn get_channel_names_set(&self) -> HashSet<String> {
         self.mdf_info.get_channel_names_set()
     }
+    /// returns measurement start timestamp in nanoseconds since Unix epoch
+    pub fn get_start_time_ns(&self) -> u64 {
+        self.mdf_info.get_start_time_ns()
+    }
+    /// returns timezone + DST offset in minutes
+    pub fn get_tz_offset_min(&self) -> i16 {
+        self.mdf_info.get_tz_offset_min()
+    }
+    /// returns master channel data as absolute nanosecond timestamps.
+    /// Returns None if the channel has no Time master (sync type 1).
+    pub fn get_master_channel_datetimes(
+        &self,
+        channel_name: &str,
+    ) -> Option<TimestampNanosecondArray> {
+        let master = self.mdf_info.get_channel_master(channel_name)?;
+        if self.mdf_info.get_channel_master_type(channel_name) != 1 {
+            return None;
+        }
+        let start_ns = self.mdf_info.get_start_time_ns() as i64;
+        let offset_min = self.mdf_info.get_tz_offset_min();
+        let tz = format!(
+            "{:+03}:{:02}",
+            offset_min / 60,
+            offset_min.unsigned_abs() % 60
+        );
+        match self.get_channel_data(&master)? {
+            ChannelData::Float64(b) => {
+                let ns: Vec<i64> = b
+                    .values_slice()
+                    .iter()
+                    .map(|&s| start_ns + (s * 1e9) as i64)
+                    .collect();
+                Some(TimestampNanosecondArray::from(ns).with_timezone(tz))
+            }
+            _ => None,
+        }
+    }
     /// returns the full channel-name → position-tuple map
     pub fn get_channels_db(&self) -> ChannelsDb {
         self.mdf_info.get_channels_db()
@@ -299,7 +336,43 @@ impl Mdf {
             .clear_channel_data_from_memory(channel_names)?;
         Ok(())
     }
+    /// keeps only the given channels in memory; all others have their data cleared.
+    /// Master channels of any kept channel are automatically retained.
+    pub fn keep_channels(&mut self, names: HashSet<String>) -> Result<()> {
+        let mut masters_to_keep = HashSet::new();
+        for n in &names {
+            if let Some(m) = self.mdf_info.get_channel_master(n) {
+                masters_to_keep.insert(m);
+            }
+        }
+        let to_drop: HashSet<String> = self
+            .get_channel_names_set()
+            .into_iter()
+            .filter(|n| !names.contains(n) && !masters_to_keep.contains(n))
+            .collect();
+        self.mdf_info.clear_channel_data_from_memory(to_drop)
+    }
 
+    /// slices all channels in the same group as `master_name` to [start_s, stop_s].
+    /// The master channel must be a Time master (sync_type == 1) with Float64 data.
+    pub fn cut(&mut self, master_name: &str, start_s: f64, stop_s: f64) -> Result<()> {
+        if self.mdf_info.get_channel_master_type(master_name) != 1 {
+            bail!("cut: '{master_name}' is not a Time master channel");
+        }
+        // Collect values before taking a mutable borrow
+        let values: Vec<f64> = match self.get_channel_data(master_name) {
+            Some(ChannelData::Float64(b)) => b.values_slice().to_vec(),
+            Some(_) => bail!("cut: master channel '{master_name}' is not Float64"),
+            None => bail!("cut: master channel '{master_name}' has no data loaded"),
+        };
+        let start_idx = values.partition_point(|&v| v < start_s);
+        let stop_idx = values.partition_point(|&v| v <= stop_s);
+        // Collect channel names in the group (owned, no borrow conflict)
+        let mut channel_set = self.mdf_info.get_channel_names_cg_set(master_name);
+        channel_set.insert(master_name.to_string());
+        self.mdf_info
+            .slice_channels(&channel_set, start_idx, stop_idx)
+    }
     /// export to Parquet files, one for each channel group (or dataframe)
     #[cfg(feature = "parquet")]
     pub fn export_to_parquet(&self, file_name: &str, compression: Option<&str>) -> Result<()> {
