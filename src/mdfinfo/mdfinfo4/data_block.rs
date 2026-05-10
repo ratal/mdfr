@@ -18,9 +18,10 @@ use zstd::Decoder as ZstdDecoder;
 #[cfg(feature = "numpy")]
 use pyo3::prelude::*;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "numpy", pyclass(eq, eq_int, from_py_object))]
 pub enum CompressionAlgorithm {
+    #[default]
     NoCompression = 255,
     Deflate = 0,
     DeflateTranspose = 1,
@@ -28,12 +29,6 @@ pub enum CompressionAlgorithm {
     ZstdTranspose = 3,
     Lz4 = 4,
     Lz4Transpose = 5,
-}
-
-impl Default for CompressionAlgorithm {
-    fn default() -> Self {
-        Self::NoCompression
-    }
 }
 
 /// DTBLOCK structure (MDF 4.2 spec, Table 55) — plain data storage
@@ -69,7 +64,7 @@ pub struct Dl4Block {
     /// reserved
     reserved: [u8; 4],
     /// Length of block in bytes
-    dl_len: u64,
+    pub dl_len: u64,
     /// # of links
     dl_links: u64,
     // links

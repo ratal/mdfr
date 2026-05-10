@@ -54,6 +54,30 @@ impl Display for Blockheader4 {
     }
 }
 
+impl Blockheader4 {
+    /// Validates that hdr_len is plausible before allocating the block body buffer.
+    /// Guards against corrupted length fields causing OOM or arithmetic overflow.
+    pub fn validate_len(&self, file_size: u64) -> Result<()> {
+        use anyhow::bail;
+        if self.hdr_len < 24 {
+            bail!(
+                "block {:?} has hdr_len={} < 24 (minimum header size)",
+                self.hdr_id,
+                self.hdr_len
+            );
+        }
+        if self.hdr_len > file_size {
+            bail!(
+                "block {:?} has hdr_len={} > file size {} — corrupted length",
+                self.hdr_id,
+                self.hdr_len,
+                file_size
+            );
+        }
+        Ok(())
+    }
+}
+
 /// parse the block header and its fields id, (reserved), length and number of links
 #[inline]
 pub fn parse_block_header(rdr: &mut SymBufReader<&File>) -> Result<Blockheader4> {
@@ -95,6 +119,29 @@ impl Display for Blockheader4Short {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let id = str::from_utf8(&self.hdr_id).unwrap_or("????");
         write!(f, "Block: {} len={}", id, self.hdr_len)
+    }
+}
+
+impl Blockheader4Short {
+    /// Validates that hdr_len is plausible before allocating the block body buffer.
+    pub fn validate_len(&self, file_size: u64) -> Result<()> {
+        use anyhow::bail;
+        if self.hdr_len < 16 {
+            bail!(
+                "block {:?} has hdr_len={} < 16 (minimum short header size)",
+                self.hdr_id,
+                self.hdr_len
+            );
+        }
+        if self.hdr_len > file_size {
+            bail!(
+                "block {:?} has hdr_len={} > file size {} — corrupted length",
+                self.hdr_id,
+                self.hdr_len,
+                file_size
+            );
+        }
+        Ok(())
     }
 }
 
@@ -143,6 +190,11 @@ pub(super) fn parse_block(
         .context("Could not reach block header position")?; // change buffer position
     let block_header = parse_block_header(rdr).context(" could not read header block")?; // reads header
 
+    let file_size = rdr.file_size().unwrap_or(u64::MAX);
+    block_header
+        .validate_len(file_size)
+        .context("block header length validation failed")?;
+
     // Reads in buffer rest of block
     let mut buf = vec![0u8; (block_header.hdr_len - 24) as usize];
     rdr.read_exact(&mut buf)
@@ -164,6 +216,11 @@ pub(super) fn parse_block_short(
         .context("Could not reach block short header position")?; // change buffer position
     let block_header: Blockheader4Short =
         parse_block_header_short(rdr).context(" could not read short header block")?; // reads header
+
+    let file_size = rdr.file_size().unwrap_or(u64::MAX);
+    block_header
+        .validate_len(file_size)
+        .context("short block header length validation failed")?;
 
     // Reads in buffer rest of block
     let mut buf = vec![0u8; (block_header.hdr_len - 16) as usize];

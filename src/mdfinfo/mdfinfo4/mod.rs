@@ -16,8 +16,10 @@ mod data_block;
 mod dg_block;
 mod ev_block;
 mod fh_block;
+pub mod finalize;
 mod hd_block;
 mod metadata;
+pub mod scanner;
 mod si_block;
 mod sr_block;
 

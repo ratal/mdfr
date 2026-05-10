@@ -23,6 +23,8 @@ pub mod sym_buf_reader;
 
 use binrw::io::Cursor;
 use mdfinfo3::{MdfInfo3, SharableBlocks3, hd3_comment_parser, hd3_parser, parse_dg3};
+use mdfinfo4::finalize::fix_cycle_counts;
+use mdfinfo4::scanner;
 use mdfinfo4::{
     MdfInfo4, SharableBlocks, build_channel_db, hd4_parser, parse_at4, parse_ch4, parse_dg4,
     parse_ev4, parse_fh,
@@ -253,6 +255,39 @@ impl MdfInfo {
             let (mut dg, _, n_cg, n_cn) =
                 parse_dg4(&mut rdr, hd.hd_dg_first, position, &mut sharable)
                     .context("failed parsing mdf4 data")?;
+
+            // Fallback: if the HD→DG link is nil and the chain yielded nothing,
+            // scan the raw file bytes for ##DG signatures and re-parse from there.
+            if dg.is_empty() && hd.hd_dg_first <= 0 {
+                warn!("No DG blocks found via HD chain; attempting raw block scan");
+                let dg_offsets = scanner::find_dg_blocks(&mut rdr);
+                if !dg_offsets.is_empty() {
+                    warn!("Scanner found {} DG block(s); re-parsing", dg_offsets.len());
+                    for offset in dg_offsets {
+                        if dg.contains_key(&offset) {
+                            continue;
+                        }
+                        match parse_dg4(&mut rdr, offset, 0, &mut sharable) {
+                            Ok((scanned_dg, _, _, _)) => dg.extend(scanned_dg),
+                            Err(e) => warn!("Scanner: could not parse DG at 0x{offset:x}: {e:#}"),
+                        }
+                    }
+                }
+            }
+
+            // If the file was not properly finalized, fix cycle counts in memory before
+            // data reading begins. This corrects cg_cycle_count so the reader knows how
+            // many records to expect from the truncated data blocks.
+            if is_unfinalized
+                && (id_unfin_flags
+                    & (UNFIN_CG_CYCLE_COUNTERS | UNFIN_LAST_DT_LENGTH | UNFIN_LAST_DL_BLOCK))
+                    != 0
+            {
+                match fix_cycle_counts(&mut dg, &mut rdr) {
+                    Ok(n) => info!("finalize: corrected cycle counts for {n} channel groups"),
+                    Err(e) => warn!("finalize: could not fix cycle counts: {e:#}"),
+                }
+            }
 
             // make channel names unique, list channels and create master dictionnary
             let channel_names_set = build_channel_db(&mut dg, &sharable, n_cg, n_cn);

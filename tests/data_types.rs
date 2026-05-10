@@ -7,6 +7,7 @@ use arrow::array::{
     LargeStringBuilder,
 };
 use mdfr::data_holder::channel_data::ChannelData;
+use mdfr::mdfinfo::mdfinfo4::CompressionAlgorithm;
 use mdfr::mdfreader::Mdf;
 use std::sync::LazyLock;
 
@@ -51,7 +52,7 @@ fn data_types() -> Result<()> {
             data.clone()
         );
     }
-    let mut mdf2 = mdf.write(&writing_mdf_file, false)?;
+    let mut mdf2 = mdf.write(&writing_mdf_file, CompressionAlgorithm::NoCompression)?;
     mdf2.load_all_channels_data_in_memory()?;
     if let Some(data) = mdf2.get_channel_data("Counter_INT64_LE") {
         assert_eq!(
@@ -185,7 +186,7 @@ fn string_types() -> Result<()> {
     if let Some(data) = mdf.get_channel_data("Data channel") {
         assert_eq!(expected_string_result, data.clone());
     }
-    let mut mdf2 = mdf.write(&writing_mdf_file, false)?;
+    let mut mdf2 = mdf.write(&writing_mdf_file, CompressionAlgorithm::NoCompression)?;
     mdf2.load_all_channels_data_in_memory()?;
     if let Some(data) = mdf2.get_channel_data("Data channel") {
         assert_eq!(expected_string_result, data.clone());
@@ -203,7 +204,7 @@ fn string_types() -> Result<()> {
     if let Some(data) = mdf.get_channel_data("Data channel") {
         assert_eq!(expected_string_result, data.clone());
     }
-    let mut mdf2 = mdf.write(&writing_mdf_file, false)?;
+    let mut mdf2 = mdf.write(&writing_mdf_file, CompressionAlgorithm::NoCompression)?;
     mdf2.load_all_channels_data_in_memory()?;
     if let Some(data) = mdf2.get_channel_data("Data channel") {
         assert_eq!(expected_string_result, data.clone());
@@ -233,7 +234,7 @@ fn string_types() -> Result<()> {
     if let Some(data) = mdf.get_channel_data("Data channel") {
         assert_eq!(expected_string_result, data.clone());
     }
-    let mut mdf2 = mdf.write(&writing_mdf_file, false)?;
+    let mut mdf2 = mdf.write(&writing_mdf_file, CompressionAlgorithm::NoCompression)?;
     mdf2.load_all_channels_data_in_memory()?;
     if let Some(data) = mdf2.get_channel_data("Data channel") {
         assert_eq!(expected_string_result, data.clone());
@@ -280,7 +281,7 @@ fn byte_array_types() -> Result<()> {
     if let Some(data) = mdf.get_channel_data("Data channel") {
         assert_eq!(&ChannelData::FixedSizeByteArray(byte_array), data);
     }
-    let mut mdf2 = mdf.write(&writing_mdf_file, false)?;
+    let mut mdf2 = mdf.write(&writing_mdf_file, CompressionAlgorithm::NoCompression)?;
     mdf2.load_all_channels_data_in_memory()?;
     if let Some(data) = mdf2.get_channel_data("Data channel") {
         let mut byte_array = FixedSizeBinaryBuilder::with_capacity(10, 5);

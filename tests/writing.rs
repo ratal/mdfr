@@ -6,7 +6,7 @@ use arrow::array::{AsArray, Float64Array, PrimitiveBuilder};
 use arrow::datatypes::Float32Type;
 use mdfr::data_holder::channel_data::ChannelData;
 use mdfr::mdfinfo::MdfInfo;
-use mdfr::mdfinfo::mdfinfo4::Compo;
+use mdfr::mdfinfo::mdfinfo4::{Compo, CompressionAlgorithm};
 use mdfr::mdfreader::Mdf;
 use std::path::Path;
 use std::sync::{Arc, LazyLock};
@@ -42,7 +42,7 @@ fn writing_mdf4() -> Result<()> {
     mdf.load_all_channels_data_in_memory()?;
 
     // without compression
-    let mut info2 = mdf.write(&writing_mdf_file, false)?;
+    let mut info2 = mdf.write(&writing_mdf_file, CompressionAlgorithm::NoCompression)?;
     info2.load_all_channels_data_in_memory()?;
     if let Some(data) = mdf.get_channel_data(ref_channel) {
         if let Some(data2) = info2.get_channel_data(ref_channel) {
@@ -55,7 +55,7 @@ fn writing_mdf4() -> Result<()> {
     }
 
     // with compression
-    let mut info2 = mdf.write(&writing_mdf_file, true)?;
+    let mut info2 = mdf.write(&writing_mdf_file, CompressionAlgorithm::Deflate)?;
     info2.load_all_channels_data_in_memory()?;
     if let Some(data) = mdf.get_channel_data(ref_channel) {
         if let Some(data2) = info2.get_channel_data(ref_channel) {
@@ -82,7 +82,7 @@ fn writing_mdf4_many_channels() -> Result<()> {
     mdf.load_all_channels_data_in_memory()?;
 
     // with compression
-    let mut info2 = mdf.write(&writing_mdf_file, true)?;
+    let mut info2 = mdf.write(&writing_mdf_file, CompressionAlgorithm::Deflate)?;
     info2.load_all_channels_data_in_memory()?;
     if let Some(data) = mdf.get_channel_data(ref_channel) {
         if let Some(data2) = info2.get_channel_data(ref_channel) {
@@ -95,7 +95,7 @@ fn writing_mdf4_many_channels() -> Result<()> {
     }
 
     // without compression
-    let mut info2 = mdf.write(&writing_mdf_file, false)?;
+    let mut info2 = mdf.write(&writing_mdf_file, CompressionAlgorithm::NoCompression)?;
     info2.load_all_channels_data_in_memory()?;
     if let Some(data) = mdf.get_channel_data(ref_channel) {
         if let Some(data2) = info2.get_channel_data(ref_channel) {
@@ -124,7 +124,7 @@ fn mdf3_to_mdf4_conversion() -> Result<()> {
     let mut mdf = Mdf::new(&file)?;
     mdf.load_all_channels_data_in_memory()?;
     let channel_name3 = r"TEMP_FUEL";
-    let mut mdf4 = mdf.write(&writing_mdf_file, true)?;
+    let mut mdf4 = mdf.write(&writing_mdf_file, CompressionAlgorithm::Deflate)?;
     mdf4.load_all_channels_data_in_memory()?;
     let mdf3_data = mdf.get_channel_data(channel_name3);
     let mdf4_data = mdf4.get_channel_data(channel_name3);
@@ -283,7 +283,7 @@ fn writing_mdf4_file_history() -> Result<()> {
     };
 
     // Write and re-read from disk
-    let _written = mdf.write(&writing_mdf_file, false)?;
+    let _written = mdf.write(&writing_mdf_file, CompressionAlgorithm::NoCompression)?;
     let reread = Mdf::new(&writing_mdf_file)?;
 
     match &reread.mdf_info {
@@ -346,7 +346,7 @@ fn writing_mdf4_source_information() -> Result<()> {
     source_si_set.dedup();
 
     // Write and re-read from disk
-    let _written = mdf.write(&writing_mdf_file, false)?;
+    let _written = mdf.write(&writing_mdf_file, CompressionAlgorithm::NoCompression)?;
     let reread = Mdf::new(&writing_mdf_file)?;
 
     match &reread.mdf_info {
@@ -410,7 +410,7 @@ fn writing_mdf4_events() -> Result<()> {
     source_event_names.sort();
 
     // Write and re-read from disk
-    let _written = mdf.write(&writing_mdf_file, false)?;
+    let _written = mdf.write(&writing_mdf_file, CompressionAlgorithm::NoCompression)?;
     let mut reread = Mdf::new(&writing_mdf_file)?;
     reread.load_all_channels_data_in_memory()?;
 
@@ -491,7 +491,7 @@ fn writing_mdf4_attachments() -> Result<()> {
     let source_at_count = source_at_info.len();
 
     // Write and re-read from disk
-    let _written = mdf.write(&writing_mdf_file, false)?;
+    let _written = mdf.write(&writing_mdf_file, CompressionAlgorithm::NoCompression)?;
     let mut reread = Mdf::new(&writing_mdf_file)?;
     reread.load_all_channels_data_in_memory()?;
 
@@ -565,7 +565,7 @@ fn writing_mdf4_vlsd() -> Result<()> {
         .clone();
 
     // Write without compression — verify file is valid and non-VLSD data preserved
-    let _written = mdf.write(&writing_mdf_file, false)?;
+    let _written = mdf.write(&writing_mdf_file, CompressionAlgorithm::NoCompression)?;
     let mut reread = Mdf::new(&writing_mdf_file)?;
     reread.load_all_channels_data_in_memory()?;
     let reread_names = reread.get_channel_names_set();
@@ -582,7 +582,7 @@ fn writing_mdf4_vlsd() -> Result<()> {
     );
 
     // Write with compression — verify file is valid
-    let _written = mdf.write(&writing_mdf_file, true)?;
+    let _written = mdf.write(&writing_mdf_file, CompressionAlgorithm::Deflate)?;
     let mut reread = Mdf::new(&writing_mdf_file)?;
     reread.load_all_channels_data_in_memory()?;
     let reread_names = reread.get_channel_names_set();
@@ -611,7 +611,7 @@ fn writing_mdf4_vlsd() -> Result<()> {
         .expect("SBC source should have Time channel")
         .clone();
 
-    let _written = mdf.write(&writing_mdf_file, true)?;
+    let _written = mdf.write(&writing_mdf_file, CompressionAlgorithm::Deflate)?;
     let mut reread = Mdf::new(&writing_mdf_file)?;
     reread.load_all_channels_data_in_memory()?;
     assert!(
@@ -658,7 +658,7 @@ fn writing_mdf4_arrays() -> Result<()> {
     assert!(!source_names.is_empty(), "Source file should have channels");
 
     // Write and verify channel data is preserved via in-memory return
-    let written = mdf.write(&writing_mdf_file, false)?;
+    let written = mdf.write(&writing_mdf_file, CompressionAlgorithm::NoCompression)?;
     let written_names = written.get_channel_names_set();
     assert_eq!(
         source_names, written_names,
@@ -702,7 +702,7 @@ fn writing_mdf4_channel_hierarchy() -> Result<()> {
     };
 
     // Write and re-read
-    let _written = mdf.write(&writing_mdf_file, false)?;
+    let _written = mdf.write(&writing_mdf_file, CompressionAlgorithm::NoCompression)?;
     let reread = Mdf::new(&writing_mdf_file)?;
 
     match &reread.mdf_info {
@@ -758,7 +758,7 @@ fn writing_mdf4_composition_ds_cl() -> Result<()> {
     assert!(has_ds_or_cl, "Source should have DS or CL composition");
 
     // Write and verify via in-memory return
-    let mut written = mdf.write(&writing_mdf_file, false)?;
+    let mut written = mdf.write(&writing_mdf_file, CompressionAlgorithm::NoCompression)?;
     written.load_all_channels_data_in_memory()?;
 
     // Verify decoded child channel data is preserved through write roundtrip
@@ -827,7 +827,7 @@ fn writing_mdf4_composition_cv() -> Result<()> {
     assert!(source_cv_info.0, "Source should have CV composition");
 
     // Write and verify via in-memory return
-    let written = mdf.write(&writing_mdf_file, false)?;
+    let written = mdf.write(&writing_mdf_file, CompressionAlgorithm::NoCompression)?;
 
     // Verify CV composition preserved with same option count
     match &written.mdf_info {
@@ -904,7 +904,7 @@ fn writing_mdf4_composition_cu() -> Result<()> {
     assert!(source_cu_info.0, "Source should have CU composition");
 
     // Write and verify via in-memory return
-    let written = mdf.write(&writing_mdf_file, false)?;
+    let written = mdf.write(&writing_mdf_file, CompressionAlgorithm::NoCompression)?;
 
     // Verify CU composition preserved with same member count
     match &written.mdf_info {

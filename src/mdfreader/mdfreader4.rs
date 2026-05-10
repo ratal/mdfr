@@ -1008,11 +1008,18 @@ fn read_dv_di(
 /// Reads all DL Blocks and returns a vect of them
 fn parser_dl4(rdr: &mut BufReader<&File>, mut position: i64) -> Result<(Vec<Dl4Block>, i64)> {
     let mut dl_blocks: Vec<Dl4Block> = Vec::new();
+    let mut visited: HashSet<i64> = HashSet::new();
+    let start = position;
+    visited.insert(start);
     let (block, pos) = parser_dl4_block(rdr, position, position)?;
     position = pos;
     dl_blocks.push(block.clone());
     let mut next_dl = block.dl_dl_next;
     while next_dl > 0 {
+        if !visited.insert(next_dl) {
+            warn!("DL block cycle detected at 0x{next_dl:x}, stopping chain walk");
+            break;
+        }
         rdr.seek_relative(next_dl - position)
             .context("Could not reach DL4 block position")?;
         position = next_dl;
@@ -1074,10 +1081,33 @@ fn parser_dl4_sorted(
             } else {
                 let block_header: Dt4Block =
                     rdr.read_le().context("Could not read DT block header")?;
-                let mut buf = vec![0u8; (block_header.len - 24) as usize];
+                // Guard against unfinalized files where the last DT block's len field
+                // was never updated (len == 0 or garbage). Clamp to available file bytes.
+                let data_len = if block_header.len >= 24 {
+                    let file_size = rdr
+                        .get_ref()
+                        .metadata()
+                        .map(|m| m.len())
+                        .unwrap_or(u64::MAX);
+                    let claimed = block_header.len - 24;
+                    let available = (file_size as i64).saturating_sub(data_pointer + 24);
+                    if available > 0 {
+                        claimed.min(available as u64) as usize
+                    } else {
+                        0
+                    }
+                } else {
+                    // len < 24 — block header not finalized; read nothing for this block
+                    warn!(
+                        "DT block at 0x{data_pointer:x} has invalid len={} (unfinalized?), skipping",
+                        block_header.len
+                    );
+                    0
+                };
+                let mut buf = vec![0u8; data_len];
                 rdr.read_exact(&mut buf)
                     .context("Could not read DT block data")?;
-                position = data_pointer + block_header.len as i64;
+                position = data_pointer + 24 + data_len as i64;
                 let is_sd = &id[2..4] == b"SD";
                 raw_entries.push((is_sd, RawCompBlock::Plain(buf)));
             }

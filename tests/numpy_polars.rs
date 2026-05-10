@@ -64,7 +64,11 @@ mod numpy_tests {
         // 4 complex32 samples stored as interleaved f32 pairs: (1+2j, 3+4j, 5+6j, 7+8j)
         let buf =
             MutableBuffer::from_iter([1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0].iter().copied());
-        let ca = ComplexArrow::<Float32Type>::new_from_buffer(buf);
+        let ca = ComplexArrow::<Float32Type>::new_from_buffer(
+            buf,
+            vec![1],
+            mdfr::data_holder::tensor_arrow::Order::RowMajor,
+        );
         let cd = ChannelData::Complex32(ca);
         Python::attach(|py| {
             let obj = cd.into_pyobject(py).unwrap();
