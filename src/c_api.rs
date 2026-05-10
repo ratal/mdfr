@@ -369,3 +369,172 @@ pub unsafe extern "C" fn export_to_hdf5(
         }
     }
 }
+
+/// Returns the recording sequence index (MDF 4.3 `Recorder.SequenceIndex` common_property).
+/// Writes the value into `*out` and returns true if the property is present; false otherwise.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn get_recorder_sequence_index(mdf: *const Mdf, out: *mut u64) -> bool {
+    unsafe {
+        if mdf.is_null() || out.is_null() {
+            return false;
+        }
+        if let Some(mdf) = mdf.as_ref()
+            && let Some(v) = mdf.get_recorder_sequence_index()
+        {
+            *out = v;
+            return true;
+        }
+        false
+    }
+}
+
+/// Returns the recorder file index (MDF 4.3 `Recorder.FileIndex` common_property).
+/// Writes the value into `*out` and returns true if the property is present; false otherwise.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn get_recorder_file_index(mdf: *const Mdf, out: *mut u64) -> bool {
+    unsafe {
+        if mdf.is_null() || out.is_null() {
+            return false;
+        }
+        if let Some(mdf) = mdf.as_ref()
+            && let Some(v) = mdf.get_recorder_file_index()
+        {
+            *out = v;
+            return true;
+        }
+        false
+    }
+}
+
+/// Returns whether this is the last file in the recorder sequence
+/// (MDF 4.3 `Recorder.FileLast` common_property).
+/// Writes 0 (false) or 1 (true) into `*out` and returns true if the property is present.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn get_recorder_file_last(mdf: *const Mdf, out: *mut c_uchar) -> bool {
+    unsafe {
+        if mdf.is_null() || out.is_null() {
+            return false;
+        }
+        if let Some(mdf) = mdf.as_ref()
+            && let Some(v) = mdf.get_recorder_file_last()
+        {
+            *out = v as c_uchar;
+            return true;
+        }
+        false
+    }
+}
+
+/// Returns the recorder UUID string (MDF 4.3 `Recorder.UUID` common_property).
+/// Returns a heap-allocated null-terminated C string; caller must free with `libc::free()`.
+/// Returns null pointer if the property is absent or on error.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn get_recorder_uuid(mdf: *const Mdf) -> *const c_char {
+    unsafe {
+        if mdf.is_null() {
+            return std::ptr::null();
+        }
+        if let Some(mdf) = mdf.as_ref()
+            && let Some(s) = mdf.get_recorder_uuid()
+            && let Ok(cs) = CString::new(s)
+        {
+            return cs.into_raw();
+        }
+        std::ptr::null()
+    }
+}
+
+/// Returns the measurement UUID string (MDF 4.3 `MeasurementUUID` common_property).
+/// Returns a heap-allocated null-terminated C string; caller must free with `libc::free()`.
+/// Returns null pointer if the property is absent or on error.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn get_measurement_uuid(mdf: *const Mdf) -> *const c_char {
+    unsafe {
+        if mdf.is_null() {
+            return std::ptr::null();
+        }
+        if let Some(mdf) = mdf.as_ref()
+            && let Some(s) = mdf.get_measurement_uuid()
+            && let Ok(cs) = CString::new(s)
+        {
+            return cs.into_raw();
+        }
+        std::ptr::null()
+    }
+}
+
+/// Returns the author string from HD common_properties (MDF 4.3).
+/// Returns a heap-allocated null-terminated C string; caller must free with `libc::free()`.
+/// Returns null pointer if the property is absent or on error.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn get_author(mdf: *const Mdf) -> *const c_char {
+    unsafe {
+        if mdf.is_null() {
+            return std::ptr::null();
+        }
+        if let Some(mdf) = mdf.as_ref()
+            && let Some(s) = mdf.get_author()
+            && let Ok(cs) = CString::new(s)
+        {
+            return cs.into_raw();
+        }
+        std::ptr::null()
+    }
+}
+
+/// Returns the department string from HD common_properties (MDF 4.3).
+/// Returns a heap-allocated null-terminated C string; caller must free with `libc::free()`.
+/// Returns null pointer if the property is absent or on error.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn get_department(mdf: *const Mdf) -> *const c_char {
+    unsafe {
+        if mdf.is_null() {
+            return std::ptr::null();
+        }
+        if let Some(mdf) = mdf.as_ref()
+            && let Some(s) = mdf.get_department()
+            && let Ok(cs) = CString::new(s)
+        {
+            return cs.into_raw();
+        }
+        std::ptr::null()
+    }
+}
+
+/// Returns the project string from HD common_properties (MDF 4.3).
+/// Returns a heap-allocated null-terminated C string; caller must free with `libc::free()`.
+/// Returns null pointer if the property is absent or on error.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn get_project(mdf: *const Mdf) -> *const c_char {
+    unsafe {
+        if mdf.is_null() {
+            return std::ptr::null();
+        }
+        if let Some(mdf) = mdf.as_ref()
+            && let Some(s) = mdf.get_project()
+            && let Ok(cs) = CString::new(s)
+        {
+            return cs.into_raw();
+        }
+        std::ptr::null()
+    }
+}
+
+/// Returns the subject string from HD common_properties (MDF 4.3).
+/// Returns a heap-allocated null-terminated C string; caller must free with `libc::free()`.
+/// Returns null pointer if the property is absent or on error.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn get_subject(mdf: *const Mdf) -> *const c_char {
+    unsafe {
+        if mdf.is_null() {
+            return std::ptr::null();
+        }
+        if let Some(mdf) = mdf.as_ref()
+            && let Some(s) = mdf.get_subject()
+            && let Ok(cs) = CString::new(s)
+        {
+            return cs.into_raw();
+        }
+        std::ptr::null()
+    }
+}

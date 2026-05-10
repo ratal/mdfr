@@ -333,6 +333,111 @@ impl MdfInfo {
             ),
         }
     }
+    /// Index of this file within a recording sequence (MDF 4.3). None for MDF3 or missing.
+    pub fn get_recorder_sequence_index(&self) -> Option<u64> {
+        if let MdfInfo::V4(mdfinfo4) = self {
+            mdfinfo4
+                .sharable
+                .get_hd_comments(mdfinfo4.hd_block.hd_md_comment)?
+                .recorder_sequence_index()
+        } else {
+            None
+        }
+    }
+    /// Index of this file within the recorder's file set (MDF 4.3). None for MDF3 or missing.
+    pub fn get_recorder_file_index(&self) -> Option<u64> {
+        if let MdfInfo::V4(mdfinfo4) = self {
+            mdfinfo4
+                .sharable
+                .get_hd_comments(mdfinfo4.hd_block.hd_md_comment)?
+                .recorder_file_index()
+        } else {
+            None
+        }
+    }
+    /// True if this is the last file in the recorder sequence (MDF 4.3). None for MDF3 or missing.
+    pub fn get_recorder_file_last(&self) -> Option<bool> {
+        if let MdfInfo::V4(mdfinfo4) = self {
+            mdfinfo4
+                .sharable
+                .get_hd_comments(mdfinfo4.hd_block.hd_md_comment)?
+                .recorder_file_last()
+        } else {
+            None
+        }
+    }
+    /// UUID of the recorder device (MDF 4.3). None for MDF3 or missing.
+    pub fn get_recorder_uuid(&self) -> Option<String> {
+        if let MdfInfo::V4(mdfinfo4) = self {
+            mdfinfo4
+                .sharable
+                .get_hd_comments(mdfinfo4.hd_block.hd_md_comment)?
+                .recorder_uuid()
+                .map(str::to_string)
+        } else {
+            None
+        }
+    }
+    /// UUID identifying the measurement (MDF 4.3). None for MdfInfo3 or missing.
+    pub fn get_measurement_uuid(&self) -> Option<String> {
+        if let MdfInfo::V4(mdfinfo4) = self {
+            mdfinfo4
+                .sharable
+                .get_hd_comments(mdfinfo4.hd_block.hd_md_comment)?
+                .measurement_uuid()
+                .map(str::to_string)
+        } else {
+            None
+        }
+    }
+    /// Author field from HD common_properties (MDF 4.3). None for MDF3 or missing.
+    pub fn get_author(&self) -> Option<String> {
+        if let MdfInfo::V4(mdfinfo4) = self {
+            mdfinfo4
+                .sharable
+                .get_hd_comments(mdfinfo4.hd_block.hd_md_comment)?
+                .author()
+                .map(str::to_string)
+        } else {
+            None
+        }
+    }
+    /// Department field from HD common_properties (MDF 4.3). None for MDF3 or missing.
+    pub fn get_department(&self) -> Option<String> {
+        if let MdfInfo::V4(mdfinfo4) = self {
+            mdfinfo4
+                .sharable
+                .get_hd_comments(mdfinfo4.hd_block.hd_md_comment)?
+                .department()
+                .map(str::to_string)
+        } else {
+            None
+        }
+    }
+    /// Project field from HD common_properties (MDF 4.3). None for MDF3 or missing.
+    pub fn get_project(&self) -> Option<String> {
+        if let MdfInfo::V4(mdfinfo4) = self {
+            mdfinfo4
+                .sharable
+                .get_hd_comments(mdfinfo4.hd_block.hd_md_comment)?
+                .project()
+                .map(str::to_string)
+        } else {
+            None
+        }
+    }
+    /// Subject field from HD common_properties (MDF 4.3). None for MDF3 or missing.
+    pub fn get_subject(&self) -> Option<String> {
+        if let MdfInfo::V4(mdfinfo4) = self {
+            mdfinfo4
+                .sharable
+                .get_hd_comments(mdfinfo4.hd_block.hd_md_comment)?
+                .subject()
+                .map(str::to_string)
+        } else {
+            None
+        }
+    }
     /// returns channel's unit string
     pub fn get_channel_unit(&self, channel_name: &str) -> Result<Option<String>> {
         let unit: Option<String> = match self {

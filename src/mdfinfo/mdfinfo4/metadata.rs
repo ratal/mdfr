@@ -135,6 +135,62 @@ impl Display for HdComment {
     }
 }
 
+impl HdComment {
+    /// Extracts a string value from `common_properties` by dotted path.
+    ///
+    /// Handles two equivalent XML encodings:
+    /// - flat:   `map["Recorder.SequenceIndex"] = Value("1")`
+    /// - nested: `map["Recorder"] = Tree { "SequenceIndex" => Value("1") }`
+    fn extract_prop<'a>(props: &'a CommonProperties, path: &str) -> Option<&'a str> {
+        let Some((head, tail)) = path.split_once('.') else {
+            return match props.get(path)? {
+                PropertyValue::Value(v) => Some(v.as_str()),
+                _ => None,
+            };
+        };
+        // flat key takes priority ("Recorder.SequenceIndex" stored as-is)
+        if let Some(PropertyValue::Value(v)) = props.get(path) {
+            return Some(v.as_str());
+        }
+        // nested tree: "Recorder" -> Tree -> tail
+        if let Some(PropertyValue::Tree(sub)) = props.get(head) {
+            return Self::extract_prop(sub, tail);
+        }
+        None
+    }
+
+    pub fn recorder_sequence_index(&self) -> Option<u64> {
+        Self::extract_prop(&self.common_properties, "Recorder.SequenceIndex")
+            .and_then(|s| s.parse().ok())
+    }
+    pub fn recorder_file_index(&self) -> Option<u64> {
+        Self::extract_prop(&self.common_properties, "Recorder.FileIndex")
+            .and_then(|s| s.parse().ok())
+    }
+    pub fn recorder_file_last(&self) -> Option<bool> {
+        Self::extract_prop(&self.common_properties, "Recorder.FileLast")
+            .map(|s| matches!(s.to_ascii_lowercase().as_str(), "true" | "1" | "yes"))
+    }
+    pub fn recorder_uuid(&self) -> Option<&str> {
+        Self::extract_prop(&self.common_properties, "Recorder.UUID")
+    }
+    pub fn measurement_uuid(&self) -> Option<&str> {
+        Self::extract_prop(&self.common_properties, "MeasurementUUID")
+    }
+    pub fn author(&self) -> Option<&str> {
+        Self::extract_prop(&self.common_properties, "author")
+    }
+    pub fn department(&self) -> Option<&str> {
+        Self::extract_prop(&self.common_properties, "department")
+    }
+    pub fn project(&self) -> Option<&str> {
+        Self::extract_prop(&self.common_properties, "project")
+    }
+    pub fn subject(&self) -> Option<&str> {
+        Self::extract_prop(&self.common_properties, "subject")
+    }
+}
+
 /// FH block comment per fh_comment.xsd
 #[derive(Debug, Clone, Default)]
 pub struct FhComment {
@@ -631,6 +687,9 @@ impl MetaData {
         let s = str::from_utf8(&self.raw_data).context("Invalid UTF-8 in metadata")?;
         Ok(s.trim_end_matches(['\0', '\n', '\r', ' ']))
     }
+}
+
+impl MetaData {
     /// Parse HD block MD comment (hd_comment.xsd)
     pub fn parse_hd_comment(&mut self) -> Result<()> {
         let mut hd = HdComment::default();
@@ -1740,5 +1799,64 @@ mod tests {
             ..Default::default()
         });
         assert_eq!(dg.get_tx(), Some("dg_tx"));
+    }
+
+    #[test]
+    fn test_extract_property_nested() {
+        let mut props = CommonProperties::new();
+        let mut tree = HashMap::new();
+        tree.insert("SequenceIndex".into(), PropertyValue::Value("3".into()));
+        props.insert("Recorder".into(), PropertyValue::Tree(tree));
+        assert_eq!(
+            HdComment::extract_prop(&props, "Recorder.SequenceIndex"),
+            Some("3")
+        );
+        assert_eq!(HdComment::extract_prop(&props, "Recorder.Missing"), None);
+        assert_eq!(HdComment::extract_prop(&props, "Other"), None);
+    }
+
+    #[test]
+    fn test_extract_property_flat() {
+        let mut props = CommonProperties::new();
+        props.insert(
+            "Recorder.SequenceIndex".into(),
+            PropertyValue::Value("7".into()),
+        );
+        assert_eq!(
+            HdComment::extract_prop(&props, "Recorder.SequenceIndex"),
+            Some("7")
+        );
+    }
+
+    #[test]
+    fn test_hd_comment_accessor_methods() {
+        let mut hd = HdComment::default();
+        let mut tree = HashMap::new();
+        tree.insert("SequenceIndex".into(), PropertyValue::Value("2".into()));
+        tree.insert("FileLast".into(), PropertyValue::Value("true".into()));
+        tree.insert("UUID".into(), PropertyValue::Value("abc-123".into()));
+        tree.insert("FileIndex".into(), PropertyValue::Value("5".into()));
+        hd.common_properties
+            .insert("Recorder".into(), PropertyValue::Tree(tree));
+        hd.common_properties.insert(
+            "MeasurementUUID".into(),
+            PropertyValue::Value("meas-xyz".into()),
+        );
+
+        assert_eq!(hd.recorder_sequence_index(), Some(2));
+        assert_eq!(hd.recorder_file_last(), Some(true));
+        assert_eq!(hd.recorder_uuid(), Some("abc-123"));
+        assert_eq!(hd.recorder_file_index(), Some(5));
+        assert_eq!(hd.measurement_uuid(), Some("meas-xyz"));
+    }
+
+    #[test]
+    fn test_hd_comment_missing_properties() {
+        let hd = HdComment::default();
+        assert_eq!(hd.recorder_sequence_index(), None);
+        assert_eq!(hd.recorder_file_last(), None);
+        assert_eq!(hd.recorder_uuid(), None);
+        assert_eq!(hd.recorder_file_index(), None);
+        assert_eq!(hd.measurement_uuid(), None);
     }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "mdfr"
-version = "0.6.6"
+version = "0.6.7"
 description = "A package for reading and writing MDF files"
 authors = ["ratal <ratal@ratal.org>"]
 edition = "2024"

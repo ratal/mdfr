@@ -60,6 +60,51 @@ impl Mdfr {
         let Mdfr(mdf) = self;
         mdf.get_unfin_flags()
     }
+    /// Index of this file within a recording sequence (MDF 4.3 common_properties).
+    pub fn get_recorder_sequence_index(&self) -> Option<u64> {
+        let Mdfr(mdf) = self;
+        mdf.get_recorder_sequence_index()
+    }
+    /// Index of this file within the recorder's file set (MDF 4.3 common_properties).
+    pub fn get_recorder_file_index(&self) -> Option<u64> {
+        let Mdfr(mdf) = self;
+        mdf.get_recorder_file_index()
+    }
+    /// True if this is the last file in the recorder sequence (MDF 4.3 common_properties).
+    pub fn get_recorder_file_last(&self) -> Option<bool> {
+        let Mdfr(mdf) = self;
+        mdf.get_recorder_file_last()
+    }
+    /// UUID of the recorder device (MDF 4.3 common_properties).
+    pub fn get_recorder_uuid(&self) -> Option<String> {
+        let Mdfr(mdf) = self;
+        mdf.get_recorder_uuid()
+    }
+    /// UUID identifying the measurement (MDF 4.3 common_properties).
+    pub fn get_measurement_uuid(&self) -> Option<String> {
+        let Mdfr(mdf) = self;
+        mdf.get_measurement_uuid()
+    }
+    /// Author from HD common_properties (MDF 4.3).
+    pub fn get_author(&self) -> Option<String> {
+        let Mdfr(mdf) = self;
+        mdf.get_author()
+    }
+    /// Department from HD common_properties (MDF 4.3).
+    pub fn get_department(&self) -> Option<String> {
+        let Mdfr(mdf) = self;
+        mdf.get_department()
+    }
+    /// Project from HD common_properties (MDF 4.3).
+    pub fn get_project(&self) -> Option<String> {
+        let Mdfr(mdf) = self;
+        mdf.get_project()
+    }
+    /// Subject from HD common_properties (MDF 4.3).
+    pub fn get_subject(&self) -> Option<String> {
+        let Mdfr(mdf) = self;
+        mdf.get_subject()
+    }
     /// returns channel's data, numpy array or list, depending if data type is numeric or string|bytes
     fn get_channel_data(&self, channel_name: String) -> PyResult<Py<PyAny>> {
         let Mdfr(mdf) = self;
