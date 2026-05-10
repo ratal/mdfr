@@ -20,6 +20,41 @@ use unicode_bom::Bom;
 
 use crate::data_holder::channel_data::ChannelData;
 
+/// CANopen Time (6 bytes) → ms since Unix epoch.
+/// Layout: bytes 0-3 = ms-within-day [27:0]; bytes 4-5 = days since 1984-01-01.
+fn canopen_time_to_unix_ms(bytes: &[u8]) -> i64 {
+    let ms = (u32::from_le_bytes(bytes[0..4].try_into().unwrap()) & 0x0FFF_FFFF) as i64;
+    let days = u16::from_le_bytes(bytes[4..6].try_into().unwrap()) as i64;
+    // CANopen epoch (1984-01-01) is 5113 days = 441_763_200_000 ms after Unix epoch
+    441_763_200_000 + days * 86_400_000 + ms
+}
+
+/// CANopen Date (7 bytes) → ms since Unix epoch.
+/// Layout: b[0-1] ms-in-minute [15:0]; b[2] min [5:0]; b[3] hour [4:0];
+/// b[4] day [4:0] (1-based); b[5] month [3:0] (1-based); b[6] year-1984 [6:0].
+fn canopen_date_to_unix_ms(bytes: &[u8]) -> i64 {
+    let ms_in_min = u16::from_le_bytes(bytes[0..2].try_into().unwrap()) as i64;
+    let min = (bytes[2] & 0x3F) as i64;
+    let hour = (bytes[3] & 0x1F) as i64;
+    let day = (bytes[4] & 0x1F) as i64;
+    let mon = (bytes[5] & 0x0F) as i64;
+    let year = (bytes[6] & 0x7F) as i64 + 1984;
+    days_since_unix_epoch(year, mon, day) * 86_400_000 + hour * 3_600_000 + min * 60_000 + ms_in_min
+}
+
+/// Days from Unix epoch (1970-01-01) to the given calendar date.
+/// Verified: days_since_unix_epoch(1984, 1, 1) == 5113.
+fn days_since_unix_epoch(year: i64, month: i64, day: i64) -> i64 {
+    const MONTH_OFFSET: [i64; 12] = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+    let y = year - 1970;
+    let leap_days = (y + 1) / 4 - (y + 69) / 100 + (y + 369) / 400;
+    let mut d = y * 365 + leap_days + MONTH_OFFSET[(month - 1) as usize] + (day - 1);
+    if month > 2 && year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) {
+        d += 1;
+    }
+    d
+}
+
 /// converts raw data block containing only one channel into a ndarray
 pub fn read_one_channel_array(
     data_bytes: &Vec<u8>,
@@ -43,6 +78,22 @@ pub fn read_one_channel_array(
         // Clone shape once before the match — only one arm executes, so this is always ≤1 clone.
         let shape_dims = cn.shape.0.clone();
         let shape_order = cn.shape.1.clone();
+
+        // CANopen Date/Time are stored as Int64 (ms since Unix epoch); parse binary here.
+        if cn.block.cn_data_type == 13 || cn.block.cn_data_type == 14 {
+            if let ChannelData::Int64(a) = &mut cn.data {
+                let convert: fn(&[u8]) -> i64 = if cn.block.cn_data_type == 13 {
+                    canopen_date_to_unix_ms
+                } else {
+                    canopen_time_to_unix_ms
+                };
+                for record in data_bytes.chunks(n_bytes) {
+                    a.append_value(convert(record));
+                }
+            }
+            return Ok(());
+        }
+
         match &mut cn.data {
             ChannelData::Int8(a) => {
                 let mut buf = vec![0; cycle_count];
@@ -1609,4 +1660,66 @@ pub fn read_channels_from_bytes(
         .lock()
         .expect("Could not get lock from vlsd channel arc vec");
     Ok(lock.clone())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_days_since_unix_epoch_canopen_epoch() {
+        // CANopen epoch is 1984-01-01; must be exactly 5113 days after Unix epoch
+        assert_eq!(days_since_unix_epoch(1984, 1, 1), 5113);
+    }
+
+    #[test]
+    fn test_days_since_unix_epoch_unix_epoch() {
+        assert_eq!(days_since_unix_epoch(1970, 1, 1), 0);
+    }
+
+    #[test]
+    fn test_days_since_unix_epoch_leap_year() {
+        // 1972 is a leap year; 1972-03-01 = 365 + 365 + 31 + 29 = 790 days after epoch
+        assert_eq!(days_since_unix_epoch(1972, 3, 1), 790);
+    }
+
+    #[test]
+    fn test_canopen_time_epoch() {
+        // days=0, ms=0 → CANopen epoch 1984-01-01 = +441_763_200_000 ms in Unix time
+        let bytes = [0u8; 6];
+        assert_eq!(canopen_time_to_unix_ms(&bytes), 441_763_200_000);
+    }
+
+    #[test]
+    fn test_canopen_time_1984_01_02_midnight() {
+        // days=1 since 1984-01-01, ms=0 → one day after CANopen epoch
+        let mut bytes = [0u8; 6];
+        bytes[4..6].copy_from_slice(&1u16.to_le_bytes());
+        let expected = 441_763_200_000 + 86_400_000;
+        assert_eq!(canopen_time_to_unix_ms(&bytes), expected);
+    }
+
+    #[test]
+    fn test_canopen_date_1984_01_01_midnight() {
+        // year=0 (→1984), month=1, day=1, hour=0, min=0, ms=0
+        // 1984-01-01 00:00:00 UTC = 441_763_200_000 ms after Unix epoch
+        let mut bytes = [0u8; 7];
+        bytes[4] = 1; // day
+        bytes[5] = 1; // month
+        bytes[6] = 0; // year - 1984 = 0
+        assert_eq!(canopen_date_to_unix_ms(&bytes), 441_763_200_000);
+    }
+
+    #[test]
+    fn test_canopen_date_known_value() {
+        // 2000-01-01 00:00:00.000 — well-known Y2K date
+        // year byte = 2000-1984 = 16, month=1, day=1
+        let mut bytes = [0u8; 7];
+        bytes[4] = 1; // day
+        bytes[5] = 1; // month
+        bytes[6] = 16; // year = 1984 + 16 = 2000
+        // Days from Unix epoch to 2000-01-01 = 10957
+        let expected = 10957i64 * 86_400_000;
+        assert_eq!(canopen_date_to_unix_ms(&bytes), expected);
+    }
 }
