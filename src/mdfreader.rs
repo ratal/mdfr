@@ -27,6 +27,7 @@ use crate::mdfreader::mdfreader3::mdfreader3;
 use crate::mdfreader::mdfreader4::mdfreader4;
 use crate::mdfwriter::mdfwriter4::mdfwriter4;
 
+use crate::export::csv::{export_dataframe_to_csv, export_to_csv};
 #[cfg(feature = "parquet")]
 use crate::export::parquet::export_dataframe_to_parquet;
 #[cfg(feature = "parquet")]
@@ -194,7 +195,7 @@ impl Mdf {
         channel_name: &str,
     ) -> Option<TimestampNanosecondArray> {
         let master = self.mdf_info.get_channel_master(channel_name)?;
-        if self.mdf_info.get_channel_master_type(channel_name) != 1 {
+        if self.mdf_info.get_channel_master_type(&master) != 1 {
             return None;
         }
         let start_ns = self.mdf_info.get_start_time_ns() as i64;
@@ -636,6 +637,14 @@ impl Mdf {
     #[cfg(feature = "hdf5")]
     pub fn export_to_hdf5(&self, file_name: &str, compression: Option<&str>) -> Result<()> {
         export_to_hdf5(self, file_name, compression)
+    }
+    /// Exports all loaded channel groups to CSV (one file per channel group).
+    pub fn export_to_csv(&self, file_name: &str) -> Result<()> {
+        export_to_csv(self, file_name)
+    }
+    /// Exports the channel group containing `channel_name` to a CSV file.
+    pub fn export_dataframe_to_csv(&self, channel_name: &str, file_name: &str) -> Result<()> {
+        export_dataframe_to_csv(self, channel_name, file_name)
     }
     /// Writes mdf4 file
     pub fn write(&mut self, file_name: &str, compression: CompressionAlgorithm) -> Result<Mdf> {

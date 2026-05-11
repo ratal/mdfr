@@ -550,6 +550,18 @@ df=polars.DataFrame(series)
         mdf.export_dataframe_to_parquet(channel_name, file_name, compression)?;
         Ok(())
     }
+    /// export all channel groups to CSV (one file per channel group)
+    pub fn export_to_csv(&self, file_name: &str) -> PyResult<()> {
+        let Mdfr(mdf) = self;
+        mdf.export_to_csv(file_name)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+    /// export the channel group containing the given channel to a CSV file
+    pub fn export_dataframe_to_csv(&self, channel_name: String, file_name: &str) -> PyResult<()> {
+        let Mdfr(mdf) = self;
+        mdf.export_dataframe_to_csv(&channel_name, file_name)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
     /// export to hdf5 files
     #[cfg(feature = "hdf5")]
     pub fn export_to_hdf5(&self, file_name: &str, compression: Option<&str>) -> PyResult<()> {
