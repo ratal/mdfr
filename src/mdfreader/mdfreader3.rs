@@ -1,8 +1,8 @@
 //! data read and load in memory based in MdfInfo3's metadata
 use rayon::prelude::*;
 
-use crate::mdfinfo::mdfinfo3::{Cg3, Cn3, Dg3};
 use crate::mdfinfo::MdfInfo;
+use crate::mdfinfo::mdfinfo3::{Cg3, Cn3, Dg3};
 use anyhow::{Context, Error, Result};
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
@@ -31,7 +31,7 @@ pub fn mdfreader3<'a>(
             let mut position: i64 = 0;
             let mut channel_names_present_in_dg: HashSet<String>;
             // read file data
-            for (data_position, dg) in info.dg.iter_mut() {
+            for (data_position, dg) in &mut info.dg {
                 // Let's find channel names
                 channel_names_present_in_dg = HashSet::new();
                 for channel_group in dg.cg.values() {

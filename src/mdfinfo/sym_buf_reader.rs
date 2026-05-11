@@ -13,6 +13,7 @@ where
     pos: usize,
     cap: usize,
     buf: Vec<u8>,
+    file_size_cache: Option<u64>,
 }
 
 impl<R> SymBufReader<R>
@@ -28,6 +29,7 @@ where
             buf: buffer,
             cap: 0,
             pos: 0,
+            file_size_cache: None,
         }
     }
 
@@ -147,10 +149,20 @@ where
     }
 }
 
-impl<R: Seek> SymBufReader<R>
-where
-    R: Read,
-{
+impl<R: Read + Seek> SymBufReader<R> {
+    /// Returns the total length of the underlying stream without changing the
+    /// logical read position. Result is cached after the first call.
+    pub fn file_size(&mut self) -> Result<u64> {
+        if let Some(size) = self.file_size_cache {
+            return Ok(size);
+        }
+        let logical_pos = self.stream_position()?;
+        let size = self.seek(SeekFrom::End(0))?;
+        self.seek(SeekFrom::Start(logical_pos))?;
+        self.file_size_cache = Some(size);
+        Ok(size)
+    }
+
     /// Seeks relative to the current position. If the new position lies within the buffer,
     /// the buffer will not be flushed, allowing for more efficient seeks.
     /// This method does not return the location of the underlying reader, so the caller
@@ -172,12 +184,7 @@ where
         // Flushes the buffer
         self.seek(SeekFrom::Current(offset)).map(drop)
     }
-}
 
-impl<R> SymBufReader<R>
-where
-    R: Read + Seek,
-{
     fn fill_buf(&mut self) -> Result<&[u8]> {
         // If we've reached the end of our internal buffer then we need to fetch
         // some more data from the underlying reader.

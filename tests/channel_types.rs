@@ -1,5 +1,10 @@
+#[path = "common.rs"]
+mod common;
+
 use anyhow::Result;
-use arrow::array::{AsArray, Float64Builder, Int32Builder, LargeStringBuilder, UInt16Builder, UInt64Builder};
+use arrow::array::{
+    Array, AsArray, Float64Builder, Int32Builder, LargeStringBuilder, UInt16Builder, UInt64Builder,
+};
 use arrow::datatypes::Float64Type;
 use mdfr::data_holder::channel_data::ChannelData;
 use mdfr::mdfreader::Mdf;
@@ -7,7 +12,10 @@ use std::path::Path;
 use std::sync::LazyLock;
 
 static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(|| {
-    "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/".to_string()
+    format!(
+        "{}MDF4/MDF4.3/Base_Standard/Examples/",
+        common::mdfreader_tests_path()
+    )
 });
 
 #[test]
@@ -184,7 +192,10 @@ fn virtual_data_channels() -> Result<()> {
     mdf.load_all_channels_data_in_memory()?;
     if let Some(data) = mdf.get_channel_data("Data channel") {
         assert_eq!(
-            ChannelData::Float64(Float64Builder::new_from_buffer(vec![42f64; 200].into(), None)),
+            ChannelData::Float64(Float64Builder::new_from_buffer(
+                vec![42f64; 200].into(),
+                None
+            )),
             *data
         );
     }
@@ -281,6 +292,60 @@ fn vlsc_channels() -> Result<()> {
         panic!("VLSC Data channel not found");
     }
 
+    // VLSC with different string encodings
+    for file in [
+        "Vector_VLSC_String_SBC.mf4",
+        "Vector_VLSC_String_UTF16_LE.mf4",
+        "Vector_VLSC_String_UTF16_BE.mf4",
+    ] {
+        let file_name = format!("{}{}{}", BASE_PATH_MDF4.as_str(), list_of_paths[0], file);
+        let mut mdf = Mdf::new(&file_name)?;
+        mdf.load_all_channels_data_in_memory()?;
+        if let Some(data) = mdf.get_channel_data("Data channel") {
+            assert_eq!(expected_string_result, data.clone(), "Failed for {}", file);
+        } else {
+            panic!("VLSC Data channel not found in {}", file);
+        }
+    }
+
+    // VLSC with single VD block (uncompressed and compressed)
+    for file in [
+        "Vector_VLSC_Single_VD.mf4",
+        "Vector_VLSC_Single_VD_Compressed.mf4",
+    ] {
+        let file_name = format!("{}{}{}", BASE_PATH_MDF4.as_str(), list_of_paths[0], file);
+        let mut mdf = Mdf::new(&file_name)?;
+        mdf.load_all_channels_data_in_memory()?;
+        if let Some(data) = mdf.get_channel_data("data") {
+            assert!(
+                !data.is_empty(),
+                "VLSC data should not be empty in {}",
+                file
+            );
+        } else {
+            panic!("VLSC data channel not found in {}", file);
+        }
+    }
+
+    // VLSC with Data List (DL -> VD blocks), uncompressed and compressed (DL -> DZ)
+    for file in [
+        "Vector_VLSC_DataList_VD.mf4",
+        "Vector_VLSC_DataList_VD_Compressed.mf4",
+    ] {
+        let file_name = format!("{}{}{}", BASE_PATH_MDF4.as_str(), list_of_paths[0], file);
+        let mut mdf = Mdf::new(&file_name)?;
+        mdf.load_all_channels_data_in_memory()?;
+        if let Some(data) = mdf.get_channel_data("data") {
+            assert!(
+                !data.is_empty(),
+                "VLSC data should not be empty in {}",
+                file
+            );
+        } else {
+            panic!("VLSC data channel not found in {}", file);
+        }
+    }
+
     // VLSC Etas with BOM - this file has channels: time, size, comment (VLSC)
     // Note: This file has mixed BOM encodings (UTF-8 and UTF-16 LE)
     let file_name = format!(
@@ -330,8 +395,11 @@ fn channel_list() -> Result<()> {
     // - x: parent structure (FixedSizeByteArray with CL block)
     // - x.a: first member (Int32) [0, 1000000000]
     // - x.b: second member (Float64) [0.0, 2.121995791e-314]
-    let file_name = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/DynamicData/ChannelList/simple_list.mf4";
-    let mut mdf = Mdf::new(file_name)?;
+    let file_name = format!(
+        "{}MDF4/MDF4.3/Base_Standard/Examples/DynamicData/ChannelList/simple_list.mf4",
+        common::mdfreader_tests_path()
+    );
+    let mut mdf = Mdf::new(&file_name)?;
     mdf.load_all_channels_data_in_memory()?;
 
     // Verify all channels are present
@@ -370,8 +438,10 @@ fn channel_list() -> Result<()> {
     if let Some(size_data) = mdf.get_channel_data("size") {
         assert_eq!(size_data.len(), 2, "size should have 2 samples");
         // Size values: [0, 202]
-        let expected_size =
-            ChannelData::UInt16(UInt16Builder::new_from_buffer(vec![0u16, 202u16].into(), None));
+        let expected_size = ChannelData::UInt16(UInt16Builder::new_from_buffer(
+            vec![0u16, 202u16].into(),
+            None,
+        ));
         assert_eq!(
             &expected_size, size_data,
             "size channel values should match"
@@ -406,8 +476,11 @@ fn channel_variant() -> Result<()> {
     // - time: master channel (3 samples) [0.0, 1.0, 2.0]
     // - discriminator: variant selector (3 samples) [0, 1, 2]
     // - variant: merged variant data based on discriminator value
-    let file_name = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/Variant/Etas_cv_storage_with_fixed_length.mf4";
-    let mut mdf = Mdf::new(file_name)?;
+    let file_name = format!(
+        "{}MDF4/MDF4.3/Base_Standard/Examples/Variant/Etas_cv_storage_with_fixed_length.mf4",
+        common::mdfreader_tests_path()
+    );
+    let mut mdf = Mdf::new(&file_name)?;
     mdf.load_all_channels_data_in_memory()?;
 
     // Verify all 3 channels are present
@@ -455,10 +528,32 @@ fn channel_variant() -> Result<()> {
         );
     }
 
-    // Verify variant channel exists and has correct length
+    // Verify variant channel is a dense UnionArray with 3 mixed-type options
     if let Some(variant_data) = mdf.get_channel_data("variant") {
         assert_eq!(variant_data.len(), 3, "variant should have 3 samples");
-        // Variant data is FixedSizeByteArray containing merged data from different options
+        if let ChannelData::Union(arr) = variant_data {
+            assert_eq!(arr.len(), 3, "UnionArray should have 3 samples");
+            let data_type = arr.data_type();
+            if let arrow::datatypes::DataType::Union(fields, arrow::datatypes::UnionMode::Dense) =
+                data_type
+            {
+                assert_eq!(fields.len(), 3, "Union should have 3 option fields");
+            } else {
+                panic!(
+                    "variant channel should be a Dense Union, got {:?}",
+                    data_type
+                );
+            }
+            // Verify each sample selects the correct option via type_ids [0, 1, 2]
+            assert_eq!(arr.type_id(0), 0, "sample 0 should select option 0");
+            assert_eq!(arr.type_id(1), 1, "sample 1 should select option 1");
+            assert_eq!(arr.type_id(2), 2, "sample 2 should select option 2");
+        } else {
+            panic!(
+                "variant channel should be ChannelData::Union for mixed types, got {:?}",
+                std::mem::discriminant(variant_data)
+            );
+        }
     }
     Ok(())
 }
@@ -468,8 +563,11 @@ fn data_stream_block() -> Result<()> {
     // DS Block (Data Stream) test
     // Note: DS blocks are implicitly tested via ChannelList (simple_list.mf4)
     // where the "x" channel uses DSBLOCK for data stream mode
-    let file_name = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/DynamicData/ChannelList/simple_list.mf4";
-    let mut mdf = Mdf::new(file_name)?;
+    let file_name = format!(
+        "{}MDF4/MDF4.3/Base_Standard/Examples/DynamicData/ChannelList/simple_list.mf4",
+        common::mdfreader_tests_path()
+    );
+    let mut mdf = Mdf::new(&file_name)?;
     mdf.load_all_channels_data_in_memory()?;
     // "x" channel uses DS block - verify it's readable
     assert!(
@@ -485,9 +583,12 @@ fn channel_union() -> Result<()> {
     // File: Etas_cu_storage_with_fixed_length.mf4 contains:
     // - time: master channel (3 samples) [0.0, 1.0, 2.0]
     // - union: union data storing different member types in same space
-    let file_name = "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/Union/Etas_cu_storage_with_fixed_length.mf4";
-    if Path::new(file_name).exists() {
-        let mut mdf = Mdf::new(file_name)?;
+    let file_name = format!(
+        "{}MDF4/MDF4.3/Base_Standard/Examples/Union/Etas_cu_storage_with_fixed_length.mf4",
+        common::mdfreader_tests_path()
+    );
+    if Path::new(&file_name).exists() {
+        let mut mdf = Mdf::new(&file_name)?;
         mdf.load_all_channels_data_in_memory()?;
 
         // Verify both channels present
@@ -513,10 +614,27 @@ fn channel_union() -> Result<()> {
             );
         }
 
-        // Verify union channel exists and has correct length
+        // Verify union channel exists, has correct length, and is Union type
         if let Some(union_data) = mdf.get_channel_data("union") {
             assert_eq!(union_data.len(), 3, "union should have 3 samples");
-            // Union data is FixedSizeByteArray containing overlapping member data
+            // Verify it's now a Union type (not FixedSizeByteArray)
+            if let ChannelData::Union(arr) = union_data {
+                // UnionArray should have the same length
+                assert_eq!(arr.len(), 3, "UnionArray should have 3 samples");
+                // Check that we have member fields
+                let data_type = arr.data_type();
+                if let arrow::datatypes::DataType::Union(fields, _mode) = data_type {
+                    assert!(
+                        !fields.is_empty(),
+                        "Union should have at least one member field"
+                    );
+                }
+            } else {
+                panic!(
+                    "union channel should be ChannelData::Union type, got {:?}",
+                    std::mem::discriminant(union_data)
+                );
+            }
         }
     }
     Ok(())

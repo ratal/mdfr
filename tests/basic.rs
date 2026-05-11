@@ -1,16 +1,22 @@
+#[path = "common.rs"]
+mod common;
+
 use anyhow::Result;
 use arrow::array::{Float64Builder, LargeStringBuilder, UInt64Builder};
 use mdfr::data_holder::channel_data::ChannelData;
+use mdfr::mdfinfo::mdfinfo4::CompressionAlgorithm;
 use mdfr::mdfreader::Mdf;
 use std::fs;
 use std::io;
 use std::path::Path;
 use std::sync::LazyLock;
 
-static MDFREADER_TESTS_PATH: &str = "/home/ratal/workspace/mdfreader/mdfreader/tests/";
-
-static BASE_PATH_MDF4: LazyLock<String> =
-    LazyLock::new(|| format!("{}MDF4/MDF4.3/Base_Standard/Examples/", MDFREADER_TESTS_PATH));
+static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(|| {
+    format!(
+        "{}MDF4/MDF4.3/Base_Standard/Examples/",
+        common::mdfreader_tests_path()
+    )
+});
 
 fn parse_info_folder(folder: &String) -> Result<()> {
     let path = Path::new(folder);
@@ -33,25 +39,23 @@ fn parse_info_folder(folder: &String) -> Result<()> {
                         .unwrap()
                         .to_os_string()
                         .into_string()
+                        && valid_ext.contains(&ext)
+                        && let Some(file_name) = entry.path().to_str()
                     {
-                        if valid_ext.contains(&ext) {
-                            if let Some(file_name) = entry.path().to_str() {
-                                println!(" Reading file : {}", file_name);
-                                let mut mdf = Mdf::new(file_name)?;
-                                mdf.load_all_channels_data_in_memory()?;
-                            }
+                        println!(" Reading file : {}", file_name);
+                        let mut mdf = Mdf::new(file_name)?;
+                        mdf.load_all_channels_data_in_memory()?;
+                    }
+                } else if metadata.is_dir()
+                    && let Some(path) = entry.path().to_str()
+                {
+                    let path_str = path.to_owned();
+                    match parse_info_folder(&path_str) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            println!("Error parsing the folder {} \n {}", path_str, e)
                         }
-                    }
-                } else if metadata.is_dir() {
-                    if let Some(path) = entry.path().to_str() {
-                        let path_str = path.to_owned();
-                        match parse_info_folder(&path_str) {
-                            Ok(v) => v,
-                            Err(e) => {
-                                println!("Error parsing the folder {} \n {}", path_str, e)
-                            }
-                        };
-                    }
+                    };
                 }
             }
         }
@@ -67,12 +71,16 @@ fn info_test() -> Result<()> {
     assert_eq!(mdf.get_version(), 410);
 
     file_name = "test_files/test_mdf3.mdf";
-    let mdf = Mdf::new(file_name)?;
-    assert_eq!(mdf.get_version(), 310);
+    if Path::new(file_name).exists() {
+        let mdf = Mdf::new(file_name)?;
+        assert_eq!(mdf.get_version(), 310);
+    }
 
     file_name = "test_files/test_mdf4.mf4";
-    let mdf = Mdf::new(file_name)?;
-    assert_eq!(mdf.get_version(), 400);
+    if Path::new(file_name).exists() {
+        let mdf = Mdf::new(file_name)?;
+        assert_eq!(mdf.get_version(), 400);
+    }
     Ok(())
 }
 
@@ -81,12 +89,15 @@ fn basic_test() -> Result<()> {
     let file = "test_files/test_basic.mf4";
     let mut mdf = Mdf::new(file)?;
     mdf.load_all_channels_data_in_memory()?;
-    mdf.write("test_files/test.mf4", true)?;
+    mdf.write("test_files/test.mf4", CompressionAlgorithm::Deflate)?;
     Ok(())
 }
 
 #[test]
 fn parse_all_folders4() -> io::Result<()> {
+    if !Path::new(BASE_PATH_MDF4.as_str()).is_dir() {
+        return Ok(());
+    }
     let list_of_paths = [
         "Arrays/Classification".to_string(),
         "Arrays/Simple".to_string(),
@@ -151,13 +162,19 @@ fn parse_all_folders4() -> io::Result<()> {
 
 #[test]
 fn parse_all_folders3() -> io::Result<()> {
-    let base_path = String::from("/home/ratal/workspace/mdfreader/mdfreader/tests/mdf3/");
+    let base_path = format!("{}mdf3/", common::mdfreader_tests_path());
+    if !Path::new(&base_path).is_dir() {
+        return Ok(());
+    }
     parse_info_folder(&base_path).unwrap();
     Ok(())
 }
 
 #[test]
 fn record_layout() -> Result<()> {
+    if !Path::new(BASE_PATH_MDF4.as_str()).is_dir() {
+        return Ok(());
+    }
     // Not byte aligned signals
     let file_name = format!(
         "{}{}",
@@ -192,6 +209,9 @@ fn record_layout() -> Result<()> {
 
 #[test]
 fn unsorted_data() -> Result<()> {
+    if !Path::new(BASE_PATH_MDF4.as_str()).is_dir() {
+        return Ok(());
+    }
     // VLSD
     let file_name = format!(
         "{}{}",
@@ -240,6 +260,9 @@ fn unsorted_data() -> Result<()> {
 
 #[test]
 fn bus_logging() -> Result<()> {
+    if !Path::new(BASE_PATH_MDF4.as_str()).is_dir() {
+        return Ok(());
+    }
     // sort bus
     let file_name = format!(
         "{}{}",

@@ -2,9 +2,9 @@
 use anyhow::{Context, Error, Result};
 use arrow::array::Array;
 use hdf5::{
+    Dataset, DatasetBuilder, Group, H5Type,
     file::File,
     types::{VarLenArray, VarLenUnicode},
-    Dataset, DatasetBuilder, Group, H5Type,
 };
 use log::info;
 use ndarray::{Array as NdArray, IxDyn};
@@ -13,9 +13,9 @@ use crate::mdfreader::Mdf;
 use crate::{
     data_holder::channel_data::ChannelData,
     mdfinfo::{
+        MdfInfo,
         mdfinfo3::{Cg3, Cn3, MdfInfo3},
         mdfinfo4::{Cg4, Cn4, Dg4, MdfInfo4},
-        MdfInfo,
     },
 };
 #[cfg(feature = "hdf5-mpio")]
@@ -276,18 +276,27 @@ fn mdf4_metadata(file: &mut File, mdfinfo4: &MdfInfo4) -> Result<()> {
             mdfinfo4.hd_block.hd_start_time_ns
         )
     })?;
-    let comments = mdfinfo4
+    if let Some(hd) = mdfinfo4
         .sharable
-        .get_hd_comments(mdfinfo4.hd_block.hd_md_comment);
-    comments
-        .iter()
-        .try_for_each(|(name, comment)| -> Result<(), Error> {
-            create_str_group_attr::<File>(file, name, comment).with_context(|| {
-                format!("failed writing attribute {} with value {}", name, comment,)
-            })?;
-            Ok(())
-        })
-        .context("failed writing hd comments")?;
+        .get_hd_comments(mdfinfo4.hd_block.hd_md_comment)
+    {
+        if let Some(tx) = &hd.tx {
+            create_str_group_attr::<File>(file, "TX", tx)
+                .context("failed writing HD TX attribute")?;
+        }
+        if let Some(ts) = &hd.time_source {
+            create_str_group_attr::<File>(file, "time_source", ts)
+                .context("failed writing HD time_source attribute")?;
+        }
+        for (name, value) in &hd.constants {
+            create_str_group_attr::<File>(file, name, value)
+                .with_context(|| format!("failed writing HD constant {name} with value {value}"))?;
+        }
+        for (name, value) in &hd.common_properties {
+            create_str_group_attr::<File>(file, name, &format!("{value}"))
+                .with_context(|| format!("failed writing HD property {name}"))?;
+        }
+    }
     Ok(())
 }
 
@@ -526,6 +535,10 @@ fn convert_channel_data_into_ndarray(
                     .context("Failed converting channelData nd f64 into ndarray")?,
             )
             .create(name)?),
+        ChannelData::Union(_) => {
+            info!("Union channel {} skipped for hdf5 export", name);
+            Ok(builder.with_data(&[0u8; 0]).create(name)?)
+        }
     }
 }
 

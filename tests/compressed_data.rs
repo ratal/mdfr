@@ -1,3 +1,6 @@
+#[path = "common.rs"]
+mod common;
+
 use anyhow::Result;
 use arrow::array::Float64Builder;
 use mdfr::data_holder::channel_data::ChannelData;
@@ -7,7 +10,10 @@ use std::path::Path;
 use std::sync::LazyLock;
 
 static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(|| {
-    "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/".to_string()
+    format!(
+        "{}MDF4/MDF4.3/Base_Standard/Examples/",
+        common::mdfreader_tests_path()
+    )
 });
 
 fn parse_info_folder(folder: &String) -> Result<()> {
@@ -31,25 +37,23 @@ fn parse_info_folder(folder: &String) -> Result<()> {
                         .unwrap()
                         .to_os_string()
                         .into_string()
+                        && valid_ext.contains(&ext)
+                        && let Some(file_name) = entry.path().to_str()
                     {
-                        if valid_ext.contains(&ext) {
-                            if let Some(file_name) = entry.path().to_str() {
-                                println!(" Reading file : {}", file_name);
-                                let mut mdf = Mdf::new(file_name)?;
-                                mdf.load_all_channels_data_in_memory()?;
-                            }
+                        println!(" Reading file : {}", file_name);
+                        let mut mdf = Mdf::new(file_name)?;
+                        mdf.load_all_channels_data_in_memory()?;
+                    }
+                } else if metadata.is_dir()
+                    && let Some(path) = entry.path().to_str()
+                {
+                    let path_str = path.to_owned();
+                    match parse_info_folder(&path_str) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            println!("Error parsing the folder {} \n {}", path_str, e)
                         }
-                    }
-                } else if metadata.is_dir() {
-                    if let Some(path) = entry.path().to_str() {
-                        let path_str = path.to_owned();
-                        match parse_info_folder(&path_str) {
-                            Ok(v) => v,
-                            Err(e) => {
-                                println!("Error parsing the folder {} \n {}", path_str, e)
-                            }
-                        };
-                    }
+                    };
                 }
             }
         }

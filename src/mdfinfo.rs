@@ -2,12 +2,12 @@
 //! mdfinfo module
 
 use anyhow::Error;
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use arrow::array::Array;
-use binrw::{binrw, BinReaderExt};
+use binrw::{BinReaderExt, binrw};
 use codepage::to_encoding;
 use encoding_rs::Encoding;
-use log::info;
+use log::{info, warn};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
@@ -18,23 +18,52 @@ use std::str;
 use std::sync::Arc;
 
 pub mod mdfinfo3;
+
+/// Map from channel name to its position tuple: (master_name, dg_pos, cg_pos, rec_id, cn_pos, rec_pos).
+/// MDF3 files always have rec_pos = 0.
+pub type ChannelsDb = HashMap<String, (Option<String>, i64, i64, u64, i64, i32)>;
 pub mod mdfinfo4;
 pub mod sym_buf_reader;
 
 use binrw::io::Cursor;
-use mdfinfo3::{hd3_comment_parser, hd3_parser, parse_dg3, MdfInfo3, SharableBlocks3};
+use mdfinfo3::{MdfInfo3, SharableBlocks3, hd3_comment_parser, hd3_parser, parse_dg3};
+use mdfinfo4::finalize::fix_cycle_counts;
+use mdfinfo4::scanner;
 use mdfinfo4::{
-    build_channel_db, hd4_parser, parse_at4, parse_ch4, parse_dg4, parse_ev4, parse_fh, MdfInfo4,
-    SharableBlocks,
+    MdfInfo4, SharableBlocks, build_channel_db, hd4_parser, parse_at4, parse_ch4, parse_dg4,
+    parse_ev4, parse_fh,
 };
 
 use crate::data_holder::channel_data::ChannelData;
 use crate::mdfwriter::mdfwriter3::convert3to4;
 
 use self::mdfinfo3::build_channel_db3;
-use self::mdfinfo4::{At4Block, Ch4Block, Ev4Block, FhBlock};
+use self::mdfinfo4::{At4Block, Ch4Block, Ev4Block, FhBlock, Si4Block, Sr4Block};
 use self::sym_buf_reader::SymBufReader;
 use crate::mdfreader::{DataSignature, MasterSignature};
+
+/// "UnFinMF " identifier bytes for unfinalized MDF files
+const UNFINALIZED_ID: [u8; 8] = [85, 110, 70, 105, 110, 77, 70, 32];
+
+/// Standard unfinalization flag bits (id_unfin_flags)
+/// Bit 0: Update of cycle counters for CG-/CABLOCK required
+const UNFIN_CG_CYCLE_COUNTERS: u16 = 1 << 0;
+/// Bit 1: Update of cycle counters for SRBLOCKs required
+const UNFIN_SR_CYCLE_COUNTERS: u16 = 1 << 1;
+/// Bit 2: Update of length for last DTBLOCK required
+const UNFIN_LAST_DT_LENGTH: u16 = 1 << 2;
+/// Bit 3: Update of length for last RDBLOCK required
+const UNFIN_LAST_RD_LENGTH: u16 = 1 << 3;
+/// Bit 4: Update of last DLBLOCK in each chained list required
+const UNFIN_LAST_DL_BLOCK: u16 = 1 << 4;
+/// Bit 5: Update of cg_data_bytes and cg_inval_bytes in VLSD CGBLOCK required
+const UNFIN_VLSD_CG_BYTES: u16 = 1 << 5;
+/// Bit 6: Update of offset values for VLSD channel required
+const UNFIN_VLSD_OFFSET: u16 = 1 << 6;
+/// Bit 7: Update of cg_data_bytes and cg_inval_bytes in VLSC CGBLOCK required
+const UNFIN_VLSC_CG_BYTES: u16 = 1 << 7;
+/// Bit 8: Update of offset values for VLSC channel required
+const UNFIN_VLSC_OFFSET: u16 = 1 << 8;
 
 /// joins mdf versions 3.x and 4.x
 #[derive(Debug)]
@@ -114,6 +143,49 @@ impl MdfInfo {
             .context("Could not parse buffer into IdBlock structure")?;
         info!("Read IdBlock");
 
+        // Check for unfinalized MDF file (MDF 4.x feature, version-independent)
+        let id_unfin_flags = id.id_unfin_flags;
+        let id_custom_unfin_flags = id.id_custom_unfin_flags;
+        let is_unfinalized = id.id_file_id == UNFINALIZED_ID || id_unfin_flags != 0;
+        if is_unfinalized {
+            warn!(
+                "Unfinalized MDF file detected (id_unfin_flags=0x{id_unfin_flags:04X}, id_custom_unfin_flags=0x{id_custom_unfin_flags:04X}). \
+                 Data may be incomplete or metadata may be inaccurate.",
+            );
+            if id_unfin_flags & UNFIN_CG_CYCLE_COUNTERS != 0 {
+                warn!("  Bit 0: CG/CA cycle counters may be incorrect");
+            }
+            if id_unfin_flags & UNFIN_SR_CYCLE_COUNTERS != 0 {
+                warn!("  Bit 1: SR cycle counters may be incorrect");
+            }
+            if id_unfin_flags & UNFIN_LAST_DT_LENGTH != 0 {
+                warn!("  Bit 2: Last DT block length may be incorrect");
+            }
+            if id_unfin_flags & UNFIN_LAST_RD_LENGTH != 0 {
+                warn!("  Bit 3: Last RD block length may be incorrect");
+            }
+            if id_unfin_flags & UNFIN_LAST_DL_BLOCK != 0 {
+                warn!("  Bit 4: Last DL block may have incorrect dl_count or NIL links");
+            }
+            if id_unfin_flags & UNFIN_VLSD_CG_BYTES != 0 {
+                warn!("  Bit 5: VLSD CG data_bytes/inval_bytes may be incorrect");
+            }
+            if id_unfin_flags & UNFIN_VLSD_OFFSET != 0 {
+                warn!("  Bit 6: VLSD channel offsets may be incorrect");
+            }
+            if id_unfin_flags & UNFIN_VLSC_CG_BYTES != 0 {
+                warn!("  Bit 7: VLSC CG data_bytes/inval_bytes may be incorrect");
+            }
+            if id_unfin_flags & UNFIN_VLSC_OFFSET != 0 {
+                warn!("  Bit 8: VLSC channel offsets may be incorrect");
+            }
+            if id_custom_unfin_flags != 0 {
+                warn!(
+                    "  Custom finalization flags set (tool-specific): 0x{id_custom_unfin_flags:04X}"
+                );
+            }
+        }
+
         // Depending of version different blocks
         let mdf_info: MdfInfo = if id.id_ver < 400 {
             let mut sharable: SharableBlocks3 = SharableBlocks3 {
@@ -188,6 +260,39 @@ impl MdfInfo {
                 parse_dg4(&mut rdr, hd.hd_dg_first, position, &mut sharable)
                     .context("failed parsing mdf4 data")?;
 
+            // Fallback: if the HD→DG link is nil and the chain yielded nothing,
+            // scan the raw file bytes for ##DG signatures and re-parse from there.
+            if dg.is_empty() && hd.hd_dg_first <= 0 {
+                warn!("No DG blocks found via HD chain; attempting raw block scan");
+                let dg_offsets = scanner::find_dg_blocks(&mut rdr);
+                if !dg_offsets.is_empty() {
+                    warn!("Scanner found {} DG block(s); re-parsing", dg_offsets.len());
+                    for offset in dg_offsets {
+                        if dg.contains_key(&offset) {
+                            continue;
+                        }
+                        match parse_dg4(&mut rdr, offset, 0, &mut sharable) {
+                            Ok((scanned_dg, _, _, _)) => dg.extend(scanned_dg),
+                            Err(e) => warn!("Scanner: could not parse DG at 0x{offset:x}: {e:#}"),
+                        }
+                    }
+                }
+            }
+
+            // If the file was not properly finalized, fix cycle counts in memory before
+            // data reading begins. This corrects cg_cycle_count so the reader knows how
+            // many records to expect from the truncated data blocks.
+            if is_unfinalized
+                && (id_unfin_flags
+                    & (UNFIN_CG_CYCLE_COUNTERS | UNFIN_LAST_DT_LENGTH | UNFIN_LAST_DL_BLOCK))
+                    != 0
+            {
+                match fix_cycle_counts(&mut dg, &mut rdr) {
+                    Ok(n) => info!("finalize: corrected cycle counts for {n} channel groups"),
+                    Err(e) => warn!("finalize: could not fix cycle counts: {e:#}"),
+                }
+            }
+
             // make channel names unique, list channels and create master dictionnary
             let channel_names_set = build_channel_db(&mut dg, &sharable, n_cg, n_cn);
 
@@ -202,6 +307,7 @@ impl MdfInfo {
                 sharable,
                 channel_names_set,
                 ch,
+                is_unfinalized,
             }))
         };
         info!("Finished reading metadata");
@@ -212,6 +318,128 @@ impl MdfInfo {
         match self {
             MdfInfo::V3(mdfinfo3) => mdfinfo3.id_block.id_ver,
             MdfInfo::V4(mdfinfo4) => mdfinfo4.id_block.id_ver,
+        }
+    }
+    /// returns true if the file was marked as unfinalized
+    pub fn is_unfinalized(&self) -> bool {
+        match self {
+            MdfInfo::V3(_) => false,
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.is_unfinalized,
+        }
+    }
+    /// returns the standard and custom unfinalization flags (0, 0) if finalized or MDF3
+    pub fn get_unfin_flags(&self) -> (u16, u16) {
+        match self {
+            MdfInfo::V3(_) => (0, 0),
+            MdfInfo::V4(mdfinfo4) => (
+                mdfinfo4.id_block.id_unfin_flags,
+                mdfinfo4.id_block.id_custom_unfin_flags,
+            ),
+        }
+    }
+    /// Index of this file within a recording sequence (MDF 4.3). None for MDF3 or missing.
+    pub fn get_recorder_sequence_index(&self) -> Option<u64> {
+        if let MdfInfo::V4(mdfinfo4) = self {
+            mdfinfo4
+                .sharable
+                .get_hd_comments(mdfinfo4.hd_block.hd_md_comment)?
+                .recorder_sequence_index()
+        } else {
+            None
+        }
+    }
+    /// Index of this file within the recorder's file set (MDF 4.3). None for MDF3 or missing.
+    pub fn get_recorder_file_index(&self) -> Option<u64> {
+        if let MdfInfo::V4(mdfinfo4) = self {
+            mdfinfo4
+                .sharable
+                .get_hd_comments(mdfinfo4.hd_block.hd_md_comment)?
+                .recorder_file_index()
+        } else {
+            None
+        }
+    }
+    /// True if this is the last file in the recorder sequence (MDF 4.3). None for MDF3 or missing.
+    pub fn get_recorder_file_last(&self) -> Option<bool> {
+        if let MdfInfo::V4(mdfinfo4) = self {
+            mdfinfo4
+                .sharable
+                .get_hd_comments(mdfinfo4.hd_block.hd_md_comment)?
+                .recorder_file_last()
+        } else {
+            None
+        }
+    }
+    /// UUID of the recorder device (MDF 4.3). None for MDF3 or missing.
+    pub fn get_recorder_uuid(&self) -> Option<String> {
+        if let MdfInfo::V4(mdfinfo4) = self {
+            mdfinfo4
+                .sharable
+                .get_hd_comments(mdfinfo4.hd_block.hd_md_comment)?
+                .recorder_uuid()
+                .map(str::to_string)
+        } else {
+            None
+        }
+    }
+    /// UUID identifying the measurement (MDF 4.3). None for MdfInfo3 or missing.
+    pub fn get_measurement_uuid(&self) -> Option<String> {
+        if let MdfInfo::V4(mdfinfo4) = self {
+            mdfinfo4
+                .sharable
+                .get_hd_comments(mdfinfo4.hd_block.hd_md_comment)?
+                .measurement_uuid()
+                .map(str::to_string)
+        } else {
+            None
+        }
+    }
+    /// Author field from HD common_properties (MDF 4.3). None for MDF3 or missing.
+    pub fn get_author(&self) -> Option<String> {
+        if let MdfInfo::V4(mdfinfo4) = self {
+            mdfinfo4
+                .sharable
+                .get_hd_comments(mdfinfo4.hd_block.hd_md_comment)?
+                .author()
+                .map(str::to_string)
+        } else {
+            None
+        }
+    }
+    /// Department field from HD common_properties (MDF 4.3). None for MDF3 or missing.
+    pub fn get_department(&self) -> Option<String> {
+        if let MdfInfo::V4(mdfinfo4) = self {
+            mdfinfo4
+                .sharable
+                .get_hd_comments(mdfinfo4.hd_block.hd_md_comment)?
+                .department()
+                .map(str::to_string)
+        } else {
+            None
+        }
+    }
+    /// Project field from HD common_properties (MDF 4.3). None for MDF3 or missing.
+    pub fn get_project(&self) -> Option<String> {
+        if let MdfInfo::V4(mdfinfo4) = self {
+            mdfinfo4
+                .sharable
+                .get_hd_comments(mdfinfo4.hd_block.hd_md_comment)?
+                .project()
+                .map(str::to_string)
+        } else {
+            None
+        }
+    }
+    /// Subject field from HD common_properties (MDF 4.3). None for MDF3 or missing.
+    pub fn get_subject(&self) -> Option<String> {
+        if let MdfInfo::V4(mdfinfo4) = self {
+            mdfinfo4
+                .sharable
+                .get_hd_comments(mdfinfo4.hd_block.hd_md_comment)?
+                .subject()
+                .map(str::to_string)
+        } else {
+            None
         }
     }
     /// returns channel's unit string
@@ -251,6 +479,60 @@ impl MdfInfo {
             MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_master_type(channel_name),
         };
         master
+    }
+    /// returns the full channel-name → position-tuple map.
+    /// Tuple: (master_name, dg_pos, cg_pos, rec_id, cn_pos, rec_pos)
+    /// MDF3: rec_pos is always 0.
+    pub fn get_channels_db(&self) -> ChannelsDb {
+        match self {
+            MdfInfo::V3(m) => m
+                .channel_names_set
+                .iter()
+                .map(|(name, (master, dg, (cg, rec_id), cn))| {
+                    (
+                        name.clone(),
+                        (
+                            master.clone(),
+                            *dg as i64,
+                            *cg as i64,
+                            *rec_id as u64,
+                            *cn as i64,
+                            0i32,
+                        ),
+                    )
+                })
+                .collect(),
+            MdfInfo::V4(m) => m
+                .channel_names_set
+                .iter()
+                .map(|(name, (master, dg, (cg, rec_id), (cn, rec_pos)))| {
+                    (
+                        name.clone(),
+                        (master.clone(), *dg, *cg, *rec_id, *cn, *rec_pos),
+                    )
+                })
+                .collect(),
+        }
+    }
+    /// returns measurement start timestamp in nanoseconds since Unix epoch (1970-01-01 UTC)
+    pub fn get_start_time_ns(&self) -> u64 {
+        match self {
+            MdfInfo::V4(m) => m.hd_block.hd_start_time_ns,
+            MdfInfo::V3(m) => m.hd_block.hd_start_time_ns.unwrap_or(0),
+        }
+    }
+    /// returns timezone + DST offset in minutes; 0 when not recorded or not valid
+    pub fn get_tz_offset_min(&self) -> i16 {
+        match self {
+            MdfInfo::V4(m) => {
+                if m.hd_block.hd_time_flags & 0b10 != 0 {
+                    m.hd_block.hd_tz_offset_min + m.hd_block.hd_dst_offset_min
+                } else {
+                    0
+                }
+            }
+            MdfInfo::V3(m) => m.hd_block.hd_time_offset.unwrap_or(0),
+        }
     }
     /// returns a set of all channel names contained in file
     pub fn get_channel_names_set(&self) -> HashSet<String> {
@@ -299,6 +581,27 @@ impl MdfInfo {
                         )
                     })?;
             }
+        }
+        Ok(())
+    }
+    /// directly replaces a single channel's ChannelData (bypasses try_from, preserves Complex/TensorArrow)
+    pub fn replace_channel_data(&mut self, channel_name: &str, data: ChannelData) -> Result<()> {
+        match self {
+            MdfInfo::V3(m) => m.replace_channel_data(channel_name, data)?,
+            MdfInfo::V4(m) => m.replace_channel_data(channel_name, data)?,
+        }
+        Ok(())
+    }
+    /// replaces each channel's data with the slice [start_idx, end_idx)
+    pub fn slice_channels(
+        &mut self,
+        channel_names: &HashSet<String>,
+        start_idx: usize,
+        end_idx: usize,
+    ) -> Result<()> {
+        match self {
+            MdfInfo::V3(m) => m.slice_channels(channel_names, start_idx, end_idx)?,
+            MdfInfo::V4(m) => m.slice_channels(channel_names, start_idx, end_idx)?,
         }
         Ok(())
     }
@@ -424,11 +727,14 @@ impl MdfInfo {
             MdfInfo::V4(mdfinfo4) => mdfinfo4.set_channel_desc(channel_name, desc),
         }
     }
-    /// get comment from position
-    pub fn get_comments(&mut self, position: i64) -> Option<HashMap<String, String>> {
+    /// get typed comment from position
+    pub fn get_md_comment(
+        &mut self,
+        position: i64,
+    ) -> Option<&crate::mdfinfo::mdfinfo4::MdComment> {
         match self {
             MdfInfo::V3(_mdfinfo3) => None,
-            MdfInfo::V4(mdfinfo4) => Some(mdfinfo4.sharable.get_comments(position)),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.sharable.get_md_comment(position),
         }
     }
     /// get tx from position
@@ -487,6 +793,13 @@ impl MdfInfo {
             MdfInfo::V4(mdfinfo4) => Some(mdfinfo4.get_event_blocks()),
         }
     }
+    /// list file history entries
+    pub fn list_file_history(&mut self) -> String {
+        match self {
+            MdfInfo::V3(_) => String::new(),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.list_file_history(),
+        }
+    }
     /// get file history blocks
     pub fn get_file_history_blocks(&self) -> Option<Vec<FhBlock>> {
         match self {
@@ -522,42 +835,35 @@ impl MdfInfo {
             MdfInfo::V4(mdfinfo4) => mdfinfo4.list_source_information(),
         }
     }
+    /// List sample reduction blocks for all channel groups (MDF 4.x only)
+    pub fn list_sample_reductions(&self) -> String {
+        match self {
+            MdfInfo::V3(_) => String::new(),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.list_sample_reductions(),
+        }
+    }
+    /// Get all source information blocks (MDF 4.x only)
+    pub fn get_source_information_blocks(&self) -> Option<HashMap<i64, Si4Block>> {
+        match self {
+            MdfInfo::V3(_) => None,
+            MdfInfo::V4(mdfinfo4) => Some(mdfinfo4.get_source_information_blocks()),
+        }
+    }
+    /// Get all sample reduction blocks across all channel groups (MDF 4.x only)
+    /// Returns a vector of (dg_position, rec_id, sr_blocks) tuples
+    pub fn get_sample_reduction_blocks(&self) -> Option<Vec<(i64, u64, Vec<Sr4Block>)>> {
+        match self {
+            MdfInfo::V3(_) => None,
+            MdfInfo::V4(mdfinfo4) => Some(mdfinfo4.get_sample_reduction_blocks()),
+        }
+    }
 }
 
 impl fmt::Display for MdfInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            MdfInfo::V3(mdfinfo3) => {
-                writeln!(f, "Version : {}\n", mdfinfo3.id_block.id_ver)?;
-                writeln!(
-                    f,
-                    "Header :\n Author: {}  Organisation:{}\n",
-                    mdfinfo3.hd_block.hd_author, mdfinfo3.hd_block.hd_organization
-                )?;
-                writeln!(
-                    f,
-                    "Project: {}  Subject:{}\n",
-                    mdfinfo3.hd_block.hd_project, mdfinfo3.hd_block.hd_subject
-                )?;
-                writeln!(
-                    f,
-                    "Date: {:?}  Time:{:?}\n",
-                    mdfinfo3.hd_block.hd_date, mdfinfo3.hd_block.hd_time
-                )?;
-                writeln!(f, "Comments: {}", mdfinfo3.hd_comment)?;
-                writeln!(f, "\n")
-            }
-            MdfInfo::V4(mdfinfo4) => {
-                writeln!(f, "Version : {}", mdfinfo4.id_block.id_ver)?;
-                writeln!(f, "{}\n", mdfinfo4.hd_block)?;
-                let comments = &mdfinfo4
-                    .sharable
-                    .get_hd_comments(mdfinfo4.hd_block.hd_md_comment);
-                for c in comments.iter() {
-                    writeln!(f, "{} {}", c.0, c.1)?;
-                }
-                writeln!(f, "\n")
-            }
+            MdfInfo::V3(mdfinfo3) => write!(f, "{mdfinfo3}"),
+            MdfInfo::V4(mdfinfo4) => write!(f, "{mdfinfo4}"),
         }
     }
 }

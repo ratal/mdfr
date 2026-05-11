@@ -1,6 +1,4 @@
 //! command line interface to load mdf file and manipulate it.
-extern crate clap;
-
 use clap::{Arg, Command};
 mod data_holder;
 mod export;
@@ -11,17 +9,11 @@ use anyhow::{Context, Error, Result};
 use env_logger::Env;
 use log::info;
 
-fn init() {
-    let _ = env_logger::Builder::from_env(Env::default().default_filter_or("warn"))
-        .is_test(true)
-        .try_init();
-}
-
 fn main() -> Result<(), Error> {
-    init();
+    env_logger::Builder::from_env(Env::default().default_filter_or("warn")).init();
     let matches = Command::new("mdfr")
         .bin_name("mdfr")
-        .version("0.6.3")
+        .version(env!("CARGO_PKG_VERSION"))
         .author("Aymeric Rateau <aymeric.rateau@gmail.com>")
         .about("reads ASAM mdf file")
         .arg(
@@ -36,7 +28,6 @@ fn main() -> Result<(), Error> {
             Arg::new("write")
                 .long("write")
                 .short('w')
-                .required(false)
                 .num_args(1)
                 .value_name("FILE_NAME")
                 .help("write the read content into a new mdf4.3 file"),
@@ -46,13 +37,20 @@ fn main() -> Result<(), Error> {
                 .long("compress")
                 .short('z')
                 .action(clap::ArgAction::SetTrue)
-                .help("compress data when writing into a new mdf4.3 file"),
+                .help("compress data when writing into a new mdf4.3 file (defaults to deflate)"),
+        )
+        .arg(
+            Arg::new("mdf4_compression")
+                .long("mdf4_compression")
+                .num_args(1)
+                .value_name("ALGORITHM")
+                .value_parser(["deflate", "deflate_transpose", "zstd", "zstd_transpose", "lz4", "lz4_transpose", "no_compression"])
+                .help("Compression algorithm for writing data in mdf4 file. Default is deflate_transpose"),
         )
         .arg(
             Arg::new("export_to_parquet")
                 .long("export_to_parquet")
                 .short('p')
-                .required(false)
                 .num_args(1)
                 .value_name("FILE_NAME")
                 .help("Converts mdf into parquet file, file name to be given without extension"),
@@ -60,16 +58,15 @@ fn main() -> Result<(), Error> {
         .arg(
             Arg::new("parquet_compression")
                 .long("parquet_compression")
-                .required(false)
                 .num_args(1)
                 .value_name("ALGORITHM")
-                .help("Compression algorithm for writing data in parquet file, valid values are snappy, gzip, lzo, lz4, zstd, brotli. Default is uncompressed"),
+                .value_parser(["snappy", "gzip", "lzo", "lz4", "zstd", "brotli"])
+                .help("Compression algorithm for writing data in parquet file. Default is uncompressed"),
         )
         .arg(
             Arg::new("export_to_hdf5")
                 .long("export_to_hdf5")
                 .short('m')
-                .required(false)
                 .num_args(1)
                 .value_name("FILE_NAME")
                 .help("Converts mdf into hdf5 file, file name to be given without extension"),
@@ -77,10 +74,10 @@ fn main() -> Result<(), Error> {
         .arg(
             Arg::new("hdf5_compression")
                 .long("hdf5_compression")
-                .required(false)
                 .num_args(1)
                 .value_name("FILTER")
-                .help("Compression algorithm for writing data in hdf5 file, valid values are deflate and lzf. Default is uncompressed"),
+                .value_parser(["deflate", "lzf"])
+                .help("Compression filter for writing data in hdf5 file. Default is uncompressed"),
         )
         .arg(
             Arg::new("info")
@@ -113,34 +110,57 @@ fn main() -> Result<(), Error> {
         info!("loaded all channels data in memory from file {file_name}");
     }
 
-    let compression = matches.get_flag("compress");
+    let _compression = matches.get_flag("compress");
+    let mdf4_compression_str = matches
+        .get_one::<String>("mdf4_compression")
+        .map(String::as_str);
+
+    let compression_algo = match mdf4_compression_str {
+        Some("deflate") => crate::mdfinfo::mdfinfo4::CompressionAlgorithm::Deflate,
+        Some("deflate_transpose") => {
+            crate::mdfinfo::mdfinfo4::CompressionAlgorithm::DeflateTranspose
+        }
+        Some("zstd") => crate::mdfinfo::mdfinfo4::CompressionAlgorithm::Zstd,
+        Some("zstd_transpose") => crate::mdfinfo::mdfinfo4::CompressionAlgorithm::ZstdTranspose,
+        Some("lz4") => crate::mdfinfo::mdfinfo4::CompressionAlgorithm::Lz4,
+        Some("lz4_transpose") => crate::mdfinfo::mdfinfo4::CompressionAlgorithm::Lz4Transpose,
+        Some("no_compression") => crate::mdfinfo::mdfinfo4::CompressionAlgorithm::NoCompression,
+        None if _compression => crate::mdfinfo::mdfinfo4::CompressionAlgorithm::Deflate,
+        _ => crate::mdfinfo::mdfinfo4::CompressionAlgorithm::DeflateTranspose,
+    };
+
     if let Some(file_name) = mdf4_file_name {
-        mdf_file.write(file_name, compression)?;
-        if compression {
-            info!("Wrote mdf4 file {file_name} with compression");
+        mdf_file.write(file_name, compression_algo)?;
+        if compression_algo != crate::mdfinfo::mdfinfo4::CompressionAlgorithm::NoCompression {
+            info!(
+                "Wrote mdf4 file {file_name} with compression {:?}",
+                compression_algo
+            );
         } else {
             info!("Wrote mdf4 file {file_name} without compression");
         }
     }
 
     #[cfg(feature = "parquet")]
-    let parquet_compression = matches.get_one::<String>("parquet_compression");
-    #[cfg(feature = "parquet")]
-    if let Some(file_name) = parquet_file_name {
-        mdf_file
-            .export_to_parquet(file_name, parquet_compression.map(|x| &**x))
-            .with_context(|| format!("failed to export into parquet file {file_name}"))?;
-        info!("Wrote parquet file {file_name} with compression {parquet_compression:?}");
+    {
+        let parquet_compression = matches.get_one::<String>("parquet_compression");
+        if let Some(file_name) = parquet_file_name {
+            mdf_file
+                .export_to_parquet(file_name, parquet_compression.map(String::as_str))
+                .with_context(|| format!("failed to export into parquet file {file_name}"))?;
+            info!("Wrote parquet file {file_name} with compression {parquet_compression:?}");
+        }
     }
 
     #[cfg(feature = "hdf5")]
-    let hdf5_compression = matches.get_one::<String>("hdf5_compression");
-    #[cfg(feature = "hdf5")]
-    if let Some(file_name) = hdf5_file_name {
-        mdf_file
-            .export_to_hdf5(file_name, hdf5_compression.map(|x| &**x))
-            .with_context(|| format!("failed to export into hdf5 file {file_name}"))?;
-        info!("Wrote hdf5 file {file_name}");
+    {
+        let hdf5_compression = matches.get_one::<String>("hdf5_compression");
+        if let Some(file_name) = hdf5_file_name {
+            mdf_file
+                .export_to_hdf5(file_name, hdf5_compression.map(String::as_str))
+                .with_context(|| format!("failed to export into hdf5 file {file_name}"))?;
+            info!("Wrote hdf5 file {file_name}");
+        }
     }
 
     Ok(())

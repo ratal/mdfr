@@ -1,4 +1,12 @@
 //! Exporting mdf to Parquet files.
+use crate::{
+    mdfinfo::{
+        MdfInfo,
+        mdfinfo3::{Cg3, Cn3, MdfInfo3},
+        mdfinfo4::{Cg4, Cn4, MdfInfo4},
+    },
+    mdfreader::Mdf,
+};
 use anyhow::{Context, Error, Result};
 use arrow::{
     array::{Array, RecordBatch},
@@ -14,24 +22,8 @@ use parquet::{
         properties::{WriterProperties, WriterVersion},
     },
 };
-use rayon::iter::ParallelExtend;
 
-use crate::{
-    mdfinfo::{
-        MdfInfo,
-        mdfinfo3::{Cg3, Cn3, MdfInfo3},
-        mdfinfo4::{Cg4, Cn4, Dg4, MdfInfo4},
-    },
-    mdfreader::Mdf,
-};
-
-use std::{
-    collections::{HashMap, HashSet},
-    fs::File,
-    io::BufWriter,
-    path::Path,
-    sync::Arc,
-};
+use std::{collections::HashMap, fs::File, io::BufWriter, path::Path, sync::Arc};
 
 /// writes mdf into parquet file
 pub fn export_to_parquet(
@@ -42,35 +34,18 @@ pub fn export_to_parquet(
     let parquet_compression = parquet_compression_from_string(compression);
     match &mdf.mdf_info {
         MdfInfo::V4(mdfinfo4) => {
-            mdfinfo4.dg.iter().try_for_each(
-                |(_dg_block_position, dg): (&i64, &Dg4)| -> Result<(), Error> {
-                    let mut channel_names_present_in_dg = HashSet::new();
-                    for channel_group in dg.cg.values() {
-                        let cn = channel_group.channel_names.clone();
-                        channel_names_present_in_dg.par_extend(cn);
+            for dg in mdfinfo4.dg.values() {
+                if dg.cg.values().any(|cg| !cg.channel_names.is_empty()) {
+                    for (rec_id, cg) in &dg.cg {
+                        mdf4_cg_to_parquet(file_name, mdfinfo4, rec_id, cg, parquet_compression)
+                            .context("failed converting Channel Group 4 to parquet")?;
                     }
-                    if !channel_names_present_in_dg.is_empty() {
-                        dg.cg.iter().try_for_each(
-                            |(rec_id, cg): (&u64, &Cg4)| -> Result<(), Error> {
-                                mdf4_cg_to_parquet(
-                                    file_name,
-                                    mdfinfo4,
-                                    rec_id,
-                                    cg,
-                                    parquet_compression,
-                                )
-                                .context("failed converting Channel Group 4 to parquet")?;
-                                Ok(())
-                            },
-                        )?;
-                    }
-                    Ok(())
-                },
-            )?;
+                }
+            }
         }
         MdfInfo::V3(mdfinfo3) => {
-            for (_dg_block_position, dg) in mdfinfo3.dg.iter() {
-                for (rec_id, cg) in dg.cg.iter() {
+            for dg in mdfinfo3.dg.values() {
+                for (rec_id, cg) in &dg.cg {
                     mdf3_cg_to_parquet(file_name, mdfinfo3, rec_id, cg, parquet_compression)
                         .context("failed converting Channel Group 3 to parquet")?;
                 }
@@ -140,10 +115,10 @@ pub fn mdf4_cg_to_parquet(
                 .metadata_mut()
                 .insert("master_channel".to_owned(), master_channel.to_string());
         }
-        let finalised_arrow_schema = fields.finish();
+        let finalised_arrow_schema = Arc::new(fields.finish());
         write_data(
             cg.master_channel_name.clone(),
-            rec_id,
+            *rec_id,
             file_name,
             parquet_compression,
             finalised_arrow_schema,
@@ -186,10 +161,10 @@ pub fn mdf3_cg_to_parquet(
                 .metadata_mut()
                 .insert("master_channel".to_owned(), master_channel.to_string());
         }
-        let finalised_arrow_schema = fields.finish();
+        let finalised_arrow_schema = Arc::new(fields.finish());
         write_data(
             cg.master_channel_name.clone(),
-            &(*rec_id as u64),
+            u64::from(*rec_id),
             file_name,
             parquet_compression,
             finalised_arrow_schema,
@@ -229,15 +204,12 @@ pub fn parquet_compression_from_string(compression_option: Option<&str>) -> Comp
 fn create_parquet_writer(
     file: &str,
     compression: Compression,
-    finalised_arrow_schema: Schema,
+    finalised_arrow_schema: Arc<Schema>,
     master_channel: Option<String>,
-    rec_id: &u64,
+    rec_id: u64,
 ) -> Result<ArrowWriter<BufWriter<File>>, Error> {
     let base_path = Path::new(file);
-    let mut master_channel_name = match master_channel {
-        Some(name) => name,
-        None => rec_id.to_string(),
-    };
+    let mut master_channel_name = master_channel.unwrap_or_else(|| rec_id.to_string());
     master_channel_name.insert(0, '_');
     let mut file_name = base_path
         .file_name()
@@ -246,10 +218,9 @@ fn create_parquet_writer(
     file_name.push(master_channel_name);
     let mut buf_path = base_path.with_file_name(file_name.as_os_str());
     buf_path.set_extension("parquet");
-    let path = buf_path.into_boxed_path();
     let file = std::io::BufWriter::new(
-        std::fs::File::create(path.clone())
-            .with_context(|| format!("Failed to create file {path:?}"))?,
+        std::fs::File::create(&buf_path)
+            .with_context(|| format!("Failed to create file {buf_path:?}"))?,
     );
     let options = WriterProperties::builder()
         .set_compression(compression)
@@ -263,16 +234,10 @@ fn create_parquet_writer(
         )]))
         .build();
 
-    ArrowWriter::try_new(
-        file,
-        Arc::new(finalised_arrow_schema.clone()),
-        Some(options.clone()),
-    )
-    .with_context(|| {
-        format!(
-            "Failed to write parquet file with schema {finalised_arrow_schema:?} and options {options:?}"
-        )
-    })
+    let ctx = format!(
+        "Failed to write parquet file with schema {finalised_arrow_schema:?} and options {options:?}"
+    );
+    ArrowWriter::try_new(file, finalised_arrow_schema, Some(options)).with_context(|| ctx)
 }
 
 /// create mdf4 channel field
@@ -332,13 +297,13 @@ fn mdf3_field(mdfinfo3: &MdfInfo3, cn: &Cn3) -> Field {
 #[inline]
 fn write_data(
     master_channel_name: Option<String>,
-    rec_id: &u64,
+    rec_id: u64,
     file_name: &str,
     compression: Compression,
-    fields: Schema,
+    fields: Arc<Schema>,
     columns: Vec<Arc<dyn Array>>,
 ) -> Result<(), Error> {
-    let record_batch = RecordBatch::try_new(Arc::new(fields.clone()), columns)
+    let record_batch = RecordBatch::try_new(Arc::clone(&fields), columns)
         .context("Failed creating recordbatch")?;
     let mut writer = create_parquet_writer(
         file_name,

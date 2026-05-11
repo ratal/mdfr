@@ -8,14 +8,46 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-
+  test-parquet:
+    name: Tests (parquet)
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v3
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test tests::basic_test --verbose
+      - uses: actions/checkout@v4
+      - name: Unzip local test fixtures
+        run: cd test_files && unzip -o test_mdf3.mdf.zip && unzip -o test_mdf4.mf4.zip
+      - name: Build
+        run: cargo build --verbose --no-default-features --features parquet
+      - name: Unit tests
+        run: cargo test --lib --verbose --no-default-features --features parquet
+      - name: Basic integration test
+        run: cargo test --test basic --verbose --no-default-features --features parquet
+      - name: Conversion unit tests
+        run: cargo test --lib --verbose --no-default-features --features parquet conversions4
 
+  test-polars-rust:
+    name: Tests (polars Rust-native)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust-native polars tests
+        run: cargo test --test numpy_polars rust_polars --verbose --features polars
+
+  test-polars-python:
+    name: Tests (polars + numpy Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Create virtualenv and install Python dependencies
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install polars numpy pyarrow maturin
+          echo "VIRTUAL_ENV=$GITHUB_WORKSPACE/.venv" >> $GITHUB_ENV
+          echo "$GITHUB_WORKSPACE/.venv/bin" >> $GITHUB_PATH
+      - name: Build and install Python extension
+        run: maturin develop --features "polars,numpy"
+      - name: Run numpy/polars tests
+        run: cargo test --test numpy_polars --verbose --features "polars,numpy"

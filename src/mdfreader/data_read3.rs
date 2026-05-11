@@ -1,6 +1,6 @@
 //! this module implements low level data reading for mdf3 files.
 use crate::mdfinfo::mdfinfo3::Cn3;
-use anyhow::{bail, Context, Error, Result};
+use anyhow::{Context, Error, Result, bail};
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
 use encoding_rs::WINDOWS_1252;
 use half::f16;
@@ -46,7 +46,7 @@ pub fn read_channels_from_bytes(
                 }
                 ChannelData::Int16(a) => {
                     let data = a.values_slice_mut();
-                    if cn.endian {
+                    if cn.endian.is_big() {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             value =
                                 &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i16>()];
@@ -66,7 +66,7 @@ pub fn read_channels_from_bytes(
                 }
                 ChannelData::UInt16(a) => {
                     let data = a.values_slice_mut();
-                    if cn.endian {
+                    if cn.endian.is_big() {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             value =
                                 &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u16>()];
@@ -87,7 +87,7 @@ pub fn read_channels_from_bytes(
                 ChannelData::Int32(a) => {
                     let data = a.values_slice_mut();
                     if n_bytes == 3 {
-                        if cn.endian {
+                        if cn.endian.is_big() {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
                                 data[i + previous_index] = value
@@ -102,7 +102,7 @@ pub fn read_channels_from_bytes(
                                     .context("Could not read le i24")?;
                             }
                         }
-                    } else if cn.endian {
+                    } else if cn.endian.is_big() {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             value =
                                 &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i32>()];
@@ -123,7 +123,7 @@ pub fn read_channels_from_bytes(
                 ChannelData::UInt32(a) => {
                     let data = a.values_slice_mut();
                     if n_bytes == 3 {
-                        if cn.endian {
+                        if cn.endian.is_big() {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
                                 data[i + previous_index] = value
@@ -138,7 +138,7 @@ pub fn read_channels_from_bytes(
                                     .context("Could not read le u24")?;
                             }
                         }
-                    } else if cn.endian {
+                    } else if cn.endian.is_big() {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             value =
                                 &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u32>()];
@@ -158,7 +158,7 @@ pub fn read_channels_from_bytes(
                 }
                 ChannelData::Float32(a) => {
                     let data = a.values_slice_mut();
-                    if cn.endian {
+                    if cn.endian.is_big() {
                         if n_bytes == 2 {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record
@@ -198,7 +198,7 @@ pub fn read_channels_from_bytes(
                 }
                 ChannelData::Int64(a) => {
                     let data = a.values_slice_mut();
-                    if cn.endian {
+                    if cn.endian.is_big() {
                         if n_bytes == 8 {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
@@ -232,7 +232,7 @@ pub fn read_channels_from_bytes(
                 }
                 ChannelData::UInt64(a) => {
                     let data = a.values_slice_mut();
-                    if cn.endian {
+                    if cn.endian.is_big() {
                         if n_bytes == 8 {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
@@ -297,7 +297,7 @@ pub fn read_channels_from_bytes(
                 }
                 ChannelData::Float64(a) => {
                     let data = a.values_slice_mut();
-                    if cn.endian {
+                    if cn.endian.is_big() {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             value =
                                 &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<f64>()];

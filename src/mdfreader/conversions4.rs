@@ -1,13 +1,7 @@
 //! this modules implements functions to convert arrays into physical arrays using CCBlock
 use anyhow::{Context, Error, Result, bail};
-use arrow::array::{
-    Array, ArrayBuilder, AsArray, Float64Array, Float64Builder, LargeStringBuilder,
-    PrimitiveBuilder,
-};
-use arrow::compute::cast;
+use arrow::array::{ArrayBuilder, Float64Builder, LargeStringBuilder, PrimitiveBuilder};
 use arrow::datatypes::{ArrowPrimitiveType, Float32Type, Float64Type};
-use arrow::datatypes::{DataType, Int64Type};
-use arrow::error::ArrowError;
 use itertools::Itertools;
 use log::warn;
 use num::abs;
@@ -27,15 +21,17 @@ use crate::data_holder::complex_arrow::ComplexArrow;
 
 /// convert all channel arrays into physical values as required by CCBlock content
 pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) -> Result<(), Error> {
-    for channel_group in dg.cg.values_mut() {
-        channel_group
-            .cn
-            .par_iter_mut()
-            .filter(|(_cn_record_position, cn)| !cn.data.is_empty())
-            .try_for_each(|(_rec_pos, cn): (&i32, &mut Cn4)| -> Result<(), Error> {
-                // Could be empty if only initialised
-                if let Some(conv) = sharable.cc.get(&cn.block.cn_cc_conversion) {
-                    match conv.cc_type {
+    dg.cg
+        .par_iter_mut()
+        .try_for_each(|(_, channel_group)| -> Result<(), Error> {
+            channel_group
+                .cn
+                .par_iter_mut()
+                .filter(|(_cn_record_position, cn)| !cn.data.is_empty())
+                .try_for_each(|(_rec_pos, cn): (&i32, &mut Cn4)| -> Result<(), Error> {
+                    // Could be empty if only initialised
+                    if let Some(conv) = sharable.cc.get(&cn.block.cn_cc_conversion) {
+                        match conv.cc_type {
                         1 => match &conv.cc_val {
                             CcVal::Real(cc_val) => {
                                 linear_conversion(cn, cc_val).with_context(|| {
@@ -155,11 +151,286 @@ pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) -> Result<(
                             conv.cc_type,
                         ),
                     }
-                }
-                Ok(())
-            })?
-    }
+                    }
+                    Ok(())
+                })?;
+            Ok(())
+        })?;
     Ok(())
+}
+
+/// Dispatches a numeric conversion over ChannelData variants, emitting a complete match block.
+///
+/// Variant A (with Complex): scalar(a) => expr, f64(a) => block, complex(a) => expr, arrayd(a) => expr
+/// Variant B (no Complex):   scalar(a) => expr, f64(a) => block, arrayd(a) => expr
+///
+/// The `scalar` arm covers Int8/UInt8/Int16/UInt16/Int32/UInt32/Float32/Int64/UInt64 → Float64.
+/// The `complex` arm covers Complex32/64 → Complex64 (macro appends `.nulls()`).
+/// The `arrayd` arm covers all 10 ArrayD* variants → ArrayDFloat64 (macro appends nulls/shape/order).
+/// The `f64` block is emitted verbatim — caller must handle the assignment itself.
+macro_rules! apply_conversion_f64 {
+    // Variant A: with Complex arms
+    (
+        $cn:expr,
+        scalar($a:ident) => $scalar_body:expr,
+        f64($af:ident) => $f64_block:block,
+        complex($ac:ident) => $complex_body:expr,
+        arrayd($ad:ident) => $arrayd_body:expr $(,)?
+    ) => {
+        match &mut $cn.data {
+            ChannelData::Int8($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::UInt8($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::Int16($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::UInt16($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::Int32($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::UInt32($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::Float32($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::Int64($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::UInt64($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::Float64($af) => $f64_block,
+            ChannelData::Complex32($ac) => {
+                $cn.data = ChannelData::Complex64(ComplexArrow::new_from_primitive(
+                    $complex_body,
+                    $ac.nulls(),
+                    $ac.shape().clone(),
+                    $ac.order().clone(),
+                ));
+            }
+            ChannelData::Complex64($ac) => {
+                $cn.data = ChannelData::Complex64(ComplexArrow::new_from_primitive(
+                    $complex_body,
+                    $ac.nulls(),
+                    $ac.shape().clone(),
+                    $ac.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDInt8($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDUInt8($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDInt16($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDUInt16($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDInt32($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDUInt32($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDFloat32($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDInt64($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDUInt64($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDFloat64($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            _ => warn!(
+                "conversion of channel {} not possible, channel does not contain primitives",
+                $cn.unique_name
+            ),
+        }
+    };
+
+    // Variant B: no Complex arms (value-to-value conversions)
+    (
+        $cn:expr,
+        scalar($a:ident) => $scalar_body:expr,
+        f64($af:ident) => $f64_block:block,
+        arrayd($ad:ident) => $arrayd_body:expr $(,)?
+    ) => {
+        match &mut $cn.data {
+            ChannelData::Int8($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::UInt8($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::Int16($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::UInt16($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::Int32($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::UInt32($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::Float32($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::Int64($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::UInt64($a) => {
+                $cn.data = ChannelData::Float64($scalar_body);
+            }
+            ChannelData::Float64($af) => $f64_block,
+            ChannelData::ArrayDInt8($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDUInt8($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDInt16($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDUInt16($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDInt32($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDUInt32($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDFloat32($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDInt64($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDUInt64($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            ChannelData::ArrayDFloat64($ad) => {
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                    $arrayd_body,
+                    $ad.nulls(),
+                    $ad.shape().clone(),
+                    $ad.order().clone(),
+                ));
+            }
+            _ => warn!(
+                "conversion of channel {} not possible, channel does not contain primitives",
+                $cn.unique_name
+            ),
+        }
+    };
 }
 
 /// Generic function calculating linear expression
@@ -173,196 +444,25 @@ where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
-    let mut array_f64: Float64Builder = array
-        .finish()
-        .try_unary(|value| {
-            num::cast::cast::<T::Native, f64>(value)
-                .ok_or_else(|| ArrowError::CastError(format!("Can't cast value {value:?} to f64")))
-        })
-        .context("failed converting array to f64")?
-        .into_builder()
-        .expect("Failed getting mutable F64");
-    array_f64.values_slice_mut().iter_mut().for_each(|x| {
-        *x = *x * p2 + p1;
-    });
-    Ok(array_f64)
+    let values = array.values_slice();
+    let converted: Vec<f64> = values.iter().map(|v| (*v).as_() * p2 + p1).collect();
+    Ok(Float64Builder::new_from_buffer(converted.into(), None))
 }
 
 /// Apply linear conversion to get physical data
 fn linear_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
-    let p1 = cc_val[0];
-    let p2 = cc_val[1];
+    let (p1, p2) = (cc_val[0], cc_val[1]);
     if !(p1 == 0.0 && abs(p2 - 1.0) < 1e-12) {
-        match &mut cn.data {
-            ChannelData::UInt8(a) => {
-                cn.data = ChannelData::Float64(
-                    linear_calculation(a, p1, p2)
-                        .context("failed linear conversion of u8 channel")?,
-                );
-            }
-            ChannelData::Int8(a) => {
-                cn.data = ChannelData::Float64(
-                    linear_calculation(a, p1, p2)
-                        .context("failed linear conversion of i8 channel")?,
-                );
-            }
-            ChannelData::Int16(a) => {
-                cn.data = ChannelData::Float64(
-                    linear_calculation(a, p1, p2)
-                        .context("failed linear conversion of i16 channel")?,
-                );
-            }
-            ChannelData::UInt16(a) => {
-                cn.data = ChannelData::Float64(
-                    linear_calculation(a, p1, p2)
-                        .context("failed linear conversion of u16 channel")?,
-                );
-            }
-            ChannelData::Int32(a) => {
-                cn.data = ChannelData::Float64(
-                    linear_calculation(a, p1, p2)
-                        .context("failed linear conversion of i32 channel")?,
-                );
-            }
-            ChannelData::UInt32(a) => {
-                cn.data = ChannelData::Float64(
-                    linear_calculation(a, p1, p2)
-                        .context("failed linear conversion of u32 channel")?,
-                );
-            }
-            ChannelData::Float32(a) => {
-                cn.data = ChannelData::Float64(
-                    linear_calculation(a, p1, p2)
-                        .context("failed linear conversion of f32 channel")?,
-                );
-            }
-            ChannelData::Int64(a) => {
-                cn.data = ChannelData::Float64(
-                    linear_calculation(a, p1, p2)
-                        .context("failed linear conversion of u16 channel")?,
-                );
-            }
-            ChannelData::UInt64(a) => {
-                cn.data = ChannelData::Float64(
-                    linear_calculation(a, p1, p2)
-                        .context("failed linear conversion of u64 channel")?,
-                );
-            }
-            ChannelData::Float64(a) => {
-                cn.data = ChannelData::Float64(
-                    linear_calculation(a, p1, p2)
-                        .context("failed linear conversion of f64 channel")?,
-                );
-            }
-            ChannelData::Complex32(a) => {
-                cn.data = ChannelData::Complex64(ComplexArrow::new_from_primitive(
-                    linear_calculation(a.values(), p1, p2)
-                        .context("failed linear conversion of complex f32 channel")?,
-                    a.nulls(),
-                ));
-            }
-            ChannelData::Complex64(a) => {
-                cn.data = ChannelData::Complex64(ComplexArrow::new_from_primitive(
-                    linear_calculation(a.values(), p1, p2)
-                        .context("failed linear conversion of complex f64 channel")?,
-                    a.nulls(),
-                ));
-            }
-            ChannelData::ArrayDUInt8(a) => {
-                cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                    linear_calculation(a.values(), p1, p2)
-                        .context("failed linear conversion of tensor u8 channel")?,
-                    a.nulls(),
-                    a.shape().clone(),
-                    a.order().clone(),
-                ))
-            }
-            ChannelData::ArrayDInt8(a) => {
-                cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                    linear_calculation(a.values(), p1, p2)
-                        .context("failed linear conversion of tensor i8 channel")?,
-                    a.nulls(),
-                    a.shape().clone(),
-                    a.order().clone(),
-                ))
-            }
-            ChannelData::ArrayDInt16(a) => {
-                cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                    linear_calculation(a.values(), p1, p2)
-                        .context("failed linear conversion of tensor i16 channel")?,
-                    a.nulls(),
-                    a.shape().clone(),
-                    a.order().clone(),
-                ))
-            }
-            ChannelData::ArrayDUInt16(a) => {
-                cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                    linear_calculation(a.values(), p1, p2)
-                        .context("failed linear conversion of tensor u16 channel")?,
-                    a.nulls(),
-                    a.shape().clone(),
-                    a.order().clone(),
-                ))
-            }
-            ChannelData::ArrayDInt32(a) => {
-                cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                    linear_calculation(a.values(), p1, p2)
-                        .context("failed linear conversion of tensor i32 channel")?,
-                    a.nulls(),
-                    a.shape().clone(),
-                    a.order().clone(),
-                ))
-            }
-            ChannelData::ArrayDUInt32(a) => {
-                cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                    linear_calculation(a.values(), p1, p2)
-                        .context("failed linear conversion of tensor u16 channel")?,
-                    a.nulls(),
-                    a.shape().clone(),
-                    a.order().clone(),
-                ))
-            }
-            ChannelData::ArrayDFloat32(a) => {
-                cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                    linear_calculation(a.values(), p1, p2)
-                        .context("failed linear conversion of tensor f32 channel")?,
-                    a.nulls(),
-                    a.shape().clone(),
-                    a.order().clone(),
-                ))
-            }
-            ChannelData::ArrayDInt64(a) => {
-                cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                    linear_calculation(a.values(), p1, p2)
-                        .context("failed linear conversion of tensor i64 channel")?,
-                    a.nulls(),
-                    a.shape().clone(),
-                    a.order().clone(),
-                ))
-            }
-            ChannelData::ArrayDUInt64(a) => {
-                cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                    linear_calculation(a.values(), p1, p2)
-                        .context("failed linear conversion of tensor u64 channel")?,
-                    a.nulls(),
-                    a.shape().clone(),
-                    a.order().clone(),
-                ))
-            }
-            ChannelData::ArrayDFloat64(a) => {
-                cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                    linear_calculation(a.values(), p1, p2)
-                        .context("failed linear conversion of tensor f64 channel")?,
-                    a.nulls(),
-                    a.shape().clone(),
-                    a.order().clone(),
-                ))
-            }
-            _ => warn!(
-                "linear conversion of channel {} not possible, channel does not contain primitives",
-                cn.unique_name
-            ),
-        }
+        apply_conversion_f64!(
+            cn,
+            scalar(a) => linear_calculation(a, p1, p2).context("failed linear conversion")?,
+            f64(a) => {
+                // in-place for f64 avoids reallocation
+                a.values_slice_mut().iter_mut().for_each(|x| { *x = *x * p2 + p1; });
+            },
+            complex(a) => linear_calculation(a.values(), p1, p2).context("failed linear conversion of complex channel")?,
+            arrayd(a) => linear_calculation(a.values(), p1, p2).context("failed linear conversion of tensor channel")?,
+        );
     }
     Ok(())
 }
@@ -383,190 +483,33 @@ where
     let p4 = cc_val[3];
     let p5 = cc_val[4];
     let p6 = cc_val[5];
-    let array_f64: Float64Array = cast(&(array.finish_cloned()), &DataType::Float64)
-        .context("failed converting Array to f64 Array")?
-        .as_primitive::<Float64Type>()
-        .clone();
-    let array_f64 = array_f64
-        .unary_mut(|x| (x * x * p1 + x * p2 + p3) / (x * x * p4 + x * p5 + p6))
-        .expect("error applying rational conversion");
-    Ok(array_f64
-        .into_builder()
-        .expect("failed converting to builder"))
+    let values = array.values_slice();
+    let converted: Vec<f64> = values
+        .iter()
+        .map(|v| {
+            let x: f64 = (*v).as_();
+            (x * x * p1 + x * p2 + p3) / (x * x * p4 + x * p5 + p6)
+        })
+        .collect();
+    Ok(Float64Builder::new_from_buffer(converted.into(), None))
 }
 
 /// Apply rational conversion to get physical data
 fn rational_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
-    match &mut cn.data {
-        ChannelData::UInt8(a) => {
-            cn.data = ChannelData::Float64(
-                rational_calculation(a, cc_val)
-                    .context("failed rational conversion of u8 channel")?,
-            );
-        }
-        ChannelData::Int8(a) => {
-            cn.data = ChannelData::Float64(
-                rational_calculation(a, cc_val)
-                    .context("failed rational conversion of i8 channel")?,
-            );
-        }
-        ChannelData::Int16(a) => {
-            cn.data = ChannelData::Float64(
-                rational_calculation(a, cc_val)
-                    .context("failed rational conversion of i16 channel")?,
-            );
-        }
-        ChannelData::UInt16(a) => {
-            cn.data = ChannelData::Float64(
-                rational_calculation(a, cc_val)
-                    .context("failed rational conversion of u16 channel")?,
-            );
-        }
-        ChannelData::Int32(a) => {
-            cn.data = ChannelData::Float64(
-                rational_calculation(a, cc_val)
-                    .context("failed rational conversion of i32 channel")?,
-            );
-        }
-        ChannelData::UInt32(a) => {
-            cn.data = ChannelData::Float64(
-                rational_calculation(a, cc_val)
-                    .context("failed rational conversion of u32 channel")?,
-            );
-        }
-        ChannelData::Float32(a) => {
-            cn.data = ChannelData::Float64(
-                rational_calculation(a, cc_val)
-                    .context("failed rational conversion of f32 channel")?,
-            );
-        }
-        ChannelData::Int64(a) => {
-            cn.data = ChannelData::Float64(
-                rational_calculation(a, cc_val)
-                    .context("failed rational conversion of i64 channel")?,
-            );
-        }
-        ChannelData::UInt64(a) => {
-            cn.data = ChannelData::Float64(
-                rational_calculation(a, cc_val)
-                    .context("failed rational conversion of u64 channel")?,
-            );
-        }
-        ChannelData::Float64(a) => {
-            cn.data = ChannelData::Float64(
-                rational_calculation(a, cc_val)
-                    .context("failed rational conversion of f64 channel")?,
-            );
-        }
-        ChannelData::Complex32(a) => {
-            cn.data = ChannelData::Complex64(ComplexArrow::new_from_primitive(
-                rational_calculation(a.values(), cc_val)
-                    .context("failed rational conversion of complex f32 channel")?,
-                a.nulls(),
-            ));
-        }
-        ChannelData::Complex64(a) => {
-            cn.data = ChannelData::Complex64(ComplexArrow::new_from_primitive(
-                rational_calculation(a.values(), cc_val)
-                    .context("failed rational conversion of complex f64 channel")?,
-                a.nulls(),
-            ));
-        }
-        ChannelData::ArrayDUInt8(a) => {
-            cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                rational_calculation(a.values(), cc_val)
-                    .context("failed rational conversion of u8 tensor channel")?,
-                a.nulls(),
-                a.shape().clone(),
-                a.order().clone(),
-            ))
-        }
-        ChannelData::ArrayDInt8(a) => {
-            cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                rational_calculation(a.values(), cc_val)
-                    .context("failed rational conversion of i8 tensor channel")?,
-                a.nulls(),
-                a.shape().clone(),
-                a.order().clone(),
-            ))
-        }
-        ChannelData::ArrayDInt16(a) => {
-            cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                rational_calculation(a.values(), cc_val)
-                    .context("failed rational conversion of i16 tensor channel")?,
-                a.nulls(),
-                a.shape().clone(),
-                a.order().clone(),
-            ))
-        }
-        ChannelData::ArrayDUInt16(a) => {
-            cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                rational_calculation(a.values(), cc_val)
-                    .context("failed rational conversion of u16 tensor channel")?,
-                a.nulls(),
-                a.shape().clone(),
-                a.order().clone(),
-            ))
-        }
-        ChannelData::ArrayDInt32(a) => {
-            cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                rational_calculation(a.values(), cc_val)
-                    .context("failed rational conversion of i32 tensor channel")?,
-                a.nulls(),
-                a.shape().clone(),
-                a.order().clone(),
-            ))
-        }
-        ChannelData::ArrayDUInt32(a) => {
-            cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                rational_calculation(a.values(), cc_val)
-                    .context("failed rational conversion of u32 tensor channel")?,
-                a.nulls(),
-                a.shape().clone(),
-                a.order().clone(),
-            ))
-        }
-        ChannelData::ArrayDFloat32(a) => {
-            cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                rational_calculation(a.values(), cc_val)
-                    .context("failed rational conversion of f32 tensor channel")?,
-                a.nulls(),
-                a.shape().clone(),
-                a.order().clone(),
-            ))
-        }
-        ChannelData::ArrayDInt64(a) => {
-            cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                rational_calculation(a.values(), cc_val)
-                    .context("failed rational conversion of i64 tensor channel")?,
-                a.nulls(),
-                a.shape().clone(),
-                a.order().clone(),
-            ))
-        }
-        ChannelData::ArrayDUInt64(a) => {
-            cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                rational_calculation(a.values(), cc_val)
-                    .context("failed rational conversion of u64 tensor channel")?,
-                a.nulls(),
-                a.shape().clone(),
-                a.order().clone(),
-            ))
-        }
-        ChannelData::ArrayDFloat64(a) => {
-            cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                rational_calculation(a.values(), cc_val)
-                    .context("failed rational conversion of f64 tensor channel")?,
-                a.nulls(),
-                a.shape().clone(),
-                a.order().clone(),
-            ))
-        }
-        _ => warn!(
-            "rational conversion of channel {} not possible, channel does not contain primitives",
-            cn.unique_name
-        ),
-    }
+    apply_conversion_f64!(
+        cn,
+        scalar(a) => rational_calculation(a, cc_val).context("failed rational conversion")?,
+        f64(a) => {
+            let (p1, p2, p3, p4, p5, p6) = (cc_val[0], cc_val[1], cc_val[2], cc_val[3], cc_val[4], cc_val[5]);
+            // in-place for f64 avoids reallocation
+            a.values_slice_mut().iter_mut().for_each(|x| {
+                let v = *x;
+                *x = (v * v * p1 + v * p2 + p3) / (v * v * p4 + v * p5 + p6);
+            });
+        },
+        complex(a) => rational_calculation(a.values(), cc_val).context("failed rational conversion of complex channel")?,
+        arrayd(a) => rational_calculation(a.values(), cc_val).context("failed rational conversion of tensor channel")?,
+    );
     Ok(())
 }
 
@@ -581,228 +524,48 @@ where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
-    let array_f64: Float64Array = array
-        .finish_cloned()
-        .try_unary(|value| {
-            num::cast::cast::<T::Native, f64>(value)
-                .ok_or_else(|| ArrowError::CastError(format!("Can't cast value {value:?} to f64")))
-        })
-        .context("failed converting array to f64")?;
-    let mut new_array = vec![0f64; array_f64.len()];
-    new_array
-        .iter_mut()
-        .zip(array_f64.values())
-        .for_each(|(new_a, a)| {
-            let mut map = BTreeMap::new();
-            map.insert("X".to_string(), *a);
-            let val = compiled.eval(slab, &mut map);
-            *new_a = match val {
-                Ok(val) => val,
-                Err(err) => {
-                    warn!(
-                        "could not compute the value {a:?} with expression {compiled:?}, error {err}"
-                    );
-                    *a
-                }
+    let values = array.values_slice();
+    let mut new_array = vec![0f64; values.len()];
+    let mut map = BTreeMap::new();
+    new_array.iter_mut().zip(values).for_each(|(new_a, v)| {
+        let a: f64 = (*v).as_();
+        map.clear();
+        map.insert("X".to_string(), a);
+        let val = compiled.eval(slab, &mut map);
+        *new_a = match val {
+            Ok(val) => val,
+            Err(err) => {
+                warn!(
+                    "could not compute the value {a:?} with expression {compiled:?}, error {err}"
+                );
+                a
             }
-        });
-    Ok(PrimitiveBuilder::new_from_buffer(
-        new_array.into(),
-        array_f64.nulls().map(|null_buffer| {
-            null_buffer
-                .inner()
-                .sliced()
-                .into_mutable()
-                .expect("failed converting null_buffer into mutable")
-        }),
-    ))
+        }
+    });
+    Ok(PrimitiveBuilder::new_from_buffer(new_array.into(), None))
 }
 
 /// Apply algebraic conversion to get physical data
 fn algebraic_conversion(cn: &mut Cn4, formulae: &str) -> Result<(), Error> {
     let parser = fasteval::Parser::new();
     let mut slab = fasteval::Slab::new();
-    let compiled = parser.parse(formulae, &mut slab.ps);
-    match compiled {
+    match parser.parse(formulae, &mut slab.ps) {
         Ok(c) => {
             let compiled = c.from(&slab.ps).compile(&slab.ps, &mut slab.cs);
-            match &mut cn.data {
-                ChannelData::UInt8(a) => {
-                    cn.data = ChannelData::Float64(
-                        alegbraic_conversion_primitive(&compiled, &slab, a)
-                            .context("failed algebraic conversion of u8 channel")?,
-                    );
-                }
-                ChannelData::Int8(a) => {
-                    cn.data = ChannelData::Float64(
-                        alegbraic_conversion_primitive(&compiled, &slab, a)
-                            .context("failed algebraic conversion of i8 channel")?,
-                    );
-                }
-                ChannelData::Int16(a) => {
-                    cn.data = ChannelData::Float64(
-                        alegbraic_conversion_primitive(&compiled, &slab, a)
-                            .context("failed algebraic conversion of i16 channel")?,
-                    );
-                }
-                ChannelData::UInt16(a) => {
-                    cn.data = ChannelData::Float64(
-                        alegbraic_conversion_primitive(&compiled, &slab, a)
-                            .context("failed algebraic conversion of u16 channel")?,
-                    );
-                }
-                ChannelData::Int32(a) => {
-                    cn.data = ChannelData::Float64(
-                        alegbraic_conversion_primitive(&compiled, &slab, a)
-                            .context("failed algebraic conversion of i32 channel")?,
-                    );
-                }
-                ChannelData::UInt32(a) => {
-                    cn.data = ChannelData::Float64(
-                        alegbraic_conversion_primitive(&compiled, &slab, a)
-                            .context("failed algebraic conversion of u32 channel")?,
-                    );
-                }
-                ChannelData::Float32(a) => {
-                    cn.data = ChannelData::Float64(
-                        alegbraic_conversion_primitive(&compiled, &slab, a)
-                            .context("failed algebraic conversion of f32 channel")?,
-                    );
-                }
-                ChannelData::Int64(a) => {
-                    cn.data = ChannelData::Float64(
-                        alegbraic_conversion_primitive(&compiled, &slab, a)
-                            .context("failed algebraic conversion of i64 channel")?,
-                    );
-                }
-                ChannelData::UInt64(a) => {
-                    cn.data = ChannelData::Float64(
-                        alegbraic_conversion_primitive(&compiled, &slab, a)
-                            .context("failed algebraic conversion of u64 channel")?,
-                    );
-                }
-                ChannelData::Float64(a) => {
-                    cn.data = ChannelData::Float64(
-                        alegbraic_conversion_primitive(&compiled, &slab, a)
-                            .context("failed algebraic conversion of f64 channel")?,
-                    );
-                }
-                ChannelData::Complex32(a) => {
-                    cn.data = ChannelData::Complex64(ComplexArrow::new_from_primitive(
-                        alegbraic_conversion_primitive(&compiled, &slab, a.values())
-                            .context("failed algebraic conversion of complex f32 channel")?,
-                        a.nulls(),
-                    ));
-                }
-                ChannelData::Complex64(a) => {
-                    cn.data = ChannelData::Complex64(ComplexArrow::new_from_primitive(
-                        alegbraic_conversion_primitive(&compiled, &slab, a.values())
-                            .context("failed algebraic conversion of complex f64 channel")?,
-                        a.nulls(),
-                    ));
-                }
-                ChannelData::ArrayDInt8(a) => {
-                    cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                        alegbraic_conversion_primitive(&compiled, &slab, a.values())
-                            .context("failed algebraic conversion of tensor i8 channel")?,
-                        a.nulls(),
-                        a.shape().clone(),
-                        a.order().clone(),
-                    ));
-                }
-                ChannelData::ArrayDUInt8(a) => {
-                    cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                        alegbraic_conversion_primitive(&compiled, &slab, a.values())
-                            .context("failed algebraic conversion of tensor u8 channel")?,
-                        a.nulls(),
-                        a.shape().clone(),
-                        a.order().clone(),
-                    ));
-                }
-                ChannelData::ArrayDInt16(a) => {
-                    cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                        alegbraic_conversion_primitive(&compiled, &slab, a.values())
-                            .context("failed algebraic conversion of tensor i16 channel")?,
-                        a.nulls(),
-                        a.shape().clone(),
-                        a.order().clone(),
-                    ));
-                }
-                ChannelData::ArrayDUInt16(a) => {
-                    cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                        alegbraic_conversion_primitive(&compiled, &slab, a.values())
-                            .context("failed algebraic conversion of tensor u16 channel")?,
-                        a.nulls(),
-                        a.shape().clone(),
-                        a.order().clone(),
-                    ));
-                }
-                ChannelData::ArrayDInt32(a) => {
-                    cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                        alegbraic_conversion_primitive(&compiled, &slab, a.values())
-                            .context("failed algebraic conversion of tensor i32 channel")?,
-                        a.nulls(),
-                        a.shape().clone(),
-                        a.order().clone(),
-                    ));
-                }
-                ChannelData::ArrayDUInt32(a) => {
-                    cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                        alegbraic_conversion_primitive(&compiled, &slab, a.values())
-                            .context("failed algebraic conversion of tensor u32 channel")?,
-                        a.nulls(),
-                        a.shape().clone(),
-                        a.order().clone(),
-                    ));
-                }
-                ChannelData::ArrayDFloat32(a) => {
-                    cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                        alegbraic_conversion_primitive(&compiled, &slab, a.values())
-                            .context("failed algebraic conversion of tensor f32 channel")?,
-                        a.nulls(),
-                        a.shape().clone(),
-                        a.order().clone(),
-                    ));
-                }
-                ChannelData::ArrayDInt64(a) => {
-                    cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                        alegbraic_conversion_primitive(&compiled, &slab, a.values())
-                            .context("failed algebraic conversion of tensor i64 channel")?,
-                        a.nulls(),
-                        a.shape().clone(),
-                        a.order().clone(),
-                    ));
-                }
-                ChannelData::ArrayDUInt64(a) => {
-                    cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                        alegbraic_conversion_primitive(&compiled, &slab, a.values())
-                            .context("failed algebraic conversion of tensor u64 channel")?,
-                        a.nulls(),
-                        a.shape().clone(),
-                        a.order().clone(),
-                    ));
-                }
-                ChannelData::ArrayDFloat64(a) => {
-                    cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                        alegbraic_conversion_primitive(&compiled, &slab, a.values())
-                            .context("failed algebraic conversion of tensor f64 channel")?,
-                        a.nulls(),
-                        a.shape().clone(),
-                        a.order().clone(),
-                    ));
-                }
-                _ => warn!(
-                    "algebraic conversion of channel {} not possible, channel does not contain primitives",
-                    cn.unique_name
-                ),
-            }
+            apply_conversion_f64!(
+                cn,
+                scalar(a) => alegbraic_conversion_primitive(&compiled, &slab, a).context("failed algebraic conversion")?,
+                f64(a) => {
+                    cn.data = ChannelData::Float64(alegbraic_conversion_primitive(&compiled, &slab, a).context("failed algebraic conversion")?);
+                },
+                complex(a) => alegbraic_conversion_primitive(&compiled, &slab, a.values()).context("failed algebraic conversion of complex channel")?,
+                arrayd(a) => alegbraic_conversion_primitive(&compiled, &slab, a.values()).context("failed algebraic conversion of tensor channel")?,
+            );
         }
-        Err(err) => {
-            warn!(
-                "could not compile algebraic conversion expression {}, {}, channel {} not converted",
-                formulae, err, cn.unique_name
-            )
-        }
+        Err(err) => warn!(
+            "could not compile algebraic conversion expression {}, {}, channel {} not converted",
+            formulae, err, cn.unique_name
+        ),
     }
     Ok(())
 }
@@ -811,27 +574,18 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str) -> Result<(), Error> {
 #[inline]
 fn value_to_value_with_interpolation_primitive<T: ArrowPrimitiveType>(
     array: &PrimitiveBuilder<T>,
-    val: Vec<(&f64, &f64)>,
+    val: &[(&f64, &f64)],
 ) -> Result<PrimitiveBuilder<Float64Type>, Error>
 where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
-    let array_f64: Float64Array = array
-        .finish_cloned()
-        .try_unary(|value| {
-            num::cast::cast::<T::Native, f64>(value)
-                .ok_or_else(|| ArrowError::CastError(format!("Can't cast value {value:?} to f64")))
-        })
-        .context("failed converting array to f64")?;
-    let mut new_array = vec![0f64; array_f64.len()];
-    new_array
-        .iter_mut()
-        .zip(array_f64.values())
-        .for_each(|(new_array, a)| {
-            *new_array = match val
-                .binary_search_by(|&(xi, _)| xi.partial_cmp(a).unwrap_or(Ordering::Equal))
-            {
+    let values = array.values_slice();
+    let mut new_array = vec![0f64; values.len()];
+    new_array.iter_mut().zip(values).for_each(|(new_a, v)| {
+        let a: f64 = (*v).as_();
+        *new_a =
+            match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a).unwrap_or(Ordering::Equal)) {
                 Ok(idx) => *val[idx].1,
                 Err(0) => *val[0].1,
                 Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -841,7 +595,7 @@ where
                     (y0 * (x1 - a) + y1 * (a - x0)) / (x1 - x0)
                 }
             };
-        });
+    });
     Ok(PrimitiveBuilder::new_from_buffer(
         new_array.into(),
         array
@@ -853,157 +607,14 @@ where
 /// Apply value to value with interpolation conversion to get physical data
 fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>) -> Result<(), Error> {
     let val: Vec<(&f64, &f64)> = cc_val.iter().tuples().collect();
-    match &mut cn.data {
-        ChannelData::Int8(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_with_interpolation_primitive(a, val)
-                    .context("failed value to value with interpolation conversion of i8 channel")?,
-            );
-        }
-        ChannelData::UInt8(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_with_interpolation_primitive(a, val)
-                    .context("failed value to value with interpolation conversion of u8 channel")?,
-            );
-        }
-        ChannelData::Int16(a) => {
-            cn.data =
-                ChannelData::Float64(value_to_value_with_interpolation_primitive(a, val).context(
-                    "failed value to value with interpolation conversion of i16 channel",
-                )?);
-        }
-        ChannelData::UInt16(a) => {
-            cn.data =
-                ChannelData::Float64(value_to_value_with_interpolation_primitive(a, val).context(
-                    "failed value to value with interpolation conversion of u16 channel",
-                )?);
-        }
-        ChannelData::Int32(a) => {
-            cn.data =
-                ChannelData::Float64(value_to_value_with_interpolation_primitive(a, val).context(
-                    "failed value to value with interpolation conversion of i32 channel",
-                )?);
-        }
-        ChannelData::UInt32(a) => {
-            cn.data =
-                ChannelData::Float64(value_to_value_with_interpolation_primitive(a, val).context(
-                    "failed value to value with interpolation conversion of u32 channel",
-                )?);
-        }
-        ChannelData::Float32(a) => {
-            cn.data =
-                ChannelData::Float64(value_to_value_with_interpolation_primitive(a, val).context(
-                    "failed value to value with interpolation conversion of f32 channel",
-                )?);
-        }
-        ChannelData::Int64(a) => {
-            cn.data =
-                ChannelData::Float64(value_to_value_with_interpolation_primitive(a, val).context(
-                    "failed value to value with interpolation conversion of i64 channel",
-                )?);
-        }
-        ChannelData::UInt64(a) => {
-            cn.data =
-                ChannelData::Float64(value_to_value_with_interpolation_primitive(a, val).context(
-                    "failed value to value with interpolation conversion of u64 channel",
-                )?);
-        }
-        ChannelData::Float64(a) => {
-            cn.data =
-                ChannelData::Float64(value_to_value_with_interpolation_primitive(a, val).context(
-                    "failed value to value with interpolation conversion of f64 channel",
-                )?);
-        }
-        ChannelData::ArrayDInt8(a) => {
-            cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                value_to_value_with_interpolation_primitive(a.values(), val).context(
-                    "failed value to value with interpolation conversion of tensor i8 channel",
-                )?,
-                a.nulls(),
-                a.shape().clone(),
-                a.order().clone(),
-            ));
-        }
-        ChannelData::ArrayDUInt8(a) => {
-            cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                value_to_value_with_interpolation_primitive(a.values(), val).context(
-                    "failed value to value with interpolation conversion of tensor u8 channel",
-                )?,
-                a.nulls(),
-                a.shape().clone(),
-                a.order().clone(),
-            ));
-        }
-        ChannelData::ArrayDInt16(a) => {
-            cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                value_to_value_with_interpolation_primitive(a.values(), val).context(
-                    "failed value to value with interpolation conversion of tensor i16 channel",
-                )?,
-                a.nulls(),
-                a.shape().clone(),
-                a.order().clone(),
-            ));
-        }
-        ChannelData::ArrayDUInt16(a) => {
-            cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                value_to_value_with_interpolation_primitive(a.values(), val
-            ).context("failed value to value with interpolation conversion of tensor tensor u16 channel")?, a.nulls(), a.shape().clone(), a.order().clone(),));
-        }
-        ChannelData::ArrayDInt32(a) => {
-            cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                value_to_value_with_interpolation_primitive(a.values(), val).context(
-                    "failed value to value with interpolation conversion of tensor i32 channel",
-                )?,
-                a.nulls(),
-                a.shape().clone(),
-                a.order().clone(),
-            ));
-        }
-        ChannelData::ArrayDUInt32(a) => {
-            cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                value_to_value_with_interpolation_primitive(a.values(), val).context(
-                    "failed value to value with interpolation conversion of tensor u32 channel",
-                )?,
-                a.nulls(),
-                a.shape().clone(),
-                a.order().clone(),
-            ));
-        }
-        ChannelData::ArrayDFloat32(a) => {
-            cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                value_to_value_with_interpolation_primitive(a.values(), val).context(
-                    "failed value to value with interpolation conversion of tensor f32 channel",
-                )?,
-                a.nulls(),
-                a.shape().clone(),
-                a.order().clone(),
-            ));
-        }
-        ChannelData::ArrayDUInt64(a) => {
-            cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                value_to_value_with_interpolation_primitive(a.values(), val).context(
-                    "failed value to value with interpolation conversion of tensor u64 channel",
-                )?,
-                a.nulls(),
-                a.shape().clone(),
-                a.order().clone(),
-            ));
-        }
-        ChannelData::ArrayDFloat64(a) => {
-            cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                value_to_value_with_interpolation_primitive(a.values(), val).context(
-                    "failed value to value with interpolation conversion of tensor f64 channel",
-                )?,
-                a.nulls(),
-                a.shape().clone(),
-                a.order().clone(),
-            ));
-        }
-        _ => warn!(
-            "value to value with interpolation conversion of channel {} not possible, channel does not contain primitive",
-            cn.unique_name
-        ),
-    }
+    apply_conversion_f64!(
+        cn,
+        scalar(a) => value_to_value_with_interpolation_primitive(a, &val).context("failed value to value with interpolation conversion")?,
+        f64(a) => {
+            cn.data = ChannelData::Float64(value_to_value_with_interpolation_primitive(a, &val).context("failed value to value with interpolation conversion")?);
+        },
+        arrayd(a) => value_to_value_with_interpolation_primitive(a.values(), &val).context("failed value to value with interpolation conversion of tensor channel")?,
+    );
     Ok(())
 }
 
@@ -1011,34 +622,34 @@ fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>) -> Result<(
 #[inline]
 fn value_to_value_without_interpolation_primitive<T: ArrowPrimitiveType>(
     array: &mut PrimitiveBuilder<T>,
-    val: Vec<(&f64, &f64)>,
+    val: &[(&f64, &f64)],
 ) -> Result<PrimitiveBuilder<Float64Type>, Error>
 where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
-    let array_f64: Float64Array = cast(&array.finish(), &DataType::Float64)
-        .context("failed converting Array to f64 Array")?
-        .as_primitive::<Float64Type>()
-        .clone();
-    let mut new_array = vec![0f64; array_f64.len()];
-    new_array
-        .iter_mut()
-        .zip(array_f64.values())
-        .for_each(|(new_array, a)| {
-            *new_array = match val
-                .binary_search_by(|&(xi, _)| xi.partial_cmp(a).unwrap_or(Ordering::Equal))
-            {
+    let values = array.values_slice();
+    let mut new_array = vec![0f64; values.len()];
+    new_array.iter_mut().zip(values).for_each(|(new_a, v)| {
+        let a: f64 = (*v).as_();
+        // MDF4 spec 6.17.7 (cc_type=5, value to value without interpolation):
+        // - Exact match: return value[i]
+        // - Below first key: return value[0]
+        // - Above last key: return value[n-1]
+        // - Between keys: return nearest neighbor; if equidistant, use lower key's value
+        *new_a =
+            match val.binary_search_by(|&(xi, _)| xi.partial_cmp(&a).unwrap_or(Ordering::Equal)) {
                 Ok(idx) => *val[idx].1,
                 Err(0) => *val[0].1,
                 Err(idx) if idx >= val.len() => *val[idx - 1].1,
                 Err(idx) => {
                     let (x0, y0) = val[idx - 1];
                     let (x1, y1) = val[idx];
+                    // spec: if (Int - key[i]) > (key[i+1] - Int) use upper, else lower
                     if (a - x0) > (x1 - a) { *y1 } else { *y0 }
                 }
             };
-        });
+    });
     Ok(PrimitiveBuilder::new_from_buffer(
         new_array.into(),
         array
@@ -1050,182 +661,14 @@ where
 /// Apply value to value without interpolation conversion to get physical data
 fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>) -> Result<(), Error> {
     let val: Vec<(&f64, &f64)> = cc_val.iter().tuples().collect();
-    match &mut cn.data {
-        ChannelData::Int8(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_without_interpolation_primitive(a, val).context(
-                    "failed value to value without interpolation conversion of i8 channel",
-                )?,
-            );
-        }
-        ChannelData::UInt8(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_without_interpolation_primitive(a, val).context(
-                    "failed value to value without interpolation conversion of u8 channel",
-                )?,
-            );
-        }
-        ChannelData::Int16(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_without_interpolation_primitive(a, val).context(
-                    "failed value to value without interpolation conversion of i16 channel",
-                )?,
-            );
-        }
-        ChannelData::UInt16(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_without_interpolation_primitive(a, val).context(
-                    "failed value to value without interpolation conversion of u16 channel",
-                )?,
-            );
-        }
-        ChannelData::Int32(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_without_interpolation_primitive(a, val).context(
-                    "failed value to value without interpolation conversion of i32 channel",
-                )?,
-            );
-        }
-        ChannelData::UInt32(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_without_interpolation_primitive(a, val).context(
-                    "failed value to value without interpolation conversion of u32 channel",
-                )?,
-            );
-        }
-        ChannelData::Float32(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_without_interpolation_primitive(a, val).context(
-                    "failed value to value without interpolation conversion of f32 channel",
-                )?,
-            );
-        }
-        ChannelData::Int64(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_without_interpolation_primitive(a, val).context(
-                    "failed value to value without interpolation conversion of i64 channel",
-                )?,
-            );
-        }
-        ChannelData::UInt64(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_without_interpolation_primitive(a, val).context(
-                    "failed value to value without interpolation conversion of u64 channel",
-                )?,
-            );
-        }
-        ChannelData::Float64(a) => {
-            cn.data = ChannelData::Float64(
-                value_to_value_without_interpolation_primitive(a, val).context(
-                    "failed value to value without interpolation conversion of f64 channel",
-                )?,
-            );
-        }
-        ChannelData::ArrayDInt8(a) => {
-            cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                value_to_value_without_interpolation_primitive(a.values(), val).context(
-                    "failed value to value without interpolation conversion of tensor i8 channel",
-                )?,
-                a.nulls(),
-                a.shape().clone(),
-                a.order().clone(),
-            ));
-        }
-        ChannelData::ArrayDUInt8(a) => {
-            cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                value_to_value_without_interpolation_primitive(a.values(), val).context(
-                    "failed value to value without interpolation conversion of tensor u8 channel",
-                )?,
-                a.nulls(),
-                a.shape().clone(),
-                a.order().clone(),
-            ));
-        }
-        ChannelData::ArrayDInt16(a) => {
-            cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                value_to_value_without_interpolation_primitive(a.values(), val).context(
-                    "failed value to value without interpolation conversion of tensor i16 channel",
-                )?,
-                a.nulls(),
-                a.shape().clone(),
-                a.order().clone(),
-            ));
-        }
-        ChannelData::ArrayDUInt16(a) => {
-            cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                value_to_value_without_interpolation_primitive(a.values(), val).context(
-                    "failed value to value without interpolation conversion of tensor u16 channel",
-                )?,
-                a.nulls(),
-                a.shape().clone(),
-                a.order().clone(),
-            ));
-        }
-        ChannelData::ArrayDInt32(a) => {
-            cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                value_to_value_without_interpolation_primitive(a.values(), val).context(
-                    "failed value to value without interpolation conversion of tensor i32 channel",
-                )?,
-                a.nulls(),
-                a.shape().clone(),
-                a.order().clone(),
-            ));
-        }
-        ChannelData::ArrayDUInt32(a) => {
-            cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                value_to_value_without_interpolation_primitive(a.values(), val).context(
-                    "failed value to value without interpolation conversion of tensor u32 channel",
-                )?,
-                a.nulls(),
-                a.shape().clone(),
-                a.order().clone(),
-            ));
-        }
-        ChannelData::ArrayDFloat32(a) => {
-            cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                value_to_value_without_interpolation_primitive(a.values(), val).context(
-                    "failed value to value without interpolation conversion of tensor f32 channel",
-                )?,
-                a.nulls(),
-                a.shape().clone(),
-                a.order().clone(),
-            ));
-        }
-        ChannelData::ArrayDInt64(a) => {
-            cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                value_to_value_without_interpolation_primitive(a.values(), val).context(
-                    "failed value to value without interpolation conversion of tensor i64 channel",
-                )?,
-                a.nulls(),
-                a.shape().clone(),
-                a.order().clone(),
-            ));
-        }
-        ChannelData::ArrayDUInt64(a) => {
-            cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                value_to_value_without_interpolation_primitive(a.values(), val).context(
-                    "failed value to value without interpolation conversion of tensor u64 channel",
-                )?,
-                a.nulls(),
-                a.shape().clone(),
-                a.order().clone(),
-            ));
-        }
-        ChannelData::ArrayDFloat64(a) => {
-            cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
-                value_to_value_without_interpolation_primitive(a.values(), val).context(
-                    "failed value to value without interpolation conversion of tensor f64 channel",
-                )?,
-                a.nulls(),
-                a.shape().clone(),
-                a.order().clone(),
-            ));
-        }
-        _ => warn!(
-            "value to value without interpolation conversion of channel {} not possible, channel does not contain primitive",
-            cn.unique_name
-        ),
-    }
+    apply_conversion_f64!(
+        cn,
+        scalar(a) => value_to_value_without_interpolation_primitive(a, &val).context("failed value to value without interpolation conversion")?,
+        f64(a) => {
+            cn.data = ChannelData::Float64(value_to_value_without_interpolation_primitive(a, &val).context("failed value to value without interpolation conversion")?);
+        },
+        arrayd(a) => value_to_value_without_interpolation_primitive(a.values(), &val).context("failed value to value without interpolation conversion of tensor channel")?,
+    );
     Ok(())
 }
 
@@ -1235,35 +678,46 @@ fn value_range_to_value_table_calculation<T: ArrowPrimitiveType>(
     array: &PrimitiveBuilder<T>,
     val: &[(f64, f64, f64)],
     default_value: &f64,
+    inclusive_upper: bool,
 ) -> Result<PrimitiveBuilder<Float64Type>, Error>
 where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
-    let array_f64: Float64Array = cast(&array.finish_cloned(), &DataType::Float64)
-        .context("failed converting Array to f64 Array")?
-        .as_primitive::<Float64Type>()
-        .clone();
-    let mut new_array = vec![0f64; array_f64.len()];
-    new_array
-        .iter_mut()
-        .zip(array_f64.values())
-        .for_each(|(new_array, a)| {
-            *new_array = match val
-                .binary_search_by(|&(xi, _, _)| xi.partial_cmp(a).unwrap_or(Ordering::Equal))
-            {
-                Ok(idx) => val[idx].2,
-                Err(0) => *default_value,
-                Err(idx) if (idx >= val.len() && *a <= val[idx - 1].1) => val[idx - 1].2,
-                Err(idx) => {
-                    if *a <= val[idx].1 {
-                        val[idx].2
-                    } else {
-                        *default_value
-                    }
+    let values = array.values_slice();
+    let mut new_array = vec![0f64; values.len()];
+    new_array.iter_mut().zip(values).for_each(|(new_a, v)| {
+        let a: f64 = (*v).as_();
+        // MDF4 spec 6.17.8 (cc_type=6, value range to value):
+        // - For float types (cn_data_type > 3): key_min[i] ≤ Int < key_max[i] (exclusive upper)
+        // - For integer types (cn_data_type ≤ 3): key_min[i] ≤ Int ≤ key_max[i] (both inclusive)
+        // Ranges are sorted ascending and shall not overlap (key_max[i-1] ≤ key_min[i]).
+        // For touching boundaries with float data, a == key_min[i] → range i wins (not i-1).
+        // Binary search on min keys handles both cases naturally:
+        //   Ok(idx): a == min[idx] → range idx includes a as its lower bound ✓
+        //   Err(idx): min[idx-1] < a < min[idx] → check if a < max[idx-1] (exclusive upper)
+        *new_a = match val
+            .binary_search_by(|&(xi, _, _)| xi.partial_cmp(&a).unwrap_or(Ordering::Equal))
+        {
+            Ok(idx) => val[idx].2,
+            Err(0) => *default_value, // below the minimum of all lower bounds
+            Err(idx) => {
+                // min[idx-1] < a < min[idx]: candidate is range idx-1
+                // Float: upper exclusive (a < max[idx-1])
+                // Integer: upper inclusive (a <= max[idx-1])
+                let in_range = if inclusive_upper {
+                    a <= val[idx - 1].1
+                } else {
+                    a < val[idx - 1].1
+                };
+                if in_range {
+                    val[idx - 1].2
+                } else {
+                    *default_value
                 }
-            };
-        });
+            }
+        };
+    });
     Ok(PrimitiveBuilder::new_from_buffer(
         new_array.into(),
         array
@@ -1279,64 +733,65 @@ fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>) -> Result<(), Erro
         val.push((*a, *b, *c));
     }
     let default_value = cc_val[cc_val.len() - 1];
+    // MDF4 spec 6.17.8: integer data uses inclusive upper bound; float data uses exclusive upper.
     match &mut cn.data {
         ChannelData::Int8(a) => {
             cn.data = ChannelData::Float64(
-                value_range_to_value_table_calculation(a, &val, &default_value)
+                value_range_to_value_table_calculation(a, &val, &default_value, true)
                     .context("failed value range to value table conversion of i8 channel")?,
             );
         }
         ChannelData::UInt8(a) => {
             cn.data = ChannelData::Float64(
-                value_range_to_value_table_calculation(a, &val, &default_value)
+                value_range_to_value_table_calculation(a, &val, &default_value, true)
                     .context("failed value range to value table conversion of u8 channel")?,
             );
         }
         ChannelData::Int16(a) => {
             cn.data = ChannelData::Float64(
-                value_range_to_value_table_calculation(a, &val, &default_value)
+                value_range_to_value_table_calculation(a, &val, &default_value, true)
                     .context("failed value range to value table conversion of i16 channel")?,
             );
         }
         ChannelData::UInt16(a) => {
             cn.data = ChannelData::Float64(
-                value_range_to_value_table_calculation(a, &val, &default_value)
+                value_range_to_value_table_calculation(a, &val, &default_value, true)
                     .context("failed value range to value table conversion of u16 channel")?,
             );
         }
         ChannelData::Int32(a) => {
             cn.data = ChannelData::Float64(
-                value_range_to_value_table_calculation(a, &val, &default_value)
+                value_range_to_value_table_calculation(a, &val, &default_value, true)
                     .context("failed value range to value table conversion of i32 channel")?,
             );
         }
         ChannelData::UInt32(a) => {
             cn.data = ChannelData::Float64(
-                value_range_to_value_table_calculation(a, &val, &default_value)
+                value_range_to_value_table_calculation(a, &val, &default_value, true)
                     .context("failed value range to value table conversion of u32 channel")?,
             );
         }
         ChannelData::Float32(a) => {
             cn.data = ChannelData::Float64(
-                value_range_to_value_table_calculation(a, &val, &default_value)
+                value_range_to_value_table_calculation(a, &val, &default_value, false)
                     .context("failed value range to value table conversion of f32 channel")?,
             );
         }
         ChannelData::Int64(a) => {
             cn.data = ChannelData::Float64(
-                value_range_to_value_table_calculation(a, &val, &default_value)
+                value_range_to_value_table_calculation(a, &val, &default_value, true)
                     .context("failed value range to value table conversion of i64 channel")?,
             );
         }
         ChannelData::UInt64(a) => {
             cn.data = ChannelData::Float64(
-                value_range_to_value_table_calculation(a, &val, &default_value)
+                value_range_to_value_table_calculation(a, &val, &default_value, true)
                     .context("failed value range to value table conversion of u64 channel")?,
             );
         }
         ChannelData::Float64(a) => {
             cn.data = ChannelData::Float64(
-                value_range_to_value_table_calculation(a, &val, &default_value)
+                value_range_to_value_table_calculation(a, &val, &default_value, false)
                     .context("failed value range to value table conversion of f64 channel")?,
             );
         }
@@ -1374,6 +829,7 @@ fn value_to_text_calculation_int<T: ArrowPrimitiveType>(
     sharable: &SharableBlocks,
 ) -> Result<LargeStringBuilder, Error>
 where
+    <T as ArrowPrimitiveType>::Native: AsPrimitive<f64> + AsPrimitive<i64>,
 {
     // table applicable only to integers, no canonization
     let mut table_int: HashMap<i64, TextOrScaleConversion> = HashMap::with_capacity(cc_val.len());
@@ -1393,45 +849,37 @@ where
             }
         }
     }
-    let array_f64: Float64Array = cast(&array.finish_cloned(), &DataType::Float64)
-        .context("failed converting Array to f64 Array")?
-        .as_primitive::<Float64Type>()
-        .clone();
-    let array_i64 = cast(&array.finish_cloned(), &DataType::Int64)
-        .context("failed converting Array to Int64 Array")?
-        .as_primitive::<Int64Type>()
-        .clone();
-    let mut new_array = LargeStringBuilder::with_capacity(array_f64.len(), 32);
-    array_f64
-        .iter()
-        .zip(array_i64.iter())
-        .for_each(|(a_f64, a_i64)| {
-            if let Some(tosc) = table_int.get(&a_i64.unwrap_or_default()) {
-                match tosc {
-                    TextOrScaleConversion::Txt(txt) => {
-                        new_array.append_value(txt.clone());
-                    }
-                    TextOrScaleConversion::Scale(conv) => {
-                        new_array.append_value(conv.eval_to_txt(a_f64.unwrap_or(0f64)));
-                    }
-                    _ => {
-                        new_array.append_value(a_f64.unwrap_or(0f64).to_string());
-                    }
+    let values = array.values_slice();
+    let mut new_array = LargeStringBuilder::with_capacity(values.len(), 32);
+    values.iter().for_each(|v| {
+        let a_f64: f64 = (*v).as_();
+        let a_i64: i64 = (*v).as_();
+        if let Some(tosc) = table_int.get(&a_i64) {
+            match tosc {
+                TextOrScaleConversion::Txt(txt) => {
+                    new_array.append_value(txt.clone());
                 }
-            } else {
-                match &def {
-                    DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                        new_array.append_value(txt.clone());
-                    }
-                    DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                        new_array.append_value(conv.eval_to_txt(a_f64.unwrap_or(0f64)));
-                    }
-                    _ => {
-                        new_array.append_value(a_f64.unwrap_or(0f64).to_string());
-                    }
+                TextOrScaleConversion::Scale(conv) => {
+                    new_array.append_value(conv.eval_to_txt(a_f64));
+                }
+                _ => {
+                    new_array.append_value(a_f64.to_string());
                 }
             }
-        });
+        } else {
+            match &def {
+                DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                    new_array.append_value(txt.clone());
+                }
+                DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                    new_array.append_value(conv.eval_to_txt(a_f64));
+                }
+                _ => {
+                    new_array.append_value(a_f64.to_string());
+                }
+            }
+        }
+    });
     if let Some(validity) = array.validity_slice_mut() {
         let _ = new_array.validity_slice_mut().insert(validity);
     }
@@ -1729,7 +1177,10 @@ fn value_range_to_text_calculation<T: ArrowPrimitiveType>(
     cc_val: &[f64],
     cc_ref: &[i64],
     sharable: &SharableBlocks,
-) -> LargeStringBuilder {
+) -> LargeStringBuilder
+where
+    <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
+{
     let n_keys = cc_val.len() / 2;
     let mut keys: Vec<KeyRange> = Vec::with_capacity(n_keys);
     for (key_min, key_max) in cc_val.iter().tuples() {
@@ -1740,7 +1191,7 @@ fn value_range_to_text_calculation<T: ArrowPrimitiveType>(
         keys.push(key);
     }
     let mut txt: Vec<TextOrScaleConversion> = Vec::with_capacity(n_keys);
-    for pointer in cc_ref.iter() {
+    for pointer in cc_ref {
         match sharable.get_tx(*pointer) {
             Ok(Some(t)) => {
                 txt.push(TextOrScaleConversion::Txt(t));
@@ -1769,12 +1220,10 @@ fn value_range_to_text_calculation<T: ArrowPrimitiveType>(
             }
         }
     }
-    let mut new_array = LargeStringBuilder::with_capacity(array.len(), 32);
-    let array_f64: Float64Array = cast(&array.finish_cloned(), &DataType::Float64)
-        .expect("failed converting Array to f64 Array")
-        .as_primitive::<Float64Type>()
-        .clone();
-    array_f64.values().iter().for_each(|a| {
+    let values = array.values_slice();
+    let mut new_array = LargeStringBuilder::with_capacity(values.len(), 32);
+    values.iter().for_each(|v| {
+        let a: &f64 = &(*v).as_();
         let matched_key = keys
             .iter()
             .enumerate()
@@ -1926,7 +1375,7 @@ fn text_to_text_calculation(
 ) -> LargeStringBuilder {
     let pairs: Vec<(&i64, &i64)> = cc_ref.iter().tuples().collect();
     let mut table: HashMap<String, Option<String>> = HashMap::with_capacity(cc_ref.len());
-    for ccref in pairs.iter() {
+    for ccref in &pairs {
         if let Ok(Some(key)) = sharable.get_tx(*ccref.0) {
             match sharable.get_tx(*ccref.1) {
                 Ok(Some(txt)) => {
@@ -1992,10 +1441,13 @@ fn bitfield_text_table_calculation<T: ArrowPrimitiveType>(
     cc_val: &[u64],
     cc_ref: &[i64],
     sharable: &SharableBlocks,
-) -> Result<LargeStringBuilder> {
+) -> Result<LargeStringBuilder>
+where
+    <T as ArrowPrimitiveType>::Native: AsPrimitive<f64> + AsPrimitive<i64>,
+{
     let mut table: Vec<(ValueOrValueRangeToText, Option<String>)> =
         Vec::with_capacity(cc_ref.len());
-    for pointer in cc_ref.iter() {
+    for pointer in cc_ref {
         if let Some(cc) = sharable.cc.get(pointer) {
             let name: Option<String>;
             if cc.cc_tx_name != 0 {
@@ -2064,7 +1516,7 @@ fn bitfield_text_table_calculation<T: ArrowPrimitiveType>(
                             keys.push(key);
                         }
                         let mut txt: Vec<TextOrScaleConversion> = Vec::with_capacity(n_keys);
-                        for pointer in cc.cc_ref.iter() {
+                        for pointer in &cc.cc_ref {
                             match sharable.get_tx(*pointer) {
                                 Ok(Some(t)) => {
                                     txt.push(TextOrScaleConversion::Txt(t));
@@ -2105,136 +1557,104 @@ fn bitfield_text_table_calculation<T: ArrowPrimitiveType>(
         }
     }
 
-    let array_f64 = cast(&array.finish_cloned(), &DataType::Float64)
-        .context("failed converting Array to f64 Array")?
-        .as_primitive::<Float64Type>()
-        .clone();
-    let array_i64 = cast(&array.finish_cloned(), &DataType::Int64)
-        .context("failed converting Array to Int64 Array")?
-        .as_primitive::<Int64Type>()
-        .clone();
-    let mut new_array = LargeStringBuilder::with_capacity(array.len(), 32);
-    array_f64
-        .iter()
-        .zip(array_i64.iter())
-        .for_each(|(a, a_i64)| {
-            let mut new_a = String::new();
-            for (ind, val) in cc_val.iter().enumerate() {
-                match &table[ind] {
-                    (ValueOrValueRangeToText::ValueToText(table_int, def), name) => {
-                        let ref_val =
-                            a_i64.unwrap_or_default() & (val.to_i64().unwrap_or_default());
-                        if let Some(tosc) = table_int.get(&ref_val) {
-                            match tosc {
-                                TextOrScaleConversion::Txt(txt) => {
-                                    if let Some(n) = name {
-                                        new_a = format!("{} | {} = {}", new_a, n, txt.clone());
-                                    } else {
-                                        new_a = format!("{} | {}", new_a, txt.clone());
-                                    }
-                                }
-                                TextOrScaleConversion::Scale(conv) => {
-                                    if let Some(n) = name {
-                                        new_a = format!(
-                                            "{} | {} = {}",
-                                            new_a,
-                                            n,
-                                            conv.eval_to_txt(a.unwrap_or_default())
-                                        );
-                                    } else {
-                                        new_a = format!(
-                                            "{} | {}",
-                                            new_a,
-                                            conv.eval_to_txt(a.unwrap_or_default())
-                                        );
-                                    }
-                                }
-                                _ => {
-                                    new_a = format!("{} | {}", new_a, "nothing");
+    let values = array.values_slice();
+    let mut new_array = LargeStringBuilder::with_capacity(values.len(), 32);
+    values.iter().for_each(|v| {
+        let a_f64: f64 = (*v).as_();
+        let a_i64: i64 = (*v).as_();
+        let mut new_a = String::new();
+        for (ind, val) in cc_val.iter().enumerate() {
+            match &table[ind] {
+                (ValueOrValueRangeToText::ValueToText(table_int, def), name) => {
+                    let ref_val = a_i64 & (val.to_i64().unwrap_or_default());
+                    if let Some(tosc) = table_int.get(&ref_val) {
+                        match tosc {
+                            TextOrScaleConversion::Txt(txt) => {
+                                if let Some(n) = name {
+                                    new_a = format!("{} | {} = {}", new_a, n, txt.clone());
+                                } else {
+                                    new_a = format!("{} | {}", new_a, txt.clone());
                                 }
                             }
-                        } else {
-                            match &def {
-                                DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                                    new_a.clone_from(txt);
+                            TextOrScaleConversion::Scale(conv) => {
+                                if let Some(n) = name {
+                                    new_a =
+                                        format!("{} | {} = {}", new_a, n, conv.eval_to_txt(a_f64));
+                                } else {
+                                    new_a = format!("{} | {}", new_a, conv.eval_to_txt(a_f64));
                                 }
-                                DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                                    new_a = conv.eval_to_txt(a.unwrap_or(0f64));
-                                }
-                                _ => {
-                                    new_a = format!("{} | {}", new_a, "nothing");
-                                }
+                            }
+                            _ => {
+                                new_a = format!("{} | {}", new_a, "nothing");
+                            }
+                        }
+                    } else {
+                        match &def {
+                            DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                                new_a.clone_from(txt);
+                            }
+                            DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                                new_a = conv.eval_to_txt(a_f64);
+                            }
+                            _ => {
+                                new_a = format!("{} | {}", new_a, "nothing");
                             }
                         }
                     }
-                    (ValueOrValueRangeToText::ValueRangeToText(txt, def, keys), name) => {
-                        let matched_key = keys.iter().enumerate().find(|&x| {
-                            (x.1.min <= a.unwrap_or_default()) && (a.unwrap_or_default() <= x.1.max)
-                        });
-                        if let Some(key) = matched_key {
-                            match &txt[key.0] {
-                                TextOrScaleConversion::Txt(txt) => {
-                                    if let Some(n) = name {
-                                        new_a = format!("{} | {} = {}", new_a, n, txt.clone());
-                                    } else {
-                                        new_a = format!("{} | {}", new_a, txt.clone());
-                                    }
-                                }
-                                TextOrScaleConversion::Scale(conv) => {
-                                    if let Some(n) = name {
-                                        new_a = format!(
-                                            "{} | {} = {}",
-                                            new_a,
-                                            n,
-                                            conv.eval_to_txt(a.unwrap_or_default())
-                                        );
-                                    } else {
-                                        new_a = format!(
-                                            "{} | {}",
-                                            new_a,
-                                            conv.eval_to_txt(a.unwrap_or_default())
-                                        );
-                                    }
-                                }
-                                _ => {
-                                    new_array.append_value(format!("{} | {}", new_a, "nothing"));
+                }
+                (ValueOrValueRangeToText::ValueRangeToText(txt, def, keys), name) => {
+                    let matched_key = keys
+                        .iter()
+                        .enumerate()
+                        .find(|&x| (x.1.min <= a_f64) && (a_f64 <= x.1.max));
+                    if let Some(key) = matched_key {
+                        match &txt[key.0] {
+                            TextOrScaleConversion::Txt(txt) => {
+                                if let Some(n) = name {
+                                    new_a = format!("{} | {} = {}", new_a, n, txt.clone());
+                                } else {
+                                    new_a = format!("{} | {}", new_a, txt.clone());
                                 }
                             }
-                        } else {
-                            match &def {
-                                DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                                    if let Some(n) = name {
-                                        new_a = format!("{} | {} = {}", new_a, n, txt.clone());
-                                    } else {
-                                        new_a = format!("{} | {}", new_a, txt.clone());
-                                    }
+                            TextOrScaleConversion::Scale(conv) => {
+                                if let Some(n) = name {
+                                    new_a =
+                                        format!("{} | {} = {}", new_a, n, conv.eval_to_txt(a_f64));
+                                } else {
+                                    new_a = format!("{} | {}", new_a, conv.eval_to_txt(a_f64));
                                 }
-                                DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                                    if let Some(n) = name {
-                                        new_a = format!(
-                                            "{} | {} = {}",
-                                            new_a,
-                                            n,
-                                            conv.eval_to_txt(a.unwrap_or_default())
-                                        );
-                                    } else {
-                                        new_a = format!(
-                                            "{} | {}",
-                                            new_a,
-                                            conv.eval_to_txt(a.unwrap_or_default())
-                                        );
-                                    }
+                            }
+                            _ => {
+                                new_array.append_value(format!("{} | {}", new_a, "nothing"));
+                            }
+                        }
+                    } else {
+                        match &def {
+                            DefaultTextOrScaleConversion::DefaultTxt(txt) => {
+                                if let Some(n) = name {
+                                    new_a = format!("{} | {} = {}", new_a, n, txt.clone());
+                                } else {
+                                    new_a = format!("{} | {}", new_a, txt.clone());
                                 }
-                                _ => {
-                                    new_a = format!("{} | {}", new_a, "nothing");
+                            }
+                            DefaultTextOrScaleConversion::DefaultScale(conv) => {
+                                if let Some(n) = name {
+                                    new_a =
+                                        format!("{} | {} = {}", new_a, n, conv.eval_to_txt(a_f64));
+                                } else {
+                                    new_a = format!("{} | {}", new_a, conv.eval_to_txt(a_f64));
                                 }
+                            }
+                            _ => {
+                                new_a = format!("{} | {}", new_a, "nothing");
                             }
                         }
                     }
                 }
             }
-            new_array.append_value(new_a);
-        });
+        }
+        new_array.append_value(new_a);
+    });
     Ok(new_array)
 }
 
@@ -2277,4 +1697,499 @@ fn bitfield_text_table(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use arrow::array::{Float64Builder, Int32Builder, UInt16Builder};
+
+    #[test]
+    fn test_linear_calculation() {
+        // v * p2 + p1 where p1=10.0, p2=2.0
+        let p1 = 10.0;
+        let p2 = 2.0;
+
+        // Int32
+        let mut builder = Int32Builder::new();
+        builder.append_value(0);
+        builder.append_value(1);
+        builder.append_value(5);
+        builder.append_value(-3);
+        let result = linear_calculation(&mut builder, p1, p2).unwrap();
+        let values = result.values_slice();
+        assert_eq!(values.len(), 4);
+        assert!((values[0] - 10.0).abs() < 1e-12); // 0*2+10
+        assert!((values[1] - 12.0).abs() < 1e-12); // 1*2+10
+        assert!((values[2] - 20.0).abs() < 1e-12); // 5*2+10
+        assert!((values[3] - 4.0).abs() < 1e-12); // -3*2+10
+
+        // Float64
+        let mut builder = Float64Builder::new();
+        builder.append_value(1.5);
+        builder.append_value(2.5);
+        let result = linear_calculation(&mut builder, p1, p2).unwrap();
+        let values = result.values_slice();
+        assert!((values[0] - 13.0).abs() < 1e-12); // 1.5*2+10
+        assert!((values[1] - 15.0).abs() < 1e-12); // 2.5*2+10
+
+        // UInt16
+        let mut builder = UInt16Builder::new();
+        builder.append_value(100);
+        builder.append_value(0);
+        let result = linear_calculation(&mut builder, p1, p2).unwrap();
+        let values = result.values_slice();
+        assert!((values[0] - 210.0).abs() < 1e-12); // 100*2+10
+        assert!((values[1] - 10.0).abs() < 1e-12); // 0*2+10
+    }
+
+    #[test]
+    fn test_rational_calculation() {
+        // (x²*p1 + x*p2 + p3) / (x²*p4 + x*p5 + p6)
+        // Simple linear: p1=0, p2=2, p3=1, p4=0, p5=0, p6=1 → (2x+1)/1
+        let cc_val = vec![0.0, 2.0, 1.0, 0.0, 0.0, 1.0];
+
+        let mut builder = Int32Builder::new();
+        builder.append_value(0);
+        builder.append_value(1);
+        builder.append_value(5);
+        let result = rational_calculation(&builder, &cc_val).unwrap();
+        let values = result.values_slice();
+        assert!((values[0] - 1.0).abs() < 1e-12); // (0+0+1)/1
+        assert!((values[1] - 3.0).abs() < 1e-12); // (0+2+1)/1
+        assert!((values[2] - 11.0).abs() < 1e-12); // (0+10+1)/1
+
+        // Quadratic: p1=1, p2=0, p3=0, p4=0, p5=0, p6=1 → x²
+        let cc_val = vec![1.0, 0.0, 0.0, 0.0, 0.0, 1.0];
+        let mut builder = Float64Builder::new();
+        builder.append_value(3.0);
+        builder.append_value(4.0);
+        let result = rational_calculation(&builder, &cc_val).unwrap();
+        let values = result.values_slice();
+        assert!((values[0] - 9.0).abs() < 1e-12); // 3²
+        assert!((values[1] - 16.0).abs() < 1e-12); // 4²
+    }
+
+    #[test]
+    fn test_value_to_value_with_interpolation_primitive() {
+        // Table pairs: x=0→y=0, x=10→y=100, x=20→y=200
+        let keys = [0.0, 0.0, 10.0, 100.0, 20.0, 200.0];
+        let val: Vec<(&f64, &f64)> = keys.iter().tuples().collect();
+
+        let mut builder = Float64Builder::new();
+        builder.append_value(0.0); // exact → 0
+        builder.append_value(5.0); // interpolate → 50
+        builder.append_value(10.0); // exact → 100
+        builder.append_value(15.0); // interpolate → 150
+        builder.append_value(-5.0); // below first → 0
+        builder.append_value(25.0); // above last → 200
+
+        let result = value_to_value_with_interpolation_primitive(&builder, &val).unwrap();
+        let values = result.values_slice();
+        assert_eq!(values.len(), 6);
+        assert!((values[0] - 0.0).abs() < 1e-12);
+        assert!((values[1] - 50.0).abs() < 1e-12);
+        assert!((values[2] - 100.0).abs() < 1e-12);
+        assert!((values[3] - 150.0).abs() < 1e-12);
+        assert!((values[4] - 0.0).abs() < 1e-12);
+        assert!((values[5] - 200.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_value_to_value_without_interpolation_primitive() {
+        // Table pairs: x=0→y=0, x=10→y=100, x=20→y=200 (MDF4 spec 6.17.7)
+        let keys = [0.0, 0.0, 10.0, 100.0, 20.0, 200.0];
+        let val: Vec<(&f64, &f64)> = keys.iter().tuples().collect();
+
+        let mut builder = Float64Builder::new();
+        builder.append_value(0.0); // exact match → 0
+        builder.append_value(3.0); // between key[0]=0 and key[1]=10, nearer to 0 → 0
+        builder.append_value(7.0); // between key[0]=0 and key[1]=10, nearer to 10 → 100
+        builder.append_value(10.0); // exact match → 100
+        builder.append_value(-5.0); // below first key → value[0] = 0
+        builder.append_value(25.0); // above last key → value[n-1] = 200
+
+        let result = value_to_value_without_interpolation_primitive(&mut builder, &val).unwrap();
+        let values = result.values_slice();
+        assert_eq!(values.len(), 6);
+        assert!((values[0] - 0.0).abs() < 1e-12); // exact → 0
+        assert!((values[1] - 0.0).abs() < 1e-12); // nearest key=0 → 0
+        assert!((values[2] - 100.0).abs() < 1e-12); // nearest key=10 → 100
+        assert!((values[3] - 100.0).abs() < 1e-12); // exact → 100
+        assert!((values[4] - 0.0).abs() < 1e-12); // below first → value[0]=0
+        assert!((values[5] - 200.0).abs() < 1e-12); // above last → value[n-1]=200
+    }
+
+    #[test]
+    fn test_value_range_to_value_table() {
+        // Ranges: (key_min, key_max, value)
+        let val = vec![(0.0, 10.0, 100.0), (10.0, 20.0, 200.0), (20.0, 30.0, 300.0)];
+        let default = -1.0;
+
+        let mut builder = Float64Builder::new();
+        builder.append_value(0.0); // exact match on key_min=0 → 100
+        builder.append_value(10.0); // exact match on key_min=10 → 200
+        builder.append_value(20.0); // exact match on key_min=20 → 300
+        builder.append_value(-5.0); // below all ranges → default
+        builder.append_value(25.0); // above last key_min but within last upper bound → 300
+
+        let result =
+            value_range_to_value_table_calculation(&builder, &val, &default, false).unwrap();
+        let values = result.values_slice();
+        assert_eq!(values.len(), 5);
+        assert!((values[0] - 100.0).abs() < 1e-12);
+        assert!((values[1] - 200.0).abs() < 1e-12);
+        assert!((values[2] - 300.0).abs() < 1e-12);
+        assert!((values[3] - (-1.0)).abs() < 1e-12);
+        assert!((values[4] - 300.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_value_range_float_touching_boundaries() {
+        // Replicate the Vector_ValueRange2ValueConversion.mf4 CC table (float [lo, hi) semantics)
+        let val = vec![
+            (-10.0f64, -7.0, -1.0), // range 0
+            (-7.0, -5.0, 0.0),      // range 1 (touching: min=-7 == max of range 0)
+            (-5.0, 0.0, 1.0),
+        ];
+        let default = -1.0f64;
+
+        let mut builder = Float64Builder::new();
+        builder.append_value(-9.0); // in range 0 [-10,-7): -10<=-9<-7 → True → -1
+        builder.append_value(-7.0); // at touching boundary: Ok(1)→range 1→ 0 (not range 0 since -7 is not < -7)
+        builder.append_value(-6.0); // in range 1: -7<=-6<-5 → True → 0
+        builder.append_value(100.0); // above all ranges → default -1
+
+        let result =
+            value_range_to_value_table_calculation(&builder, &val, &default, false).unwrap();
+        let values = result.values_slice();
+        assert!(
+            (values[0] - (-1.0)).abs() < 1e-12,
+            "raw=-9 should be -1, got {}",
+            values[0]
+        );
+        assert!(
+            (values[1] - 0.0).abs() < 1e-12,
+            "raw=-7 should be 0, got {}",
+            values[1]
+        );
+        assert!(
+            (values[2] - 0.0).abs() < 1e-12,
+            "raw=-6 should be 0, got {}",
+            values[2]
+        );
+        assert!(
+            (values[3] - (-1.0)).abs() < 1e-12,
+            "raw=100 should be -1, got {}",
+            values[3]
+        );
+    }
+
+    #[test]
+    fn test_algebraic_conversion_primitive() {
+        // Expression: X * 2 + 1
+        let parser = fasteval::Parser::new();
+        let mut slab = fasteval::Slab::new();
+        let compiled = parser.parse("X * 2 + 1", &mut slab.ps).unwrap();
+        let compiled = compiled.from(&slab.ps).compile(&slab.ps, &mut slab.cs);
+
+        let mut builder = Float64Builder::new();
+        builder.append_value(0.0); // → 1
+        builder.append_value(1.0); // → 3
+        builder.append_value(5.0); // → 11
+        builder.append_value(-3.0); // → -5
+
+        let result = alegbraic_conversion_primitive(&compiled, &slab, &builder).unwrap();
+        let values = result.values_slice();
+        assert_eq!(values.len(), 4);
+        assert!((values[0] - 1.0).abs() < 1e-12);
+        assert!((values[1] - 3.0).abs() < 1e-12);
+        assert!((values[2] - 11.0).abs() < 1e-12);
+        assert!((values[3] - (-5.0)).abs() < 1e-12);
+    }
+
+    // ── Helper for higher-level conversion tests ──
+
+    fn make_cn4_with_data(data: ChannelData) -> Cn4 {
+        Cn4 {
+            data,
+            ..Default::default()
+        }
+    }
+
+    // ── linear_conversion (Cn4) tests ──
+
+    #[test]
+    fn test_linear_cn4_uint8() {
+        use arrow::array::UInt8Builder;
+        let mut builder = UInt8Builder::new();
+        builder.append_value(2);
+        builder.append_value(4);
+        let mut cn = make_cn4_with_data(ChannelData::UInt8(builder));
+        linear_conversion(&mut cn, &[1.0, 2.0]).unwrap(); // p1=1, p2=2 → v*2+1
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 5.0).abs() < 1e-12); // 2*2+1
+            assert!((vals[1] - 9.0).abs() < 1e-12); // 4*2+1
+        } else {
+            panic!("Expected Float64 after linear conversion");
+        }
+    }
+
+    #[test]
+    fn test_linear_cn4_int16() {
+        use arrow::array::Int16Builder;
+        let mut builder = Int16Builder::new();
+        builder.append_value(10);
+        let mut cn = make_cn4_with_data(ChannelData::Int16(builder));
+        linear_conversion(&mut cn, &[0.0, 0.5]).unwrap();
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 5.0).abs() < 1e-12); // 10*0.5+0
+        } else {
+            panic!("Expected Float64");
+        }
+    }
+
+    #[test]
+    fn test_linear_cn4_array_d_int16() {
+        use crate::data_holder::tensor_arrow::{Order, TensorArrow};
+        use arrow::array::Int16Builder;
+        use arrow::datatypes::Int16Type;
+        let mut builder = Int16Builder::new();
+        builder.append_value(1);
+        builder.append_value(2);
+        let tensor =
+            TensorArrow::<Int16Type>::new_from_primitive(builder, None, vec![2], Order::RowMajor);
+        let mut cn = make_cn4_with_data(ChannelData::ArrayDInt16(tensor));
+        linear_conversion(&mut cn, &[0.0, 3.0]).unwrap();
+        if let ChannelData::ArrayDFloat64(ref t) = cn.data {
+            let vals = t.values_slice();
+            assert!((vals[0] - 3.0).abs() < 1e-12);
+            assert!((vals[1] - 6.0).abs() < 1e-12);
+        } else {
+            panic!("Expected ArrayDFloat64");
+        }
+    }
+
+    #[test]
+    fn test_linear_cn4_array_d_float64() {
+        use crate::data_holder::tensor_arrow::{Order, TensorArrow};
+        use arrow::datatypes::Float64Type;
+        let mut builder = Float64Builder::new();
+        builder.append_value(1.0);
+        let tensor =
+            TensorArrow::<Float64Type>::new_from_primitive(builder, None, vec![1], Order::RowMajor);
+        let mut cn = make_cn4_with_data(ChannelData::ArrayDFloat64(tensor));
+        linear_conversion(&mut cn, &[0.0, 2.0]).unwrap();
+        if let ChannelData::ArrayDFloat64(ref t) = cn.data {
+            let vals = t.values_slice();
+            assert!((vals[0] - 2.0).abs() < 1e-12);
+        } else {
+            panic!("Expected ArrayDFloat64");
+        }
+    }
+
+    #[test]
+    fn test_linear_cn4_utf8_warn() {
+        use arrow::array::LargeStringBuilder;
+        // Utf8 data should produce a warn but NOT change data type and should return Ok
+        let mut cn = make_cn4_with_data(ChannelData::Utf8(LargeStringBuilder::new()));
+        let result = linear_conversion(&mut cn, &[1.0, 2.0]);
+        assert!(result.is_ok());
+        // data type unchanged
+        assert!(matches!(cn.data, ChannelData::Utf8(_)));
+    }
+
+    #[test]
+    fn test_linear_cn4_identity_no_op() {
+        use arrow::array::UInt8Builder;
+        let mut builder = UInt8Builder::new();
+        builder.append_value(7);
+        let mut cn = make_cn4_with_data(ChannelData::UInt8(builder));
+        // p1=0, p2=1 is identity → no change
+        linear_conversion(&mut cn, &[0.0, 1.0]).unwrap();
+        // data type should remain UInt8 (identity skipped)
+        assert!(matches!(cn.data, ChannelData::UInt8(_)));
+    }
+
+    // ── rational_conversion (Cn4) tests ──
+
+    #[test]
+    fn test_rational_cn4_float64() {
+        // identity rational: (0*x^2 + 1*x + 0) / (0*x^2 + 0*x + 1) = x
+        let cc_val = vec![0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+        let mut builder = Float64Builder::new();
+        builder.append_value(2.0);
+        let mut cn = make_cn4_with_data(ChannelData::Float64(builder));
+        rational_conversion(&mut cn, &cc_val).unwrap();
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 2.0).abs() < 1e-12);
+        } else {
+            panic!("Expected Float64");
+        }
+    }
+
+    #[test]
+    fn test_rational_cn4_uint8() {
+        // (0*x^2 + 1*x + 0) / (0*x^2 + 0*x + 2) = x/2
+        let cc_val = vec![0.0, 1.0, 0.0, 0.0, 0.0, 2.0];
+        use arrow::array::UInt8Builder;
+        let mut builder = UInt8Builder::new();
+        builder.append_value(4);
+        let mut cn = make_cn4_with_data(ChannelData::UInt8(builder));
+        rational_conversion(&mut cn, &cc_val).unwrap();
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 2.0).abs() < 1e-12);
+        } else {
+            panic!("Expected Float64");
+        }
+    }
+
+    // ── value_to_value_with_interpolation (Cn4) tests ──
+
+    #[test]
+    fn test_vtv_interp_cn4_float64() {
+        // cc_val: pairs (x, y) interleaved: 1.0→10.0, 2.0→20.0
+        let cc_val = vec![1.0, 10.0, 2.0, 20.0];
+        let mut builder = Float64Builder::new();
+        builder.append_value(1.5); // interpolated: 15.0
+        let mut cn = make_cn4_with_data(ChannelData::Float64(builder));
+        value_to_value_with_interpolation(&mut cn, cc_val).unwrap();
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 15.0).abs() < 1e-9);
+        } else {
+            panic!("Expected Float64");
+        }
+    }
+
+    #[test]
+    fn test_vtv_interp_cn4_uint8() {
+        // cc_val: 0→0, 10→100
+        let cc_val = vec![0.0, 0.0, 10.0, 100.0];
+        use arrow::array::UInt8Builder;
+        let mut builder = UInt8Builder::new();
+        builder.append_value(5); // 50
+        let mut cn = make_cn4_with_data(ChannelData::UInt8(builder));
+        value_to_value_with_interpolation(&mut cn, cc_val).unwrap();
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 50.0).abs() < 1e-9);
+        } else {
+            panic!("Expected Float64");
+        }
+    }
+
+    #[test]
+    fn test_vtv_interp_cn4_array_d_uint8() {
+        use crate::data_holder::tensor_arrow::{Order, TensorArrow};
+        use arrow::array::UInt8Builder;
+        use arrow::datatypes::UInt8Type;
+        let cc_val = vec![0.0, 0.0, 10.0, 100.0];
+        let mut builder = UInt8Builder::new();
+        builder.append_value(5);
+        let tensor =
+            TensorArrow::<UInt8Type>::new_from_primitive(builder, None, vec![1], Order::RowMajor);
+        let mut cn = make_cn4_with_data(ChannelData::ArrayDUInt8(tensor));
+        value_to_value_with_interpolation(&mut cn, cc_val).unwrap();
+        assert!(matches!(cn.data, ChannelData::ArrayDFloat64(_)));
+    }
+
+    #[test]
+    fn test_vtv_interp_cn4_int64_noop() {
+        use arrow::array::Int64Builder;
+        // Int64 not handled in value_to_value_with_interpolation (falls through to warn)
+        let mut builder = Int64Builder::new();
+        builder.append_value(5);
+        let mut cn = make_cn4_with_data(ChannelData::Int64(builder));
+        let result = value_to_value_with_interpolation(&mut cn, vec![0.0, 0.0, 10.0, 100.0]);
+        assert!(result.is_ok());
+    }
+
+    // ── value_to_value_without_interpolation (Cn4) tests ──
+
+    #[test]
+    fn test_vtv_no_interp_cn4_float64() {
+        let cc_val = vec![1.0, 100.0, 2.0, 200.0];
+        let mut builder = Float64Builder::new();
+        builder.append_value(1.0); // exact match → 100.0
+        let mut cn = make_cn4_with_data(ChannelData::Float64(builder));
+        value_to_value_without_interpolation(&mut cn, cc_val).unwrap();
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 100.0).abs() < 1e-12);
+        } else {
+            panic!("Expected Float64");
+        }
+    }
+
+    #[test]
+    fn test_vtv_no_interp_cn4_uint8() {
+        use arrow::array::UInt8Builder;
+        let cc_val = vec![1.0, 10.0, 2.0, 20.0];
+        let mut builder = UInt8Builder::new();
+        builder.append_value(2); // exact match → 20.0
+        let mut cn = make_cn4_with_data(ChannelData::UInt8(builder));
+        value_to_value_without_interpolation(&mut cn, cc_val).unwrap();
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 20.0).abs() < 1e-12);
+        } else {
+            panic!("Expected Float64");
+        }
+    }
+
+    // ── value_range_to_value_table (Cn4) tests ──
+
+    #[test]
+    fn test_vrv_cn4_float64() {
+        // cc_val groups of 3: (min, max, out_val)
+        // Range [1.0, 2.0] → 100.0
+        let cc_val = vec![1.0, 2.0, 100.0];
+        let mut builder = Float64Builder::new();
+        builder.append_value(1.5); // in [1.0, 2.0] → 100.0
+        let mut cn = make_cn4_with_data(ChannelData::Float64(builder));
+        value_range_to_value_table(&mut cn, cc_val).unwrap();
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 100.0).abs() < 1e-12);
+        } else {
+            panic!("Expected Float64");
+        }
+    }
+
+    #[test]
+    fn test_vrv_cn4_uint8() {
+        use arrow::array::UInt8Builder;
+        // Range [0.0, 10.0] → 42.0
+        let cc_val = vec![0.0, 10.0, 42.0];
+        let mut builder = UInt8Builder::new();
+        builder.append_value(5); // in [0, 10]
+        let mut cn = make_cn4_with_data(ChannelData::UInt8(builder));
+        value_range_to_value_table(&mut cn, cc_val).unwrap();
+        if let ChannelData::Float64(ref b) = cn.data {
+            let vals = b.values_slice();
+            assert!((vals[0] - 42.0).abs() < 1e-12);
+        } else {
+            panic!("Expected Float64");
+        }
+    }
+
+    #[test]
+    fn test_vrv_cn4_array_d_warn() {
+        use crate::data_holder::tensor_arrow::{Order, TensorArrow};
+        use arrow::array::Int8Builder;
+        use arrow::datatypes::Int8Type;
+        let mut builder = Int8Builder::new();
+        builder.append_value(5);
+        let tensor =
+            TensorArrow::<Int8Type>::new_from_primitive(builder, None, vec![1], Order::RowMajor);
+        let mut cn = make_cn4_with_data(ChannelData::ArrayDInt8(tensor));
+        // ArrayDInt8 falls through to warn path
+        let result = value_range_to_value_table(&mut cn, vec![0.0, 10.0, 42.0]);
+        assert!(result.is_ok());
+    }
 }

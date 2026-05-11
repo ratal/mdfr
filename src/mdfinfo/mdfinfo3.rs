@@ -3,7 +3,7 @@ use anyhow::{Context, Error, Result};
 use arrow::array::{UInt8Builder, UInt16Builder, UInt32Builder};
 use binrw::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
-use chrono::NaiveDate;
+use chrono::{DateTime, FixedOffset, NaiveDate, TimeZone};
 use encoding_rs::Encoding;
 use log::info;
 use std::cmp::Ordering;
@@ -16,6 +16,7 @@ use std::io::{Cursor, prelude::*};
 use crate::data_holder::channel_data::{ChannelData, data_type_init};
 use crate::data_holder::tensor_arrow::Order;
 use crate::mdfinfo::IdBlock;
+use crate::mdfinfo::mdfinfo4::Endianness;
 
 use super::sym_buf_reader::SymBufReader;
 
@@ -130,18 +131,15 @@ impl MdfInfo3 {
     }
     /// returns a hashmap for which master channel names are keys and values its corresponding set of channel names
     pub fn get_master_channel_names_set(&self) -> HashMap<Option<String>, HashSet<String>> {
-        let mut channel_master_list: HashMap<Option<String>, HashSet<String>> = HashMap::new();
-        for (_dg_position, dg) in self.dg.iter() {
-            for (_record_id, cg) in dg.cg.iter() {
-                if let Some(list) = channel_master_list.get_mut(&None) {
-                    list.extend(list.clone());
-                } else {
-                    channel_master_list
-                        .insert(cg.master_channel_name.clone(), cg.channel_names.clone());
-                }
+        let mut map: HashMap<Option<String>, HashSet<String>> = HashMap::new();
+        for dg in self.dg.values() {
+            for cg in dg.cg.values() {
+                map.entry(cg.master_channel_name.clone())
+                    .or_default()
+                    .extend(cg.channel_names.iter().cloned());
             }
         }
-        channel_master_list
+        map
     }
     // empty the channels' ndarray
     pub fn clear_channel_data_from_memory(
@@ -157,6 +155,42 @@ impl MdfInfo3 {
                 && !cn.data.is_empty()
             {
                 cn.data = cn.data.zeros(0, 0, 0, (Vec::new(), Order::RowMajor))?;
+            }
+        }
+        Ok(())
+    }
+    /// directly replaces a single channel's ChannelData (bypasses try_from)
+    pub fn replace_channel_data(
+        &mut self,
+        channel_name: &str,
+        data: ChannelData,
+    ) -> Result<(), Error> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
+            self.channel_names_set.get(channel_name)
+            && let Some(dg) = self.dg.get_mut(dg_pos)
+            && let Some(cg) = dg.cg.get_mut(rec_id)
+            && let Some(cn) = cg.cn.get_mut(cn_pos)
+        {
+            cn.data = data;
+        }
+        Ok(())
+    }
+    /// replaces each channel's data with the slice [start_idx, end_idx) for named channels
+    pub fn slice_channels(
+        &mut self,
+        channel_names: &HashSet<String>,
+        start_idx: usize,
+        end_idx: usize,
+    ) -> Result<(), Error> {
+        for channel_name in channel_names {
+            if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
+                self.channel_names_set.get(channel_name)
+                && let Some(dg) = self.dg.get_mut(dg_pos)
+                && let Some(cg) = dg.cg.get_mut(rec_id)
+                && let Some(cn) = cg.cn.get_mut(cn_pos)
+                && !cn.data.is_empty()
+            {
+                cn.data = cn.data.slice_range(start_idx, end_idx)?;
             }
         }
         Ok(())
@@ -283,27 +317,63 @@ impl MdfInfo3 {
             cn.description = desc.to_string();
         }
     }
+    /// Returns a concise one-line summary of the MDF3 file
+    pub fn summary(&self) -> String {
+        let total_channels = self.channel_names_set.len();
+        let total_dgs = self.dg.len();
+        format!(
+            "MDF3 v{}: {} DGs, {} channels",
+            self.id_block.id_ver, total_dgs, total_channels
+        )
+    }
+    /// Formats the channel list with optional data preview
+    pub fn format_channels(&self, _show_data: bool) -> String {
+        let mut output = String::new();
+        for (master, list) in &self.get_master_channel_names_set() {
+            if let Some(master_name) = master {
+                output.push_str(&format!("\nMaster: {master_name}\n"));
+            } else {
+                output.push_str("\nWithout Master channel\n");
+            }
+            for channel in list {
+                let unit = self.get_channel_unit(channel);
+                let desc = self.get_channel_desc(channel);
+                output.push_str(&format!("  {channel} "));
+                if let Some(u) = unit {
+                    output.push_str(&format!("\"{u}\" "));
+                }
+                if let Some(d) = desc
+                    && !d.is_empty()
+                {
+                    output.push_str(&format!("// {d}"));
+                }
+                output.push('\n');
+            }
+        }
+        output
+    }
+    /// Formats header info
+    pub fn format_header(&self) -> String {
+        format!(
+            "Author: {}  Organisation: {}\nProject: {}  Subject: {}\nDate: {:?}  Time: {:?}\nComments: {}",
+            self.hd_block.hd_author,
+            self.hd_block.hd_organization,
+            self.hd_block.hd_project,
+            self.hd_block.hd_subject,
+            self.hd_block.hd_date,
+            self.hd_block.hd_time,
+            self.hd_comment
+        )
+    }
 }
 
 /// MdfInfo3 display implementation
 impl fmt::Display for MdfInfo3 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "MdfInfo3: {}", self.file_name)?;
-        writeln!(f, "Version : {}\n", self.id_block.id_ver)?;
-        writeln!(f, "{}\n", self.hd_block)?;
-        for (master, list) in self.get_master_channel_names_set().iter() {
-            if let Some(master_name) = master {
-                writeln!(f, "\nMaster: {master_name}\n")?;
-            } else {
-                writeln!(f, "\nWithout Master channel\n")?;
-            }
-            for channel in list.iter() {
-                let unit = self.get_channel_unit(channel);
-                let desc = self.get_channel_desc(channel);
-                writeln!(f, " {channel} {unit:?} {desc:?} \n")?;
-            }
-        }
-        writeln!(f, "\n")
+        writeln!(f, "{}", self.summary())?;
+        writeln!(f, "File: {}", self.file_name)?;
+        writeln!(f, "{}", self.format_header())?;
+        write!(f, "{}", self.format_channels(false))
     }
 }
 
@@ -358,7 +428,7 @@ pub struct Hd3 {
     /// time stamp at which recording was started in nanosecond
     pub hd_start_time_ns: Option<u64>,
     /// time stamp at which recording was started in nanosecond
-    hd_time_offset: Option<i16>,
+    pub(crate) hd_time_offset: Option<i16>,
     /// time quality class
     hd_time_quality: Option<u16>,
     /// timer identification or time source
@@ -442,14 +512,26 @@ pub fn hd3_parser(
         .parse::<u32>()
         .context("Could not parse sec")?;
     let hd_time = (hour, minute, sec);
-    let mut hd_author: String = encoding.decode(&block.hd_author).0.into();
-    hd_author = hd_author.trim_end_matches(char::from(0)).to_string();
-    let mut hd_organization: String = encoding.decode(&block.hd_organization).0.into();
-    hd_organization = hd_organization.trim_end_matches(char::from(0)).to_string();
-    let mut hd_project: String = encoding.decode(&block.hd_project).0.into();
-    hd_project = hd_project.trim_end_matches(char::from(0)).to_string();
-    let mut hd_subject: String = encoding.decode(&block.hd_subject).0.into();
-    hd_subject = hd_subject.trim_end_matches(char::from(0)).to_string();
+    let hd_author: String = encoding
+        .decode(&block.hd_author)
+        .0
+        .trim_end_matches(char::from(0))
+        .to_string();
+    let hd_organization: String = encoding
+        .decode(&block.hd_organization)
+        .0
+        .trim_end_matches(char::from(0))
+        .to_string();
+    let hd_project: String = encoding
+        .decode(&block.hd_project)
+        .0
+        .trim_end_matches(char::from(0))
+        .to_string();
+    let hd_subject: String = encoding
+        .decode(&block.hd_subject)
+        .0
+        .trim_end_matches(char::from(0))
+        .to_string();
     let hd_start_time_ns: Option<u64>;
     let hd_time_offset: Option<i16>;
     let hd_time_quality: Option<u16>;
@@ -509,16 +591,43 @@ pub fn hd3_parser(
 /// Hd3 display implementation
 impl fmt::Display for Hd3 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(
-            f,
-            "Date : {}:{}:{}, Time: {}:{}:{} ",
-            self.hd_date.0,
-            self.hd_date.1,
-            self.hd_date.2,
-            self.hd_time.0,
-            self.hd_time.1,
-            self.hd_time.2,
-        )?;
+        // If we have a nanosecond timestamp (MDF >= 3.2), prefer it for display
+        if let Some(time_ns) = self.hd_start_time_ns {
+            let sec = (time_ns / 1_000_000_000) as i64;
+            let nsec = (time_ns % 1_000_000_000) as u32;
+
+            let datetime_str = if let Some(offset_min) = self.hd_time_offset {
+                // UTC time offset is available: apply it to produce a
+                // proper RFC 3339 datetime including the ±HH:MM offset
+                let offset_secs = (offset_min as i32) * 60;
+                match FixedOffset::east_opt(offset_secs) {
+                    Some(offset) => offset
+                        .timestamp_opt(sec, nsec)
+                        .single()
+                        .map(|dt| dt.to_rfc3339())
+                        .unwrap_or_else(|| "Invalid timestamp".to_string()),
+                    None => "Invalid offset".to_string(),
+                }
+            } else {
+                // No offset info — timestamp is stored as local time
+                DateTime::from_timestamp(sec, nsec)
+                    .map(|dt| format!("{} (local)", dt.format("%Y-%m-%dT%H:%M:%S%.f")))
+                    .unwrap_or_else(|| "Invalid timestamp".to_string())
+            };
+            writeln!(f, "Time : {datetime_str}")?;
+        } else {
+            // MDF < 3.2: fall back to raw DD:MM:YYYY / HH:MM:SS fields
+            writeln!(
+                f,
+                "Date : {}:{}:{}, Time: {}:{}:{} ",
+                self.hd_date.0,
+                self.hd_date.1,
+                self.hd_date.2,
+                self.hd_time.0,
+                self.hd_time.1,
+                self.hd_time.2,
+            )?;
+        }
         writeln!(f, "Author: {}", self.hd_author)?;
         writeln!(f, "Organization: {}", self.hd_organization)?;
         writeln!(f, "Project: {}", self.hd_project)?;
@@ -554,7 +663,7 @@ pub fn parse_tx(
     rdr.read_exact(&mut comment_raw)
         .context("Could not read comment raw data")?;
     let (comment, _encoding, error_flag) = encoding.decode(&comment_raw);
-    let comment: String = comment.to_string().trim_end_matches(char::from(0)).into();
+    let comment: String = comment.trim_end_matches(char::from(0)).to_string();
     if error_flag {
         info!("errors reading {comment}");
     }
@@ -835,8 +944,8 @@ pub struct Cn3 {
     pub n_bytes: u16,
     /// channel data
     pub data: ChannelData,
-    /// false = little endian
-    pub endian: bool,
+    /// byte order of the channel's raw data
+    pub endian: Endianness,
     /// True if channel is valid = contains data converted
     pub channel_data_valid: bool,
 }
@@ -971,7 +1080,7 @@ fn parse_cn3_block(
     }
 
     let (name, _encoding, error_flag) = encoding.decode(&block1.cn_short_name);
-    let mut unique_name = name.to_string().trim_end_matches(char::from(0)).to_string();
+    let mut unique_name = name.trim_end_matches(char::from(0)).to_string();
     if block2.cn_tx_long_name != 0 {
         // Reads TX long name
         let (_, name, pos) = parse_tx(rdr, block2.cn_tx_long_name, position, encoding)?;
@@ -983,7 +1092,7 @@ fn parse_cn3_block(
     }
 
     let (desc, _encoding, error_flag) = encoding.decode(&desc);
-    let description = desc.to_string().trim_end_matches(char::from(0)).to_string();
+    let description = desc.trim_end_matches(char::from(0)).to_string();
     if error_flag {
         info!("errors reading channel description {description}");
     }
@@ -1024,16 +1133,16 @@ fn parse_cn3_block(
         position = parse_ce(rdr, block1.cn_ce_source, position, sharable, encoding)?;
     }
 
-    let mut endian: bool = false; // Little endian by default
+    let mut endian = Endianness::Little; // Little endian by default
     if block2.cn_data_type >= 13 {
-        endian = false; // little endian
+        endian = Endianness::Little;
     } else if block2.cn_data_type >= 9 {
-        endian = true; // big endian
+        endian = Endianness::Big;
     } else if block2.cn_data_type <= 3 {
         if default_byte_order == 0 {
-            endian = false; // little endian
+            endian = Endianness::Little;
         } else {
-            endian = true; // big endian
+            endian = Endianness::Big;
         }
     }
     let data_type = convert_data_type_3to4(block2.cn_data_type);
@@ -1098,7 +1207,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         pos_byte_beg,
         n_bytes: 2,
         data: ChannelData::UInt16(UInt16Builder::new()),
-        endian: false,
+        endian: Endianness::Little,
         channel_data_valid: false,
     };
     let block2 = Cn3Block2 {
@@ -1117,7 +1226,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         pos_byte_beg: pos_byte_beg + 2,
         n_bytes: 1,
         data: ChannelData::UInt8(UInt8Builder::new()),
-        endian: false,
+        endian: Endianness::Little,
         channel_data_valid: false,
     };
     let block2 = Cn3Block2 {
@@ -1136,7 +1245,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         pos_byte_beg: pos_byte_beg + 3,
         n_bytes: 1,
         data: ChannelData::UInt8(UInt8Builder::new()),
-        endian: false,
+        endian: Endianness::Little,
         channel_data_valid: false,
     };
     let block2 = Cn3Block2 {
@@ -1155,7 +1264,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         pos_byte_beg: pos_byte_beg + 4,
         n_bytes: 1,
         data: ChannelData::UInt8(UInt8Builder::new()),
-        endian: false,
+        endian: Endianness::Little,
         channel_data_valid: false,
     };
     let block2 = Cn3Block2 {
@@ -1174,7 +1283,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         pos_byte_beg: pos_byte_beg + 5,
         n_bytes: 1,
         data: ChannelData::UInt8(UInt8Builder::new()),
-        endian: false,
+        endian: Endianness::Little,
         channel_data_valid: false,
     };
     let block2 = Cn3Block2 {
@@ -1193,7 +1302,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         pos_byte_beg: pos_byte_beg + 7,
         n_bytes: 1,
         data: ChannelData::UInt8(UInt8Builder::new()),
-        endian: false,
+        endian: Endianness::Little,
         channel_data_valid: false,
     };
     (date_ms, min, hour, day, month, year)
@@ -1222,7 +1331,7 @@ fn can_open_time(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3) {
         pos_byte_beg,
         n_bytes: 4,
         data: ChannelData::UInt32(UInt32Builder::new()),
-        endian: false,
+        endian: Endianness::Little,
         channel_data_valid: false,
     };
     let block2 = Cn3Block2 {
@@ -1241,7 +1350,7 @@ fn can_open_time(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3) {
         pos_byte_beg: pos_byte_beg + 4,
         n_bytes: 2,
         data: ChannelData::UInt16(UInt16Builder::new()),
-        endian: false,
+        endian: Endianness::Little,
         channel_data_valid: false,
     };
     (ms, days)
@@ -1397,7 +1506,7 @@ pub fn parse_cc3_block(
             let mut pairs: Vec<(f64, String)> =
                 vec![(0.0f64, String::with_capacity(32)); cc_block.cc_size as usize];
             let mut buf = vec![0u8; 32];
-            for pair in pairs.iter_mut() {
+            for pair in &mut pairs {
                 pair.0 = rdr
                     .read_f64::<LittleEndian>()
                     .context("Could not read text table conversion value parameters")?;
@@ -1440,7 +1549,7 @@ pub fn parse_cc3_block(
             let (_block_header, default_string, pos) =
                 parse_tx(rdr, default_text_pointer, position, encoding)?;
             position = pos;
-            for (low_range, high_range, text_pointer) in pairs_pointer.iter() {
+            for (low_range, high_range, text_pointer) in &pairs_pointer {
                 let (_block_header, text, pos) = parse_tx(rdr, *text_pointer, position, encoding)?;
                 position = pos;
                 pairs_string.push((*low_range, *high_range, text));
@@ -1610,8 +1719,8 @@ pub fn build_channel_db3(
     let mut master_channel_list: HashMap<u32, String> = HashMap::with_capacity(n_cg as usize);
     // creating channel list for whole file and making channel names unique
     for (dg_position, dg) in dg.iter_mut() {
-        for (record_id, cg) in dg.cg.iter_mut() {
-            for (cn_position, cn) in cg.cn.iter_mut() {
+        for (record_id, cg) in &mut dg.cg {
+            for (cn_position, cn) in &mut cg.cn {
                 if channel_list.contains_key(&cn.unique_name) {
                     let mut changed: bool = false;
                     let space_char = String::from(" ");
@@ -1656,13 +1765,13 @@ pub fn build_channel_db3(
     }
     // identifying master channels
     for (_dg_position, dg) in dg.iter_mut() {
-        for (_record_id, cg) in dg.cg.iter_mut() {
+        for cg in dg.cg.values_mut() {
             let mut cg_channel_list: HashSet<String> =
                 HashSet::with_capacity(cg.block.cg_n_channels as usize);
             let master_channel_name: Option<String> = master_channel_list
                 .get(&cg.block_position)
-                .map(|name| name.to_string());
-            for (_cn_record_position, cn) in cg.cn.iter_mut() {
+                .map(std::string::ToString::to_string);
+            for cn in cg.cn.values_mut() {
                 cg_channel_list.insert(cn.unique_name.clone());
                 // assigns master in channel_list
                 if let Some(id) = channel_list.get_mut(&cn.unique_name) {

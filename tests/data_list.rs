@@ -1,9 +1,15 @@
+#[path = "common.rs"]
+mod common;
+
 use anyhow::Result;
 use mdfr::mdfreader::Mdf;
 use std::sync::LazyLock;
 
 static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(|| {
-    "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/".to_string()
+    format!(
+        "{}MDF4/MDF4.3/Base_Standard/Examples/",
+        common::mdfreader_tests_path()
+    )
 });
 
 #[test]

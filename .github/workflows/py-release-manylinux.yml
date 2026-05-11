@@ -2,43 +2,48 @@ name: Create Python release manylinux
 
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 jobs:
   build_manylinux:
-    name: Create Release manylinux
+    name: Build manylinux wheels
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [ '3.9', '3.10' , "3.11", "3.12"]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+        target: [x86_64, aarch64]
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          architecture: x64
-      - name: Install HDF5
-        run: sudo apt-get install libhdf5-openmpi-dev openmpi-bin libhdf5-dev hdf5-tools python3-h5py
-      - name: build x64_64
-        uses: messense/maturin-action@v1
-        env:
-          MATURIN_PASSWORD: ${{ secrets.PYPI_TOKEN }}
-          RUSTFLAGS: '-C target-feature=+fxsr,+sse,+sse2,+sse3,+ssse3,+sse4.1,+sse4.2,+popcnt,+avx,+fma'
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
         with:
-          rust-toolchain: nightly
+          rust-toolchain: stable
           maturin-version: latest
           manylinux: auto
-          command: publish
-          args: --skip-existing --no-sdist -i python3.11 -o wheels -u __token__
-      - name: build aarch64
-        uses: messense/maturin-action@v1
-        env:
-          MATURIN_PASSWORD: ${{ secrets.PYPI_TOKEN }}
+          target: ${{ matrix.target }}
+          command: build
+          args: --release -o dist -i python${{ matrix.python-version }}
+      - uses: actions/upload-artifact@v4
         with:
-          rust-toolchain: nightly
-          target: aarch64-unknown-linux-gnu
-          maturin-version: latest
-          command: publish
-          args: --skip-existing --no-sdist -o wheels -i python3.11 -u __token__
+          name: wheel-manylinux-${{ matrix.target }}-${{ matrix.python-version }}
+          path: dist/*.whl
+
+  publish:
+    name: Publish to PyPI
+    needs: build_manylinux
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: wheel-manylinux-*
+          merge-multiple: true
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_TOKEN }}
+          skip-existing: true

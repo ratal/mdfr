@@ -4,17 +4,18 @@ use std::fmt::Write;
 
 use crate::data_holder::channel_data::ChannelData;
 
-use crate::mdfinfo::MdfInfo;
+use crate::mdfinfo::{ChannelsDb, MdfInfo};
 use crate::mdfreader::MasterSignature;
 use crate::mdfreader::Mdf;
 use anyhow::Context;
-use arrow::array::ArrayData;
+use arrow::array::{Array, ArrayData};
 use arrow::pyarrow::PyArrowType;
 use arrow::util::display::{ArrayFormatter, FormatOptions};
 
 use crate::export::numpy::array_to_rust;
 #[cfg(feature = "polars")]
 use crate::export::polars::rust_arrow_to_py_series;
+use crate::mdfinfo::mdfinfo4::CompressionAlgorithm;
 use pyo3::exceptions::PyUnicodeDecodeError;
 use pyo3::ffi::c_str;
 use pyo3::prelude::*;
@@ -32,6 +33,7 @@ struct Mdfr(Mdf);
 
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Mdfr>()?;
+    m.add_class::<CompressionAlgorithm>()?;
     Ok(())
 }
 
@@ -47,6 +49,61 @@ impl Mdfr {
     pub fn get_version(&mut self) -> u16 {
         let Mdfr(mdf) = self;
         mdf.get_version()
+    }
+    /// returns true if the file was marked as unfinalized
+    pub fn is_unfinalized(&self) -> bool {
+        let Mdfr(mdf) = self;
+        mdf.is_unfinalized()
+    }
+    /// returns the standard and custom unfinalization flags (0, 0) if finalized or MDF3
+    pub fn get_unfin_flags(&self) -> (u16, u16) {
+        let Mdfr(mdf) = self;
+        mdf.get_unfin_flags()
+    }
+    /// Index of this file within a recording sequence (MDF 4.3 common_properties).
+    pub fn get_recorder_sequence_index(&self) -> Option<u64> {
+        let Mdfr(mdf) = self;
+        mdf.get_recorder_sequence_index()
+    }
+    /// Index of this file within the recorder's file set (MDF 4.3 common_properties).
+    pub fn get_recorder_file_index(&self) -> Option<u64> {
+        let Mdfr(mdf) = self;
+        mdf.get_recorder_file_index()
+    }
+    /// True if this is the last file in the recorder sequence (MDF 4.3 common_properties).
+    pub fn get_recorder_file_last(&self) -> Option<bool> {
+        let Mdfr(mdf) = self;
+        mdf.get_recorder_file_last()
+    }
+    /// UUID of the recorder device (MDF 4.3 common_properties).
+    pub fn get_recorder_uuid(&self) -> Option<String> {
+        let Mdfr(mdf) = self;
+        mdf.get_recorder_uuid()
+    }
+    /// UUID identifying the measurement (MDF 4.3 common_properties).
+    pub fn get_measurement_uuid(&self) -> Option<String> {
+        let Mdfr(mdf) = self;
+        mdf.get_measurement_uuid()
+    }
+    /// Author from HD common_properties (MDF 4.3).
+    pub fn get_author(&self) -> Option<String> {
+        let Mdfr(mdf) = self;
+        mdf.get_author()
+    }
+    /// Department from HD common_properties (MDF 4.3).
+    pub fn get_department(&self) -> Option<String> {
+        let Mdfr(mdf) = self;
+        mdf.get_department()
+    }
+    /// Project from HD common_properties (MDF 4.3).
+    pub fn get_project(&self) -> Option<String> {
+        let Mdfr(mdf) = self;
+        mdf.get_project()
+    }
+    /// Subject from HD common_properties (MDF 4.3).
+    pub fn get_subject(&self) -> Option<String> {
+        let Mdfr(mdf) = self;
+        mdf.get_subject()
     }
     /// returns channel's data, numpy array or list, depending if data type is numeric or string|bytes
     fn get_channel_data(&self, channel_name: String) -> PyResult<Py<PyAny>> {
@@ -127,7 +184,7 @@ impl Mdfr {
         };
         pyo3::Python::attach(|py| {
             Ok(data
-                .map(|d| d.get_dtype())
+                .map(super::data_holder::channel_data::ChannelData::get_dtype)
                 .into_pyobject(py)
                 .context("error converting dtype into python object")?
                 .into())
@@ -140,7 +197,7 @@ impl Mdfr {
         pyo3::Python::attach(|py| {
             let mut py_serie = Ok(Python::None(py));
             if let Some(array) = mdf.get_channel_data(channel_name) {
-                py_serie = rust_arrow_to_py_series(array.as_ref(), channel_name.to_string());
+                py_serie = rust_arrow_to_py_series(array.as_ref(), channel_name);
             };
             py_serie
         })
@@ -158,7 +215,7 @@ impl Mdfr {
                     series_dict
                         .set_item(
                             channel.clone(),
-                            rust_arrow_to_py_series(channel_data.as_ref(), channel)
+                            rust_arrow_to_py_series(channel_data.as_ref(), &channel)
                                 .context("Could not convert to python series")?,
                         )
                         .context("could not store the serie in dict")?;
@@ -250,6 +307,42 @@ df=polars.DataFrame(series)
             Ok(master_type)
         })
     }
+    /// returns measurement start time as a timezone-aware datetime
+    #[getter]
+    pub fn start_time(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let Mdfr(mdf) = self;
+        let ns = mdf.get_start_time_ns();
+        let offset_s = mdf.get_tz_offset_min() as i32 * 60;
+        let locals = pyo3::types::PyDict::new(py);
+        locals.set_item("ts", ns as f64 / 1e9)?;
+        locals.set_item("offset_s", offset_s)?;
+        Ok(py
+            .eval(
+                c_str!(
+                    "import datetime; \
+                     tz = datetime.timezone(datetime.timedelta(seconds=offset_s)); \
+                     datetime.datetime.fromtimestamp(ts, tz)"
+                ),
+                None,
+                Some(&locals),
+            )?
+            .unbind())
+    }
+    /// returns master channel data as an Arrow TimestampNanosecond array with timezone.
+    /// Raises ValueError if the channel has no Time master.
+    pub fn get_master_channel_datetimes(
+        &self,
+        channel_name: String,
+    ) -> PyResult<PyArrowType<ArrayData>> {
+        let Mdfr(mdf) = self;
+        mdf.get_master_channel_datetimes(&channel_name)
+            .map(|arr| PyArrowType(arr.into_data()))
+            .ok_or_else(|| {
+                pyo3::exceptions::PyValueError::new_err(format!(
+                    "no Time master for channel '{channel_name}'"
+                ))
+            })
+    }
     /// returns a set of all channel names contained in file
     pub fn get_channel_names_set(&self) -> PyResult<Py<PyAny>> {
         let Mdfr(mdf) = self;
@@ -262,6 +355,24 @@ df=polars.DataFrame(series)
                 .into();
             Ok(channel_list)
         })
+    }
+    /// returns the set of channel names that are in the same channel group as input channel name
+    pub fn get_channel_names_cg_set(&self, channel_name: String) -> PyResult<Py<PyAny>> {
+        let Mdfr(mdf) = self;
+        pyo3::Python::attach(|py| {
+            let channel_list: Py<PyAny> = mdf
+                .mdf_info
+                .get_channel_names_cg_set(&channel_name)
+                .into_pyobject(py)
+                .context("error converting channel group names set into python object")?
+                .into();
+            Ok(channel_list)
+        })
+    }
+    /// returns dict mapping channel name → (master_name, dg_pos, cg_pos, rec_id, cn_pos, rec_pos)
+    pub fn get_channels_db(&self) -> ChannelsDb {
+        let Mdfr(mdf) = self;
+        mdf.get_channels_db()
     }
     /// returns a dict of master names keys for which values are a set of associated channel names
     pub fn get_master_channel_names_set(&self) -> PyResult<Py<PyAny>> {
@@ -291,6 +402,44 @@ df=polars.DataFrame(series)
         mdf.clear_channel_data_from_memory(channel_names)?;
         Ok(())
     }
+    /// slices all channels in the master's group to [start_s, stop_s] seconds
+    pub fn cut(&mut self, master_name: String, start_s: f64, stop_s: f64) -> PyResult<()> {
+        let Mdfr(mdf) = self;
+        mdf.cut(&master_name, start_s, stop_s)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+    /// keeps only the given channels; all others have their data cleared
+    pub fn keep_channels(&mut self, channel_names: Vec<String>) -> PyResult<()> {
+        let Mdfr(mdf) = self;
+        mdf.keep_channels(channel_names.into_iter().collect())?;
+        Ok(())
+    }
+    /// resamples channels in one master group to a uniform raster (seconds)
+    pub fn resample_group(&mut self, master_name: String, raster_s: f64) -> PyResult<()> {
+        let Mdfr(mdf) = self;
+        mdf.resample_group(&master_name, raster_s)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+    /// resamples all Time master groups to a uniform raster (seconds)
+    pub fn resample(&mut self, raster_s: f64) -> PyResult<()> {
+        let Mdfr(mdf) = self;
+        mdf.resample(raster_s)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+    /// appends other's data after self on the time axis (time-sequential concat)
+    pub fn concat_mdf(&mut self, other: &Mdfr) -> PyResult<()> {
+        let Mdfr(mdf) = self;
+        let Mdfr(other_mdf) = other;
+        mdf.concat_mdf(other_mdf)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+    /// imports channels from other into self (channel-axis join on shared time axis)
+    pub fn merge(&mut self, other: &Mdfr) -> PyResult<()> {
+        let Mdfr(mdf) = self;
+        let Mdfr(other_mdf) = other;
+        mdf.merge(other_mdf)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
     /// load all channels in memory
     pub fn load_all_channels_data_in_memory(&mut self) -> PyResult<()> {
         let Mdfr(mdf) = self;
@@ -298,9 +447,16 @@ df=polars.DataFrame(series)
         Ok(())
     }
     /// writes file
-    pub fn write(&mut self, file_name: &str, compression: bool) -> PyResult<Mdfr> {
+    pub fn write(&mut self, file_name: &str, compression: CompressionAlgorithm) -> PyResult<Mdfr> {
         let Mdfr(mdf) = self;
         Ok(Mdfr(mdf.write(file_name, compression)?))
+    }
+    /// converts MDF version 3.x to 4.2 in memory
+    pub fn convert3to4(&mut self, file_name: &str) -> PyResult<()> {
+        let Mdfr(mdf) = self;
+        let converted = mdf.mdf_info.convert3to4(file_name)?;
+        mdf.mdf_info = converted;
+        Ok(())
     }
     /// Adds a new channel in memory (no file modification)
     /// Master must be a dict with keys name, type and flag
@@ -394,6 +550,18 @@ df=polars.DataFrame(series)
         mdf.export_dataframe_to_parquet(channel_name, file_name, compression)?;
         Ok(())
     }
+    /// export all channel groups to CSV (one file per channel group)
+    pub fn export_to_csv(&self, file_name: &str) -> PyResult<()> {
+        let Mdfr(mdf) = self;
+        mdf.export_to_csv(file_name)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
+    /// export the channel group containing the given channel to a CSV file
+    pub fn export_dataframe_to_csv(&self, channel_name: String, file_name: &str) -> PyResult<()> {
+        let Mdfr(mdf) = self;
+        mdf.export_dataframe_to_csv(&channel_name, file_name)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+    }
     /// export to hdf5 files
     #[cfg(feature = "hdf5")]
     pub fn export_to_hdf5(&self, file_name: &str, compression: Option<&str>) -> PyResult<()> {
@@ -429,8 +597,12 @@ df=polars.DataFrame(series)
                     if let Ok(res) = mdf.mdf_info.get_tx(atb.at_tx_mimetype) {
                         let _ = atdict.set_item("tx_mimetype", res);
                     }
-                    let _ =
-                        atdict.set_item("md_comment", mdf.mdf_info.get_comments(atb.at_md_comment));
+                    let _ = atdict.set_item(
+                        "md_comment",
+                        mdf.mdf_info
+                            .get_md_comment(atb.at_md_comment)
+                            .map(|c| format!("{c}")),
+                    );
                     let _ = atdict.set_item("flags", atb.at_flags);
                     let _ = atdict.set_item("creator_index", atb.at_creator_index);
                     let _ = atl.append(atdict);
@@ -469,8 +641,12 @@ df=polars.DataFrame(series)
                     if let Ok(res) = mdf.mdf_info.get_tx(evb.ev_tx_name) {
                         let _ = evdict.set_item("tx_name", res);
                     }
-                    let _ =
-                        evdict.set_item("md_comment", mdf.mdf_info.get_comments(evb.ev_md_comment));
+                    let _ = evdict.set_item(
+                        "md_comment",
+                        mdf.mdf_info
+                            .get_md_comment(evb.ev_md_comment)
+                            .map(|c| format!("{c}")),
+                    );
                     let _ = evdict.set_item("type", evb.ev_type);
                     let _ = evdict.set_item("sync_type", evb.ev_sync_type);
                     let _ = evdict.set_item("range_type", evb.ev_range_type);
@@ -482,6 +658,11 @@ df=polars.DataFrame(series)
             }
         })
     }
+    /// list file history entries (MDF 4.x only)
+    pub fn list_file_history(&mut self) -> PyResult<String> {
+        let Mdfr(mdf) = self;
+        Ok(mdf.mdf_info.list_file_history())
+    }
     /// get file history
     pub fn get_file_history_blocks(&mut self) -> Py<PyAny> {
         let Mdfr(mdf) = self;
@@ -491,8 +672,12 @@ df=polars.DataFrame(series)
                 let fhl = PyList::empty(py);
                 for fhb in fh {
                     let fhdict = PyDict::new(py);
-                    let _ =
-                        fhdict.set_item("comment", mdf.mdf_info.get_comments(fhb.fh_md_comment));
+                    let _ = fhdict.set_item(
+                        "comment",
+                        mdf.mdf_info
+                            .get_md_comment(fhb.fh_md_comment)
+                            .map(|c| format!("{c}")),
+                    );
                     let _ = fhdict.set_item("time_ns", fhb.fh_time_ns);
                     let _ = fhdict.set_item("tz_offset_min", fhb.fh_tz_offset_min);
                     let _ = fhdict.set_item("dst_offset_min", fhb.fh_dst_offset_min);
@@ -510,6 +695,78 @@ df=polars.DataFrame(series)
         let Mdfr(mdf) = self;
         Ok(mdf.mdf_info.list_channel_hierarchy())
     }
+    /// list source information blocks (MDF 4.x only)
+    pub fn list_source_information(&self) -> PyResult<String> {
+        let Mdfr(mdf) = self;
+        Ok(mdf.mdf_info.list_source_information())
+    }
+    /// list sample reduction blocks for all channel groups (MDF 4.x only)
+    pub fn list_sample_reductions(&self) -> PyResult<String> {
+        let Mdfr(mdf) = self;
+        Ok(mdf.mdf_info.list_sample_reductions())
+    }
+    /// get source information blocks (MDF 4.x only)
+    pub fn get_source_information_blocks(&mut self) -> Py<PyAny> {
+        let Mdfr(mdf) = self;
+        let sibs = mdf.mdf_info.get_source_information_blocks();
+        pyo3::Python::attach(|py| {
+            if let Some(si_map) = sibs {
+                let sil = PyList::empty(py);
+                for (position, sib) in si_map {
+                    let sidict = PyDict::new(py);
+                    let _ = sidict.set_item("position", position);
+                    if let Ok(res) = mdf.mdf_info.get_tx(sib.si_tx_name) {
+                        let _ = sidict.set_item("name", res);
+                    }
+                    if let Ok(res) = mdf.mdf_info.get_tx(sib.si_tx_path) {
+                        let _ = sidict.set_item("path", res);
+                    }
+                    let _ = sidict.set_item(
+                        "comment",
+                        mdf.mdf_info
+                            .get_md_comment(sib.si_md_comment)
+                            .map(|c| format!("{c}")),
+                    );
+                    let _ = sidict.set_item("type", sib.get_type_str());
+                    let _ = sidict.set_item("type_id", sib.si_type);
+                    let _ = sidict.set_item("bus_type", sib.get_bus_type_str());
+                    let _ = sidict.set_item("bus_type_id", sib.si_bus_type);
+                    let _ = sidict.set_item("flags", sib.si_flags);
+                    let _ = sil.append(sidict);
+                }
+                sil.into()
+            } else {
+                py.None()
+            }
+        })
+    }
+    /// get sample reduction blocks (MDF 4.x only)
+    pub fn get_sample_reduction_blocks(&self) -> Py<PyAny> {
+        let Mdfr(mdf) = self;
+        let srbs = mdf.mdf_info.get_sample_reduction_blocks();
+        pyo3::Python::attach(|py| {
+            if let Some(sr_list) = srbs {
+                let srl = PyList::empty(py);
+                for (dg_pos, rec_id, sr_blocks) in sr_list {
+                    for (i, sr) in sr_blocks.iter().enumerate() {
+                        let srdict = PyDict::new(py);
+                        let _ = srdict.set_item("dg_position", dg_pos);
+                        let _ = srdict.set_item("rec_id", rec_id);
+                        let _ = srdict.set_item("index", i);
+                        let _ = srdict.set_item("cycle_count", sr.sr_cycle_count);
+                        let _ = srdict.set_item("interval", sr.sr_interval);
+                        let _ = srdict.set_item("sync_type", sr.get_sync_type_str());
+                        let _ = srdict.set_item("sync_type_id", sr.sr_sync_type);
+                        let _ = srdict.set_item("flags", sr.sr_flags);
+                        let _ = srl.append(srdict);
+                    }
+                }
+                srl.into()
+            } else {
+                py.None()
+            }
+        })
+    }
     /// get channel hierarchy blocks (MDF 4.x only)
     pub fn get_channel_hierarchy_blocks(&mut self) -> Py<PyAny> {
         let Mdfr(mdf) = self;
@@ -523,20 +780,13 @@ df=polars.DataFrame(series)
                     if let Ok(res) = mdf.mdf_info.get_tx(chb.ch_tx_name) {
                         let _ = chdict.set_item("name", res);
                     }
-                    let _ = chdict.set_item("comment", mdf.mdf_info.get_comments(chb.ch_md_comment));
-                    let type_name = match chb.ch_type {
-                        0 => "Group",
-                        1 => "Function",
-                        2 => "Structure",
-                        3 => "Map list",
-                        4 => "Input variables",
-                        5 => "Output variables",
-                        6 => "Local variables",
-                        7 => "Defined calibration objects",
-                        8 => "Referenced calibration objects",
-                        _ => "Unknown",
-                    };
-                    let _ = chdict.set_item("type", type_name);
+                    let _ = chdict.set_item(
+                        "comment",
+                        mdf.mdf_info
+                            .get_md_comment(chb.ch_md_comment)
+                            .map(|c| format!("{c}")),
+                    );
+                    let _ = chdict.set_item("type", chb.get_type_str());
                     let _ = chdict.set_item("type_id", chb.ch_type);
                     let _ = chdict.set_item("element_count", chb.ch_element_count);
                     let _ = chdict.set_item("first_child", chb.ch_ch_first);
@@ -638,156 +888,96 @@ pyplot.show()
     }
     /// display a representation of mdfinfo object content
     fn __repr__(&mut self) -> PyResult<String> {
-        let mut output: String;
+        let mut output = String::new();
         let format_option = FormatOptions::new();
+
         match &mut self.0.mdf_info {
             MdfInfo::V3(mdfinfo3) => {
-                output = format!("Version : {}\n", mdfinfo3.id_block.id_ver);
-                writeln!(
-                    output,
-                    "Header :\n Author: {}  Organisation:{}",
-                    mdfinfo3.hd_block.hd_author, mdfinfo3.hd_block.hd_organization
-                )
-                .context("cannot print author and organisation")?;
-                writeln!(
-                    output,
-                    "Project: {}  Subject:{}",
-                    mdfinfo3.hd_block.hd_project, mdfinfo3.hd_block.hd_subject
-                )
-                .context("cannot print project and subject")?;
-                writeln!(
-                    output,
-                    "Date: {:?}  Time:{:?}",
-                    mdfinfo3.hd_block.hd_date, mdfinfo3.hd_block.hd_time
-                )
-                .context("cannot print date and time")?;
-                write!(output, "Comments: {}", mdfinfo3.hd_comment)
-                    .context("cannot print comments")?;
-                for (master, list) in mdfinfo3.get_master_channel_names_set().iter() {
-                    if let Some(master_name) = master {
-                        writeln!(output, "\nMaster: {master_name}")
-                            .context("cannot print master channel name")?;
-                    } else {
-                        writeln!(output, "\nWithout Master channel")
-                            .context("cannot print thre is no master channel")?;
-                    }
-                    for channel in list.iter() {
-                        let unit = self
-                            .get_channel_unit(channel.to_string())
-                            .context("failed printing channel unit")?
-                            .unwrap_or_default();
-                        let desc = self
-                            .get_channel_desc(channel.to_string())
-                            .context("failed printing channel description")?
-                            .unwrap_or_default();
-                        write!(output, " {channel} ").context("cannot print channel name")?;
-                        if let Some(data) = self.0.get_channel_data(channel) {
-                            if !data.is_empty() {
-                                let array = &data.as_ref();
-                                let displayer = ArrayFormatter::try_new(array, &format_option)
-                                    .context("failed creating formatter for arrow array")?;
-                                write!(&mut output, "{}", displayer.value(0))
-                                    .context("failed writing first value of array")?;
-                                write!(output, " ")
-                                    .context("cannot print simple space character")?;
-                                write!(&mut output, "{}", displayer.value(data.len() - 1))
-                                    .context("failed writing last value of array")?;
-                            }
-                            writeln!(
-                                output,
-                                " {unit:?} {desc:?} "
-                            ).context("cannot print channel unit and description with first and last item")?;
-                        } else {
-                            writeln!(output, " {unit:?} {desc:?} ")
-                                .context("cannot print channel unit and description")?;
-                        }
-                    }
-                }
-                output.push_str("\n ");
+                // Use helper methods for header
+                writeln!(output, "{}", mdfinfo3.summary()).context("cannot print summary")?;
+                writeln!(output, "{}", mdfinfo3.format_header()).context("cannot print header")?;
             }
             MdfInfo::V4(mdfinfo4) => {
-                output = format!("Version : {}\n", mdfinfo4.id_block.id_ver);
+                // Use helper methods for header
+                writeln!(output, "{}", mdfinfo4.summary()).context("cannot print summary")?;
                 writeln!(output, "{}", mdfinfo4.hd_block).context("cannot print header block")?;
-                let comments = &mdfinfo4
-                    .sharable
-                    .get_comments(mdfinfo4.hd_block.hd_md_comment);
-                for c in comments.iter() {
-                    writeln!(output, "{} {}", c.0, c.1).context("cannot print header comments")?;
+                let header_comments = mdfinfo4.format_header_comments();
+                if !header_comments.is_empty() {
+                    write!(output, "{header_comments}").context("cannot print header comments")?;
                 }
-                // Source Information
+                // MDF4-specific sections
                 let si_info = mdfinfo4.list_source_information();
                 if !si_info.is_empty() {
                     writeln!(output, "\n--- Source Information ---")
                         .context("cannot print source info header")?;
-                    write!(output, "{}", si_info).context("cannot print source information")?;
+                    write!(output, "{si_info}").context("cannot print source information")?;
                 }
-                // Attachments
                 let at_info = mdfinfo4.list_attachments();
                 if !at_info.is_empty() {
                     writeln!(output, "\n--- Attachments ---")
                         .context("cannot print attachments header")?;
-                    write!(output, "{}", at_info).context("cannot print attachments")?;
+                    write!(output, "{at_info}").context("cannot print attachments")?;
                 }
-                // Events
                 let ev_info = mdfinfo4.list_events();
                 if !ev_info.is_empty() {
-                    writeln!(output, "\n--- Events ---")
-                        .context("cannot print events header")?;
-                    write!(output, "{}", ev_info).context("cannot print events")?;
+                    writeln!(output, "\n--- Events ---").context("cannot print events header")?;
+                    write!(output, "{ev_info}").context("cannot print events")?;
                 }
-                // Channel Hierarchy
                 let ch_info = mdfinfo4.list_channel_hierarchy();
                 if !ch_info.is_empty() {
                     writeln!(output, "\n--- Channel Hierarchy ---")
                         .context("cannot print channel hierarchy header")?;
-                    write!(output, "{}", ch_info).context("cannot print channel hierarchy")?;
+                    write!(output, "{ch_info}").context("cannot print channel hierarchy")?;
                 }
-                // Channels
-                writeln!(output, "\n--- Channels ---")
-                    .context("cannot print channels header")?;
-                for (master, list) in mdfinfo4.get_master_channel_names_set().iter() {
-                    if let Some(master_name) = master {
-                        writeln!(output, "\nMaster: {master_name}")
-                            .context("cannot print master channel name")?;
-                    } else {
-                        writeln!(output, "\nWithout Master channel")
-                            .context("cannot print thre is no master channel")?;
-                    }
-                    for channel in list.iter() {
-                        let unit = self
-                            .get_channel_unit(channel.to_string())
-                            .context("failed printing channel unit")?
-                            .unwrap_or_default();
-                        let desc = self
-                            .get_channel_desc(channel.to_string())
-                            .context("failed printing channel description")?
-                            .unwrap_or_default();
-                        write!(output, " {channel} ").context("cannot print channel name")?;
-                        if let Some(data) = self.0.get_channel_data(channel) {
-                            if !data.is_empty() {
-                                let array = &data.as_ref();
-                                let displayer = ArrayFormatter::try_new(array, &format_option)
-                                    .context("failed creating formatter for arrow array")?;
-                                write!(&mut output, "{}", displayer.value(0))
-                                    .context("cannot print channel data")?;
-                                write!(output, " .. ")
-                                    .context("cannot print simple space character")?;
-                                write!(&mut output, "{}", displayer.value(data.len() - 1))
-                                    .context("cannot channel data")?;
-                            }
-                            writeln!(
-                                output,
-                                " {unit:?} {desc:?} " 
-                            ).context("cannot print channel unit and description with first and last item")?;
-                        } else {
-                            writeln!(output, " {unit:?} {desc:?} ")
-                                .context("cannot print channel unit and description")?;
-                        }
-                    }
-                }
-                output.push_str("\n ");
             }
         }
+
+        // Channels section (common for both versions, with data preview)
+        writeln!(output, "\n--- Channels ---").context("cannot print channels header")?;
+        for (master, list) in &self.0.mdf_info.get_master_channel_names_set() {
+            if let Some(master_name) = master {
+                writeln!(output, "\nMaster: {master_name}")
+                    .context("cannot print master channel name")?;
+            } else {
+                writeln!(output, "\nWithout Master channel")
+                    .context("cannot print no master channel")?;
+            }
+            for channel in list {
+                let unit = self
+                    .get_channel_unit(channel.to_string())
+                    .context("failed getting channel unit")?
+                    .unwrap_or_default();
+                let desc = self
+                    .get_channel_desc(channel.to_string())
+                    .context("failed getting channel description")?
+                    .unwrap_or_default();
+                write!(output, "  {channel} ").context("cannot print channel name")?;
+                // Data preview (first .. last values)
+                if let Some(data) = self.0.get_channel_data(channel)
+                    && !data.is_empty()
+                {
+                    write!(output, "[{}] ", data.len()).context("cannot print data length")?;
+                    let array = &data.as_ref();
+                    if let Ok(displayer) = ArrayFormatter::try_new(array, &format_option) {
+                        write!(
+                            output,
+                            "{} .. {} ",
+                            displayer.value(0),
+                            displayer.value(data.len() - 1)
+                        )
+                        .context("cannot print data preview")?;
+                    }
+                }
+                if !unit.is_empty() {
+                    write!(output, "\"{unit}\" ").context("cannot print unit")?;
+                }
+                if !desc.is_empty() {
+                    write!(output, "// {desc}").context("cannot print description")?;
+                }
+                writeln!(output).context("cannot print newline")?;
+            }
+        }
+
         Ok(output)
     }
 }

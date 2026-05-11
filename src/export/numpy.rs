@@ -1,11 +1,11 @@
 //! this module provides methods to get directly channelData into python
 
-use arrow::array::{make_array, Array, ArrayData};
+use arrow::array::{Array, ArrayData, UnionArray, make_array};
 use arrow::pyarrow::PyArrowType;
 
 use numpy::npyffi::types::NPY_ORDER;
 use numpy::{PyArrayMethods, ToPyArray};
-use pyo3::{prelude::*, Bound};
+use pyo3::{Bound, prelude::*};
 
 use crate::data_holder::channel_data::ChannelData;
 use crate::data_holder::tensor_arrow::Order;
@@ -37,7 +37,7 @@ pub(crate) fn to_py_array(_: Python, array: Arc<dyn Array>) -> PyResult<PyArrowT
 impl<'py> IntoPyObject<'py> for ChannelData {
     type Target = PyAny; // the Python type
     type Output = Bound<'py, Self::Target>; // in most cases this will be `Bound`
-    type Error = std::convert::Infallible;
+    type Error = PyErr;
     /// IntoPyObject implementation to convert a ChannelData into a PyObject
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
         match self {
@@ -61,78 +61,78 @@ impl<'py> IntoPyObject<'py> for ChannelData {
                 let out: Vec<Vec<u8>> = binary_array
                     .values()
                     .chunks(binary_array.value_length() as usize)
-                    .map(|x| x.to_vec())
+                    .map(<[u8]>::to_vec)
                     .collect();
-                Ok(out
-                    .into_pyobject(py)
-                    .expect("error converting fixed size binary array into python object"))
+                out.into_pyobject(py)
             }
-            ChannelData::ArrayDInt8(array) => Ok(array
-                .values_slice()
-                .to_pyarray(py)
-                .reshape_with_order(array.shape().clone(), array.order().clone().into())
-                .expect("could not reshape i8")
-                .into_any()),
-            ChannelData::ArrayDUInt8(array) => Ok(array
-                .values_slice()
-                .to_pyarray(py)
-                .reshape_with_order(array.shape().clone(), array.order().clone().into())
-                .expect("could not reshape u8")
-                .into_any()),
-            ChannelData::ArrayDInt16(array) => Ok(array
-                .values_slice()
-                .to_pyarray(py)
-                .reshape_with_order(array.shape().clone(), array.order().clone().into())
-                .expect("could not reshape u16")
-                .into_any()),
-            ChannelData::ArrayDUInt16(array) => Ok(array
-                .values_slice()
-                .to_pyarray(py)
-                .reshape_with_order(array.shape().clone(), array.order().clone().into())
-                .expect("could not reshape i16")
-                .into_any()),
-            ChannelData::ArrayDInt32(array) => Ok(array
-                .values_slice()
-                .to_pyarray(py)
-                .reshape_with_order(array.shape().clone(), array.order().clone().into())
-                .expect("could not reshape i32")
-                .into_any()),
-            ChannelData::ArrayDUInt32(array) => Ok(array
-                .values_slice()
-                .to_pyarray(py)
-                .reshape_with_order(array.shape().clone(), array.order().clone().into())
-                .expect("could not reshape u32")
-                .into_any()),
-            ChannelData::ArrayDFloat32(array) => Ok(array
-                .values_slice()
-                .to_pyarray(py)
-                .reshape_with_order(array.shape().clone(), array.order().clone().into())
-                .expect("could not reshape f32")
-                .into_any()),
-            ChannelData::ArrayDInt64(array) => Ok(array
-                .values_slice()
-                .to_pyarray(py)
-                .reshape_with_order(array.shape().clone(), array.order().clone().into())
-                .expect("could not reshape i64")
-                .into_any()),
-            ChannelData::ArrayDUInt64(array) => Ok(array
-                .values_slice()
-                .to_pyarray(py)
-                .reshape_with_order(array.shape().clone(), array.order().clone().into())
-                .expect("could not reshape u64")
-                .into_any()),
-            ChannelData::ArrayDFloat64(array) => Ok(array
-                .values_slice()
-                .to_pyarray(py)
-                .reshape_with_order(array.shape().clone(), array.order().clone().into())
-                .expect("could not reshape f64")
-                .into_any()),
+            ChannelData::ArrayDInt8(array) => {
+                let flat = array.values_slice().to_pyarray(py);
+                Ok(flat
+                    .reshape_with_order(array.shape().clone(), array.order().clone().into())?
+                    .into_any())
+            }
+            ChannelData::ArrayDUInt8(array) => {
+                let flat = array.values_slice().to_pyarray(py);
+                Ok(flat
+                    .reshape_with_order(array.shape().clone(), array.order().clone().into())?
+                    .into_any())
+            }
+            ChannelData::ArrayDInt16(array) => {
+                let flat = array.values_slice().to_pyarray(py);
+                Ok(flat
+                    .reshape_with_order(array.shape().clone(), array.order().clone().into())?
+                    .into_any())
+            }
+            ChannelData::ArrayDUInt16(array) => {
+                let flat = array.values_slice().to_pyarray(py);
+                Ok(flat
+                    .reshape_with_order(array.shape().clone(), array.order().clone().into())?
+                    .into_any())
+            }
+            ChannelData::ArrayDInt32(array) => {
+                let flat = array.values_slice().to_pyarray(py);
+                Ok(flat
+                    .reshape_with_order(array.shape().clone(), array.order().clone().into())?
+                    .into_any())
+            }
+            ChannelData::ArrayDUInt32(array) => {
+                let flat = array.values_slice().to_pyarray(py);
+                Ok(flat
+                    .reshape_with_order(array.shape().clone(), array.order().clone().into())?
+                    .into_any())
+            }
+            ChannelData::ArrayDFloat32(array) => {
+                let flat = array.values_slice().to_pyarray(py);
+                Ok(flat
+                    .reshape_with_order(array.shape().clone(), array.order().clone().into())?
+                    .into_any())
+            }
+            ChannelData::ArrayDInt64(array) => {
+                let flat = array.values_slice().to_pyarray(py);
+                Ok(flat
+                    .reshape_with_order(array.shape().clone(), array.order().clone().into())?
+                    .into_any())
+            }
+            ChannelData::ArrayDUInt64(array) => {
+                let flat = array.values_slice().to_pyarray(py);
+                Ok(flat
+                    .reshape_with_order(array.shape().clone(), array.order().clone().into())?
+                    .into_any())
+            }
+            ChannelData::ArrayDFloat64(array) => {
+                let flat = array.values_slice().to_pyarray(py);
+                Ok(flat
+                    .reshape_with_order(array.shape().clone(), array.order().clone().into())?
+                    .into_any())
+            }
             ChannelData::Utf8(array) => {
                 let string_array = array.finish_cloned();
                 let strings: Vec<Option<&str>> = string_array.iter().collect();
-                Ok(strings
-                    .into_pyobject(py)
-                    .expect("error converting Utf8 array into python object"))
+                strings.into_pyobject(py)
+            }
+            ChannelData::Union(array) => {
+                let arrow_data = to_py_array(py, Arc::new(UnionArray::from(array.to_data())))?;
+                arrow_data.into_pyobject(py)
             }
         }
     }

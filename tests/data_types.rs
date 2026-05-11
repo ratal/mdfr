@@ -1,19 +1,22 @@
+#[path = "common.rs"]
+mod common;
+
 use anyhow::Result;
 use arrow::array::{
     FixedSizeBinaryBuilder, Float64Builder, Int16Builder, Int32Builder, Int64Builder,
     LargeStringBuilder,
 };
 use mdfr::data_holder::channel_data::ChannelData;
+use mdfr::mdfinfo::mdfinfo4::CompressionAlgorithm;
 use mdfr::mdfreader::Mdf;
-use std::fs;
 use std::sync::LazyLock;
 
 static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(|| {
-    "/home/ratal/workspace/mdfreader/mdfreader/tests/MDF4/MDF4.3/Base_Standard/Examples/".to_string()
+    format!(
+        "{}MDF4/MDF4.3/Base_Standard/Examples/",
+        common::mdfreader_tests_path()
+    )
 });
-
-static BASE_TEST_PATH: LazyLock<String> =
-    LazyLock::new(|| "/home/ratal/workspace/mdfr/test_files".to_string());
 
 #[test]
 fn data_types() -> Result<()> {
@@ -25,7 +28,8 @@ fn data_types() -> Result<()> {
         "DataTypes/StringTypes/".to_string(),
         "DataTypes/Complex/".to_string(),
     ];
-    let writing_mdf_file = format!("{}/data_types_test.mf4", BASE_TEST_PATH.as_str());
+    let tmp_file = tempfile::Builder::new().suffix(".mf4").tempfile()?;
+    let writing_mdf_file = tmp_file.path().to_str().unwrap().to_string();
 
     // Integer testing
     let file_name = format!(
@@ -48,7 +52,7 @@ fn data_types() -> Result<()> {
             data.clone()
         );
     }
-    let mut mdf2 = mdf.write(&writing_mdf_file, false)?;
+    let mut mdf2 = mdf.write(&writing_mdf_file, CompressionAlgorithm::NoCompression)?;
     mdf2.load_all_channels_data_in_memory()?;
     if let Some(data) = mdf2.get_channel_data("Counter_INT64_LE") {
         assert_eq!(
@@ -105,8 +109,6 @@ fn data_types() -> Result<()> {
     let mut mdf = Mdf::new(&file_name)?;
     mdf.load_all_channels_data_in_memory()?;
 
-    // Cleanup temporary file
-    fs::remove_file(&writing_mdf_file).ok();
     Ok(())
 }
 
@@ -124,7 +126,11 @@ fn real_types() -> Result<()> {
     let mut mdf = Mdf::new(&file_name)?;
     mdf.load_all_channels_data_in_memory()?;
 
-    let file_name = format!("{}{}", BASE_PATH_MDF4.as_str(), "Halffloat/halffloat_sinus.mf4");
+    let file_name = format!(
+        "{}{}",
+        BASE_PATH_MDF4.as_str(),
+        "Halffloat/halffloat_sinus.mf4"
+    );
     let mut mdf = Mdf::new(&file_name)?;
     mdf.load_all_channels_data_in_memory()?;
 
@@ -142,7 +148,8 @@ fn real_types() -> Result<()> {
 #[test]
 fn string_types() -> Result<()> {
     let list_of_paths = ["DataTypes/StringTypes/".to_string()];
-    let writing_mdf_file = format!("{}/string_types_test.mf4", BASE_TEST_PATH.as_str());
+    let tmp_file = tempfile::Builder::new().suffix(".mf4").tempfile()?;
+    let writing_mdf_file = tmp_file.path().to_str().unwrap().to_string();
 
     // StringTypes testing
     // UTF8
@@ -179,7 +186,7 @@ fn string_types() -> Result<()> {
     if let Some(data) = mdf.get_channel_data("Data channel") {
         assert_eq!(expected_string_result, data.clone());
     }
-    let mut mdf2 = mdf.write(&writing_mdf_file, false)?;
+    let mut mdf2 = mdf.write(&writing_mdf_file, CompressionAlgorithm::NoCompression)?;
     mdf2.load_all_channels_data_in_memory()?;
     if let Some(data) = mdf2.get_channel_data("Data channel") {
         assert_eq!(expected_string_result, data.clone());
@@ -197,7 +204,7 @@ fn string_types() -> Result<()> {
     if let Some(data) = mdf.get_channel_data("Data channel") {
         assert_eq!(expected_string_result, data.clone());
     }
-    let mut mdf2 = mdf.write(&writing_mdf_file, false)?;
+    let mut mdf2 = mdf.write(&writing_mdf_file, CompressionAlgorithm::NoCompression)?;
     mdf2.load_all_channels_data_in_memory()?;
     if let Some(data) = mdf2.get_channel_data("Data channel") {
         assert_eq!(expected_string_result, data.clone());
@@ -227,21 +234,20 @@ fn string_types() -> Result<()> {
     if let Some(data) = mdf.get_channel_data("Data channel") {
         assert_eq!(expected_string_result, data.clone());
     }
-    let mut mdf2 = mdf.write(&writing_mdf_file, false)?;
+    let mut mdf2 = mdf.write(&writing_mdf_file, CompressionAlgorithm::NoCompression)?;
     mdf2.load_all_channels_data_in_memory()?;
     if let Some(data) = mdf2.get_channel_data("Data channel") {
         assert_eq!(expected_string_result, data.clone());
     }
 
-    // Cleanup temporary file
-    fs::remove_file(&writing_mdf_file).ok();
     Ok(())
 }
 
 #[test]
 fn byte_array_types() -> Result<()> {
     let list_of_paths = ["DataTypes/ByteArray/".to_string()];
-    let writing_mdf_file = format!("{}/byte_array_test.mf4", BASE_TEST_PATH.as_str());
+    let tmp_file = tempfile::Builder::new().suffix(".mf4").tempfile()?;
+    let writing_mdf_file = tmp_file.path().to_str().unwrap().to_string();
 
     // byteArray testing
     let file_name = format!(
@@ -275,7 +281,7 @@ fn byte_array_types() -> Result<()> {
     if let Some(data) = mdf.get_channel_data("Data channel") {
         assert_eq!(&ChannelData::FixedSizeByteArray(byte_array), data);
     }
-    let mut mdf2 = mdf.write(&writing_mdf_file, false)?;
+    let mut mdf2 = mdf.write(&writing_mdf_file, CompressionAlgorithm::NoCompression)?;
     mdf2.load_all_channels_data_in_memory()?;
     if let Some(data) = mdf2.get_channel_data("Data channel") {
         let mut byte_array = FixedSizeBinaryBuilder::with_capacity(10, 5);
@@ -292,8 +298,6 @@ fn byte_array_types() -> Result<()> {
         assert_eq!(&ChannelData::FixedSizeByteArray(byte_array), data);
     }
 
-    // Cleanup temporary file
-    fs::remove_file(&writing_mdf_file).ok();
     Ok(())
 }
 
@@ -308,5 +312,56 @@ fn complex_types() -> Result<()> {
     );
     let mut mdf = Mdf::new(&file_name)?;
     mdf.load_all_channels_data_in_memory()?;
+    Ok(())
+}
+
+#[test]
+fn string_no_zero_termination() -> Result<()> {
+    let file_name = format!(
+        "{}{}{}",
+        BASE_PATH_MDF4.as_str(),
+        "DataTypes/StringTypes/",
+        "Vector_Strings_NoZeroTermination_MDF430.mf4"
+    );
+    let mut mdf = Mdf::new(&file_name)?;
+    mdf.load_all_channels_data_in_memory()?;
+    let names = mdf.get_channel_names_set();
+    assert!(
+        !names.is_empty(),
+        "No channels in no-zero-termination string file"
+    );
+    Ok(())
+}
+
+#[test]
+fn half_float_values() -> Result<()> {
+    let file_name = format!(
+        "{}{}",
+        BASE_PATH_MDF4.as_str(),
+        "Halffloat/halffloat_sinus.mf4"
+    );
+    let mut mdf = Mdf::new(&file_name)?;
+    mdf.load_all_channels_data_in_memory()?;
+
+    // The file contains at least one channel; verify it loaded successfully
+    let names = mdf.get_channel_names_set();
+    assert!(!names.is_empty(), "No channels found in halffloat file");
+
+    // Find a channel with float data and check it has values
+    let has_data = names
+        .iter()
+        .any(|name| mdf.get_channel_data(name).is_some_and(|d| !d.is_empty()));
+    assert!(has_data, "No non-empty channel data in halffloat file");
+
+    // Half-float channels are decoded as Float32 or Float64
+    let has_float_channel = names.iter().any(|name| {
+        mdf.get_channel_data(name)
+            .is_some_and(|d| matches!(d, ChannelData::Float32(_) | ChannelData::Float64(_)))
+    });
+    assert!(
+        has_float_channel,
+        "Expected at least one Float32/Float64 channel decoded from half-float"
+    );
+
     Ok(())
 }
