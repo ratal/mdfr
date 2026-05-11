@@ -53,7 +53,6 @@ arrow = { version = "58.1.0", features = [
     "pyarrow",
     "prettyprint",
     "ffi",
-    "csv",
 ] } # for efficient data storing in memory
 env_logger = "0.11.10"
 libc = "0.2.184" # for the C api
