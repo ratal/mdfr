@@ -5,8 +5,11 @@ build-backend = "maturin"
 [project]
 name = "mdfr"
 dynamic = ["version"]
-dependencies = [
-  "numpy>=1.23","polars>=0.13","matplotlib>=3.5"
-]
+dependencies = ["numpy>=1.23", "polars>=0.13", "matplotlib>=3.5"]
 requires-python = ">=3.8"
-license = {file = "LICENSE"}
+license = { file = "LICENSE" }
+description = "ASAM mdf file reader and writer in Rust using Arrow"
+readme = "README.md"
+
+[project.urls]
+Homepage = "https://github.com/ratal/mdfr"
