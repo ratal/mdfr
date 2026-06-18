@@ -1,6 +1,6 @@
 [package]
 name = "mdfr"
-version = "0.7.0"
+version = "0.7.1"
 description = "A package for reading and writing MDF files"
 authors = ["ratal <ratal@ratal.org>"]
 edition = "2024"
@@ -19,14 +19,13 @@ extension-module = ["pyo3/extension-module"]
 numpy = ["dep:numpy", "dep:pyo3"]
 polars = ["dep:polars", "dep:numpy", "dep:pyo3"] # numpy and pyo3 are required transitive deps for polars Python interop
 parquet = ["dep:parquet"]
-hdf5 = ["dep:hdf5", "ndarray"]
+hdf5 = ["dep:rust-hdf5", "ndarray"]
 ndarray = ["dep:ndarray"]
-hdf5-mpio = ["hdf5/mpio"]
 
 [dependencies]
 clap = "4.6.1" # for input arguments
 anyhow = { version = "1.0.102", features = ["backtrace"] } # error handling
-log = "0.4" # to log events
+log = "0.4.32" # to log events
 byteorder = "1.4" # for bytes conversions
 binrw = "0.15.1" # to efficiently read blocks
 num = "0.4"
@@ -63,8 +62,8 @@ polars = { version = "0.53", features = [
     "fmt",
 ], optional = true } # for python dataframe
 parquet = { version = "58.1.0", optional = true } # to write parquet file
-hdf5 = { version = "0.8", optional = true, features = [
-    "lzf",
+rust-hdf5 = { version = "0.2.23", optional = true, features = [
+    "all_filters", "parallel"
 ] } # to export into hdf5 file
 ndarray = { version = "0.17", optional = true } # to convert arraw data into ndarray, needed for hdf5
 
@@ -75,12 +74,12 @@ optional = true
 
 [dev-dependencies]
 criterion = "0.8.2" # for benchmark
-test-log = "0.2"
+test-log = "0.2.21"
 glob = "0.3"
 tempfile = "3"
 
 [build-dependencies]
-cbindgen = "0.29" # to generate C api headers
+cbindgen = "0.29.4" # to generate C api headers
 
 [lib]
 name = "mdfr"
