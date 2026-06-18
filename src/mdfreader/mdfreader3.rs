@@ -12,7 +12,6 @@ use crate::mdfreader::data_read3::read_channels_from_bytes;
 
 use super::Mdf;
 use crate::data_holder::tensor_arrow::Order;
-use crate::mdfreader::conversions3::convert_all_channels;
 
 /// The following constant represents the size of data chunk to be read and processed.
 /// a big chunk will improve performance but consume more memory
@@ -81,9 +80,7 @@ pub fn mdfreader3<'a>(
                         )?;
                     }
 
-                    // conversion of all channels to physical values
-                    convert_all_channels(dg, &info.sharable)
-                        .context("failed converting all channels")?;
+                    // Defer conversion of channels to physical values (handled lazily on access)
                 }
             }
         }

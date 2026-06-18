@@ -19,141 +19,129 @@ use rayon::prelude::*;
 
 use crate::data_holder::complex_arrow::ComplexArrow;
 
+/// convert a single channel into physical values as required by CCBlock content
+pub fn convert_channel(cn: &mut Cn4, sharable: &SharableBlocks) -> Result<(), Error> {
+    if cn.is_converted {
+        return Ok(());
+    }
+    if cn.data.is_empty() {
+        cn.is_converted = true;
+        return Ok(());
+    }
+
+    if let Some(conv) = sharable.cc.get(&cn.block.cn_cc_conversion) {
+        match conv.cc_type {
+            1 => match &conv.cc_val {
+                CcVal::Real(cc_val) => linear_conversion(cn, cc_val)
+                    .with_context(|| format!("linear conversion failed for {}", cn.unique_name))?,
+                CcVal::Uint(_) => (),
+            },
+            2 => match &conv.cc_val {
+                CcVal::Real(cc_val) => rational_conversion(cn, cc_val).with_context(|| {
+                    format!("rational conversion failed for {}", cn.unique_name)
+                })?,
+                CcVal::Uint(_) => (),
+            },
+            3 => {
+                if !&conv.cc_ref.is_empty()
+                    && let Ok(Some(conv)) = sharable.get_tx(conv.cc_ref[0])
+                {
+                    algebraic_conversion(cn, &conv).with_context(|| {
+                        format!("algebraic conversion failed for {}", cn.unique_name)
+                    })?
+                }
+            }
+            4 => match &conv.cc_val {
+                CcVal::Real(cc_val) => value_to_value_with_interpolation(cn, cc_val.clone())
+                    .with_context(|| {
+                        format!(
+                            "value to value conversion with interpolation failed for {}",
+                            cn.unique_name
+                        )
+                    })?,
+                CcVal::Uint(_) => (),
+            },
+            5 => match &conv.cc_val {
+                CcVal::Real(cc_val) => value_to_value_without_interpolation(cn, cc_val.clone())
+                    .with_context(|| {
+                        format!(
+                            "value to value conversion without interpolation failed for {}",
+                            cn.unique_name
+                        )
+                    })?,
+                CcVal::Uint(_) => (),
+            },
+            6 => match &conv.cc_val {
+                CcVal::Real(cc_val) => value_range_to_value_table(cn, cc_val.clone())
+                    .with_context(|| {
+                        format!(
+                            "value range to value table conversion failed for {}",
+                            cn.unique_name
+                        )
+                    })?,
+                CcVal::Uint(_) => (),
+            },
+            7 => match &conv.cc_val {
+                CcVal::Real(cc_val) => value_to_text(cn, cc_val, &conv.cc_ref, sharable)
+                    .with_context(|| {
+                        format!("value to text conversion failed for {}", cn.unique_name)
+                    })?,
+                CcVal::Uint(_) => (),
+            },
+            8 => match &conv.cc_val {
+                CcVal::Real(cc_val) => value_range_to_text(cn, cc_val, &conv.cc_ref, sharable)
+                    .with_context(|| {
+                        format!(
+                            "value range to text conversion failed for {}",
+                            cn.unique_name
+                        )
+                    })?,
+                CcVal::Uint(_) => (),
+            },
+            9 => match &conv.cc_val {
+                CcVal::Real(cc_val) => text_to_value(cn, cc_val, &conv.cc_ref, sharable)
+                    .with_context(|| {
+                        format!("text to value conversion failed for {}", cn.unique_name)
+                    })?,
+                CcVal::Uint(_) => (),
+            },
+            10 => text_to_text(cn, &conv.cc_ref, sharable).with_context(|| {
+                format!("text to text conversion failed for {}", cn.unique_name)
+            })?,
+            11 => match &conv.cc_val {
+                CcVal::Real(_) => (),
+                CcVal::Uint(cc_val) => bitfield_text_table(cn, cc_val, &conv.cc_ref, sharable)
+                    .with_context(|| {
+                        format!(
+                            "bitfield text table conversion failed for {}",
+                            cn.unique_name
+                        )
+                    })?,
+            },
+            0 => (),
+            _ => bail!(
+                "conversion type not recognised for channel {} not possible, type {}",
+                cn.unique_name,
+                conv.cc_type,
+            ),
+        }
+    }
+    cn.is_converted = true;
+    // as data are converted, CCBlock is not anymore applicable
+    cn.block.cn_cc_conversion = 0;
+    Ok(())
+}
+
 /// convert all channel arrays into physical values as required by CCBlock content
 pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) -> Result<(), Error> {
     dg.cg
         .par_iter_mut()
         .try_for_each(|(_, channel_group)| -> Result<(), Error> {
-            channel_group
-                .cn
-                .par_iter_mut()
-                .filter(|(_cn_record_position, cn)| !cn.data.is_empty())
-                .try_for_each(|(_rec_pos, cn): (&i32, &mut Cn4)| -> Result<(), Error> {
-                    // Could be empty if only initialised
-                    if let Some(conv) = sharable.cc.get(&cn.block.cn_cc_conversion) {
-                        match conv.cc_type {
-                        1 => match &conv.cc_val {
-                            CcVal::Real(cc_val) => {
-                                linear_conversion(cn, cc_val).with_context(|| {
-                                    format!("linear conversion failed for {}", cn.unique_name)
-                                })?
-                            }
-                            CcVal::Uint(_) => (),
-                        },
-                        2 => match &conv.cc_val {
-                            CcVal::Real(cc_val) => {
-                                rational_conversion(cn, cc_val).with_context(|| {
-                                    format!("rational conversion failed for {}", cn.unique_name)
-                                })?
-                            }
-                            CcVal::Uint(_) => (),
-                        },
-                        3 => {
-                            if !&conv.cc_ref.is_empty()
-                                && let Ok(Some(conv)) = sharable.get_tx(conv.cc_ref[0])
-                            {
-                                algebraic_conversion(cn, &conv).with_context(|| {
-                                    format!("algebraic conversion failed for {}", cn.unique_name)
-                                })?
-                            }
-                        }
-                        4 => match &conv.cc_val {
-                            CcVal::Real(cc_val) => value_to_value_with_interpolation(
-                                cn,
-                                cc_val.clone(),
-                            )
-                            .with_context(|| {
-                                format!(
-                                    "value to value conversion with interpolation failed for {}",
-                                    cn.unique_name
-                                )
-                            })?,
-                            CcVal::Uint(_) => (),
-                        },
-                        5 => match &conv.cc_val {
-                            CcVal::Real(cc_val) => value_to_value_without_interpolation(
-                                cn,
-                                cc_val.clone(),
-                            )
-                            .with_context(|| {
-                                format!(
-                                    "value to value conversion without interpolation failed for {}",
-                                    cn.unique_name
-                                )
-                            })?,
-                            CcVal::Uint(_) => (),
-                        },
-                        6 => match &conv.cc_val {
-                            CcVal::Real(cc_val) => value_range_to_value_table(cn, cc_val.clone())
-                                .with_context(|| {
-                                format!(
-                                    "value range to value table conversion failed for {}",
-                                    cn.unique_name
-                                )
-                            })?,
-                            CcVal::Uint(_) => (),
-                        },
-                        7 => match &conv.cc_val {
-                            CcVal::Real(cc_val) => value_to_text(
-                                cn,
-                                cc_val,
-                                &conv.cc_ref,
-                                sharable,
-                            )
-                            .with_context(|| {
-                                format!("value to text conversion failed for {}", cn.unique_name)
-                            })?,
-                            CcVal::Uint(_) => (),
-                        },
-                        8 => match &conv.cc_val {
-                            CcVal::Real(cc_val) => {
-                                value_range_to_text(cn, cc_val, &conv.cc_ref, sharable)
-                                    .with_context(|| {
-                                        format!(
-                                            "value range to text conversion failed for {}",
-                                            cn.unique_name
-                                        )
-                                    })?
-                            }
-                            CcVal::Uint(_) => (),
-                        },
-                        9 => match &conv.cc_val {
-                            CcVal::Real(cc_val) => text_to_value(
-                                cn,
-                                cc_val,
-                                &conv.cc_ref,
-                                sharable,
-                            )
-                            .with_context(|| {
-                                format!("text to value conversion failed for {}", cn.unique_name)
-                            })?,
-                            CcVal::Uint(_) => (),
-                        },
-                        10 => text_to_text(cn, &conv.cc_ref, sharable).with_context(|| {
-                            format!("text to text conversion failed for {}", cn.unique_name)
-                        })?,
-                        11 => match &conv.cc_val {
-                            CcVal::Real(_) => (),
-                            CcVal::Uint(cc_val) => {
-                                bitfield_text_table(cn, cc_val, &conv.cc_ref, sharable)
-                                    .with_context(|| {
-                                        format!(
-                                            "bitfield text table conversion failed for {}",
-                                            cn.unique_name
-                                        )
-                                    })?
-                            }
-                        },
-                        0 => (),
-                        _ => bail!(
-                            "conversion type not recognised for channel {} not possible, type {}",
-                            cn.unique_name,
-                            conv.cc_type,
-                        ),
-                    }
-                    }
-                    Ok(())
-                })?;
+            channel_group.cn.par_iter_mut().try_for_each(
+                |(_rec_pos, cn): (&i32, &mut Cn4)| -> Result<(), Error> {
+                    convert_channel(cn, sharable)
+                },
+            )?;
             Ok(())
         })?;
     Ok(())

@@ -47,7 +47,11 @@ use std::fs::File;
 /// Converts MDF3 sources to MDF4 if needed. Preserves file history (FH), events (EV),
 /// attachments (AT), source info (SI), and channel hierarchy (CH) from the source file.
 /// Supports optional zlib compression for data blocks.
-pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: CompressionAlgorithm) -> Result<Mdf> {
+pub fn mdfwriter4(
+    mdf: &mut Mdf,
+    file_name: &str,
+    compression: CompressionAlgorithm,
+) -> Result<Mdf> {
     let info: MdfInfo4 = match &mdf.mdf_info {
         MdfInfo::V3(mdfinfo3) => convert3to4(mdfinfo3, file_name)
             .context("failed converting mdf version 3 into version 4")?,
@@ -544,12 +548,12 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: CompressionAlgorithm)
         .try_for_each(|(_dg_block_position, dg)| -> Result<(), Error> {
             for cg in dg.cg.values_mut() {
                 for cn in cg.cn.values_mut() {
-                    let dt = mdf.get_channel_data(&cn.unique_name);
+                    let dt = mdf.get_channel_converted_data(&cn.unique_name);
                     if let Some(data) = dt {
                         let m = data.validity();
                         if !data.is_empty() && data.bit_count() > 0 {
                             // Check if this is a VLSD channel
-                            let is_vlsd = cn.block.cn_type == 1 && is_vlsd_data(data);
+                            let is_vlsd = cn.block.cn_type == 1 && is_vlsd_data(&data);
 
                             if is_vlsd {
                                 // VLSD channel: write SD block, set cn_data.
@@ -559,10 +563,10 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: CompressionAlgorithm)
                                 dg.block.dg_data = 0;
                                 let data_block =
                                     if compression != CompressionAlgorithm::NoCompression {
-                                        create_dz_sd(data, &mut offset, compression)
+                                        create_dz_sd(&data, &mut offset, compression)
                                             .context("failed creating dz or sd block")?
                                     } else {
-                                        create_sd(data, &mut offset)
+                                        create_sd(&data, &mut offset)
                                             .context("failed creating sd block")?
                                     };
 
@@ -585,10 +589,10 @@ pub fn mdfwriter4(mdf: &Mdf, file_name: &str, compression: CompressionAlgorithm)
 
                                 let data_block =
                                     if compression != CompressionAlgorithm::NoCompression {
-                                        create_dz_dv(data, &mut offset, compression)
+                                        create_dz_dv(&data, &mut offset, compression)
                                             .context("failed creating dz or dv block")?
                                     } else {
-                                        create_dv(data, &mut offset)
+                                        create_dv(&data, &mut offset)
                                             .context("failed creating dv block")?
                                     };
 
@@ -1523,6 +1527,7 @@ fn create_blocks(
             block_position: cn_position,
             pos_byte_beg: 0,
             n_bytes: cg_block.cg_data_bytes,
+            is_converted: false,
             composition,
             list_size: cn.list_size,
             shape: cn.shape.clone(),

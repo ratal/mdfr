@@ -6,7 +6,6 @@ use crate::mdfinfo::mdfinfo4::{
     CG_F_VLSC, CG_F_VLSD, Dl4Block, Dt4Block, Dz4Block, Gd4Block, Hl4Block, Ld4Block, parse_dz,
     parser_dl4_block, parser_ld4_block, read_dz_raw,
 };
-use crate::mdfreader::conversions4::convert_all_channels;
 use crate::mdfreader::data_read4::read_channels_from_bytes;
 use crate::mdfreader::data_read4::read_one_channel_array;
 use crate::mdfreader::datastream_decoder;
@@ -92,9 +91,7 @@ pub fn mdfreader4<'a>(
                             .process_channel_unions()
                             .context("failed processing channel unions")?;
                     }
-                    // conversion of all channels to physical values
-                    convert_all_channels(dg, &info.sharable)
-                        .context("failed converting all channels")?;
+                    // Defer conversion of channels to physical values (handled lazily on access)
                 }
             }
         }

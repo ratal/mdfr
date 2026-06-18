@@ -51,6 +51,26 @@ impl MdfInfo3 {
     pub fn get_channel_id(&self, channel_name: &str) -> Option<&ChannelId3> {
         self.channel_names_set.get(channel_name)
     }
+    /// Eagerly converts all channels in the file to their physical values
+    pub fn convert_all_channels(&mut self) -> Result<(), Error> {
+        for dg in self.dg.values_mut() {
+            crate::mdfreader::conversions3::convert_all_channels(dg, &self.sharable)?;
+        }
+        Ok(())
+    }
+    /// Converts one channel to its physical value
+    pub fn convert_channel(&mut self, channel_name: &str) -> Result<(), Error> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
+            self.channel_names_set.get_mut(channel_name)
+            && let Some(dg) = self.dg.get_mut(dg_pos)
+            && let Some(cg) = dg.cg.get_mut(rec_id)
+            && let Some(cn) = cg.cn.get_mut(cn_pos)
+            && !cn.data.is_empty()
+        {
+            crate::mdfreader::conversions3::convert_channel(cn, &self.sharable)?;
+        }
+        Ok(())
+    }
     /// Returns the channel's unit string. If it does not exist, it is an empty string.
     pub fn get_channel_unit(&self, channel_name: &str) -> Option<String> {
         let mut unit: Option<String> = None;
@@ -195,20 +215,6 @@ impl MdfInfo3 {
         }
         Ok(())
     }
-    /// Returns the channel's data ndarray if present in memory, otherwise None.
-    pub fn get_channel_data_from_memory(&self, channel_name: &str) -> Option<&ChannelData> {
-        let mut data: Option<&ChannelData> = None;
-        if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
-            self.get_channel_id(channel_name)
-            && let Some(dg) = self.dg.get(dg_pos)
-            && let Some(cg) = dg.cg.get(rec_id)
-            && let Some(cn) = cg.cn.get(cn_pos)
-            && !cn.data.is_empty()
-        {
-            data = Some(&cn.data);
-        }
-        data
-    }
     /// Removes a channel in memory (no file modification)
     pub fn remove_channel(&mut self, channel_name: &str) {
         if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
@@ -234,9 +240,58 @@ impl MdfInfo3 {
         }
         state
     }
-    /// returns channel's data ndarray.
-    pub fn get_channel_data(&self, channel_name: &str) -> Option<&ChannelData> {
-        self.get_channel_data_from_memory(channel_name)
+    /// Returns the channel's data ndarray if present in memory, otherwise None.
+    /// If data were not converted yet, it will convert it and keep in memory for further use
+    pub fn get_channel_data(&mut self, channel_name: &str) -> Option<&ChannelData> {
+        let mut data: Option<&ChannelData> = None;
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
+            self.channel_names_set.get_mut(channel_name)
+            && let Some(dg) = self.dg.get_mut(dg_pos)
+            && let Some(cg) = dg.cg.get_mut(rec_id)
+            && let Some(cn) = cg.cn.get_mut(cn_pos)
+            && !cn.data.is_empty()
+        {
+            if !cn.is_converted
+                && let Err(e) = crate::mdfreader::conversions3::convert_channel(cn, &self.sharable)
+            {
+                log::error!(
+                    "Lazy channel conversion failed for {}: {:?}",
+                    channel_name,
+                    e
+                );
+            }
+            data = Some(&cn.data);
+        }
+        data
+    }
+    /// Returns the channel's data ndarray if present in memory, otherwise None.
+    /// If data are not converted, it will keep the data non converted in memory but returns converted data
+    pub fn get_channel_converted_data(&self, channel_name: &str) -> Option<ChannelData> {
+        let mut data: Option<ChannelData> = None;
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
+            self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(cn_pos)
+            && !cn.data.is_empty()
+        {
+            if !cn.is_converted {
+                let mut cloned_cn = cn.clone();
+                if let Err(e) =
+                    crate::mdfreader::conversions3::convert_channel(&mut cloned_cn, &self.sharable)
+                {
+                    log::error!(
+                        "Lazy channel conversion failed for {}: {:?}",
+                        channel_name,
+                        e
+                    );
+                }
+                data = Some(cloned_cn.data);
+            } else {
+                data = Some(cn.data.clone());
+            }
+        }
+        data
     }
     /// Renames a channel's name in memory
     pub fn rename_channel(&mut self, channel_name: &str, new_name: &str) {
@@ -944,10 +999,30 @@ pub struct Cn3 {
     pub n_bytes: u16,
     /// channel data
     pub data: ChannelData,
+    /// flag to track if channel's data is already converted or to be converted
+    pub is_converted: bool,
     /// byte order of the channel's raw data
     pub endian: Endianness,
     /// True if channel is valid = contains data converted
     pub channel_data_valid: bool,
+}
+
+impl Clone for Cn3 {
+    fn clone(&self) -> Self {
+        Self {
+            block1: self.block1.clone(),
+            block2: self.block2.clone(),
+            unique_name: self.unique_name.clone(),
+            comment: self.comment.clone(),
+            description: self.description.clone(),
+            pos_byte_beg: self.pos_byte_beg,
+            n_bytes: self.n_bytes,
+            data: self.data.clone(),
+            is_converted: self.is_converted,
+            endian: self.endian,
+            channel_data_valid: self.channel_data_valid,
+        }
+    }
 }
 
 /// creates recursively in the channel group the CN blocks and all its other linked blocks (CC, TX, CE, CD)
@@ -1156,6 +1231,7 @@ fn parse_cn3_block(
         pos_byte_beg,
         n_bytes,
         data: data_type_init(0, data_type, n_bytes as u32, 1, 0)?,
+        is_converted: false,
         endian,
         channel_data_valid: false,
     };
@@ -1207,6 +1283,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         pos_byte_beg,
         n_bytes: 2,
         data: ChannelData::UInt16(UInt16Builder::new()),
+        is_converted: false,
         endian: Endianness::Little,
         channel_data_valid: false,
     };
@@ -1226,6 +1303,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         pos_byte_beg: pos_byte_beg + 2,
         n_bytes: 1,
         data: ChannelData::UInt8(UInt8Builder::new()),
+        is_converted: false,
         endian: Endianness::Little,
         channel_data_valid: false,
     };
@@ -1245,6 +1323,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         pos_byte_beg: pos_byte_beg + 3,
         n_bytes: 1,
         data: ChannelData::UInt8(UInt8Builder::new()),
+        is_converted: false,
         endian: Endianness::Little,
         channel_data_valid: false,
     };
@@ -1264,6 +1343,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         pos_byte_beg: pos_byte_beg + 4,
         n_bytes: 1,
         data: ChannelData::UInt8(UInt8Builder::new()),
+        is_converted: false,
         endian: Endianness::Little,
         channel_data_valid: false,
     };
@@ -1283,6 +1363,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         pos_byte_beg: pos_byte_beg + 5,
         n_bytes: 1,
         data: ChannelData::UInt8(UInt8Builder::new()),
+        is_converted: false,
         endian: Endianness::Little,
         channel_data_valid: false,
     };
@@ -1302,6 +1383,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         pos_byte_beg: pos_byte_beg + 7,
         n_bytes: 1,
         data: ChannelData::UInt8(UInt8Builder::new()),
+        is_converted: false,
         endian: Endianness::Little,
         channel_data_valid: false,
     };
@@ -1331,6 +1413,7 @@ fn can_open_time(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3) {
         pos_byte_beg,
         n_bytes: 4,
         data: ChannelData::UInt32(UInt32Builder::new()),
+        is_converted: false,
         endian: Endianness::Little,
         channel_data_valid: false,
     };
@@ -1350,6 +1433,7 @@ fn can_open_time(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3) {
         pos_byte_beg: pos_byte_beg + 4,
         n_bytes: 2,
         data: ChannelData::UInt16(UInt16Builder::new()),
+        is_converted: false,
         endian: Endianness::Little,
         channel_data_valid: false,
     };

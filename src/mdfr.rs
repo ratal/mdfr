@@ -111,7 +111,7 @@ impl Mdfr {
         // default py_array value is python None
         let data = pyo3::Python::attach(|py| -> PyResult<Py<PyAny>> {
             let mut py_array: Py<PyAny>;
-            let dt = mdf.get_channel_data(&channel_name);
+            let dt = mdf.get_channel_converted_data(&channel_name);
             if let Some(data) = dt {
                 py_array = data
                     .clone()
@@ -192,7 +192,7 @@ impl Mdfr {
     }
     /// returns polars serie of channel
     #[cfg(feature = "polars")]
-    fn get_polars_series(&self, channel_name: &str) -> PyResult<Py<PyAny>> {
+    fn get_polars_series(&mut self, channel_name: &str) -> PyResult<Py<PyAny>> {
         let Mdfr(mdf) = self;
         pyo3::Python::attach(|py| {
             let mut py_serie = Ok(Python::None(py));
@@ -204,7 +204,7 @@ impl Mdfr {
     }
     /// returns polar dataframe including channel
     #[cfg(feature = "polars")]
-    fn get_polars_dataframe(&self, channel_name: String) -> PyResult<Py<PyAny>> {
+    fn get_polars_dataframe(&mut self, channel_name: String) -> PyResult<Py<PyAny>> {
         let Mdfr(mdf) = self;
         Python::attach(|py| {
             let mut py_dataframe = Python::None(py);
@@ -331,7 +331,7 @@ df=polars.DataFrame(series)
     /// returns master channel data as an Arrow TimestampNanosecond array with timezone.
     /// Raises ValueError if the channel has no Time master.
     pub fn get_master_channel_datetimes(
-        &self,
+        &mut self,
         channel_name: String,
     ) -> PyResult<PyArrowType<ArrayData>> {
         let Mdfr(mdf) = self;
@@ -427,14 +427,14 @@ df=polars.DataFrame(series)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
     /// appends other's data after self on the time axis (time-sequential concat)
-    pub fn concat_mdf(&mut self, other: &Mdfr) -> PyResult<()> {
+    pub fn concat_mdf(&mut self, other: &mut Mdfr) -> PyResult<()> {
         let Mdfr(mdf) = self;
         let Mdfr(other_mdf) = other;
         mdf.concat_mdf(other_mdf)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
     }
     /// imports channels from other into self (channel-axis join on shared time axis)
-    pub fn merge(&mut self, other: &Mdfr) -> PyResult<()> {
+    pub fn merge(&mut self, other: &mut Mdfr) -> PyResult<()> {
         let Mdfr(mdf) = self;
         let Mdfr(other_mdf) = other;
         mdf.merge(other_mdf)
@@ -444,6 +444,18 @@ df=polars.DataFrame(series)
     pub fn load_all_channels_data_in_memory(&mut self) -> PyResult<()> {
         let Mdfr(mdf) = self;
         mdf.load_all_channels_data_in_memory()?;
+        Ok(())
+    }
+    /// Eagerly converts all channels to physical values
+    pub fn convert_all_channels(&mut self) -> PyResult<()> {
+        let Mdfr(mdf) = self;
+        mdf.convert_all_channels()?;
+        Ok(())
+    }
+    /// Converts one channel's data to physical values
+    pub fn convert_channel(&mut self, channel_name: &str) -> PyResult<()> {
+        let Mdfr(mdf) = self;
+        mdf.convert_channel(channel_name)?;
         Ok(())
     }
     /// writes file

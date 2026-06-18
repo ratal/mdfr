@@ -257,7 +257,7 @@ pub unsafe extern "C" fn get_channel_array(
             Err(_) => return std::ptr::null_mut(),
         };
         if let Some(mdf) = mdf.as_ref() {
-            match mdf.get_channel_data(name) {
+            match mdf.get_channel_converted_data(name) {
                 Some(data) => match to_ffi(&data.to_data()) {
                     Ok((array, _)) => Box::into_raw(Box::new(array)),
                     Err(e) => {

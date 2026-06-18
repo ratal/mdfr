@@ -605,11 +605,32 @@ impl MdfInfo {
         }
         Ok(())
     }
-    /// returns channel's data ndarray.
+    /// Eagerly converts all channels to physical values.
+    pub fn convert_all_channels(&mut self) -> Result<(), Error> {
+        match self {
+            MdfInfo::V3(mdfinfo3) => mdfinfo3.convert_all_channels(),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.convert_all_channels(),
+        }
+    }
+    /// Converts one channels to physical values.
+    pub fn convert_channel<'a>(&'a mut self, channel_name: &'a str) -> Result<(), Error> {
+        match self {
+            MdfInfo::V3(mdfinfo3) => mdfinfo3.convert_channel(channel_name),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.convert_channel(channel_name),
+        }
+    }
+    /// returns channel's data ndarray. If data were not yet converted, keeps converted data into memory
     pub fn get_channel_data<'a>(&'a mut self, channel_name: &'a str) -> Option<&'a ChannelData> {
         match self {
             MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_data(channel_name),
             MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_data(channel_name),
+        }
+    }
+    /// returns channel's data ndarray, does not modify
+    pub fn get_channel_converted_data<'a>(&'a self, channel_name: &'a str) -> Option<ChannelData> {
+        match self {
+            MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_converted_data(channel_name),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_converted_data(channel_name),
         }
     }
     /// Adds a new channel in memory (no file modification)

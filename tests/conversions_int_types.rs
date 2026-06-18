@@ -286,7 +286,7 @@ fn load_fixture() -> Result<Mdf> {
 
 #[test]
 fn int8_linear_conversion() -> Result<()> {
-    let mdf = load_fixture()?;
+    let mut mdf = load_fixture()?;
     // raw: -5, 0, 5, 10 → phys = raw * 2.0 + 0.5 → -9.5, 0.5, 10.5, 20.5
     let data = mdf.get_channel_data("int8_ch").expect("int8_ch not found");
     assert!(
@@ -308,7 +308,7 @@ fn int8_linear_conversion() -> Result<()> {
 
 #[test]
 fn int16_linear_conversion() -> Result<()> {
-    let mdf = load_fixture()?;
+    let mut mdf = load_fixture()?;
     // raw: -100, 0, 100, 200 → -199.5, 0.5, 200.5, 400.5
     let data = mdf
         .get_channel_data("int16_ch")
@@ -331,7 +331,7 @@ fn int16_linear_conversion() -> Result<()> {
 
 #[test]
 fn float32_linear_conversion() -> Result<()> {
-    let mdf = load_fixture()?;
+    let mut mdf = load_fixture()?;
     // raw: 1.5, 2.5, 3.5, 4.5 → 3.5, 5.5, 7.5, 9.5
     let data = mdf
         .get_channel_data("float32_ch")
@@ -354,7 +354,7 @@ fn float32_linear_conversion() -> Result<()> {
 
 #[test]
 fn master_channel_loaded() -> Result<()> {
-    let mdf = load_fixture()?;
+    let mut mdf = load_fixture()?;
     let data = mdf.get_channel_data("time_ch").expect("time_ch not found");
     assert!(
         matches!(data, ChannelData::Float64(_)),

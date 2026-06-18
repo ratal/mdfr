@@ -747,7 +747,7 @@ fn load_ld_be() -> Result<Mdf> {
 
 #[test]
 fn ld_bei16_reads_correctly() -> Result<()> {
-    let mdf = load_ld_be()?;
+    let mut mdf = load_ld_be()?;
     let data = mdf.get_channel_data("bei16").expect("bei16 not found");
     assert!(
         matches!(data, ChannelData::Int16(_)),
@@ -765,7 +765,7 @@ fn ld_bei16_reads_correctly() -> Result<()> {
 
 #[test]
 fn ld_bef64_reads_correctly() -> Result<()> {
-    let mdf = load_ld_be()?;
+    let mut mdf = load_ld_be()?;
     let data = mdf.get_channel_data("bef64").expect("bef64 not found");
     assert!(
         matches!(data, ChannelData::Float64(_)),
@@ -786,7 +786,7 @@ fn ld_bef64_reads_correctly() -> Result<()> {
 
 #[test]
 fn ld_beu16_reads_correctly() -> Result<()> {
-    let mdf = load_ld_be()?;
+    let mut mdf = load_ld_be()?;
     let data = mdf.get_channel_data("beu16").expect("beu16 not found");
     assert!(
         matches!(data, ChannelData::UInt16(_)),
@@ -804,7 +804,7 @@ fn ld_beu16_reads_correctly() -> Result<()> {
 
 #[test]
 fn ld_bef32_reads_correctly() -> Result<()> {
-    let mdf = load_ld_be()?;
+    let mut mdf = load_ld_be()?;
     let data = mdf.get_channel_data("bef32").expect("bef32 not found");
     assert!(
         matches!(data, ChannelData::Float32(_)),
