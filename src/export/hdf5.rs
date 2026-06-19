@@ -6,10 +6,8 @@ use arrow::{
         Float32Type, Float64Type, Int8Type, Int16Type, Int32Type, Int64Type, UInt8Type, UInt16Type,
         UInt32Type, UInt64Type,
     },
-    error::ArrowError::NotYetImplemented,
 };
 use log::info;
-use ndarray::{Array as NdArray, IxDyn};
 use rust_hdf5::{
     FilterPipeline, H5File, H5Group, H5Type,
     dataset::H5Dataset,
@@ -25,7 +23,7 @@ use crate::{
         mdfinfo4::{Cg4, Cn4, Dg4, MdfInfo4},
     },
 };
-#[cfg(feature = "hdf5-mpio")]
+
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 /// writes mdf into hdf5 file
@@ -118,7 +116,6 @@ pub fn mdf4_cg_to_hdf5(
     let group = file
         .create_group(&master_channel)
         .with_context(|| format!("failed creating group {:?}", master_channel))?;
-    #[cfg(feature = "hdf5-mpio")]
     cg.cn
         .par_iter()
         .try_for_each(|(_rec_pos, cn): (&i32, &Cn4)| -> Result<(), Error> {
@@ -129,7 +126,7 @@ pub fn mdf4_cg_to_hdf5(
             Ok(())
         })
         .context("failed extracting data")?;
-    #[cfg(not(feature = "hdf5-mpio"))]
+    /* #[cfg(not(feature = "hdf5-mpio"))]
     cg.cn
         .iter()
         .try_for_each(|(_rec_pos, cn): (&i32, &Cn4)| -> Result<(), Error> {
@@ -139,7 +136,7 @@ pub fn mdf4_cg_to_hdf5(
             }
             Ok(())
         })
-        .context("failed extracting data")?;
+        .context("failed extracting data")?; */
     Ok(())
 }
 
@@ -200,7 +197,6 @@ pub fn mdf3_cg_to_hdf5(
     let group = file
         .create_group(&master_channel)
         .with_context(|| format!("failed creating group {:?}", cg.master_channel_name))?;
-    #[cfg(feature = "hdf5-mpio")]
     cg.cn
         .par_iter()
         .try_for_each(|(_rec_pos, cn): (&u32, &Cn3)| -> Result<(), Error> {
@@ -211,7 +207,7 @@ pub fn mdf3_cg_to_hdf5(
             Ok(())
         })
         .context("failed extracting data")?;
-    #[cfg(not(feature = "hdf5-mpio"))]
+    /*     #[cfg(not(feature = "hdf5-mpio"))]
     cg.cn
         .iter()
         .try_for_each(|(_rec_pos, cn): (&u32, &Cn3)| -> Result<(), Error> {
@@ -221,7 +217,7 @@ pub fn mdf3_cg_to_hdf5(
             }
             Ok(())
         })
-        .context("failed extracting data")?;
+        .context("failed extracting data")?; */
     Ok(())
 }
 
