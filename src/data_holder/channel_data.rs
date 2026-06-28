@@ -235,33 +235,56 @@ impl Clone for ChannelData {
                 let array: FixedSizeBinaryArray = array.finish_cloned();
                 let mut new_array =
                     FixedSizeBinaryBuilder::with_capacity(array.len(), array.value_length());
-                match array.logical_nulls() {
-                    // append_value can only fail if slice length != value_length,
-                    // which can't happen since we chunk by value_length().
-                    Some(validity) => {
-                        array
-                            .values()
-                            .chunks(array.value_length() as usize)
-                            .zip(validity.iter())
-                            .for_each(|(value, valid)| {
+                if array.value_length() == 0 {
+                    match array.logical_nulls() {
+                        Some(validity) => {
+                            for valid in validity.iter() {
                                 if valid {
                                     new_array
-                                        .append_value(value)
+                                        .append_value([])
                                         .unwrap_or_else(|_| new_array.append_null());
                                 } else {
                                     new_array.append_null();
                                 }
-                            });
-                    }
-                    _ => {
-                        array
-                            .values()
-                            .chunks(array.value_length() as usize)
-                            .for_each(|value| {
+                            }
+                        }
+                        _ => {
+                            for _ in 0..array.len() {
                                 new_array
-                                    .append_value(value)
+                                    .append_value([])
                                     .unwrap_or_else(|_| new_array.append_null());
-                            });
+                            }
+                        }
+                    }
+                } else {
+                    match array.logical_nulls() {
+                        // append_value can only fail if slice length != value_length,
+                        // which can't happen since we chunk by value_length().
+                        Some(validity) => {
+                            array
+                                .values()
+                                .chunks(array.value_length() as usize)
+                                .zip(validity.iter())
+                                .for_each(|(value, valid)| {
+                                    if valid {
+                                        new_array
+                                            .append_value(value)
+                                            .unwrap_or_else(|_| new_array.append_null());
+                                    } else {
+                                        new_array.append_null();
+                                    }
+                                });
+                        }
+                        _ => {
+                            array
+                                .values()
+                                .chunks(array.value_length() as usize)
+                                .for_each(|value| {
+                                    new_array
+                                        .append_value(value)
+                                        .unwrap_or_else(|_| new_array.append_null());
+                                });
+                        }
                     }
                 }
                 Self::FixedSizeByteArray(new_array)
@@ -1131,19 +1154,31 @@ impl ChannelData {
                 let array = a.finish();
                 let mut new_array =
                     FixedSizeBinaryBuilder::with_capacity(array.len(), array.value_length());
-                array
-                    .values()
-                    .chunks(array.value_length() as usize)
-                    .zip(mask.finish().iter())
-                    .for_each(|(value, mask)| {
+                if array.value_length() == 0 {
+                    mask.finish().iter().for_each(|mask| {
                         if mask {
                             new_array
-                                .append_value(value)
+                                .append_value([])
                                 .expect("failed appending new fixed binary value");
                         } else {
                             new_array.append_null();
                         }
                     });
+                } else {
+                    array
+                        .values()
+                        .chunks(array.value_length() as usize)
+                        .zip(mask.finish().iter())
+                        .for_each(|(value, mask)| {
+                            if mask {
+                                new_array
+                                    .append_value(value)
+                                    .expect("failed appending new fixed binary value");
+                            } else {
+                                new_array.append_null();
+                            }
+                        });
+                }
                 *a = new_array;
             }
             ChannelData::ArrayDInt8(a) => {
@@ -1717,31 +1752,54 @@ pub fn try_from(value: &dyn Array) -> Result<ChannelData, Error> {
                 .downcast_ref::<FixedSizeBinaryArray>()
                 .context("could not downcast to fixed size binary array")?;
             let mut new_array = FixedSizeBinaryBuilder::with_capacity(array.len(), *size);
-            match array.logical_nulls() {
-                Some(validity) => {
-                    array
-                        .values()
-                        .chunks(array.value_length() as usize)
-                        .zip(validity.iter())
-                        .for_each(|(value, validity)| {
+            if array.value_length() == 0 {
+                match array.logical_nulls() {
+                    Some(validity) => {
+                        validity.iter().for_each(|validity| {
                             if validity {
                                 new_array
-                                    .append_value(value)
+                                    .append_value([])
                                     .expect("failed appending new fixed binary value");
                             } else {
                                 new_array.append_null();
                             }
                         });
-                }
-                _ => {
-                    array
-                        .values()
-                        .chunks(array.value_length() as usize)
-                        .for_each(|value| {
+                    }
+                    _ => {
+                        for _ in 0..array.len() {
                             new_array
-                                .append_value(value)
+                                .append_value([])
                                 .expect("failed appending new fixed binary value");
-                        });
+                        }
+                    }
+                }
+            } else {
+                match array.logical_nulls() {
+                    Some(validity) => {
+                        array
+                            .values()
+                            .chunks(array.value_length() as usize)
+                            .zip(validity.iter())
+                            .for_each(|(value, validity)| {
+                                if validity {
+                                    new_array
+                                        .append_value(value)
+                                        .expect("failed appending new fixed binary value");
+                                } else {
+                                    new_array.append_null();
+                                }
+                            });
+                    }
+                    _ => {
+                        array
+                            .values()
+                            .chunks(array.value_length() as usize)
+                            .for_each(|value| {
+                                new_array
+                                    .append_value(value)
+                                    .expect("failed appending new fixed binary value");
+                            });
+                    }
                 }
             }
             Ok(ChannelData::FixedSizeByteArray(new_array))

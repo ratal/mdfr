@@ -2,8 +2,8 @@
 mod common;
 
 use anyhow::Result;
-use mdfr::mdfreader::Mdf;
 use mdfr::mdfinfo::MdfInfo;
+use mdfr::mdfreader::Mdf;
 use std::sync::LazyLock;
 
 static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(|| {
@@ -30,7 +30,11 @@ fn test_lazy_conversion_trigger() -> Result<()> {
                 for cn in cg.cn.values() {
                     // Check if it has a conversion block reference and is not empty
                     if cn.block.cn_cc_conversion != 0 && !cn.data.is_empty() {
-                        assert!(!cn.is_converted, "Channel {} should not be converted initially", cn.unique_name);
+                        assert!(
+                            !cn.is_converted,
+                            "Channel {} should not be converted initially",
+                            cn.unique_name
+                        );
                         target_channel_name = Some(cn.unique_name.clone());
                         break;
                     }
@@ -45,10 +49,13 @@ fn test_lazy_conversion_trigger() -> Result<()> {
         }
     }
 
-    let channel_name = target_channel_name.expect("Should find at least one channel with conversion rules");
+    let channel_name =
+        target_channel_name.expect("Should find at least one channel with conversion rules");
 
     // Retrieve the data, which triggers lazy conversion
-    let _data = mdf.get_channel_data(&channel_name).expect("Should successfully retrieve channel data");
+    let _data = mdf
+        .get_channel_data(&channel_name)
+        .expect("Should successfully retrieve channel data");
 
     // Verify it is now marked as converted
     if let MdfInfo::V4(ref info4) = mdf.mdf_info {
@@ -56,7 +63,11 @@ fn test_lazy_conversion_trigger() -> Result<()> {
             for cg in dg.cg.values() {
                 for cn in cg.cn.values() {
                     if cn.unique_name == channel_name {
-                        assert!(cn.is_converted, "Channel {} should be marked as converted after retrieval", channel_name);
+                        assert!(
+                            cn.is_converted,
+                            "Channel {} should be marked as converted after retrieval",
+                            channel_name
+                        );
                     }
                 }
             }
@@ -84,7 +95,11 @@ fn test_eager_conversion_api() -> Result<()> {
             for cg in dg.cg.values() {
                 for cn in cg.cn.values() {
                     if cn.block.cn_cc_conversion != 0 && !cn.data.is_empty() {
-                        assert!(cn.is_converted, "Channel {} should be eagerly converted", cn.unique_name);
+                        assert!(
+                            cn.is_converted,
+                            "Channel {} should be eagerly converted",
+                            cn.unique_name
+                        );
                     }
                 }
             }
