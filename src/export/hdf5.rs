@@ -126,17 +126,6 @@ pub fn mdf4_cg_to_hdf5(
             Ok(())
         })
         .context("failed extracting data")?;
-    /* #[cfg(not(feature = "hdf5-mpio"))]
-    cg.cn
-        .iter()
-        .try_for_each(|(_rec_pos, cn): (&i32, &Cn4)| -> Result<(), Error> {
-            if !cn.data.is_empty() {
-                mdf4_cn_to_hdf5(mdfinfo4, cn, compression, &group)
-                    .context("failed writing dataset")?;
-            }
-            Ok(())
-        })
-        .context("failed extracting data")?; */
     Ok(())
 }
 
@@ -207,17 +196,6 @@ pub fn mdf3_cg_to_hdf5(
             Ok(())
         })
         .context("failed extracting data")?;
-    /*     #[cfg(not(feature = "hdf5-mpio"))]
-    cg.cn
-        .iter()
-        .try_for_each(|(_rec_pos, cn): (&u32, &Cn3)| -> Result<(), Error> {
-            if !cn.data.is_empty() {
-                mdf3_cn_to_hdf5(mdfinfo3, cn, compression, &group)
-                    .context("failed writing dataset")?;
-            }
-            Ok(())
-        })
-        .context("failed extracting data")?; */
     Ok(())
 }
 
@@ -450,34 +428,17 @@ fn convert_channel_data_into_h5dataset(
             Ok(dataset)
         }
         ChannelData::Utf8(data) => {
-            /* let string_vect: Vec<&str> = data
-                .finish_cloned()
-                .iter()
-                .map(|x| match x {
-                    Some(x) => x,
-                    None => &"null",
-                })
-                .collect();
-            group.write_vlen_strings_compressed(name, &string_vect, 1024, get_filter(compression)); */
-            Ok(todo!())
+            let filter = get_filter(compression);
+            // Convert LargeStringBuilder -> LargeStringArray -> Vec<&str>
+            let array = data.finish_cloned();
+            let strings: Vec<&str> = array.iter().map(|opt| opt.unwrap_or("")).collect();
+            Ok(group.write_vlen_strings_compressed(name, &strings, 1024, filter)?)
         }
         ChannelData::VariableSizeByteArray(data) => {
-            /* let bytes_vect: Vec<Vec<u8>> = data
-            .finish_cloned()
-            .iter()
-            .map(|x| match x {
-                Some(x) => x.to_vec(),
-                None => vec![0],
-            })
-            .collect(); */
-            let filter = get_filter(compression);
-            let dataset = group
-                .new_dataset::<u8>()
-                .filter_pipeline(filter)
-                .shape(ndim)
-                .create(name)?;
-            dataset.write_raw(data.values_slice())?;
-            Ok(dataset)
+            // Convert LargeBinaryBuilder -> LargeBinaryArray -> Vec<&[u8]>
+            let array = data.finish_cloned();
+            let bytes: Vec<&[u8]> = array.iter().map(|opt| opt.unwrap_or(&[])).collect();
+            Ok(group.write_vlen_bytes(name, &bytes)?)
         }
         ChannelData::FixedSizeByteArray(data) => {
             let fixed_binary = data.finish_cloned();

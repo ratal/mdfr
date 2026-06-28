@@ -24,7 +24,7 @@ ndarray = ["dep:ndarray"]
 
 [dependencies]
 clap = "4.6.1" # for input arguments
-anyhow = { version = "1.0.102", features = ["backtrace"] } # error handling
+anyhow = { version = "1.0.103", features = ["backtrace"] } # error handling
 log = "0.4.32" # to log events
 byteorder = "1.4" # for bytes conversions
 binrw = "0.15.1" # to efficiently read blocks
@@ -44,7 +44,7 @@ lz4 = "1.28"
 md-5 = "0.11" # md5sum of attachments
 transpose = "0.2" # for DZBlock transpose
 fasteval = "0.2" # for algebraic conversion
-itertools = "0.14"
+itertools = "0.15"
 serde = { version = "1.0", features = ["derive"] } # for serialization
 whoami = "2.1.1" # to get user name for writing file
 rand = "0.10" # for random numbers
@@ -62,7 +62,7 @@ polars = { version = "0.53", features = [
     "fmt",
 ], optional = true } # for python dataframe
 parquet = { version = "58.1.0", optional = true } # to write parquet file
-rust-hdf5 = { version = "0.2.23", optional = true, features = [
+rust-hdf5 = { version = "0.2.27", optional = true, features = [
     "all_filters", "parallel", "threadsafe"
 ] } # to export into hdf5 file
 ndarray = { version = "0.17", optional = true } # to convert arraw data into ndarray, needed for hdf5
