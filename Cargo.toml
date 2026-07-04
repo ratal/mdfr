@@ -19,13 +19,13 @@ extension-module = ["pyo3/extension-module"]
 numpy = ["dep:numpy", "dep:pyo3"]
 polars = ["dep:polars", "dep:numpy", "dep:pyo3"] # numpy and pyo3 are required transitive deps for polars Python interop
 parquet = ["dep:parquet"]
-hdf5 = ["dep:rust-hdf5", "ndarray"]
+hdf5 = ["dep:rust-hdf5"]
 ndarray = ["dep:ndarray"]
 
 [dependencies]
 clap = "4.6.1" # for input arguments
 anyhow = { version = "1.0.103", features = ["backtrace"] } # error handling
-log = "0.4.32" # to log events
+log = "0.4.33" # to log events
 byteorder = "1.4" # for bytes conversions
 binrw = "0.15.1" # to efficiently read blocks
 num = "0.4"
@@ -53,7 +53,7 @@ arrow = { version = "58.1.0", features = [
     "prettyprint",
     "ffi",
 ] } # for efficient data storing in memory
-env_logger = "0.11.10"
+env_logger = "0.11.11"
 libc = "0.2.184" # for the C api
 numpy = { version = "0.28", optional = true } # to export in numpy
 polars = { version = "0.53", features = [
@@ -62,10 +62,10 @@ polars = { version = "0.53", features = [
     "fmt",
 ], optional = true } # for python dataframe
 parquet = { version = "58.1.0", optional = true } # to write parquet file
-rust-hdf5 = { version = "0.2.27", optional = true, features = [
+rust-hdf5 = { version = "0.3.2", optional = true, features = [
     "all_filters", "parallel", "threadsafe"
 ] } # to export into hdf5 file
-ndarray = { version = "0.17", optional = true } # to convert arraw data into ndarray, needed for hdf5
+ndarray = { version = "0.17", optional = true } # to convert arraw data into ndarray
 
 [dependencies.pyo3]
 version = "0.28.3"
@@ -77,6 +77,7 @@ criterion = "0.8.2" # for benchmark
 test-log = "0.2.21"
 glob = "0.3"
 tempfile = "3"
+pyo3 = { version = "0.28.3", features = ["auto-initialize"] }
 
 [build-dependencies]
 cbindgen = "0.29.4" # to generate C api headers

@@ -76,7 +76,7 @@ fn main() -> Result<(), Error> {
                 .long("hdf5_compression")
                 .num_args(1)
                 .value_name("FILTER")
-                .value_parser(["deflate", "lzf"])
+                .value_parser(["deflate", "lz4", "zstd"])
                 .help("Compression filter for writing data in hdf5 file. Default is uncompressed"),
         )
         .arg(
