@@ -525,8 +525,18 @@ fn convert_channel_data_into_h5dataset(
             data.values_slice(),
         )?),
         ChannelData::Union(data) => {
-            info!("Union channel {} skipped for hdf5 export", name);
-            todo!()
+            info!("Union channel {} data exported as raw bytes", name);
+            let filter = get_filter(compression);
+            let union_byte_count = cdata.byte_count() as usize;
+            let shape = vec![data.len(), union_byte_count];
+            let dataset = group
+                .new_dataset::<u8>()
+                .filter_pipeline(filter)
+                .shape(shape)
+                .create(name)?;
+            let bytes = cdata.to_bytes()?;
+            dataset.write_raw(&bytes)?;
+            Ok(dataset)
         }
     }
 }
