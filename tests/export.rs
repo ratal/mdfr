@@ -111,28 +111,31 @@ fn export_and_verify_parquet() -> Result<()> {
     let file = std::fs::File::open(parquet_path)?;
     let builder = parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder::try_new(file)?;
     let mut reader = builder.build()?;
-    
+
     let mut total_rows = 0;
     let mut first_val: Option<f64> = None;
-    
+
     while let Some(batch) = reader.next() {
         let batch = batch?;
         let rows = batch.num_rows();
         total_rows += rows;
-        
+
         let schema = batch.schema();
         if let Ok(idx) = schema.index_of(test_channel) {
             let col = batch.column(idx);
-            let float_col = col.as_any().downcast_ref::<arrow::array::Float64Array>().unwrap();
+            let float_col = col
+                .as_any()
+                .downcast_ref::<arrow::array::Float64Array>()
+                .unwrap();
             if first_val.is_none() && float_col.len() > 0 {
                 first_val = Some(float_col.value(0));
             }
         }
     }
-    
+
     let orig_data = mdf.get_channel_converted_data(test_channel).unwrap();
     assert_eq!(orig_data.len(), total_rows);
-    
+
     if let mdfr::data_holder::channel_data::ChannelData::Float64(b) = orig_data {
         let arr = b.finish_cloned();
         if arr.len() > 0 {
@@ -174,28 +177,33 @@ fn export_and_verify_csv() -> Result<()> {
     let file = std::fs::File::open(csv_path)?;
     let reader = std::io::BufReader::new(file);
     use std::io::BufRead;
-    
+
     let mut lines = reader.lines();
     let header = lines.next().expect("File is empty")?;
     let cols: Vec<&str> = header.split(',').collect();
-    let col_idx = cols.iter().position(|&c| c == test_channel).expect("Column not found");
+    let col_idx = cols
+        .iter()
+        .position(|&c| c == test_channel)
+        .expect("Column not found");
 
     let mut row_count = 0;
     let mut first_val = None;
-    
+
     for line in lines {
         let line = line?;
-        if line.is_empty() { continue; }
+        if line.is_empty() {
+            continue;
+        }
         let vals: Vec<&str> = line.split(',').collect();
         if first_val.is_none() {
             first_val = Some(vals[col_idx].to_string());
         }
         row_count += 1;
     }
-    
+
     let orig_data = mdf.get_channel_converted_data(test_channel).unwrap();
     assert_eq!(orig_data.len(), row_count);
-    
+
     if let mdfr::data_holder::channel_data::ChannelData::UInt8(b) = orig_data {
         let arr = b.finish_cloned();
         if arr.len() > 0 {
@@ -228,7 +236,7 @@ fn export_and_verify_hdf5() -> Result<()> {
         .expect("failed writing mdf4 hdf5 file");
 
     let hdf5_file = rust_hdf5::H5File::open(writing_hdf5_file)?;
-    
+
     let mut dataset = None;
     let root = hdf5_file.root_group();
     for group_name in root.group_names()? {
@@ -237,12 +245,12 @@ fn export_and_verify_hdf5() -> Result<()> {
             break;
         }
     }
-    
+
     let dataset = dataset.expect("Dataset not found in HDF5 file");
-    
+
     let orig_data = mdf.get_channel_converted_data(test_channel).unwrap();
     assert_eq!(dataset.shape()[0], orig_data.len());
-    
+
     if let mdfr::data_holder::channel_data::ChannelData::Float64(b) = orig_data {
         let arr = b.finish_cloned();
         if arr.len() > 0 {
