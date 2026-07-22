@@ -6,7 +6,6 @@ use encoding_rs::WINDOWS_1252;
 use half::f16;
 use rayon::prelude::*;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::io::Cursor;
 
 use crate::data_holder::channel_data::ChannelData;
@@ -17,12 +16,11 @@ pub fn read_channels_from_bytes(
     channels: &mut HashMap<u32, Cn3>,
     record_length: usize,
     previous_index: usize,
-    channel_names_to_read_in_dg: &HashSet<String>,
 ) -> Result<(), Error> {
     // iterates for each channel in parallel with rayon crate
     channels
         .par_iter_mut()
-        .filter(|(_cn_record_position, cn)| channel_names_to_read_in_dg.contains(&cn.unique_name))
+        .filter(|(_cn_record_position, cn)| cn.should_read)
         .try_for_each(|(_cn_pos, cn): (&u32, &mut Cn3)| -> Result<(), Error> {
             let mut value: &[u8]; // value of channel at record
             let pos_byte_beg = cn.pos_byte_beg as usize;

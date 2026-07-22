@@ -1005,6 +1005,8 @@ pub struct Cn3 {
     pub endian: Endianness,
     /// True if channel is valid = contains data converted
     pub channel_data_valid: bool,
+    /// flag set during data read to indicate this channel is in the read set
+    pub should_read: bool,
 }
 
 impl Clone for Cn3 {
@@ -1021,6 +1023,7 @@ impl Clone for Cn3 {
             is_converted: self.is_converted,
             endian: self.endian,
             channel_data_valid: self.channel_data_valid,
+            should_read: self.should_read,
         }
     }
 }
@@ -1234,6 +1237,7 @@ fn parse_cn3_block(
         is_converted: false,
         endian,
         channel_data_valid: false,
+        should_read: false,
     };
 
     Ok((cn_struct, position))
@@ -1286,6 +1290,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         is_converted: false,
         endian: Endianness::Little,
         channel_data_valid: false,
+        should_read: false,
     };
     let block2 = Cn3Block2 {
         cn_data_type: 13,
@@ -1306,6 +1311,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         is_converted: false,
         endian: Endianness::Little,
         channel_data_valid: false,
+        should_read: false,
     };
     let block2 = Cn3Block2 {
         cn_data_type: 13,
@@ -1326,6 +1332,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         is_converted: false,
         endian: Endianness::Little,
         channel_data_valid: false,
+        should_read: false,
     };
     let block2 = Cn3Block2 {
         cn_data_type: 13,
@@ -1346,6 +1353,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         is_converted: false,
         endian: Endianness::Little,
         channel_data_valid: false,
+        should_read: false,
     };
     let block2 = Cn3Block2 {
         cn_data_type: 13,
@@ -1366,6 +1374,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         is_converted: false,
         endian: Endianness::Little,
         channel_data_valid: false,
+        should_read: false,
     };
     let block2 = Cn3Block2 {
         cn_data_type: 13,
@@ -1386,6 +1395,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         is_converted: false,
         endian: Endianness::Little,
         channel_data_valid: false,
+        should_read: false,
     };
     (date_ms, min, hour, day, month, year)
 }
@@ -1416,6 +1426,7 @@ fn can_open_time(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3) {
         is_converted: false,
         endian: Endianness::Little,
         channel_data_valid: false,
+        should_read: false,
     };
     let block2 = Cn3Block2 {
         cn_data_type: 13,
@@ -1436,6 +1447,7 @@ fn can_open_time(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3) {
         is_converted: false,
         endian: Endianness::Little,
         channel_data_valid: false,
+        should_read: false,
     };
     (ms, days)
 }
@@ -1807,17 +1819,17 @@ pub fn build_channel_db3(
             for (cn_position, cn) in &mut cg.cn {
                 if channel_list.contains_key(&cn.unique_name) {
                     let mut changed: bool = false;
-                    let space_char = String::from(" ");
+                    let space_char = " ";
                     // create unique channel name
                     if let Some(ce) = sharable.ce.get(&cn.block1.cn_ce_source) {
                         match &ce.ce_extension {
                             CeSupplement::Dim(dim) => {
-                                cn.unique_name.push_str(&space_char);
+                                cn.unique_name.push_str(space_char);
                                 cn.unique_name.push_str(&dim.ce_ecu_id);
                                 changed = true;
                             }
                             CeSupplement::Can(can) => {
-                                cn.unique_name.push_str(&space_char);
+                                cn.unique_name.push_str(space_char);
                                 cn.unique_name.push_str(&can.ce_message_name);
                                 changed = true;
                             }
@@ -1827,7 +1839,7 @@ pub fn build_channel_db3(
                     // No souce name to make channel unique
                     if !changed {
                         // extend name with channel block position, unique
-                        cn.unique_name.push_str(&space_char);
+                        cn.unique_name.push_str(space_char);
                         cn.unique_name.push_str(&cn_position.to_string());
                     }
                 };

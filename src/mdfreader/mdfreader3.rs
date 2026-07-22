@@ -28,31 +28,27 @@ pub fn mdfreader3<'a>(
     match &mut mdf.mdf_info {
         MdfInfo::V3(info) => {
             let mut position: i64 = 0;
-            let mut channel_names_present_in_dg: HashSet<String>;
+            for dg in info.dg.values_mut() {
+                for cg in dg.cg.values_mut() {
+                    for cn in cg.cn.values_mut() {
+                        cn.should_read = channel_names.contains(&cn.unique_name);
+                    }
+                }
+            }
             // read file data
             for (data_position, dg) in &mut info.dg {
-                // Let's find channel names
-                channel_names_present_in_dg = HashSet::new();
-                for channel_group in dg.cg.values() {
-                    let cn = channel_group.channel_names.clone();
-                    channel_names_present_in_dg.par_extend(cn);
-                }
-                let channel_names_to_read_in_dg: HashSet<String> = channel_names_present_in_dg
-                    .into_par_iter()
-                    .filter(|v| channel_names.contains(v))
-                    .collect();
-                if dg.block.dg_data != 0 && !channel_names_to_read_in_dg.is_empty() {
+                let has_readable = dg
+                    .cg
+                    .values()
+                    .any(|cg| cg.cn.values().any(|cn| cn.should_read));
+                if dg.block.dg_data != 0 && has_readable {
                     // header block
                     rdr.seek_relative(*data_position as i64 - position)
                         .context("Could not position buffer")?; // change buffer position
                     if dg.cg.len() == 1 {
                         // sorted data group
                         for channel_group in dg.cg.values_mut() {
-                            read_all_channels_sorted(
-                                rdr,
-                                channel_group,
-                                &channel_names_to_read_in_dg,
-                            )?;
+                            read_all_channels_sorted(rdr, channel_group)?;
                             position = *data_position as i64
                                 + (channel_group.record_length as i64)
                                     * (channel_group.block.cg_cycle_count as i64);
@@ -65,19 +61,13 @@ pub fn mdfreader3<'a>(
                             initialise_arrays(
                                 channel_group,
                                 &channel_group.block.cg_cycle_count.clone(),
-                                &channel_names_to_read_in_dg,
                             )
                             .context("failed initialising arrays for unsorted channels")?;
                             block_length += channel_group.record_length as i64
                                 * channel_group.block.cg_cycle_count as i64;
                         }
                         position = *data_position as i64 + block_length;
-                        read_all_channels_unsorted(
-                            rdr,
-                            dg,
-                            block_length,
-                            &channel_names_to_read_in_dg,
-                        )?;
+                        read_all_channels_unsorted(rdr, dg, block_length)?;
                     }
 
                     // Defer conversion of channels to physical values (handled lazily on access)
@@ -90,16 +80,12 @@ pub fn mdfreader3<'a>(
 }
 
 /// initialise ndarrays for the data group/block
-fn initialise_arrays(
-    channel_group: &mut Cg3,
-    cg_cycle_count: &u32,
-    channel_names_to_read_in_dg: &HashSet<String>,
-) -> Result<(), Error> {
+fn initialise_arrays(channel_group: &mut Cg3, cg_cycle_count: &u32) -> Result<(), Error> {
     // creates zeroed array in parallel for each channel contained in channel group
     channel_group
         .cn
         .par_iter_mut()
-        .filter(|(_cn_position, cn)| channel_names_to_read_in_dg.contains(&cn.unique_name))
+        .filter(|(_cn_position, cn)| cn.should_read)
         .try_for_each(
             |(_cn_position, cn): (&u32, &mut Cn3)| -> Result<(), Error> {
                 cn.data = cn
@@ -143,16 +129,11 @@ fn generate_chunks(channel_group: &Cg3) -> Vec<(usize, usize)> {
 fn read_all_channels_sorted(
     rdr: &mut BufReader<&File>,
     channel_group: &mut Cg3,
-    channel_names_to_read_in_dg: &HashSet<String>,
 ) -> Result<(), Error> {
     let chunks = generate_chunks(channel_group);
     // initialises the arrays
-    initialise_arrays(
-        channel_group,
-        &channel_group.block.cg_cycle_count.clone(),
-        channel_names_to_read_in_dg,
-    )
-    .context("failed initialising arrays for sorted channels")?;
+    initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone())
+        .context("failed initialising arrays for sorted channels")?;
     // read by chunks and store in channel array
     let mut previous_index: usize = 0;
     for (n_record_chunk, chunk_size) in chunks {
@@ -164,7 +145,6 @@ fn read_all_channels_sorted(
             &mut channel_group.cn,
             channel_group.record_length as usize,
             previous_index,
-            channel_names_to_read_in_dg,
         )
         .context("failed reading channels from bytes")?;
         previous_index += n_record_chunk;
@@ -177,7 +157,6 @@ fn read_all_channels_unsorted(
     rdr: &mut BufReader<&File>,
     dg: &mut Dg3,
     block_length: i64,
-    channel_names_to_read_in_dg: &HashSet<String>,
 ) -> Result<()> {
     let data_block_length = block_length as usize;
     let mut position: usize = 0;
@@ -202,13 +181,8 @@ fn read_all_channels_unsorted(
         }
         rdr.read_exact(&mut data_chunk)
             .context("Could not read data chunk")?;
-        read_all_channels_unsorted_from_bytes(
-            &mut data_chunk,
-            dg,
-            &mut record_counter,
-            channel_names_to_read_in_dg,
-        )
-        .context("failed reading channels from bytes")?;
+        read_all_channels_unsorted_from_bytes(&mut data_chunk, dg, &mut record_counter)
+            .context("failed reading channels from bytes")?;
     }
     Ok(())
 }
@@ -218,7 +192,6 @@ fn read_all_channels_unsorted_from_bytes(
     data: &mut Vec<u8>,
     dg: &mut Dg3,
     record_counter: &mut HashMap<u16, (usize, Vec<u8>)>,
-    channel_names_to_read_in_dg: &HashSet<String>,
 ) -> Result<(), Error> {
     let mut position: usize = 0;
     let data_length = data.len();
@@ -260,7 +233,6 @@ fn read_all_channels_unsorted_from_bytes(
                 &mut channel_group.cn,
                 channel_group.record_length as usize,
                 *index,
-                channel_names_to_read_in_dg,
             )
             .context("failed reading channels from bytes")?;
             record_data.clear(); // clears data for new block, keeping capacity
