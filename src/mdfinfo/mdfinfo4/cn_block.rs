@@ -655,7 +655,8 @@ fn can_open_date(
         shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
         event_template: None,
-        should_read: false,    };
+        should_read: false,
+    };
     let block = Cn4Block {
         cn_links: 8,
         cn_byte_offset: cn_byte_offset + 2,
@@ -677,7 +678,8 @@ fn can_open_date(
         shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
         event_template: None,
-        should_read: false,    };
+        should_read: false,
+    };
     let block = Cn4Block {
         cn_links: 8,
         cn_byte_offset: cn_byte_offset + 3,
@@ -699,7 +701,8 @@ fn can_open_date(
         shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
         event_template: None,
-        should_read: false,    };
+        should_read: false,
+    };
     let block = Cn4Block {
         cn_links: 8,
         cn_byte_offset: cn_byte_offset + 4,
@@ -721,7 +724,8 @@ fn can_open_date(
         shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
         event_template: None,
-        should_read: false,    };
+        should_read: false,
+    };
     let block = Cn4Block {
         cn_links: 8,
         cn_byte_offset: cn_byte_offset + 5,
@@ -743,7 +747,8 @@ fn can_open_date(
         shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
         event_template: None,
-        should_read: false,    };
+        should_read: false,
+    };
     let block = Cn4Block {
         cn_links: 8,
         cn_byte_offset: cn_byte_offset + 6,
@@ -765,7 +770,8 @@ fn can_open_date(
         shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
         event_template: None,
-        should_read: false,    };
+        should_read: false,
+    };
     (date_ms, min, hour, day, month, year)
 }
 
@@ -792,7 +798,8 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
         event_template: None,
-        should_read: false,    };
+        should_read: false,
+    };
     let block = Cn4Block {
         cn_links: 8,
         cn_byte_offset: cn_byte_offset + 4,
@@ -814,7 +821,8 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
         event_template: None,
-        should_read: false,    };
+        should_read: false,
+    };
     (ms, days)
 }
 
