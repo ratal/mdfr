@@ -658,7 +658,7 @@ fn writing_mdf4_arrays() -> Result<()> {
     assert!(!source_names.is_empty(), "Source file should have channels");
 
     // Write and verify channel data is preserved via in-memory return
-    let written = mdf.write(&writing_mdf_file, CompressionAlgorithm::NoCompression)?;
+    let mut written = mdf.write(&writing_mdf_file, CompressionAlgorithm::NoCompression)?;
     let written_names = written.get_channel_names_set();
     assert_eq!(
         source_names, written_names,
@@ -827,7 +827,7 @@ fn writing_mdf4_composition_cv() -> Result<()> {
     assert!(source_cv_info.0, "Source should have CV composition");
 
     // Write and verify via in-memory return
-    let written = mdf.write(&writing_mdf_file, CompressionAlgorithm::NoCompression)?;
+    let mut written = mdf.write(&writing_mdf_file, CompressionAlgorithm::NoCompression)?;
 
     // Verify CV composition preserved with same option count
     match &written.mdf_info {
@@ -904,7 +904,7 @@ fn writing_mdf4_composition_cu() -> Result<()> {
     assert!(source_cu_info.0, "Source should have CU composition");
 
     // Write and verify via in-memory return
-    let written = mdf.write(&writing_mdf_file, CompressionAlgorithm::NoCompression)?;
+    let mut written = mdf.write(&writing_mdf_file, CompressionAlgorithm::NoCompression)?;
 
     // Verify CU composition preserved with same member count
     match &written.mdf_info {

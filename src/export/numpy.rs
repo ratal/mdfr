@@ -58,11 +58,15 @@ impl<'py> IntoPyObject<'py> for ChannelData {
             }
             ChannelData::FixedSizeByteArray(array) => {
                 let binary_array = array.finish_cloned();
-                let out: Vec<Vec<u8>> = binary_array
-                    .values()
-                    .chunks(binary_array.value_length() as usize)
-                    .map(<[u8]>::to_vec)
-                    .collect();
+                let out: Vec<Vec<u8>> = if binary_array.value_length() == 0 {
+                    vec![vec![]; binary_array.len()]
+                } else {
+                    binary_array
+                        .values()
+                        .chunks(binary_array.value_length() as usize)
+                        .map(<[u8]>::to_vec)
+                        .collect()
+                };
                 out.into_pyobject(py)
             }
             ChannelData::ArrayDInt8(array) => {

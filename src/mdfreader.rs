@@ -191,7 +191,7 @@ impl Mdf {
     /// returns master channel data as absolute nanosecond timestamps.
     /// Returns None if the channel has no Time master (sync type 1).
     pub fn get_master_channel_datetimes(
-        &self,
+        &mut self,
         channel_name: &str,
     ) -> Option<TimestampNanosecondArray> {
         let master = self.mdf_info.get_channel_master(channel_name)?;
@@ -225,11 +225,26 @@ impl Mdf {
     pub fn get_master_channel_names_set(&self) -> HashMap<Option<String>, HashSet<String>> {
         self.mdf_info.get_master_channel_names_set()
     }
-    /// returns channel's arrow Array.
-    pub fn get_channel_data(&self, channel_name: &str) -> Option<&ChannelData> {
-        match &self.mdf_info {
+    /// Eagerly converts all channels to physical values.
+    pub fn convert_all_channels(&mut self) -> Result<(), Error> {
+        self.mdf_info.convert_all_channels()
+    }
+    /// Converts one channel's data to physical values.
+    pub fn convert_channel(&mut self, channel_name: &str) -> Result<(), Error> {
+        self.mdf_info.convert_channel(channel_name)
+    }
+    /// returns channel's arrow Array. If data were not yet converted, converts it and keep in memory
+    pub fn get_channel_data(&mut self, channel_name: &str) -> Option<&ChannelData> {
+        match &mut self.mdf_info {
             MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_data(channel_name),
             MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_data(channel_name),
+        }
+    }
+    /// returns channel's arrow Array, conversion not kept in memory
+    pub fn get_channel_converted_data(&self, channel_name: &str) -> Option<ChannelData> {
+        match &self.mdf_info {
+            MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_converted_data(channel_name),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_converted_data(channel_name),
         }
     }
     /// defines channel's data in memory
@@ -439,7 +454,7 @@ impl Mdf {
     /// For each shared Time master group, other's timestamps are offset so they follow self's last
     /// timestamp. Channels present in only one file are null-padded for the missing span.
     /// Both files must have their data loaded in memory before calling this.
-    pub fn concat_mdf(&mut self, other: &Mdf) -> Result<()> {
+    pub fn concat_mdf(&mut self, other: &mut Mdf) -> Result<()> {
         use arrow::array::new_null_array;
         use arrow::compute::concat;
         let self_masters: Vec<String> = self
@@ -558,7 +573,7 @@ impl Mdf {
     /// Channels already present in `self` are skipped. Master channels from `other` are
     /// added only when at least one of their data channels is being imported.
     /// Both files must have their data loaded in memory before calling this.
-    pub fn merge(&mut self, other: &Mdf) -> Result<()> {
+    pub fn merge(&mut self, other: &mut Mdf) -> Result<()> {
         let self_channels = self.get_channel_names_set();
         let other_masters = other.mdf_info.get_master_channel_names_set();
         for (master_opt, channel_set) in other_masters {
@@ -656,7 +671,7 @@ impl Mdf {
     /// channel is not found or has an unsupported type.
     #[cfg(feature = "polars")]
     pub fn get_channel_polars_series(
-        &self,
+        &mut self,
         channel_name: &str,
     ) -> polars::prelude::PolarsResult<polars::prelude::Series> {
         let data = self.get_channel_data(channel_name).ok_or_else(|| {
@@ -673,7 +688,7 @@ impl Mdf {
     /// types are silently skipped. All channels must already be loaded in memory.
     #[cfg(feature = "polars")]
     pub fn get_channel_polars_dataframe(
-        &self,
+        &mut self,
         master_channel_name: Option<&str>,
     ) -> polars::prelude::PolarsResult<polars::prelude::DataFrame> {
         crate::export::polars::mdf_master_to_dataframe(self, master_channel_name)
@@ -684,7 +699,7 @@ impl Mdf {
     /// All channels must already be loaded in memory.
     #[cfg(feature = "polars")]
     pub fn get_polars_dataframes(
-        &self,
+        &mut self,
     ) -> polars::prelude::PolarsResult<
         std::collections::HashMap<Option<String>, polars::prelude::DataFrame>,
     > {
@@ -722,7 +737,7 @@ impl fmt::Display for Mdf {
                     }
                     for channel in list {
                         writeln!(f, " {channel} ")?;
-                        if let Some(data) = self.get_channel_data(channel)
+                        if let Some(data) = self.get_channel_converted_data(channel)
                             && !data.is_empty()
                         {
                             let array = &data.as_ref();
@@ -762,7 +777,7 @@ impl fmt::Display for Mdf {
                     }
                     for channel in list {
                         writeln!(f, " {channel} ")?;
-                        if let Some(data) = self.get_channel_data(channel)
+                        if let Some(data) = self.get_channel_converted_data(channel)
                             && !data.is_empty()
                         {
                             let array = &data.as_ref();

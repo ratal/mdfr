@@ -34,13 +34,13 @@ fn first_time_master(mdf: &Mdf) -> Option<String> {
 }
 
 /// Returns the first Time master that has at least 2 distinct values (real spread).
-fn first_time_master_with_spread(mdf: &Mdf) -> Option<String> {
+fn first_time_master_with_spread(mdf: &mut Mdf) -> Option<String> {
     mdf.get_master_channel_names_set()
         .into_keys()
         .flatten()
         .filter(|m| mdf.get_channel_master_type(m) == 1)
         .find(|m| {
-            if let Some(ChannelData::Float64(b)) = mdf.get_channel_data(m) {
+            if let Some(ChannelData::Float64(b)) = mdf.get_channel_converted_data(m) {
                 let s = b.values_slice();
                 s.len() >= 2 && s.last() > s.first()
             } else {
@@ -49,7 +49,7 @@ fn first_time_master_with_spread(mdf: &Mdf) -> Option<String> {
         })
 }
 
-fn master_f64_values(mdf: &Mdf, master: &str) -> Vec<f64> {
+fn master_f64_values(mdf: &mut Mdf, master: &str) -> Vec<f64> {
     match mdf.get_channel_data(master) {
         Some(ChannelData::Float64(b)) => b.values_slice().to_vec(),
         _ => panic!("expected Float64 data for master channel '{master}'"),
@@ -61,7 +61,7 @@ fn master_f64_values(mdf: &Mdf, master: &str) -> Vec<f64> {
 #[test]
 fn cut_trims_to_range() -> Result<()> {
     let mut mdf = load_simple()?;
-    let master = match first_time_master_with_spread(&mdf) {
+    let master = match first_time_master_with_spread(&mut mdf) {
         Some(m) => m,
         None => {
             eprintln!("skip: no Time master with spread found in test file");
@@ -69,7 +69,7 @@ fn cut_trims_to_range() -> Result<()> {
         }
     };
 
-    let vals = master_f64_values(&mdf, &master);
+    let vals = master_f64_values(&mut mdf, &master);
     let orig_min = *vals.first().unwrap();
     let orig_max = *vals.last().unwrap();
 
@@ -77,7 +77,7 @@ fn cut_trims_to_range() -> Result<()> {
     let stop = orig_min + (orig_max - orig_min) * 0.75;
     mdf.cut(&master, start, stop)?;
 
-    let cut_vals = master_f64_values(&mdf, &master);
+    let cut_vals = master_f64_values(&mut mdf, &master);
     assert!(!cut_vals.is_empty(), "cut result must not be empty");
     assert!(
         *cut_vals.first().unwrap() >= start - 1e-9,
@@ -106,7 +106,7 @@ fn cut_trims_to_range() -> Result<()> {
 #[test]
 fn cut_out_of_range_yields_empty() -> Result<()> {
     let mut mdf = load_simple()?;
-    let master = match first_time_master_with_spread(&mdf) {
+    let master = match first_time_master_with_spread(&mut mdf) {
         Some(m) => m,
         None => {
             eprintln!("skip: no Time master with spread found in test file");
@@ -114,7 +114,7 @@ fn cut_out_of_range_yields_empty() -> Result<()> {
         }
     };
 
-    let vals = master_f64_values(&mdf, &master);
+    let vals = master_f64_values(&mut mdf, &master);
     let orig_max = *vals.last().unwrap_or(&0.0);
 
     mdf.cut(&master, orig_max + 1.0, orig_max + 10.0)?;
@@ -195,7 +195,7 @@ fn keep_channels_preserves_master() -> Result<()> {
 #[test]
 fn resample_group_uniform_spacing() -> Result<()> {
     let mut mdf = load_simple()?;
-    let master = match first_time_master_with_spread(&mdf) {
+    let master = match first_time_master_with_spread(&mut mdf) {
         Some(m) => m,
         None => {
             eprintln!("skip: no Time master with spread found");
@@ -203,14 +203,14 @@ fn resample_group_uniform_spacing() -> Result<()> {
         }
     };
 
-    let vals = master_f64_values(&mdf, &master);
+    let vals = master_f64_values(&mut mdf, &master);
     let (min_v, max_v) = (*vals.first().unwrap(), *vals.last().unwrap());
     let raster_s = (max_v - min_v) / 100.0; // ~100 points across the range
     assert!(raster_s > 0.0, "raster must be positive");
 
     mdf.resample_group(&master, raster_s)?;
 
-    let resampled = master_f64_values(&mdf, &master);
+    let resampled = master_f64_values(&mut mdf, &master);
     assert!(
         resampled.len() >= 2,
         "need at least 2 points after resample"
@@ -239,7 +239,7 @@ fn resample_all_time_groups_uniform() -> Result<()> {
     assert!(!time_masters.is_empty(), "no Time masters found");
 
     let first = &time_masters[0];
-    let vals = master_f64_values(&mdf, first);
+    let vals = master_f64_values(&mut mdf, first);
     let raster_s = (vals.last().unwrap() - vals.first().unwrap()) / 100.0;
     assert!(raster_s > 0.0);
 
@@ -280,7 +280,7 @@ fn concat_extends_time_axis() -> Result<()> {
     mdf2.load_all_channels_data_in_memory()?;
     let len2 = mdf2.get_channel_data(&master).map(|d| d.len()).unwrap_or(0);
 
-    mdf1.concat_mdf(&mdf2)?;
+    mdf1.concat_mdf(&mut mdf2)?;
 
     let total_len = mdf1.get_channel_data(&master).map(|d| d.len()).unwrap_or(0);
     assert_eq!(
@@ -290,7 +290,7 @@ fn concat_extends_time_axis() -> Result<()> {
     );
 
     // Master must be monotonically non-decreasing after concat
-    let vals = master_f64_values(&mdf1, &master);
+    let vals = master_f64_values(&mut mdf1, &master);
     for w in vals.windows(2) {
         assert!(
             w[1] >= w[0],
@@ -321,7 +321,7 @@ fn merge_adds_channels_from_other() -> Result<()> {
         .cloned()
         .collect();
 
-    mdf1.merge(&mdf2)?;
+    mdf1.merge(&mut mdf2)?;
 
     for ch in &unique_to_other {
         assert!(
@@ -360,7 +360,7 @@ fn start_time_nonzero_for_mdf4_file() -> Result<()> {
 
 #[test]
 fn datetimes_length_and_type() -> Result<()> {
-    let mdf = load_simple()?;
+    let mut mdf = load_simple()?;
     let master = first_time_master(&mdf).expect("no Time master found");
 
     let data_ch: String = mdf
@@ -388,7 +388,7 @@ fn datetimes_length_and_type() -> Result<()> {
 
 #[test]
 fn datetimes_none_for_non_time_master() -> Result<()> {
-    let mdf = load_simple()?;
+    let mut mdf = load_simple()?;
     // Find a channel whose master has type != 1 (or no master)
     let candidate = mdf
         .get_channel_names_set()

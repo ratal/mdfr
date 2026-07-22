@@ -1,13 +1,18 @@
 //! Exporting mdf to hdf5 files.
 use anyhow::{Context, Error, Result};
-use arrow::array::Array;
-use hdf5::{
-    Dataset, DatasetBuilder, Group, H5Type,
-    file::File,
-    types::{VarLenArray, VarLenUnicode},
+use arrow::{
+    array::{Array, ArrowPrimitiveType},
+    datatypes::{
+        Float32Type, Float64Type, Int8Type, Int16Type, Int32Type, Int64Type, UInt8Type, UInt16Type,
+        UInt32Type, UInt64Type,
+    },
 };
 use log::info;
-use ndarray::{Array as NdArray, IxDyn};
+use rust_hdf5::{
+    FilterPipeline, H5File, H5Group, H5Type,
+    dataset::H5Dataset,
+    types::{Complex32, Complex64, VarLenUnicode},
+};
 
 use crate::mdfreader::Mdf;
 use crate::{
@@ -18,12 +23,12 @@ use crate::{
         mdfinfo4::{Cg4, Cn4, Dg4, MdfInfo4},
     },
 };
-#[cfg(feature = "hdf5-mpio")]
+
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 /// writes mdf into hdf5 file
 pub fn export_to_hdf5(mdf: &Mdf, file_name: &str, compression: Option<&str>) -> Result<(), Error> {
-    let mut file = File::create(file_name).context("failed creating hdf5 file")?;
+    let mut file = H5File::create(file_name).context("failed creating hdf5 file")?;
     let hdf5_compression = hdf5_compression_from_string(compression);
     match &mdf.mdf_info {
         MdfInfo::V4(mdfinfo4) => {
@@ -61,7 +66,7 @@ pub fn export_dataframe_to_hdf5(
     file_name: &str,
     compression: Option<&str>,
 ) -> Result<(), Error> {
-    let mut file = File::create(file_name).context("failed creating hdf5 file")?;
+    let mut file = H5File::create(file_name).context("failed creating hdf5 file")?;
     let hdf5_compression = hdf5_compression_from_string(compression);
     match &mdf.mdf_info {
         MdfInfo::V4(mdfinfo4) => {
@@ -99,7 +104,7 @@ pub fn export_dataframe_to_hdf5(
 /// create a hdf5 file for the given CG4 block
 #[inline]
 pub fn mdf4_cg_to_hdf5(
-    file: &mut File,
+    file: &mut H5File,
     mdfinfo4: &MdfInfo4,
     cg: &Cg4,
     compression: &Hdf5Compression,
@@ -111,20 +116,8 @@ pub fn mdf4_cg_to_hdf5(
     let group = file
         .create_group(&master_channel)
         .with_context(|| format!("failed creating group {:?}", master_channel))?;
-    #[cfg(feature = "hdf5-mpio")]
     cg.cn
         .par_iter()
-        .try_for_each(|(_rec_pos, cn): (&i32, &Cn4)| -> Result<(), Error> {
-            if !cn.data.is_empty() {
-                mdf4_cn_to_hdf5(mdfinfo4, cn, compression, &group)
-                    .context("failed writing dataset")?;
-            }
-            Ok(())
-        })
-        .context("failed extracting data")?;
-    #[cfg(not(feature = "hdf5-mpio"))]
-    cg.cn
-        .iter()
         .try_for_each(|(_rec_pos, cn): (&i32, &Cn4)| -> Result<(), Error> {
             if !cn.data.is_empty() {
                 mdf4_cn_to_hdf5(mdfinfo4, cn, compression, &group)
@@ -141,15 +134,11 @@ pub fn mdf4_cn_to_hdf5(
     mdfinfo4: &MdfInfo4,
     cn: &Cn4,
     compression: &Hdf5Compression,
-    group: &Group,
+    group: &H5Group,
 ) -> Result<(), Error> {
-    let builder = match compression {
-        Hdf5Compression::Deflate(level) => group.new_dataset_builder().shuffle().deflate(*level),
-        Hdf5Compression::Lzf => group.new_dataset_builder().shuffle().lzf(),
-        Hdf5Compression::Uncompressed => group.new_dataset_builder(),
-    };
-    let dataset = convert_channel_data_into_ndarray(builder, &cn.data, &cn.unique_name)
-        .with_context(|| format!("failed writing channel {} dataset", cn.unique_name))?;
+    let dataset =
+        convert_channel_data_into_h5dataset(compression, group, &cn.data, &cn.unique_name)
+            .with_context(|| format!("failed writing channel {} dataset", cn.unique_name))?;
     // writing channel unit if existing
     if let Ok(Some(unit)) = mdfinfo4.sharable.get_tx(cn.block.cn_md_unit) {
         if !unit.is_empty() {
@@ -185,7 +174,7 @@ pub fn mdf4_cn_to_hdf5(
 /// create a hdf5 file for the given CG3 block
 #[inline]
 pub fn mdf3_cg_to_hdf5(
-    file: &mut File,
+    file: &mut H5File,
     mdfinfo3: &MdfInfo3,
     cg: &Cg3,
     compression: &Hdf5Compression,
@@ -197,20 +186,8 @@ pub fn mdf3_cg_to_hdf5(
     let group = file
         .create_group(&master_channel)
         .with_context(|| format!("failed creating group {:?}", cg.master_channel_name))?;
-    #[cfg(feature = "hdf5-mpio")]
     cg.cn
         .par_iter()
-        .try_for_each(|(_rec_pos, cn): (&u32, &Cn3)| -> Result<(), Error> {
-            if !cn.data.is_empty() {
-                mdf3_cn_to_hdf5(mdfinfo3, cn, compression, &group)
-                    .context("failed writing dataset")?;
-            }
-            Ok(())
-        })
-        .context("failed extracting data")?;
-    #[cfg(not(feature = "hdf5-mpio"))]
-    cg.cn
-        .iter()
         .try_for_each(|(_rec_pos, cn): (&u32, &Cn3)| -> Result<(), Error> {
             if !cn.data.is_empty() {
                 mdf3_cn_to_hdf5(mdfinfo3, cn, compression, &group)
@@ -227,15 +204,11 @@ fn mdf3_cn_to_hdf5(
     mdfinfo3: &MdfInfo3,
     cn: &Cn3,
     compression: &Hdf5Compression,
-    group: &Group,
+    group: &H5Group,
 ) -> Result<(), Error> {
-    let builder = match compression {
-        Hdf5Compression::Deflate(level) => group.new_dataset_builder().shuffle().deflate(*level),
-        Hdf5Compression::Lzf => group.new_dataset_builder().shuffle().lzf(),
-        Hdf5Compression::Uncompressed => group.new_dataset_builder(),
-    };
-    let dataset = convert_channel_data_into_ndarray(builder, &cn.data, &cn.unique_name)
-        .with_context(|| format!("failed writing channel {} dataset", cn.unique_name))?;
+    let dataset =
+        convert_channel_data_into_h5dataset(compression, group, &cn.data, &cn.unique_name)
+            .with_context(|| format!("failed writing channel {} dataset", cn.unique_name))?;
     // writing channel unit if existing
     if let Some(unit) = mdfinfo3._get_unit(&cn.block1.cn_cc_conversion) {
         if !unit.is_empty() {
@@ -264,71 +237,64 @@ fn mdf3_cn_to_hdf5(
     Ok(())
 }
 
-fn mdf4_metadata(file: &mut File, mdfinfo4: &MdfInfo4) -> Result<()> {
-    create_scalar_group_attr::<File, u64>(
-        file,
-        "start_time_ns",
-        &mdfinfo4.hd_block.hd_start_time_ns,
-    )
-    .with_context(|| {
-        format!(
-            "failed writing attribute start_time_ns with value {}",
-            mdfinfo4.hd_block.hd_start_time_ns
-        )
-    })?;
+fn mdf4_metadata(file: &mut H5File, mdfinfo4: &MdfInfo4) -> Result<()> {
+    file.set_attr_numeric::<u64>("start_time_ns", &mdfinfo4.hd_block.hd_start_time_ns)
+        .with_context(|| {
+            format!(
+                "failed writing attribute start_time_ns with value {}",
+                mdfinfo4.hd_block.hd_start_time_ns
+            )
+        })?;
     if let Some(hd) = mdfinfo4
         .sharable
         .get_hd_comments(mdfinfo4.hd_block.hd_md_comment)
     {
         if let Some(tx) = &hd.tx {
-            create_str_group_attr::<File>(file, "TX", tx)
+            file.set_attr_string("TX", tx)
                 .context("failed writing HD TX attribute")?;
         }
         if let Some(ts) = &hd.time_source {
-            create_str_group_attr::<File>(file, "time_source", ts)
+            file.set_attr_string("time_source", ts)
                 .context("failed writing HD time_source attribute")?;
         }
         for (name, value) in &hd.constants {
-            create_str_group_attr::<File>(file, name, value)
+            file.set_attr_string(name, value)
                 .with_context(|| format!("failed writing HD constant {name} with value {value}"))?;
         }
         for (name, value) in &hd.common_properties {
-            create_str_group_attr::<File>(file, name, &format!("{value}"))
+            file.set_attr_string(name, &format!("{value}"))
                 .with_context(|| format!("failed writing HD property {name}"))?;
         }
     }
     Ok(())
 }
 
-fn mdf3_metadata(file: &mut File, mdfinfo3: &MdfInfo3) -> Result<()> {
+fn mdf3_metadata(file: &mut H5File, mdfinfo3: &MdfInfo3) -> Result<()> {
     let time = mdfinfo3.hd_block.hd_start_time_ns.unwrap_or(0);
-    create_scalar_group_attr::<File, u64>(file, "start_time_ns", &time)
+    file.set_attr_numeric::<u64>("start_time_ns", &time)
         .with_context(|| format!("failed writing attribute start_time_ns with value {}", time))?;
-    create_str_group_attr::<File>(file, "Author", &mdfinfo3.hd_block.hd_author).with_context(
-        || {
+    file.set_attr_string("Author", &mdfinfo3.hd_block.hd_author)
+        .with_context(|| {
             format!(
                 "failed writing attribute author {}",
                 mdfinfo3.hd_block.hd_author
             )
-        },
-    )?;
-    create_str_group_attr::<File>(file, "Project", &mdfinfo3.hd_block.hd_project).with_context(
-        || {
+        })?;
+    file.set_attr_string("Project", &mdfinfo3.hd_block.hd_project)
+        .with_context(|| {
             format!(
                 "failed writing attribute project {}",
                 mdfinfo3.hd_block.hd_project
             )
-        },
-    )?;
-    create_str_group_attr::<File>(file, "Subject", &mdfinfo3.hd_block.hd_subject).with_context(
-        || {
+        })?;
+    file.set_attr_string("Subject", &mdfinfo3.hd_block.hd_subject)
+        .with_context(|| {
             format!(
                 "failed writing attribute subject {}",
                 mdfinfo3.hd_block.hd_subject
             )
-        },
-    )?;
-    create_str_group_attr::<File>(file, "Organization", &mdfinfo3.hd_block.hd_organization)
+        })?;
+    file.set_attr_string("Organization", &mdfinfo3.hd_block.hd_organization)
         .with_context(|| {
             format!(
                 "failed writing attribute organization {}",
@@ -339,10 +305,7 @@ fn mdf3_metadata(file: &mut File, mdfinfo3: &MdfInfo3) -> Result<()> {
 }
 
 #[inline]
-fn create_str_attr<T>(location: &T, name: &str, value: &str) -> Result<()>
-where
-    T: std::ops::Deref<Target = hdf5::Container>,
-{
+fn create_str_attr(location: &H5Dataset, name: &str, value: &str) -> Result<()> {
     let attr = location
         .new_attr::<VarLenUnicode>()
         .create(name)
@@ -353,192 +316,262 @@ where
 }
 
 #[inline]
-fn create_str_group_attr<T>(location: &T, name: &str, value: &str) -> Result<()>
+fn create_scalar_attr<N>(location: &H5Dataset, name: &str, value: &N) -> Result<()>
 where
-    T: std::ops::Deref<Target = hdf5::Group>,
-{
-    let attr = location
-        .new_attr::<VarLenUnicode>()
-        .create(name)
-        .with_context(|| format!("failed creating attribute {}", name))?;
-    let value: VarLenUnicode = value.parse().unwrap_or("None".parse().unwrap());
-    attr.write_scalar(&value)
-        .with_context(|| format!("failed writing attribute {} with value {}", name, value))
-}
-
-#[inline]
-fn create_scalar_attr<T, N>(location: &T, name: &str, value: &N) -> Result<()>
-where
-    T: std::ops::Deref<Target = hdf5::Container>,
     N: H5Type + std::fmt::Debug,
 {
     let attr = location
         .new_attr::<N>()
         .create(name)
         .with_context(|| format!("failed creating attribute {}", name))?;
-    attr.write_scalar(value)
+    attr.write_numeric(value)
         .with_context(|| format!("failed writing attribute {} with value {:?}", name, value))
 }
 
 #[inline]
-fn create_scalar_group_attr<T, N>(location: &T, name: &str, value: &N) -> Result<()>
-where
-    T: std::ops::Deref<Target = hdf5::Group>,
-    N: H5Type + std::fmt::Debug,
-{
-    let attr = location
-        .new_attr::<N>()
-        .create(name)
-        .with_context(|| format!("failed creating attribute {}", name))?;
-    attr.write_scalar(value)
-        .with_context(|| format!("failed writing attribute {} with value {:?}", name, value))
-}
-
-#[inline]
-fn convert_channel_data_into_ndarray(
-    builder: DatasetBuilder,
-    data: &ChannelData,
+fn convert_channel_data_into_h5dataset(
+    compression: &Hdf5Compression,
+    group: &H5Group,
+    cdata: &ChannelData,
     name: &str,
-) -> Result<Dataset, Error> {
-    match data {
-        ChannelData::Int8(data) => Ok(builder.with_data(data.values_slice()).create(name)?),
-        ChannelData::UInt8(data) => Ok(builder.with_data(data.values_slice()).create(name)?),
-        ChannelData::Int16(data) => Ok(builder.with_data(data.values_slice()).create(name)?),
-        ChannelData::UInt16(data) => Ok(builder.with_data(data.values_slice()).create(name)?),
-        ChannelData::Int32(data) => Ok(builder.with_data(data.values_slice()).create(name)?),
-        ChannelData::UInt32(data) => Ok(builder.with_data(data.values_slice()).create(name)?),
-        ChannelData::Float32(data) => Ok(builder.with_data(data.values_slice()).create(name)?),
-        ChannelData::Int64(data) => Ok(builder.with_data(data.values_slice()).create(name)?),
-        ChannelData::UInt64(data) => Ok(builder.with_data(data.values_slice()).create(name)?),
-        ChannelData::Float64(data) => Ok(builder.with_data(data.values_slice()).create(name)?),
-        ChannelData::Complex32(data) => Ok(builder
-            .with_data(
-                &data
-                    .to_ndarray()
-                    .context("Failed converting channelData f32 complex into ndarray")?,
-            )
-            .create(name)?),
-        ChannelData::Complex64(data) => Ok(builder
-            .with_data(
-                &data
-                    .to_ndarray()
-                    .context("Failed converting channelData f64 complex into ndarray")?,
-            )
-            .create(name)?),
+) -> Result<H5Dataset, Error> {
+    let ndim = &cdata.shape().0;
+    match cdata {
+        ChannelData::Int8(data) => Ok(create_dataset::<i8, Int8Type>(
+            group,
+            name,
+            ndim,
+            compression,
+            data.values_slice(),
+        )?),
+        ChannelData::UInt8(data) => Ok(create_dataset::<u8, UInt8Type>(
+            group,
+            name,
+            ndim,
+            compression,
+            data.values_slice(),
+        )?),
+        ChannelData::Int16(data) => Ok(create_dataset::<i16, Int16Type>(
+            group,
+            name,
+            ndim,
+            compression,
+            data.values_slice(),
+        )?),
+        ChannelData::UInt16(data) => Ok(create_dataset::<u16, UInt16Type>(
+            group,
+            name,
+            ndim,
+            compression,
+            data.values_slice(),
+        )?),
+        ChannelData::Int32(data) => Ok(create_dataset::<i32, Int32Type>(
+            group,
+            name,
+            ndim,
+            compression,
+            data.values_slice(),
+        )?),
+        ChannelData::UInt32(data) => Ok(create_dataset::<u32, UInt32Type>(
+            group,
+            name,
+            ndim,
+            compression,
+            data.values_slice(),
+        )?),
+        ChannelData::Float32(data) => Ok(create_dataset::<f32, Float32Type>(
+            group,
+            name,
+            ndim,
+            compression,
+            data.values_slice(),
+        )?),
+        ChannelData::Int64(data) => Ok(create_dataset::<i64, Int64Type>(
+            group,
+            name,
+            ndim,
+            compression,
+            data.values_slice(),
+        )?),
+        ChannelData::UInt64(data) => Ok(create_dataset::<u64, UInt64Type>(
+            group,
+            name,
+            ndim,
+            compression,
+            data.values_slice(),
+        )?),
+        ChannelData::Float64(data) => Ok(create_dataset::<f64, Float64Type>(
+            group,
+            name,
+            ndim,
+            compression,
+            data.values_slice(),
+        )?),
+        ChannelData::Complex32(data) => {
+            let filter = get_filter(compression);
+            let dataset = group
+                .new_dataset::<Complex32>()
+                .filter_pipeline(filter)
+                .shape(ndim)
+                .create(name)?;
+            dataset.write_raw(data.values_slice())?;
+            Ok(dataset)
+        }
+        ChannelData::Complex64(data) => {
+            let filter = get_filter(compression);
+            let dataset = group
+                .new_dataset::<Complex64>()
+                .filter_pipeline(filter)
+                .shape(ndim)
+                .create(name)?;
+            dataset.write_raw(data.values_slice())?;
+            Ok(dataset)
+        }
         ChannelData::Utf8(data) => {
-            let string_vect: Vec<VarLenUnicode> = data
-                .finish_cloned()
-                .iter()
-                .map(|x| match x {
-                    Some(x) => match x.parse() {
-                        Ok(s) => s,
-                        Err(e) => {
-                            info!("failed parsing value {:?}, error {}", x, e);
-                            "null".parse().unwrap()
-                        }
-                    },
-                    None => "null".parse().unwrap(),
-                })
-                .collect();
-            Ok(builder.with_data(&string_vect).create(name)?)
+            let filter = get_filter(compression);
+            // Convert LargeStringBuilder -> LargeStringArray -> Vec<&str>
+            let array = data.finish_cloned();
+            let strings: Vec<&str> = array.iter().map(|opt| opt.unwrap_or("")).collect();
+            Ok(group.write_vlen_strings_compressed(name, &strings, 1024, filter)?)
         }
         ChannelData::VariableSizeByteArray(data) => {
-            let bytes_vect: Vec<VarLenArray<u8>> = data
-                .finish_cloned()
-                .iter()
-                .map(|x| match x {
-                    Some(x) => VarLenArray::from_slice(x),
-                    None => VarLenArray::from_slice(&[0]),
-                })
-                .collect();
-            Ok(builder.with_data(&bytes_vect).create(name)?)
+            // Convert LargeBinaryBuilder -> LargeBinaryArray -> Vec<&[u8]>
+            let array = data.finish_cloned();
+            let bytes: Vec<&[u8]> = array.iter().map(|opt| opt.unwrap_or(&[])).collect();
+            Ok(group.write_vlen_bytes(name, &bytes)?)
         }
         ChannelData::FixedSizeByteArray(data) => {
             let fixed_binary = data.finish_cloned();
             let value_length = fixed_binary.value_length();
             let vector = fixed_binary.value_data().to_vec();
             let shape = vec![fixed_binary.len(), value_length as usize];
-            Ok(builder
-                .with_data(
-                    &NdArray::from_shape_vec(IxDyn(&shape), vector)
-                        .context("Failed reshaping byteArray arrow into ndarray")?,
-                )
-                .create(name)?)
+            let filter = get_filter(compression);
+            let dataset = group
+                .new_dataset::<u8>()
+                .filter_pipeline(filter)
+                .shape(shape)
+                .create(name)?;
+            dataset.write_raw(&vector)?;
+            Ok(dataset)
         }
-        ChannelData::ArrayDInt8(data) => Ok(builder
-            .with_data(
-                &data
-                    .to_ndarray()
-                    .context("Failed converting channelData nd i8 into ndarray")?,
-            )
-            .create(name)?),
-        ChannelData::ArrayDUInt8(data) => Ok(builder
-            .with_data(
-                &data
-                    .to_ndarray()
-                    .context("Failed converting channelData nd u8 into ndarray")?,
-            )
-            .create(name)?),
-        ChannelData::ArrayDInt16(data) => Ok(builder
-            .with_data(
-                &data
-                    .to_ndarray()
-                    .context("Failed converting channelData nd i16 into ndarray")?,
-            )
-            .create(name)?),
-        ChannelData::ArrayDUInt16(data) => Ok(builder
-            .with_data(
-                &data
-                    .to_ndarray()
-                    .context("Failed converting channelData nd u16 into ndarray")?,
-            )
-            .create(name)?),
-        ChannelData::ArrayDInt32(data) => Ok(builder
-            .with_data(
-                &data
-                    .to_ndarray()
-                    .context("Failed converting channelData nd i32 into ndarray")?,
-            )
-            .create(name)?),
-        ChannelData::ArrayDUInt32(data) => Ok(builder
-            .with_data(
-                &data
-                    .to_ndarray()
-                    .context("Failed converting channelData nd u32 into ndarray")?,
-            )
-            .create(name)?),
-        ChannelData::ArrayDFloat32(data) => Ok(builder
-            .with_data(
-                &data
-                    .to_ndarray()
-                    .context("Failed converting channelData nd f32 into ndarray")?,
-            )
-            .create(name)?),
-        ChannelData::ArrayDInt64(data) => Ok(builder
-            .with_data(
-                &data
-                    .to_ndarray()
-                    .context("Failed converting channelData nd i64 into ndarray")?,
-            )
-            .create(name)?),
-        ChannelData::ArrayDUInt64(data) => Ok(builder
-            .with_data(
-                &data
-                    .to_ndarray()
-                    .context("Failed converting channelData nd u64 into ndarray")?,
-            )
-            .create(name)?),
-        ChannelData::ArrayDFloat64(data) => Ok(builder
-            .with_data(
-                &data
-                    .to_ndarray()
-                    .context("Failed converting channelData nd f64 into ndarray")?,
-            )
-            .create(name)?),
-        ChannelData::Union(_) => {
-            info!("Union channel {} skipped for hdf5 export", name);
-            Ok(builder.with_data(&[0u8; 0]).create(name)?)
+        ChannelData::ArrayDInt8(data) => Ok(create_dataset::<i8, Int8Type>(
+            group,
+            name,
+            ndim,
+            compression,
+            data.values_slice(),
+        )?),
+        ChannelData::ArrayDUInt8(data) => Ok(create_dataset::<u8, UInt8Type>(
+            group,
+            name,
+            ndim,
+            compression,
+            data.values_slice(),
+        )?),
+        ChannelData::ArrayDInt16(data) => Ok(create_dataset::<i16, Int16Type>(
+            group,
+            name,
+            ndim,
+            compression,
+            data.values_slice(),
+        )?),
+        ChannelData::ArrayDUInt16(data) => Ok(create_dataset::<u16, UInt16Type>(
+            group,
+            name,
+            ndim,
+            compression,
+            data.values_slice(),
+        )?),
+        ChannelData::ArrayDInt32(data) => Ok(create_dataset::<i32, Int32Type>(
+            group,
+            name,
+            ndim,
+            compression,
+            data.values_slice(),
+        )?),
+        ChannelData::ArrayDUInt32(data) => Ok(create_dataset::<u32, UInt32Type>(
+            group,
+            name,
+            ndim,
+            compression,
+            data.values_slice(),
+        )?),
+        ChannelData::ArrayDFloat32(data) => Ok(create_dataset::<f32, Float32Type>(
+            group,
+            name,
+            ndim,
+            compression,
+            data.values_slice(),
+        )?),
+        ChannelData::ArrayDInt64(data) => Ok(create_dataset::<i64, Int64Type>(
+            group,
+            name,
+            ndim,
+            compression,
+            data.values_slice(),
+        )?),
+        ChannelData::ArrayDUInt64(data) => Ok(create_dataset::<u64, UInt64Type>(
+            group,
+            name,
+            ndim,
+            compression,
+            data.values_slice(),
+        )?),
+        ChannelData::ArrayDFloat64(data) => Ok(create_dataset::<f64, Float64Type>(
+            group,
+            name,
+            ndim,
+            compression,
+            data.values_slice(),
+        )?),
+        ChannelData::Union(data) => {
+            info!("Union channel {} data exported as raw bytes", name);
+            let filter = get_filter(compression);
+            let union_byte_count = cdata.byte_count() as usize;
+            let shape = vec![data.len(), union_byte_count];
+            let dataset = group
+                .new_dataset::<u8>()
+                .filter_pipeline(filter)
+                .shape(shape)
+                .create(name)?;
+            let bytes = cdata.to_bytes()?;
+            dataset.write_raw(&bytes)?;
+            Ok(dataset)
         }
+    }
+}
+
+/// create HDF5 dataset from group, data and compression
+#[inline]
+fn create_dataset<T: H5Type, A>(
+    group: &H5Group,
+    name: &str,
+    ndim: &[usize],
+    compression: &Hdf5Compression,
+    data: &[A::Native],
+) -> Result<H5Dataset, Error>
+where
+    A: ArrowPrimitiveType,
+    A: ArrowPrimitiveType<Native = T>,
+{
+    let filter = get_filter(compression);
+    let dataset = group
+        .new_dataset::<T>()
+        .filter_pipeline(filter)
+        .shape(ndim)
+        .create(name)?;
+    dataset.write_raw(data)?;
+    Ok(dataset)
+}
+
+/// create compression filter for HDF5 dataset
+#[inline]
+fn get_filter(compression: &Hdf5Compression) -> FilterPipeline {
+    match compression {
+        Hdf5Compression::Deflate(level) => FilterPipeline::deflate(*level),
+        Hdf5Compression::Zstd(level) => FilterPipeline::zstd(*level),
+        Hdf5Compression::Lz4 => FilterPipeline::lz4(),
+        Hdf5Compression::Uncompressed => FilterPipeline::none(),
     }
 }
 
@@ -548,7 +581,8 @@ pub fn hdf5_compression_from_string(compression_option: Option<&str>) -> Hdf5Com
     match compression_option {
         Some(option) => match option {
             "deflate" => Hdf5Compression::Deflate(8),
-            "lzf" => Hdf5Compression::Lzf,
+            "zstd" => Hdf5Compression::Zstd(22),
+            "lz4" => Hdf5Compression::Lz4,
             _ => Hdf5Compression::Uncompressed,
         },
         None => Hdf5Compression::Uncompressed,
@@ -556,7 +590,8 @@ pub fn hdf5_compression_from_string(compression_option: Option<&str>) -> Hdf5Com
 }
 
 pub enum Hdf5Compression {
-    Deflate(u8),
-    Lzf,
+    Deflate(u32),
+    Zstd(u32),
+    Lz4,
     Uncompressed,
 }

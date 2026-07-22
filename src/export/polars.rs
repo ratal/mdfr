@@ -133,7 +133,7 @@ pub fn channel_data_to_series(name: &str, data: &ChannelData) -> PolarsResult<Se
 /// Returns [`PolarsError::ColumnNotFound`] if `master_channel_name` is not a
 /// known master in the file, or a polars error if DataFrame construction fails.
 pub fn mdf_master_to_dataframe(
-    mdf: &Mdf,
+    mdf: &mut Mdf,
     master_channel_name: Option<&str>,
 ) -> PolarsResult<DataFrame> {
     let groups = mdf.get_master_channel_names_set();
@@ -169,7 +169,7 @@ pub fn mdf_master_to_dataframe(
 /// # Errors
 ///
 /// Returns a polars error if any DataFrame construction fails.
-pub fn mdf_to_dataframes(mdf: &Mdf) -> PolarsResult<HashMap<Option<String>, DataFrame>> {
+pub fn mdf_to_dataframes(mdf: &mut Mdf) -> PolarsResult<HashMap<Option<String>, DataFrame>> {
     mdf.get_master_channel_names_set()
         .into_iter()
         .map(|(master, channels)| {

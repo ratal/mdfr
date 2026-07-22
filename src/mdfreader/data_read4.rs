@@ -12,10 +12,7 @@ use half::f16;
 use rayon::prelude::*;
 use std::io::Cursor;
 use std::str;
-use std::{
-    collections::HashSet,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 use unicode_bom::Bom;
 
 use crate::data_holder::channel_data::ChannelData;
@@ -669,14 +666,13 @@ pub fn read_channels_from_bytes(
     channels: &mut CnType,
     record_length: usize,
     previous_index: usize,
-    channel_names_to_read_in_dg: &HashSet<String>,
     record_with_invalid_data: bool,
 ) -> Result<Vec<(u8, i32)>, Error> {
     let vlsd_channels: Arc<Mutex<Vec<(u8, i32)>>> = Arc::new(Mutex::new(Vec::new()));
     // iterates for each channel in parallel with rayon crate
     channels
         .par_iter_mut()
-        .filter(|(_cn_record_position, cn)| channel_names_to_read_in_dg.contains(&cn.unique_name))
+        .filter(|(_cn_record_position, cn)| cn.should_read)
         .try_for_each(|(rec_pos, cn): (&i32, &mut Cn4)| -> Result<(), Error> {
             if cn.block.cn_type == 0
                 || cn.block.cn_type == 2

@@ -440,6 +440,8 @@ pub struct Cn4 {
     pub composition: Option<Composition>,
     /// channel data
     pub data: ChannelData,
+    /// flag to track if channel's data is already converted or to be converted
+    pub is_converted: bool,
     /// byte order of the channel's raw data
     pub endian: Endianness,
     /// number of elements per sample: 1 for scalars, 2 for complex, N for arrays
@@ -451,6 +453,8 @@ pub struct Cn4 {
     /// Template EVBLOCK for event signal channels (cn_flags bit 13 set)
     /// This describes the structure of event data stored in the channel
     pub event_template: Option<Ev4Block>,
+    /// flag set during data read to indicate this channel is in the read set
+    pub should_read: bool,
 }
 
 impl Clone for Cn4 {
@@ -473,12 +477,14 @@ impl Clone for Cn4 {
             pos_byte_beg: self.pos_byte_beg,
             n_bytes: self.n_bytes,
             composition: self.composition.clone(),
-            data: ChannelData::default(),
+            data: self.data.clone(),
+            is_converted: self.is_converted,
             endian: self.endian,
             list_size: self.list_size,
             shape: self.shape.clone(),
             invalid_mask,
             event_template: self.event_template.clone(),
+            should_read: self.should_read,
         }
     }
 }
@@ -643,11 +649,13 @@ fn can_open_date(
         n_bytes: 2,
         composition: None,
         data: ChannelData::UInt16(UInt16Builder::new()),
+        is_converted: false,
         endian: Endianness::Little,
         list_size: 1,
         shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
         event_template: None,
+        should_read: false,
     };
     let block = Cn4Block {
         cn_links: 8,
@@ -664,11 +672,13 @@ fn can_open_date(
         n_bytes: 1,
         composition: None,
         data: ChannelData::UInt8(UInt8Builder::new()),
+        is_converted: false,
         endian: Endianness::Little,
         list_size: 1,
         shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
         event_template: None,
+        should_read: false,
     };
     let block = Cn4Block {
         cn_links: 8,
@@ -685,11 +695,13 @@ fn can_open_date(
         n_bytes: 1,
         composition: None,
         data: ChannelData::UInt8(UInt8Builder::new()),
+        is_converted: false,
         endian: Endianness::Little,
         list_size: 1,
         shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
         event_template: None,
+        should_read: false,
     };
     let block = Cn4Block {
         cn_links: 8,
@@ -706,11 +718,13 @@ fn can_open_date(
         n_bytes: 1,
         composition: None,
         data: ChannelData::UInt8(UInt8Builder::new()),
+        is_converted: false,
         endian: Endianness::Little,
         list_size: 1,
         shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
         event_template: None,
+        should_read: false,
     };
     let block = Cn4Block {
         cn_links: 8,
@@ -727,11 +741,13 @@ fn can_open_date(
         n_bytes: 1,
         composition: None,
         data: ChannelData::UInt8(UInt8Builder::new()),
+        is_converted: false,
         endian: Endianness::Little,
         list_size: 1,
         shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
         event_template: None,
+        should_read: false,
     };
     let block = Cn4Block {
         cn_links: 8,
@@ -748,11 +764,13 @@ fn can_open_date(
         n_bytes: 1,
         composition: None,
         data: ChannelData::UInt8(UInt8Builder::new()),
+        is_converted: false,
         endian: Endianness::Little,
         list_size: 1,
         shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
         event_template: None,
+        should_read: false,
     };
     (date_ms, min, hour, day, month, year)
 }
@@ -774,11 +792,13 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         n_bytes: 4,
         composition: None,
         data: ChannelData::UInt32(UInt32Builder::new()),
+        is_converted: false,
         endian: Endianness::Little,
         list_size: 1,
         shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
         event_template: None,
+        should_read: false,
     };
     let block = Cn4Block {
         cn_links: 8,
@@ -795,11 +815,13 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         n_bytes: 2,
         composition: None,
         data: ChannelData::UInt16(UInt16Builder::new()),
+        is_converted: false,
         endian: Endianness::Little,
         list_size: 1,
         shape: (vec![1], Order::RowMajor),
         invalid_mask: None,
         event_template: None,
+        should_read: false,
     };
     (ms, days)
 }
@@ -988,12 +1010,14 @@ pub(super) fn parse_cn4_block(
         n_bytes,
         composition: compo,
         data: data_type_init(cn_type, data_type, n_bytes, list_size, block.cn_flags)?,
+        is_converted: false,
         block,
         endian,
         list_size,
         shape,
         invalid_mask,
         event_template,
+        should_read: false,
     };
 
     Ok((cn_struct, position, n_cn, cns))

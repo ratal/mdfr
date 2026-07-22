@@ -104,17 +104,76 @@ impl MdfInfo4 {
     pub fn get_channel_id(&self, channel_name: &str) -> Option<&ChannelId> {
         self.channel_names_set.get(channel_name)
     }
+    /// Eagerly converts all channels in the file to their physical values
+    pub fn convert_all_channels(&mut self) -> Result<(), Error> {
+        for dg in self.dg.values_mut() {
+            crate::mdfreader::conversions4::convert_all_channels(dg, &self.sharable)?;
+        }
+        Ok(())
+    }
+    /// Converts one channel to its physical value
+    pub fn convert_channel(&mut self, channel_name: &str) -> Result<(), Error> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.channel_names_set.get_mut(channel_name)
+            && let Some(dg) = self.dg.get_mut(dg_pos)
+            && let Some(cg) = dg.cg.get_mut(rec_id)
+            && let Some(cn) = cg.cn.get_mut(rec_pos)
+            && !cn.data.is_empty()
+        {
+            crate::mdfreader::conversions4::convert_channel(cn, &self.sharable)?;
+        }
+        Ok(())
+    }
     /// Returns the channel's vector data if present in memory, otherwise None.
-    pub fn get_channel_data(&self, channel_name: &str) -> Option<&ChannelData> {
+    /// If data were not converted yet, it will convert it and keep in memory for further use
+    pub fn get_channel_data(&mut self, channel_name: &str) -> Option<&ChannelData> {
         let mut data: Option<&ChannelData> = None;
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
-            self.get_channel_id(channel_name)
+            self.channel_names_set.get_mut(channel_name)
+            && let Some(dg) = self.dg.get_mut(dg_pos)
+            && let Some(cg) = dg.cg.get_mut(rec_id)
+            && let Some(cn) = cg.cn.get_mut(rec_pos)
+            && !cn.data.is_empty()
+        {
+            if !cn.is_converted
+                && let Err(e) = crate::mdfreader::conversions4::convert_channel(cn, &self.sharable)
+            {
+                log::error!(
+                    "Lazy channel conversion failed for {}: {:?}",
+                    channel_name,
+                    e
+                );
+            }
+            data = Some(&cn.data);
+        }
+        data
+    }
+    /// Returns the channel's vector converted data if present in memory, otherwise None.
+    /// If data were not converted yet, it will keep non converted data in memory
+    pub fn get_channel_converted_data(&self, channel_name: &str) -> Option<ChannelData> {
+        let mut data: Option<ChannelData> = None;
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.channel_names_set.get(channel_name)
             && let Some(dg) = self.dg.get(dg_pos)
             && let Some(cg) = dg.cg.get(rec_id)
             && let Some(cn) = cg.cn.get(rec_pos)
             && !cn.data.is_empty()
         {
-            data = Some(&cn.data);
+            if !cn.is_converted {
+                let mut cloned_cn = cn.clone();
+                if let Err(e) =
+                    crate::mdfreader::conversions4::convert_channel(&mut cloned_cn, &self.sharable)
+                {
+                    log::error!(
+                        "Lazy channel conversion failed for {}: {:?}",
+                        channel_name,
+                        e
+                    );
+                }
+                data = Some(cloned_cn.data);
+            } else {
+                data = Some(cn.data.clone());
+            }
         }
         data
     }
@@ -370,11 +429,13 @@ impl MdfInfo4 {
             block_position: cn_pos,
             pos_byte_beg: 0,
             n_bytes,
+            is_converted: false,
             composition,
             list_size,
             shape: data_signature.shape,
             invalid_mask: None,
             event_template: None,
+            should_read: false,
         };
 
         // CG
@@ -746,10 +807,14 @@ impl MdfInfo4 {
                 let desc = self.get_channel_desc(channel).ok().flatten();
                 output.push_str(&format!("  {channel} "));
                 if show_data
-                    && let Some(data) = self.get_channel_data(channel)
-                    && !data.is_empty()
+                    && let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+                        self.channel_names_set.get(channel)
+                    && let Some(dg) = self.dg.get(dg_pos)
+                    && let Some(cg) = dg.cg.get(rec_id)
+                    && let Some(cn) = cg.cn.get(rec_pos)
+                    && !cn.data.is_empty()
                 {
-                    output.push_str(&format!("[{}] ", data.len()));
+                    output.push_str(&format!("[{}] ", cn.data.len()));
                 }
                 if let Some(u) = unit {
                     output.push_str(&format!("\"{u}\" "));
@@ -829,37 +894,37 @@ pub fn build_channel_db(
             cg.cn.iter_mut().for_each(|(cn_record_position, cn)| {
                 if channel_list.contains_key(&cn.unique_name) {
                     let mut changed: bool = false;
-                    let space_char = String::from(" ");
+                    let space_char = " ";
                     // create unique channel name
                     if let Ok(Some(cs)) = cn.get_cn_source_name(sharable) {
-                        cn.unique_name.push_str(&space_char);
+                        cn.unique_name.push_str(space_char);
                         cn.unique_name.push_str(&cs);
                         changed = true;
                     }
                     if let Ok(Some(cp)) = cn.get_cn_source_path(sharable) {
-                        cn.unique_name.push_str(&space_char);
+                        cn.unique_name.push_str(space_char);
                         cn.unique_name.push_str(&cp);
                         changed = true;
                     }
                     if let Ok(Some(name)) = &gn {
-                        cn.unique_name.push_str(&space_char);
+                        cn.unique_name.push_str(space_char);
                         cn.unique_name.push_str(name);
                         changed = true;
                     }
                     if let Ok(Some(source)) = &gs {
-                        cn.unique_name.push_str(&space_char);
+                        cn.unique_name.push_str(space_char);
                         cn.unique_name.push_str(source);
                         changed = true;
                     }
                     if let Ok(Some(path)) = &gp {
-                        cn.unique_name.push_str(&space_char);
+                        cn.unique_name.push_str(space_char);
                         cn.unique_name.push_str(path);
                         changed = true;
                     }
                     // No souce or path name to make channel unique
                     if !changed || channel_list.contains_key(&cn.unique_name) {
                         // extend name with channel block position, unique
-                        cn.unique_name.push_str(&space_char);
+                        cn.unique_name.push_str(space_char);
                         cn.unique_name.push_str(&cn.block_position.to_string());
                     }
                 };

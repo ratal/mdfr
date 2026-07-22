@@ -336,7 +336,7 @@ mod rust_polars_tests {
 
     #[test]
     fn rust_polars_f64_series_values() {
-        let mdf = load_mdf();
+        let mut mdf = load_mdf();
         let s = mdf
             .get_channel_polars_series("be_f64")
             .expect("be_f64 failed");
@@ -348,7 +348,7 @@ mod rust_polars_tests {
 
     #[test]
     fn rust_polars_i16_series_values() {
-        let mdf = load_mdf();
+        let mut mdf = load_mdf();
         let s = mdf
             .get_channel_polars_series("be_i16")
             .expect("be_i16 failed");
@@ -359,7 +359,7 @@ mod rust_polars_tests {
 
     #[test]
     fn rust_polars_series_name_matches_channel() {
-        let mdf = load_mdf();
+        let mut mdf = load_mdf();
         let s = mdf
             .get_channel_polars_series("be_f64")
             .expect("be_f64 failed");
@@ -368,7 +368,7 @@ mod rust_polars_tests {
 
     #[test]
     fn rust_polars_dataframe_shape_and_column_values() {
-        let mdf = load_mdf();
+        let mut mdf = load_mdf();
         // "master" is the master channel; the group contains master + be_i16 + be_f64
         let df = mdf
             .get_channel_polars_dataframe(Some("master"))
@@ -382,7 +382,7 @@ mod rust_polars_tests {
 
     #[test]
     fn rust_polars_to_dataframes_all_groups() {
-        let mdf = load_mdf();
+        let mut mdf = load_mdf();
         let frames = mdf.get_polars_dataframes().expect("dataframes failed");
         // be_scalars.mf4 has one group with master "master"
         assert_eq!(frames.len(), 1);
