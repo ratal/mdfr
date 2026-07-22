@@ -1533,6 +1533,7 @@ fn create_blocks(
             shape: cn.shape.clone(),
             invalid_mask: None,
             event_template: None,
+            should_read: false,
         };
         let mut new_cg = Cg4 {
             header: cg_block_header,

@@ -114,17 +114,19 @@ pub fn parse_fh(
     mut position: i64,
 ) -> Result<(Fh, i64)> {
     let mut fh: Fh = Vec::new();
-    let (block, pos) = parse_fh_block(rdr, target, position)?;
-    position = pos;
-    position = read_meta_data(rdr, sharable, block.fh_md_comment, position, BlockType::FH)?;
-    let mut next_pointer = block.fh_fh_next;
-    fh.push(block);
-    while next_pointer != 0 {
-        let (block, pos) = parse_fh_block(rdr, next_pointer, position)?;
+    if target > 0 {
+        let (block, pos) = parse_fh_block(rdr, target, position)?;
         position = pos;
-        next_pointer = block.fh_fh_next;
         position = read_meta_data(rdr, sharable, block.fh_md_comment, position, BlockType::FH)?;
+        let mut next_pointer = block.fh_fh_next;
         fh.push(block);
+        while next_pointer != 0 {
+            let (block, pos) = parse_fh_block(rdr, next_pointer, position)?;
+            position = pos;
+            next_pointer = block.fh_fh_next;
+            position = read_meta_data(rdr, sharable, block.fh_md_comment, position, BlockType::FH)?;
+            fh.push(block);
+        }
     }
     Ok((fh, position))
 }

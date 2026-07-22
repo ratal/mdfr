@@ -435,6 +435,7 @@ impl MdfInfo4 {
             shape: data_signature.shape,
             invalid_mask: None,
             event_template: None,
+            should_read: false,
         };
 
         // CG
@@ -893,37 +894,37 @@ pub fn build_channel_db(
             cg.cn.iter_mut().for_each(|(cn_record_position, cn)| {
                 if channel_list.contains_key(&cn.unique_name) {
                     let mut changed: bool = false;
-                    let space_char = String::from(" ");
+                    let space_char = " ";
                     // create unique channel name
                     if let Ok(Some(cs)) = cn.get_cn_source_name(sharable) {
-                        cn.unique_name.push_str(&space_char);
+                        cn.unique_name.push_str(space_char);
                         cn.unique_name.push_str(&cs);
                         changed = true;
                     }
                     if let Ok(Some(cp)) = cn.get_cn_source_path(sharable) {
-                        cn.unique_name.push_str(&space_char);
+                        cn.unique_name.push_str(space_char);
                         cn.unique_name.push_str(&cp);
                         changed = true;
                     }
                     if let Ok(Some(name)) = &gn {
-                        cn.unique_name.push_str(&space_char);
+                        cn.unique_name.push_str(space_char);
                         cn.unique_name.push_str(name);
                         changed = true;
                     }
                     if let Ok(Some(source)) = &gs {
-                        cn.unique_name.push_str(&space_char);
+                        cn.unique_name.push_str(space_char);
                         cn.unique_name.push_str(source);
                         changed = true;
                     }
                     if let Ok(Some(path)) = &gp {
-                        cn.unique_name.push_str(&space_char);
+                        cn.unique_name.push_str(space_char);
                         cn.unique_name.push_str(path);
                         changed = true;
                     }
                     // No souce or path name to make channel unique
                     if !changed || channel_list.contains_key(&cn.unique_name) {
                         // extend name with channel block position, unique
-                        cn.unique_name.push_str(&space_char);
+                        cn.unique_name.push_str(space_char);
                         cn.unique_name.push_str(&cn.block_position.to_string());
                     }
                 };
