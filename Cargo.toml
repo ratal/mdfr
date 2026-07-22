@@ -23,7 +23,7 @@ hdf5 = ["dep:rust-hdf5"]
 ndarray = ["dep:ndarray"]
 
 [dependencies]
-clap = "4.6.3" # for input arguments
+clap = "4.6.4" # for input arguments
 anyhow = { version = "1.0.104", features = ["backtrace"] } # error handling
 log = "0.4.33" # to log events
 byteorder = "1.4" # for bytes conversions
@@ -53,7 +53,7 @@ arrow = { version = "59.1.0", features = [
     "ffi",
 ] } # for efficient data storing in memory
 env_logger = "0.11.11"
-libc = "0.2.188" # for the C api
+libc = "0.2.189" # for the C api
 numpy = { version = "0.29", optional = true } # to export in numpy
 polars = { version = "0.54.4", features = [
     "dtype-full",
