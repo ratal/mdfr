@@ -1,6 +1,7 @@
 //! data read and load in memory based in MdfInfo4's metadata
 use crate::data_holder::channel_data::ChannelData;
 use crate::mdfinfo::MdfInfo;
+use crate::mdfinfo::block_chain::BlockChain;
 use crate::mdfinfo::mdfinfo4::{Blockheader4, Cg4, Cn4, Composition, Dg4, Ds4Block};
 use crate::mdfinfo::mdfinfo4::{
     CG_F_VLSC, CG_F_VLSD, Dl4Block, Dt4Block, Dz4Block, Gd4Block, Hl4Block, Ld4Block, parse_dz,
@@ -670,11 +671,16 @@ fn parser_ld4(
     channel_group: &mut Cg4,
 ) -> Result<i64> {
     let mut ld_blocks: Vec<Ld4Block> = Vec::new();
+    let mut chain = BlockChain::new("LD");
+    chain.visit(position);
     let (block, pos) = parser_ld4_block(rdr, position, position)?;
     position = pos;
     ld_blocks.push(block.clone());
     let mut next_ld = block.ld_ld_next();
     while next_ld > 0 {
+        if !chain.visit(next_ld) {
+            break;
+        }
         rdr.seek_relative(next_ld - position)
             .context("Could not reach LD block position")?;
         position = next_ld;
@@ -905,16 +911,14 @@ fn read_dv_di(
 /// Reads all DL Blocks and returns a vect of them
 fn parser_dl4(rdr: &mut BufReader<&File>, mut position: i64) -> Result<(Vec<Dl4Block>, i64)> {
     let mut dl_blocks: Vec<Dl4Block> = Vec::new();
-    let mut visited: HashSet<i64> = HashSet::new();
-    let start = position;
-    visited.insert(start);
+    let mut chain = BlockChain::new("DL");
+    chain.visit(position);
     let (block, pos) = parser_dl4_block(rdr, position, position)?;
     position = pos;
     dl_blocks.push(block.clone());
     let mut next_dl = block.dl_dl_next;
     while next_dl > 0 {
-        if !visited.insert(next_dl) {
-            warn!("DL block cycle detected at 0x{next_dl:x}, stopping chain walk");
+        if !chain.visit(next_dl) {
             break;
         }
         rdr.seek_relative(next_dl - position)

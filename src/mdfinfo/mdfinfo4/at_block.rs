@@ -2,7 +2,7 @@
 //!
 //! Stores or references external files (e.g. calibration data, images) attached to the MDF file.
 //! Attachments can be embedded or external, with optional MD5 checksum verification.
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use binrw::{BinReaderExt, binrw};
 use log::warn;
 use md5::{Digest, Md5};
@@ -14,6 +14,7 @@ use std::io::{Cursor, Read};
 use super::block_header::{SharableBlocks, read_meta_data};
 use super::data_block::decompress_data;
 use super::metadata::BlockType;
+use crate::mdfinfo::block_chain::BlockChain;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 
 /// At4 Attachment block struct
@@ -150,6 +151,14 @@ fn parser_at4_block(
 
     // reads embedded if exists
     let data: Option<Vec<u8>> = if (block.at_flags & 0b1) > 0 {
+        let file_size = rdr.file_size().unwrap_or(u64::MAX);
+        let available = file_size.saturating_sub(position as u64);
+        if block.at_embedded_size > available {
+            bail!(
+                "attachment at 0x{target:x} declares {} embedded bytes but only {available} are left in the file",
+                block.at_embedded_size
+            );
+        }
         let mut embedded_data = vec![0u8; block.at_embedded_size as usize];
         rdr.read_exact(&mut embedded_data)
             .context("Could not parse At4Block embedded attachement")?;
@@ -202,7 +211,12 @@ pub fn parse_at4(
         let mut next_pointer = block.at_at_next;
         at.insert(target, (block, data));
 
+        let mut chain = BlockChain::new("AT");
+        chain.visit(target);
         while next_pointer > 0 {
+            if !chain.visit(next_pointer) {
+                break;
+            }
             let block_start = next_pointer;
             let (block, data, pos) = parser_at4_block(rdr, next_pointer, position)?;
             position = pos;

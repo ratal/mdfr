@@ -12,6 +12,7 @@ use std::io::{Cursor, Read};
 use super::block_header::{SharableBlocks, read_meta_data};
 use super::cg_block::{CG_F_VLSC, CG_F_VLSD, Cg4, parse_cg4};
 use super::metadata::BlockType;
+use crate::mdfinfo::block_chain::BlockChain;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 
 /// DGBLOCK structure (MDF 4.2 spec, Table 19)
@@ -140,7 +141,12 @@ pub fn parse_dg4(
         let dg_struct = Dg4 { block, cg };
         dg.insert(target, dg_struct);
         position = pos;
+        let mut chain = BlockChain::new("DG");
+        chain.visit(target);
         while next_pointer > 0 {
+            if !chain.visit(next_pointer) {
+                break;
+            }
             let block_start = next_pointer;
             let (block, pos) = parse_dg4_block(rdr, sharable, next_pointer, position)?;
             next_pointer = block.dg_dg_next;

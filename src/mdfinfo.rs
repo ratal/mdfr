@@ -17,6 +17,7 @@ use std::path::PathBuf;
 use std::str;
 use std::sync::Arc;
 
+pub(crate) mod block_chain;
 pub mod mdfinfo3;
 
 /// Map from channel name to its position tuple: (master_name, dg_pos, cg_pos, rec_id, cn_pos, rec_pos).

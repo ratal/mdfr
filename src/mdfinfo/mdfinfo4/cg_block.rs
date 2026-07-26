@@ -16,6 +16,7 @@ use std::io::{Cursor, Read};
 use std::sync::Arc;
 
 use crate::data_holder::channel_data::ChannelData;
+use crate::mdfinfo::block_chain::BlockChain;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 
 use super::block_header::{
@@ -240,7 +241,11 @@ fn parse_sr4(
     }
 
     let mut next = target;
+    let mut chain = BlockChain::new("SR");
     while next > 0 {
+        if !chain.visit(next) {
+            break;
+        }
         // Read just the 16-byte header first to validate before allocating
         rdr.seek_relative(next - position)
             .context("Could not reach SR block header position")?;
@@ -251,6 +256,10 @@ fn parse_sr4(
             position = next + 16;
             break;
         }
+        let file_size = rdr.file_size().unwrap_or(u64::MAX);
+        header
+            .validate_len(file_size)
+            .context("SR block header length validation failed")?;
         // Now read the rest of the block
         let mut buf = vec![0u8; (header.hdr_len - 16) as usize];
         rdr.read_exact(&mut buf)
@@ -787,7 +796,12 @@ pub(super) fn parse_cg4(
         n_cg += 1;
         n_cn += num_cn;
 
+        let mut chain = BlockChain::new("CG");
+        chain.visit(target);
         while next_pointer != 0 {
+            if !chain.visit(next_pointer) {
+                break;
+            }
             let (mut cg_struct, pos, num_cn) =
                 parse_cg4_block(rdr, next_pointer, position, sharable, record_id_size)?;
             position = pos;

@@ -11,6 +11,7 @@ use std::io::{Cursor, Read};
 
 use super::block_header::{SharableBlocks, read_meta_data};
 use super::metadata::BlockType;
+use crate::mdfinfo::block_chain::BlockChain;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 
 /// FHBLOCK structure (MDF 4.2 spec, Table 18)
@@ -120,7 +121,12 @@ pub fn parse_fh(
         position = read_meta_data(rdr, sharable, block.fh_md_comment, position, BlockType::FH)?;
         let mut next_pointer = block.fh_fh_next;
         fh.push(block);
+        let mut chain = BlockChain::new("FH");
+        chain.visit(target);
         while next_pointer != 0 {
+            if !chain.visit(next_pointer) {
+                break;
+            }
             let (block, pos) = parse_fh_block(rdr, next_pointer, position)?;
             position = pos;
             next_pointer = block.fh_fh_next;
