@@ -11,7 +11,7 @@ use log::warn;
 use lz4::Decoder as Lz4Decoder;
 use std::fmt::{self, Display};
 use std::fs::File;
-use std::io::{BufReader, Cursor, Read};
+use std::io::{BufReader, Cursor, Read, Seek};
 use std::str;
 use zstd::Decoder as ZstdDecoder;
 
@@ -162,10 +162,13 @@ pub fn decompress_data(
     };
     // transpose data
     if matches!(zip_type, 1 | 3 | 5) && zip_parameter > 0 {
-        // transpose
-        let m = org_data_length / zip_parameter as u64;
-        let tail: Vec<u8> = data.split_off((m * zip_parameter as u64) as usize);
-        let mut output = vec![0u8; (m * zip_parameter as u64) as usize];
+        // org_data_length comes from the file: clamp the transposed area to what
+        // was actually decompressed, otherwise split_off panics
+        let m =
+            (org_data_length / zip_parameter as u64).min(data.len() as u64 / zip_parameter as u64);
+        let transposed_len = (m * zip_parameter as u64) as usize;
+        let tail: Vec<u8> = data.split_off(transposed_len);
+        let mut output = vec![0u8; transposed_len];
         transpose::transpose(&data, &mut output, m as usize, zip_parameter as usize);
         data = output;
         if !tail.is_empty() {
@@ -175,11 +178,37 @@ pub fn decompress_data(
     Ok(data)
 }
 
+/// Number of bytes left between the current position and the end of the file.
+fn bytes_left(rdr: &mut BufReader<&File>) -> Result<u64> {
+    let file_size = rdr
+        .get_ref()
+        .metadata()
+        .context("Could not read file metadata")?
+        .len();
+    let position = rdr
+        .stream_position()
+        .context("Could not get stream position")?;
+    Ok(file_size.saturating_sub(position))
+}
+
+/// Checks a length field read from a DZ block against the bytes still in the file.
+fn validate_dz_data_length(block: &Dz4Block, rdr: &mut BufReader<&File>) -> Result<()> {
+    let available = bytes_left(rdr)?;
+    if block.dz_data_length > available {
+        bail!(
+            "DZ block declares {} compressed bytes but only {available} are left in the file",
+            block.dz_data_length
+        );
+    }
+    Ok(())
+}
+
 /// parses DZBlock
 pub fn parse_dz(rdr: &mut BufReader<&File>) -> Result<(Vec<u8>, Dz4Block)> {
     let mut block: Dz4Block = rdr
         .read_le()
         .context("Could not read into Dz4Block struct")?;
+    validate_dz_data_length(&block, rdr)?;
     let mut buf = vec![0u8; block.dz_data_length as usize];
     rdr.read_exact(&mut buf).context("Could not read Dz data")?;
     // decompress data
@@ -199,6 +228,7 @@ pub fn read_dz_raw(rdr: &mut BufReader<&File>) -> Result<(Dz4Block, Vec<u8>)> {
     let block: Dz4Block = rdr
         .read_le()
         .context("Could not read into Dz4Block struct")?;
+    validate_dz_data_length(&block, rdr)?;
     let mut buf = vec![0u8; block.dz_data_length as usize];
     rdr.read_exact(&mut buf)
         .context("Could not read Dz raw data")?;

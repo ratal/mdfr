@@ -2,7 +2,7 @@
 //!
 //! CHBLOCKs organize channels into a display hierarchy tree (groups, functions,
 //! input/output variables). The hierarchy is separate from the DG→CG→CN data structure.
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use binrw::{BinReaderExt, binrw};
 use std::collections::HashMap;
 use std::fmt::{self, Display};
@@ -10,6 +10,7 @@ use std::fs::File;
 
 use super::block_header::{SharableBlocks, parse_block_short, read_meta_data};
 use super::metadata::BlockType;
+use crate::mdfinfo::block_chain::BlockChain;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 
 /// CHBLOCK structure (MDF 4.2 spec, Table 15)
@@ -38,7 +39,7 @@ pub struct Ch4Block {
     /// link to MDBLOCK with a comment/description
     pub ch_md_comment: i64,
     /// list of elements in this hierarchy level
-    #[br(count = ch_links - 4)]
+    #[br(count = ch_links.saturating_sub(4))]
     pub ch_element: Vec<i64>,
 
     // data section
@@ -93,8 +94,19 @@ fn parser_ch4_block(
     target: i64,
     mut position: i64,
 ) -> Result<(Ch4Block, i64)> {
-    let (mut block, _header, pos) = parse_block_short(rdr, target, position)?;
+    let (mut block, header, pos) = parse_block_short(rdr, target, position)?;
     position = pos;
+    // ch_links comes from the file and sizes ch_element, so check it against the
+    // block length before binrw allocates the vector
+    let ch_links: u64 = block.read_le().context("Could not read ch_links")?;
+    block.set_position(0);
+    let max_links = header.hdr_len.saturating_sub(32) / 8;
+    if !(4..=max_links).contains(&ch_links) {
+        bail!(
+            "CH block at 0x{target:x} declares {ch_links} links, expected 4 to {max_links} for a {} byte block",
+            header.hdr_len
+        );
+    }
     let block: Ch4Block = block.read_le().context("Error parsing ch block")?;
 
     Ok((block, position))
@@ -105,11 +117,30 @@ pub fn parse_ch4(
     rdr: &mut SymBufReader<&File>,
     sharable: &mut SharableBlocks,
     target: i64,
-    mut position: i64,
+    position: i64,
 ) -> Result<(HashMap<i64, Ch4Block>, i64)> {
     let mut ch = HashMap::new();
+    // one tracker for the whole tree: it also stops a child link pointing back
+    // at an ancestor, which would otherwise recurse until the stack overflows
+    let mut chain = BlockChain::new("CH");
+    let position = parse_ch4_level(rdr, sharable, target, position, &mut ch, &mut chain)?;
+    Ok((ch, position))
+}
+
+/// parses one hierarchy level and, depth first, the levels below it
+fn parse_ch4_level(
+    rdr: &mut SymBufReader<&File>,
+    sharable: &mut SharableBlocks,
+    target: i64,
+    mut position: i64,
+    ch: &mut HashMap<i64, Ch4Block>,
+    chain: &mut BlockChain,
+) -> Result<i64> {
     let mut next_pointer = target;
     while next_pointer > 0 {
+        if !chain.visit(next_pointer) {
+            break;
+        }
         let block_start = next_pointer;
         let (block, pos) = parser_ch4_block(rdr, next_pointer, position)?;
         position = pos;
@@ -120,15 +151,13 @@ pub fn parse_ch4(
 
         // Traverse children
         if block.ch_ch_first > 0 {
-            let (children, pos) = parse_ch4(rdr, sharable, block.ch_ch_first, position)?;
-            position = pos;
-            ch.extend(children);
+            position = parse_ch4_level(rdr, sharable, block.ch_ch_first, position, ch, chain)?;
         }
 
         next_pointer = block.ch_ch_next;
         ch.insert(block_start, block);
     }
-    Ok((ch, position))
+    Ok(position)
 }
 
 #[cfg(test)]

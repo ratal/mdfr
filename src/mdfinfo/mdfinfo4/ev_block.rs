@@ -10,6 +10,7 @@ use std::fs::File;
 
 use super::block_header::{SharableBlocks, parse_block_short, read_meta_data};
 use super::metadata::BlockType;
+use crate::mdfinfo::block_chain::BlockChain;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 
 /// Ev4 Event block struct
@@ -267,7 +268,12 @@ pub fn parse_ev4(
         let mut next_pointer = block.ev_ev_next;
         ev.insert(target, block);
 
+        let mut chain = BlockChain::new("EV");
+        chain.visit(target);
         while next_pointer > 0 {
+            if !chain.visit(next_pointer) {
+                break;
+            }
             let block_start = next_pointer;
             let (block, pos) = parse_ev4_block(rdr, next_pointer, position)?;
             position = pos;

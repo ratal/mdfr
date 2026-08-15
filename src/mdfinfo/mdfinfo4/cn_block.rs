@@ -4,6 +4,7 @@
 //! bit position/length in the record, sync type, composition, source, and conversion.
 use crate::data_holder::channel_data::{ChannelData, data_type_init};
 use crate::data_holder::tensor_arrow::Order;
+use crate::mdfinfo::block_chain::BlockChain;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 use anyhow::{Context, Result};
 use arrow::array::{BooleanBufferBuilder, UInt8Builder, UInt16Builder, UInt32Builder};
@@ -573,7 +574,12 @@ pub(super) fn parse_cn4(
             cn.insert(first_rec_pos, cn_struct);
         }
 
+        let mut chain = BlockChain::new("CN");
+        chain.visit(target);
         while next_pointer != 0 {
+            if !chain.visit(next_pointer) {
+                break;
+            }
             let (cn_struct, pos, n_cns, cns) = parse_cn4_block(
                 rdr,
                 next_pointer,

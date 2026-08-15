@@ -1,5 +1,5 @@
 //! Parsing of file metadata into MdfInfo3 struct
-use anyhow::{Context, Error, Result};
+use anyhow::{Context, Error, Result, bail};
 use arrow::array::{UInt8Builder, UInt16Builder, UInt32Builder};
 use binrw::{BinRead, BinReaderExt};
 use byteorder::{LittleEndian, ReadBytesExt};
@@ -16,6 +16,7 @@ use std::io::{Cursor, prelude::*};
 use crate::data_holder::channel_data::{ChannelData, data_type_init};
 use crate::data_holder::tensor_arrow::Order;
 use crate::mdfinfo::IdBlock;
+use crate::mdfinfo::block_chain::BlockChain;
 use crate::mdfinfo::mdfinfo4::Endianness;
 
 use super::sym_buf_reader::SymBufReader;
@@ -712,6 +713,12 @@ pub fn parse_tx(
     rdr.seek_relative(target as i64 - position)
         .context("Could not reach position of TX block")?;
     let block_header: Blockheader3 = parse_block_header(rdr)?; // reads header
+    if block_header.hdr_len < 4 {
+        bail!(
+            "TX block at 0x{target:x} declares hdr_len={} < 4 (minimum header size)",
+            block_header.hdr_len
+        );
+    }
 
     // reads comment
     let mut comment_raw = vec![0; (block_header.hdr_len - 4) as usize];
@@ -815,7 +822,12 @@ pub fn parse_dg3(
         };
         dg.insert(dg_struct.block.dg_data, dg_struct);
         position = pos;
+        let mut chain = BlockChain::new("DG");
+        chain.visit(target as i64);
         while next_pointer > 0 {
+            if !chain.visit(next_pointer as i64) {
+                break;
+            }
             let block_start = next_pointer;
             let (block, pos) = parse_dg3_block(rdr, next_pointer, position)?;
             next_pointer = block.dg_dg_next;
@@ -960,7 +972,12 @@ pub fn parse_cg3(
         cg.insert(cg_struct.block.cg_record_id, cg_struct);
         n_cn += num_cn;
 
+        let mut chain = BlockChain::new("CG");
+        chain.visit(target as i64);
         while next_pointer != 0 {
+            if !chain.visit(next_pointer as i64) {
+                break;
+            }
             let (mut cg_struct, pos, num_cn) = parse_cg3_block(
                 rdr,
                 next_pointer,
@@ -1056,7 +1073,12 @@ pub fn parse_cn3(
         let mut next_pointer = cn_struct.block1.cn_cn_next;
         cn.insert(target, cn_struct);
 
+        let mut chain = BlockChain::new("CN");
+        chain.visit(target as i64);
         while next_pointer != 0 {
+            if !chain.visit(next_pointer as i64) {
+                break;
+            }
             let (cn_struct, pos) = parse_cn3_block(
                 rdr,
                 next_pointer,
