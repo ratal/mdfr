@@ -1,6 +1,6 @@
 [package]
 name = "mdfr"
-version = "0.7.1"
+version = "0.7.2"
 description = "A package for reading and writing MDF files"
 authors = ["ratal <ratal@ratal.org>"]
 edition = "2024"
@@ -23,60 +23,60 @@ hdf5 = ["dep:rust-hdf5"]
 ndarray = ["dep:ndarray"]
 
 [dependencies]
-clap = "4.6.4" # for input arguments
+clap = "4.6.6" # for input arguments
 anyhow = { version = "1.0.104", features = ["backtrace"] } # error handling
 log = "0.4.33" # to log events
-byteorder = "1.4" # for bytes conversions
-binrw = "0.15.1" # to efficiently read blocks
-num = "0.4"
-half = "2.7" # for f16 handling
-encoding_rs = "0.8" # for endian management and bytes to text conversion (utf8, SBC, UTF16)
-unicode-bom = "2.0"
-codepage = "0.1" # to convert code page into encoding
-chrono = "0.4.41" # for time conversion
-rayon = "1.11" # for general purpose parallel computations
+byteorder = "1.5.0" # for bytes conversions
+binrw = "0.15.2" # to efficiently read blocks
+num = "0.4.3"
+half = "2.7.1" # for f16 handling
+encoding_rs = "0.8.35" # for endian management and bytes to text conversion (utf8, SBC, UTF16)
+unicode-bom = "2.0.3"
+codepage = "0.1.2" # to convert code page into encoding
+chrono = "0.4.45" # for time conversion
+rayon = "1.12.0" # for general purpose parallel computations
 crossbeam-channel = "0.5.16" # for efficient channel between threads
-parking_lot = "0.12" # for efficient mutex
-roxmltree = "0.21" # for xml parsing
+parking_lot = "0.12.5" # for efficient mutex
+roxmltree = "0.21.1" # for xml parsing
 flate2 = "1.1.9" # for DZ block data deflate
-zstd = "0.13"
-lz4 = "1.28"
-md-5 = "0.11" # md5sum of attachments
-transpose = "0.2" # for DZBlock transpose
-fasteval = "0.2" # for algebraic conversion
-itertools = "0.15"
-whoami = "2.1.1" # to get user name for writing file
-rand = "0.10" # for random numbers
-arrow = { version = "59.1.0", features = [
+zstd = "0.13.3"
+lz4 = "1.28.1"
+md-5 = "0.11.0" # md5sum of attachments
+transpose = "0.2.3" # for DZBlock transpose
+fasteval = "0.2.4" # for algebraic conversion
+itertools = "0.15.0"
+whoami = "2.1.3" # to get user name for writing file
+rand = "0.10.2" # for random numbers
+arrow = { version = "59.2.0", features = [
     "pyarrow",
     "prettyprint",
     "ffi",
 ] } # for efficient data storing in memory
 env_logger = "0.11.11"
 libc = "0.2.189" # for the C api
-numpy = { version = "0.29", optional = true } # to export in numpy
+numpy = { version = "0.29.0", optional = true } # to export in numpy
 polars = { version = "0.54.4", features = [
     "dtype-full",
     "object",
     "fmt",
 ], optional = true } # for python dataframe
-parquet = { version = "59.1.0", optional = true } # to write parquet file
-rust-hdf5 = { version = "0.3.2", optional = true, features = [
+parquet = { version = "59.2.0", optional = true } # to write parquet file
+rust-hdf5 = { version = "0.4.3", optional = true, features = [
     "all_filters", "parallel", "threadsafe"
 ] } # to export into hdf5 file
-ndarray = { version = "0.17", optional = true } # to convert arraw data into ndarray
+ndarray = { version = "0.17.2", optional = true } # to convert arraw data into ndarray
 
 [dependencies.pyo3]
-version = "0.29"
+version = "0.29.2"
 features = ["num-complex", "anyhow"]
 optional = true
 
 [dev-dependencies]
 criterion = "0.8.2" # for benchmark
 test-log = "0.2.21"
-glob = "0.3"
-tempfile = "3"
-pyo3 = { version = "0.29", features = ["auto-initialize"] }
+glob = "0.3.4"
+tempfile = "3.27.0"
+pyo3 = { version = "0.29.2", features = ["auto-initialize"] }
 
 [build-dependencies]
 cbindgen = "0.29.4" # to generate C api headers

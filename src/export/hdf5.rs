@@ -429,10 +429,10 @@ fn convert_channel_data_into_h5dataset(
         }
         ChannelData::Utf8(data) => {
             let filter = get_filter(compression);
-            // Convert LargeStringBuilder -> LargeStringArray -> Vec<&str>
             let array = data.finish_cloned();
             let strings: Vec<&str> = array.iter().map(|opt| opt.unwrap_or("")).collect();
-            Ok(group.write_vlen_strings_compressed(name, &strings, 1024, filter)?)
+            let chunk_size = strings.len().max(1);
+            Ok(group.write_vlen_strings_compressed(name, &strings, chunk_size, filter)?)
         }
         ChannelData::VariableSizeByteArray(data) => {
             // Convert LargeBinaryBuilder -> LargeBinaryArray -> Vec<&[u8]>
