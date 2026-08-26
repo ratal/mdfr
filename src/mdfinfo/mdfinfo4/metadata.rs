@@ -627,6 +627,7 @@ impl MetaData {
                 BlockType::DG => self.parse_dg_comment()?,
             };
         }
+        self.raw_data.clear();
         Ok(())
     }
     /// Returns the text from TX Block or TX's tag text from MD Block

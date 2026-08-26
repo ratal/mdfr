@@ -787,8 +787,10 @@ fn read_dv_di(
     }
 
     // Phase 1: Sequential I/O — collect all raw data and invalid blocks
-    let mut raw_data: Vec<RawCompBlock> = Vec::new();
-    let mut raw_invalid: Vec<RawCompBlock> = Vec::new();
+    let total_data_blocks: usize = ld_blocks.iter().map(|ld| ld.ld_data().len()).sum();
+    let total_invalid_blocks: usize = ld_blocks.iter().map(|ld| ld.ld_invalid_data().len()).sum();
+    let mut raw_data: Vec<RawCompBlock> = Vec::with_capacity(total_data_blocks);
+    let mut raw_invalid: Vec<RawCompBlock> = Vec::with_capacity(total_invalid_blocks);
     for ld in &ld_blocks {
         for &data_pointer in &ld.ld_data() {
             rdr.seek_relative(data_pointer - position)
@@ -961,7 +963,8 @@ fn parser_dl4_sorted(
     let mut vlsd_channels: Vec<(u8, i32)> = Vec::new();
 
     // Phase 1: Sequential I/O — collect raw blocks
-    let mut raw_entries: Vec<(bool, RawCompBlock)> = Vec::new(); // (is_sd, block)
+    let total_entries: usize = dl_blocks.iter().map(|dl| dl.dl_data.len()).sum();
+    let mut raw_entries: Vec<(bool, RawCompBlock)> = Vec::with_capacity(total_entries); // (is_sd, block)
     for dl in &dl_blocks {
         for &data_pointer in &dl.dl_data {
             rdr.seek_relative(data_pointer - position)
