@@ -349,6 +349,304 @@ pub fn create_int_linear_cc_fixture() -> Result<()> {
     Ok(())
 }
 
+// ─── Fixture: unsorted_multi_cg ──────────────────────────────────────────────
+
+/// Builds and writes `test_files/synthetic/unsorted_multi_cg.mf4`.
+///
+/// Contains 4 channel groups with unsorted (interleaved) records.
+/// - dg_rec_id_size = 2 (u16 record IDs)
+/// - ~1M records per CG, ~4M total records
+/// - ~50MB file size
+///
+/// CG layout:
+/// - CG 1: rec_id=1, 1 f64 channel (8 bytes data, 10 bytes total with rec_id)
+/// - CG 2: rec_id=2, 1 f32 + 1 i32 channel (12 bytes data, 14 bytes total)
+/// - CG 3: rec_id=3, 1 f64 + 1 f32 + 1 i32 channel (16 bytes data, 18 bytes total)
+/// - CG 4: rec_id=4, 2 f64 + 1 f32 channel (20 bytes data, 22 bytes total)
+pub fn create_unsorted_multi_cg_fixture() -> Result<()> {
+    const PATH: &str = "test_files/synthetic/unsorted_multi_cg.mf4";
+    const N_RECORDS_PER_CG: u64 = 1_000_000;
+
+    std::fs::create_dir_all("test_files/synthetic")?;
+
+    let mut buf: Vec<u8> = Vec::with_capacity(64_000_000);
+
+    write_id_block(&mut buf);
+    debug_assert_eq!(buf.len(), 64, "IdBlock size mismatch");
+
+    // CG record IDs
+    const CG1_REC_ID: u64 = 1;
+    const CG2_REC_ID: u64 = 2;
+    const CG3_REC_ID: u64 = 3;
+    const CG4_REC_ID: u64 = 4;
+
+    // Data bytes per CG (excluding record ID)
+    const CG1_DATA_BYTES: u32 = 8; // f64
+    const CG2_DATA_BYTES: u32 = 8; // f32 + i32
+    const CG3_DATA_BYTES: u32 = 16; // f64 + f32 + i32
+    const CG4_DATA_BYTES: u32 = 20; // f64 + f64 + f32
+
+    // Metadata block offsets (after IdBlock=64, Hd4=104, FhBlock=56)
+    const DG_OFFSET: i64 = 224;
+    const CG1_OFFSET: i64 = 288;
+    const CG2_OFFSET: i64 = 392;
+    const CG3_OFFSET: i64 = 496;
+    const CG4_OFFSET: i64 = 600;
+    const CN1_F64_OFFSET: i64 = 704;
+    const CN2_F32_OFFSET: i64 = 864;
+    const CN2_I32_OFFSET: i64 = 1024;
+    const CN3_F64_OFFSET: i64 = 1184;
+    const CN3_F32_OFFSET: i64 = 1344;
+    const CN3_I32_OFFSET: i64 = 1504;
+    const CN4_F64_1_OFFSET: i64 = 1664;
+    const CN4_F64_2_OFFSET: i64 = 1824;
+    const CN4_F32_OFFSET: i64 = 1984;
+    const TX_CG1_CH1_OFFSET: i64 = 2144;
+    const TX_CG2_CH1_OFFSET: i64 = 2176;
+    const TX_CG2_CH2_OFFSET: i64 = 2208;
+    const TX_CG3_CH1_OFFSET: i64 = 2240;
+    const TX_CG3_CH2_OFFSET: i64 = 2272;
+    const TX_CG3_CH3_OFFSET: i64 = 2304;
+    const TX_CG4_CH1_OFFSET: i64 = 2336;
+    const TX_CG4_CH2_OFFSET: i64 = 2368;
+    const TX_CG4_CH3_OFFSET: i64 = 2400;
+    const DT_OFFSET: i64 = 2432;
+
+    write_hd4(&mut buf, DG_OFFSET, 168);
+    debug_assert_eq!(buf.len(), 168, "Hd4 size mismatch");
+
+    write_fh(&mut buf);
+    debug_assert_eq!(buf.len(), 224, "FhBlock size mismatch");
+
+    // DG with dg_rec_id_size = 2 (u16 record IDs)
+    buf.extend_from_slice(b"##DG");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 64);
+    push_u64(&mut buf, 4);
+    push_i64(&mut buf, 0); // dg_dg_next
+    push_i64(&mut buf, CG1_OFFSET); // dg_cg_first
+    push_i64(&mut buf, DT_OFFSET); // dg_data
+    push_i64(&mut buf, 0); // dg_md_comment
+    push_u8(&mut buf, 2); // dg_rec_id_size = 2 (u16)
+    push_zeros(&mut buf, 7);
+    debug_assert_eq!(buf.len(), 288, "Dg4 size mismatch");
+
+    // CG1: rec_id=1, cn_first=CN1_F64_OFFSET, cycle_count=N, data_bytes=8
+    write_cg4_with_rec_id(
+        &mut buf,
+        CN1_F64_OFFSET,
+        N_RECORDS_PER_CG,
+        CG1_DATA_BYTES,
+        CG1_REC_ID,
+        Some(CG2_OFFSET),
+    );
+    debug_assert_eq!(buf.len(), 392, "CG1 size mismatch");
+
+    // CG2: rec_id=2, cn_first=CN2_F32_OFFSET, cycle_count=N, data_bytes=12
+    write_cg4_with_rec_id(
+        &mut buf,
+        CN2_F32_OFFSET,
+        N_RECORDS_PER_CG,
+        CG2_DATA_BYTES,
+        CG2_REC_ID,
+        Some(CG3_OFFSET),
+    );
+    debug_assert_eq!(buf.len(), 496, "CG2 size mismatch");
+
+    // CG3: rec_id=3, cn_first=CN3_F64_OFFSET, cycle_count=N, data_bytes=16
+    write_cg4_with_rec_id(
+        &mut buf,
+        CN3_F64_OFFSET,
+        N_RECORDS_PER_CG,
+        CG3_DATA_BYTES,
+        CG3_REC_ID,
+        Some(CG4_OFFSET),
+    );
+    debug_assert_eq!(buf.len(), 600, "CG3 size mismatch");
+
+    // CG4: rec_id=4, cn_first=CN4_F64_1_OFFSET, cycle_count=N, data_bytes=20
+    write_cg4_with_rec_id(
+        &mut buf,
+        CN4_F64_1_OFFSET,
+        N_RECORDS_PER_CG,
+        CG4_DATA_BYTES,
+        CG4_REC_ID,
+        None,
+    );
+    debug_assert_eq!(buf.len(), 704, "CG4 size mismatch");
+
+    // CN1_f64: type=0, sync=0, data_type=4(FloatLE), byte_offset=0, bit_count=64
+    write_cn4(&mut buf, 0, 0, 4, 0, 64, 0, TX_CG1_CH1_OFFSET, 0);
+    debug_assert_eq!(buf.len(), 864, "CN1_f64 size mismatch");
+
+    // CN2_f32: type=0, sync=0, data_type=4(FloatLE), byte_offset=0, bit_count=32
+    write_cn4(
+        &mut buf,
+        0,
+        0,
+        4,
+        0,
+        32,
+        CN2_I32_OFFSET,
+        TX_CG2_CH1_OFFSET,
+        0,
+    );
+    debug_assert_eq!(buf.len(), 1024, "CN2_f32 size mismatch");
+
+    // CN2_i32: type=0, sync=0, data_type=2(IntLE), byte_offset=4, bit_count=32
+    write_cn4(&mut buf, 0, 0, 2, 4, 32, 0, TX_CG2_CH2_OFFSET, 0);
+    debug_assert_eq!(buf.len(), 1184, "CN2_i32 size mismatch");
+
+    // CN3_f64: type=0, sync=0, data_type=4(FloatLE), byte_offset=0, bit_count=64
+    write_cn4(
+        &mut buf,
+        0,
+        0,
+        4,
+        0,
+        64,
+        CN3_F32_OFFSET,
+        TX_CG3_CH1_OFFSET,
+        0,
+    );
+    debug_assert_eq!(buf.len(), 1344, "CN3_f64 size mismatch");
+
+    // CN3_f32: type=0, sync=0, data_type=4(FloatLE), byte_offset=8, bit_count=32
+    write_cn4(
+        &mut buf,
+        0,
+        0,
+        4,
+        8,
+        32,
+        CN3_I32_OFFSET,
+        TX_CG3_CH2_OFFSET,
+        0,
+    );
+    debug_assert_eq!(buf.len(), 1504, "CN3_f32 size mismatch");
+
+    // CN3_i32: type=0, sync=0, data_type=2(IntLE), byte_offset=12, bit_count=32
+    write_cn4(&mut buf, 0, 0, 2, 12, 32, 0, TX_CG3_CH3_OFFSET, 0);
+    debug_assert_eq!(buf.len(), 1664, "CN3_i32 size mismatch");
+
+    // CN4_f64_1: type=0, sync=0, data_type=4(FloatLE), byte_offset=0, bit_count=64
+    write_cn4(
+        &mut buf,
+        0,
+        0,
+        4,
+        0,
+        64,
+        CN4_F64_2_OFFSET,
+        TX_CG4_CH1_OFFSET,
+        0,
+    );
+    debug_assert_eq!(buf.len(), 1824, "CN4_f64_1 size mismatch");
+
+    // CN4_f64_2: type=0, sync=0, data_type=4(FloatLE), byte_offset=8, bit_count=64
+    write_cn4(
+        &mut buf,
+        0,
+        0,
+        4,
+        8,
+        64,
+        CN4_F32_OFFSET,
+        TX_CG4_CH2_OFFSET,
+        0,
+    );
+    debug_assert_eq!(buf.len(), 1984, "CN4_f64_2 size mismatch");
+
+    // CN4_f32: type=0, sync=0, data_type=4(FloatLE), byte_offset=16, bit_count=32
+    write_cn4(&mut buf, 0, 0, 4, 16, 32, 0, TX_CG4_CH3_OFFSET, 0);
+    debug_assert_eq!(buf.len(), 2144, "CN4_f32 size mismatch");
+
+    // TX blocks
+    write_tx(&mut buf, "cg1_ch1");
+    debug_assert_eq!(buf.len(), 2176, "TX cg1_ch1 size mismatch");
+    write_tx(&mut buf, "cg2_ch1");
+    debug_assert_eq!(buf.len(), 2208, "TX cg2_ch1 size mismatch");
+    write_tx(&mut buf, "cg2_ch2");
+    debug_assert_eq!(buf.len(), 2240, "TX cg2_ch2 size mismatch");
+    write_tx(&mut buf, "cg3_ch1");
+    debug_assert_eq!(buf.len(), 2272, "TX cg3_ch1 size mismatch");
+    write_tx(&mut buf, "cg3_ch2");
+    debug_assert_eq!(buf.len(), 2304, "TX cg3_ch2 size mismatch");
+    write_tx(&mut buf, "cg3_ch3");
+    debug_assert_eq!(buf.len(), 2336, "TX cg3_ch3 size mismatch");
+    write_tx(&mut buf, "cg4_ch1");
+    debug_assert_eq!(buf.len(), 2368, "TX cg4_ch1 size mismatch");
+    write_tx(&mut buf, "cg4_ch2");
+    debug_assert_eq!(buf.len(), 2400, "TX cg4_ch2 size mismatch");
+    write_tx(&mut buf, "cg4_ch3");
+    debug_assert_eq!(buf.len(), 2432, "TX cg4_ch3 size mismatch");
+
+    // DT block with interleaved records
+    // Interleave pattern: CG1, CG2, CG3, CG4, CG1, CG2, ...
+    let mut dt_data: Vec<u8> = Vec::with_capacity(
+        N_RECORDS_PER_CG as usize
+            * (CG1_DATA_BYTES + CG2_DATA_BYTES + CG3_DATA_BYTES + CG4_DATA_BYTES) as usize,
+    );
+
+    for i in 0..N_RECORDS_PER_CG {
+        // CG1 record: [u16 rec_id=1][f64 value]
+        dt_data.extend_from_slice(&1u16.to_le_bytes());
+        dt_data.extend_from_slice(&(i as f64).to_le_bytes());
+
+        // CG2 record: [u16 rec_id=2][f32 value][i32 value]
+        dt_data.extend_from_slice(&2u16.to_le_bytes());
+        dt_data.extend_from_slice(&(i as f32).to_le_bytes());
+        dt_data.extend_from_slice(&(i as i32).to_le_bytes());
+
+        // CG3 record: [u16 rec_id=3][f64 value][f32 value][i32 value]
+        dt_data.extend_from_slice(&3u16.to_le_bytes());
+        dt_data.extend_from_slice(&(i as f64).to_le_bytes());
+        dt_data.extend_from_slice(&(i as f32).to_le_bytes());
+        dt_data.extend_from_slice(&(i as i32).to_le_bytes());
+
+        // CG4 record: [u16 rec_id=4][f64 value][f64 value][f32 value]
+        dt_data.extend_from_slice(&4u16.to_le_bytes());
+        dt_data.extend_from_slice(&(i as f64).to_le_bytes());
+        dt_data.extend_from_slice(&((i + 1) as f64).to_le_bytes());
+        dt_data.extend_from_slice(&(i as f32).to_le_bytes());
+    }
+
+    write_dt(&mut buf, &dt_data);
+
+    std::fs::write(PATH, &buf)?;
+    Ok(())
+}
+
+/// CG block with record_id support for unsorted data.
+fn write_cg4_with_rec_id(
+    buf: &mut Vec<u8>,
+    cn_first: i64,
+    cycle_count: u64,
+    data_bytes: u32,
+    rec_id: u64,
+    cg_cg_next: Option<i64>,
+) {
+    // Blockheader4Short (16 bytes)
+    buf.extend_from_slice(b"##CG");
+    push_zeros(buf, 4);
+    push_u64(buf, 104);
+    // Cg4Block body (88 bytes):
+    push_u64(buf, 6); // cg_links
+    push_i64(buf, cg_cg_next.unwrap_or(0)); // cg_cg_next
+    push_i64(buf, cn_first); // cg_cn_first
+    push_i64(buf, 0); // cg_tx_acq_name
+    push_i64(buf, 0); // cg_si_acq_source
+    push_i64(buf, 0); // cg_sr_first
+    push_i64(buf, 0); // cg_md_comment
+    push_u64(buf, rec_id); // cg_record_id
+    push_u64(buf, cycle_count); // cg_cycle_count
+    push_u16(buf, 0); // cg_flags
+    push_u16(buf, 0); // cg_path_separator
+    push_zeros(buf, 4); // cg_reserved
+    push_u32(buf, data_bytes); // cg_data_bytes
+    push_u32(buf, 0); // cg_inval_bytes
+}
+
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
 #[test]
@@ -357,5 +655,48 @@ fn create_fixtures() {
     assert!(
         std::path::Path::new("test_files/synthetic/int_linear_cc.mf4").exists(),
         "fixture file not created"
+    );
+    create_unsorted_multi_cg_fixture().expect("failed to create unsorted_multi_cg fixture");
+    assert!(
+        std::path::Path::new("test_files/synthetic/unsorted_multi_cg.mf4").exists(),
+        "unsorted fixture file not created"
+    );
+}
+
+#[test]
+fn verify_unsorted_fixture_loads() {
+    use mdfr::mdfreader::Mdf;
+    let path = "test_files/synthetic/unsorted_multi_cg.mf4";
+    let mut mdf = Mdf::new(path).expect("failed to open unsorted fixture");
+
+    // Debug: print info before loading data
+    eprintln!("Mdf info parsed");
+
+    mdf.load_all_channels_data_in_memory()
+        .expect("failed to load unsorted data");
+
+    let names = mdf.get_channel_names_set();
+    eprintln!("Found {} channels:", names.len());
+    let mut sorted_names: Vec<_> = names.iter().collect();
+    sorted_names.sort();
+    for name in &sorted_names {
+        eprintln!("  '{}'", name);
+    }
+
+    // Check if we have the expected channels
+    let expected = [
+        "cg1_ch1", "cg2_ch1", "cg2_ch2", "cg3_ch1", "cg3_ch2", "cg3_ch3", "cg4_ch1", "cg4_ch2",
+        "cg4_ch3",
+    ];
+    for name in &expected {
+        if !names.contains(*name) {
+            eprintln!("MISSING: {}", name);
+        }
+    }
+
+    assert!(
+        names.len() >= 9,
+        "expected at least 9 channels, got {}",
+        names.len()
     );
 }

@@ -2105,7 +2105,7 @@ dependencies = [
 
 [[package]]
 name = "mdfr"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "anyhow",
  "arrow",
@@ -3678,9 +3678,9 @@ dependencies = [
 
 [[package]]
 name = "rust-hdf5"
-version = "0.4.3"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "28a772470b704824122e623dea7fb80e42cc76fe8b7e262b31a9e7b37e8826cf"
+checksum = "d6944dd9a338f0cc79d1b291f2216765669cc129ab5713451a7e6295d5c240a1"
 dependencies = [
  "bzip2",
  "flate2",
@@ -3688,6 +3688,7 @@ dependencies = [
  "rayon",
  "rust-zstd",
  "snap",
+ "zlib-rs",
 ]
 
 [[package]]

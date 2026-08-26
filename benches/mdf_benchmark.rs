@@ -152,6 +152,29 @@ fn bench_metadata(c: &mut Criterion) {
     group.finish();
 }
 
+/// Unsorted data benchmark — measures performance of the unsorted data reading path
+/// where records from multiple channel groups are interleaved and must be sorted.
+fn bench_unsorted_data(c: &mut Criterion) {
+    let mut group = c.benchmark_group("unsorted_data");
+    group.warm_up_time(Duration::from_secs(1));
+    group.sample_size(10);
+    group.measurement_time(Duration::from_secs(15));
+
+    // Synthetic large file with 4 channel groups, ~50MB
+    group.bench_function("unsorted_multi_cg_50mb", |b| {
+        b.iter(|| read_and_load("test_files/synthetic/unsorted_multi_cg.mf4"))
+    });
+
+    // Existing reference files from mdfreader tests
+    let base = MDF4_EXAMPLES.as_str();
+    group.bench_function("mdf4_vlsd_60kb", |b| {
+        let path = format!("{base}UnsortedData/VLSD/Vector_Unsorted_VLSD.MF4");
+        b.iter(|| read_and_load(&path))
+    });
+
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_large_files,
@@ -159,5 +182,6 @@ criterion_group!(
     bench_decompression,
     bench_local_synthetic,
     bench_metadata,
+    bench_unsorted_data,
 );
 criterion_main!(benches);

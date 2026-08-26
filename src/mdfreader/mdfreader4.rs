@@ -15,12 +15,9 @@ use encoding_rs::{Decoder, GB18030, UTF_8, UTF_16BE, UTF_16LE, WINDOWS_1252};
 use log::warn;
 use rayon::prelude::*;
 use std::fs::File;
-use std::io::Cursor;
+use std::io::{BufReader, Cursor, Read};
 use std::str;
-use std::{
-    collections::{HashMap, HashSet},
-    io::{BufReader, Read},
-};
+use std::collections::HashSet;
 use unicode_bom::Bom;
 
 use super::Mdf;
@@ -151,21 +148,14 @@ fn read_data(
                         .context("failed intialising arrays")?;
                 }
                 // initialise record counter
-                let mut record_counter: HashMap<u64, (usize, Vec<u8>)> =
-                    HashMap::with_capacity(dg.cg.len());
-                for cg in dg.cg.values_mut() {
-                    record_counter.insert(
-                        cg.block.cg_record_id,
-                        (
-                            0,
-                            Vec::with_capacity(
-                                (cg.record_length as u64 * cg.block.cg_cycle_count) as usize,
-                            ),
-                        ),
-                    );
-                }
-                read_all_channels_unsorted_from_bytes(&mut data, dg, &mut record_counter, decoder)
-                    .context("failed reading all channels sorted from bytes")?;
+                let mut unsorted_state = UnsortedState::new(dg);
+                read_all_channels_unsorted_from_bytes(
+                    &mut data,
+                    dg,
+                    &mut unsorted_state.buffers,
+                    decoder,
+                )
+                .context("failed reading all channels sorted from bytes")?;
                 position += block_header.len as i64;
             }
         }
@@ -1084,15 +1074,7 @@ fn parser_dl4_unsorted(
         utf_16_le: UTF_16LE.new_decoder(),
     };
     // initialise record counter
-    let mut record_counter: HashMap<u64, (usize, Vec<u8>)> = HashMap::new();
-    for cg in dg.cg.values_mut() {
-        let capacity = if (cg.block.cg_flags & (CG_F_VLSD | CG_F_VLSC)) != 0 {
-            0 // VLSD/VLSC data is not accumulated in record_counter
-        } else {
-            cg.block.cg_cycle_count as usize * cg.record_length as usize
-        };
-        record_counter.insert(cg.block.cg_record_id, (0, Vec::with_capacity(capacity)));
-    }
+    let mut unsorted_state = UnsortedState::new(dg);
     for dl in dl_blocks {
         for data_pointer in dl.dl_data {
             rdr.seek_relative(data_pointer - position)
@@ -1115,7 +1097,7 @@ fn parser_dl4_unsorted(
             read_all_channels_unsorted_from_bytes(
                 &mut data,
                 dg,
-                &mut record_counter,
+                &mut unsorted_state.buffers,
                 &mut decoder,
             )?;
             position = data_pointer + header.hdr_len as i64;
@@ -1198,21 +1180,12 @@ fn read_all_channels_unsorted(
 ) -> Result<()> {
     let data_block_length = block_length as usize;
     let mut position: usize = 24;
-    let mut record_counter: HashMap<u64, (usize, Vec<u8>)> = HashMap::new();
+    let mut unsorted_state = UnsortedState::new(dg);
     let mut decoder: Dec = Dec {
         windows_1252: WINDOWS_1252.new_decoder(),
         utf_16_be: UTF_16BE.new_decoder(),
         utf_16_le: UTF_16LE.new_decoder(),
     };
-    // initialise record counter that will contain sorted data blocks for each channel group
-    for cg in dg.cg.values_mut() {
-        let capacity = if (cg.block.cg_flags & (CG_F_VLSD | CG_F_VLSC)) != 0 {
-            0 // VLSD/VLSC data is not accumulated in record_counter
-        } else {
-            cg.block.cg_cycle_count as usize * cg.record_length as usize
-        };
-        record_counter.insert(cg.block.cg_record_id, (0, Vec::with_capacity(capacity)));
-    }
 
     // reads the sorted data block into chunks
     let mut data: Vec<u8> = Vec::with_capacity(CHUNK_SIZE_READING_4 * 2);
@@ -1229,16 +1202,59 @@ fn read_all_channels_unsorted(
         rdr.read_exact(&mut data_chunk[..chunk_size])
             .context("Could not read data chunk")?;
         data.extend_from_slice(&data_chunk[..chunk_size]);
-        read_all_channels_unsorted_from_bytes(&mut data, dg, &mut record_counter, &mut decoder)?;
+        unsorted_state.process_chunk(&mut data, dg, &mut decoder)?;
     }
     Ok(())
+}
+
+/// State for unsorted data reading — uses Vec-indexed lookup instead of HashMap
+/// for O(1) access by record ID with better cache locality.
+struct UnsortedState {
+    /// Indexed by record ID — each entry holds (write_index, sorted_data_buffer)
+    buffers: Vec<Option<(usize, Vec<u8>)>>,
+}
+
+impl UnsortedState {
+    fn new(dg: &Dg4) -> Self {
+        let max_record_id = dg
+            .cg
+            .values()
+            .map(|cg| cg.block.cg_record_id as usize)
+            .max()
+            .unwrap_or(0);
+        let mut buffers: Vec<Option<(usize, Vec<u8>)>> = Vec::with_capacity(max_record_id + 1);
+        buffers.resize_with(max_record_id + 1, || None);
+
+        for cg in dg.cg.values() {
+            let rec_id = cg.block.cg_record_id as usize;
+            let capacity = if (cg.block.cg_flags & (CG_F_VLSD | CG_F_VLSC)) != 0 {
+                0
+            } else {
+                cg.block.cg_cycle_count as usize * cg.record_length as usize
+            };
+            buffers[rec_id] = Some((0, Vec::with_capacity(capacity)));
+        }
+
+        Self {
+            buffers,
+        }
+    }
+
+    fn process_chunk(
+        &mut self,
+        data: &mut Vec<u8>,
+        dg: &mut Dg4,
+        decoder: &mut Dec,
+    ) -> Result<(), Error> {
+        read_all_channels_unsorted_from_bytes(data, dg, &mut self.buffers, decoder)
+    }
 }
 
 /// read record by record from unsorted data block into sorted data block, then copy data into channel arrays
 fn read_all_channels_unsorted_from_bytes(
     data: &mut Vec<u8>,
     dg: &mut Dg4,
-    record_counter: &mut HashMap<u64, (usize, Vec<u8>)>,
+    record_buffers: &mut [Option<(usize, Vec<u8>)>],
     decoder: &mut Dec,
 ) -> Result<(), Error> {
     let mut position: usize = 0;
@@ -1281,7 +1297,9 @@ fn read_all_channels_unsorted_from_bytes(
                         if let Some((target_rec_id, target_rec_pos)) = cg.vlsd_cg {
                             if let Some(target_cg) = dg.cg.get_mut(&target_rec_id) {
                                 if let Some(target_cn) = target_cg.cn.get_mut(&target_rec_pos) {
-                                    if let Some((nrecord, _)) = record_counter.get_mut(&rec_id) {
+                                    if let Some((nrecord, _)) =
+                                        record_buffers[rec_id as usize].as_mut()
+                                    {
                                         // For VLSC channels (cn_type == 7) in unsorted data,
                                         // reinitialize from UInt (offset storage) to actual data type on first record
                                         if *nrecord == 0 && target_cn.block.cn_type == 7 {
@@ -1380,7 +1398,7 @@ fn read_all_channels_unsorted_from_bytes(
             } else if remaining >= record_length {
                 // Not VLSD channel
                 let record = &data[position..position + cg.record_length as usize];
-                if let Some((_nrecord, data)) = record_counter.get_mut(&rec_id) {
+                if let Some((_nrecord, data)) = record_buffers[rec_id as usize].as_mut() {
                     data.extend(record);
                 } else {
                     bail!("could not find the record id");
@@ -1401,8 +1419,10 @@ fn read_all_channels_unsorted_from_bytes(
     data.truncate(remaining_len);
 
     // From sorted data block, copies data in channels arrays
-    for (rec_id, (index, record_data)) in record_counter.iter_mut() {
-        if let Some(channel_group) = dg.cg.get_mut(rec_id) {
+    for (rec_id, buffer) in record_buffers.iter_mut().enumerate() {
+        if let Some((index, record_data)) = buffer
+            && let Some(channel_group) = dg.cg.get_mut(&(rec_id as u64))
+        {
             let record_length = channel_group.record_length as usize;
             let n_records = record_data.len().checked_div(record_length).unwrap_or(0);
             read_channels_from_bytes(
