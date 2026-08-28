@@ -9,6 +9,7 @@ use crate::{
 };
 use anyhow::{Context, Result};
 use arrow::util::display::{ArrayFormatter, FormatOptions};
+use rayon::prelude::*;
 use std::{fs::File, io::BufWriter, io::Write, path::Path, sync::Arc};
 
 /// Exports all loaded channel groups to CSV — one file per channel group.
@@ -17,19 +18,25 @@ pub fn export_to_csv(mdf: &Mdf, file_name: &str) -> Result<()> {
         MdfInfo::V4(mdfinfo4) => {
             for dg in mdfinfo4.dg.values() {
                 if dg.cg.values().any(|cg| !cg.channel_names.is_empty()) {
-                    for (rec_id, cg) in &dg.cg {
-                        mdf4_cg_to_csv(file_name, mdfinfo4, rec_id, cg)
-                            .context("failed converting Channel Group 4 to CSV")?;
-                    }
+                    // Collect CGs to export in parallel
+                    let cg_refs: Vec<(&u64, &Cg4)> = dg.cg.iter().collect();
+                    cg_refs.par_iter().try_for_each(|(rec_id, cg)| {
+                        mdf4_cg_to_csv(file_name, mdfinfo4, **rec_id, cg)
+                            .with_context(|| {
+                                format!("failed converting Channel Group 4 rec_id {rec_id} to CSV")
+                            })
+                    })?;
                 }
             }
         }
         MdfInfo::V3(mdfinfo3) => {
             for dg in mdfinfo3.dg.values() {
-                for (rec_id, cg) in &dg.cg {
-                    mdf3_cg_to_csv(file_name, mdfinfo3, rec_id, cg)
-                        .context("failed converting Channel Group 3 to CSV")?;
-                }
+                let cg_refs: Vec<(&u16, &Cg3)> = dg.cg.iter().collect();
+                cg_refs.par_iter().try_for_each(|(rec_id, cg)| {
+                    mdf3_cg_to_csv(file_name, mdfinfo3, **rec_id, cg).with_context(|| {
+                        format!("failed converting Channel Group 3 rec_id {rec_id} to CSV")
+                    })
+                })?;
             }
         }
     }
@@ -45,7 +52,7 @@ pub fn export_dataframe_to_csv(mdf: &Mdf, channel_name: &str, file_name: &str) -
                 && let Some(dg) = mdfinfo4.dg.get(dg_pos)
                 && let Some(cg) = dg.cg.get(rec_id)
             {
-                mdf4_cg_to_csv(file_name, mdfinfo4, rec_id, cg)
+                mdf4_cg_to_csv(file_name, mdfinfo4, *rec_id, cg)
                     .context("failed converting Channel Group 4 to CSV")?;
             }
         }
@@ -55,7 +62,7 @@ pub fn export_dataframe_to_csv(mdf: &Mdf, channel_name: &str, file_name: &str) -
                 && let Some(dg) = mdfinfo3.dg.get(dg_pos)
                 && let Some(cg) = dg.cg.get(rec_id)
             {
-                mdf3_cg_to_csv(file_name, mdfinfo3, rec_id, cg)
+                mdf3_cg_to_csv(file_name, mdfinfo3, *rec_id, cg)
                     .context("failed converting Channel Group 3 to CSV")?;
             }
         }
@@ -63,7 +70,7 @@ pub fn export_dataframe_to_csv(mdf: &Mdf, channel_name: &str, file_name: &str) -
     Ok(())
 }
 
-fn mdf4_cg_to_csv(file_name: &str, _mdfinfo4: &MdfInfo4, rec_id: &u64, cg: &Cg4) -> Result<()> {
+fn mdf4_cg_to_csv(file_name: &str, _mdfinfo4: &MdfInfo4, rec_id: u64, cg: &Cg4) -> Result<()> {
     let channels: Vec<(&str, Arc<dyn arrow::array::Array>)> = cg
         .cn
         .values()
@@ -74,14 +81,14 @@ fn mdf4_cg_to_csv(file_name: &str, _mdfinfo4: &MdfInfo4, rec_id: &u64, cg: &Cg4)
         write_csv(
             file_name,
             cg.master_channel_name.clone(),
-            *rec_id,
+            rec_id,
             &channels,
         )?;
     }
     Ok(())
 }
 
-fn mdf3_cg_to_csv(file_name: &str, _mdfinfo3: &MdfInfo3, rec_id: &u16, cg: &Cg3) -> Result<()> {
+fn mdf3_cg_to_csv(file_name: &str, _mdfinfo3: &MdfInfo3, rec_id: u16, cg: &Cg3) -> Result<()> {
     let channels: Vec<(&str, Arc<dyn arrow::array::Array>)> = cg
         .cn
         .values()
@@ -92,7 +99,7 @@ fn mdf3_cg_to_csv(file_name: &str, _mdfinfo3: &MdfInfo3, rec_id: &u16, cg: &Cg3)
         write_csv(
             file_name,
             cg.master_channel_name.clone(),
-            u64::from(*rec_id),
+            u64::from(rec_id),
             &channels,
         )?;
     }
@@ -112,7 +119,7 @@ fn write_csv(
     suffix.insert(0, '_');
     let mut stem = base_path
         .file_stem()
-        .context("no file stem in given path")?
+        .context("no file stem in given file_name")?
         .to_os_string();
     stem.push(&suffix);
     let csv_path = base_path.with_file_name(stem).with_extension("csv");

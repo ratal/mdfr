@@ -22,6 +22,7 @@ use parquet::{
         properties::{WriterProperties, WriterVersion},
     },
 };
+use rayon::prelude::*;
 
 use std::{collections::HashMap, fs::File, io::BufWriter, path::Path, sync::Arc};
 
@@ -36,19 +37,30 @@ pub fn export_to_parquet(
         MdfInfo::V4(mdfinfo4) => {
             for dg in mdfinfo4.dg.values() {
                 if dg.cg.values().any(|cg| !cg.channel_names.is_empty()) {
-                    for (rec_id, cg) in &dg.cg {
-                        mdf4_cg_to_parquet(file_name, mdfinfo4, rec_id, cg, parquet_compression)
-                            .context("failed converting Channel Group 4 to parquet")?;
-                    }
+                    // Collect CGs to export in parallel
+                    let cg_refs: Vec<(&u64, &Cg4)> = dg.cg.iter().collect();
+                    cg_refs.par_iter().try_for_each(|(rec_id, cg)| {
+                        mdf4_cg_to_parquet(file_name, mdfinfo4, *rec_id, cg, parquet_compression)
+                            .with_context(|| {
+                                format!(
+                                    "failed converting Channel Group 4 rec_id {rec_id} to parquet"
+                                )
+                            })
+                    })?;
                 }
             }
         }
         MdfInfo::V3(mdfinfo3) => {
             for dg in mdfinfo3.dg.values() {
-                for (rec_id, cg) in &dg.cg {
-                    mdf3_cg_to_parquet(file_name, mdfinfo3, rec_id, cg, parquet_compression)
-                        .context("failed converting Channel Group 3 to parquet")?;
-                }
+                let cg_refs: Vec<(&u16, &Cg3)> = dg.cg.iter().collect();
+                cg_refs.par_iter().try_for_each(|(rec_id, cg)| {
+                    mdf3_cg_to_parquet(file_name, mdfinfo3, *rec_id, cg, parquet_compression)
+                        .with_context(|| {
+                            format!(
+                                "failed converting Channel Group 3 rec_id {rec_id} to parquet"
+                            )
+                        })
+                })?;
             }
         }
     }

@@ -123,7 +123,7 @@ pub fn decompress_data(
     buf: Vec<u8>,
     org_data_length: u64,
 ) -> Result<Vec<u8>> {
-    let mut data = Vec::<u8>::new();
+    let mut data = Vec::<u8>::with_capacity(org_data_length as usize);
     match zip_type {
         0 | 1 => {
             // deflate algorithm (zlib format)
