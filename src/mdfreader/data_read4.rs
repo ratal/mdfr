@@ -1087,9 +1087,10 @@ pub fn read_channels_from_bytes(
                         if cn.block.cn_data_type == 6 {
                             // SBC ISO-8859-1 to be converted into UTF8
                             let mut decoder = WINDOWS_1252.new_decoder();
+                            let mut dst = String::with_capacity(n_bytes);
                             for record in data_chunk.chunks(record_length) {
                                 value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                let mut dst = String::with_capacity(value.len());
+                                dst.clear();
                                 let (_result, _size, _replacement) =
                                     decoder.decode_to_string(value, &mut dst, false);
                                 array.append_value(dst.trim_end_matches('\0'));
@@ -1105,11 +1106,12 @@ pub fn read_channels_from_bytes(
                             }
                         } else if cn.block.cn_data_type == 8 || cn.block.cn_data_type == 9 {
                             // 8 | 9 :String UTF16 to be converted into UTF8
+                            let mut dst = String::with_capacity(n_bytes);
                             if cn.endian.is_big() {
                                 let mut decoder = UTF_16BE.new_decoder();
                                 for record in data_chunk.chunks(record_length) {
                                     value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                    let mut dst = String::with_capacity(value.len());
+                                    dst.clear();
                                     let (_result, _size, _replacement) =
                                         decoder.decode_to_string(value, &mut dst, false);
                                     array.append_value(dst.trim_end_matches('\0'));
@@ -1118,7 +1120,7 @@ pub fn read_channels_from_bytes(
                                 let mut decoder = UTF_16LE.new_decoder();
                                 for record in data_chunk.chunks(record_length) {
                                     value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                    let mut dst = String::with_capacity(value.len());
+                                    dst.clear();
                                     let (_result, _size, _replacement) =
                                         decoder.decode_to_string(value, &mut dst, false);
                                     array.append_value(dst.trim_end_matches('\0'));
@@ -1126,6 +1128,7 @@ pub fn read_channels_from_bytes(
                             }
                         } else if cn.block.cn_data_type == 17 {
                             // 17: Unicode with BOM
+                            let mut dst = String::with_capacity(n_bytes);
                             for record in data_chunk.chunks(record_length) {
                                 value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
                                 // identifies BOM
@@ -1139,7 +1142,7 @@ pub fn read_channels_from_bytes(
                                         bail!("not implemented BOM type");
                                     }
                                 };
-                                let mut dst = String::with_capacity(value.len());
+                                dst.clear();
                                 let (_result, _size, _replacement) =
                                     decoder.decode_to_string(value, &mut dst, false);
                                 array.append_value(dst.trim_end_matches('\0'));

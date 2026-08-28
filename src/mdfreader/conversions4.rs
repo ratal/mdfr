@@ -1317,11 +1317,22 @@ fn text_to_value_calculation(
     }
     let default = cc_val[cc_val.len() - 1];
     let mut new_array = vec![0f64; array.len()];
+    // Iterate without cloning: use values_slice() and offsets_slice()
+    let values = array.values_slice();
+    let offsets = array.offsets_slice();
     new_array
         .iter_mut()
-        .zip(array.finish_cloned().iter())
-        .for_each(|(new_a, a)| {
-            if let Some(val) = table.get(a.unwrap_or_default()) {
+        .enumerate()
+        .for_each(|(i, new_a)| {
+            let s = if i + 1 < offsets.len() {
+                let start = offsets[i] as usize;
+                let end = offsets[i + 1] as usize;
+                let bytes = &values[start..end];
+                std::str::from_utf8(bytes).unwrap_or_default()
+            } else {
+                ""
+            };
+            if let Some(val) = table.get(s) {
                 *new_a = *val;
             } else {
                 *new_a = default;
@@ -1380,19 +1391,30 @@ fn text_to_text_calculation(
         default = Some(txt);
     }
     let mut new_array = LargeStringBuilder::with_capacity(array.len(), 32);
-    array.finish_cloned().iter().for_each(|a| {
-        if let Some(val) = table.get(a.unwrap_or_default()) {
+    // Iterate without cloning: use values_slice() and offsets_slice()
+    let values = array.values_slice();
+    let offsets = array.offsets_slice();
+    for i in 0..array.len() {
+        let s = if i + 1 < offsets.len() {
+            let start = offsets[i] as usize;
+            let end = offsets[i + 1] as usize;
+            let bytes = &values[start..end];
+            std::str::from_utf8(bytes).unwrap_or_default()
+        } else {
+            ""
+        };
+        if let Some(val) = table.get(s) {
             if let Some(txt) = val.clone() {
                 new_array.append_value(txt);
             } else {
-                new_array.append_value(a.unwrap_or_default());
+                new_array.append_value(s);
             }
         } else if let Some(tx) = default.clone() {
             new_array.append_value(tx);
         } else {
-            new_array.append_value(a.unwrap_or_default());
+            new_array.append_value(s);
         }
-    });
+    }
     new_array
 }
 
