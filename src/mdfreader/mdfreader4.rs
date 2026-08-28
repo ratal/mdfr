@@ -14,10 +14,10 @@ use binrw::BinReaderExt;
 use encoding_rs::{Decoder, GB18030, UTF_8, UTF_16BE, UTF_16LE, WINDOWS_1252};
 use log::warn;
 use rayon::prelude::*;
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::{BufReader, Cursor, Read};
 use std::str;
-use std::collections::HashSet;
 use unicode_bom::Bom;
 
 use super::Mdf;
@@ -1243,9 +1243,7 @@ impl UnsortedState {
             buffers[rec_id] = Some((0, Vec::with_capacity(capacity)));
         }
 
-        Self {
-            buffers,
-        }
+        Self { buffers }
     }
 
     fn process_chunk(
@@ -1289,21 +1287,20 @@ fn read_all_channels_unsorted_from_bytes(
     let mut remaining: usize = data_length - position;
     while remaining > 0 {
         // reads record id
-        let rec_id: u64;
-        if dg_rec_id_size == 1 && remaining >= 1 {
-            rec_id = data[position].into();
+        let rec_id: u64 = if dg_rec_id_size == 1 && remaining >= 1 {
+            data[position].into()
         } else if dg_rec_id_size == 2 && remaining >= 2 {
             let rec = &data[position..position + std::mem::size_of::<u16>()];
-            rec_id = u16::from_le_bytes(rec.try_into().unwrap()) as u64;
+            u16::from_le_bytes(rec.try_into().unwrap()) as u64
         } else if dg_rec_id_size == 4 && remaining >= 4 {
             let rec = &data[position..position + std::mem::size_of::<u32>()];
-            rec_id = u32::from_le_bytes(rec.try_into().unwrap()) as u64;
+            u32::from_le_bytes(rec.try_into().unwrap()) as u64
         } else if dg_rec_id_size == 8 && remaining >= 8 {
             let rec = &data[position..position + std::mem::size_of::<u64>()];
-            rec_id = u64::from_le_bytes(rec.try_into().unwrap());
+            u64::from_le_bytes(rec.try_into().unwrap())
         } else {
             break; // not enough data remaining
-        }
+        };
 
         // Find the CG for this record ID using linear search (fast for small N)
         let cg_info = cg_lookup.iter().find(|entry| entry.rec_id == rec_id);

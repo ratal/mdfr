@@ -1733,8 +1733,7 @@ fn parse_ce(
         .read_le()
         .context("could not read ce_extension_type")?;
 
-    let ce_extension: CeSupplement;
-    if ce_extension_type == 0x02 {
+    let ce_extension: CeSupplement = if ce_extension_type == 0x02 {
         // Reads DIM
         let mut buf = vec![0u8; 118];
         rdr.read_exact(&mut buf)
@@ -1755,12 +1754,12 @@ fn parse_ce(
             .context("Could not read DIM ecu_id")?;
         let mut ce_ecu_id: String = encoding.decode(&ecu_id).0.into();
         ce_ecu_id = ce_ecu_id.trim_end_matches(char::from(0)).to_string();
-        ce_extension = CeSupplement::Dim(DimBlock {
+        CeSupplement::Dim(DimBlock {
             ce_module_number,
             ce_address,
             ce_desc,
             ce_ecu_id,
-        });
+        })
     } else if ce_extension_type == 19 {
         // Reads CAN
         let mut buf = vec![0u8; 80];
@@ -1782,15 +1781,15 @@ fn parse_ce(
             .context("Could not read CAN Supplement sender")?;
         let mut ce_sender_name: String = encoding.decode(&sender).0.into();
         ce_sender_name = ce_sender_name.trim_end_matches(char::from(0)).to_string();
-        ce_extension = CeSupplement::Can(CanBlock {
+        CeSupplement::Can(CanBlock {
             ce_can_id,
             ce_can_index,
             ce_message_name,
             ce_sender_name,
-        });
+        })
     } else {
-        ce_extension = CeSupplement::None;
-    }
+        CeSupplement::None
+    };
     sharable.ce.insert(
         target,
         CeBlock {
@@ -1860,7 +1859,7 @@ pub fn build_channel_db3(
         }
     }
     // identifying master channels
-    for (_dg_position, dg) in dg.iter_mut() {
+    for dg in dg.values_mut() {
         for cg in dg.cg.values_mut() {
             let mut cg_channel_list: HashSet<String> =
                 HashSet::with_capacity(cg.block.cg_n_channels as usize);

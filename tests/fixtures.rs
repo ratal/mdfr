@@ -785,7 +785,14 @@ pub fn create_unsorted_vlsd_vlsc_fixture() -> Result<()> {
     debug_assert_eq!(buf.len(), 288, "Dg4 size mismatch");
 
     // CG1: rec_id=1, VLSD flag, cn_first=0 (no CN blocks for VLSD CG)
-    write_cg4_vlsd(&mut buf, 0, N_RECORDS_PER_CG, CG1_REC_ID, CG_F_VLSD, Some(CG2_OFFSET));
+    write_cg4_vlsd(
+        &mut buf,
+        0,
+        N_RECORDS_PER_CG,
+        CG1_REC_ID,
+        CG_F_VLSD,
+        Some(CG2_OFFSET),
+    );
     debug_assert_eq!(buf.len(), 392, "CG1 size mismatch");
 
     // CG2: rec_id=2, no VLSD flag, cn_first=CN2_OFFSET
@@ -866,7 +873,14 @@ fn write_cn4_with_data(
     push_f64(buf, 0.0); // cn_limit_ext_max
 }
 /// CG block with VLSD/VLSC flag support.
-fn write_cg4_vlsd(buf: &mut Vec<u8>, cn_first: i64, cycle_count: u64, rec_id: u64, flags: u16, cg_cg_next: Option<i64>) {
+fn write_cg4_vlsd(
+    buf: &mut Vec<u8>,
+    cn_first: i64,
+    cycle_count: u64,
+    rec_id: u64,
+    flags: u16,
+    cg_cg_next: Option<i64>,
+) {
     // Blockheader4Short (16 bytes)
     buf.extend_from_slice(b"##CG");
     push_zeros(buf, 4);

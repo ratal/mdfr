@@ -178,9 +178,8 @@ fn bench_unsorted_data(c: &mut Criterion) {
     });
 
     group.bench_function("mdf4_vlsc_5kb", |b| {
-        let path = format!(
-            "{base}UnsortedData/VLSC/RAC_MDF430_Unsorted_VLSC_Compact_Structure.mf4"
-        );
+        let path =
+            format!("{base}UnsortedData/VLSC/RAC_MDF430_Unsorted_VLSC_Compact_Structure.mf4");
         b.iter(|| read_and_load(&path))
     });
 
