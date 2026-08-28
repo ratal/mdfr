@@ -661,6 +661,30 @@ fn create_fixtures() {
         std::path::Path::new("test_files/synthetic/unsorted_multi_cg.mf4").exists(),
         "unsorted fixture file not created"
     );
+    create_unsorted_vlsd_vlsc_fixture().expect("failed to create unsorted_vlsd_vlsc fixture");
+    assert!(
+        std::path::Path::new("test_files/synthetic/unsorted_vlsd_vlsc.mf4").exists(),
+        "unsorted VLSD/VLSC fixture file not created"
+    );
+}
+
+#[test]
+fn verify_unsorted_vlsd_vlsc_fixture_loads() {
+    use mdfr::mdfreader::Mdf;
+    let path = "test_files/synthetic/unsorted_vlsd_vlsc.mf4";
+    let mut mdf = Mdf::new(path).expect("failed to open unsorted VLSD/VLSC fixture");
+
+    eprintln!("Mdf info parsed, about to load data");
+
+    mdf.load_all_channels_data_in_memory()
+        .expect("failed to load unsorted VLSD/VLSC data");
+
+    let names = mdf.get_channel_names_set();
+    eprintln!("Found {} channels:", names.len());
+    for name in names.iter() {
+        eprintln!("  '{}'", name);
+    }
+    assert!(names.contains("vlsd_target_ch"), "missing vlsd_target_ch");
 }
 
 #[test]
@@ -699,4 +723,167 @@ fn verify_unsorted_fixture_loads() {
         "expected at least 9 channels, got {}",
         names.len()
     );
+}
+
+// ─── Fixture: unsorted_vlsd_vlsc ─────────────────────────────────────────────
+
+/// Builds and writes `test_files/synthetic/unsorted_vlsd_vlsc.mf4`.
+///
+/// Contains channel groups with VLSD (Variable Length Signal Data) flag
+/// for unsorted data benchmarking.
+/// - dg_rec_id_size = 2 (u16 record IDs)
+/// - ~100K variable-length records
+/// - ~30MB file size
+///
+/// CG layout:
+/// - CG 1: rec_id=1, VLSD flag, contains offset/length storage (cn_type = 1)
+/// - CG 2: rec_id=2, no VLSD flag, contains the actual UTF-8 channel
+///          with cn_data pointing to CG1's block position
+pub fn create_unsorted_vlsd_vlsc_fixture() -> Result<()> {
+    const PATH: &str = "test_files/synthetic/unsorted_vlsd_vlsc.mf4";
+    const N_RECORDS_PER_CG: u64 = 100_000;
+
+    std::fs::create_dir_all("test_files/synthetic")?;
+
+    let mut buf: Vec<u8> = Vec::with_capacity(32_000_000);
+
+    write_id_block(&mut buf);
+    debug_assert_eq!(buf.len(), 64, "IdBlock size mismatch");
+
+    // CG record IDs
+    const CG1_REC_ID: u64 = 1; // VLSD CG (contains offset/length storage)
+    const CG2_REC_ID: u64 = 2; // Target CG (contains actual channel)
+
+    // VLSD flags
+    const CG_F_VLSD: u16 = 1 << 0; // Variable Length Signal Data
+
+    // Metadata block offsets
+    const DG_OFFSET: i64 = 224;
+    const CG1_OFFSET: i64 = 288; // VLSD CG (no CN blocks)
+    const CG2_OFFSET: i64 = 392; // Target CG (contains actual channel)
+    const CN2_OFFSET: i64 = 496; // Target CN (actual UTF-8 channel)
+    const TX_CG2_CH1_OFFSET: i64 = 656;
+    const DT_OFFSET: i64 = 695;
+
+    write_hd4(&mut buf, DG_OFFSET, 168);
+    debug_assert_eq!(buf.len(), 168, "Hd4 size mismatch");
+
+    write_fh(&mut buf);
+    debug_assert_eq!(buf.len(), 224, "FhBlock size mismatch");
+
+    // DG with dg_rec_id_size = 2 (u16 record IDs)
+    buf.extend_from_slice(b"##DG");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 64);
+    push_u64(&mut buf, 4);
+    push_i64(&mut buf, 0); // dg_dg_next
+    push_i64(&mut buf, CG1_OFFSET); // dg_cg_first
+    push_i64(&mut buf, DT_OFFSET); // dg_data
+    push_i64(&mut buf, 0); // dg_md_comment
+    push_u8(&mut buf, 2); // dg_rec_id_size = 2 (u16)
+    push_zeros(&mut buf, 7);
+    debug_assert_eq!(buf.len(), 288, "Dg4 size mismatch");
+
+    // CG1: rec_id=1, VLSD flag, cn_first=0 (no CN blocks for VLSD CG)
+    write_cg4_vlsd(&mut buf, 0, N_RECORDS_PER_CG, CG1_REC_ID, CG_F_VLSD, Some(CG2_OFFSET));
+    debug_assert_eq!(buf.len(), 392, "CG1 size mismatch");
+
+    // CG2: rec_id=2, no VLSD flag, cn_first=CN2_OFFSET
+    write_cg4_with_rec_id(&mut buf, CN2_OFFSET, N_RECORDS_PER_CG, 0, CG2_REC_ID, None);
+    debug_assert_eq!(buf.len(), 496, "CG2 size mismatch");
+
+    // CN2: type=0 (fixed), sync=0, data_type=7 (UTF-8), cn_data=CG1_OFFSET (points to VLSD CG)
+    write_cn4_with_data(&mut buf, 0, 0, 7, 0, 0, 0, TX_CG2_CH1_OFFSET, 0, CG1_OFFSET);
+    debug_assert_eq!(buf.len(), 656, "CN2 size mismatch");
+
+    // TX blocks
+    write_tx(&mut buf, "vlsd_target_ch");
+    debug_assert_eq!(buf.len(), 695, "TX vlsd_target_ch size mismatch");
+
+    // DT block with VLSD records
+    // Each record: [u16 rec_id][u32 length][variable-length data]
+    let mut dt_data: Vec<u8> = Vec::with_capacity(30_000_000);
+
+    for i in 0..N_RECORDS_PER_CG {
+        // CG1 record: UTF-8 string of variable length
+        let utf8_data = format!("record_{}_data_with_variable_length_content", i);
+        let utf8_bytes = utf8_data.as_bytes();
+        dt_data.extend_from_slice(&1u16.to_le_bytes()); // rec_id = 1
+        dt_data.extend_from_slice(&(utf8_bytes.len() as u32).to_le_bytes()); // length
+        dt_data.extend_from_slice(utf8_bytes); // data
+    }
+
+    write_dt(&mut buf, &dt_data);
+
+    std::fs::write(PATH, &buf)?;
+    Ok(())
+}
+
+/// CN block with cn_data support.
+fn write_cn4_with_data(
+    buf: &mut Vec<u8>,
+    cn_type: u8,
+    cn_sync_type: u8,
+    cn_data_type: u8,
+    cn_byte_offset: u32,
+    cn_bit_count: u32,
+    cn_cn_next: i64,
+    cn_tx_name: i64,
+    cn_cc_conversion: i64,
+    cn_data: i64,
+) {
+    // Blockheader4Short (16 bytes)
+    buf.extend_from_slice(b"##CN");
+    push_zeros(buf, 4);
+    push_u64(buf, 160);
+    // Cn4Block body (8 + 64 + 72 = 144 bytes):
+    push_u64(buf, 8); // cn_links (8 standard links)
+    push_i64(buf, cn_cn_next); // cn_cn_next
+    push_i64(buf, 0); // cn_composition
+    push_i64(buf, cn_tx_name); // cn_tx_name
+    push_i64(buf, 0); // cn_si_source
+    push_i64(buf, cn_cc_conversion); // cn_cc_conversion
+    push_i64(buf, cn_data); // cn_data - points to VLSD CG
+    push_i64(buf, 0); // cn_md_unit
+    push_i64(buf, 0); // cn_md_comment
+    // Data members (72 bytes):
+    push_u8(buf, cn_type); // cn_type
+    push_u8(buf, cn_sync_type); // cn_sync_type
+    push_u8(buf, cn_data_type); // cn_data_type
+    push_u8(buf, 0); // cn_bit_offset
+    push_u32(buf, cn_byte_offset); // cn_byte_offset
+    push_u32(buf, cn_bit_count); // cn_bit_count
+    push_u32(buf, 0); // cn_flags
+    push_u32(buf, 0); // cn_inval_bit_pos
+    push_u8(buf, 0xff); // cn_precision (unrestricted)
+    push_u8(buf, 0); // cn_alignment
+    push_u16(buf, 0); // cn_attachment_count
+    push_f64(buf, 0.0); // cn_val_range_min
+    push_f64(buf, 0.0); // cn_val_range_max
+    push_f64(buf, 0.0); // cn_limit_min
+    push_f64(buf, 0.0); // cn_limit_max
+    push_f64(buf, 0.0); // cn_limit_ext_min
+    push_f64(buf, 0.0); // cn_limit_ext_max
+}
+/// CG block with VLSD/VLSC flag support.
+fn write_cg4_vlsd(buf: &mut Vec<u8>, cn_first: i64, cycle_count: u64, rec_id: u64, flags: u16, cg_cg_next: Option<i64>) {
+    // Blockheader4Short (16 bytes)
+    buf.extend_from_slice(b"##CG");
+    push_zeros(buf, 4);
+    push_u64(buf, 104);
+    // Cg4Block body (88 bytes):
+    push_u64(buf, 6); // cg_links
+    push_i64(buf, cg_cg_next.unwrap_or(0)); // cg_cg_next
+    push_i64(buf, cn_first); // cg_cn_first
+    push_i64(buf, 0); // cg_tx_acq_name
+    push_i64(buf, 0); // cg_si_acq_source
+    push_i64(buf, 0); // cg_sr_first
+    push_i64(buf, 0); // cg_md_comment
+    push_u64(buf, rec_id); // cg_record_id
+    push_u64(buf, cycle_count); // cg_cycle_count
+    push_u16(buf, flags); // cg_flags (VLSD/VLSC)
+    push_u16(buf, 0); // cg_path_separator
+    push_zeros(buf, 4); // cg_reserved
+    push_u32(buf, 0); // cg_data_bytes (0 for VLSD)
+    push_u32(buf, 0); // cg_inval_bytes
 }

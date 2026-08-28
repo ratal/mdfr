@@ -1207,6 +1207,14 @@ fn read_all_channels_unsorted(
     Ok(())
 }
 
+/// Lookup entry for fast CG access by record ID.
+struct CgLookupEntry {
+    rec_id: u64,
+    record_length: u32,
+    is_vlsd: bool,
+    vlsd_cg: Option<(u64, i32)>,
+}
+
 /// State for unsorted data reading — uses Vec-indexed lookup instead of HashMap
 /// for O(1) access by record ID with better cache locality.
 struct UnsortedState {
@@ -1263,6 +1271,20 @@ fn read_all_channels_unsorted_from_bytes(
     let vlsd_data_start_offset = dg_rec_id_size + std::mem::size_of::<u32>();
     // reusable string buffer for VLSC string decoding
     let mut dst = String::new();
+
+    // Pre-build a Vec of (rec_id, record_length, is_vlsd, vlsd_target_info)
+    // for fast lookup in the hot loop
+    let mut cg_lookup: Vec<CgLookupEntry> = Vec::new();
+    for cg in dg.cg.values() {
+        let is_vlsd = (cg.block.cg_flags & (CG_F_VLSD | CG_F_VLSC)) != 0;
+        cg_lookup.push(CgLookupEntry {
+            rec_id: cg.block.cg_record_id,
+            record_length: cg.record_length,
+            is_vlsd,
+            vlsd_cg: cg.vlsd_cg,
+        });
+    }
+
     // unsorted data into sorted data blocks, except for VLSD CG.
     let mut remaining: usize = data_length - position;
     while remaining > 0 {
@@ -1282,10 +1304,12 @@ fn read_all_channels_unsorted_from_bytes(
         } else {
             break; // not enough data remaining
         }
-        // reads record based on record id
-        if let Some(cg) = dg.cg.get_mut(&rec_id) {
-            let record_length = cg.record_length as usize;
-            if (cg.block.cg_flags & (CG_F_VLSD | CG_F_VLSC)) != 0 {
+
+        // Find the CG for this record ID using linear search (fast for small N)
+        let cg_info = cg_lookup.iter().find(|entry| entry.rec_id == rec_id);
+
+        if let Some(cg_entry) = cg_info {
+            if cg_entry.is_vlsd {
                 // VLSD or VLSC channel (Variable Length Signal Data/Size Channel)
                 if remaining >= 4 + dg_rec_id_size {
                     let len = &data[position + dg_rec_id_size..position + vlsd_data_start_offset];
@@ -1294,7 +1318,7 @@ fn read_all_channels_unsorted_from_bytes(
                     if remaining >= length {
                         position += vlsd_data_start_offset;
                         let record = &data[position..position + length];
-                        if let Some((target_rec_id, target_rec_pos)) = cg.vlsd_cg {
+                        if let Some((target_rec_id, target_rec_pos)) = cg_entry.vlsd_cg {
                             if let Some(target_cg) = dg.cg.get_mut(&target_rec_id) {
                                 if let Some(target_cn) = target_cg.cn.get_mut(&target_rec_pos) {
                                     if let Some((nrecord, _)) =
@@ -1395,15 +1419,15 @@ fn read_all_channels_unsorted_from_bytes(
                 } else {
                     break; // not enough data remaining
                 }
-            } else if remaining >= record_length {
+            } else if remaining >= cg_entry.record_length as usize {
                 // Not VLSD channel
-                let record = &data[position..position + cg.record_length as usize];
+                let record = &data[position..position + cg_entry.record_length as usize];
                 if let Some((_nrecord, data)) = record_buffers[rec_id as usize].as_mut() {
                     data.extend(record);
                 } else {
                     bail!("could not find the record id");
                 }
-                position += record_length;
+                position += cg_entry.record_length as usize;
             } else {
                 break; // not enough data remaining
             }

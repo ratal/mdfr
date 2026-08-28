@@ -160,15 +160,27 @@ fn bench_unsorted_data(c: &mut Criterion) {
     group.sample_size(10);
     group.measurement_time(Duration::from_secs(15));
 
-    // Synthetic large file with 4 channel groups, ~50MB
+    // Synthetic large file with 4 channel groups, ~50MB (fixed-length records)
     group.bench_function("unsorted_multi_cg_50mb", |b| {
         b.iter(|| read_and_load("test_files/synthetic/unsorted_multi_cg.mf4"))
+    });
+
+    // Synthetic large file with VLSD (Variable Length Signal Data), ~30MB
+    group.bench_function("unsorted_vlsd_30mb", |b| {
+        b.iter(|| read_and_load("test_files/synthetic/unsorted_vlsd_vlsc.mf4"))
     });
 
     // Existing reference files from mdfreader tests
     let base = MDF4_EXAMPLES.as_str();
     group.bench_function("mdf4_vlsd_60kb", |b| {
         let path = format!("{base}UnsortedData/VLSD/Vector_Unsorted_VLSD.MF4");
+        b.iter(|| read_and_load(&path))
+    });
+
+    group.bench_function("mdf4_vlsc_5kb", |b| {
+        let path = format!(
+            "{base}UnsortedData/VLSC/RAC_MDF430_Unsorted_VLSC_Compact_Structure.mf4"
+        );
         b.iter(|| read_and_load(&path))
     });
 
