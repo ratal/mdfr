@@ -17,6 +17,13 @@ fn read_and_load(path: &str) {
         .expect("failed to load data");
 }
 
+fn read_load_convert(path: &str) {
+    let mut mdf = Mdf::new(black_box(path)).expect("failed to open file");
+    mdf.load_all_channels_data_in_memory()
+        .expect("failed to load data");
+    mdf.convert_all_channels().expect("failed to convert channels");
+}
+
 /// Large files (≥50 MB) — sample_size(10) with enough measurement_time to avoid the
 /// "Unable to complete N samples" warning (10 × ~2 s/iter < 25 s).
 fn bench_large_files(c: &mut Criterion) {
@@ -194,5 +201,122 @@ criterion_group!(
     bench_local_synthetic,
     bench_metadata,
     bench_unsorted_data,
+    bench_conversion,
+    bench_export,
 );
 criterion_main!(benches);
+
+/// Conversion benchmark — measures performance of converting raw channel data
+/// to physical values (applies CC formulas, bit masks, etc.).
+fn bench_conversion(c: &mut Criterion) {
+    let base = MDF4_EXAMPLES.as_str();
+    let mut group = c.benchmark_group("conversion");
+    group.warm_up_time(Duration::from_secs(1));
+    group.sample_size(10);
+    group.measurement_time(Duration::from_secs(15));
+
+    // Full pipeline: load + conversion
+    group.bench_function("convert_184mb", |b| {
+        let path = format!("{base}Simple/error.mf4");
+        b.iter(|| read_load_convert(&path))
+    });
+
+    group.bench_function("convert_47mb", |b| {
+        let path = format!("{base}Simple/measure2.mf4");
+        b.iter(|| read_load_convert(&path))
+    });
+
+    // Conversion only (data already loaded)
+    group.bench_function("convert_only_47mb", |b| {
+        let path = format!("{base}Simple/measure2.mf4");
+        let mut mdf = Mdf::new(&path).expect("failed to open file");
+        mdf.load_all_channels_data_in_memory()
+            .expect("failed to load data");
+        b.iter(|| {
+            mdf.convert_all_channels().expect("failed to convert");
+            black_box(&mdf);
+        })
+    });
+
+    // Integer + linear CC conversion
+    group.bench_function("convert_int_linear_cc", |b| {
+        let path = format!("{LOCAL_FILES}synthetic/int_linear_cc.mf4");
+        b.iter(|| read_load_convert(&path))
+    });
+
+    group.finish();
+}
+
+/// Export benchmark — measures performance of exporting channel data
+/// to various file formats (Parquet, HDF5, CSV).
+fn bench_export(c: &mut Criterion) {
+    let base = MDF4_EXAMPLES.as_str();
+    let mut group = c.benchmark_group("export");
+    group.warm_up_time(Duration::from_secs(1));
+    group.sample_size(10);
+    group.measurement_time(Duration::from_secs(15));
+
+    // Parquet export
+    #[cfg(feature = "parquet")]
+    {
+        group.bench_function("export_parquet_47mb", |b| {
+            let path = format!("{base}Simple/measure2.mf4");
+            let mut mdf = Mdf::new(&path).expect("failed to open file");
+            mdf.load_all_channels_data_in_memory()
+                .expect("failed to load data");
+            mdf.convert_all_channels().expect("failed to convert");
+            let output = "/tmp/bench_export.parquet";
+            b.iter(|| {
+                mdf.export_to_parquet(black_box(output), None)
+                    .expect("failed to export");
+            })
+        });
+
+        // Parquet export with compression
+        group.bench_function("export_parquet_compressed_47mb", |b| {
+            let path = format!("{base}Simple/measure2.mf4");
+            let mut mdf = Mdf::new(&path).expect("failed to open file");
+            mdf.load_all_channels_data_in_memory()
+                .expect("failed to load data");
+            mdf.convert_all_channels().expect("failed to convert");
+            let output = "/tmp/bench_export_compressed.parquet";
+            b.iter(|| {
+                mdf.export_to_parquet(black_box(output), Some("snappy"))
+                    .expect("failed to export");
+            })
+        });
+    }
+
+    // HDF5 export
+    #[cfg(feature = "hdf5")]
+    {
+        group.bench_function("export_hdf5_47mb", |b| {
+            let path = format!("{base}Simple/measure2.mf4");
+            let mut mdf = Mdf::new(&path).expect("failed to open file");
+            mdf.load_all_channels_data_in_memory()
+                .expect("failed to load data");
+            mdf.convert_all_channels().expect("failed to convert");
+            let output = "/tmp/bench_export.h5";
+            b.iter(|| {
+                mdf.export_to_hdf5(black_box(output), None)
+                    .expect("failed to export");
+            })
+        });
+    }
+
+    // CSV export
+    group.bench_function("export_csv_47mb", |b| {
+        let path = format!("{base}Simple/measure2.mf4");
+        let mut mdf = Mdf::new(&path).expect("failed to open file");
+        mdf.load_all_channels_data_in_memory()
+            .expect("failed to load data");
+        mdf.convert_all_channels().expect("failed to convert");
+        let output = "/tmp/bench_export.csv";
+        b.iter(|| {
+            mdf.export_to_csv(black_box(output))
+                .expect("failed to export");
+        })
+    });
+
+    group.finish();
+}
