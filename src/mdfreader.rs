@@ -21,7 +21,7 @@ use pyo3::prelude::*;
 
 //use crate::export::parquet::export_to_parquet;
 use crate::data_holder::channel_data::{interp_channel, try_from};
-use crate::mdfinfo::mdfinfo4::CompressionAlgorithm;
+use crate::mdfinfo::mdfinfo4::{CompressionAlgorithm, EventRecord, Ev4Block};
 use crate::mdfinfo::{ChannelsDb, MdfInfo};
 use crate::mdfreader::mdfreader3::mdfreader3;
 use crate::mdfreader::mdfreader4::mdfreader4;
@@ -169,6 +169,88 @@ impl Mdf {
     /// 3 = Distance (meters), 4 = Index (zero-based index values)
     pub fn get_channel_master_type(&self, channel_name: &str) -> u8 {
         self.mdf_info.get_channel_master_type(channel_name)
+    }
+    /// Returns event signal information for an event signal channel.
+    /// Returns `None` if the channel is not an event signal channel or if the template is not available.
+    pub fn get_event_signal_info(&self, channel_name: &str) -> Option<&Ev4Block> {
+        self.mdf_info.get_event_signal_info(channel_name)
+    }
+    /// Returns true if the channel is a synchronization channel.
+    /// Sync channels reference an ATBLOCK (attachment) rather than containing raw data.
+    pub fn is_sync_channel(&self, channel_name: &str) -> bool {
+        self.mdf_info.is_sync_channel(channel_name)
+    }
+    /// Returns the precision of a channel if the precision flag is set.
+    /// Returns `None` if the channel is not found or precision is not specified.
+    pub fn get_channel_precision(&self, channel_name: &str) -> Option<u8> {
+        self.mdf_info.get_channel_precision(channel_name)
+    }
+    /// Returns the sampling rate in seconds if set (non-zero).
+    /// Returns `None` if the channel is not found or sampling rate is not specified.
+    pub fn get_channel_sampling_rate(&self, channel_name: &str) -> Option<f64> {
+        self.mdf_info.get_channel_sampling_rate(channel_name)
+    }
+    /// Returns the minimum value of the valid range for a channel.
+    /// Returns `None` if the channel is not found or range is not specified.
+    /// If not present in the block, computes from channel data.
+    pub fn get_channel_range_min(&mut self, channel_name: &str) -> Option<f64> {
+        self.mdf_info.get_channel_range_min(channel_name).or_else(|| {
+            let data = self.get_channel_data(channel_name)?;
+            data.min_max().0
+        })
+    }
+    /// Returns the maximum value of the valid range for a channel.
+    /// Returns `None` if the channel is not found or range is not specified.
+    /// If not present in the block, computes from channel data.
+    pub fn get_channel_range_max(&mut self, channel_name: &str) -> Option<f64> {
+        self.mdf_info.get_channel_range_max(channel_name).or_else(|| {
+            let data = self.get_channel_data(channel_name)?;
+            data.min_max().1
+        })
+    }
+    /// Returns the minimum limit for a channel.
+    /// Returns `None` if the channel is not found or limit is not specified.
+    /// If not present in the block, falls back to the data range minimum.
+    pub fn get_channel_limit_min(&mut self, channel_name: &str) -> Option<f64> {
+        self.mdf_info.get_channel_limit_min(channel_name).or_else(|| {
+            self.get_channel_range_min(channel_name)
+        })
+    }
+    /// Returns the maximum limit for a channel.
+    /// Returns `None` if the channel is not found or limit is not specified.
+    /// If not present in the block, falls back to the data range maximum.
+    pub fn get_channel_limit_max(&mut self, channel_name: &str) -> Option<f64> {
+        self.mdf_info.get_channel_limit_max(channel_name).or_else(|| {
+            self.get_channel_range_max(channel_name)
+        })
+    }
+    /// Returns the minimum extended limit for a channel.
+    /// Returns `None` if the channel is not found or extended limit is not specified.
+    /// If not present in the block, falls back to the data range minimum.
+    pub fn get_channel_limit_ext_min(&mut self, channel_name: &str) -> Option<f64> {
+        self.mdf_info.get_channel_limit_ext_min(channel_name).or_else(|| {
+            self.get_channel_range_min(channel_name)
+        })
+    }
+    /// Returns the maximum extended limit for a channel.
+    /// Returns `None` if the channel is not found or extended limit is not specified.
+    /// If not present in the block, falls back to the data range maximum.
+    pub fn get_channel_limit_ext_max(&mut self, channel_name: &str) -> Option<f64> {
+        self.mdf_info.get_channel_limit_ext_max(channel_name).or_else(|| {
+            self.get_channel_range_max(channel_name)
+        })
+    }
+    /// Decodes raw event signal channel data into structured event records using the template EVBLOCK.
+    /// Each record is parsed to extract the sync value and remaining event-specific data.
+    /// Returns `None` if the channel is not an event signal channel or has no data.
+    pub fn decode_event_records(&mut self, channel_name: &str) -> Option<Vec<EventRecord>> {
+        let data = self.get_channel_data(channel_name)?;
+        let bytes = data.to_bytes().ok()?;
+        if let Some(cn) = self.mdf_info.get_cn_block(channel_name) {
+            cn.decode_event_records(&bytes)
+        } else {
+            None
+        }
     }
     /// Sets the channel's related master channel type in memory
     pub fn set_channel_master_type(&mut self, master_name: &str, master_type: u8) -> Result<()> {

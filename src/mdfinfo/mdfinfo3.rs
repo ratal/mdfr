@@ -129,6 +129,45 @@ impl MdfInfo3 {
         }
         master_type as u8
     }
+    /// Returns the minimum signal value if the value range valid flag (bit 3) is set.
+    /// Returns `None` if the channel is not found or the flag is not set.
+    pub fn get_channel_range_min(&self, channel_name: &str) -> Option<f64> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
+            self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(cn_pos)
+        {
+            return cn.val_range_min();
+        }
+        None
+    }
+    /// Returns the maximum signal value if the value range valid flag (bit 3) is set.
+    /// Returns `None` if the channel is not found or the flag is not set.
+    pub fn get_channel_range_max(&self, channel_name: &str) -> Option<f64> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
+            self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(cn_pos)
+        {
+            return cn.val_range_max();
+        }
+        None
+    }
+    /// Returns the sampling rate in seconds if set (non-zero).
+    /// Returns `None` if the channel is not found or sampling rate is not specified.
+    pub fn get_channel_sampling_rate(&self, channel_name: &str) -> Option<f64> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
+            self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(cn_pos)
+        {
+            return cn.sampling_rate();
+        }
+        None
+    }
     /// returns the set of channel names
     pub fn get_channel_names_set(&self) -> HashSet<String> {
         self.channel_names_set.keys().cloned().collect()
@@ -1024,6 +1063,35 @@ impl Clone for Cn3 {
             endian: self.endian,
             channel_data_valid: self.channel_data_valid,
             should_read: self.should_read,
+        }
+    }
+}
+
+impl Cn3 {
+    /// Returns the minimum signal value if the value range valid flag (bit 3) is set.
+    /// Returns `None` if the flag is not set.
+    pub fn val_range_min(&self) -> Option<f64> {
+        if (self.block2.cn_valid_range_flags & (1 << 3)) != 0 {
+            Some(self.block2.cn_val_range_min)
+        } else {
+            None
+        }
+    }
+    /// Returns the maximum signal value if the value range valid flag (bit 3) is set.
+    /// Returns `None` if the flag is not set.
+    pub fn val_range_max(&self) -> Option<f64> {
+        if (self.block2.cn_valid_range_flags & (1 << 3)) != 0 {
+            Some(self.block2.cn_val_range_max)
+        } else {
+            None
+        }
+    }
+    /// Returns the sampling rate in seconds if set (non-zero).
+    pub fn sampling_rate(&self) -> Option<f64> {
+        if self.block2.cn_sampling_rate != 0.0 {
+            Some(self.block2.cn_sampling_rate)
+        } else {
+            None
         }
     }
 }

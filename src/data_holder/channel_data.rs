@@ -1,6 +1,6 @@
 //! this module holds the channel data enum and related implementations
 
-use crate::mdfinfo::mdfinfo4::CN_F_DATA_STREAM_MODE;
+use crate::mdfinfo::mdfinfo4::{CN_F_DATA_STREAM_MODE, CN_F_EVENT_SIGNAL};
 use anyhow::{Context, Error, Result, bail};
 use arrow::array::{
     Array, ArrayBuilder, ArrayData, ArrayRef, BinaryArray, BooleanBufferBuilder,
@@ -1491,6 +1491,11 @@ pub fn data_type_init(
     list_size: usize,
     cn_flags: u32,
 ) -> Result<ChannelData, Error> {
+    if (cn_flags & CN_F_EVENT_SIGNAL) != 0 {
+        return Ok(ChannelData::FixedSizeByteArray(
+            FixedSizeBinaryBuilder::new(n_bytes as i32),
+        ));
+    }
     if list_size == 1 {
         // Not an array
         if cn_type == 7 {

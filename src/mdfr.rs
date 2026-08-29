@@ -307,6 +307,116 @@ df=polars.DataFrame(series)
             Ok(master_type)
         })
     }
+    /// Returns event signal information for an event signal channel as a dict.
+    /// Returns None if the channel is not an event signal channel.
+    pub fn get_event_signal_info(&self, channel_name: String) -> PyResult<Py<PyAny>> {
+        let Mdfr(mdf) = self;
+        pyo3::Python::attach(|py| {
+            let info = mdf.mdf_info.get_event_signal_info(&channel_name);
+            match info {
+                Some(ev) => {
+                    let dict = pyo3::types::PyDict::new(py);
+                    dict.set_item("event_type", ev.ev_type)?;
+                    dict.set_item("event_type_str", ev.get_event_type_str())?;
+                    dict.set_item("sync_type", ev.ev_sync_type)?;
+                    dict.set_item("sync_type_str", ev.get_sync_type_str())?;
+                    dict.set_item("cause", ev.ev_cause)?;
+                    dict.set_item("cause_str", ev.get_cause_str())?;
+                    dict.set_item("sync_base_value", ev.ev_sync_base_value)?;
+                    dict.set_item("sync_factor", ev.ev_sync_factor)?;
+                    dict.set_item("scope_count", ev.ev_scope_count)?;
+                    dict.set_item("attachment_count", ev.ev_attachment_count)?;
+                    dict.set_item("sync_value", ev.get_sync_value())?;
+                    Ok(dict.into())
+                }
+                None => Ok(py.None()),
+            }
+        })
+    }
+    /// Returns true if the channel is a synchronization channel.
+    /// Sync channels reference an ATBLOCK (attachment) rather than containing raw data.
+    pub fn is_sync_channel(&self, channel_name: String) -> PyResult<bool> {
+        let Mdfr(mdf) = self;
+        Ok(mdf.mdf_info.is_sync_channel(&channel_name))
+    }
+    /// Returns the precision of a channel if the precision flag is set.
+    /// Returns None if the channel is not found or precision is not specified.
+    pub fn get_channel_precision(&self, channel_name: String) -> PyResult<Option<u8>> {
+        let Mdfr(mdf) = self;
+        Ok(mdf.get_channel_precision(&channel_name))
+    }
+    /// Returns the sampling rate in seconds if set (non-zero).
+    /// Returns None if the channel is not found or sampling rate is not specified.
+    pub fn get_channel_sampling_rate(&self, channel_name: String) -> PyResult<Option<f64>> {
+        let Mdfr(mdf) = self;
+        Ok(mdf.get_channel_sampling_rate(&channel_name))
+    }
+    /// Returns the minimum value of the valid range for a channel.
+    /// Returns None if the channel is not found or range is not specified.
+    /// If not present in the block, computes from channel data.
+    pub fn get_channel_range_min(&mut self, channel_name: String) -> PyResult<Option<f64>> {
+        let Mdfr(mdf) = self;
+        Ok(mdf.get_channel_range_min(&channel_name))
+    }
+    /// Returns the maximum value of the valid range for a channel.
+    /// Returns None if the channel is not found or range is not specified.
+    /// If not present in the block, computes from channel data.
+    pub fn get_channel_range_max(&mut self, channel_name: String) -> PyResult<Option<f64>> {
+        let Mdfr(mdf) = self;
+        Ok(mdf.get_channel_range_max(&channel_name))
+    }
+    /// Returns the minimum limit for a channel.
+    /// Returns None if the channel is not found or limit is not specified.
+    /// If not present in the block, falls back to the data range minimum.
+    pub fn get_channel_limit_min(&mut self, channel_name: String) -> PyResult<Option<f64>> {
+        let Mdfr(mdf) = self;
+        Ok(mdf.get_channel_limit_min(&channel_name))
+    }
+    /// Returns the maximum limit for a channel.
+    /// Returns None if the channel is not found or limit is not specified.
+    /// If not present in the block, falls back to the data range maximum.
+    pub fn get_channel_limit_max(&mut self, channel_name: String) -> PyResult<Option<f64>> {
+        let Mdfr(mdf) = self;
+        Ok(mdf.get_channel_limit_max(&channel_name))
+    }
+    /// Returns the minimum extended limit for a channel.
+    /// Returns None if the channel is not found or extended limit is not specified.
+    /// If not present in the block, falls back to the data range minimum.
+    pub fn get_channel_limit_ext_min(&mut self, channel_name: String) -> PyResult<Option<f64>> {
+        let Mdfr(mdf) = self;
+        Ok(mdf.get_channel_limit_ext_min(&channel_name))
+    }
+    /// Returns the maximum extended limit for a channel.
+    /// Returns None if the channel is not found or extended limit is not specified.
+    /// If not present in the block, falls back to the data range maximum.
+    pub fn get_channel_limit_ext_max(&mut self, channel_name: String) -> PyResult<Option<f64>> {
+        let Mdfr(mdf) = self;
+        Ok(mdf.get_channel_limit_ext_max(&channel_name))
+    }
+    /// Decodes event signal channel data into a list of event records.
+    /// Each record is a dict with 'sync_value' (float) and 'event_data' (bytes).
+    /// Returns None if the channel is not an event signal channel or has no data.
+    pub fn decode_event_records(&mut self, channel_name: String) -> PyResult<Py<PyAny>> {
+        let Mdfr(mdf) = self;
+        pyo3::Python::attach(|py| {
+            let records = mdf.decode_event_records(&channel_name);
+            match records {
+                Some(recs) => {
+                    let mut items = Vec::new();
+                    for rec in &recs {
+                        let dict = PyDict::new(py);
+                        dict.set_item("sync_value", rec.sync_value)?;
+                        dict.set_item("event_data", PyBytes::new(py, &rec.event_data))?;
+                        items.push(dict.into_pyobject(py)?.into_any());
+                    }
+                    let list = PyList::new(py, items)?;
+                    let result: Py<PyAny> = list.into_pyobject(py)?.into();
+                    Ok(result)
+                }
+                None => Ok(py.None().into()),
+            }
+        })
+    }
     /// returns measurement start time as a timezone-aware datetime
     #[getter]
     pub fn start_time(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {

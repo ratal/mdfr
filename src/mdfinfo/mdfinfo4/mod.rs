@@ -228,6 +228,182 @@ impl MdfInfo4 {
         }
         master_type
     }
+    /// Returns event signal information for an event signal channel.
+    /// Returns `None` if the channel is not an event signal channel or if the template is not available.
+    pub fn get_event_signal_info(&self, channel_name: &str) -> Option<&Ev4Block> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.get_channel_id(channel_name)
+        {
+            if let Some(dg) = self.dg.get(dg_pos) {
+                if let Some(cg) = dg.cg.get(rec_id) {
+                    if let Some(cn) = cg.cn.get(rec_pos) {
+                        return cn.event_signal_info();
+                    }
+                }
+            }
+        }
+        None
+    }
+    /// Returns true if the channel is an MLSD (Maximum Length Signal Data) channel.
+    /// MLSD channels have per-record lengths determined by a separate size channel.
+    pub fn is_mlsd_channel(&self, channel_name: &str) -> bool {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.get_channel_id(channel_name)
+        {
+            if let Some(dg) = self.dg.get(dg_pos) {
+                if let Some(cg) = dg.cg.get(rec_id) {
+                    if let Some(cn) = cg.cn.get(rec_pos) {
+                        return cn.is_mlsd();
+                    }
+                }
+            }
+        }
+        false
+    }
+    /// Returns true if the channel is a synchronization channel.
+    /// Sync channels reference an ATBLOCK (attachment) rather than containing raw data.
+    pub fn is_sync_channel(&self, channel_name: &str) -> bool {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.get_channel_id(channel_name)
+        {
+            if let Some(dg) = self.dg.get(dg_pos) {
+                if let Some(cg) = dg.cg.get(rec_id) {
+                    if let Some(cn) = cg.cn.get(rec_pos) {
+                        return cn.is_sync();
+                    }
+                }
+            }
+        }
+        false
+    }
+    /// Returns a reference to the CNBLOCK for a channel.
+    /// Returns `None` if the channel is not found.
+    pub fn get_cn_block(&self, channel_name: &str) -> Option<&Cn4> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.get_channel_id(channel_name)
+        {
+            if let Some(dg) = self.dg.get(dg_pos) {
+                if let Some(cg) = dg.cg.get(rec_id) {
+                    if let Some(cn) = cg.cn.get(rec_pos) {
+                        return Some(cn);
+                    }
+                }
+            }
+        }
+        None
+    }
+    /// Returns the precision of a channel if the precision flag is set.
+    /// Returns `None` if the channel is not found or precision is not specified.
+    pub fn get_channel_precision(&self, channel_name: &str) -> Option<u8> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.get_channel_id(channel_name)
+        {
+            if let Some(dg) = self.dg.get(dg_pos) {
+                if let Some(cg) = dg.cg.get(rec_id) {
+                    if let Some(cn) = cg.cn.get(rec_pos) {
+                        return cn.block.precision();
+                    }
+                }
+            }
+        }
+        None
+    }
+    /// Returns the minimum value of the valid range for a channel.
+    /// Returns `None` if the channel is not found or range is not specified.
+    pub fn get_channel_range_min(&self, channel_name: &str) -> Option<f64> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.get_channel_id(channel_name)
+        {
+            if let Some(dg) = self.dg.get(dg_pos) {
+                if let Some(cg) = dg.cg.get(rec_id) {
+                    if let Some(cn) = cg.cn.get(rec_pos) {
+                        return cn.block.val_range_min();
+                    }
+                }
+            }
+        }
+        None
+    }
+    /// Returns the maximum value of the valid range for a channel.
+    /// Returns `None` if the channel is not found or range is not specified.
+    pub fn get_channel_range_max(&self, channel_name: &str) -> Option<f64> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.get_channel_id(channel_name)
+        {
+            if let Some(dg) = self.dg.get(dg_pos) {
+                if let Some(cg) = dg.cg.get(rec_id) {
+                    if let Some(cn) = cg.cn.get(rec_pos) {
+                        return cn.block.val_range_max();
+                    }
+                }
+            }
+        }
+        None
+    }
+    /// Returns the minimum limit for a channel.
+    /// Returns `None` if the channel is not found or limit is not specified.
+    pub fn get_channel_limit_min(&self, channel_name: &str) -> Option<f64> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.get_channel_id(channel_name)
+        {
+            if let Some(dg) = self.dg.get(dg_pos) {
+                if let Some(cg) = dg.cg.get(rec_id) {
+                    if let Some(cn) = cg.cn.get(rec_pos) {
+                        return cn.block.limit_min();
+                    }
+                }
+            }
+        }
+        None
+    }
+    /// Returns the maximum limit for a channel.
+    /// Returns `None` if the channel is not found or limit is not specified.
+    pub fn get_channel_limit_max(&self, channel_name: &str) -> Option<f64> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.get_channel_id(channel_name)
+        {
+            if let Some(dg) = self.dg.get(dg_pos) {
+                if let Some(cg) = dg.cg.get(rec_id) {
+                    if let Some(cn) = cg.cn.get(rec_pos) {
+                        return cn.block.limit_max();
+                    }
+                }
+            }
+        }
+        None
+    }
+    /// Returns the minimum extended limit for a channel.
+    /// Returns `None` if the channel is not found or extended limit is not specified.
+    pub fn get_channel_limit_ext_min(&self, channel_name: &str) -> Option<f64> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.get_channel_id(channel_name)
+        {
+            if let Some(dg) = self.dg.get(dg_pos) {
+                if let Some(cg) = dg.cg.get(rec_id) {
+                    if let Some(cn) = cg.cn.get(rec_pos) {
+                        return cn.block.limit_ext_min();
+                    }
+                }
+            }
+        }
+        None
+    }
+    /// Returns the maximum extended limit for a channel.
+    /// Returns `None` if the channel is not found or extended limit is not specified.
+    pub fn get_channel_limit_ext_max(&self, channel_name: &str) -> Option<f64> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.get_channel_id(channel_name)
+        {
+            if let Some(dg) = self.dg.get(dg_pos) {
+                if let Some(cg) = dg.cg.get(rec_id) {
+                    if let Some(cn) = cg.cn.get(rec_pos) {
+                        return cn.block.limit_ext_max();
+                    }
+                }
+            }
+        }
+        None
+    }
     /// returns the set of channel names
     pub fn get_channel_names_set(&self) -> HashSet<String> {
         self.channel_names_set.keys().cloned().collect()
