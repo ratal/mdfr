@@ -402,6 +402,66 @@ impl Cn4Block {
             _ => "Unknown",
         }
     }
+    /// Returns the precision value if the "precision valid" flag (bit 2) is set.
+    pub fn precision(&self) -> Option<u8> {
+        if (self.cn_flags & (1 << 2)) != 0 {
+            Some(self.cn_precision)
+        } else {
+            None
+        }
+    }
+    /// Returns the number of attachments for this channel.
+    pub fn attachment_count(&self) -> u16 {
+        self.cn_attachment_count
+    }
+    /// Returns the minimum signal value (raw) if the "value range valid" flag (bit 3) is set.
+    pub fn val_range_min(&self) -> Option<f64> {
+        if (self.cn_flags & (1 << 3)) != 0 {
+            Some(self.cn_val_range_min)
+        } else {
+            None
+        }
+    }
+    /// Returns the maximum signal value (raw) if the "value range valid" flag (bit 3) is set.
+    pub fn val_range_max(&self) -> Option<f64> {
+        if (self.cn_flags & (1 << 3)) != 0 {
+            Some(self.cn_val_range_max)
+        } else {
+            None
+        }
+    }
+    /// Returns the lower limit (physical or raw) if the "limit range valid" flag (bit 4) is set.
+    pub fn limit_min(&self) -> Option<f64> {
+        if (self.cn_flags & (1 << 4)) != 0 {
+            Some(self.cn_limit_min)
+        } else {
+            None
+        }
+    }
+    /// Returns the upper limit (physical or raw) if the "limit range valid" flag (bit 4) is set.
+    pub fn limit_max(&self) -> Option<f64> {
+        if (self.cn_flags & (1 << 4)) != 0 {
+            Some(self.cn_limit_max)
+        } else {
+            None
+        }
+    }
+    /// Returns the lower extended limit if the "extended limit range valid" flag (bit 5) is set.
+    pub fn limit_ext_min(&self) -> Option<f64> {
+        if (self.cn_flags & (1 << 5)) != 0 {
+            Some(self.cn_limit_ext_min)
+        } else {
+            None
+        }
+    }
+    /// Returns the upper extended limit if the "extended limit range valid" flag (bit 5) is set.
+    pub fn limit_ext_max(&self) -> Option<f64> {
+        if (self.cn_flags & (1 << 5)) != 0 {
+            Some(self.cn_limit_ext_max)
+        } else {
+            None
+        }
+    }
 }
 
 impl Display for Cn4Block {

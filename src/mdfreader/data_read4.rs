@@ -60,7 +60,6 @@ pub fn read_one_channel_array(
 ) -> Result<(), Error> {
     if (cn.block.cn_type == 0
         || cn.block.cn_type == 2
-        || cn.block.cn_type == 4
         || cn.block.cn_type == 5
         || cn.block.cn_type == 7)
         && !cn.data.is_empty()
@@ -68,7 +67,6 @@ pub fn read_one_channel_array(
         // cn_type == 5 : Maximum length data channel, removing no valid bytes done by another size channel pointed by cn_data
         // cn_type == 0 : fixed length data channel
         // cn_type == 2 : master channel
-        // cn_type == 4 : synchronisation channel
         // cn_type == 7 : VLSC channel (stores offsets into VD block)
         let n_bytes = cn.n_bytes as usize;
         let list_size = cn.list_size;
@@ -676,14 +674,12 @@ pub fn read_channels_from_bytes(
         .try_for_each(|(rec_pos, cn): (&i32, &mut Cn4)| -> Result<(), Error> {
             if cn.block.cn_type == 0
                 || cn.block.cn_type == 2
-                || cn.block.cn_type == 4
                 || cn.block.cn_type == 5
                 || cn.block.cn_type == 7
             {
                 // cn_type == 5 : Maximum length data channel, removing no valid bytes done by another size channel pointed by cn_data
                 // cn_type == 0 : fixed length data channel
                 // cn_type == 2 : master channel
-                // cn_type == 4 : synchronisation channel
                 // cn_type == 7 : VLSC channel (stores offsets into VD block)
                 let mut value: &[u8]; // value of channel at record
                 let pos_byte_beg = cn.pos_byte_beg as usize;

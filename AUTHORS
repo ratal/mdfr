@@ -1,0 +1,4 @@
+# Contributors
+
+## Anthropic Claude
+- Read-side bug fixes: sync channel (cn_type=4) handling, CN/CG flag exposure, graceful errors for unsupported array channel types.

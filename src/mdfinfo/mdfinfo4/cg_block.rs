@@ -139,6 +139,10 @@ impl Cg4Block {
             flags.join("|")
         }
     }
+    /// Returns the path separator character used in source paths.
+    pub fn path_separator(&self) -> u16 {
+        self.cg_path_separator
+    }
 }
 
 impl Display for Cg4Block {

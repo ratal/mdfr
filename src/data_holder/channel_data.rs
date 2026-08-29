@@ -1581,7 +1581,7 @@ pub fn data_type_init(
                     Ok(ChannelData::Int64(PrimitiveBuilder::new()))
                 }
                 _ => {
-                    unimplemented!("not implemented channel data type: {}", cn_data_type);
+                    bail!("not implemented channel data type: {}", cn_data_type);
                 }
             }
         } else {
@@ -1643,7 +1643,7 @@ pub fn data_type_init(
                 }
             }
             _ => {
-                unimplemented!("not implemented channel array data type",);
+                bail!("not implemented channel array data type: {}", cn_data_type);
             }
         }
     } else {
