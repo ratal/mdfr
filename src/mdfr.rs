@@ -413,7 +413,7 @@ df=polars.DataFrame(series)
                     let result: Py<PyAny> = list.into_pyobject(py)?.into();
                     Ok(result)
                 }
-                None => Ok(py.None().into()),
+                None => Ok(py.None()),
             }
         })
     }
@@ -1026,6 +1026,12 @@ pyplot.show()
                 let header_comments = mdfinfo4.format_header_comments();
                 if !header_comments.is_empty() {
                     write!(output, "{header_comments}").context("cannot print header comments")?;
+                }
+                let fh_info = mdfinfo4.list_file_history();
+                if !fh_info.is_empty() {
+                    writeln!(output, "\n--- File History ---")
+                        .context("cannot print file history header")?;
+                    write!(output, "{fh_info}").context("cannot print file history")?;
                 }
                 // MDF4-specific sections
                 let si_info = mdfinfo4.list_source_information();

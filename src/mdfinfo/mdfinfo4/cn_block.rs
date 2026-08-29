@@ -551,16 +551,19 @@ impl Clone for Cn4 {
 
 impl Display for Cn4 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut info = format!(
+        let info = format!(
             "CN: {} @ byte {} ({} bytes) type={} sync={}",
-            self.unique_name, self.pos_byte_beg, self.n_bytes,
-            self.block.get_cn_type_str(), self.block.get_sync_type_str()
+            self.unique_name,
+            self.pos_byte_beg,
+            self.n_bytes,
+            self.block.get_cn_type_str(),
+            self.block.get_sync_type_str()
         );
-        if self.is_event_signal() {
-            if let Some(ev_info) = self.event_signal_info() {
-                write!(f, "{} event_signal={}", info, ev_info)?;
-                return Ok(());
-            }
+        if self.is_event_signal()
+            && let Some(ev_info) = self.event_signal_info()
+        {
+            write!(f, "{} event_signal={}", info, ev_info)?;
+            return Ok(());
         }
         if self.is_mlsd() {
             write!(f, "{} mlsd", info)?;
@@ -964,7 +967,7 @@ impl Cn4 {
                     // No sync - entire record is event data
                     (0.0, record.to_vec())
                 }
-                1 | 2 | 3 | 4 => {
+                1..=4 => {
                     // Time, Angle, Distance, Index - try 8-byte then 4-byte sync
                     if record.len() >= 8 {
                         let val = match self.endian {

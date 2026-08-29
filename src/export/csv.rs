@@ -21,10 +21,9 @@ pub fn export_to_csv(mdf: &Mdf, file_name: &str) -> Result<()> {
                     // Collect CGs to export in parallel
                     let cg_refs: Vec<(&u64, &Cg4)> = dg.cg.iter().collect();
                     cg_refs.par_iter().try_for_each(|(rec_id, cg)| {
-                        mdf4_cg_to_csv(file_name, mdfinfo4, **rec_id, cg)
-                            .with_context(|| {
-                                format!("failed converting Channel Group 4 rec_id {rec_id} to CSV")
-                            })
+                        mdf4_cg_to_csv(file_name, mdfinfo4, **rec_id, cg).with_context(|| {
+                            format!("failed converting Channel Group 4 rec_id {rec_id} to CSV")
+                        })
                     })?;
                 }
             }
@@ -78,12 +77,7 @@ fn mdf4_cg_to_csv(file_name: &str, _mdfinfo4: &MdfInfo4, rec_id: u64, cg: &Cg4) 
         .map(|cn| (cn.unique_name.as_str(), cn.data.finish_cloned()))
         .collect();
     if !channels.is_empty() {
-        write_csv(
-            file_name,
-            cg.master_channel_name.clone(),
-            rec_id,
-            &channels,
-        )?;
+        write_csv(file_name, cg.master_channel_name.clone(), rec_id, &channels)?;
     }
     Ok(())
 }

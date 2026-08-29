@@ -233,14 +233,11 @@ impl MdfInfo4 {
     pub fn get_event_signal_info(&self, channel_name: &str) -> Option<&Ev4Block> {
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
             self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(rec_pos)
         {
-            if let Some(dg) = self.dg.get(dg_pos) {
-                if let Some(cg) = dg.cg.get(rec_id) {
-                    if let Some(cn) = cg.cn.get(rec_pos) {
-                        return cn.event_signal_info();
-                    }
-                }
-            }
+            return cn.event_signal_info();
         }
         None
     }
@@ -249,14 +246,11 @@ impl MdfInfo4 {
     pub fn is_mlsd_channel(&self, channel_name: &str) -> bool {
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
             self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(rec_pos)
         {
-            if let Some(dg) = self.dg.get(dg_pos) {
-                if let Some(cg) = dg.cg.get(rec_id) {
-                    if let Some(cn) = cg.cn.get(rec_pos) {
-                        return cn.is_mlsd();
-                    }
-                }
-            }
+            return cn.is_mlsd();
         }
         false
     }
@@ -265,14 +259,11 @@ impl MdfInfo4 {
     pub fn is_sync_channel(&self, channel_name: &str) -> bool {
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
             self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(rec_pos)
         {
-            if let Some(dg) = self.dg.get(dg_pos) {
-                if let Some(cg) = dg.cg.get(rec_id) {
-                    if let Some(cn) = cg.cn.get(rec_pos) {
-                        return cn.is_sync();
-                    }
-                }
-            }
+            return cn.is_sync();
         }
         false
     }
@@ -281,14 +272,11 @@ impl MdfInfo4 {
     pub fn get_cn_block(&self, channel_name: &str) -> Option<&Cn4> {
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
             self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(rec_pos)
         {
-            if let Some(dg) = self.dg.get(dg_pos) {
-                if let Some(cg) = dg.cg.get(rec_id) {
-                    if let Some(cn) = cg.cn.get(rec_pos) {
-                        return Some(cn);
-                    }
-                }
-            }
+            return Some(cn);
         }
         None
     }
@@ -297,14 +285,11 @@ impl MdfInfo4 {
     pub fn get_channel_precision(&self, channel_name: &str) -> Option<u8> {
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
             self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(rec_pos)
         {
-            if let Some(dg) = self.dg.get(dg_pos) {
-                if let Some(cg) = dg.cg.get(rec_id) {
-                    if let Some(cn) = cg.cn.get(rec_pos) {
-                        return cn.block.precision();
-                    }
-                }
-            }
+            return cn.block.precision();
         }
         None
     }
@@ -313,14 +298,11 @@ impl MdfInfo4 {
     pub fn get_channel_range_min(&self, channel_name: &str) -> Option<f64> {
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
             self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(rec_pos)
         {
-            if let Some(dg) = self.dg.get(dg_pos) {
-                if let Some(cg) = dg.cg.get(rec_id) {
-                    if let Some(cn) = cg.cn.get(rec_pos) {
-                        return cn.block.val_range_min();
-                    }
-                }
-            }
+            return cn.block.val_range_min();
         }
         None
     }
@@ -329,14 +311,11 @@ impl MdfInfo4 {
     pub fn get_channel_range_max(&self, channel_name: &str) -> Option<f64> {
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
             self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(rec_pos)
         {
-            if let Some(dg) = self.dg.get(dg_pos) {
-                if let Some(cg) = dg.cg.get(rec_id) {
-                    if let Some(cn) = cg.cn.get(rec_pos) {
-                        return cn.block.val_range_max();
-                    }
-                }
-            }
+            return cn.block.val_range_max();
         }
         None
     }
@@ -345,14 +324,11 @@ impl MdfInfo4 {
     pub fn get_channel_limit_min(&self, channel_name: &str) -> Option<f64> {
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
             self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(rec_pos)
         {
-            if let Some(dg) = self.dg.get(dg_pos) {
-                if let Some(cg) = dg.cg.get(rec_id) {
-                    if let Some(cn) = cg.cn.get(rec_pos) {
-                        return cn.block.limit_min();
-                    }
-                }
-            }
+            return cn.block.limit_min();
         }
         None
     }
@@ -361,14 +337,11 @@ impl MdfInfo4 {
     pub fn get_channel_limit_max(&self, channel_name: &str) -> Option<f64> {
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
             self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(rec_pos)
         {
-            if let Some(dg) = self.dg.get(dg_pos) {
-                if let Some(cg) = dg.cg.get(rec_id) {
-                    if let Some(cn) = cg.cn.get(rec_pos) {
-                        return cn.block.limit_max();
-                    }
-                }
-            }
+            return cn.block.limit_max();
         }
         None
     }
@@ -377,14 +350,11 @@ impl MdfInfo4 {
     pub fn get_channel_limit_ext_min(&self, channel_name: &str) -> Option<f64> {
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
             self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(rec_pos)
         {
-            if let Some(dg) = self.dg.get(dg_pos) {
-                if let Some(cg) = dg.cg.get(rec_id) {
-                    if let Some(cn) = cg.cn.get(rec_pos) {
-                        return cn.block.limit_ext_min();
-                    }
-                }
-            }
+            return cn.block.limit_ext_min();
         }
         None
     }
@@ -393,14 +363,11 @@ impl MdfInfo4 {
     pub fn get_channel_limit_ext_max(&self, channel_name: &str) -> Option<f64> {
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
             self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(rec_pos)
         {
-            if let Some(dg) = self.dg.get(dg_pos) {
-                if let Some(cg) = dg.cg.get(rec_id) {
-                    if let Some(cn) = cg.cn.get(rec_pos) {
-                        return cn.block.limit_ext_max();
-                    }
-                }
-            }
+            return cn.block.limit_ext_max();
         }
         None
     }
@@ -755,7 +722,7 @@ impl MdfInfo4 {
                 key,
                 self.sharable.get_tx(block.at_tx_filename),
                 self.sharable.get_tx(block.at_tx_mimetype),
-                self.sharable.get_md_comment(block.at_md_comment)
+                self.sharable.get_md_comment(block.at_md_comment),
             ))
         }
         output

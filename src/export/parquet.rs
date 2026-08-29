@@ -40,7 +40,7 @@ pub fn export_to_parquet(
                     // Collect CGs to export in parallel
                     let cg_refs: Vec<(&u64, &Cg4)> = dg.cg.iter().collect();
                     cg_refs.par_iter().try_for_each(|(rec_id, cg)| {
-                        mdf4_cg_to_parquet(file_name, mdfinfo4, *rec_id, cg, parquet_compression)
+                        mdf4_cg_to_parquet(file_name, mdfinfo4, rec_id, cg, parquet_compression)
                             .with_context(|| {
                                 format!(
                                     "failed converting Channel Group 4 rec_id {rec_id} to parquet"
@@ -54,11 +54,9 @@ pub fn export_to_parquet(
             for dg in mdfinfo3.dg.values() {
                 let cg_refs: Vec<(&u16, &Cg3)> = dg.cg.iter().collect();
                 cg_refs.par_iter().try_for_each(|(rec_id, cg)| {
-                    mdf3_cg_to_parquet(file_name, mdfinfo3, *rec_id, cg, parquet_compression)
+                    mdf3_cg_to_parquet(file_name, mdfinfo3, rec_id, cg, parquet_compression)
                         .with_context(|| {
-                            format!(
-                                "failed converting Channel Group 3 rec_id {rec_id} to parquet"
-                            )
+                            format!("failed converting Channel Group 3 rec_id {rec_id} to parquet")
                         })
                 })?;
             }

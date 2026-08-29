@@ -21,7 +21,9 @@ use pyo3::prelude::*;
 
 //use crate::export::parquet::export_to_parquet;
 use crate::data_holder::channel_data::{interp_channel, try_from};
-use crate::mdfinfo::mdfinfo4::{CompressionAlgorithm, EventRecord, Ev4Block};
+use crate::mdfinfo::mdfinfo4::{
+    At4Block, Ch4Block, CompressionAlgorithm, Ev4Block, EventRecord, FhBlock, Si4Block, Sr4Block,
+};
 use crate::mdfinfo::{ChannelsDb, MdfInfo};
 use crate::mdfreader::mdfreader3::mdfreader3;
 use crate::mdfreader::mdfreader4::mdfreader4;
@@ -140,9 +142,69 @@ impl Mdf {
     pub fn get_subject(&self) -> Option<String> {
         self.mdf_info.get_subject()
     }
+    /// list file history entries (MDF 4.x only)
+    pub fn list_file_history(&mut self) -> String {
+        self.mdf_info.list_file_history()
+    }
+    /// get file history blocks (MDF 4.x only)
+    pub fn get_file_history_blocks(&self) -> Option<Vec<FhBlock>> {
+        self.mdf_info.get_file_history_blocks()
+    }
+    /// list events (MDF 4.x only)
+    pub fn list_events(&mut self) -> String {
+        self.mdf_info.list_events()
+    }
+    /// get event blocks (MDF 4.x only)
+    pub fn get_event_blocks(&self) -> Option<HashMap<i64, Ev4Block>> {
+        self.mdf_info.get_event_blocks()
+    }
+    /// get a single event block by position (MDF 4.x only)
+    pub fn get_event_block(&self, position: i64) -> Option<Ev4Block> {
+        self.mdf_info.get_event_block(position)
+    }
+    /// list channel hierarchy in a human-readable format (MDF 4.x only)
+    pub fn list_channel_hierarchy(&self) -> String {
+        self.mdf_info.list_channel_hierarchy()
+    }
+    /// get channel hierarchy blocks (MDF 4.x only)
+    pub fn get_channel_hierarchy_blocks(&self) -> Option<HashMap<i64, Ch4Block>> {
+        self.mdf_info.get_channel_hierarchy_blocks()
+    }
+    /// get a single channel hierarchy block by position (MDF 4.x only)
+    pub fn get_channel_hierarchy_block(&self, position: i64) -> Option<Ch4Block> {
+        self.mdf_info.get_channel_hierarchy_block(position)
+    }
+    /// list source information blocks (MDF 4.x only)
+    pub fn list_source_information(&self) -> String {
+        self.mdf_info.list_source_information()
+    }
+    /// get source information blocks (MDF 4.x only)
+    pub fn get_source_information_blocks(&self) -> Option<HashMap<i64, Si4Block>> {
+        self.mdf_info.get_source_information_blocks()
+    }
+    /// list attachments (MDF 4.x only)
+    pub fn list_attachments(&mut self) -> String {
+        self.mdf_info.list_attachments()
+    }
+    /// get attachment blocks (MDF 4.x only)
+    pub fn get_attachment_blocks(&self) -> Option<HashMap<i64, At4Block>> {
+        self.mdf_info.get_attachement_blocks()
+    }
+    /// get a single attachment block by position (MDF 4.x only)
+    pub fn get_attachment_block(&self, position: i64) -> Option<At4Block> {
+        self.mdf_info.get_attachment_block(position)
+    }
+    /// get embedded data in attachment (MDF 4.x only)
+    pub fn get_attachment_embedded_data(&self, position: i64) -> Option<Vec<u8>> {
+        self.mdf_info.get_attachment_embedded_data(position)
+    }
     /// List sample reduction blocks for all channel groups (MDF 4.x only)
     pub fn list_sample_reductions(&self) -> String {
         self.mdf_info.list_sample_reductions()
+    }
+    /// Get sample reduction blocks across all channel groups (MDF 4.x only)
+    pub fn get_sample_reduction_blocks(&self) -> Option<Vec<(i64, u64, Vec<Sr4Block>)>> {
+        self.mdf_info.get_sample_reduction_blocks()
     }
     /// returns channel's unit string
     pub fn get_channel_unit(&self, channel_name: &str) -> Result<Option<String>> {
@@ -194,51 +256,55 @@ impl Mdf {
     /// Returns `None` if the channel is not found or range is not specified.
     /// If not present in the block, computes from channel data.
     pub fn get_channel_range_min(&mut self, channel_name: &str) -> Option<f64> {
-        self.mdf_info.get_channel_range_min(channel_name).or_else(|| {
-            let data = self.get_channel_data(channel_name)?;
-            data.min_max().0
-        })
+        self.mdf_info
+            .get_channel_range_min(channel_name)
+            .or_else(|| {
+                let data = self.get_channel_data(channel_name)?;
+                data.min_max().0
+            })
     }
     /// Returns the maximum value of the valid range for a channel.
     /// Returns `None` if the channel is not found or range is not specified.
     /// If not present in the block, computes from channel data.
     pub fn get_channel_range_max(&mut self, channel_name: &str) -> Option<f64> {
-        self.mdf_info.get_channel_range_max(channel_name).or_else(|| {
-            let data = self.get_channel_data(channel_name)?;
-            data.min_max().1
-        })
+        self.mdf_info
+            .get_channel_range_max(channel_name)
+            .or_else(|| {
+                let data = self.get_channel_data(channel_name)?;
+                data.min_max().1
+            })
     }
     /// Returns the minimum limit for a channel.
     /// Returns `None` if the channel is not found or limit is not specified.
     /// If not present in the block, falls back to the data range minimum.
     pub fn get_channel_limit_min(&mut self, channel_name: &str) -> Option<f64> {
-        self.mdf_info.get_channel_limit_min(channel_name).or_else(|| {
-            self.get_channel_range_min(channel_name)
-        })
+        self.mdf_info
+            .get_channel_limit_min(channel_name)
+            .or_else(|| self.get_channel_range_min(channel_name))
     }
     /// Returns the maximum limit for a channel.
     /// Returns `None` if the channel is not found or limit is not specified.
     /// If not present in the block, falls back to the data range maximum.
     pub fn get_channel_limit_max(&mut self, channel_name: &str) -> Option<f64> {
-        self.mdf_info.get_channel_limit_max(channel_name).or_else(|| {
-            self.get_channel_range_max(channel_name)
-        })
+        self.mdf_info
+            .get_channel_limit_max(channel_name)
+            .or_else(|| self.get_channel_range_max(channel_name))
     }
     /// Returns the minimum extended limit for a channel.
     /// Returns `None` if the channel is not found or extended limit is not specified.
     /// If not present in the block, falls back to the data range minimum.
     pub fn get_channel_limit_ext_min(&mut self, channel_name: &str) -> Option<f64> {
-        self.mdf_info.get_channel_limit_ext_min(channel_name).or_else(|| {
-            self.get_channel_range_min(channel_name)
-        })
+        self.mdf_info
+            .get_channel_limit_ext_min(channel_name)
+            .or_else(|| self.get_channel_range_min(channel_name))
     }
     /// Returns the maximum extended limit for a channel.
     /// Returns `None` if the channel is not found or extended limit is not specified.
     /// If not present in the block, falls back to the data range maximum.
     pub fn get_channel_limit_ext_max(&mut self, channel_name: &str) -> Option<f64> {
-        self.mdf_info.get_channel_limit_ext_max(channel_name).or_else(|| {
-            self.get_channel_range_max(channel_name)
-        })
+        self.mdf_info
+            .get_channel_limit_ext_max(channel_name)
+            .or_else(|| self.get_channel_range_max(channel_name))
     }
     /// Decodes raw event signal channel data into structured event records using the template EVBLOCK.
     /// Each record is parsed to extract the sync value and remaining event-specific data.

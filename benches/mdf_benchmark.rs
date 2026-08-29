@@ -21,7 +21,8 @@ fn read_load_convert(path: &str) {
     let mut mdf = Mdf::new(black_box(path)).expect("failed to open file");
     mdf.load_all_channels_data_in_memory()
         .expect("failed to load data");
-    mdf.convert_all_channels().expect("failed to convert channels");
+    mdf.convert_all_channels()
+        .expect("failed to convert channels");
 }
 
 /// Large files (≥50 MB) — sample_size(10) with enough measurement_time to avoid the

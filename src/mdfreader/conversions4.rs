@@ -1320,24 +1320,21 @@ fn text_to_value_calculation(
     // Iterate without cloning: use values_slice() and offsets_slice()
     let values = array.values_slice();
     let offsets = array.offsets_slice();
-    new_array
-        .iter_mut()
-        .enumerate()
-        .for_each(|(i, new_a)| {
-            let s = if i + 1 < offsets.len() {
-                let start = offsets[i] as usize;
-                let end = offsets[i + 1] as usize;
-                let bytes = &values[start..end];
-                std::str::from_utf8(bytes).unwrap_or_default()
-            } else {
-                ""
-            };
-            if let Some(val) = table.get(s) {
-                *new_a = *val;
-            } else {
-                *new_a = default;
-            }
-        });
+    new_array.iter_mut().enumerate().for_each(|(i, new_a)| {
+        let s = if i + 1 < offsets.len() {
+            let start = offsets[i] as usize;
+            let end = offsets[i + 1] as usize;
+            let bytes = &values[start..end];
+            std::str::from_utf8(bytes).unwrap_or_default()
+        } else {
+            ""
+        };
+        if let Some(val) = table.get(s) {
+            *new_a = *val;
+        } else {
+            *new_a = default;
+        }
+    });
     PrimitiveBuilder::new_from_buffer(
         new_array.into(),
         array
