@@ -221,15 +221,11 @@ impl Display for Ev4Block {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "EV: type={} ({}) sync={} ({}) cause={} ({}) range={} ({}) scopes={} attachments={}",
+            "EV  |  {} | sync={} | cause={} | range={} | scopes={}, attachments={}",
             self.get_event_type_str(),
-            self.ev_type,
             self.get_sync_type_str(),
-            self.ev_sync_type,
             self.get_cause_str(),
-            self.ev_cause,
             self.get_range_type_str(),
-            self.ev_range_type,
             self.ev_scope_count,
             self.ev_attachment_count
         )
@@ -440,7 +436,7 @@ mod tests {
         };
 
         let display = format!("{ev}");
-        assert!(display.contains("EV:"));
+        assert!(display.contains("EV"));
         assert!(display.contains("Trigger"));
         assert!(display.contains("Time"));
         assert!(display.contains("User"));

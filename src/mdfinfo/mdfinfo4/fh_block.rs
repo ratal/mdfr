@@ -66,7 +66,6 @@ impl Default for FhBlock {
 
 impl Display for FhBlock {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Convert nanoseconds to datetime
         let secs = (self.fh_time_ns / 1_000_000_000) as i64;
         let nsecs = (self.fh_time_ns % 1_000_000_000) as u32;
         let datetime = DateTime::from_timestamp(secs, nsecs)
@@ -79,10 +78,21 @@ impl Display for FhBlock {
         };
         write!(
             f,
-            "FH: {} ({}) tz_offset={}min dst_offset={}min",
-            datetime, local_time, self.fh_tz_offset_min, self.fh_dst_offset_min
+            "FH  |  {} {}  |  tz={}, dst={}",
+            datetime,
+            local_time,
+            format_minutes_as_offset(self.fh_tz_offset_min),
+            format_minutes_as_offset(self.fh_dst_offset_min)
         )
     }
+}
+
+fn format_minutes_as_offset(minutes: i16) -> String {
+    let sign = if minutes >= 0 { '+' } else { '-' };
+    let abs_minutes = minutes.abs() as u16;
+    let hours = abs_minutes / 60;
+    let mins = abs_minutes % 60;
+    format!("{}{:02}:{:02}", sign, hours, mins)
 }
 
 /// Parses a single FHBLOCK from the file at the given target position.
@@ -153,10 +163,11 @@ mod tests {
             ..Default::default()
         };
         let display = format!("{fh}");
-        assert!(display.contains("FH:"));
+        assert!(display.contains("FH"));
         assert!(display.contains("2023-11-14"));
         assert!(display.contains("UTC"));
-        assert!(display.contains("tz_offset=0min"));
+        assert!(display.contains("tz=+00:00"));
+        assert!(display.contains("dst=+00:00"));
     }
 
     #[test]
@@ -170,6 +181,7 @@ mod tests {
         };
         let display = format!("{fh}");
         assert!(display.contains("local"));
-        assert!(display.contains("tz_offset=60min"));
+        assert!(display.contains("tz=+01:00"));
+        assert!(display.contains("dst=+00:00"));
     }
 }

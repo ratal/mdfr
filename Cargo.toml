@@ -91,14 +91,6 @@ crate-type = ["rlib", "cdylib"]
 name = "mdf_benchmark"
 harness = false
 
-[[bench]]
-name = "focused_benchmark"
-harness = false
-
-[[bench]]
-name = "hashmap_benchmark"
-harness = false
-
 [profile.release]
 opt-level = 3
 debug = false

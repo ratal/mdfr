@@ -6,12 +6,12 @@ pub mod data_read4;
 pub mod datastream_decoder;
 pub mod mdfreader3;
 pub mod mdfreader4;
+use rustc_hash::FxHashMap;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::BufReader;
 use std::sync::Arc;
-use rustc_hash::FxHashMap;
 
 use anyhow::{Context, Error, Result, bail};
 use arrow::array::{Array, TimestampNanosecondArray};

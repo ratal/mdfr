@@ -7,6 +7,7 @@
 //!   and calculates file positions for each block.
 //! - **Phase 2** (parallel): writes raw channel data blocks (DV/DZ/SD) via crossbeam channel,
 //!   using rayon for parallel compression.
+use rustc_hash::FxHashMap;
 use std::{
     collections::{HashMap, HashSet},
     fs::OpenOptions,
@@ -15,7 +16,6 @@ use std::{
     sync::Arc,
     thread,
 };
-use rustc_hash::FxHashMap;
 
 use super::mdfwriter3::convert3to4;
 use crate::mdfinfo::mdfinfo4::Blockheader4Short;

@@ -410,10 +410,6 @@ impl Cn4Block {
             None
         }
     }
-    /// Returns the number of attachments for this channel.
-    pub fn attachment_count(&self) -> u16 {
-        self.cn_attachment_count
-    }
     /// Returns the minimum signal value (raw) if the "value range valid" flag (bit 3) is set.
     pub fn val_range_min(&self) -> Option<f64> {
         if (self.cn_flags & (1 << 3)) != 0 {

@@ -242,19 +242,6 @@ impl MdfInfo4 {
         }
         None
     }
-    /// Returns true if the channel is an MLSD (Maximum Length Signal Data) channel.
-    /// MLSD channels have per-record lengths determined by a separate size channel.
-    pub fn is_mlsd_channel(&self, channel_name: &str) -> bool {
-        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
-            self.get_channel_id(channel_name)
-            && let Some(dg) = self.dg.get(dg_pos)
-            && let Some(cg) = dg.cg.get(rec_id)
-            && let Some(cn) = cg.cn.get(rec_pos)
-        {
-            return cn.is_mlsd();
-        }
-        false
-    }
     /// Returns true if the channel is a synchronization channel.
     /// Sync channels reference an ATBLOCK (attachment) rather than containing raw data.
     pub fn is_sync_channel(&self, channel_name: &str) -> bool {
@@ -756,11 +743,16 @@ impl MdfInfo4 {
     pub fn list_file_history(&mut self) -> String {
         let mut output = String::new();
         for (i, fh) in self.fh.iter().enumerate() {
+            let comment = self.sharable.get_md_comment(fh.fh_md_comment);
+            let comment_fmt = match comment {
+                Some(c) => format!("{c}"),
+                None => "—".to_string(),
+            };
             output.push_str(&format!(
-                "FH[{}]: {}, comment: {:?}\n",
+                "  #{}  {}  |  {}\n",
                 i,
                 fh,
-                self.sharable.get_md_comment(fh.fh_md_comment),
+                comment_fmt,
             ));
         }
         output
@@ -768,16 +760,46 @@ impl MdfInfo4 {
     /// list events
     pub fn list_events(&mut self) -> String {
         let mut output = String::new();
-        for (key, block) in &self.ev {
+        for (i, (_, block)) in self.ev.iter().enumerate() {
+            let name_tx = self
+                .sharable
+                .get_tx(block.ev_tx_name)
+                .unwrap_or_default();
+            let name = name_tx.as_deref().unwrap_or("—");
+            let comment = self
+                .sharable
+                .get_md_comment(block.ev_md_comment)
+                .map(|c| format!("{c}"))
+                .unwrap_or_else(|| "—".to_string());
+            let scopes = block.get_scope_links();
+            let attachments = block.get_attachment_links();
+            let scope_fmt = if scopes.is_empty() {
+                "—".to_string()
+            } else {
+                scopes
+                    .iter()
+                    .map(|p| p.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
+            let attach_fmt = if attachments.is_empty() {
+                "—".to_string()
+            } else {
+                attachments
+                    .iter()
+                    .map(|p| p.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
             output.push_str(&format!(
-                "position: {}, name: {:?}, comment: {:?}, scope: {:?}, attachment references: {:?}, event type: {}\n",
-                key,
-                self.sharable.get_tx(block.ev_tx_name),
-                self.sharable.get_md_comment(block.ev_md_comment),
-                block.get_scope_links(),
-                block.get_attachment_links(),
-                block.ev_type,
-            ))
+                "  #{}  {}  |  name: \"{}\"  |  scopes: [{}]  |  attachments: [{}]  |  {}\n",
+                i,
+                block,
+                name,
+                scope_fmt,
+                attach_fmt,
+                comment,
+            ));
         }
         output
     }
@@ -823,15 +845,24 @@ impl MdfInfo4 {
     /// list source information blocks
     pub fn list_source_information(&self) -> String {
         let mut output = String::new();
-        for (key, block) in &self.sharable.si {
+        for (i, (_, block)) in self.sharable.si.iter().enumerate() {
+            let name_tx = self
+                .sharable
+                .get_tx(block.si_tx_name)
+                .unwrap_or_default();
+            let name = name_tx.as_deref().unwrap_or("—");
+            let path_tx = self
+                .sharable
+                .get_tx(block.si_tx_path)
+                .unwrap_or_default();
+            let path = path_tx.as_deref().unwrap_or("—");
             output.push_str(&format!(
-                "position: {}, name: {:?}, path: {:?}, type: {}, bus: {}\n",
-                key,
-                self.sharable.get_tx(block.si_tx_name),
-                self.sharable.get_tx(block.si_tx_path),
-                block.get_type_str(),
-                block.get_bus_type_str(),
-            ))
+                "  #{}  {}  |  name: \"{}\"  |  path: \"{}\"\n",
+                i,
+                block,
+                name,
+                path,
+            ));
         }
         output
     }
