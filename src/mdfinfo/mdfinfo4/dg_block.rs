@@ -4,13 +4,15 @@
 //! DGBLOCKs form a linked list from `hd_dg_first`.
 use anyhow::{Context, Result};
 use binrw::{BinReaderExt, binrw};
-use std::collections::{BTreeMap, HashMap};
+use rustc_hash::FxHashMap;
+use std::collections::BTreeMap;
 use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{Cursor, Read};
 
 use super::block_header::{SharableBlocks, read_meta_data};
 use super::cg_block::{CG_F_VLSC, CG_F_VLSD, Cg4, parse_cg4};
+use super::cn_block::CnType;
 use super::metadata::BlockType;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 
@@ -96,7 +98,7 @@ pub struct Dg4 {
     /// DG Block
     pub block: Dg4Block,
     /// CG Block
-    pub cg: HashMap<u64, Cg4>,
+    pub cg: FxHashMap<u64, Cg4>,
 }
 
 impl Display for Dg4 {
@@ -165,18 +167,15 @@ pub fn parse_dg4(
 
 /// Links VLSD/VLSC channel groups (CG flag bit 0/1) to their matching CN in other groups.
 /// A channel references a VLSD CG via `cn_data` pointing to the CG's block position.
-fn identify_vlsd_cg(cg: &mut HashMap<u64, Cg4>) {
-    // First find all VLSD/VLSC Channel Groups
-    let mut vlsd: HashMap<i64, u64> = HashMap::new();
+fn identify_vlsd_cg(cg: &mut FxHashMap<u64, Cg4>) {
+    let mut vlsd: FxHashMap<i64, u64> = FxHashMap::default();
     for (rec_id, channel_group) in cg.iter() {
         if (channel_group.block.cg_flags & (CG_F_VLSD | CG_F_VLSC)) != 0 {
-            // VLSD or VLSC channel group found
             vlsd.insert(channel_group.block_position, *rec_id);
         }
     }
     if !vlsd.is_empty() {
-        // try to find corresponding channel in other channel group
-        let mut vlsd_matching: HashMap<u64, (u64, i32)> = HashMap::new();
+        let mut vlsd_matching: FxHashMap<u64, (u64, i32)> = FxHashMap::default();
         for (target_rec_id, channel_group) in cg.iter() {
             for (target_rec_pos, cn) in &channel_group.cn {
                 if let Some(vlsd_rec_id) = vlsd.get(&cn.block.cn_data) {
@@ -222,15 +221,15 @@ mod tests {
         // Empty DG
         let dg = Dg4 {
             block: Dg4Block::default(),
-            cg: HashMap::new(),
+            cg: FxHashMap::default(),
         };
         let display = format!("{dg}");
         assert!(display.contains("0 channel groups"));
         assert!(display.contains("0 channels"));
 
         // DG with 2 CGs, one with 3 channels and one with 2
-        let mut cg_map: HashMap<u64, Cg4> = HashMap::new();
-        let mut cn1: HashMap<i32, Cn4> = HashMap::new();
+        let mut cg_map: FxHashMap<u64, Cg4> = FxHashMap::default();
+        let mut cn1: CnType = FxHashMap::default();
         cn1.insert(0, Cn4::default());
         cn1.insert(8, Cn4::default());
         cn1.insert(16, Cn4::default());
@@ -248,7 +247,7 @@ mod tests {
         };
         cg_map.insert(0, cg1);
 
-        let mut cn2: HashMap<i32, Cn4> = HashMap::new();
+        let mut cn2: CnType = FxHashMap::default();
         cn2.insert(0, Cn4::default());
         cn2.insert(8, Cn4::default());
         let cg2 = Cg4 {

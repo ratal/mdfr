@@ -8,7 +8,7 @@ use crate::mdfinfo::sym_buf_reader::SymBufReader;
 use anyhow::{Context, Result};
 use arrow::array::{BooleanBufferBuilder, UInt8Builder, UInt16Builder, UInt32Builder};
 use binrw::{BinReaderExt, binrw};
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use std::fmt::{self, Display};
 use std::fs::File;
 
@@ -582,7 +582,7 @@ impl Display for Cn4 {
 }
 
 /// hashmap's key is bit position in record, value Cn4
-pub(crate) type CnType = HashMap<i32, Cn4>;
+pub(crate) type CnType = FxHashMap<i32, Cn4>;
 
 /// record layout type : record_id_size: u8, cg_data_bytes: u32, cg_inval_bytes: u32
 pub(crate) type RecordLayout = (u8, u32, u32);
@@ -596,7 +596,7 @@ pub(super) fn parse_cn4(
     record_layout: RecordLayout,
     cg_cycle_count: u64,
 ) -> Result<(CnType, i64, usize, i32)> {
-    let mut cn: CnType = HashMap::new();
+    let mut cn: CnType = FxHashMap::default();
     let mut n_cn: usize = 0;
     let mut first_rec_pos: i32 = 0;
     let (record_id_size, _cg_data_bytes, _cg_inval_bytes) = record_layout;
@@ -1084,7 +1084,7 @@ pub(super) fn parse_cn4_block(
 ) -> Result<(Cn4, i64, usize, CnType)> {
     let (record_id_size, _cg_data_bytes, cg_inval_bytes) = record_layout;
     let mut n_cn: usize = 1;
-    let mut cns: HashMap<i32, Cn4> = HashMap::new();
+    let mut cns: CnType = FxHashMap::default();
     let (mut block, cnheader, pos) = parse_block_short(rdr, target, position)?;
     position = pos;
     let block: Cn4Block = block

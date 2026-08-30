@@ -11,6 +11,7 @@ use std::fmt;
 use std::fs::{File, OpenOptions};
 use std::io::BufReader;
 use std::sync::Arc;
+use rustc_hash::FxHashMap;
 
 use anyhow::{Context, Error, Result, bail};
 use arrow::array::{Array, TimestampNanosecondArray};
@@ -179,7 +180,7 @@ impl Mdf {
         self.mdf_info.list_source_information()
     }
     /// get source information blocks (MDF 4.x only)
-    pub fn get_source_information_blocks(&self) -> Option<HashMap<i64, Si4Block>> {
+    pub fn get_source_information_blocks(&self) -> Option<FxHashMap<i64, Si4Block>> {
         self.mdf_info.get_source_information_blocks()
     }
     /// list attachments (MDF 4.x only)

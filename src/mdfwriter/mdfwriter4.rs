@@ -15,6 +15,7 @@ use std::{
     sync::Arc,
     thread,
 };
+use rustc_hash::FxHashMap;
 
 use super::mdfwriter3::convert3to4;
 use crate::mdfinfo::mdfinfo4::Blockheader4Short;
@@ -1539,7 +1540,7 @@ fn create_blocks(
             header: cg_block_header,
             block: cg_block,
             master_channel_name: cg.master_channel_name.clone(),
-            cn: HashMap::new(),
+            cn: FxHashMap::default(),
             block_position: cg_position,
             channel_names: HashSet::new(),
             record_length: cg_block.cg_data_bytes,
@@ -1551,7 +1552,7 @@ fn create_blocks(
         new_cg.channel_names.insert(cn.unique_name.clone());
         let mut new_dg = Dg4 {
             block: dg_block,
-            cg: HashMap::new(),
+            cg: FxHashMap::default(),
         };
         new_dg.cg.insert(0, new_cg);
         new_info.dg.insert(dg_position, new_dg);

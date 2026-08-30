@@ -42,6 +42,7 @@ pub use si_block::*;
 pub use sr_block::*;
 
 use anyhow::{Context, Error, Result};
+use rustc_hash::FxHashMap;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 /// ChannelId : (Option<master_channelname>, dg_pos, (cg_pos, rec_id), (cn_pos, rec_pos))
@@ -588,7 +589,7 @@ impl MdfInfo4 {
             header: default_short_header(BlockType::CG),
             block: cg_block,
             master_channel_name: master.master_channel.clone(),
-            cn: HashMap::new(),
+            cn: FxHashMap::default(),
             block_position: cg_pos,
             channel_names: HashSet::new(),
             record_length: n_bytes,
@@ -604,7 +605,7 @@ impl MdfInfo4 {
         let dg_block = Dg4Block::default();
         let mut dg = Dg4 {
             block: dg_block,
-            cg: HashMap::new(),
+            cg: FxHashMap::default(),
         };
         dg.cg.insert(0, cg);
         self.dg.insert(dg_pos, dg);
@@ -835,7 +836,7 @@ impl MdfInfo4 {
         output
     }
     /// get all source information blocks
-    pub fn get_source_information_blocks(&self) -> HashMap<i64, Si4Block> {
+    pub fn get_source_information_blocks(&self) -> FxHashMap<i64, Si4Block> {
         self.sharable.si.clone()
     }
     /// get event block from its position

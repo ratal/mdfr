@@ -8,6 +8,7 @@ use binrw::{BinReaderExt, binrw};
 use codepage::to_encoding;
 use encoding_rs::Encoding;
 use log::{info, warn};
+use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
@@ -228,9 +229,9 @@ impl MdfInfo {
             }))
         } else {
             let mut sharable: SharableBlocks = SharableBlocks {
-                md_tx: HashMap::new(),
-                cc: HashMap::new(),
-                si: HashMap::new(),
+                md_tx: FxHashMap::default(),
+                cc: FxHashMap::default(),
+                si: FxHashMap::default(),
             };
 
             // Read HD block
@@ -951,7 +952,7 @@ impl MdfInfo {
         }
     }
     /// Get all source information blocks (MDF 4.x only)
-    pub fn get_source_information_blocks(&self) -> Option<HashMap<i64, Si4Block>> {
+    pub fn get_source_information_blocks(&self) -> Option<FxHashMap<i64, Si4Block>> {
         match self {
             MdfInfo::V3(_) => None,
             MdfInfo::V4(mdfinfo4) => Some(mdfinfo4.get_source_information_blocks()),

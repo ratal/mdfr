@@ -9,7 +9,8 @@ use arrow::compute::take;
 use arrow::datatypes::{Field, UnionFields};
 use binrw::{BinReaderExt, binrw};
 use rayon::prelude::*;
-use std::collections::{HashMap, HashSet};
+use rustc_hash::FxHashMap;
+use std::collections::HashSet;
 use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{Cursor, Read};
@@ -771,8 +772,8 @@ pub(super) fn parse_cg4(
     mut position: i64,
     sharable: &mut SharableBlocks,
     record_id_size: u8,
-) -> Result<(HashMap<u64, Cg4>, i64, usize, usize)> {
-    let mut cg: HashMap<u64, Cg4> = HashMap::new();
+) -> Result<(FxHashMap<u64, Cg4>, i64, usize, usize)> {
+    let mut cg: FxHashMap<u64, Cg4> = FxHashMap::default();
     let mut n_cg: usize = 0;
     let mut n_cn: usize = 0;
     if target != 0 {

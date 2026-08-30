@@ -2140,6 +2140,7 @@ dependencies = [
  "rayon",
  "roxmltree",
  "rust-hdf5",
+ "rustc-hash",
  "tempfile",
  "test-log",
  "transpose",
