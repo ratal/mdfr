@@ -39,7 +39,7 @@ crossbeam-channel = "0.5.16" # for efficient channel between threads
 parking_lot = "0.12.5" # for efficient mutex
 rustc-hash = "2.1" # for faster HashMap in hot paths with integer keys
 roxmltree = "0.21.1" # for xml parsing
-flate2 = "1.1.10" # for DZ block data deflate
+flate2 = { version = "1.1.10", features = ["zlib-rs"] } # for DZ block data deflate
 zstd = "0.13.3"
 lz4 = "1.28.1"
 md-5 = "0.11.0" # md5sum of attachments

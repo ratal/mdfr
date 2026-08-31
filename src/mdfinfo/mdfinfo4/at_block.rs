@@ -156,7 +156,12 @@ fn parser_at4_block(
 
         let zip_type = block.at_zip_type;
         if (block.at_flags & 0b10) > 0 {
-            embedded_data = decompress_data(zip_type, 0, embedded_data, block.at_original_size)?;
+            let compressed = embedded_data.clone();
+            embedded_data = decompress_data(zip_type, 0, embedded_data, block.at_original_size)
+                .unwrap_or_else(|_| {
+                    warn!("Failed to decompress attachment data, storing raw data");
+                    compressed
+                });
         }
 
         // MD5 Checksum verification

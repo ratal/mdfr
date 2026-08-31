@@ -6,7 +6,7 @@
 //! and GDBLOCK guards MDF 4.3 features in unsorted data.
 use anyhow::{Context, Result, bail};
 use binrw::{BinReaderExt, binrw};
-use flate2::read::ZlibDecoder;
+use flate2::read::{DeflateDecoder, ZlibDecoder};
 use log::warn;
 use lz4::Decoder as Lz4Decoder;
 use std::fmt::{self, Display};
@@ -126,12 +126,24 @@ pub fn decompress_data(
     let mut data = Vec::<u8>::with_capacity(org_data_length as usize);
     match zip_type {
         0 | 1 => {
-            // deflate algorithm (zlib format)
-            let reader = Cursor::new(buf);
+            let reader = Cursor::new(&buf);
             let mut decoder = ZlibDecoder::new(reader);
-            decoder
-                .read_to_end(&mut data)
-                .context("Error decompressing Deflate data")?;
+            let zlib_ok = decoder.read_to_end(&mut data).is_ok();
+            if !zlib_ok {
+                warn!("zlib stream has invalid checksum or is truncated, falling back to raw deflate");
+                data.clear();
+                let reader: Cursor<&[u8]> = if buf.len() >= 2
+                    && ((buf[0] as u16) << 8 | buf[1] as u16) % 31 == 0
+                {
+                    Cursor::new(&buf[2..])
+                } else {
+                    Cursor::new(&buf)
+                };
+                let mut decoder = DeflateDecoder::new(reader);
+                decoder
+                    .read_to_end(&mut data)
+                    .context("Error decompressing Deflate data")?;
+            }
         }
         2 | 3 => {
             // zstd algorithm
