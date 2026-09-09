@@ -12,7 +12,7 @@ jobs:
     name: Tests (parquet)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Unzip local test fixtures
         run: cd test_files && unzip -o test_mdf3.mdf.zip && unzip -o test_mdf4.mf4.zip
       - name: Build
@@ -28,7 +28,7 @@ jobs:
     name: Tests (polars Rust-native)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Rust-native polars tests
         run: cargo test --test numpy_polars rust_polars --verbose --features polars
 
@@ -36,8 +36,8 @@ jobs:
     name: Tests (polars + numpy Python)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
       - name: Create virtualenv and install Python dependencies
