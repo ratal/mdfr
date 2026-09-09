@@ -3,7 +3,7 @@
 //! Each FHBLOCK records a creation or modification event with a timestamp and
 //! an optional MD comment. FHBLOCKs form a linked list from `hd_fh_first`.
 use anyhow::{Context, Result};
-use binrw::{BinReaderExt, binrw};
+use binrw::binrw;
 use chrono::{DateTime, Local};
 use std::fmt::{self, Display};
 use std::fs::File;
@@ -89,7 +89,7 @@ impl Display for FhBlock {
 
 fn format_minutes_as_offset(minutes: i16) -> String {
     let sign = if minutes >= 0 { '+' } else { '-' };
-    let abs_minutes = minutes.abs() as u16;
+    let abs_minutes = minutes.unsigned_abs();
     let hours = abs_minutes / 60;
     let mins = abs_minutes % 60;
     format!("{}{:02}:{:02}", sign, hours, mins)
@@ -107,8 +107,7 @@ fn parse_fh_block(
     rdr.read_exact(&mut buf)
         .context("Could not read FH block buffer")?;
     let mut block = Cursor::new(buf);
-    let fh: FhBlock = block
-        .read_le()
+    let fh: FhBlock = binrw::BinReaderExt::read_le(&mut block)
         .with_context(|| format!("Error parsing fh block into FhBlock struct \n{block:?}"))?; // reads the fh block
     Ok((fh, target + 56))
 }

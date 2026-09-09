@@ -14,7 +14,6 @@
 //! Not yet supported (deferred): bits 5-8 (VLSD/VLSC byte and offset corrections).
 
 use anyhow::{Context, Result};
-use binrw::BinReaderExt;
 use log::{info, warn};
 use std::collections::BTreeMap;
 use std::fs::File;
@@ -56,9 +55,8 @@ fn walk_dl_chain(
     for _ in 0..65536u32 {
         rdr.seek_relative(current_dl_addr - position)
             .context("finalize: could not seek to DL block")?;
-        let dl: Dl4Block = rdr
-            .read_le()
-            .context("finalize: could not parse DL block")?;
+        let dl: Dl4Block =
+            binrw::BinReaderExt::read_le(rdr).context("finalize: could not parse DL block")?;
         let dl_end = current_dl_addr + dl.dl_len as i64;
 
         // Sum sizes of all DT blocks in this DL that are NOT the last one
@@ -80,8 +78,7 @@ fn walk_dl_chain(
             let mut id_buf = [0u8; 4];
             rdr.read_exact(&mut id_buf)
                 .context("finalize: could not read DT id in DL")?;
-            let dt: Dt4Block = rdr
-                .read_le()
+            let dt: Dt4Block = binrw::BinReaderExt::read_le(rdr)
                 .context("finalize: could not parse DT block in DL")?;
             if dt.len >= 24 {
                 total_preceding_bytes += dt.len - 24;
@@ -157,8 +154,7 @@ pub fn fix_cycle_counts(
             b"##DT" | b"##SD" => {
                 // Simple DT/SD: the data starts at dg_data + 24 (header size)
                 // The hdr_len field may be wrong (unfinalized), so use file_size instead.
-                let dt: Dt4Block = rdr
-                    .read_le()
+                let dt: Dt4Block = binrw::BinReaderExt::read_le(rdr)
                     .context("finalize: could not parse DT block header")?;
                 position = dg_data + 24;
 

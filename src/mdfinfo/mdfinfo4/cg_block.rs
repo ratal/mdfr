@@ -7,7 +7,7 @@ use arrow::array::{Array, ArrayRef, UInt32Array, UnionArray};
 use arrow::buffer::ScalarBuffer;
 use arrow::compute::take;
 use arrow::datatypes::{Field, UnionFields};
-use binrw::{BinReaderExt, binrw};
+use binrw::binrw;
 use rayon::prelude::*;
 use rustc_hash::FxHashMap;
 use std::collections::HashSet;
@@ -170,8 +170,7 @@ fn parse_cg4_block(
 ) -> Result<(Cg4, i64, usize)> {
     let (mut block, header, pos) = parse_block_short(rdr, target, position)?;
     position = pos;
-    let cg: Cg4Block = block
-        .read_le()
+    let cg: Cg4Block = binrw::BinReaderExt::read_le(&mut block)
         .context("Could not read buffer into Cg4Block struct")?;
 
     // Reads MD
@@ -203,8 +202,7 @@ fn parse_cg4_block(
     if (si_pointer != 0) && !sharable.si.contains_key(&si_pointer) {
         let (mut si_block, _header, pos) = parse_block_short(rdr, si_pointer, position)?;
         position = pos;
-        let si_block: Si4Block = si_block
-            .read_le()
+        let si_block: Si4Block = binrw::BinReaderExt::read_le(&mut si_block)
             .context("Could not read buffer into Si4block struct")?;
         position = read_meta_data(rdr, sharable, si_block.si_tx_name, position, BlockType::SI)?;
         position = read_meta_data(rdr, sharable, si_block.si_tx_path, position, BlockType::SI)?;
@@ -262,8 +260,7 @@ fn parse_sr4(
             .context("Could not read SR block body")?;
         position = next + header.hdr_len as i64;
         let mut block = Cursor::new(buf);
-        let sr: Sr4Block = block
-            .read_le()
+        let sr: Sr4Block = binrw::BinReaderExt::read_le(&mut block)
             .context("Could not read buffer into Sr4Block struct")?;
         next = sr.sr_sr_next;
         sr_blocks.push(sr);

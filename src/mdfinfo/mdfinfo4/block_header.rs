@@ -4,7 +4,7 @@
 //! 8-byte length, and 8-byte link count. This module also manages SharableBlocks
 //! (CC, SI, TX, MD blocks) stored in a global hashmap for deduplication.
 use anyhow::{Context, Result};
-use binrw::{BinReaderExt, binrw};
+use binrw::binrw;
 use rustc_hash::FxHashMap;
 use std::fmt::{self, Display};
 use std::fs::File;
@@ -85,9 +85,8 @@ pub fn parse_block_header(rdr: &mut SymBufReader<&File>) -> Result<Blockheader4>
     rdr.read_exact(&mut buf)
         .context("could not read blockheader4 Id")?;
     let mut block = Cursor::new(buf);
-    let header: Blockheader4 = block
-        .read_le()
-        .context("binread could not parse blockheader4")?;
+    let header: Blockheader4 =
+        binrw::BinReaderExt::read_le(&mut block).context("binread could not parse blockheader4")?;
     Ok(header)
 }
 
@@ -172,9 +171,8 @@ pub(super) fn parse_block_header_short(rdr: &mut SymBufReader<&File>) -> Result<
     rdr.read_exact(&mut buf)
         .context("could not read short blockheader4 Id")?;
     let mut block = Cursor::new(buf);
-    let header: Blockheader4Short = block
-        .read_le()
-        .context("could not parse short blockheader4")?;
+    let header: Blockheader4Short =
+        binrw::BinReaderExt::read_le(&mut block).context("could not parse short blockheader4")?;
     Ok(header)
 }
 

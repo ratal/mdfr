@@ -4,7 +4,7 @@
 //! Supports 12 conversion types (Table 31): identity, linear, rational, polynomial,
 //! tabular (value-to-value, value-to-text), algebraic formula, and more.
 use anyhow::{Context, Result};
-use binrw::{BinReaderExt, binrw};
+use binrw::binrw;
 use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::Cursor;
@@ -111,8 +111,7 @@ pub(super) fn read_cc(
     mut block: Cursor<Vec<u8>>,
     sharable: &mut SharableBlocks,
 ) -> Result<i64> {
-    let cc_block: Cc4Block = block
-        .read_le()
+    let cc_block: Cc4Block = binrw::BinReaderExt::read_le(&mut block)
         .context("Could nto read buffer into Cc4Block struct")?;
     position = read_meta_data(rdr, sharable, cc_block.cc_md_unit, position, BlockType::CC)?;
     position = read_meta_data(rdr, sharable, cc_block.cc_tx_name, position, BlockType::CC)?;

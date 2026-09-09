@@ -3,7 +3,7 @@
 //! Describes N-dimensional arrays of channel values. Supports multiple storage types
 //! (CN template, CG template, DG template) and array types (plain, lookup, axis).
 use anyhow::{Context, Error, Result};
-use binrw::{BinReaderExt, BinWriterExt, binrw};
+use binrw::{BinWriterExt, binrw};
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::collections::VecDeque;
 use std::fmt::{self, Display};
@@ -361,13 +361,11 @@ pub(super) fn parse_ca_block(
     cg_cycle_count: u64,
 ) -> Result<CaBlockParseResult, Error> {
     // reads links count
-    let ca_links: u64 = ca_block
-        .read_le()
-        .context("Could not read links count in ca block")?;
+    let ca_links: u64 =
+        binrw::BinReaderExt::read_le(ca_block).context("Could not read links count in ca block")?;
     //Reads members first
     ca_block.set_position(8 + ca_links * 8); // change buffer position after links section
-    let ca_members: Ca4BlockMembers = ca_block
-        .read_le()
+    let ca_members: Ca4BlockMembers = binrw::BinReaderExt::read_le(ca_block)
         .context("Could not read buffer into CaBlockMembers struct")?;
     let mut snd: usize;
     let mut pnd: usize;

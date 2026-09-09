@@ -3,7 +3,7 @@
 //! CHBLOCKs organize channels into a display hierarchy tree (groups, functions,
 //! input/output variables). The hierarchy is separate from the DG→CG→CN data structure.
 use anyhow::{Context, Result};
-use binrw::{BinReaderExt, binrw};
+use binrw::binrw;
 use std::collections::HashMap;
 use std::fmt::{self, Display};
 use std::fs::File;
@@ -95,7 +95,8 @@ fn parser_ch4_block(
 ) -> Result<(Ch4Block, i64)> {
     let (mut block, _header, pos) = parse_block_short(rdr, target, position)?;
     position = pos;
-    let block: Ch4Block = block.read_le().context("Error parsing ch block")?;
+    let block: Ch4Block =
+        binrw::BinReaderExt::read_le(&mut block).context("Error parsing ch block")?;
 
     Ok((block, position))
 }

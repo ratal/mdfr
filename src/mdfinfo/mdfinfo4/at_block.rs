@@ -3,7 +3,7 @@
 //! Stores or references external files (e.g. calibration data, images) attached to the MDF file.
 //! Attachments can be embedded or external, with optional MD5 checksum verification.
 use anyhow::{Context, Result};
-use binrw::{BinReaderExt, binrw};
+use binrw::binrw;
 use log::warn;
 use md5::{Digest, Md5};
 use std::collections::HashMap;
@@ -143,8 +143,7 @@ fn parser_at4_block(
     rdr.read_exact(&mut buf)
         .context("Could not read At4 Block buffer")?;
     let mut block = Cursor::new(buf);
-    let block: At4Block = block
-        .read_le()
+    let block: At4Block = binrw::BinReaderExt::read_le(&mut block)
         .context("Could not parse At4 Block buffer into At4Block struct")?;
     position = target + 96;
 

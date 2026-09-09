@@ -3,7 +3,7 @@
 //! Each DGBLOCK groups one or more CGBLOCKs that share the same data block.
 //! DGBLOCKs form a linked list from `hd_dg_first`.
 use anyhow::{Context, Result};
-use binrw::{BinReaderExt, binrw};
+use binrw::binrw;
 use rustc_hash::FxHashMap;
 use std::collections::BTreeMap;
 use std::fmt::{self, Display};
@@ -79,8 +79,7 @@ fn parse_dg4_block(
     rdr.read_exact(&mut buf)
         .context("Could not read Dg4Blcok buffer")?;
     let mut block = Cursor::new(buf);
-    let dg: Dg4Block = block
-        .read_le()
+    let dg: Dg4Block = binrw::BinReaderExt::read_le(&mut block)
         .context("Could not parse Dg4Block buffer into Dg4Block struct")?;
     position = target + 64;
 

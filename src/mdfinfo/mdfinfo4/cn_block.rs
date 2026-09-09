@@ -7,7 +7,7 @@ use crate::data_holder::tensor_arrow::Order;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 use anyhow::{Context, Result};
 use arrow::array::{BooleanBufferBuilder, UInt8Builder, UInt16Builder, UInt32Builder};
-use binrw::{BinReaderExt, binrw};
+use binrw::binrw;
 use rustc_hash::FxHashMap;
 use std::fmt::{self, Display};
 use std::fs::File;
@@ -1083,8 +1083,7 @@ pub(super) fn parse_cn4_block(
     let mut cns: CnType = FxHashMap::default();
     let (mut block, cnheader, pos) = parse_block_short(rdr, target, position)?;
     position = pos;
-    let block: Cn4Block = block
-        .read_le()
+    let block: Cn4Block = binrw::BinReaderExt::read_le(&mut block)
         .context("Could not read buffer into Cn4Block struct")?;
 
     let pos_byte_beg = block.cn_byte_offset + record_id_size as u32;
@@ -1122,8 +1121,7 @@ pub(super) fn parse_cn4_block(
     if (si_pointer != 0) && !sharable.si.contains_key(&si_pointer) {
         let (mut si_block, _header, pos) = parse_block_short(rdr, si_pointer, position)?;
         position = pos;
-        let si_block: Si4Block = si_block
-            .read_le()
+        let si_block: Si4Block = binrw::BinReaderExt::read_le(&mut si_block)
             .context("Could into read buffer into Si4Block struct")?;
         position = read_meta_data(rdr, sharable, si_block.si_tx_name, position, BlockType::SI)?;
         position = read_meta_data(rdr, sharable, si_block.si_tx_path, position, BlockType::SI)?;

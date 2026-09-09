@@ -10,7 +10,6 @@ use crate::mdfreader::data_read4::read_channels_from_bytes;
 use crate::mdfreader::data_read4::read_one_channel_array;
 use crate::mdfreader::datastream_decoder;
 use anyhow::{Context, Error, Result, bail};
-use binrw::BinReaderExt;
 use encoding_rs::{Decoder, GB18030, UTF_8, UTF_16BE, UTF_16LE, WINDOWS_1252};
 use log::warn;
 use rayon::prelude::*;
@@ -104,8 +103,7 @@ fn read_data(
     match id {
         [35, 35, 68, 84] => {
             // ##DT
-            let block_header: Dt4Block = rdr
-                .read_le()
+            let block_header: Dt4Block = binrw::BinReaderExt::read_le(rdr)
                 .context("could not read into Dt4Block structure")?;
             // simple data block
             if sorted {
@@ -207,8 +205,7 @@ fn read_data(
             // ##DV
             // data values
             // sorted data group only, no record id, no invalid bytes
-            let block_header: Dt4Block = rdr
-                .read_le()
+            let block_header: Dt4Block = binrw::BinReaderExt::read_le(rdr)
                 .context("could not read into Dv4Block structure")?;
             for channel_group in dg.cg.values_mut() {
                 read_all_channels_sorted(rdr, channel_group)
@@ -223,8 +220,7 @@ fn read_data(
         [35, 35, 71, 68] => {
             // ##GD - Guard Block (MDF 4.3)
             // GDBLOCK is used to safeguard newly introduced features against older readers
-            let block: Gd4Block = rdr
-                .read_le()
+            let block: Gd4Block = binrw::BinReaderExt::read_le(rdr)
                 .context("could not read into Gd4Block structure")?;
 
             // Gd4Block struct size (without id): 4 + 8 + 8 + 8 + 2 = 30 bytes
@@ -269,7 +265,8 @@ fn read_all_blocks_to_bytes(
 ) -> Result<Option<(Vec<u8>, i64)>> {
     // ##DT, ##SD, ##VD are regular data blocks; ##RD, ##RV are reduction data blocks (same format)
     if id == *b"##DT" || id == *b"##SD" || id == *b"##VD" || id == *b"##RD" || id == *b"##RV" {
-        let block_header: Dt4Block = rdr.read_le().context("Could not read data block header")?;
+        let block_header: Dt4Block =
+            binrw::BinReaderExt::read_le(rdr).context("Could not read data block header")?;
         let mut buf = vec![0u8; block_header.len as usize - 24];
         rdr.read_exact(&mut buf)
             .context("could not read data block buffer")?;
@@ -303,7 +300,7 @@ fn read_all_blocks_to_bytes(
                     combined_data.extend(buf);
                 } else {
                     // ##DT, ##SD, ##VD or any other raw data block
-                    let header: Dt4Block = rdr.read_le()?;
+                    let header: Dt4Block = binrw::BinReaderExt::read_le(rdr)?;
                     let mut buf = vec![0u8; header.len as usize - 24];
                     rdr.read_exact(&mut buf)?;
                     pos += header.len as i64;
@@ -322,7 +319,7 @@ fn read_all_blocks_to_bytes(
 /// It is existing to add complementary information about compression in DZ
 fn read_hl(rdr: &mut BufReader<&File>, mut position: i64) -> Result<(i64, [u8; 4])> {
     // compressed data in datal list
-    let block: Hl4Block = rdr.read_le().context("could not read HL block")?;
+    let block: Hl4Block = binrw::BinReaderExt::read_le(rdr).context("could not read HL block")?;
     position += block.hl_len as i64;
     // Read Id of pointed DL Block
     rdr.seek_relative(block.hl_dl_first - position)
@@ -357,8 +354,7 @@ fn read_vlsd_from_dl_blocks(
                 dt
             } else {
                 // ##SD block (same header layout as Dt4Block)
-                let block_header: Dt4Block = rdr
-                    .read_le()
+                let block_header: Dt4Block = binrw::BinReaderExt::read_le(rdr)
                     .context("Could not read VLSD sub-block header")?;
                 let mut buf = vec![0u8; (block_header.len - 24) as usize];
                 rdr.read_exact(&mut buf)
@@ -395,8 +391,8 @@ fn read_sd(
                 rdr.read_exact(&mut id).context("could not read block id")?;
                 if "##SD".as_bytes() == id {
                     // SD (Signal Data) block - each value prefixed with u32 length
-                    let block_header: Dt4Block =
-                        rdr.read_le().context("Could not read SD block struct")?;
+                    let block_header: Dt4Block = binrw::BinReaderExt::read_le(rdr)
+                        .context("Could not read SD block struct")?;
                     let mut data = vec![0u8; block_header.len as usize - 24];
                     rdr.read_exact(&mut data)
                         .context("could not read SD data buffer")?;
@@ -697,7 +693,8 @@ fn parser_ld4(
             }
             position = ld_data + block_header.len as i64;
         } else {
-            let block_header: Dt4Block = rdr.read_le().context("Could not read DV block header")?;
+            let block_header: Dt4Block =
+                binrw::BinReaderExt::read_le(rdr).context("Could not read DV block header")?;
             let mut buf = vec![0u8; block_header.len as usize - 24];
             rdr.read_exact(&mut buf)
                 .context("Could not read Dt4 block")?;
@@ -728,8 +725,7 @@ fn parser_ld4(
                 channel_group.invalid_bytes = Some(dt);
                 position = ld_invalid_data + block_header.len as i64;
             } else {
-                let block_header: Dt4Block = rdr
-                    .read_le()
+                let block_header: Dt4Block = binrw::BinReaderExt::read_le(rdr)
                     .context("Could not read into DZ or DI block header")?;
                 let mut buf = vec![0u8; (block_header.len - 24) as usize];
                 rdr.read_exact(&mut buf)
@@ -785,8 +781,8 @@ fn read_dv_di(
                 position = data_pointer + header.len as i64;
                 raw_data.push(RawCompBlock::Dz(header, buf));
             } else {
-                let block_header: Dt4Block =
-                    rdr.read_le().context("Could not read DV block structure")?;
+                let block_header: Dt4Block = binrw::BinReaderExt::read_le(rdr)
+                    .context("Could not read DV block structure")?;
                 let mut buf = vec![0u8; (block_header.len - 24) as usize];
                 rdr.read_exact(&mut buf).context("Could not read DV data")?;
                 position = data_pointer + block_header.len as i64;
@@ -804,8 +800,7 @@ fn read_dv_di(
                 position = data_pointer + header.len as i64;
                 raw_invalid.push(RawCompBlock::Dz(header, buf));
             } else {
-                let block_header: Dt4Block = rdr
-                    .read_le()
+                let block_header: Dt4Block = binrw::BinReaderExt::read_le(rdr)
                     .context("Could not read invalid block header")?;
                 let mut buf = vec![0u8; (block_header.len - 24) as usize];
                 rdr.read_exact(&mut buf)
@@ -962,7 +957,7 @@ fn parser_dl4_sorted(
                 raw_entries.push((is_sd, RawCompBlock::Dz(header, compressed)));
             } else {
                 let block_header: Dt4Block =
-                    rdr.read_le().context("Could not read DT block header")?;
+                    binrw::BinReaderExt::read_le(rdr).context("Could not read DT block header")?;
                 // Guard against unfinalized files where the last DT block's len field
                 // was never updated (len == 0 or garbage). Clamp to available file bytes.
                 let data_len = if block_header.len >= 24 {
@@ -1083,7 +1078,8 @@ fn parser_dl4_unsorted(
             rdr.read_exact(&mut buf)
                 .context("could not read blockheader4 Id")?;
             let mut block = Cursor::new(buf);
-            let header: Blockheader4 = block.read_le().context("could not parse blockheader4")?;
+            let header: Blockheader4 =
+                binrw::BinReaderExt::read_le(&mut block).context("could not parse blockheader4")?;
             if header.hdr_id == "##DZ".as_bytes() {
                 let (dt, _block) = parse_dz(rdr)?;
                 data.extend(dt);

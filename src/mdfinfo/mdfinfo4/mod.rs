@@ -748,12 +748,7 @@ impl MdfInfo4 {
                 Some(c) => format!("{c}"),
                 None => "—".to_string(),
             };
-            output.push_str(&format!(
-                "  #{}  {}  |  {}\n",
-                i,
-                fh,
-                comment_fmt,
-            ));
+            output.push_str(&format!("  #{}  {}  |  {}\n", i, fh, comment_fmt,));
         }
         output
     }
@@ -761,10 +756,7 @@ impl MdfInfo4 {
     pub fn list_events(&mut self) -> String {
         let mut output = String::new();
         for (i, (_, block)) in self.ev.iter().enumerate() {
-            let name_tx = self
-                .sharable
-                .get_tx(block.ev_tx_name)
-                .unwrap_or_default();
+            let name_tx = self.sharable.get_tx(block.ev_tx_name).unwrap_or_default();
             let name = name_tx.as_deref().unwrap_or("—");
             let comment = self
                 .sharable
@@ -793,12 +785,7 @@ impl MdfInfo4 {
             };
             output.push_str(&format!(
                 "  #{}  {}  |  name: \"{}\"  |  scopes: [{}]  |  attachments: [{}]  |  {}\n",
-                i,
-                block,
-                name,
-                scope_fmt,
-                attach_fmt,
-                comment,
+                i, block, name, scope_fmt, attach_fmt, comment,
             ));
         }
         output
@@ -846,22 +833,13 @@ impl MdfInfo4 {
     pub fn list_source_information(&self) -> String {
         let mut output = String::new();
         for (i, (_, block)) in self.sharable.si.iter().enumerate() {
-            let name_tx = self
-                .sharable
-                .get_tx(block.si_tx_name)
-                .unwrap_or_default();
+            let name_tx = self.sharable.get_tx(block.si_tx_name).unwrap_or_default();
             let name = name_tx.as_deref().unwrap_or("—");
-            let path_tx = self
-                .sharable
-                .get_tx(block.si_tx_path)
-                .unwrap_or_default();
+            let path_tx = self.sharable.get_tx(block.si_tx_path).unwrap_or_default();
             let path = path_tx.as_deref().unwrap_or("—");
             output.push_str(&format!(
                 "  #{}  {}  |  name: \"{}\"  |  path: \"{}\"\n",
-                i,
-                block,
-                name,
-                path,
+                i, block, name, path,
             ));
         }
         output

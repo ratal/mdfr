@@ -4,7 +4,7 @@
 use anyhow::Error;
 use anyhow::{Context, Result, bail};
 use arrow::array::Array;
-use binrw::{BinReaderExt, binrw};
+use binrw::binrw;
 use codepage::to_encoding;
 use encoding_rs::Encoding;
 use log::{info, warn};
@@ -139,8 +139,7 @@ impl MdfInfo {
         rdr.read_exact(&mut buf)
             .context("Could not read IdBlock buffer")?;
         let mut block = Cursor::new(buf);
-        let id: IdBlock = block
-            .read_le()
+        let id: IdBlock = binrw::BinReaderExt::read_le(&mut block)
             .context("Could not parse buffer into IdBlock structure")?;
         info!("Read IdBlock");
 

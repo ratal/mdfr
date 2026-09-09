@@ -1,7 +1,7 @@
 //! Parsing of file metadata into MdfInfo3 struct
 use anyhow::{Context, Error, Result};
 use arrow::array::{UInt8Builder, UInt16Builder, UInt32Builder};
-use binrw::{BinRead, BinReaderExt};
+use binrw::BinRead;
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::{DateTime, FixedOffset, NaiveDate, TimeZone};
 use encoding_rs::Encoding;
@@ -482,9 +482,8 @@ pub struct Blockheader3 {
 
 /// Generic block header parser
 pub fn parse_block_header(rdr: &mut SymBufReader<&File>) -> Result<Blockheader3> {
-    let header: Blockheader3 = rdr
-        .read_le()
-        .context("Could not read Blockheader3 struct")?;
+    let header: Blockheader3 =
+        binrw::BinReaderExt::read_le(rdr).context("Could not read Blockheader3 struct")?;
     Ok(header)
 }
 
@@ -567,8 +566,7 @@ pub fn hd3_parser(
     rdr.read_exact(&mut buf)
         .context("Could not read hd3 buffer")?;
     let mut block = Cursor::new(buf);
-    let block: Hd3Block = block
-        .read_le()
+    let block: Hd3Block = binrw::BinReaderExt::read_le(&mut block)
         .context("Could not read buffer into Hd3Block struct")?;
     let datestr: String = encoding.decode(&block.hd_date).0.into();
     let mut dateiter = datestr.split(':');
@@ -636,8 +634,7 @@ pub fn hd3_parser(
         rdr.read_exact(&mut buf)
             .context("Could not read buffer for Hd3Block32")?;
         let mut block = Cursor::new(buf);
-        let block: Hd3Block32 = block
-            .read_le()
+        let block: Hd3Block32 = binrw::BinReaderExt::read_le(&mut block)
             .context("Could not read buffer into Hd3Block32 struct")?;
         let ti = encoding.decode(&block.hd_time_identifier).0;
         hd_start_time_ns = Some(block.hd_start_time_ns);
@@ -802,8 +799,7 @@ pub fn parse_dg3_block(
     rdr.read_exact(&mut buf)
         .context("Could not read Dg3 Block buffer")?;
     let mut block = Cursor::new(buf);
-    let block: Dg3Block = block
-        .read_le()
+    let block: Dg3Block = binrw::BinReaderExt::read_le(&mut block)
         .context("Could not read buffer into Dg3Block structure")?;
     Ok((block, (target + 24).into()))
 }
@@ -926,8 +922,7 @@ fn parse_cg3_block(
     rdr.read_exact(&mut buf)
         .context("Could not read Cg3Block buffer")?;
     let mut block = Cursor::new(buf);
-    let cg: Cg3Block = block
-        .read_le()
+    let cg: Cg3Block = binrw::BinReaderExt::read_le(&mut block)
         .context("Could not read buffer into Cg3Block structure")?;
     position = target as i64 + 30;
 
@@ -1209,15 +1204,13 @@ fn parse_cn3_block(
         .context("Could not read Cn3 block buffer")?;
     position = target as i64 + 228;
     let mut block = Cursor::new(buf);
-    let block1: Cn3Block1 = block
-        .read_le()
+    let block1: Cn3Block1 = binrw::BinReaderExt::read_le(&mut block)
         .context("Could not read buffer into Cn3Block1 structure")?;
     let mut desc = vec![0u8; 128];
     block
         .read_exact(&mut desc)
         .context("Could not read channel description")?;
-    let block2: Cn3Block2 = block
-        .read_le()
+    let block2: Cn3Block2 = binrw::BinReaderExt::read_le(&mut block)
         .context("Could not read buffer into Cn3Block2 struct")?;
     let pos_byte_beg = block2.cn_bit_offset / 8 + record_id_size;
     let mut n_bytes = block2.cn_bit_count / 8u16;
@@ -1600,8 +1593,7 @@ pub fn parse_cc3_block(
         .context("Could not read Cc3Block buffer")?;
     position = target as i64 + 46;
     let mut block = Cursor::new(buf);
-    let cc_block: Cc3Block = block
-        .read_le()
+    let cc_block: Cc3Block = binrw::BinReaderExt::read_le(&mut block)
         .context("Could not read buffer into Cc3Block structure")?;
     let conversion: Conversion;
     match cc_block.cc_type {
@@ -1795,11 +1787,11 @@ fn parse_ce(
         .context("Could not read buffer for CE Block")?;
     position = target as i64 + 6;
     let mut block = Cursor::new(buf);
-    let ce_id: [u8; 2] = block.read_le().context("could not read ce_id")?;
-    let ce_len: u16 = block.read_le().context("could not read ce_len")?;
-    let ce_extension_type: u16 = block
-        .read_le()
-        .context("could not read ce_extension_type")?;
+    let ce_id: [u8; 2] =
+        binrw::BinReaderExt::read_le(&mut block).context("could not read ce_id")?;
+    let ce_len: u16 = binrw::BinReaderExt::read_le(&mut block).context("could not read ce_len")?;
+    let ce_extension_type: u16 =
+        binrw::BinReaderExt::read_le(&mut block).context("could not read ce_extension_type")?;
 
     let ce_extension: CeSupplement = if ce_extension_type == 0x02 {
         // Reads DIM
@@ -1808,8 +1800,10 @@ fn parse_ce(
             .context("Could not DIM Supplement buffer")?;
         position += 118;
         let mut block = Cursor::new(buf);
-        let ce_module_number: u16 = block.read_le().context("could not read ce_module_number")?;
-        let ce_address: u32 = block.read_le().context("could not read ce_address")?;
+        let ce_module_number: u16 =
+            binrw::BinReaderExt::read_le(&mut block).context("could not read ce_module_number")?;
+        let ce_address: u32 =
+            binrw::BinReaderExt::read_le(&mut block).context("could not read ce_address")?;
         let mut desc = vec![0u8; 80];
         block
             .read_exact(&mut desc)
@@ -1835,8 +1829,10 @@ fn parse_ce(
             .context("Could not CAN Supplement buffer")?;
         position += 80;
         let mut block = Cursor::new(buf);
-        let ce_can_id: u32 = block.read_le().context("Could not read CAN ce_can_id")?;
-        let ce_can_index: u32 = block.read_le().context("Could not read CAN ce_can_index")?;
+        let ce_can_id: u32 =
+            binrw::BinReaderExt::read_le(&mut block).context("Could not read CAN ce_can_id")?;
+        let ce_can_index: u32 =
+            binrw::BinReaderExt::read_le(&mut block).context("Could not read CAN ce_can_index")?;
         let mut message = vec![0u8; 36];
         block
             .read_exact(&mut message)

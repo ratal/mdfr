@@ -5,7 +5,7 @@
 //! HLBLOCK is a header list for DZBLOCK chains, LDBLOCK is a list for sorted data,
 //! and GDBLOCK guards MDF 4.3 features in unsorted data.
 use anyhow::{Context, Result, bail};
-use binrw::{BinReaderExt, binrw};
+use binrw::binrw;
 use flate2::read::{DeflateDecoder, ZlibDecoder};
 use log::warn;
 use lz4::Decoder as Lz4Decoder;
@@ -109,9 +109,8 @@ pub fn parser_dl4_block(
 ) -> Result<(Dl4Block, i64)> {
     rdr.seek_relative(target - position)
         .context("Could not reach position to read Dl4Block")?;
-    let block: Dl4Block = rdr
-        .read_le()
-        .context("Could not read into Dl4Block struct")?;
+    let block: Dl4Block =
+        binrw::BinReaderExt::read_le(rdr).context("Could not read into Dl4Block struct")?;
     position = target + block.dl_len as i64;
     Ok((block, position))
 }
@@ -130,10 +129,12 @@ pub fn decompress_data(
             let mut decoder = ZlibDecoder::new(reader);
             let zlib_ok = decoder.read_to_end(&mut data).is_ok();
             if !zlib_ok {
-                warn!("zlib stream has invalid checksum or is truncated, falling back to raw deflate");
+                warn!(
+                    "zlib stream has invalid checksum or is truncated, falling back to raw deflate"
+                );
                 data.clear();
                 let reader: Cursor<&[u8]> = if buf.len() >= 2
-                    && ((buf[0] as u16) << 8 | buf[1] as u16) % 31 == 0
+                    && ((buf[0] as u16) << 8 | buf[1] as u16).is_multiple_of(31)
                 {
                     Cursor::new(&buf[2..])
                 } else {
@@ -189,9 +190,8 @@ pub fn decompress_data(
 
 /// parses DZBlock
 pub fn parse_dz(rdr: &mut BufReader<&File>) -> Result<(Vec<u8>, Dz4Block)> {
-    let mut block: Dz4Block = rdr
-        .read_le()
-        .context("Could not read into Dz4Block struct")?;
+    let mut block: Dz4Block =
+        binrw::BinReaderExt::read_le(rdr).context("Could not read into Dz4Block struct")?;
     let mut buf = vec![0u8; block.dz_data_length as usize];
     rdr.read_exact(&mut buf).context("Could not read Dz data")?;
     // decompress data
@@ -208,9 +208,8 @@ pub fn parse_dz(rdr: &mut BufReader<&File>) -> Result<(Vec<u8>, Dz4Block)> {
 /// Reads a DZBlock header and raw compressed bytes without decompressing.
 /// Use `Dz4Block::decompress` in a parallel step to decompress independently.
 pub fn read_dz_raw(rdr: &mut BufReader<&File>) -> Result<(Dz4Block, Vec<u8>)> {
-    let block: Dz4Block = rdr
-        .read_le()
-        .context("Could not read into Dz4Block struct")?;
+    let block: Dz4Block =
+        binrw::BinReaderExt::read_le(rdr).context("Could not read into Dz4Block struct")?;
     let mut buf = vec![0u8; block.dz_data_length as usize];
     rdr.read_exact(&mut buf)
         .context("Could not read Dz raw data")?;
@@ -422,9 +421,8 @@ pub fn parser_ld4_block(
 ) -> Result<(Ld4Block, i64)> {
     rdr.seek_relative(target - position)
         .context("Could not reach Ld4Block position")?;
-    let block: Ld4Block = rdr
-        .read_le()
-        .context("Could not read buffer into Ld4Block struct")?;
+    let block: Ld4Block =
+        binrw::BinReaderExt::read_le(rdr).context("Could not read buffer into Ld4Block struct")?;
     position = target + block.ld_len as i64;
     Ok((block, position))
 }

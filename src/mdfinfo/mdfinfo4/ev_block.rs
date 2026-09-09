@@ -3,7 +3,7 @@
 //! Describes events that occurred during measurement (triggers, markers, etc.).
 //! Each event has a type, sync domain, cause, and can reference parent/range events.
 use anyhow::{Context, Result};
-use binrw::{BinReaderExt, binrw};
+use binrw::binrw;
 use std::collections::HashMap;
 use std::fmt::{self, Display};
 use std::fs::File;
@@ -240,7 +240,8 @@ pub(super) fn parse_ev4_block(
 ) -> Result<(Ev4Block, i64)> {
     let (mut block, _header, pos) = parse_block_short(rdr, target, position)?;
     position = pos;
-    let block: Ev4Block = block.read_le().context("Error parsing ev block")?; // reads the fh block
+    let block: Ev4Block =
+        binrw::BinReaderExt::read_le(&mut block).context("Error parsing ev block")?; // reads the fh block
 
     Ok((block, position))
 }
