@@ -130,6 +130,45 @@ impl MdfInfo3 {
         }
         master_type as u8
     }
+    /// Returns the minimum signal value if the value range valid flag (bit 3) is set.
+    /// Returns `None` if the channel is not found or the flag is not set.
+    pub fn get_channel_range_min(&self, channel_name: &str) -> Option<f64> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
+            self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(cn_pos)
+        {
+            return cn.val_range_min();
+        }
+        None
+    }
+    /// Returns the maximum signal value if the value range valid flag (bit 3) is set.
+    /// Returns `None` if the channel is not found or the flag is not set.
+    pub fn get_channel_range_max(&self, channel_name: &str) -> Option<f64> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
+            self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(cn_pos)
+        {
+            return cn.val_range_max();
+        }
+        None
+    }
+    /// Returns the sampling rate in seconds if set (non-zero).
+    /// Returns `None` if the channel is not found or sampling rate is not specified.
+    pub fn get_channel_sampling_rate(&self, channel_name: &str) -> Option<f64> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), cn_pos)) =
+            self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(cn_pos)
+        {
+            return cn.sampling_rate();
+        }
+        None
+    }
     /// returns the set of channel names
     pub fn get_channel_names_set(&self) -> HashSet<String> {
         self.channel_names_set.keys().cloned().collect()
@@ -1045,6 +1084,35 @@ impl Clone for Cn3 {
     }
 }
 
+impl Cn3 {
+    /// Returns the minimum signal value if the value range valid flag (bit 3) is set.
+    /// Returns `None` if the flag is not set.
+    pub fn val_range_min(&self) -> Option<f64> {
+        if (self.block2.cn_valid_range_flags & (1 << 3)) != 0 {
+            Some(self.block2.cn_val_range_min)
+        } else {
+            None
+        }
+    }
+    /// Returns the maximum signal value if the value range valid flag (bit 3) is set.
+    /// Returns `None` if the flag is not set.
+    pub fn val_range_max(&self) -> Option<f64> {
+        if (self.block2.cn_valid_range_flags & (1 << 3)) != 0 {
+            Some(self.block2.cn_val_range_max)
+        } else {
+            None
+        }
+    }
+    /// Returns the sampling rate in seconds if set (non-zero).
+    pub fn sampling_rate(&self) -> Option<f64> {
+        if self.block2.cn_sampling_rate != 0.0 {
+            Some(self.block2.cn_sampling_rate)
+        } else {
+            None
+        }
+    }
+}
+
 /// creates recursively in the channel group the CN blocks and all its other linked blocks (CC, TX, CE, CD)
 pub fn parse_cn3(
     rdr: &mut SymBufReader<&File>,
@@ -1755,8 +1823,7 @@ fn parse_ce(
         .read_le()
         .context("could not read ce_extension_type")?;
 
-    let ce_extension: CeSupplement;
-    if ce_extension_type == 0x02 {
+    let ce_extension: CeSupplement = if ce_extension_type == 0x02 {
         // Reads DIM
         let mut buf = vec![0u8; 118];
         rdr.read_exact(&mut buf)
@@ -1777,12 +1844,12 @@ fn parse_ce(
             .context("Could not read DIM ecu_id")?;
         let mut ce_ecu_id: String = encoding.decode(&ecu_id).0.into();
         ce_ecu_id = ce_ecu_id.trim_end_matches(char::from(0)).to_string();
-        ce_extension = CeSupplement::Dim(DimBlock {
+        CeSupplement::Dim(DimBlock {
             ce_module_number,
             ce_address,
             ce_desc,
             ce_ecu_id,
-        });
+        })
     } else if ce_extension_type == 19 {
         // Reads CAN
         let mut buf = vec![0u8; 80];
@@ -1804,15 +1871,15 @@ fn parse_ce(
             .context("Could not read CAN Supplement sender")?;
         let mut ce_sender_name: String = encoding.decode(&sender).0.into();
         ce_sender_name = ce_sender_name.trim_end_matches(char::from(0)).to_string();
-        ce_extension = CeSupplement::Can(CanBlock {
+        CeSupplement::Can(CanBlock {
             ce_can_id,
             ce_can_index,
             ce_message_name,
             ce_sender_name,
-        });
+        })
     } else {
-        ce_extension = CeSupplement::None;
-    }
+        CeSupplement::None
+    };
     sharable.ce.insert(
         target,
         CeBlock {
@@ -1882,7 +1949,7 @@ pub fn build_channel_db3(
         }
     }
     // identifying master channels
-    for (_dg_position, dg) in dg.iter_mut() {
+    for dg in dg.values_mut() {
         for cg in dg.cg.values_mut() {
             let mut cg_channel_list: HashSet<String> =
                 HashSet::with_capacity(cg.block.cg_n_channels as usize);

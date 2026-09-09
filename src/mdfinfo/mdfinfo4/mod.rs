@@ -42,6 +42,7 @@ pub use si_block::*;
 pub use sr_block::*;
 
 use anyhow::{Context, Error, Result};
+use rustc_hash::FxHashMap;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 /// ChannelId : (Option<master_channelname>, dg_pos, (cg_pos, rec_id), (cn_pos, rec_pos))
@@ -227,6 +228,136 @@ impl MdfInfo4 {
             master_type = cn.block.cn_sync_type;
         }
         master_type
+    }
+    /// Returns event signal information for an event signal channel.
+    /// Returns `None` if the channel is not an event signal channel or if the template is not available.
+    pub fn get_event_signal_info(&self, channel_name: &str) -> Option<&Ev4Block> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(rec_pos)
+        {
+            return cn.event_signal_info();
+        }
+        None
+    }
+    /// Returns true if the channel is a synchronization channel.
+    /// Sync channels reference an ATBLOCK (attachment) rather than containing raw data.
+    pub fn is_sync_channel(&self, channel_name: &str) -> bool {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(rec_pos)
+        {
+            return cn.is_sync();
+        }
+        false
+    }
+    /// Returns a reference to the CNBLOCK for a channel.
+    /// Returns `None` if the channel is not found.
+    pub fn get_cn_block(&self, channel_name: &str) -> Option<&Cn4> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(rec_pos)
+        {
+            return Some(cn);
+        }
+        None
+    }
+    /// Returns the precision of a channel if the precision flag is set.
+    /// Returns `None` if the channel is not found or precision is not specified.
+    pub fn get_channel_precision(&self, channel_name: &str) -> Option<u8> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(rec_pos)
+        {
+            return cn.block.precision();
+        }
+        None
+    }
+    /// Returns the minimum value of the valid range for a channel.
+    /// Returns `None` if the channel is not found or range is not specified.
+    pub fn get_channel_range_min(&self, channel_name: &str) -> Option<f64> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(rec_pos)
+        {
+            return cn.block.val_range_min();
+        }
+        None
+    }
+    /// Returns the maximum value of the valid range for a channel.
+    /// Returns `None` if the channel is not found or range is not specified.
+    pub fn get_channel_range_max(&self, channel_name: &str) -> Option<f64> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(rec_pos)
+        {
+            return cn.block.val_range_max();
+        }
+        None
+    }
+    /// Returns the minimum limit for a channel.
+    /// Returns `None` if the channel is not found or limit is not specified.
+    pub fn get_channel_limit_min(&self, channel_name: &str) -> Option<f64> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(rec_pos)
+        {
+            return cn.block.limit_min();
+        }
+        None
+    }
+    /// Returns the maximum limit for a channel.
+    /// Returns `None` if the channel is not found or limit is not specified.
+    pub fn get_channel_limit_max(&self, channel_name: &str) -> Option<f64> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(rec_pos)
+        {
+            return cn.block.limit_max();
+        }
+        None
+    }
+    /// Returns the minimum extended limit for a channel.
+    /// Returns `None` if the channel is not found or extended limit is not specified.
+    pub fn get_channel_limit_ext_min(&self, channel_name: &str) -> Option<f64> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(rec_pos)
+        {
+            return cn.block.limit_ext_min();
+        }
+        None
+    }
+    /// Returns the maximum extended limit for a channel.
+    /// Returns `None` if the channel is not found or extended limit is not specified.
+    pub fn get_channel_limit_ext_max(&self, channel_name: &str) -> Option<f64> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+            && let Some(cn) = cg.cn.get(rec_pos)
+        {
+            return cn.block.limit_ext_max();
+        }
+        None
     }
     /// returns the set of channel names
     pub fn get_channel_names_set(&self) -> HashSet<String> {
@@ -445,7 +576,7 @@ impl MdfInfo4 {
             header: default_short_header(BlockType::CG),
             block: cg_block,
             master_channel_name: master.master_channel.clone(),
-            cn: HashMap::new(),
+            cn: FxHashMap::default(),
             block_position: cg_pos,
             channel_names: HashSet::new(),
             record_length: n_bytes,
@@ -461,7 +592,7 @@ impl MdfInfo4 {
         let dg_block = Dg4Block::default();
         let mut dg = Dg4 {
             block: dg_block,
-            cg: HashMap::new(),
+            cg: FxHashMap::default(),
         };
         dg.cg.insert(0, cg);
         self.dg.insert(dg_pos, dg);
@@ -579,7 +710,7 @@ impl MdfInfo4 {
                 key,
                 self.sharable.get_tx(block.at_tx_filename),
                 self.sharable.get_tx(block.at_tx_mimetype),
-                self.sharable.get_md_comment(block.at_md_comment)
+                self.sharable.get_md_comment(block.at_md_comment),
             ))
         }
         output
@@ -612,11 +743,16 @@ impl MdfInfo4 {
     pub fn list_file_history(&mut self) -> String {
         let mut output = String::new();
         for (i, fh) in self.fh.iter().enumerate() {
+            let comment = self.sharable.get_md_comment(fh.fh_md_comment);
+            let comment_fmt = match comment {
+                Some(c) => format!("{c}"),
+                None => "—".to_string(),
+            };
             output.push_str(&format!(
-                "FH[{}]: {}, comment: {:?}\n",
+                "  #{}  {}  |  {}\n",
                 i,
                 fh,
-                self.sharable.get_md_comment(fh.fh_md_comment),
+                comment_fmt,
             ));
         }
         output
@@ -624,16 +760,46 @@ impl MdfInfo4 {
     /// list events
     pub fn list_events(&mut self) -> String {
         let mut output = String::new();
-        for (key, block) in &self.ev {
+        for (i, (_, block)) in self.ev.iter().enumerate() {
+            let name_tx = self
+                .sharable
+                .get_tx(block.ev_tx_name)
+                .unwrap_or_default();
+            let name = name_tx.as_deref().unwrap_or("—");
+            let comment = self
+                .sharable
+                .get_md_comment(block.ev_md_comment)
+                .map(|c| format!("{c}"))
+                .unwrap_or_else(|| "—".to_string());
+            let scopes = block.get_scope_links();
+            let attachments = block.get_attachment_links();
+            let scope_fmt = if scopes.is_empty() {
+                "—".to_string()
+            } else {
+                scopes
+                    .iter()
+                    .map(|p| p.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
+            let attach_fmt = if attachments.is_empty() {
+                "—".to_string()
+            } else {
+                attachments
+                    .iter()
+                    .map(|p| p.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
             output.push_str(&format!(
-                "position: {}, name: {:?}, comment: {:?}, scope: {:?}, attachment references: {:?}, event type: {}\n",
-                key,
-                self.sharable.get_tx(block.ev_tx_name),
-                self.sharable.get_md_comment(block.ev_md_comment),
-                block.get_scope_links(),
-                block.get_attachment_links(),
-                block.ev_type,
-            ))
+                "  #{}  {}  |  name: \"{}\"  |  scopes: [{}]  |  attachments: [{}]  |  {}\n",
+                i,
+                block,
+                name,
+                scope_fmt,
+                attach_fmt,
+                comment,
+            ));
         }
         output
     }
@@ -679,20 +845,29 @@ impl MdfInfo4 {
     /// list source information blocks
     pub fn list_source_information(&self) -> String {
         let mut output = String::new();
-        for (key, block) in &self.sharable.si {
+        for (i, (_, block)) in self.sharable.si.iter().enumerate() {
+            let name_tx = self
+                .sharable
+                .get_tx(block.si_tx_name)
+                .unwrap_or_default();
+            let name = name_tx.as_deref().unwrap_or("—");
+            let path_tx = self
+                .sharable
+                .get_tx(block.si_tx_path)
+                .unwrap_or_default();
+            let path = path_tx.as_deref().unwrap_or("—");
             output.push_str(&format!(
-                "position: {}, name: {:?}, path: {:?}, type: {}, bus: {}\n",
-                key,
-                self.sharable.get_tx(block.si_tx_name),
-                self.sharable.get_tx(block.si_tx_path),
-                block.get_type_str(),
-                block.get_bus_type_str(),
-            ))
+                "  #{}  {}  |  name: \"{}\"  |  path: \"{}\"\n",
+                i,
+                block,
+                name,
+                path,
+            ));
         }
         output
     }
     /// get all source information blocks
-    pub fn get_source_information_blocks(&self) -> HashMap<i64, Si4Block> {
+    pub fn get_source_information_blocks(&self) -> FxHashMap<i64, Si4Block> {
         self.sharable.si.clone()
     }
     /// get event block from its position

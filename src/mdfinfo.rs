@@ -8,6 +8,7 @@ use binrw::{BinReaderExt, binrw};
 use codepage::to_encoding;
 use encoding_rs::Encoding;
 use log::{info, warn};
+use rustc_hash::FxHashMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
@@ -229,9 +230,9 @@ impl MdfInfo {
             }))
         } else {
             let mut sharable: SharableBlocks = SharableBlocks {
-                md_tx: HashMap::new(),
-                cc: HashMap::new(),
-                si: HashMap::new(),
+                md_tx: FxHashMap::default(),
+                cc: FxHashMap::default(),
+                si: FxHashMap::default(),
             };
 
             // Read HD block
@@ -480,6 +481,93 @@ impl MdfInfo {
             MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_master_type(channel_name),
         };
         master
+    }
+    /// Returns event signal information for an event signal channel.
+    /// Returns `None` if the channel is not an event signal channel or if the template is not available.
+    pub fn get_event_signal_info(&self, channel_name: &str) -> Option<&mdfinfo4::Ev4Block> {
+        match self {
+            MdfInfo::V3(_) => None,
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_event_signal_info(channel_name),
+        }
+    }
+    /// Returns true if the channel is a synchronization channel.
+    /// Sync channels reference an ATBLOCK (attachment) rather than containing raw data.
+    pub fn is_sync_channel(&self, channel_name: &str) -> bool {
+        match self {
+            MdfInfo::V3(_) => false,
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.is_sync_channel(channel_name),
+        }
+    }
+    /// Returns the precision of a channel if the precision flag is set.
+    /// Returns `None` if the channel is not found or precision is not specified.
+    pub fn get_channel_precision(&self, channel_name: &str) -> Option<u8> {
+        match self {
+            MdfInfo::V3(_) => None,
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_precision(channel_name),
+        }
+    }
+    /// Returns the minimum value of the valid range for a channel.
+    /// Returns `None` if the channel is not found or range is not specified.
+    pub fn get_channel_range_min(&self, channel_name: &str) -> Option<f64> {
+        match self {
+            MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_range_min(channel_name),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_range_min(channel_name),
+        }
+    }
+    /// Returns the maximum value of the valid range for a channel.
+    /// Returns `None` if the channel is not found or range is not specified.
+    pub fn get_channel_range_max(&self, channel_name: &str) -> Option<f64> {
+        match self {
+            MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_range_max(channel_name),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_range_max(channel_name),
+        }
+    }
+    /// Returns the sampling rate in seconds if set (non-zero).
+    /// Returns `None` if the channel is not found or sampling rate is not specified.
+    pub fn get_channel_sampling_rate(&self, channel_name: &str) -> Option<f64> {
+        match self {
+            MdfInfo::V3(mdfinfo3) => mdfinfo3.get_channel_sampling_rate(channel_name),
+            MdfInfo::V4(_) => None,
+        }
+    }
+    /// Returns the minimum limit for a channel.
+    /// Returns `None` if the channel is not found or limit is not specified.
+    pub fn get_channel_limit_min(&self, channel_name: &str) -> Option<f64> {
+        match self {
+            MdfInfo::V3(_) => None,
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_limit_min(channel_name),
+        }
+    }
+    /// Returns the maximum limit for a channel.
+    /// Returns `None` if the channel is not found or limit is not specified.
+    pub fn get_channel_limit_max(&self, channel_name: &str) -> Option<f64> {
+        match self {
+            MdfInfo::V3(_) => None,
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_limit_max(channel_name),
+        }
+    }
+    /// Returns the minimum extended limit for a channel.
+    /// Returns `None` if the channel is not found or extended limit is not specified.
+    pub fn get_channel_limit_ext_min(&self, channel_name: &str) -> Option<f64> {
+        match self {
+            MdfInfo::V3(_) => None,
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_limit_ext_min(channel_name),
+        }
+    }
+    /// Returns the maximum extended limit for a channel.
+    /// Returns `None` if the channel is not found or extended limit is not specified.
+    pub fn get_channel_limit_ext_max(&self, channel_name: &str) -> Option<f64> {
+        match self {
+            MdfInfo::V3(_) => None,
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_limit_ext_max(channel_name),
+        }
+    }
+    /// Returns a reference to the CNBLOCK for a channel (MDF4 only, internal use).
+    pub(crate) fn get_cn_block(&self, channel_name: &str) -> Option<&mdfinfo4::Cn4> {
+        match self {
+            MdfInfo::V3(_) => None,
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_cn_block(channel_name),
+        }
     }
     /// returns the full channel-name → position-tuple map.
     /// Tuple: (master_name, dg_pos, cg_pos, rec_id, cn_pos, rec_pos)
@@ -865,7 +953,7 @@ impl MdfInfo {
         }
     }
     /// Get all source information blocks (MDF 4.x only)
-    pub fn get_source_information_blocks(&self) -> Option<HashMap<i64, Si4Block>> {
+    pub fn get_source_information_blocks(&self) -> Option<FxHashMap<i64, Si4Block>> {
         match self {
             MdfInfo::V3(_) => None,
             MdfInfo::V4(mdfinfo4) => Some(mdfinfo4.get_source_information_blocks()),

@@ -53,7 +53,7 @@ fn test_events_markers() -> Result<()> {
         let _sync_val = ev.get_sync_value();
         // Exercise Display
         let display = format!("{}", ev);
-        assert!(display.contains("EV:"));
+        assert!(display.contains("EV"));
     }
 
     // Channels should still be accessible alongside events
@@ -502,7 +502,7 @@ fn test_source_information() -> Result<()> {
         assert!(!bus_str.is_empty());
         // Exercise Display
         let display = format!("{}", si);
-        assert!(display.contains("SI:"));
+        assert!(display.contains("SI"));
     }
 
     Ok(())

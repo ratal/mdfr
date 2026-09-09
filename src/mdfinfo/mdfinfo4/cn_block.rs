@@ -9,7 +9,7 @@ use crate::mdfinfo::sym_buf_reader::SymBufReader;
 use anyhow::{Context, Result};
 use arrow::array::{BooleanBufferBuilder, UInt8Builder, UInt16Builder, UInt32Builder};
 use binrw::{BinReaderExt, binrw};
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use std::fmt::{self, Display};
 use std::fs::File;
 
@@ -403,6 +403,62 @@ impl Cn4Block {
             _ => "Unknown",
         }
     }
+    /// Returns the precision value if the "precision valid" flag (bit 2) is set.
+    pub fn precision(&self) -> Option<u8> {
+        if (self.cn_flags & (1 << 2)) != 0 {
+            Some(self.cn_precision)
+        } else {
+            None
+        }
+    }
+    /// Returns the minimum signal value (raw) if the "value range valid" flag (bit 3) is set.
+    pub fn val_range_min(&self) -> Option<f64> {
+        if (self.cn_flags & (1 << 3)) != 0 {
+            Some(self.cn_val_range_min)
+        } else {
+            None
+        }
+    }
+    /// Returns the maximum signal value (raw) if the "value range valid" flag (bit 3) is set.
+    pub fn val_range_max(&self) -> Option<f64> {
+        if (self.cn_flags & (1 << 3)) != 0 {
+            Some(self.cn_val_range_max)
+        } else {
+            None
+        }
+    }
+    /// Returns the lower limit (physical or raw) if the "limit range valid" flag (bit 4) is set.
+    pub fn limit_min(&self) -> Option<f64> {
+        if (self.cn_flags & (1 << 4)) != 0 {
+            Some(self.cn_limit_min)
+        } else {
+            None
+        }
+    }
+    /// Returns the upper limit (physical or raw) if the "limit range valid" flag (bit 4) is set.
+    pub fn limit_max(&self) -> Option<f64> {
+        if (self.cn_flags & (1 << 4)) != 0 {
+            Some(self.cn_limit_max)
+        } else {
+            None
+        }
+    }
+    /// Returns the lower extended limit if the "extended limit range valid" flag (bit 5) is set.
+    pub fn limit_ext_min(&self) -> Option<f64> {
+        if (self.cn_flags & (1 << 5)) != 0 {
+            Some(self.cn_limit_ext_min)
+        } else {
+            None
+        }
+    }
+    /// Returns the upper extended limit if the "extended limit range valid" flag (bit 5) is set.
+    pub fn limit_ext_max(&self) -> Option<f64> {
+        if (self.cn_flags & (1 << 5)) != 0 {
+            Some(self.cn_limit_ext_max)
+        } else {
+            None
+        }
+    }
 }
 
 impl Display for Cn4Block {
@@ -492,20 +548,38 @@ impl Clone for Cn4 {
 
 impl Display for Cn4 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
+        let info = format!(
             "CN: {} @ byte {} ({} bytes) type={} sync={}",
             self.unique_name,
             self.pos_byte_beg,
             self.n_bytes,
             self.block.get_cn_type_str(),
             self.block.get_sync_type_str()
-        )
+        );
+        if self.is_event_signal()
+            && let Some(ev_info) = self.event_signal_info()
+        {
+            write!(f, "{} event_signal={}", info, ev_info)?;
+            return Ok(());
+        }
+        if self.is_mlsd() {
+            write!(f, "{} mlsd", info)?;
+            return Ok(());
+        }
+        if self.is_sync() {
+            write!(f, "{} sync_channel", info)?;
+            return Ok(());
+        }
+        if self.is_virtual_data() {
+            write!(f, "{} virtual_data", info)?;
+            return Ok(());
+        }
+        write!(f, "{info}")
     }
 }
 
 /// hashmap's key is bit position in record, value Cn4
-pub(crate) type CnType = HashMap<i32, Cn4>;
+pub(crate) type CnType = FxHashMap<i32, Cn4>;
 
 /// record layout type : record_id_size: u8, cg_data_bytes: u32, cg_inval_bytes: u32
 pub(crate) type RecordLayout = (u8, u32, u32);
@@ -519,7 +593,7 @@ pub(super) fn parse_cn4(
     record_layout: RecordLayout,
     cg_cycle_count: u64,
 ) -> Result<(CnType, i64, usize, i32)> {
-    let mut cn: CnType = HashMap::new();
+    let mut cn: CnType = FxHashMap::default();
     let mut n_cn: usize = 0;
     let mut first_rec_pos: i32 = 0;
     let (record_id_size, _cg_data_bytes, _cg_inval_bytes) = record_layout;
@@ -841,6 +915,110 @@ fn calc_n_bytes_not_aligned(bitcount: u32) -> u32 {
     n_bytes
 }
 
+/// A single decoded event record from an event signal channel.
+#[derive(Debug, Clone)]
+pub struct EventRecord {
+    /// Sync value (time, angle, distance, index, or frequency) for this event
+    pub sync_value: f64,
+    /// Remaining event-specific data as raw bytes
+    pub event_data: Vec<u8>,
+}
+
+impl EventRecord {
+    /// Creates a new event record
+    pub fn new(sync_value: f64, event_data: Vec<u8>) -> Self {
+        Self {
+            sync_value,
+            event_data,
+        }
+    }
+}
+
+impl Display for EventRecord {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "EventRecord(sync={}, data_len={})",
+            self.sync_value,
+            self.event_data.len()
+        )
+    }
+}
+
+#[allow(dead_code)]
+impl Cn4 {
+    /// Decodes raw event signal data bytes into structured event records using the template EVBLOCK.
+    /// Each record is parsed to extract the sync value (based on template sync type) and remaining event data.
+    /// Returns `None` if the channel is not an event signal channel or has no data.
+    pub fn decode_event_records(&self, data_bytes: &[u8]) -> Option<Vec<EventRecord>> {
+        if !self.is_event_signal() {
+            return None;
+        }
+        let template = self.event_template.as_ref()?;
+        let record_size = self.n_bytes as usize;
+        if record_size == 0 || data_bytes.is_empty() {
+            return None;
+        }
+        let sync_type = template.ev_sync_type;
+        let sync_base = template.ev_sync_base_value as f64;
+        let sync_factor = template.ev_sync_factor;
+        let mut records = Vec::new();
+        for record in data_bytes.chunks(record_size) {
+            let (sync_value, event_data) = match sync_type {
+                0 => {
+                    // No sync - entire record is event data
+                    (0.0, record.to_vec())
+                }
+                1..=4 => {
+                    // Time, Angle, Distance, Index - try 8-byte then 4-byte sync
+                    if record.len() >= 8 {
+                        let val = match self.endian {
+                            Endianness::Little => {
+                                i64::from_le_bytes(record[0..8].try_into().unwrap_or([0; 8]))
+                            }
+                            Endianness::Big => {
+                                i64::from_be_bytes(record[0..8].try_into().unwrap_or([0; 8]))
+                            }
+                        };
+                        (sync_base + val as f64 * sync_factor, record[8..].to_vec())
+                    } else if record.len() >= 4 {
+                        let val = match self.endian {
+                            Endianness::Little => {
+                                i32::from_le_bytes(record[0..4].try_into().unwrap_or([0; 4]))
+                            }
+                            Endianness::Big => {
+                                i32::from_be_bytes(record[0..4].try_into().unwrap_or([0; 4]))
+                            }
+                        };
+                        (sync_base + val as f64 * sync_factor, record[4..].to_vec())
+                    } else {
+                        (sync_base, record.to_vec())
+                    }
+                }
+                5 => {
+                    // Frequency - 8-byte float
+                    if record.len() >= 8 {
+                        let val = match self.endian {
+                            Endianness::Little => {
+                                f64::from_le_bytes(record[0..8].try_into().unwrap_or([0; 8]))
+                            }
+                            Endianness::Big => {
+                                f64::from_be_bytes(record[0..8].try_into().unwrap_or([0; 8]))
+                            }
+                        };
+                        (sync_base + val * sync_factor, record[8..].to_vec())
+                    } else {
+                        (sync_base, record.to_vec())
+                    }
+                }
+                _ => (sync_base, record.to_vec()),
+            };
+            records.push(EventRecord::new(sync_value, event_data));
+        }
+        Some(records)
+    }
+}
+
 #[allow(dead_code)]
 impl Cn4 {
     /// Returns true if this channel is an event signal channel (cn_flags bit 13 set).
@@ -853,6 +1031,30 @@ impl Cn4 {
     /// The template EVBLOCK describes the structure of event data stored in this channel.
     pub fn get_event_template(&self) -> Option<&Ev4Block> {
         self.event_template.as_ref()
+    }
+
+    /// Returns a reference to the template EVBLOCK if this is an event signal channel.
+    /// The template EVBLOCK describes the structure of event data stored in this channel.
+    pub fn event_signal_info(&self) -> Option<&Ev4Block> {
+        self.get_event_template()
+    }
+
+    /// Returns true if this channel is an MLSD (Maximum Length Signal Data) channel.
+    /// MLSD channels have per-record lengths determined by a separate size channel.
+    pub fn is_mlsd(&self) -> bool {
+        self.block.cn_type == 5
+    }
+
+    /// Returns true if this channel is a synchronization channel.
+    /// Sync channels reference an ATBLOCK (attachment) rather than containing raw data.
+    pub fn is_sync(&self) -> bool {
+        self.block.cn_type == 4
+    }
+
+    /// Returns true if this channel is a virtual data channel.
+    /// Virtual data channels have no raw data; values are generated from a conversion rule.
+    pub fn is_virtual_data(&self) -> bool {
+        self.block.cn_type == 6
     }
 
     /// Returns the channel source name
@@ -884,7 +1086,7 @@ pub(super) fn parse_cn4_block(
 ) -> Result<(Cn4, i64, usize, CnType)> {
     let (record_id_size, _cg_data_bytes, cg_inval_bytes) = record_layout;
     let mut n_cn: usize = 1;
-    let mut cns: HashMap<i32, Cn4> = HashMap::new();
+    let mut cns: CnType = FxHashMap::default();
     let (mut block, cnheader, pos) = parse_block_short(rdr, target, position)?;
     position = pos;
     let block: Cn4Block = block

@@ -610,3 +610,143 @@ pub unsafe extern "C" fn free_channel_id_master(id: *mut ChannelIdC) {
         }
     }
 }
+
+/// Returns the number of file history (FH) blocks.
+/// Returns 0 on null pointer or MDF3.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn get_file_history_count(mdf: *const Mdf) -> usize {
+    unsafe {
+        if let Some(mdf) = mdf.as_ref() {
+            mdf.mdf_info
+                .get_file_history_blocks()
+                .map(|v| v.len())
+                .unwrap_or(0)
+        } else {
+            0
+        }
+    }
+}
+
+/// Returns the timestamp (nanoseconds since Unix epoch) of the FH block at `index`.
+/// Writes the value into `*out` and returns true on success.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn get_file_history_time_ns(
+    mdf: *const Mdf,
+    index: usize,
+    out: *mut u64,
+) -> bool {
+    unsafe {
+        if mdf.is_null() || out.is_null() {
+            return false;
+        }
+        if let Some(mdf) = mdf.as_ref()
+            && let Some(fh_blocks) = mdf.mdf_info.get_file_history_blocks()
+            && let Some(fh) = fh_blocks.get(index)
+        {
+            *out = fh.fh_time_ns;
+            return true;
+        }
+        false
+    }
+}
+
+/// Returns the number of event (EV) blocks.
+/// Returns 0 on null pointer or MDF3.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn get_event_count(mdf: *const Mdf) -> usize {
+    unsafe {
+        if let Some(mdf) = mdf.as_ref() {
+            mdf.mdf_info
+                .get_event_blocks()
+                .map(|v| v.len())
+                .unwrap_or(0)
+        } else {
+            0
+        }
+    }
+}
+
+/// Returns the event type of the EV block at `index`.
+/// Returns 255 on error.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn get_event_type(mdf: *const Mdf, index: usize) -> u8 {
+    unsafe {
+        if let Some(mdf) = mdf.as_ref()
+            && let Some(ev_blocks) = mdf.mdf_info.get_event_blocks()
+            && let Some(ev) = ev_blocks.values().nth(index)
+        {
+            return ev.ev_type;
+        }
+        255
+    }
+}
+
+/// Returns the number of channel hierarchy (CH) blocks.
+/// Returns 0 on null pointer or MDF3.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn get_channel_hierarchy_count(mdf: *const Mdf) -> usize {
+    unsafe {
+        if let Some(mdf) = mdf.as_ref() {
+            mdf.mdf_info
+                .get_channel_hierarchy_blocks()
+                .map(|v| v.len())
+                .unwrap_or(0)
+        } else {
+            0
+        }
+    }
+}
+
+/// Returns a human-readable list of channel hierarchy.
+/// Returns a heap-allocated null-terminated C string; caller must free with `libc::free()`.
+/// Returns null pointer on error.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn list_channel_hierarchy(mdf: *const Mdf) -> *const c_char {
+    unsafe {
+        if mdf.is_null() {
+            return std::ptr::null();
+        }
+        if let Some(mdf) = mdf.as_ref() {
+            let s = mdf.mdf_info.list_channel_hierarchy();
+            if let Ok(cs) = CString::new(s) {
+                return cs.into_raw();
+            }
+        }
+        std::ptr::null()
+    }
+}
+
+/// Returns the number of source information (SI) blocks.
+/// Returns 0 on null pointer or MDF3.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn get_source_information_count(mdf: *const Mdf) -> usize {
+    unsafe {
+        if let Some(mdf) = mdf.as_ref() {
+            mdf.mdf_info
+                .get_source_information_blocks()
+                .map(|v| v.len())
+                .unwrap_or(0)
+        } else {
+            0
+        }
+    }
+}
+
+/// Returns a human-readable list of source information blocks.
+/// Returns a heap-allocated null-terminated C string; caller must free with `libc::free()`.
+/// Returns null pointer on error.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn list_source_information(mdf: *const Mdf) -> *const c_char {
+    unsafe {
+        if mdf.is_null() {
+            return std::ptr::null();
+        }
+        if let Some(mdf) = mdf.as_ref() {
+            let s = mdf.mdf_info.list_source_information();
+            if let Ok(cs) = CString::new(s) {
+                return cs.into_raw();
+            }
+        }
+        std::ptr::null()
+    }
+}

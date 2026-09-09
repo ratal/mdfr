@@ -12,6 +12,7 @@
 //! - [`export`] — Exporting channel data to Parquet and HDF5 formats
 //! - [`mdfr`] — Python bindings via PyO3 (requires `numpy` feature)
 
+#![allow(unstable_name_collisions)]
 //#![forbid(unsafe_code)]
 mod c_api;
 pub mod data_holder;

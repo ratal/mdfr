@@ -60,7 +60,6 @@ pub fn read_one_channel_array(
 ) -> Result<(), Error> {
     if (cn.block.cn_type == 0
         || cn.block.cn_type == 2
-        || cn.block.cn_type == 4
         || cn.block.cn_type == 5
         || cn.block.cn_type == 7)
         && !cn.data.is_empty()
@@ -68,7 +67,6 @@ pub fn read_one_channel_array(
         // cn_type == 5 : Maximum length data channel, removing no valid bytes done by another size channel pointed by cn_data
         // cn_type == 0 : fixed length data channel
         // cn_type == 2 : master channel
-        // cn_type == 4 : synchronisation channel
         // cn_type == 7 : VLSC channel (stores offsets into VD block)
         let n_bytes = cn.n_bytes as usize;
         let list_size = cn.list_size;
@@ -290,21 +288,24 @@ pub fn read_one_channel_array(
                     }
                 } else {
                     // n_bytes = 5
-                    let mut temp = [0u8; 6];
                     let data = a.values_slice_mut();
                     if cn.endian.is_big() {
                         for (i, value) in data_bytes.chunks(n_bytes).enumerate() {
-                            temp[0..5].copy_from_slice(&value[0..n_bytes]);
-                            data[i] = Cursor::new(temp)
-                                .read_u48::<BigEndian>()
-                                .context("Could not read be u48 from 5 bytes")?;
+                            let src = &value[0..5];
+                            data[i] = ((src[0] as u64) << 32)
+                                | ((src[1] as u64) << 24)
+                                | ((src[2] as u64) << 16)
+                                | ((src[3] as u64) << 8)
+                                | (src[4] as u64);
                         }
                     } else {
                         for (i, value) in data_bytes.chunks(n_bytes).enumerate() {
-                            temp[0..5].copy_from_slice(&value[0..n_bytes]);
-                            data[i] = Cursor::new(temp)
-                                .read_u48::<LittleEndian>()
-                                .context("Could not read le u48 from 5 bytes")?;
+                            let src = &value[0..5];
+                            data[i] = (src[0] as u64)
+                                | ((src[1] as u64) << 8)
+                                | ((src[2] as u64) << 16)
+                                | ((src[3] as u64) << 24)
+                                | ((src[4] as u64) << 32);
                         }
                     }
                 }
@@ -669,55 +670,46 @@ pub fn read_channels_from_bytes(
     record_with_invalid_data: bool,
 ) -> Result<Vec<(u8, i32)>, Error> {
     let vlsd_channels: Arc<Mutex<Vec<(u8, i32)>>> = Arc::new(Mutex::new(Vec::new()));
-    // iterates for each channel in parallel with rayon crate
     channels
         .par_iter_mut()
         .filter(|(_cn_record_position, cn)| cn.should_read)
         .try_for_each(|(rec_pos, cn): (&i32, &mut Cn4)| -> Result<(), Error> {
             if cn.block.cn_type == 0
                 || cn.block.cn_type == 2
-                || cn.block.cn_type == 4
                 || cn.block.cn_type == 5
                 || cn.block.cn_type == 7
             {
-                // cn_type == 5 : Maximum length data channel, removing no valid bytes done by another size channel pointed by cn_data
-                // cn_type == 0 : fixed length data channel
-                // cn_type == 2 : master channel
-                // cn_type == 4 : synchronisation channel
-                // cn_type == 7 : VLSC channel (stores offsets into VD block)
-                let mut value: &[u8]; // value of channel at record
+                let mut value: &[u8];
                 let pos_byte_beg = cn.pos_byte_beg as usize;
                 let n_bytes = cn.n_bytes as usize;
                 match &mut cn.data {
                     ChannelData::Int8(a) => {
                         let data = a.values_slice_mut();
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                            value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i8>()];
-                            data[i + previous_index] = i8::from_le_bytes(value.try_into().unwrap());
+                            data[i + previous_index] = record[pos_byte_beg] as i8;
                         }
                     }
                     ChannelData::UInt8(a) => {
                         let data = a.values_slice_mut();
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                            value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u8>()];
-                            data[i + previous_index] = u8::from_le_bytes(value.try_into().unwrap());
+                            data[i + previous_index] = record[pos_byte_beg];
                         }
                     }
                     ChannelData::Int16(a) => {
                         let data = a.values_slice_mut();
                         if cn.endian.is_big() {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record
-                                    [pos_byte_beg..pos_byte_beg + std::mem::size_of::<i16>()];
-                                data[i + previous_index] =
-                                    i16::from_be_bytes(value.try_into().unwrap());
+                                data[i + previous_index] = i16::from_be_bytes([
+                                    record[pos_byte_beg],
+                                    record[pos_byte_beg + 1],
+                                ]);
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record
-                                    [pos_byte_beg..pos_byte_beg + std::mem::size_of::<i16>()];
-                                data[i + previous_index] =
-                                    i16::from_le_bytes(value.try_into().unwrap());
+                                data[i + previous_index] = i16::from_le_bytes([
+                                    record[pos_byte_beg],
+                                    record[pos_byte_beg + 1],
+                                ]);
                             }
                         }
                     }
@@ -725,17 +717,17 @@ pub fn read_channels_from_bytes(
                         let data = a.values_slice_mut();
                         if cn.endian.is_big() {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record
-                                    [pos_byte_beg..pos_byte_beg + std::mem::size_of::<u16>()];
-                                data[i + previous_index] =
-                                    u16::from_be_bytes(value.try_into().unwrap());
+                                data[i + previous_index] = u16::from_be_bytes([
+                                    record[pos_byte_beg],
+                                    record[pos_byte_beg + 1],
+                                ]);
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record
-                                    [pos_byte_beg..pos_byte_beg + std::mem::size_of::<u16>()];
-                                data[i + previous_index] =
-                                    u16::from_le_bytes(value.try_into().unwrap());
+                                data[i + previous_index] = u16::from_le_bytes([
+                                    record[pos_byte_beg],
+                                    record[pos_byte_beg + 1],
+                                ]);
                             }
                         }
                     }
@@ -759,17 +751,21 @@ pub fn read_channels_from_bytes(
                             }
                         } else if cn.endian.is_big() {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record
-                                    [pos_byte_beg..pos_byte_beg + std::mem::size_of::<i32>()];
-                                data[i + previous_index] =
-                                    i32::from_be_bytes(value.try_into().unwrap());
+                                data[i + previous_index] = i32::from_be_bytes([
+                                    record[pos_byte_beg],
+                                    record[pos_byte_beg + 1],
+                                    record[pos_byte_beg + 2],
+                                    record[pos_byte_beg + 3],
+                                ]);
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record
-                                    [pos_byte_beg..pos_byte_beg + std::mem::size_of::<i32>()];
-                                data[i + previous_index] =
-                                    i32::from_le_bytes(value.try_into().unwrap());
+                                data[i + previous_index] = i32::from_le_bytes([
+                                    record[pos_byte_beg],
+                                    record[pos_byte_beg + 1],
+                                    record[pos_byte_beg + 2],
+                                    record[pos_byte_beg + 3],
+                                ]);
                             }
                         }
                     }
@@ -793,17 +789,21 @@ pub fn read_channels_from_bytes(
                             }
                         } else if cn.endian.is_big() {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record
-                                    [pos_byte_beg..pos_byte_beg + std::mem::size_of::<u32>()];
-                                data[i + previous_index] =
-                                    u32::from_be_bytes(value.try_into().unwrap());
+                                data[i + previous_index] = u32::from_be_bytes([
+                                    record[pos_byte_beg],
+                                    record[pos_byte_beg + 1],
+                                    record[pos_byte_beg + 2],
+                                    record[pos_byte_beg + 3],
+                                ]);
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record
-                                    [pos_byte_beg..pos_byte_beg + std::mem::size_of::<u32>()];
-                                data[i + previous_index] =
-                                    u32::from_le_bytes(value.try_into().unwrap());
+                                data[i + previous_index] = u32::from_le_bytes([
+                                    record[pos_byte_beg],
+                                    record[pos_byte_beg + 1],
+                                    record[pos_byte_beg + 2],
+                                    record[pos_byte_beg + 3],
+                                ]);
                             }
                         }
                     }
@@ -812,32 +812,38 @@ pub fn read_channels_from_bytes(
                         if cn.endian.is_big() {
                             if n_bytes == 2 {
                                 for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                    value = &record
-                                        [pos_byte_beg..pos_byte_beg + std::mem::size_of::<f16>()];
-                                    data[i + previous_index] =
-                                        f16::from_be_bytes(value.try_into().unwrap()).to_f32();
+                                    data[i + previous_index] = f16::from_be_bytes([
+                                        record[pos_byte_beg],
+                                        record[pos_byte_beg + 1],
+                                    ])
+                                    .to_f32();
                                 }
                             } else {
                                 for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                    value = &record
-                                        [pos_byte_beg..pos_byte_beg + std::mem::size_of::<f32>()];
-                                    data[i + previous_index] =
-                                        f32::from_be_bytes(value.try_into().unwrap());
+                                    data[i + previous_index] = f32::from_be_bytes([
+                                        record[pos_byte_beg],
+                                        record[pos_byte_beg + 1],
+                                        record[pos_byte_beg + 2],
+                                        record[pos_byte_beg + 3],
+                                    ]);
                                 }
                             }
                         } else if n_bytes == 2 {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record
-                                    [pos_byte_beg..pos_byte_beg + std::mem::size_of::<f16>()];
-                                data[i + previous_index] =
-                                    f16::from_le_bytes(value.try_into().unwrap()).to_f32();
+                                data[i + previous_index] = f16::from_le_bytes([
+                                    record[pos_byte_beg],
+                                    record[pos_byte_beg + 1],
+                                ])
+                                .to_f32();
                             }
                         } else {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record
-                                    [pos_byte_beg..pos_byte_beg + std::mem::size_of::<f32>()];
-                                data[i + previous_index] =
-                                    f32::from_le_bytes(value.try_into().unwrap());
+                                data[i + previous_index] = f32::from_le_bytes([
+                                    record[pos_byte_beg],
+                                    record[pos_byte_beg + 1],
+                                    record[pos_byte_beg + 2],
+                                    record[pos_byte_beg + 3],
+                                ]);
                             }
                         }
                     }
@@ -897,14 +903,13 @@ pub fn read_channels_from_bytes(
                                         .context("Could not read be u48")?;
                                 }
                             } else {
-                                let mut buf = [0u8; 6];
                                 for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                    buf[0..5].copy_from_slice(
-                                        &record[pos_byte_beg..pos_byte_beg + n_bytes],
-                                    );
-                                    data[i + previous_index] = Cursor::new(buf)
-                                        .read_u48::<BigEndian>()
-                                        .context("Could not read be u48 from 5 bytes")?;
+                                    let src = &record[pos_byte_beg..pos_byte_beg + 5];
+                                    data[i + previous_index] = ((src[0] as u64) << 32)
+                                        | ((src[1] as u64) << 24)
+                                        | ((src[2] as u64) << 16)
+                                        | ((src[3] as u64) << 8)
+                                        | (src[4] as u64);
                                 }
                             }
                         } else if n_bytes == 8 {
@@ -929,12 +934,13 @@ pub fn read_channels_from_bytes(
                             }
                         } else {
                             // n_bytes = 5
-                            let mut buf = [0u8; 6];
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                buf[0..5].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + 5]);
-                                data[i + previous_index] = Cursor::new(buf)
-                                    .read_u48::<LittleEndian>()
-                                    .context("Could not read le u48 from 5 bytes")?;
+                                let src = &record[pos_byte_beg..pos_byte_beg + 5];
+                                data[i + previous_index] = (src[0] as u64)
+                                    | ((src[1] as u64) << 8)
+                                    | ((src[2] as u64) << 16)
+                                    | ((src[3] as u64) << 24)
+                                    | ((src[4] as u64) << 32);
                             }
                         }
                     }
@@ -1087,9 +1093,10 @@ pub fn read_channels_from_bytes(
                         if cn.block.cn_data_type == 6 {
                             // SBC ISO-8859-1 to be converted into UTF8
                             let mut decoder = WINDOWS_1252.new_decoder();
+                            let mut dst = String::with_capacity(n_bytes);
                             for record in data_chunk.chunks(record_length) {
                                 value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                let mut dst = String::with_capacity(value.len());
+                                dst.clear();
                                 let (_result, _size, _replacement) =
                                     decoder.decode_to_string(value, &mut dst, false);
                                 array.append_value(dst.trim_end_matches('\0'));
@@ -1105,11 +1112,12 @@ pub fn read_channels_from_bytes(
                             }
                         } else if cn.block.cn_data_type == 8 || cn.block.cn_data_type == 9 {
                             // 8 | 9 :String UTF16 to be converted into UTF8
+                            let mut dst = String::with_capacity(n_bytes);
                             if cn.endian.is_big() {
                                 let mut decoder = UTF_16BE.new_decoder();
                                 for record in data_chunk.chunks(record_length) {
                                     value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                    let mut dst = String::with_capacity(value.len());
+                                    dst.clear();
                                     let (_result, _size, _replacement) =
                                         decoder.decode_to_string(value, &mut dst, false);
                                     array.append_value(dst.trim_end_matches('\0'));
@@ -1118,7 +1126,7 @@ pub fn read_channels_from_bytes(
                                 let mut decoder = UTF_16LE.new_decoder();
                                 for record in data_chunk.chunks(record_length) {
                                     value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                    let mut dst = String::with_capacity(value.len());
+                                    dst.clear();
                                     let (_result, _size, _replacement) =
                                         decoder.decode_to_string(value, &mut dst, false);
                                     array.append_value(dst.trim_end_matches('\0'));
@@ -1126,6 +1134,7 @@ pub fn read_channels_from_bytes(
                             }
                         } else if cn.block.cn_data_type == 17 {
                             // 17: Unicode with BOM
+                            let mut dst = String::with_capacity(n_bytes);
                             for record in data_chunk.chunks(record_length) {
                                 value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
                                 // identifies BOM
@@ -1139,7 +1148,7 @@ pub fn read_channels_from_bytes(
                                         bail!("not implemented BOM type");
                                     }
                                 };
-                                let mut dst = String::with_capacity(value.len());
+                                dst.clear();
                                 let (_result, _size, _replacement) =
                                     decoder.decode_to_string(value, &mut dst, false);
                                 array.append_value(dst.trim_end_matches('\0'));
@@ -1506,17 +1515,16 @@ pub fn read_channels_from_bytes(
                                     }
                                 }
                             } else if n_bytes == 5 {
-                                let mut buf = [0u8; 6];
                                 for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                     for j in 0..cn.list_size {
-                                        buf[0..5].copy_from_slice(
-                                            &record[pos_byte_beg + j * n_bytes
-                                                ..pos_byte_beg + (j + 1) * n_bytes],
-                                        );
+                                        let src = &record[pos_byte_beg + j * n_bytes
+                                            ..pos_byte_beg + (j + 1) * n_bytes];
                                         data[(i + previous_index) * cn.list_size + j] =
-                                            Cursor::new(buf).read_u48::<BigEndian>().context(
-                                                "Could not read be u48 from 5 bytes in array",
-                                            )?;
+                                            ((src[0] as u64) << 32)
+                                                | ((src[1] as u64) << 24)
+                                                | ((src[2] as u64) << 16)
+                                                | ((src[3] as u64) << 8)
+                                                | (src[4] as u64);
                                     }
                                 }
                             }
@@ -1553,17 +1561,15 @@ pub fn read_channels_from_bytes(
                             }
                         } else {
                             // n_bytes = 5
-                            let mut buf = [0u8; 6];
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
                                 for j in 0..cn.list_size {
-                                    buf[0..5].copy_from_slice(
-                                        &record[pos_byte_beg + j * n_bytes
-                                            ..pos_byte_beg + (j + 1) * n_bytes],
-                                    );
-                                    data[(i + previous_index) * cn.list_size + j] =
-                                        Cursor::new(buf).read_u48::<LittleEndian>().context(
-                                            "Could not read le u48 from 5 bytes in array",
-                                        )?;
+                                    let src = &record[pos_byte_beg + j * n_bytes
+                                        ..pos_byte_beg + (j + 1) * n_bytes];
+                                    data[(i + previous_index) * cn.list_size + j] = (src[0] as u64)
+                                        | ((src[1] as u64) << 8)
+                                        | ((src[2] as u64) << 16)
+                                        | ((src[3] as u64) << 24)
+                                        | ((src[4] as u64) << 32);
                                 }
                             }
                         }

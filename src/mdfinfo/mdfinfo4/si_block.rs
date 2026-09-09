@@ -87,11 +87,9 @@ impl Display for Si4Block {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "SI: type={} ({}) bus={} ({}) flags=0x{:02X}",
+            "SI  |  type={} | bus={} | flags=0x{:02X}",
             self.get_type_str(),
-            self.si_type,
             self.get_bus_type_str(),
-            self.si_bus_type,
             self.si_flags
         )
     }
@@ -156,7 +154,7 @@ mod tests {
         };
 
         let display = format!("{si}");
-        assert!(display.contains("SI:"));
+        assert!(display.contains("SI"));
         assert!(display.contains("ECU"));
         assert!(display.contains("CAN"));
         assert!(display.contains("flags=0x03"));

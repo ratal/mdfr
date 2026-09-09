@@ -5,7 +5,7 @@
 //! (CC, SI, TX, MD blocks) stored in a global hashmap for deduplication.
 use anyhow::{Context, Result};
 use binrw::{BinReaderExt, binrw};
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{Cursor, Read};
@@ -267,9 +267,9 @@ pub(super) fn read_meta_data(
 #[derive(Debug, Default, Clone)]
 #[repr(C)]
 pub struct SharableBlocks {
-    pub(crate) md_tx: HashMap<i64, MetaData>,
-    pub(crate) cc: HashMap<i64, Cc4Block>,
-    pub(crate) si: HashMap<i64, Si4Block>,
+    pub(crate) md_tx: FxHashMap<i64, MetaData>,
+    pub(crate) cc: FxHashMap<i64, Cc4Block>,
+    pub(crate) si: FxHashMap<i64, Si4Block>,
 }
 
 /// SharableBlocks display implementation to facilitate debugging
@@ -341,9 +341,10 @@ impl SharableBlocks {
     }
     /// Create new Shared Block
     pub fn new(n_channels: usize) -> SharableBlocks {
-        let md_tx: HashMap<i64, MetaData> = HashMap::with_capacity(n_channels);
-        let cc: HashMap<i64, Cc4Block> = HashMap::new();
-        let si: HashMap<i64, Si4Block> = HashMap::new();
+        let md_tx: FxHashMap<i64, MetaData> =
+            FxHashMap::with_capacity_and_hasher(n_channels, rustc_hash::FxBuildHasher);
+        let cc: FxHashMap<i64, Cc4Block> = FxHashMap::default();
+        let si: FxHashMap<i64, Si4Block> = FxHashMap::default();
         SharableBlocks { md_tx, cc, si }
     }
 }

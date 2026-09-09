@@ -9,7 +9,7 @@
 //! - CN (nested channel): structure composition via CN→CN chain
 use anyhow::{Context, Result, bail};
 use binrw::{BinReaderExt, binrw};
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use std::fmt::{self, Display};
 use std::fs::File;
 
@@ -278,7 +278,7 @@ fn parse_and_rekey_channels(
     record_layout: RecordLayout,
     cg_cycle_count: u64,
 ) -> Result<(CnType, usize)> {
-    let mut cns: CnType = HashMap::new();
+    let mut cns: CnType = FxHashMap::default();
     let mut n_cn: usize = 0;
     for target in targets {
         let (cnss, pos, n_cns, _first_rec_pos) = parse_cn4(
@@ -313,7 +313,7 @@ pub(super) fn parse_composition(
         .context("Failed parsing composition header block")?;
     position = pos;
     let array_size: usize;
-    let mut cns: CnType = HashMap::new();
+    let mut cns: CnType = FxHashMap::default();
     let mut n_cn: usize = 0;
 
     if block_header_short.hdr_id == "##CA".as_bytes() {
@@ -354,7 +354,7 @@ pub(super) fn parse_composition(
             ca_composition = Some(Box::new(ca));
         } else {
             ca_composition = None;
-            cns = HashMap::new();
+            cns = FxHashMap::default();
         }
         Ok((
             Composition {
@@ -391,7 +391,7 @@ pub(super) fn parse_composition(
             ds_composition = Some(Box::new(ds));
         } else {
             ds_composition = None;
-            cns = HashMap::new();
+            cns = FxHashMap::default();
         }
         Ok((
             Composition {
@@ -429,7 +429,7 @@ pub(super) fn parse_composition(
             cl_composition = Some(Box::new(ds));
         } else {
             cl_composition = None;
-            cns = HashMap::new();
+            cns = FxHashMap::default();
         }
         Ok((
             Composition {
