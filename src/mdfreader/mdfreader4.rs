@@ -1569,55 +1569,61 @@ fn apply_bit_mask_offset(dg: &mut Dg4) -> Result<(), Error> {
                             match &mut cn.data {
                                 ChannelData::Int8(array) => {
                                     let a = array.values_slice_mut();
-                                    if left_shift > 0 {
+                                    if left_shift > 0 && right_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x = (*x << left_shift) >> right_shift)
+                                    } else if left_shift > 0 {
                                         a.iter_mut().for_each(|x| *x <<= left_shift)
-                                    };
-                                    if right_shift > 0 {
+                                    } else if right_shift > 0 {
                                         a.iter_mut().for_each(|x| *x >>= right_shift)
                                     };
                                 }
                                 ChannelData::UInt8(array) => {
                                     let a = array.values_slice_mut();
-                                    if left_shift > 0 {
+                                    if left_shift > 0 && right_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x = (*x << left_shift) >> right_shift)
+                                    } else if left_shift > 0 {
                                         a.iter_mut().for_each(|x| *x <<= left_shift)
-                                    };
-                                    if right_shift > 0 {
+                                    } else if right_shift > 0 {
                                         a.iter_mut().for_each(|x| *x >>= right_shift)
                                     };
                                 }
                                 ChannelData::Int16(array) => {
                                     let a = array.values_slice_mut();
-                                    if left_shift > 0 {
+                                    if left_shift > 0 && right_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x = (*x << left_shift) >> right_shift)
+                                    } else if left_shift > 0 {
                                         a.iter_mut().for_each(|x| *x <<= left_shift)
-                                    };
-                                    if right_shift > 0 {
+                                    } else if right_shift > 0 {
                                         a.iter_mut().for_each(|x| *x >>= right_shift)
                                     };
                                 }
                                 ChannelData::UInt16(array) => {
                                     let a = array.values_slice_mut();
-                                    if left_shift > 0 {
+                                    if left_shift > 0 && right_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x = (*x << left_shift) >> right_shift)
+                                    } else if left_shift > 0 {
                                         a.iter_mut().for_each(|x| *x <<= left_shift)
-                                    };
-                                    if right_shift > 0 {
+                                    } else if right_shift > 0 {
                                         a.iter_mut().for_each(|x| *x >>= right_shift)
                                     };
                                 }
                                 ChannelData::Int32(array) => {
                                     let a = array.values_slice_mut();
-                                    if left_shift > 0 {
+                                    if left_shift > 0 && right_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x = (*x << left_shift) >> right_shift)
+                                    } else if left_shift > 0 {
                                         a.iter_mut().for_each(|x| *x <<= left_shift)
-                                    };
-                                    if right_shift > 0 {
+                                    } else if right_shift > 0 {
                                         a.iter_mut().for_each(|x| *x >>= right_shift)
                                     };
                                 }
                                 ChannelData::UInt32(array) => {
                                     let a = array.values_slice_mut();
-                                    if left_shift > 0 {
+                                    if left_shift > 0 && right_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x = (*x << left_shift) >> right_shift)
+                                    } else if left_shift > 0 {
                                         a.iter_mut().for_each(|x| *x <<= left_shift)
-                                    };
-                                    if right_shift > 0 {
+                                    } else if right_shift > 0 {
                                         a.iter_mut().for_each(|x| *x >>= right_shift)
                                     };
                                 }
@@ -1656,55 +1662,61 @@ fn apply_bit_mask_offset(dg: &mut Dg4) -> Result<(), Error> {
                                 ChannelData::FixedSizeByteArray(_) => (),
                                 ChannelData::ArrayDInt8(array) => {
                                     let a = array.values_slice_mut();
-                                    if left_shift > 0 {
+                                    if left_shift > 0 && right_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x = (*x << left_shift) >> right_shift)
+                                    } else if left_shift > 0 {
                                         a.iter_mut().for_each(|x| *x <<= left_shift)
-                                    };
-                                    if right_shift > 0 {
+                                    } else if right_shift > 0 {
                                         a.iter_mut().for_each(|x| *x >>= right_shift)
                                     };
                                 }
                                 ChannelData::ArrayDUInt8(array) => {
                                     let a = array.values_slice_mut();
-                                    if left_shift > 0 {
+                                    if left_shift > 0 && right_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x = (*x << left_shift) >> right_shift)
+                                    } else if left_shift > 0 {
                                         a.iter_mut().for_each(|x| *x <<= left_shift)
-                                    };
-                                    if right_shift > 0 {
+                                    } else if right_shift > 0 {
                                         a.iter_mut().for_each(|x| *x >>= right_shift)
                                     };
                                 }
                                 ChannelData::ArrayDInt16(array) => {
                                     let a = array.values_slice_mut();
-                                    if left_shift > 0 {
+                                    if left_shift > 0 && right_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x = (*x << left_shift) >> right_shift)
+                                    } else if left_shift > 0 {
                                         a.iter_mut().for_each(|x| *x <<= left_shift)
-                                    };
-                                    if right_shift > 0 {
+                                    } else if right_shift > 0 {
                                         a.iter_mut().for_each(|x| *x >>= right_shift)
                                     };
                                 }
                                 ChannelData::ArrayDUInt16(array) => {
                                     let a = array.values_slice_mut();
-                                    if left_shift > 0 {
+                                    if left_shift > 0 && right_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x = (*x << left_shift) >> right_shift)
+                                    } else if left_shift > 0 {
                                         a.iter_mut().for_each(|x| *x <<= left_shift)
-                                    };
-                                    if right_shift > 0 {
+                                    } else if right_shift > 0 {
                                         a.iter_mut().for_each(|x| *x >>= right_shift)
                                     };
                                 }
                                 ChannelData::ArrayDInt32(array) => {
                                     let a = array.values_slice_mut();
-                                    if left_shift > 0 {
+                                    if left_shift > 0 && right_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x = (*x << left_shift) >> right_shift)
+                                    } else if left_shift > 0 {
                                         a.iter_mut().for_each(|x| *x <<= left_shift)
-                                    };
-                                    if right_shift > 0 {
+                                    } else if right_shift > 0 {
                                         a.iter_mut().for_each(|x| *x >>= right_shift)
                                     };
                                 }
                                 ChannelData::ArrayDUInt32(array) => {
                                     let a = array.values_slice_mut();
-                                    if left_shift > 0 {
+                                    if left_shift > 0 && right_shift > 0 {
+                                        a.iter_mut().for_each(|x| *x = (*x << left_shift) >> right_shift)
+                                    } else if left_shift > 0 {
                                         a.iter_mut().for_each(|x| *x <<= left_shift)
-                                    };
-                                    if right_shift > 0 {
+                                    } else if right_shift > 0 {
                                         a.iter_mut().for_each(|x| *x >>= right_shift)
                                     };
                                 }
