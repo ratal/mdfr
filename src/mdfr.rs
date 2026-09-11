@@ -307,6 +307,18 @@ df=polars.DataFrame(series)
             Ok(master_type)
         })
     }
+    /// Returns the path separator character for the channel group containing the given channel (MDF 4.x only).
+    /// The path separator is a UTF-16 LE encoded character (2 bytes) used to separate parts
+    /// in group name (gn), group source (gs), group path (gp), channel name (cn),
+    /// channel source (cs), and channel path (cp).
+    /// Common values: 0x002F (47) for '/', 0x005C (92) for '\\', 0 if not specified.
+    /// Returns the raw u16 value as an integer, or None if not found/MDF3.
+    pub fn get_channel_group_path_separator(&self, channel_name: String) -> PyResult<Option<u16>> {
+        let Mdfr(mdf) = self;
+        pyo3::Python::attach(|_py| {
+            Ok(mdf.mdf_info.get_channel_group_path_separator(&channel_name))
+        })
+    }
     /// Returns event signal information for an event signal channel as a dict.
     /// Returns None if the channel is not an event signal channel.
     pub fn get_event_signal_info(&self, channel_name: String) -> PyResult<Py<PyAny>> {

@@ -253,6 +253,15 @@ impl Mdf {
     pub fn get_channel_sampling_rate(&self, channel_name: &str) -> Option<f64> {
         self.mdf_info.get_channel_sampling_rate(channel_name)
     }
+    /// Returns the path separator character for the channel group containing the given channel (MDF 4.x only).
+    /// The path separator is a UTF-16 LE encoded character (2 bytes) used to separate parts
+    /// in group name (gn), group source (gs), group path (gp), channel name (cn),
+    /// channel source (cs), and channel path (cp).
+    /// Common values: 0x002F (47) for '/', 0x005C (92) for '\\', 0 if not specified.
+    /// Returns the raw u16 value, or None if not found/MDF3.
+    pub fn get_channel_group_path_separator(&self, channel_name: &str) -> Option<u16> {
+        self.mdf_info.get_channel_group_path_separator(channel_name)
+    }
     /// Returns the minimum value of the valid range for a channel.
     /// Returns `None` if the channel is not found or range is not specified.
     /// If not present in the block, computes from channel data.

@@ -982,6 +982,21 @@ impl MdfInfo4 {
         }
         output
     }
+    /// Returns the path separator character for a channel group (MDF 4.x only).
+    /// The path separator is a UTF-16 LE encoded character (2 bytes) used to separate parts
+    /// in group name (gn), group source (gs), group path (gp), channel name (cn),
+    /// channel source (cs), and channel path (cp).
+    /// Returns the raw u16 value (0 if no path separator specified), or None if not found/MDF3.
+    pub fn get_channel_group_path_separator(&self, channel_name: &str) -> Option<u16> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, _rec_pos))) =
+            self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+        {
+            return Some(cg.block.path_separator());
+        }
+        None
+    }
     /// Formats header comments
     pub fn format_header_comments(&self) -> String {
         let mut output = String::new();
