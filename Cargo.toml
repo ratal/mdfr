@@ -23,7 +23,7 @@ hdf5 = ["dep:rust-hdf5"]
 ndarray = ["dep:ndarray"]
 
 [dependencies]
-clap = "4.6.6" # for input arguments
+clap = "4.6.7" # for input arguments
 anyhow = { version = "1.0.104", features = ["backtrace"] } # error handling
 log = "0.4.34" # to log events
 byteorder = "1.5.0" # for bytes conversions
@@ -32,7 +32,7 @@ num = "0.4.3"
 half = "2.7.1" # for f16 handling
 encoding_rs = "0.8.41" # for endian management and bytes to text conversion (utf8, SBC, UTF16)
 unicode-bom = "2.0.3"
-codepage = "0.1.2" # to convert code page into encoding
+codepage = "0.1.3" # to convert code page into encoding
 chrono = "0.4.45" # for time conversion
 rayon = "1.12.0" # for general purpose parallel computations
 crossbeam-channel = "0.5.17" # for efficient channel between threads
@@ -47,13 +47,13 @@ transpose = "0.2.3" # for DZBlock transpose
 fasteval = "0.2.4" # for algebraic conversion
 itertools = "0.15.0"
 whoami = "2.1.3" # to get user name for writing file
-rand = "0.10.2" # for random numbers
-arrow = { version = "59.3.0", features = [
+rand = "0.10.3" # for random numbers
+arrow = { version = "60.0.0", features = [
     "pyarrow",
     "prettyprint",
     "ffi",
 ] } # for efficient data storing in memory
-arrow-csv = "59.3.0" # for efficient CSV export
+arrow-csv = "60.0.0" # for efficient CSV export
 env_logger = "0.11.11"
 libc = "0.2.189" # for the C api
 numpy = { version = "0.29.0", optional = true } # to export in numpy
@@ -62,7 +62,7 @@ polars = { version = "0.55.2", features = [
     "object",
     "fmt",
 ], optional = true } # for python dataframe
-parquet = { version = "59.3.0", optional = true } # to write parquet file
+parquet = { version = "60.0.0", optional = true } # to write parquet file
 rust-hdf5 = { version = "0.5.2", optional = true, features = [
     "all_filters", "parallel", "threadsafe"
 ] } # to export into hdf5 file
@@ -105,3 +105,6 @@ lto = true
 debug = 2
 lto = false
 opt-level = 0
+
+[profile.test]
+opt-level=1
