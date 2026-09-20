@@ -229,7 +229,7 @@ fn resample_group_uniform_spacing() -> Result<()> {
 fn resample_all_time_groups_uniform() -> Result<()> {
     let mut mdf = load_simple()?;
 
-    // Pick a raster based on the first Time master's range
+    // Pick a raster based on the first Time master's range that has actual spread
     let time_masters: Vec<String> = mdf
         .get_master_channel_names_set()
         .into_keys()
@@ -238,7 +238,18 @@ fn resample_all_time_groups_uniform() -> Result<()> {
         .collect();
     assert!(!time_masters.is_empty(), "no Time masters found");
 
-    let first = &time_masters[0];
+    // Find first master with valid spread (like first_time_master_with_spread does)
+    let first = time_masters
+        .iter()
+        .find(|m| {
+            if let Some(ChannelData::Float64(b)) = mdf.get_channel_converted_data(m) {
+                let s = b.values_slice();
+                s.len() >= 2 && s.last() > s.first()
+            } else {
+                false
+            }
+        })
+        .expect("no Time master with valid spread found");
     let vals = master_f64_values(&mut mdf, first);
     let raster_s = (vals.last().unwrap() - vals.first().unwrap()) / 100.0;
     assert!(raster_s > 0.0);
