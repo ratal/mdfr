@@ -315,9 +315,7 @@ df=polars.DataFrame(series)
     /// Returns the raw u16 value as an integer, or None if not found/MDF3.
     pub fn get_channel_group_path_separator(&self, channel_name: String) -> PyResult<Option<u16>> {
         let Mdfr(mdf) = self;
-        pyo3::Python::attach(|_py| {
-            Ok(mdf.mdf_info.get_channel_group_path_separator(&channel_name))
-        })
+        pyo3::Python::attach(|_py| Ok(mdf.mdf_info.get_channel_group_path_separator(&channel_name)))
     }
     /// Returns event signal information for an event signal channel as a dict.
     /// Returns None if the channel is not an event signal channel.
