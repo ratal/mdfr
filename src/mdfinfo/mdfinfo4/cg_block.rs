@@ -597,6 +597,77 @@ impl Cg4 {
         Ok(())
     }
 
+    /// Process Maximum Length Signal Data (MLSD, cn_type == 5) channels.
+    /// In MDF 4.3.0 §6.6.4 and §6.26.6.2:
+    /// - cn_data points to a size channel in the same channel group.
+    /// - The size channel gives the actual valid byte length for each record.
+    /// - Bytes beyond this size for each sample are invalid and truncated.
+    pub fn process_mlsd_channels(&mut self) -> Result<(), Error> {
+        let mlsd_channels: Vec<(i32, i64)> = self
+            .cn
+            .iter()
+            .filter(|(_rec_pos, cn)| cn.block.cn_type == 5 && cn.block.cn_data != 0)
+            .map(|(rec_pos, cn)| (*rec_pos, cn.block.cn_data))
+            .collect();
+
+        for (mlsd_rec_pos, size_channel_ptr) in mlsd_channels {
+            let size_values: Vec<u64> = if let Some(size_cn) = self
+                .cn
+                .values()
+                .find(|cn| cn.block_position == size_channel_ptr)
+            {
+                size_cn.data.to_u64_vec().unwrap_or_default()
+            } else {
+                continue;
+            };
+
+            if size_values.is_empty() {
+                continue;
+            }
+
+            if let Some(mlsd_cn) = self.cn.get_mut(&mlsd_rec_pos) {
+                match &mut mlsd_cn.data {
+                    ChannelData::VariableSizeByteArray(builder) => {
+                        let current_array = builder.finish_cloned();
+                        let mut new_builder = arrow::array::LargeBinaryBuilder::new();
+                        for (i, size) in size_values.iter().enumerate() {
+                            if i < current_array.len() {
+                                if current_array.is_null(i) {
+                                    new_builder.append_null();
+                                } else {
+                                    let bytes = current_array.value(i);
+                                    let valid_len = (*size as usize).min(bytes.len());
+                                    new_builder.append_value(&bytes[..valid_len]);
+                                }
+                            }
+                        }
+                        mlsd_cn.data = ChannelData::VariableSizeByteArray(new_builder);
+                    }
+                    ChannelData::Utf8(builder) => {
+                        let current_array = builder.finish_cloned();
+                        let mut new_builder = arrow::array::LargeStringBuilder::new();
+                        for (i, size) in size_values.iter().enumerate() {
+                            if i < current_array.len() {
+                                if current_array.is_null(i) {
+                                    new_builder.append_null();
+                                } else {
+                                    let s = current_array.value(i);
+                                    let valid_len = (*size as usize).min(s.len());
+                                    let truncated = &s.as_bytes()[..valid_len];
+                                    let valid_str = std::str::from_utf8(truncated).unwrap_or(s);
+                                    new_builder.append_value(valid_str.split('\0').next().unwrap_or(""));
+                                }
+                            }
+                        }
+                        mlsd_cn.data = ChannelData::Utf8(new_builder);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Process Channel Union (CU) compositions after data is loaded.
     /// For each channel with a CU composition, this method:
     /// 1. Collects member channel data (already read by pipeline)
