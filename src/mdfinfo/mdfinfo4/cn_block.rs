@@ -1158,7 +1158,7 @@ pub(super) fn parse_cn4_block(
         compo = None;
         shape = (vec![1], Order::RowMajor);
         // list size calculation
-        if block.cn_data_type == 15 | 16 {
+        if block.cn_data_type == 15 || block.cn_data_type == 16 {
             //complex
             list_size = 2;
         } else {

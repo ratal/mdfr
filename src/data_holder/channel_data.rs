@@ -407,70 +407,90 @@ impl ChannelData {
                 )),
                 ChannelData::ArrayDInt8(_) => {
                     Ok(ChannelData::ArrayDInt8(TensorArrow::new_from_buffer(
-                        vec![0i8; shape.0.iter().product::<usize>()].into(),
+                        MutableBuffer::from_len_zeroed(
+                            shape.0.iter().product::<usize>() * size_of::<i8>(),
+                        ),
                         shape.0,
                         shape.1,
                     )))
                 }
                 ChannelData::ArrayDUInt8(_) => {
                     Ok(ChannelData::ArrayDUInt8(TensorArrow::new_from_buffer(
-                        vec![0u8; shape.0.iter().product::<usize>()].into(),
+                        MutableBuffer::from_len_zeroed(
+                            shape.0.iter().product::<usize>() * size_of::<u8>(),
+                        ),
                         shape.0,
                         shape.1,
                     )))
                 }
                 ChannelData::ArrayDInt16(_) => {
                     Ok(ChannelData::ArrayDInt16(TensorArrow::new_from_buffer(
-                        vec![0i16; shape.0.iter().product::<usize>()].into(),
+                        MutableBuffer::from_len_zeroed(
+                            shape.0.iter().product::<usize>() * size_of::<i16>(),
+                        ),
                         shape.0,
                         shape.1,
                     )))
                 }
                 ChannelData::ArrayDUInt16(_) => {
                     Ok(ChannelData::ArrayDUInt16(TensorArrow::new_from_buffer(
-                        vec![0u16; shape.0.iter().product::<usize>()].into(),
+                        MutableBuffer::from_len_zeroed(
+                            shape.0.iter().product::<usize>() * size_of::<u16>(),
+                        ),
                         shape.0,
                         shape.1,
                     )))
                 }
                 ChannelData::ArrayDInt32(_) => {
                     Ok(ChannelData::ArrayDInt32(TensorArrow::new_from_buffer(
-                        vec![0i32; shape.0.iter().product::<usize>()].into(),
+                        MutableBuffer::from_len_zeroed(
+                            shape.0.iter().product::<usize>() * size_of::<i32>(),
+                        ),
                         shape.0,
                         shape.1,
                     )))
                 }
                 ChannelData::ArrayDUInt32(_) => {
                     Ok(ChannelData::ArrayDUInt32(TensorArrow::new_from_buffer(
-                        vec![0u32; shape.0.iter().product::<usize>()].into(),
+                        MutableBuffer::from_len_zeroed(
+                            shape.0.iter().product::<usize>() * size_of::<u32>(),
+                        ),
                         shape.0,
                         shape.1,
                     )))
                 }
                 ChannelData::ArrayDFloat32(_) => {
                     Ok(ChannelData::ArrayDFloat32(TensorArrow::new_from_buffer(
-                        vec![0f32; shape.0.iter().product::<usize>()].into(),
+                        MutableBuffer::from_len_zeroed(
+                            shape.0.iter().product::<usize>() * size_of::<f32>(),
+                        ),
                         shape.0,
                         shape.1,
                     )))
                 }
                 ChannelData::ArrayDInt64(_) => {
                     Ok(ChannelData::ArrayDInt64(TensorArrow::new_from_buffer(
-                        vec![0i64; shape.0.iter().product::<usize>()].into(),
+                        MutableBuffer::from_len_zeroed(
+                            shape.0.iter().product::<usize>() * size_of::<i64>(),
+                        ),
                         shape.0,
                         shape.1,
                     )))
                 }
                 ChannelData::ArrayDUInt64(_) => {
                     Ok(ChannelData::ArrayDUInt64(TensorArrow::new_from_buffer(
-                        vec![0u64; shape.0.iter().product::<usize>()].into(),
+                        MutableBuffer::from_len_zeroed(
+                            shape.0.iter().product::<usize>() * size_of::<u64>(),
+                        ),
                         shape.0,
                         shape.1,
                     )))
                 }
                 ChannelData::ArrayDFloat64(_) => {
                     Ok(ChannelData::ArrayDFloat64(TensorArrow::new_from_buffer(
-                        vec![0f64; cycle_count as usize * shape.0.iter().product::<usize>()].into(),
+                        MutableBuffer::from_len_zeroed(
+                            shape.0.iter().product::<usize>() * size_of::<f64>(),
+                        ),
                         shape.0,
                         shape.1,
                     )))
@@ -1614,7 +1634,7 @@ pub fn data_type_init(
                     Ok(ChannelData::ArrayDInt8(TensorArrow::new()))
                 } else if n_bytes == 2 {
                     Ok(ChannelData::ArrayDInt16(TensorArrow::new()))
-                } else if n_bytes == 4 {
+                } else if n_bytes <= 4 {
                     Ok(ChannelData::ArrayDInt32(TensorArrow::new()))
                 } else {
                     Ok(ChannelData::ArrayDInt64(TensorArrow::new()))

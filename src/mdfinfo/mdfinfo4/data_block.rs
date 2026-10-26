@@ -378,19 +378,25 @@ impl Ld4Block {
     }
     /// Data block positions
     pub fn ld_data(&self) -> Vec<i64> {
-        // In MDF 4.3, bit 7 of ld_flags_ext indicates invalid data present.
-        // If present, links are interleaved: Data 1, Inval 1, Data 2, Inval 2, ...
-        // We can also check if the number of links matches 2 * ld_count.
-        if (1u8 << 7) & self.ld_flags_ext > 0 || self.ld_links.len() as u32 == self.ld_count * 2 {
-            self.ld_links.iter().step_by(2).copied().collect()
+        // In MDF 4.3 (Table 88 & Table 90), bit 7 of ld_flags_ext indicates invalid data present.
+        // If present, links are contiguous: N = ld_count links for ld_data followed by N links for ld_inval_data.
+        // We also check if the number of links matches 2 * ld_count.
+        let n = self.ld_count as usize;
+        if ((1u8 << 7) & self.ld_flags_ext > 0 || self.ld_links.len() == n * 2)
+            && self.ld_links.len() >= n
+        {
+            self.ld_links[..n].to_vec()
         } else {
             self.ld_links.clone()
         }
     }
     /// Invalid data block positions
     pub fn ld_invalid_data(&self) -> Vec<i64> {
-        if (1u8 << 7) & self.ld_flags_ext > 0 || self.ld_links.len() as u32 == self.ld_count * 2 {
-            self.ld_links.iter().skip(1).step_by(2).copied().collect()
+        let n = self.ld_count as usize;
+        if ((1u8 << 7) & self.ld_flags_ext > 0 || self.ld_links.len() == n * 2)
+            && self.ld_links.len() >= n * 2
+        {
+            self.ld_links[n..n * 2].to_vec()
         } else {
             Vec::<i64>::new()
         }
@@ -596,23 +602,23 @@ mod tests {
 
     #[test]
     fn test_ld_data_interleaved_by_flag() {
-        // Interleaved via ld_flags_ext bit 7
+        // Invalid data present via ld_flags_ext bit 7: first N links are data, next N are invalid
         let ld = Ld4Block {
             ld_count: 2,
             ld_flags_ext: 1u8 << 7,
-            ld_links: vec![100, 101, 200, 201],
+            ld_links: vec![100, 200, 101, 201],
             ..Default::default()
         };
         let data = ld.ld_data();
-        assert_eq!(data, vec![100, 200]); // step_by(2)
+        assert_eq!(data, vec![100, 200]);
     }
 
     #[test]
     fn test_ld_data_interleaved_by_count() {
-        // Interleaved detected by links.len() == 2 * ld_count
+        // Invalid data present detected by links.len() == 2 * ld_count
         let ld = Ld4Block {
             ld_count: 2,
-            ld_links: vec![100, 101, 200, 201],
+            ld_links: vec![100, 200, 101, 201],
             ..Default::default()
         };
         let data = ld.ld_data();
@@ -621,7 +627,7 @@ mod tests {
 
     #[test]
     fn test_ld_invalid_data() {
-        // Non-interleaved: empty result
+        // Non-invalid: empty result
         let ld = Ld4Block {
             ld_count: 2,
             ld_links: vec![100, 200],
@@ -629,11 +635,11 @@ mod tests {
         };
         assert!(ld.ld_invalid_data().is_empty());
 
-        // Interleaved: odd positions are invalid blocks
+        // Invalid data present: second half (links[N..2*N]) are invalid blocks
         let ld = Ld4Block {
             ld_count: 2,
             ld_flags_ext: 1u8 << 7,
-            ld_links: vec![100, 101, 200, 201],
+            ld_links: vec![100, 200, 101, 201],
             ..Default::default()
         };
         let invalid = ld.ld_invalid_data();
