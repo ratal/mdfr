@@ -475,16 +475,15 @@ pub fn read_one_channel_array(
                         dst.clear();
                         let (_result, _size, _replacement) =
                             decoder.decode_to_string(value, &mut dst, false);
-                        data.append_value(dst.trim_end_matches('\0'));
+                        let s = dst.split('\0').next().unwrap_or("");
+                        data.append_value(s);
                     }
                 } else if cn.block.cn_data_type == 7 {
                     // 7: String UTF8
                     for value in chunks.take(cycle_count) {
-                        data.append_value(
-                            str::from_utf8(value)
-                                .context("Found invalid UTF-8")?
-                                .trim_end_matches('\0'),
-                        );
+                        let full = str::from_utf8(value).context("Found invalid UTF-8")?;
+                        let s = full.split('\0').next().unwrap_or("");
+                        data.append_value(s);
                     }
                 } else if cn.block.cn_data_type == 8 || cn.block.cn_data_type == 9 {
                     // 8 | 9 :String UTF16 to be converted into UTF8
@@ -494,7 +493,8 @@ pub fn read_one_channel_array(
                             dst.clear();
                             let (_result, _size, _replacement) =
                                 decoder.decode_to_string(record, &mut dst, false);
-                            data.append_value(dst.trim_end_matches('\0'));
+                            let s = dst.split('\0').next().unwrap_or("");
+                            data.append_value(s);
                         }
                     } else {
                         let mut decoder = UTF_16LE.new_decoder();
@@ -502,7 +502,8 @@ pub fn read_one_channel_array(
                             dst.clear();
                             let (_result, _size, _replacement) =
                                 decoder.decode_to_string(record, &mut dst, false);
-                            data.append_value(dst.trim_end_matches('\0'));
+                            let s = dst.split('\0').next().unwrap_or("");
+                            data.append_value(s);
                         }
                     }
                 } else if cn.block.cn_data_type == 17 {
@@ -522,7 +523,8 @@ pub fn read_one_channel_array(
                         dst.clear();
                         let (_result, _size, _replacement) =
                             decoder.decode_to_string(record, &mut dst, false);
-                        data.append_value(dst.trim_end_matches('\0'));
+                        let s = dst.split('\0').next().unwrap_or("");
+                        data.append_value(s);
                     }
                 }
             }
@@ -931,6 +933,12 @@ pub fn read_channels_from_bytes(
         .par_iter_mut()
         .filter(|(_cn_record_position, cn)| cn.should_read)
         .try_for_each(|(rec_pos, cn): (&i32, &mut Cn4)| -> Result<(), Error> {
+            if let Some(compo) = &cn.composition
+                && let Compo::CA(ca) = &compo.block
+                && (ca.ca_storage == 1 || ca.ca_storage == 2)
+            {
+                return Ok(());
+            }
             if cn.block.cn_type == 0
                 || cn.block.cn_type == 2
                 || cn.block.cn_type == 5
@@ -1428,16 +1436,16 @@ pub fn read_channels_from_bytes(
                                 dst.clear();
                                 let (_result, _size, _replacement) =
                                     decoder.decode_to_string(value, &mut dst, false);
-                                array.append_value(dst.trim_end_matches('\0'));
+                                let s = dst.split('\0').next().unwrap_or("");
+                                array.append_value(s);
                             }
                         } else if cn.block.cn_data_type == 7 {
                             // 7: String UTF8
                             for record in data_chunk.chunks_exact(record_length) {
                                 value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
-                                let dst = str::from_utf8(value)
-                                    .context("Found invalid UTF-8")?
-                                    .trim_end_matches('\0');
-                                array.append_value(dst);
+                                let full = str::from_utf8(value).context("Found invalid UTF-8")?;
+                                let s = full.split('\0').next().unwrap_or("");
+                                array.append_value(s);
                             }
                         } else if cn.block.cn_data_type == 8 || cn.block.cn_data_type == 9 {
                             // 8 | 9 :String UTF16 to be converted into UTF8
@@ -1449,7 +1457,8 @@ pub fn read_channels_from_bytes(
                                     dst.clear();
                                     let (_result, _size, _replacement) =
                                         decoder.decode_to_string(value, &mut dst, false);
-                                    array.append_value(dst.trim_end_matches('\0'));
+                                    let s = dst.split('\0').next().unwrap_or("");
+                                    array.append_value(s);
                                 }
                             } else {
                                 let mut decoder = UTF_16LE.new_decoder();
@@ -1458,7 +1467,8 @@ pub fn read_channels_from_bytes(
                                     dst.clear();
                                     let (_result, _size, _replacement) =
                                         decoder.decode_to_string(value, &mut dst, false);
-                                    array.append_value(dst.trim_end_matches('\0'));
+                                    let s = dst.split('\0').next().unwrap_or("");
+                                    array.append_value(s);
                                 }
                             }
                         } else if cn.block.cn_data_type == 17 {
@@ -1480,7 +1490,8 @@ pub fn read_channels_from_bytes(
                                 dst.clear();
                                 let (_result, _size, _replacement) =
                                     decoder.decode_to_string(value, &mut dst, false);
-                                array.append_value(dst.trim_end_matches('\0'));
+                                let s = dst.split('\0').next().unwrap_or("");
+                                array.append_value(s);
                             }
                         }
                     }
