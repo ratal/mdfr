@@ -1038,3 +1038,234 @@ fn test_integer_over_64_bits_spec_limit() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_be_7byte_uint64_and_array_uint64() -> Result<()> {
+    use mdfr::data_holder::channel_data::data_type_init;
+    use mdfr::data_holder::tensor_arrow::Order;
+    use mdfr::mdfinfo::mdfinfo4::{Cn4, CnType, Endianness};
+    use mdfr::mdfreader::data_read4::{read_channels_from_bytes, read_one_channel_array};
+
+    // 1) Scalar 7-byte BE UInt64: 0x01_02_03_04_05_06_07
+    let mut cn = Cn4 {
+        n_bytes: 7,
+        endian: Endianness::Big,
+        list_size: 1,
+        shape: (vec![1], Order::RowMajor),
+        pos_byte_beg: 0,
+        should_read: true,
+        data: data_type_init(0, 1, 7, 1, 1)?,
+        ..Default::default()
+    };
+    cn.block.cn_data_type = 1; // UInt BE
+    cn.block.cn_bit_count = 56;
+    cn.data = cn.data.zeros(0, 2, 7, (vec![1], Order::RowMajor))?;
+    let raw_bytes = [
+        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // rec 0
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, // rec 1 -> 256
+    ];
+    read_one_channel_array(&raw_bytes, &mut cn, 2)?;
+    if let ChannelData::UInt64(arr) = &cn.data {
+        assert_eq!(arr.values_slice(), &[0x0001_0203_0405_0607u64, 256u64]);
+    } else {
+        panic!("expected UInt64");
+    }
+
+    // Also test via read_channels_from_bytes
+    cn.data = cn.data.zeros(0, 2, 7, (vec![1], Order::RowMajor))?;
+    let mut channels = CnType::default();
+    channels.insert(0, cn);
+    read_channels_from_bytes(&raw_bytes, &mut channels, 7, 0, false)?;
+    if let ChannelData::UInt64(arr) = &channels[&0].data {
+        assert_eq!(arr.values_slice(), &[0x0001_0203_0405_0607u64, 256u64]);
+    } else {
+        panic!("expected UInt64");
+    }
+
+    // 2) ArrayDUInt64 8-byte BE
+    let shape = (vec![2, 2], Order::RowMajor);
+    let mut cn_arr = Cn4 {
+        n_bytes: 8,
+        endian: Endianness::Big,
+        list_size: 2,
+        shape: shape.clone(),
+        pos_byte_beg: 0,
+        should_read: true,
+        data: data_type_init(0, 1, 8, 2, 1)?,
+        ..Default::default()
+    };
+    cn_arr.block.cn_data_type = 1; // UInt BE
+    cn_arr.block.cn_bit_count = 64;
+    cn_arr.data = cn_arr.data.zeros(0, 2, 8, shape)?;
+    let mut raw_arr = Vec::new();
+    for v in [10u64, 20, 30, 40] {
+        raw_arr.extend_from_slice(&v.to_be_bytes());
+    }
+    let mut channels_arr = CnType::default();
+    channels_arr.insert(0, cn_arr);
+    read_channels_from_bytes(&raw_arr, &mut channels_arr, 16, 0, false)?;
+    if let ChannelData::ArrayDUInt64(arr) = &channels_arr[&0].data {
+        assert_eq!(arr.values_slice(), &[10u64, 20, 30, 40]);
+    } else {
+        panic!("expected ArrayDUInt64");
+    }
+    Ok(())
+}
+
+#[test]
+fn test_remainder_and_truncated_chunks_rejected() -> Result<()> {
+    use mdfr::data_holder::channel_data::data_type_init;
+    use mdfr::data_holder::tensor_arrow::Order;
+    use mdfr::mdfinfo::mdfinfo4::{Cn4, CnType, Endianness};
+    use mdfr::mdfreader::data_read4::{read_channels_from_bytes, read_one_channel_array};
+
+    let mut cn = Cn4 {
+        n_bytes: 8,
+        endian: Endianness::Little,
+        list_size: 1,
+        shape: (vec![1], Order::RowMajor),
+        pos_byte_beg: 0,
+        should_read: true,
+        data: data_type_init(0, 4, 8, 1, 1)?,
+        ..Default::default()
+    };
+    cn.block.cn_data_type = 4; // Float LE
+    cn.block.cn_bit_count = 64;
+    cn.data = cn.data.zeros(0, 2, 8, (vec![1], Order::RowMajor))?;
+
+    let bytes_with_remainder = [0u8; 17];
+    assert!(read_one_channel_array(&bytes_with_remainder, &mut cn, 2).is_err());
+
+    let truncated_bytes = [0u8; 8];
+    assert!(read_one_channel_array(&truncated_bytes, &mut cn, 2).is_err());
+
+    let mut channels = CnType::default();
+    channels.insert(0, cn);
+    assert!(
+        read_channels_from_bytes(&bytes_with_remainder, &mut channels, 8, 0, false).is_err()
+    );
+    Ok(())
+}
+
+#[test]
+fn test_mdf4_spec_fig45_le_and_fig46_be_bit_offset_mask() -> Result<()> {
+    use mdfr::data_holder::channel_data::data_type_init;
+    use mdfr::data_holder::tensor_arrow::Order;
+    use mdfr::mdfinfo::mdfinfo4::{
+        Blockheader4Short, Cg4, Cg4Block, Cn4, CnType, Dg4, Dg4Block, Endianness,
+    };
+    use mdfr::mdfreader::data_read4::read_channels_from_bytes;
+    use mdfr::mdfreader::mdfreader4::apply_bit_mask_offset;
+    use std::collections::HashSet;
+
+    // MDF 4.3.0 §6.26.5.2 Figure 45:
+    // Bytes on disk: [0xAB, 0xCD, 0xEF]
+    // Little Endian unsigned (cn_data_type = 0), cn_byte_offset = 0, cn_bit_offset = 6, cn_bit_count = 14
+    // -> n_bytes = 3 -> UInt32
+    // Spec value: 16182 (0b11_1111_0011_0110 = 0x3F36)
+    let bytes = [0xABu8, 0xCD, 0xEF];
+
+    let mut cn_le = Cn4 {
+        n_bytes: 3,
+        endian: Endianness::Little,
+        list_size: 1,
+        shape: (vec![1], Order::RowMajor),
+        pos_byte_beg: 0,
+        should_read: true,
+        data: data_type_init(0, 0, 3, 1, 1)?,
+        ..Default::default()
+    };
+    cn_le.block.cn_data_type = 0; // Unsigned LE
+    cn_le.block.cn_bit_offset = 6;
+    cn_le.block.cn_bit_count = 14;
+    cn_le.data = cn_le.data.zeros(0, 1, 3, (vec![1], Order::RowMajor))?;
+
+    // MDF 4.3.0 §6.26.5.2 Figure 46:
+    // Bytes on disk: [0xAB, 0xCD, 0xEF]
+    // Big Endian unsigned (cn_data_type = 1), cn_bit_offset = 6, cn_bit_count = 14 -> n_bytes = 3 -> UInt32
+    // Spec value: 12087 (0b10_1111_0011_0111 = 0x2F37)
+    let mut cn_be = Cn4 {
+        n_bytes: 3,
+        endian: Endianness::Big,
+        list_size: 1,
+        shape: (vec![1], Order::RowMajor),
+        pos_byte_beg: 0,
+        should_read: true,
+        data: data_type_init(0, 1, 3, 1, 1)?,
+        ..Default::default()
+    };
+    cn_be.block.cn_data_type = 1; // Unsigned BE
+    cn_be.block.cn_bit_offset = 6;
+    cn_be.block.cn_bit_count = 14;
+    cn_be.data = cn_be.data.zeros(0, 1, 3, (vec![1], Order::RowMajor))?;
+
+    // Signed LE 14-bit with MSB=1 (0x3F36 has bit 13 set -> negative in 14-bit two's complement:
+    // 16182 - 16384 = -202)
+    let mut cn_signed_le = Cn4 {
+        n_bytes: 3,
+        endian: Endianness::Little,
+        list_size: 1,
+        shape: (vec![1], Order::RowMajor),
+        pos_byte_beg: 0,
+        should_read: true,
+        data: data_type_init(0, 2, 3, 1, 1)?,
+        ..Default::default()
+    };
+    cn_signed_le.block.cn_data_type = 2; // Signed LE
+    cn_signed_le.block.cn_bit_offset = 6;
+    cn_signed_le.block.cn_bit_count = 14;
+    cn_signed_le.data = cn_signed_le
+        .data
+        .zeros(0, 1, 3, (vec![1], Order::RowMajor))?;
+
+    let mut cn_map = CnType::default();
+    cn_map.insert(0, cn_le);
+    cn_map.insert(1, cn_be);
+    cn_map.insert(2, cn_signed_le);
+
+    read_channels_from_bytes(&bytes, &mut cn_map, 3, 0, false)?;
+
+    let mut cg_block = Cg4Block::default();
+    cg_block.cg_cycle_count = 1;
+    cg_block.cg_data_bytes = 3;
+
+    let mut dg = Dg4 {
+        block: Dg4Block::default(),
+        cg: Default::default(),
+    };
+    dg.cg.insert(
+        0,
+        Cg4 {
+            header: Blockheader4Short::default(),
+            block: cg_block,
+            cn: cn_map,
+            master_channel_name: None,
+            channel_names: HashSet::new(),
+            block_position: 0,
+            record_length: 3,
+            vlsd_cg: None,
+            invalid_bytes: None,
+            sr: Vec::new(),
+        },
+    );
+
+    apply_bit_mask_offset(&mut dg).map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    let cg = &dg.cg[&0];
+    if let ChannelData::UInt32(arr) = &cg.cn[&0].data {
+        assert_eq!(arr.values_slice()[0], 16182);
+    } else {
+        panic!("expected UInt32 for Fig 45 LE");
+    }
+    if let ChannelData::UInt32(arr) = &cg.cn[&1].data {
+        assert_eq!(arr.values_slice()[0], 12087);
+    } else {
+        panic!("expected UInt32 for Fig 46 BE");
+    }
+    if let ChannelData::Int32(arr) = &cg.cn[&2].data {
+        assert_eq!(arr.values_slice()[0], -202);
+    } else {
+        panic!("expected Int32 for signed 14-bit LE");
+    }
+    Ok(())
+}

@@ -110,3 +110,51 @@ fn canopen_time() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn test_days_since_unix_epoch_canopen_epoch() {
+    assert_eq!(mdfr::mdfreader::data_read4::days_since_unix_epoch(1984, 1, 1), 5113);
+}
+
+#[test]
+fn test_days_since_unix_epoch_unix_epoch() {
+    assert_eq!(mdfr::mdfreader::data_read4::days_since_unix_epoch(1970, 1, 1), 0);
+}
+
+#[test]
+fn test_days_since_unix_epoch_leap_year() {
+    assert_eq!(mdfr::mdfreader::data_read4::days_since_unix_epoch(1972, 3, 1), 790);
+}
+
+#[test]
+fn test_canopen_time_epoch() {
+    let bytes = [0u8; 6];
+    assert_eq!(mdfr::mdfreader::data_read4::canopen_time_to_unix_ms(&bytes), 441_763_200_000);
+}
+
+#[test]
+fn test_canopen_time_1984_01_02_midnight() {
+    let mut bytes = [0u8; 6];
+    bytes[4..6].copy_from_slice(&1u16.to_le_bytes());
+    let expected = 441_763_200_000 + 86_400_000;
+    assert_eq!(mdfr::mdfreader::data_read4::canopen_time_to_unix_ms(&bytes), expected);
+}
+
+#[test]
+fn test_canopen_date_1984_01_01_midnight() {
+    let mut bytes = [0u8; 7];
+    bytes[4] = 1;
+    bytes[5] = 1;
+    bytes[6] = 0;
+    assert_eq!(mdfr::mdfreader::data_read4::canopen_date_to_unix_ms(&bytes), 441_763_200_000);
+}
+
+#[test]
+fn test_canopen_date_known_value() {
+    let mut bytes = [0u8; 7];
+    bytes[4] = 1;
+    bytes[5] = 1;
+    bytes[6] = 16;
+    let expected = 10957i64 * 86_400_000;
+    assert_eq!(mdfr::mdfreader::data_read4::canopen_date_to_unix_ms(&bytes), expected);
+}

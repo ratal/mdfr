@@ -578,7 +578,7 @@ impl Display for Cn4 {
 }
 
 /// hashmap's key is bit position in record, value Cn4
-pub(crate) type CnType = FxHashMap<i32, Cn4>;
+pub type CnType = FxHashMap<i32, Cn4>;
 
 /// record layout type : record_id_size: u8, cg_data_bytes: u32, cg_inval_bytes: u32
 pub(crate) type RecordLayout = (u8, u32, u32);

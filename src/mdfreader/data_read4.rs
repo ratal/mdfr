@@ -14,7 +14,7 @@ use crate::data_holder::channel_data::ChannelData;
 
 /// CANopen Time (6 bytes) → ms since Unix epoch.
 /// Layout: bytes 0-3 = ms-within-day [27:0]; bytes 4-5 = days since 1984-01-01.
-fn canopen_time_to_unix_ms(bytes: &[u8]) -> i64 {
+pub fn canopen_time_to_unix_ms(bytes: &[u8]) -> i64 {
     let ms = (u32::from_le_bytes(bytes[0..4].try_into().unwrap()) & 0x0FFF_FFFF) as i64;
     let days = u16::from_le_bytes(bytes[4..6].try_into().unwrap()) as i64;
     // CANopen epoch (1984-01-01) is 5113 days = 441_763_200_000 ms after Unix epoch
@@ -24,7 +24,7 @@ fn canopen_time_to_unix_ms(bytes: &[u8]) -> i64 {
 /// CANopen Date (7 bytes) → ms since Unix epoch.
 /// Layout: b[0-1] ms-in-minute [15:0]; b[2] min [5:0]; b[3] hour [4:0];
 /// b[4] day [4:0] (1-based); b[5] month [3:0] (1-based); b[6] year-1984 [6:0].
-fn canopen_date_to_unix_ms(bytes: &[u8]) -> i64 {
+pub fn canopen_date_to_unix_ms(bytes: &[u8]) -> i64 {
     let ms_in_min = u16::from_le_bytes(bytes[0..2].try_into().unwrap()) as i64;
     let min = (bytes[2] & 0x3F) as i64;
     let hour = (bytes[3] & 0x1F) as i64;
@@ -36,7 +36,7 @@ fn canopen_date_to_unix_ms(bytes: &[u8]) -> i64 {
 
 /// Days from Unix epoch (1970-01-01) to the given calendar date.
 /// Verified: days_since_unix_epoch(1984, 1, 1) == 5113.
-fn days_since_unix_epoch(year: i64, month: i64, day: i64) -> i64 {
+pub fn days_since_unix_epoch(year: i64, month: i64, day: i64) -> i64 {
     const MONTH_OFFSET: [i64; 12] = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
     let y = year - 1970;
     let leap_days = (y + 1) / 4 - (y + 69) / 100 + (y + 369) / 400;
@@ -2067,173 +2067,4 @@ pub fn read_channels_from_bytes(
         .lock()
         .expect("Could not get lock from vlsd channel arc vec");
     Ok(lock.clone())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_days_since_unix_epoch_canopen_epoch() {
-        // CANopen epoch is 1984-01-01; must be exactly 5113 days after Unix epoch
-        assert_eq!(days_since_unix_epoch(1984, 1, 1), 5113);
-    }
-
-    #[test]
-    fn test_days_since_unix_epoch_unix_epoch() {
-        assert_eq!(days_since_unix_epoch(1970, 1, 1), 0);
-    }
-
-    #[test]
-    fn test_days_since_unix_epoch_leap_year() {
-        // 1972 is a leap year; 1972-03-01 = 365 + 365 + 31 + 29 = 790 days after epoch
-        assert_eq!(days_since_unix_epoch(1972, 3, 1), 790);
-    }
-
-    #[test]
-    fn test_canopen_time_epoch() {
-        // days=0, ms=0 → CANopen epoch 1984-01-01 = +441_763_200_000 ms in Unix time
-        let bytes = [0u8; 6];
-        assert_eq!(canopen_time_to_unix_ms(&bytes), 441_763_200_000);
-    }
-
-    #[test]
-    fn test_canopen_time_1984_01_02_midnight() {
-        // days=1 since 1984-01-01, ms=0 → one day after CANopen epoch
-        let mut bytes = [0u8; 6];
-        bytes[4..6].copy_from_slice(&1u16.to_le_bytes());
-        let expected = 441_763_200_000 + 86_400_000;
-        assert_eq!(canopen_time_to_unix_ms(&bytes), expected);
-    }
-
-    #[test]
-    fn test_canopen_date_1984_01_01_midnight() {
-        // year=0 (→1984), month=1, day=1, hour=0, min=0, ms=0
-        // 1984-01-01 00:00:00 UTC = 441_763_200_000 ms after Unix epoch
-        let mut bytes = [0u8; 7];
-        bytes[4] = 1; // day
-        bytes[5] = 1; // month
-        bytes[6] = 0; // year - 1984 = 0
-        assert_eq!(canopen_date_to_unix_ms(&bytes), 441_763_200_000);
-    }
-
-    #[test]
-    fn test_canopen_date_known_value() {
-        // 2000-01-01 00:00:00.000 — well-known Y2K date
-        // year byte = 2000-1984 = 16, month=1, day=1
-        let mut bytes = [0u8; 7];
-        bytes[4] = 1; // day
-        bytes[5] = 1; // month
-        bytes[6] = 16; // year = 1984 + 16 = 2000
-        // Days from Unix epoch to 2000-01-01 = 10957
-        let expected = 10957i64 * 86_400_000;
-        assert_eq!(canopen_date_to_unix_ms(&bytes), expected);
-    }
-
-    #[test]
-    fn test_be_7byte_uint64_and_array_uint64() {
-        use crate::data_holder::channel_data::data_type_init;
-        use crate::data_holder::tensor_arrow::Order;
-        use crate::mdfinfo::mdfinfo4::Endianness;
-
-        // 1) Scalar 7-byte BE UInt64: 0x01_02_03_04_05_06_07
-        let mut cn = Cn4 {
-            n_bytes: 7,
-            endian: Endianness::Big,
-            list_size: 1,
-            shape: (vec![1], Order::RowMajor),
-            pos_byte_beg: 0,
-            should_read: true,
-            data: data_type_init(0, 1, 7, 1, 1).unwrap(),
-            ..Default::default()
-        };
-        cn.block.cn_data_type = 1; // UInt BE
-        cn.block.cn_bit_count = 56;
-        cn.data = cn.data.zeros(0, 2, 7, (vec![1], Order::RowMajor)).unwrap();
-        let raw_bytes = [
-            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, // rec 0
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00, // rec 1 -> 256
-        ];
-        read_one_channel_array(&raw_bytes, &mut cn, 2).unwrap();
-        if let ChannelData::UInt64(arr) = &cn.data {
-            assert_eq!(arr.values_slice(), &[0x0001_0203_0405_0607u64, 256u64]);
-        } else {
-            panic!("expected UInt64");
-        }
-
-        // Also test via read_channels_from_bytes
-        cn.data = cn.data.zeros(0, 2, 7, (vec![1], Order::RowMajor)).unwrap();
-        let mut channels = CnType::default();
-        channels.insert(0, cn);
-        read_channels_from_bytes(&raw_bytes, &mut channels, 7, 0, false).unwrap();
-        if let ChannelData::UInt64(arr) = &channels[&0].data {
-            assert_eq!(arr.values_slice(), &[0x0001_0203_0405_0607u64, 256u64]);
-        } else {
-            panic!("expected UInt64");
-        }
-
-        // 2) ArrayDUInt64 8-byte BE
-        let shape = (vec![2, 2], Order::RowMajor);
-        let mut cn_arr = Cn4 {
-            n_bytes: 8,
-            endian: Endianness::Big,
-            list_size: 2,
-            shape: shape.clone(),
-            pos_byte_beg: 0,
-            should_read: true,
-            data: data_type_init(0, 1, 8, 2, 1).unwrap(),
-            ..Default::default()
-        };
-        cn_arr.block.cn_data_type = 1; // UInt BE
-        cn_arr.block.cn_bit_count = 64;
-        cn_arr.data = cn_arr.data.zeros(0, 2, 8, shape).unwrap();
-        let mut raw_arr = Vec::new();
-        for v in [10u64, 20, 30, 40] {
-            raw_arr.extend_from_slice(&v.to_be_bytes());
-        }
-        let mut channels_arr = CnType::default();
-        channels_arr.insert(0, cn_arr);
-        read_channels_from_bytes(&raw_arr, &mut channels_arr, 16, 0, false).unwrap();
-        if let ChannelData::ArrayDUInt64(arr) = &channels_arr[&0].data {
-            assert_eq!(arr.values_slice(), &[10u64, 20, 30, 40]);
-        } else {
-            panic!("expected ArrayDUInt64");
-        }
-    }
-
-    #[test]
-    fn test_remainder_and_truncated_chunks_rejected() {
-        use crate::data_holder::channel_data::data_type_init;
-        use crate::data_holder::tensor_arrow::Order;
-        use crate::mdfinfo::mdfinfo4::Endianness;
-
-        let mut cn = Cn4 {
-            n_bytes: 8,
-            endian: Endianness::Little,
-            list_size: 1,
-            shape: (vec![1], Order::RowMajor),
-            pos_byte_beg: 0,
-            should_read: true,
-            data: data_type_init(0, 4, 8, 1, 1).unwrap(),
-            ..Default::default()
-        };
-        cn.block.cn_data_type = 4; // Float LE
-        cn.block.cn_bit_count = 64;
-        cn.data = cn.data.zeros(0, 2, 8, (vec![1], Order::RowMajor)).unwrap();
-
-        // 1) Non-zero remainder (17 bytes for 2 f64s) must return an error
-        let bytes_with_remainder = [0u8; 17];
-        assert!(read_one_channel_array(&bytes_with_remainder, &mut cn, 2).is_err());
-
-        // 2) Truncated buffer (8 bytes for 2 f64s) must return an error
-        let truncated_bytes = [0u8; 8];
-        assert!(read_one_channel_array(&truncated_bytes, &mut cn, 2).is_err());
-
-        // 3) read_channels_from_bytes with remainder bytes (not a multiple of record_length) must return an error
-        let mut channels = CnType::default();
-        channels.insert(0, cn);
-        assert!(
-            read_channels_from_bytes(&bytes_with_remainder, &mut channels, 8, 0, false).is_err()
-        );
-    }
 }
