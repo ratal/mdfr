@@ -1696,8 +1696,9 @@ pub fn read_channels_from_bytes(
                                         list_size,
                                         "Could not read be f16 array",
                                     )?;
-                                    for (dst, src) in
-                                        data[dst_start..dst_start + list_size].iter_mut().zip(chunks)
+                                    for (dst, src) in data[dst_start..dst_start + list_size]
+                                        .iter_mut()
+                                        .zip(chunks)
                                     {
                                         *dst = f16::from_be_bytes(*src).to_f32();
                                     }
@@ -1713,8 +1714,9 @@ pub fn read_channels_from_bytes(
                                         list_size,
                                         "Could not read be f32 array",
                                     )?;
-                                    for (dst, src) in
-                                        data[dst_start..dst_start + list_size].iter_mut().zip(chunks)
+                                    for (dst, src) in data[dst_start..dst_start + list_size]
+                                        .iter_mut()
+                                        .zip(chunks)
                                     {
                                         *dst = f32::from_be_bytes(*src);
                                     }
@@ -1729,8 +1731,9 @@ pub fn read_channels_from_bytes(
                                     list_size,
                                     "Could not read le f16 array",
                                 )?;
-                                for (dst, src) in
-                                    data[dst_start..dst_start + list_size].iter_mut().zip(chunks)
+                                for (dst, src) in data[dst_start..dst_start + list_size]
+                                    .iter_mut()
+                                    .zip(chunks)
                                 {
                                     *dst = f16::from_le_bytes(*src).to_f32();
                                 }
@@ -1744,8 +1747,9 @@ pub fn read_channels_from_bytes(
                                     list_size,
                                     "Could not read le f32 array",
                                 )?;
-                                for (dst, src) in
-                                    data[dst_start..dst_start + list_size].iter_mut().zip(chunks)
+                                for (dst, src) in data[dst_start..dst_start + list_size]
+                                    .iter_mut()
+                                    .zip(chunks)
                                 {
                                     *dst = f32::from_le_bytes(*src);
                                 }
@@ -1973,8 +1977,9 @@ pub fn read_channels_from_bytes(
                                     list_size,
                                     "Could not read be f64 array",
                                 )?;
-                                for (dst, src) in
-                                    data[dst_start..dst_start + list_size].iter_mut().zip(chunks)
+                                for (dst, src) in data[dst_start..dst_start + list_size]
+                                    .iter_mut()
+                                    .zip(chunks)
                                 {
                                     *dst = f64::from_be_bytes(*src);
                                 }
@@ -1987,8 +1992,9 @@ pub fn read_channels_from_bytes(
                                     list_size,
                                     "Could not read le f64 array",
                                 )?;
-                                for (dst, src) in
-                                    data[dst_start..dst_start + list_size].iter_mut().zip(chunks)
+                                for (dst, src) in data[dst_start..dst_start + list_size]
+                                    .iter_mut()
+                                    .zip(chunks)
                                 {
                                     *dst = f64::from_le_bytes(*src);
                                 }
@@ -2226,6 +2232,8 @@ mod tests {
         // 3) read_channels_from_bytes with remainder bytes (not a multiple of record_length) must return an error
         let mut channels = CnType::default();
         channels.insert(0, cn);
-        assert!(read_channels_from_bytes(&bytes_with_remainder, &mut channels, 8, 0, false).is_err());
+        assert!(
+            read_channels_from_bytes(&bytes_with_remainder, &mut channels, 8, 0, false).is_err()
+        );
     }
 }
