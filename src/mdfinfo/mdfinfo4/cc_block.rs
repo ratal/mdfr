@@ -17,6 +17,7 @@ use crate::mdfinfo::sym_buf_reader::SymBufReader;
 #[derive(Debug, Clone)]
 #[binrw]
 #[br(little)]
+#[derive(Default)]
 #[repr(C)]
 pub struct Cc4Block {
     // cc_id: [u8; 4],  // ##CC
@@ -69,7 +70,34 @@ pub enum CcVal {
     Uint(#[br(count = count)] Vec<u64>),
 }
 
+impl Default for CcVal {
+    fn default() -> Self {
+        CcVal::Real(Vec::new())
+    }
+}
+
 impl Cc4Block {
+    /// Helper constructor for tests and synthetic conversions
+    #[allow(dead_code)]
+    pub fn new_with_val(cc_type: u8, cc_val: CcVal, cc_ref: Vec<i64>) -> Self {
+        Self {
+            cc_links: cc_ref.len() as u64 + 4,
+            cc_tx_name: 0,
+            cc_md_unit: 0,
+            cc_md_comment: 0,
+            cc_cc_inverse: 0,
+            cc_ref,
+            cc_type,
+            cc_precision: 0,
+            cc_flags: 0,
+            cc_ref_count: 0,
+            cc_val_count: 0,
+            cc_phy_range_min: 0.0,
+            cc_phy_range_max: 0.0,
+            cc_val,
+        }
+    }
+
     /// Returns a string representation of the conversion type (cc_type)
     pub fn get_cc_type_str(&self) -> &'static str {
         match self.cc_type {

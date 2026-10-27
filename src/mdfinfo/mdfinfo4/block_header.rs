@@ -265,9 +265,9 @@ pub(super) fn read_meta_data(
 #[derive(Debug, Default, Clone)]
 #[repr(C)]
 pub struct SharableBlocks {
-    pub(crate) md_tx: FxHashMap<i64, MetaData>,
-    pub(crate) cc: FxHashMap<i64, Cc4Block>,
-    pub(crate) si: FxHashMap<i64, Si4Block>,
+    pub md_tx: FxHashMap<i64, MetaData>,
+    pub cc: FxHashMap<i64, Cc4Block>,
+    pub si: FxHashMap<i64, Si4Block>,
 }
 
 /// SharableBlocks display implementation to facilitate debugging
