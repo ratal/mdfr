@@ -1540,8 +1540,12 @@ pub fn data_type_init(
                         Ok(ChannelData::UInt16(PrimitiveBuilder::new()))
                     } else if n_bytes <= 4 {
                         Ok(ChannelData::UInt32(PrimitiveBuilder::new()))
-                    } else {
+                    } else if n_bytes <= 8 {
                         Ok(ChannelData::UInt64(PrimitiveBuilder::new()))
+                    } else {
+                        anyhow::bail!(
+                            "Unsigned integer channel requires {n_bytes} bytes, exceeding 64 bits limit (MDF §6.6.3)"
+                        );
                     }
                 }
                 2 | 3 => {
@@ -1552,8 +1556,12 @@ pub fn data_type_init(
                         Ok(ChannelData::Int16(PrimitiveBuilder::new()))
                     } else if n_bytes <= 4 {
                         Ok(ChannelData::Int32(PrimitiveBuilder::new()))
-                    } else {
+                    } else if n_bytes <= 8 {
                         Ok(ChannelData::Int64(PrimitiveBuilder::new()))
+                    } else {
+                        anyhow::bail!(
+                            "Signed integer channel requires {n_bytes} bytes, exceeding 64 bits limit (MDF §6.6.3)"
+                        );
                     }
                 }
                 4 | 5 => {
@@ -2583,6 +2591,10 @@ mod tests {
         // VLSC: cn_type=7, 8 bytes
         let cd = data_type_init(7, 0, 8, 1, 0).unwrap();
         assert!(matches!(cd, ChannelData::UInt64(_)));
+
+        // Integer > 8 bytes (exceeding 64 bits limit) must fail
+        assert!(data_type_init(0, 0, 9, 1, 0).is_err());
+        assert!(data_type_init(0, 2, 9, 1, 0).is_err());
 
         // Virtual: cn_type=3
         let cd = data_type_init(3, 0, 0, 1, 0).unwrap();
