@@ -655,7 +655,8 @@ impl Cg4 {
                                     let valid_len = (*size as usize).min(s.len());
                                     let truncated = &s.as_bytes()[..valid_len];
                                     let valid_str = std::str::from_utf8(truncated).unwrap_or(s);
-                                    new_builder.append_value(valid_str.split('\0').next().unwrap_or(""));
+                                    new_builder
+                                        .append_value(valid_str.split('\0').next().unwrap_or(""));
                                 }
                             }
                         }

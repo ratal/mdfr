@@ -1102,6 +1102,19 @@ pub(super) fn parse_cn4_block(
     position = read_meta_data(rdr, sharable, block.cn_tx_name, position, BlockType::CN)?;
     let name: String = sharable.get_tx(block.cn_tx_name)?.unwrap_or_default();
 
+    if block.cn_data_type <= 3 {
+        let total_bits = block.cn_bit_count + (block.cn_bit_offset as u32);
+        if total_bits > 64 && !(block.cn_bit_count == 64 && block.cn_bit_offset == 0) {
+            log::warn!(
+                "Channel {} integer violates MDF4 spec §6.6.3: cn_bit_count ({}) + cn_bit_offset ({}) = {} > 64",
+                name,
+                block.cn_bit_count,
+                block.cn_bit_offset,
+                total_bits
+            );
+        }
+    }
+
     // Reads unit
     position = read_meta_data(rdr, sharable, block.cn_md_unit, position, BlockType::CN)?;
 
