@@ -1141,9 +1141,7 @@ fn test_remainder_and_truncated_chunks_rejected() -> Result<()> {
 
     let mut channels = CnType::default();
     channels.insert(0, cn);
-    assert!(
-        read_channels_from_bytes(&bytes_with_remainder, &mut channels, 8, 0, false).is_err()
-    );
+    assert!(read_channels_from_bytes(&bytes_with_remainder, &mut channels, 8, 0, false).is_err());
     Ok(())
 }
 

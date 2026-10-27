@@ -505,7 +505,6 @@ fn bitfield_conversion() -> Result<()> {
     Ok(())
 }
 
-
 mod conversions4_tests {
     use arrow::array::{Float64Builder, Int32Builder, UInt16Builder};
     use fasteval::Compiler;
@@ -763,9 +762,9 @@ mod conversions4_tests {
 
     #[test]
     fn test_linear_cn4_array_d_int16() {
-        use mdfr::data_holder::tensor_arrow::{Order, TensorArrow};
         use arrow::array::Int16Builder;
         use arrow::datatypes::Int16Type;
+        use mdfr::data_holder::tensor_arrow::{Order, TensorArrow};
         let mut builder = Int16Builder::new();
         builder.append_value(1);
         builder.append_value(2);
@@ -784,8 +783,8 @@ mod conversions4_tests {
 
     #[test]
     fn test_linear_cn4_array_d_float64() {
-        use mdfr::data_holder::tensor_arrow::{Order, TensorArrow};
         use arrow::datatypes::Float64Type;
+        use mdfr::data_holder::tensor_arrow::{Order, TensorArrow};
         let mut builder = Float64Builder::new();
         builder.append_value(1.0);
         let tensor =
@@ -895,9 +894,9 @@ mod conversions4_tests {
 
     #[test]
     fn test_vtv_interp_cn4_array_d_uint8() {
-        use mdfr::data_holder::tensor_arrow::{Order, TensorArrow};
         use arrow::array::UInt8Builder;
         use arrow::datatypes::UInt8Type;
+        use mdfr::data_holder::tensor_arrow::{Order, TensorArrow};
         let cc_val = vec![0.0, 0.0, 10.0, 100.0];
         let mut builder = UInt8Builder::new();
         builder.append_value(5);
@@ -990,9 +989,9 @@ mod conversions4_tests {
 
     #[test]
     fn test_vrv_cn4_array_d_warn() {
-        use mdfr::data_holder::tensor_arrow::{Order, TensorArrow};
         use arrow::array::Int8Builder;
         use arrow::datatypes::Int8Type;
+        use mdfr::data_holder::tensor_arrow::{Order, TensorArrow};
         let mut builder = Int8Builder::new();
         builder.append_value(5);
         let tensor =

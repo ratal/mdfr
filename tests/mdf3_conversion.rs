@@ -86,7 +86,6 @@ fn mdf3_canoe_unsorted_loads() -> Result<()> {
     Ok(())
 }
 
-
 mod conversions3_tests {
     use arrow::array::{Float64Builder, Int32Builder};
     use mdfr::data_holder::channel_data::ChannelData;

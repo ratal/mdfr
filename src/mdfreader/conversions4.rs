@@ -1774,4 +1774,3 @@ pub fn bitfield_text_table(
     }
     Ok(())
 }
-
