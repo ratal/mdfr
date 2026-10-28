@@ -1252,6 +1252,24 @@ impl MdfLogger {
         }
     }
 
+    /// Appends an MDF 4.3 VLSC channel (`data_type`: 7=StringUtf8, 10=ByteArray) and its companion size channel, returning a packed channel handle (`u32`).
+    pub fn add_vlsc_channel(&mut self, group: u16, name: &str, data_type: u8) -> PyResult<u32> {
+        let dt = mdfr_core::blocks::cn::CnDataType::try_from(data_type).map_err(|e| {
+            pyo3::exceptions::PyValueError::new_err(format!("invalid data_type: {e}"))
+        })?;
+        match &mut self.state {
+            PyLoggerState::Building { builder, .. } => {
+                let ch = builder
+                    .add_vlsc_channel(mdfr_core::logger::GroupHandle(group), name, dt)
+                    .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+                Ok(((ch.group as u32) << 16) | (ch.channel as u32))
+            }
+            _ => Err(pyo3::exceptions::PyRuntimeError::new_err(
+                "cannot add VLSC channel after start()",
+            )),
+        }
+    }
+
     /// Transitions from schema builder to active streaming logger, writing the MDF 4.3 header hierarchy.
     pub fn start(&mut self) -> PyResult<()> {
         let prev = std::mem::replace(&mut self.state, PyLoggerState::Closed);

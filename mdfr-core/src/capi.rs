@@ -247,6 +247,38 @@ pub unsafe extern "C" fn mdfr_logger_add_vlsd_channel(
     }
 }
 
+/// Appends an MDF 4.3 VLSC channel (`data_type`: `7` = UTF-8 string, `10` = ByteArray) and its
+/// companion 32-bit size channel (`"{name}_size"`) to `group`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mdfr_logger_add_vlsc_channel(
+    builder: *mut MdfrBuilderHandle,
+    group: u16,
+    name: *const c_char,
+    data_type: u8,
+    out_ch: *mut u32,
+) -> i32 {
+    let Some(b) = (unsafe { builder.as_mut() }) else {
+        return -3;
+    };
+    let Some(name_str) = (unsafe { cstr_to_str(name) }) else {
+        return -3;
+    };
+    let Ok(dt) = CnDataType::try_from(data_type) else {
+        return -3;
+    };
+    match b.0.add_vlsc_channel(GroupHandle(group), name_str, dt) {
+        Ok(ch) => {
+            if !out_ch.is_null() {
+                unsafe {
+                    *out_ch = ((ch.group as u32) << 16) | (ch.channel as u32);
+                }
+            }
+            0
+        }
+        Err(e) => e.code(),
+    }
+}
+
 /// Sets a linear conversion (`phys = p1 + p2 * raw`) on a packed channel handle.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mdfr_logger_set_conversion_linear(

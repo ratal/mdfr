@@ -8,13 +8,15 @@ license = "GPL-3.0"
 publish = false
 
 [features]
-default = ["deflate", "lz4"]
+default = ["deflate", "lz4", "derive"]
 std = ["binrw/std", "thiserror/std", "log/std", "chrono/std"]
 deflate = ["dep:miniz_oxide"]
 lz4 = ["dep:lz4_flex"]
 zstd = ["std", "dep:zstd"]
 capi = []
 capi-arena = ["capi"]
+derive = ["dep:mdfr-derive"]
+defmt = ["dep:defmt"]
 
 [dependencies]
 binrw = { version = "0.15.2", default-features = false }
@@ -25,6 +27,8 @@ transpose = "0.2.3"
 miniz_oxide = { version = "0.9.1", default-features = false, features = ["with-alloc"], optional = true }
 lz4_flex = { version = "0.14.0", default-features = false, features = ["alloc", "safe-encode", "safe-decode"], optional = true }
 zstd = { version = "0.14.3", optional = true }
+mdfr-derive = { path = "../mdfr-derive", optional = true }
+defmt = { version = "=1.1.1", features = ["alloc"], optional = true }
 
 [lib]
 crate-type = ["rlib"]

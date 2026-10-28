@@ -17,8 +17,8 @@ use binrw::{BinWrite, io::Cursor};
 use crate::blocks::{
     ca::Ca4Block,
     cc::{Cc4Block, CcVal},
-    cg::{CG_F_VLSD, Cg4Block},
-    cn::{Cn4Block, CnDataType},
+    cg::{CG_F_VLSC, CG_F_VLSD, Cg4Block},
+    cn::{Cn4Block, CnChannelType, CnDataType},
     data::{Dl4Block, Dz4Block, Hl4Block},
     dg::Dg4Block,
     fh::FhBlock,
@@ -81,11 +81,15 @@ impl DlChainState {
 struct VlsdChannelState {
     /// Channel index within its group.
     channel_idx: usize,
-    /// In sorted mode: dedicated `SDBLOCK` chain + buffer.
-    /// In unsorted mode: companion VLSD `CGBLOCK` record ID + total VLSD payload bytes + file offset of VLSD `CGBLOCK`.
+    /// True if this channel is an MDF 4.3 `VLSC` (`cn_type = 7`, `VDBLOCK` without 4B length prefix).
+    is_vlsc: bool,
+    /// For `VLSC` channels: byte offset in the group's fixed record of the companion 32-bit size channel.
+    vlsc_size_byte_offset: Option<usize>,
+    /// In sorted mode: dedicated `SDBLOCK` / `VDBLOCK` chain + buffer.
+    /// In unsorted mode: companion VLSD/VLSC `CGBLOCK` record ID + total payload bytes + file offset of `CGBLOCK`.
     sorted_sd_chain: Option<DlChainState>,
     sorted_sd_buf: Vec<u8>,
-    /// Total bytes accumulated in `SDBLOCK` (sorted) or VLSD CG values (unsorted, excluding 4-byte length prefixes).
+    /// Total bytes accumulated in `SDBLOCK`/`VDBLOCK` (sorted) or VLSD CG values (unsorted, excluding 4-byte length prefixes).
     total_vlsd_bytes: u64,
     /// Unsorted mode: record ID of the companion VLSD `CGBLOCK` (`group_idx + 1 + vlsd_ordinal`).
     unsorted_vlsd_record_id: u64,
@@ -336,7 +340,11 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
                             cg_cg_master: None,
                             cg_record_id: vlsd_rec_id,
                             cg_cycle_count: 0,
-                            cg_flags: CG_F_VLSD,
+                            cg_flags: if vlsd_state.is_vlsc {
+                                CG_F_VLSC
+                            } else {
+                                CG_F_VLSD
+                            },
                             cg_path_separator: 0,
                             cg_reserved: [0; 4],
                             cg_data_bytes: 0,
@@ -430,9 +438,11 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
         // Write channels in reverse or forward linked list
         let mut prev_cn_next_link_pos: Option<u64> = None;
         let mut vlsd_channels = Vec::new();
+        let mut cn_positions: Vec<u64> = Vec::with_capacity(g_def.channels.len());
 
         for (c_idx, c_def) in g_def.channels.iter().enumerate() {
             let cn_pos = pos;
+            cn_positions.push(cn_pos);
             if c_idx == 0 {
                 cg.cg_cn_first = cn_pos as i64;
             }
@@ -440,13 +450,22 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
                 patch_i64(sink, prev_link, cn_pos as i64, pos)?;
             }
 
+            let is_vlsc = c_def.cn_type == CnChannelType::Vlsc;
+            let extra_links = if let Some(size_idx) = c_def.vlsc_size_channel {
+                vec![cn_positions[size_idx as usize] as i64]
+            } else {
+                Vec::new()
+            };
+            let cn_links = 8 + extra_links.len() as u64;
+            let cn_block_len = 160 + (extra_links.len() as u64) * 8;
+
             let cn_hdr = Blockheader4Short {
                 hdr_id: *b"##CN",
                 hdr_gap: [0; 4],
-                hdr_len: 160,
+                hdr_len: cn_block_len,
             };
             let mut cn = Cn4Block {
-                cn_links: 8,
+                cn_links,
                 cn_cn_next: 0,
                 cn_composition: 0,
                 cn_tx_name: 0,
@@ -455,7 +474,7 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
                 cn_data: 0,
                 cn_md_unit: 0,
                 cn_md_comment: 0,
-                links: Vec::new(),
+                links: extra_links,
                 cn_type: c_def.cn_type as u8,
                 cn_sync_type: c_def.sync_type as u8,
                 cn_data_type: c_def.data_type as u8,
@@ -476,7 +495,7 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
             };
             write_binrw(sink, &cn_hdr)?;
             write_binrw(sink, &cn)?;
-            pos += 160;
+            pos += cn_block_len;
             // cn_cn_next link is at cn_pos + 16 (short hdr) + 8 (cn_links) = cn_pos + 24
             prev_cn_next_link_pos = Some(cn_pos + 24);
 
@@ -554,9 +573,15 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
                 // `cn_data` link is the 6th link in CNBLOCK:
                 // cn_pos + 16 (short hdr) + 8 (cn_links) + 5 * 8 = cn_pos + 64
                 let cn_data_link_pos = cn_pos + 64;
+                let org_type = if is_vlsc { *b"VD" } else { *b"SD" };
+                let vlsc_size_byte_offset = c_def
+                    .vlsc_size_channel
+                    .map(|idx| g_def.channels[idx as usize].byte_offset as usize);
                 vlsd_channels.push(VlsdChannelState {
                     channel_idx: c_idx,
-                    sorted_sd_chain: Some(DlChainState::new(cn_data_link_pos, *b"SD", 1)),
+                    is_vlsc,
+                    vlsc_size_byte_offset,
+                    sorted_sd_chain: Some(DlChainState::new(cn_data_link_pos, org_type, 1)),
                     sorted_sd_buf: Vec::new(),
                     total_vlsd_bytes: 0,
                     unsorted_vlsd_record_id: 0,
@@ -720,6 +745,39 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
         self.commit_staged_record(group)
     }
 
+    /// Encodes and pushes a typed `#[derive(MdfRecord)]` struct using a timestamp from [`TimeSource`].
+    pub fn push_record<R: super::MdfRecord>(
+        &mut self,
+        group: GroupHandle,
+        record: &R,
+    ) -> Result<()> {
+        let ticks = self.clock.now_ticks();
+        self.push_record_at(group, ticks, record)
+    }
+
+    /// Encodes and pushes a typed `#[derive(MdfRecord)]` struct with an explicit tick timestamp.
+    pub fn push_record_at<R: super::MdfRecord>(
+        &mut self,
+        group: GroupHandle,
+        ticks: u64,
+        record: &R,
+    ) -> Result<()> {
+        let g_idx = group.0 as usize;
+        let g = self
+            .groups
+            .get_mut(g_idx)
+            .ok_or_else(|| Error::InvalidSchema(format!("unknown group {}", group.0)))?;
+        if R::RECORD_BYTES != g.record_size {
+            return Err(Error::RecordSize {
+                expected: g.record_size,
+                got: R::RECORD_BYTES,
+            });
+        }
+        g.staging_record[0..8].copy_from_slice(&ticks.to_le_bytes());
+        record.encode_record(&mut g.staging_record);
+        self.commit_staged_record(group)
+    }
+
     fn push_raw_with_ticks(
         &mut self,
         group: GroupHandle,
@@ -846,14 +904,24 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
         g.staging_record[byte_off..byte_off + 8].copy_from_slice(&offset_val.to_le_bytes());
 
         let len_u32 = data.len() as u32;
+        if let Some(size_off) = vlsd.vlsc_size_byte_offset {
+            g.staging_record[size_off..size_off + 4].copy_from_slice(&len_u32.to_le_bytes());
+        }
         match layout {
             DataLayout::Sorted => {
-                vlsd.sorted_sd_buf.extend_from_slice(&len_u32.to_le_bytes());
-                vlsd.sorted_sd_buf.extend_from_slice(data);
-                vlsd.total_vlsd_bytes += 4 + data.len() as u64;
+                if vlsd.is_vlsc {
+                    // VDBLOCK (MDF 4.3 VLSC) stores raw variable-length bytes without a 4-byte length prefix
+                    vlsd.sorted_sd_buf.extend_from_slice(data);
+                    vlsd.total_vlsd_bytes += data.len() as u64;
+                } else {
+                    // SDBLOCK (VLSD) prefixes each value with its 4-byte LE length
+                    vlsd.sorted_sd_buf.extend_from_slice(&len_u32.to_le_bytes());
+                    vlsd.sorted_sd_buf.extend_from_slice(data);
+                    vlsd.total_vlsd_bytes += 4 + data.len() as u64;
+                }
             }
             DataLayout::Unsorted => {
-                // In unsorted mode, emit a VLSD CG record (`[rec_id: u8][len: u32][data]`) into `unsorted_buf`
+                // In unsorted mode, emit a VLSD/VLSC CG record (`[rec_id: u8][len: u32][data]`) into `unsorted_buf`
                 // before the main record is committed (per MDF4 spec §6.14.2).
                 let rec_id = vlsd.unsorted_vlsd_record_id as u8;
                 self.unsorted_buf.push(rec_id);
@@ -861,11 +929,6 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
                 self.unsorted_buf.extend_from_slice(data);
                 vlsd.total_vlsd_bytes += data.len() as u64;
                 vlsd.unsorted_vlsd_cycles += 1;
-                // Note: in unsorted VLSD CG mode, the CN record still stores the cumulative offset in SD-style
-                // if `cn_data` points to SD, or when `cn_data` points to VLSD CG, MDF4 stores the 64-bit cumulative
-                // byte offset (including 4-byte length prefixes) or sequential VLSD records. Wait: MDF 4.2 §6.6.3:
-                // "Even for unsorted data, the VLSD channel contains the uint64 offset in the virtual SDBLOCK".
-                // Wait: in `mdfreader4.rs`, let's keep `offset_val` advancing by `4 + data.len()` so both match!
             }
         }
         Ok(())

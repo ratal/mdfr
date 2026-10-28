@@ -91,6 +91,14 @@ int32_t mdfr_logger_add_vlsd_channel(
     uint32_t *out_ch
 );
 
+int32_t mdfr_logger_add_vlsc_channel(
+    MdfrBuilderHandle *builder,
+    uint16_t group,
+    const char *name,
+    uint8_t data_type,
+    uint32_t *out_ch
+);
+
 int32_t mdfr_logger_set_conversion_linear(
     MdfrBuilderHandle *builder,
     uint32_t ch_packed,

@@ -4,6 +4,7 @@
 //! Requires `alloc`; enable the `std` feature for `std::fs` sinks.
 #![no_std]
 extern crate alloc;
+extern crate self as mdfr_core;
 #[cfg(feature = "std")]
 extern crate std;
 
@@ -20,4 +21,6 @@ pub mod capi;
 
 pub use error::{Error, Result};
 pub use io::{SeekFrom, Sink, VecSink};
+#[cfg(feature = "derive")]
+pub use mdfr_derive::MdfRecord;
 pub use time::{ManualClock, TimeSource};

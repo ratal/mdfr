@@ -10,6 +10,7 @@ use crate::error::{Error, Result};
 
 /// On-disk data layout strategy for the logger.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum DataLayout {
     /// Sorted: one DGBLOCK per channel group, each with its own DT/DZ block chain (via DL/HL).
     /// Highest read speed in `mdfr` (no sorting pass required).
@@ -22,10 +23,12 @@ pub enum DataLayout {
 
 /// Opaque handle to a channel group in a [`Schema`] / [`Logger`](super::Logger).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct GroupHandle(pub u16);
 
 /// Opaque handle to a channel within a group.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct ChannelHandle {
     /// Group index (`0..groups.len()`).
     pub group: u16,
@@ -103,6 +106,9 @@ pub struct ChannelDef {
     /// For VLSD channels in sorted mode, accumulated SD bytes are stored per channel;
     /// in unsorted mode or VLSC mode, links to companion VLSD CG / size channel.
     pub is_vlsd: bool,
+    /// For MDF 4.3 `VLSC` channels (`CnChannelType::Vlsc`), holds the channel index within this group
+    /// of the companion size channel referenced by the 9th link (`cn_cn_size`).
+    pub vlsc_size_channel: Option<u16>,
 }
 
 /// Channel group definition.
@@ -213,6 +219,7 @@ impl LoggerBuilder {
             source: None,
             array_dims: None,
             is_vlsd: false,
+            vlsc_size_channel: None,
         };
         self.groups.push(GroupDef {
             name: name.to_string(),
@@ -225,6 +232,21 @@ impl LoggerBuilder {
             flush_threshold_bytes: 32 * 1024,
         });
         GroupHandle(idx)
+    }
+
+    /// Registers a typed `#[derive(MdfRecord)]` struct as a new channel group using `R::GROUP_NAME`.
+    pub fn add_record_group<R: super::MdfRecord>(&mut self) -> Result<GroupHandle> {
+        self.add_record_group_named::<R>(R::GROUP_NAME)
+    }
+
+    /// Registers a typed `#[derive(MdfRecord)]` struct as a new channel group with a custom group name.
+    pub fn add_record_group_named<R: super::MdfRecord>(
+        &mut self,
+        name: &str,
+    ) -> Result<GroupHandle> {
+        let g = self.add_group(name);
+        R::register_channels(self, g)?;
+        Ok(g)
     }
 
     /// Sets the source info (`SIBLOCK`) for a channel group.
@@ -273,6 +295,7 @@ impl LoggerBuilder {
             source: None,
             array_dims: None,
             is_vlsd: false,
+            vlsc_size_channel: None,
         });
         Ok(ChannelHandle {
             group: group.0,
@@ -325,6 +348,7 @@ impl LoggerBuilder {
             source: None,
             array_dims: None,
             is_vlsd: false,
+            vlsc_size_channel: None,
         });
         Ok(ChannelHandle {
             group: group.0,
@@ -372,6 +396,7 @@ impl LoggerBuilder {
             source: None,
             array_dims: Some(dims),
             is_vlsd: false,
+            vlsc_size_channel: None,
         });
         Ok(ChannelHandle {
             group: group.0,
@@ -409,6 +434,51 @@ impl LoggerBuilder {
             source: None,
             array_dims: None,
             is_vlsd: true,
+            vlsc_size_channel: None,
+        });
+        Ok(ChannelHandle {
+            group: group.0,
+            channel: ch_idx,
+        })
+    }
+
+    /// Adds an MDF 4.3 Variable-Length Size Channel (`VLSC`, `cn_type = 7`) and its companion
+    /// 32-bit size channel (`"{name}_size"`), linked via the 9th `CNBLOCK` link (`cn_cn_size`).
+    ///
+    /// In sorted mode, raw variable-length values (without a 4-byte length prefix) are stored in
+    /// a `VDBLOCK` (`##VD` / `##DZ`) chain while offsets and sizes live in the fixed record; in
+    /// unsorted mode, values are emitted to a companion `CG_F_VLSC` channel group.
+    pub fn add_vlsc_channel(
+        &mut self,
+        group: GroupHandle,
+        name: &str,
+        data_type: CnDataType,
+    ) -> Result<ChannelHandle> {
+        let size_name = format!("{name}_size");
+        let size_ch = self.add_channel(group, &size_name, CnDataType::UIntLE, 32)?;
+        let g = self
+            .groups
+            .get_mut(group.0 as usize)
+            .ok_or_else(|| Error::InvalidSchema(format!("unknown group {}", group.0)))?;
+        let byte_offset = g.record_data_bytes;
+        g.record_data_bytes = byte_offset + 8;
+        let ch_idx = g.channels.len() as u16;
+        g.channels.push(ChannelDef {
+            name: name.to_string(),
+            unit: None,
+            comment: None,
+            cn_type: CnChannelType::Vlsc,
+            sync_type: CnSyncType::None,
+            data_type,
+            bit_offset: 0,
+            byte_offset,
+            bit_count: 64,
+            flags: 0,
+            conversion: None,
+            source: None,
+            array_dims: None,
+            is_vlsd: true,
+            vlsc_size_channel: Some(size_ch.channel),
         });
         Ok(ChannelHandle {
             group: group.0,
@@ -419,6 +489,12 @@ impl LoggerBuilder {
     /// Sets the physical unit string (`cn_md_unit`) for `ch`.
     pub fn set_channel_unit(&mut self, ch: ChannelHandle, unit: &str) -> Result<&mut Self> {
         self.channel_mut(ch)?.unit = Some(unit.to_string());
+        Ok(self)
+    }
+
+    /// Sets the description comment (`cn_md_comment`) for `ch`.
+    pub fn set_channel_comment(&mut self, ch: ChannelHandle, comment: &str) -> Result<&mut Self> {
+        self.channel_mut(ch)?.comment = Some(comment.to_string());
         Ok(self)
     }
 

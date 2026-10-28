@@ -409,36 +409,114 @@ fn roundtrip_bitpacked_rational_2d_array_and_all_bus_presets() -> Result<()> {
         let lin_payload = [0x55u8; 8];
         logger
             .begin_record(g_lin)?
-            .set_u64(ChannelHandle { group: g_lin.0, channel: 1 }, 0x2A)?
-            .set_u64(ChannelHandle { group: g_lin.0, channel: 2 }, 8)?
-            .set_u64(ChannelHandle { group: g_lin.0, channel: 3 }, 8)?
-            .set_bytes(ChannelHandle { group: g_lin.0, channel: 4 }, &lin_payload)?
+            .set_u64(
+                ChannelHandle {
+                    group: g_lin.0,
+                    channel: 1,
+                },
+                0x2A,
+            )?
+            .set_u64(
+                ChannelHandle {
+                    group: g_lin.0,
+                    channel: 2,
+                },
+                8,
+            )?
+            .set_u64(
+                ChannelHandle {
+                    group: g_lin.0,
+                    channel: 3,
+                },
+                8,
+            )?
+            .set_bytes(
+                ChannelHandle {
+                    group: g_lin.0,
+                    channel: 4,
+                },
+                &lin_payload,
+            )?
             .commit()?;
 
         let fr_payload = [0x33u8; 12];
         logger
             .begin_record(g_flexray)?
-            .set_u64(ChannelHandle { group: g_flexray.0, channel: 1 }, 15)?
-            .set_u64(ChannelHandle { group: g_flexray.0, channel: 2 }, i & 0x3F)?
-            .set_u64(ChannelHandle { group: g_flexray.0, channel: 3 }, 0)?
-            .set_u64(ChannelHandle { group: g_flexray.0, channel: 4 }, 12)?
-            .set_bytes(ChannelHandle { group: g_flexray.0, channel: 5 }, &fr_payload)?
+            .set_u64(
+                ChannelHandle {
+                    group: g_flexray.0,
+                    channel: 1,
+                },
+                15,
+            )?
+            .set_u64(
+                ChannelHandle {
+                    group: g_flexray.0,
+                    channel: 2,
+                },
+                i & 0x3F,
+            )?
+            .set_u64(
+                ChannelHandle {
+                    group: g_flexray.0,
+                    channel: 3,
+                },
+                0,
+            )?
+            .set_u64(
+                ChannelHandle {
+                    group: g_flexray.0,
+                    channel: 4,
+                },
+                12,
+            )?
+            .set_bytes(
+                ChannelHandle {
+                    group: g_flexray.0,
+                    channel: 5,
+                },
+                &fr_payload,
+            )?
             .commit()?;
 
         let eth_payload = [0x11u8; 32];
         logger
             .begin_record(g_eth)?
             .set_bytes(
-                ChannelHandle { group: g_eth.0, channel: 1 },
+                ChannelHandle {
+                    group: g_eth.0,
+                    channel: 1,
+                },
                 &[0x00, 0x11, 0x22, 0x33, 0x44, 0x55],
             )?
             .set_bytes(
-                ChannelHandle { group: g_eth.0, channel: 2 },
+                ChannelHandle {
+                    group: g_eth.0,
+                    channel: 2,
+                },
                 &[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
             )?
-            .set_u64(ChannelHandle { group: g_eth.0, channel: 3 }, 0x0800)?
-            .set_u64(ChannelHandle { group: g_eth.0, channel: 4 }, 32)?
-            .set_bytes(ChannelHandle { group: g_eth.0, channel: 5 }, &eth_payload)?
+            .set_u64(
+                ChannelHandle {
+                    group: g_eth.0,
+                    channel: 3,
+                },
+                0x0800,
+            )?
+            .set_u64(
+                ChannelHandle {
+                    group: g_eth.0,
+                    channel: 4,
+                },
+                32,
+            )?
+            .set_bytes(
+                ChannelHandle {
+                    group: g_eth.0,
+                    channel: 5,
+                },
+                &eth_payload,
+            )?
             .commit()?;
     }
 
@@ -652,7 +730,12 @@ fn no_std_cortex_m_cross_build() -> Result<()> {
 
     // Check if thumbv7em-none-eabihf is installed in rustup/rustc sysroot
     let sysroot_out = Command::new("rustc")
-        .args(["--print", "target-libdir", "--target", "thumbv7em-none-eabihf"])
+        .args([
+            "--print",
+            "target-libdir",
+            "--target",
+            "thumbv7em-none-eabihf",
+        ])
         .output()?;
     if !sysroot_out.status.success() {
         return Ok(());
@@ -674,7 +757,7 @@ fn no_std_cortex_m_cross_build() -> Result<()> {
             "--target",
             "thumbv7em-none-eabihf",
             "--features",
-            "capi-arena",
+            "capi-arena,defmt",
         ])
         .env("CARGO_TARGET_DIR", tmp_target.path())
         .status()?;
@@ -682,5 +765,94 @@ fn no_std_cortex_m_cross_build() -> Result<()> {
         status.success(),
         "no_std Cortex-M4F (thumbv7em-none-eabihf) cross-check failed"
     );
+    Ok(())
+}
+
+#[derive(mdfr_core::MdfRecord)]
+#[mdf(group = "Powertrain")]
+struct PowertrainRecord {
+    #[mdf(name = "EngineSpeed", unit = "rpm", linear(0.0, 0.25))]
+    rpm_raw: u16,
+    #[mdf(name = "Torque", unit = "Nm", rational(0.0, 0.5, -100.0, 0.0, 0.0, 1.0))]
+    torque_raw: i16,
+    #[mdf(name = "Throttle", unit = "%")]
+    throttle: f32,
+    #[mdf(name = "GearEngaged")]
+    gear: u8,
+    #[mdf(name = "FaultActive")]
+    fault: bool,
+    #[mdf(name = "RawFrame")]
+    raw_frame: [u8; 4],
+}
+
+#[test]
+fn derive_mdf_record_and_vlsc_roundtrip() -> Result<()> {
+    for (layout, algo) in [
+        (DataLayout::Sorted, CompressionAlgorithm::NoCompression),
+        (DataLayout::Sorted, CompressionAlgorithm::Lz4Transpose),
+        (DataLayout::Unsorted, CompressionAlgorithm::NoCompression),
+        (DataLayout::Unsorted, CompressionAlgorithm::DeflateTranspose),
+    ] {
+        let mut b = LoggerBuilder::new(layout, algo);
+        let g_pt = b.add_record_group::<PowertrainRecord>()?;
+        let g_vlsc = b.add_group("Diagnostics");
+        let ch_vlsc = b.add_vlsc_channel(g_vlsc, "VlscText", CnDataType::StringUtf8)?;
+
+        let schema = b.build()?;
+        let tmp = tempfile::Builder::new().suffix(".mf4").tempfile()?;
+        let clock = ManualClock::new(0.001, 1);
+        let mut logger = Logger::start(schema, tmp.reopen()?, clock)?;
+
+        for i in 0..20u16 {
+            let rec = PowertrainRecord {
+                rpm_raw: 4000 + i * 40,         // * 0.25 -> 1000.0 + i * 10.0
+                torque_raw: 400 + i as i16 * 2, // 0.5 * X - 100 -> 100.0 + i * 1.0
+                throttle: 25.0 + i as f32 * 0.5,
+                gear: (i % 6) as u8,
+                fault: i % 2 == 1,
+                raw_frame: [i as u8, (i + 1) as u8, (i + 2) as u8, (i + 3) as u8],
+            };
+            logger.push_record(g_pt, &rec)?;
+
+            let text = format!("vlsc_payload_{i}");
+            logger
+                .begin_record(g_vlsc)?
+                .set_bytes(ch_vlsc, text.as_bytes())?
+                .commit()?;
+        }
+        logger.close()?;
+
+        let mut mdf = Mdf::new(tmp.path().to_str().unwrap())?;
+        mdf.load_all_channels_data_in_memory()?;
+
+        // Verify #[derive(MdfRecord)] channels
+        if let Some(ChannelData::Float64(arr)) = mdf.get_channel_data("EngineSpeed") {
+            let s = arr.values_slice();
+            assert_eq!(s.len(), 20);
+            assert!((s[0] - 1000.0).abs() < 1e-6);
+            assert!((s[19] - 1190.0).abs() < 1e-6);
+        } else {
+            panic!("EngineSpeed missing for layout={layout:?} algo={algo:?}");
+        }
+
+        if let Some(ChannelData::Float64(arr)) = mdf.get_channel_data("Torque") {
+            let s = arr.values_slice();
+            assert_eq!(s.len(), 20);
+            assert!((s[0] - 100.0).abs() < 1e-6);
+            assert!((s[19] - 119.0).abs() < 1e-6);
+        } else {
+            panic!("Torque missing for layout={layout:?} algo={algo:?}");
+        }
+
+        // Verify MDF 4.3 VLSC channel (`cn_type = 7`, `cn_cn_size`, `VDBLOCK` / `CG_F_VLSC`)
+        if let Some(ChannelData::Utf8(arr)) = mdf.get_channel_data("VlscText") {
+            let built = arr.finish_cloned();
+            assert_eq!(built.len(), 20);
+            assert_eq!(built.value(0), "vlsc_payload_0");
+            assert_eq!(built.value(19), "vlsc_payload_19");
+        } else {
+            panic!("VlscText missing for layout={layout:?} algo={algo:?}");
+        }
+    }
     Ok(())
 }
