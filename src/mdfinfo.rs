@@ -4,7 +4,7 @@
 use anyhow::Error;
 use anyhow::{Context, Result, bail};
 use arrow::array::Array;
-use binrw::{BinReaderExt, binrw};
+use binrw::binrw;
 use codepage::to_encoding;
 use encoding_rs::Encoding;
 use log::{info, warn};
@@ -140,8 +140,7 @@ impl MdfInfo {
         rdr.read_exact(&mut buf)
             .context("Could not read IdBlock buffer")?;
         let mut block = Cursor::new(buf);
-        let id: IdBlock = block
-            .read_le()
+        let id: IdBlock = binrw::BinReaderExt::read_le(&mut block)
             .context("Could not parse buffer into IdBlock structure")?;
         info!("Read IdBlock");
 
@@ -638,6 +637,17 @@ impl MdfInfo {
             MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_names_cg_set(channel_name),
         };
         channel_list
+    }
+    /// Returns the path separator character for a channel group (MDF 4.x only).
+    /// The path separator is a UTF-16 LE encoded character (2 bytes) used to separate parts
+    /// in group name (gn), group source (gs), group path (gp), channel name (cn),
+    /// channel source (cs), and channel path (cp).
+    /// Returns the raw u16 value (0 if no path separator specified), or None if not found/MDF3.
+    pub fn get_channel_group_path_separator(&self, channel_name: &str) -> Option<u16> {
+        match self {
+            MdfInfo::V3(_) => None,
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_group_path_separator(channel_name),
+        }
     }
     /// returns a dict of master names keys for which values are a set of associated channel names
     pub fn get_master_channel_names_set(&self) -> HashMap<Option<String>, HashSet<String>> {

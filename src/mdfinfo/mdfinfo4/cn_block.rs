@@ -8,7 +8,7 @@ use crate::mdfinfo::block_chain::BlockChain;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 use anyhow::{Context, Result};
 use arrow::array::{BooleanBufferBuilder, UInt8Builder, UInt16Builder, UInt32Builder};
-use binrw::{BinReaderExt, binrw};
+use binrw::binrw;
 use rustc_hash::FxHashMap;
 use std::fmt::{self, Display};
 use std::fs::File;
@@ -579,7 +579,7 @@ impl Display for Cn4 {
 }
 
 /// hashmap's key is bit position in record, value Cn4
-pub(crate) type CnType = FxHashMap<i32, Cn4>;
+pub type CnType = FxHashMap<i32, Cn4>;
 
 /// record layout type : record_id_size: u8, cg_data_bytes: u32, cg_inval_bytes: u32
 pub(crate) type RecordLayout = (u8, u32, u32);
@@ -748,7 +748,7 @@ fn can_open_date(
         block,
         unique_name: String::from("min"),
         block_position,
-        pos_byte_beg,
+        pos_byte_beg: pos_byte_beg + 2,
         n_bytes: 1,
         composition: None,
         data: ChannelData::UInt8(UInt8Builder::new()),
@@ -771,7 +771,7 @@ fn can_open_date(
         block,
         unique_name: String::from("hour"),
         block_position,
-        pos_byte_beg,
+        pos_byte_beg: pos_byte_beg + 3,
         n_bytes: 1,
         composition: None,
         data: ChannelData::UInt8(UInt8Builder::new()),
@@ -794,7 +794,7 @@ fn can_open_date(
         block,
         unique_name: String::from("day"),
         block_position,
-        pos_byte_beg,
+        pos_byte_beg: pos_byte_beg + 4,
         n_bytes: 1,
         composition: None,
         data: ChannelData::UInt8(UInt8Builder::new()),
@@ -809,7 +809,7 @@ fn can_open_date(
     let block = Cn4Block {
         cn_links: 8,
         cn_byte_offset: cn_byte_offset + 5,
-        cn_bit_count: 6,
+        cn_bit_count: 4,
         ..Default::default()
     };
     let month = Cn4 {
@@ -817,7 +817,7 @@ fn can_open_date(
         block,
         unique_name: String::from("month"),
         block_position,
-        pos_byte_beg,
+        pos_byte_beg: pos_byte_beg + 5,
         n_bytes: 1,
         composition: None,
         data: ChannelData::UInt8(UInt8Builder::new()),
@@ -840,7 +840,7 @@ fn can_open_date(
         block,
         unique_name: String::from("year"),
         block_position,
-        pos_byte_beg,
+        pos_byte_beg: pos_byte_beg + 6,
         n_bytes: 1,
         composition: None,
         data: ChannelData::UInt8(UInt8Builder::new()),
@@ -891,7 +891,7 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         block,
         unique_name: String::from("day"),
         block_position,
-        pos_byte_beg,
+        pos_byte_beg: pos_byte_beg + 4,
         n_bytes: 2,
         composition: None,
         data: ChannelData::UInt16(UInt16Builder::new()),
@@ -1089,8 +1089,7 @@ pub(super) fn parse_cn4_block(
     let mut cns: CnType = FxHashMap::default();
     let (mut block, cnheader, pos) = parse_block_short(rdr, target, position)?;
     position = pos;
-    let block: Cn4Block = block
-        .read_le()
+    let block: Cn4Block = binrw::BinReaderExt::read_le(&mut block)
         .context("Could not read buffer into Cn4Block struct")?;
 
     let pos_byte_beg = block.cn_byte_offset + record_id_size as u32;
@@ -1108,6 +1107,19 @@ pub(super) fn parse_cn4_block(
     // Reads TX name
     position = read_meta_data(rdr, sharable, block.cn_tx_name, position, BlockType::CN)?;
     let name: String = sharable.get_tx(block.cn_tx_name)?.unwrap_or_default();
+
+    if block.cn_data_type <= 3 {
+        let total_bits = block.cn_bit_count + (block.cn_bit_offset as u32);
+        if total_bits > 64 && !(block.cn_bit_count == 64 && block.cn_bit_offset == 0) {
+            log::warn!(
+                "Channel {} integer violates MDF4 spec §6.6.3: cn_bit_count ({}) + cn_bit_offset ({}) = {} > 64",
+                name,
+                block.cn_bit_count,
+                block.cn_bit_offset,
+                total_bits
+            );
+        }
+    }
 
     // Reads unit
     position = read_meta_data(rdr, sharable, block.cn_md_unit, position, BlockType::CN)?;
@@ -1128,8 +1140,7 @@ pub(super) fn parse_cn4_block(
     if (si_pointer != 0) && !sharable.si.contains_key(&si_pointer) {
         let (mut si_block, _header, pos) = parse_block_short(rdr, si_pointer, position)?;
         position = pos;
-        let si_block: Si4Block = si_block
-            .read_le()
+        let si_block: Si4Block = binrw::BinReaderExt::read_le(&mut si_block)
             .context("Could into read buffer into Si4Block struct")?;
         position = read_meta_data(rdr, sharable, si_block.si_tx_name, position, BlockType::SI)?;
         position = read_meta_data(rdr, sharable, si_block.si_tx_path, position, BlockType::SI)?;
@@ -1166,7 +1177,7 @@ pub(super) fn parse_cn4_block(
         compo = None;
         shape = (vec![1], Order::RowMajor);
         // list size calculation
-        if block.cn_data_type == 15 | 16 {
+        if block.cn_data_type == 15 || block.cn_data_type == 16 {
             //complex
             list_size = 2;
         } else {

@@ -1173,6 +1173,7 @@ fn create_ld(m: &Option<NullBuffer>, offset: &mut i64) -> Option<Ld4Block> {
     if m.is_some() {
         ld_block.ld_n_links = (ld_block.ld_count * 2 + 1) as u64;
         ld_block.ld_flags = 1u8 << 7;
+        ld_block.ld_flags_ext = 1u8 << 7;
     } else {
         ld_block.ld_n_links = (ld_block.ld_count + 1) as u64;
         ld_block.ld_flags = 0b0;

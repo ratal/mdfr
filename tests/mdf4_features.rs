@@ -4,7 +4,6 @@
 //!
 //! These tests exercise the high-level accessor APIs using real MDF4.3 example files.
 
-#[path = "common.rs"]
 mod common;
 
 use anyhow::Result;
@@ -58,7 +57,59 @@ fn test_events_markers() -> Result<()> {
 
     // Channels should still be accessible alongside events
     let channels = mdf.get_channel_names_set();
-    assert!(!channels.is_empty(), "should have channels");
+    assert!(!channels.is_empty());
+    Ok(())
+}
+
+#[test]
+fn test_mlsd_channels_truncation() -> Result<()> {
+    use arrow::array::Array;
+    use mdfr::data_holder::channel_data::ChannelData;
+
+    let file = format!(
+        "{}ChannelTypes/MLSD/Vector_MLSD_String_UTF8.mf4",
+        BASE_PATH.as_str()
+    );
+    let mut mdf = Mdf::new(&file)?;
+    mdf.load_all_channels_data_in_memory()?;
+
+    let expected = [
+        "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+    ];
+
+    if let Some(ChannelData::Utf8(builder)) = mdf.get_channel_data("Data channel") {
+        let array = builder.finish_cloned();
+        assert_eq!(array.len(), 10);
+        for (i, &exp) in expected.iter().enumerate() {
+            assert_eq!(array.value(i), exp, "Mismatch at index {i}");
+        }
+    } else {
+        panic!("Data channel not found or not Utf8");
+    }
+
+    if let Some(ChannelData::UInt32(builder)) = mdf.get_channel_data("Size channel") {
+        let vals = builder.values_slice();
+        assert_eq!(vals, &[4, 3, 3, 5, 4, 4, 3, 5, 5, 4]);
+    } else {
+        panic!("Size channel not found or not UInt32");
+    }
+
+    // Test SBC / Latin1 MLSD channel as well
+    let file_sbc = format!(
+        "{}ChannelTypes/MLSD/Vector_MLSD_String_SBC.mf4",
+        BASE_PATH.as_str()
+    );
+    let mut mdf_sbc = Mdf::new(&file_sbc)?;
+    mdf_sbc.load_all_channels_data_in_memory()?;
+    if let Some(ChannelData::Utf8(builder)) = mdf_sbc.get_channel_data("Data channel") {
+        let array = builder.finish_cloned();
+        assert_eq!(array.len(), 10);
+        for (i, &exp) in expected.iter().enumerate() {
+            assert_eq!(array.value(i), exp, "SBC mismatch at index {i}");
+        }
+    } else {
+        panic!("SBC Data channel not found or not Utf8");
+    }
 
     Ok(())
 }

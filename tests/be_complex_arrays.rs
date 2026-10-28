@@ -571,16 +571,14 @@ fn array_f64_le_reads_correctly() -> Result<()> {
     );
     if let ChannelData::ArrayDFloat64(arr) = data {
         let vals = arr.values_slice();
-        // The zeros() pre-allocation for ArrayDFloat64 allocates cycle_count * product(shape)
-        // elements. Since shape=[4,3] already includes cycle_count=4 as first dim,
-        // the buffer is 4 * (4*3) = 48 slots, but only the first 12 are filled by reading.
-        assert!(
-            vals.len() >= 12,
-            "expected at least 12 f64 values, got {}",
+        assert_eq!(
+            vals.len(),
+            12,
+            "expected exactly 12 f64 values (4 cycles * 3 elements), got {}",
             vals.len()
         );
         let expected: Vec<f64> = (1..=12).map(|x| x as f64).collect();
-        for (i, (&got, &exp)) in vals[..12].iter().zip(expected.iter()).enumerate() {
+        for (i, (&got, &exp)) in vals.iter().zip(expected.iter()).enumerate() {
             assert!(
                 (got - exp).abs() < 1e-9,
                 "arr_f64[{i}]: expected {exp}, got {got}"

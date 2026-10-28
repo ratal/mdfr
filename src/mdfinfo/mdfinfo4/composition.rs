@@ -8,7 +8,7 @@
 //! - CA (Channel Array): N-dimensional arrays (handled in ca_block.rs)
 //! - CN (nested channel): structure composition via CN→CN chain
 use anyhow::{Context, Result, bail};
-use binrw::{BinReaderExt, binrw};
+use binrw::binrw;
 use rustc_hash::FxHashMap;
 use std::fmt::{self, Display};
 use std::fs::File;
@@ -369,7 +369,8 @@ pub(super) fn parse_composition(
         ))
     } else if block_header_short.hdr_id == "##DS".as_bytes() {
         // Data Stream
-        let ds_block: Ds4Block = block.read_le().context("Failed parsing DS block")?;
+        let ds_block: Ds4Block =
+            binrw::BinReaderExt::read_le(&mut block).context("Failed parsing DS block")?;
         array_size = 1;
         let ds_pointer = ds_block.ds_cn_composition();
         let ds_composition: Option<Box<Composition>>;
@@ -406,7 +407,8 @@ pub(super) fn parse_composition(
         ))
     } else if block_header_short.hdr_id == "##CL".as_bytes() {
         // Channel List
-        let cl_block: Cl4Block = block.read_le().context("Failed parsing CL block")?;
+        let cl_block: Cl4Block =
+            binrw::BinReaderExt::read_le(&mut block).context("Failed parsing CL block")?;
         let cl_composition: Option<Box<Composition>>;
         let mut shape = (Vec::<usize>::new(), Order::RowMajor);
         array_size = 0;
@@ -444,7 +446,8 @@ pub(super) fn parse_composition(
         ))
     } else if block_header_short.hdr_id == "##CV".as_bytes() {
         // Channel Variant
-        let cv_block: Cv4Block = block.read_le().context("Failed parsing CV block")?;
+        let cv_block: Cv4Block =
+            binrw::BinReaderExt::read_le(&mut block).context("Failed parsing CV block")?;
         let cv_composition: Option<Box<Composition>> = None;
         let shape = (Vec::<usize>::new(), Order::RowMajor);
         array_size = 0;
@@ -471,7 +474,8 @@ pub(super) fn parse_composition(
         ))
     } else if block_header_short.hdr_id == "##CU".as_bytes() {
         // Channel Union
-        let cu_block: Cu4Block = block.read_le().context("Failed parsing CU block")?;
+        let cu_block: Cu4Block =
+            binrw::BinReaderExt::read_le(&mut block).context("Failed parsing CU block")?;
         let cu_composition: Option<Box<Composition>> = None;
         let shape = (Vec::<usize>::new(), Order::RowMajor);
         array_size = 0;

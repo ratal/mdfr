@@ -748,12 +748,7 @@ impl MdfInfo4 {
                 Some(c) => format!("{c}"),
                 None => "—".to_string(),
             };
-            output.push_str(&format!(
-                "  #{}  {}  |  {}\n",
-                i,
-                fh,
-                comment_fmt,
-            ));
+            output.push_str(&format!("  #{}  {}  |  {}\n", i, fh, comment_fmt,));
         }
         output
     }
@@ -761,10 +756,7 @@ impl MdfInfo4 {
     pub fn list_events(&mut self) -> String {
         let mut output = String::new();
         for (i, (_, block)) in self.ev.iter().enumerate() {
-            let name_tx = self
-                .sharable
-                .get_tx(block.ev_tx_name)
-                .unwrap_or_default();
+            let name_tx = self.sharable.get_tx(block.ev_tx_name).unwrap_or_default();
             let name = name_tx.as_deref().unwrap_or("—");
             let comment = self
                 .sharable
@@ -793,12 +785,7 @@ impl MdfInfo4 {
             };
             output.push_str(&format!(
                 "  #{}  {}  |  name: \"{}\"  |  scopes: [{}]  |  attachments: [{}]  |  {}\n",
-                i,
-                block,
-                name,
-                scope_fmt,
-                attach_fmt,
-                comment,
+                i, block, name, scope_fmt, attach_fmt, comment,
             ));
         }
         output
@@ -846,22 +833,13 @@ impl MdfInfo4 {
     pub fn list_source_information(&self) -> String {
         let mut output = String::new();
         for (i, (_, block)) in self.sharable.si.iter().enumerate() {
-            let name_tx = self
-                .sharable
-                .get_tx(block.si_tx_name)
-                .unwrap_or_default();
+            let name_tx = self.sharable.get_tx(block.si_tx_name).unwrap_or_default();
             let name = name_tx.as_deref().unwrap_or("—");
-            let path_tx = self
-                .sharable
-                .get_tx(block.si_tx_path)
-                .unwrap_or_default();
+            let path_tx = self.sharable.get_tx(block.si_tx_path).unwrap_or_default();
             let path = path_tx.as_deref().unwrap_or("—");
             output.push_str(&format!(
                 "  #{}  {}  |  name: \"{}\"  |  path: \"{}\"\n",
-                i,
-                block,
-                name,
-                path,
+                i, block, name, path,
             ));
         }
         output
@@ -1003,6 +981,21 @@ impl MdfInfo4 {
             }
         }
         output
+    }
+    /// Returns the path separator character for a channel group (MDF 4.x only).
+    /// The path separator is a UTF-16 LE encoded character (2 bytes) used to separate parts
+    /// in group name (gn), group source (gs), group path (gp), channel name (cn),
+    /// channel source (cs), and channel path (cp).
+    /// Returns the raw u16 value (0 if no path separator specified), or None if not found/MDF3.
+    pub fn get_channel_group_path_separator(&self, channel_name: &str) -> Option<u16> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, _rec_pos))) =
+            self.get_channel_id(channel_name)
+            && let Some(dg) = self.dg.get(dg_pos)
+            && let Some(cg) = dg.cg.get(rec_id)
+        {
+            return Some(cg.block.path_separator());
+        }
+        None
     }
     /// Formats header comments
     pub fn format_header_comments(&self) -> String {

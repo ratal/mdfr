@@ -5,7 +5,7 @@
 //! HLBLOCK is a header list for DZBLOCK chains, LDBLOCK is a list for sorted data,
 //! and GDBLOCK guards MDF 4.3 features in unsorted data.
 use anyhow::{Context, Result, bail};
-use binrw::{BinReaderExt, binrw};
+use binrw::binrw;
 use flate2::read::{DeflateDecoder, ZlibDecoder};
 use log::warn;
 use lz4::Decoder as Lz4Decoder;
@@ -109,9 +109,8 @@ pub fn parser_dl4_block(
 ) -> Result<(Dl4Block, i64)> {
     rdr.seek_relative(target - position)
         .context("Could not reach position to read Dl4Block")?;
-    let block: Dl4Block = rdr
-        .read_le()
-        .context("Could not read into Dl4Block struct")?;
+    let block: Dl4Block =
+        binrw::BinReaderExt::read_le(rdr).context("Could not read into Dl4Block struct")?;
     position = target + block.dl_len as i64;
     Ok((block, position))
 }
@@ -130,10 +129,12 @@ pub fn decompress_data(
             let mut decoder = ZlibDecoder::new(reader);
             let zlib_ok = decoder.read_to_end(&mut data).is_ok();
             if !zlib_ok {
-                warn!("zlib stream has invalid checksum or is truncated, falling back to raw deflate");
+                warn!(
+                    "zlib stream has invalid checksum or is truncated, falling back to raw deflate"
+                );
                 data.clear();
                 let reader: Cursor<&[u8]> = if buf.len() >= 2
-                    && ((buf[0] as u16) << 8 | buf[1] as u16) % 31 == 0
+                    && ((buf[0] as u16) << 8 | buf[1] as u16).is_multiple_of(31)
                 {
                     Cursor::new(&buf[2..])
                 } else {
@@ -217,9 +218,8 @@ fn validate_dz_data_length(block: &Dz4Block, rdr: &mut BufReader<&File>) -> Resu
 
 /// parses DZBlock
 pub fn parse_dz(rdr: &mut BufReader<&File>) -> Result<(Vec<u8>, Dz4Block)> {
-    let mut block: Dz4Block = rdr
-        .read_le()
-        .context("Could not read into Dz4Block struct")?;
+    let mut block: Dz4Block =
+        binrw::BinReaderExt::read_le(rdr).context("Could not read into Dz4Block struct")?;
     validate_dz_data_length(&block, rdr)?;
     let mut buf = vec![0u8; block.dz_data_length as usize];
     rdr.read_exact(&mut buf).context("Could not read Dz data")?;
@@ -237,9 +237,8 @@ pub fn parse_dz(rdr: &mut BufReader<&File>) -> Result<(Vec<u8>, Dz4Block)> {
 /// Reads a DZBlock header and raw compressed bytes without decompressing.
 /// Use `Dz4Block::decompress` in a parallel step to decompress independently.
 pub fn read_dz_raw(rdr: &mut BufReader<&File>) -> Result<(Dz4Block, Vec<u8>)> {
-    let block: Dz4Block = rdr
-        .read_le()
-        .context("Could not read into Dz4Block struct")?;
+    let block: Dz4Block =
+        binrw::BinReaderExt::read_le(rdr).context("Could not read into Dz4Block struct")?;
     validate_dz_data_length(&block, rdr)?;
     let mut buf = vec![0u8; block.dz_data_length as usize];
     rdr.read_exact(&mut buf)
@@ -409,19 +408,25 @@ impl Ld4Block {
     }
     /// Data block positions
     pub fn ld_data(&self) -> Vec<i64> {
-        // In MDF 4.3, bit 7 of ld_flags_ext indicates invalid data present.
-        // If present, links are interleaved: Data 1, Inval 1, Data 2, Inval 2, ...
-        // We can also check if the number of links matches 2 * ld_count.
-        if (1u8 << 7) & self.ld_flags_ext > 0 || self.ld_links.len() as u32 == self.ld_count * 2 {
-            self.ld_links.iter().step_by(2).copied().collect()
+        // In MDF 4.3 (Table 88 & Table 90), bit 7 of ld_flags_ext indicates invalid data present.
+        // If present, links are contiguous: N = ld_count links for ld_data followed by N links for ld_inval_data.
+        // We also check if the number of links matches 2 * ld_count.
+        let n = self.ld_count as usize;
+        if ((1u8 << 7) & self.ld_flags_ext > 0 || self.ld_links.len() == n * 2)
+            && self.ld_links.len() >= n
+        {
+            self.ld_links[..n].to_vec()
         } else {
             self.ld_links.clone()
         }
     }
     /// Invalid data block positions
     pub fn ld_invalid_data(&self) -> Vec<i64> {
-        if (1u8 << 7) & self.ld_flags_ext > 0 || self.ld_links.len() as u32 == self.ld_count * 2 {
-            self.ld_links.iter().skip(1).step_by(2).copied().collect()
+        let n = self.ld_count as usize;
+        if ((1u8 << 7) & self.ld_flags_ext > 0 || self.ld_links.len() == n * 2)
+            && self.ld_links.len() >= n * 2
+        {
+            self.ld_links[n..n * 2].to_vec()
         } else {
             Vec::<i64>::new()
         }
@@ -452,9 +457,8 @@ pub fn parser_ld4_block(
 ) -> Result<(Ld4Block, i64)> {
     rdr.seek_relative(target - position)
         .context("Could not reach Ld4Block position")?;
-    let block: Ld4Block = rdr
-        .read_le()
-        .context("Could not read buffer into Ld4Block struct")?;
+    let block: Ld4Block =
+        binrw::BinReaderExt::read_le(rdr).context("Could not read buffer into Ld4Block struct")?;
     position = target + block.ld_len as i64;
     Ok((block, position))
 }
@@ -628,23 +632,23 @@ mod tests {
 
     #[test]
     fn test_ld_data_interleaved_by_flag() {
-        // Interleaved via ld_flags_ext bit 7
+        // Invalid data present via ld_flags_ext bit 7: first N links are data, next N are invalid
         let ld = Ld4Block {
             ld_count: 2,
             ld_flags_ext: 1u8 << 7,
-            ld_links: vec![100, 101, 200, 201],
+            ld_links: vec![100, 200, 101, 201],
             ..Default::default()
         };
         let data = ld.ld_data();
-        assert_eq!(data, vec![100, 200]); // step_by(2)
+        assert_eq!(data, vec![100, 200]);
     }
 
     #[test]
     fn test_ld_data_interleaved_by_count() {
-        // Interleaved detected by links.len() == 2 * ld_count
+        // Invalid data present detected by links.len() == 2 * ld_count
         let ld = Ld4Block {
             ld_count: 2,
-            ld_links: vec![100, 101, 200, 201],
+            ld_links: vec![100, 200, 101, 201],
             ..Default::default()
         };
         let data = ld.ld_data();
@@ -653,7 +657,7 @@ mod tests {
 
     #[test]
     fn test_ld_invalid_data() {
-        // Non-interleaved: empty result
+        // Non-invalid: empty result
         let ld = Ld4Block {
             ld_count: 2,
             ld_links: vec![100, 200],
@@ -661,11 +665,11 @@ mod tests {
         };
         assert!(ld.ld_invalid_data().is_empty());
 
-        // Interleaved: odd positions are invalid blocks
+        // Invalid data present: second half (links[N..2*N]) are invalid blocks
         let ld = Ld4Block {
             ld_count: 2,
             ld_flags_ext: 1u8 << 7,
-            ld_links: vec![100, 101, 200, 201],
+            ld_links: vec![100, 200, 101, 201],
             ..Default::default()
         };
         let invalid = ld.ld_invalid_data();

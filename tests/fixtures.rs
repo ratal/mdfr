@@ -670,6 +670,7 @@ fn create_fixtures() {
 
 #[test]
 fn verify_unsorted_vlsd_vlsc_fixture_loads() {
+    create_unsorted_vlsd_vlsc_fixture().expect("failed to create unsorted VLSD/VLSC fixture");
     use mdfr::mdfreader::Mdf;
     let path = "test_files/synthetic/unsorted_vlsd_vlsc.mf4";
     let mut mdf = Mdf::new(path).expect("failed to open unsorted VLSD/VLSC fixture");
@@ -689,6 +690,7 @@ fn verify_unsorted_vlsd_vlsc_fixture_loads() {
 
 #[test]
 fn verify_unsorted_fixture_loads() {
+    create_unsorted_multi_cg_fixture().expect("failed to create unsorted_multi_cg fixture");
     use mdfr::mdfreader::Mdf;
     let path = "test_files/synthetic/unsorted_multi_cg.mf4";
     let mut mdf = Mdf::new(path).expect("failed to open unsorted fixture");

@@ -3,7 +3,7 @@
 //! The HDBLOCK is the root of the block hierarchy. It contains the start timestamp,
 //! time zone information, and links to DG, FH, CH, AT, and EV blocks.
 use anyhow::{Context, Result};
-use binrw::{BinReaderExt, binrw};
+use binrw::binrw;
 use chrono::{DateTime, FixedOffset, Local, TimeZone};
 use std::fmt;
 use std::fs::File;
@@ -139,8 +139,7 @@ pub fn hd4_parser(
     rdr.read_exact(&mut buf)
         .context("could not read HD block buffer")?;
     let mut block = Cursor::new(buf);
-    let hd: Hd4 = block
-        .read_le()
+    let hd: Hd4 = binrw::BinReaderExt::read_le(&mut block)
         .context("Could not parse HD block buffer into Hd4 struct")?;
     let position = read_meta_data(rdr, sharable, hd.hd_md_comment, 168, BlockType::HD)?;
     Ok((hd, position))

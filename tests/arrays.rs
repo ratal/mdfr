@@ -2,7 +2,6 @@
 //! Tests read real MDF4.3 array example files and verify that array channels
 //! load correctly and survive a round-trip write.
 
-#[path = "common.rs"]
 mod common;
 
 use anyhow::Result;
