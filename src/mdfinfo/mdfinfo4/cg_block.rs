@@ -26,7 +26,7 @@ use super::cn_block::{Cn4, CnType, parse_cn4};
 use super::composition::Compo;
 use super::metadata::BlockType;
 
-use super::si_block::Si4Block;
+use super::si_block::{Si4Block, Si4BlockExt};
 use super::sr_block::Sr4Block;
 pub use mdfr_core::blocks::cg::*;
 

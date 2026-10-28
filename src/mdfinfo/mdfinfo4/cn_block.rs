@@ -20,7 +20,7 @@ use super::composition::{Composition, parse_composition};
 use super::ev_block::{Ev4Block, parse_ev4_block};
 use super::metadata::BlockType;
 
-use super::si_block::Si4Block;
+use super::si_block::{Si4Block, Si4BlockExt};
 pub use mdfr_core::blocks::cn::*;
 
 /// Cn4 structure containing block but also unique_name, ndarray data, composition

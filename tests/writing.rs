@@ -5,7 +5,7 @@ use arrow::array::{AsArray, Float64Array, PrimitiveBuilder};
 use arrow::datatypes::Float32Type;
 use mdfr::data_holder::channel_data::ChannelData;
 use mdfr::mdfinfo::MdfInfo;
-use mdfr::mdfinfo::mdfinfo4::{Compo, CompressionAlgorithm};
+use mdfr::mdfinfo::mdfinfo4::{Compo, CompressionAlgorithm, Si4BlockExt};
 use mdfr::mdfreader::Mdf;
 use std::path::Path;
 use std::sync::{Arc, LazyLock};

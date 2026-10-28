@@ -3,8 +3,8 @@ use crate::data_holder::channel_data::ChannelData;
 use crate::mdfinfo::MdfInfo;
 use crate::mdfinfo::block_chain::BlockChain;
 use crate::mdfinfo::mdfinfo4::{
-    CG_F_VLSC, CG_F_VLSD, Dl4Block, Dt4Block, Dz4Block, Gd4Block, Hl4Block, Ld4Block, parse_dz,
-    parser_dl4_block, parser_ld4_block, read_dz_raw,
+    CG_F_VLSC, CG_F_VLSD, Dl4Block, Dt4Block, Dz4Block, Dz4BlockExt, Gd4Block, Hl4Block, Ld4Block,
+    parse_dz, parser_dl4_block, parser_ld4_block, read_dz_raw,
 };
 use crate::mdfinfo::mdfinfo4::{Ca4Block, Cg4, Cn4, Compo, Composition, Dg4, Ds4Block};
 use crate::mdfreader::data_read4::read_channels_from_bytes;

@@ -4,7 +4,6 @@
 use anyhow::Error;
 use anyhow::{Context, Result, bail};
 use arrow::array::Array;
-use binrw::binrw;
 use codepage::to_encoding;
 use encoding_rs::Encoding;
 use log::{info, warn};
@@ -44,28 +43,7 @@ use self::mdfinfo4::{At4Block, Ch4Block, Ev4Block, FhBlock, Si4Block, Sr4Block};
 use self::sym_buf_reader::SymBufReader;
 use crate::mdfreader::{DataSignature, MasterSignature};
 
-/// "UnFinMF " identifier bytes for unfinalized MDF files
-const UNFINALIZED_ID: [u8; 8] = [85, 110, 70, 105, 110, 77, 70, 32];
-
-/// Standard unfinalization flag bits (id_unfin_flags)
-/// Bit 0: Update of cycle counters for CG-/CABLOCK required
-const UNFIN_CG_CYCLE_COUNTERS: u16 = 1 << 0;
-/// Bit 1: Update of cycle counters for SRBLOCKs required
-const UNFIN_SR_CYCLE_COUNTERS: u16 = 1 << 1;
-/// Bit 2: Update of length for last DTBLOCK required
-const UNFIN_LAST_DT_LENGTH: u16 = 1 << 2;
-/// Bit 3: Update of length for last RDBLOCK required
-const UNFIN_LAST_RD_LENGTH: u16 = 1 << 3;
-/// Bit 4: Update of last DLBLOCK in each chained list required
-const UNFIN_LAST_DL_BLOCK: u16 = 1 << 4;
-/// Bit 5: Update of cg_data_bytes and cg_inval_bytes in VLSD CGBLOCK required
-const UNFIN_VLSD_CG_BYTES: u16 = 1 << 5;
-/// Bit 6: Update of offset values for VLSD channel required
-const UNFIN_VLSD_OFFSET: u16 = 1 << 6;
-/// Bit 7: Update of cg_data_bytes and cg_inval_bytes in VLSC CGBLOCK required
-const UNFIN_VLSC_CG_BYTES: u16 = 1 << 7;
-/// Bit 8: Update of offset values for VLSC channel required
-const UNFIN_VLSC_OFFSET: u16 = 1 << 8;
+pub use mdfr_core::blocks::id::*;
 
 /// joins mdf versions 3.x and 4.x
 #[derive(Debug)]
@@ -73,53 +51,6 @@ const UNFIN_VLSC_OFFSET: u16 = 1 << 8;
 pub enum MdfInfo {
     V3(Box<MdfInfo3>), // version 3.x
     V4(Box<MdfInfo4>), // version 4.x
-}
-
-/// Common Id block structure for both versions 2 and 3
-#[derive(Debug, PartialEq, Eq, Clone)]
-#[binrw]
-#[allow(dead_code)]
-#[repr(C)]
-pub struct IdBlock {
-    /// "MDF
-    pub id_file_id: [u8; 8],
-    /// version in char
-    pub id_vers: [u8; 8],
-    // logger id
-    pub id_prog: [u8; 8],
-    /// 0 Little endian, >= 1 Big endian, only valid for 3.x
-    pub id_default_byteorder: u16,
-    /// default floating point number. 0: IEEE754, 1: G_Float, 2: D_Float, only valid for 3.x
-    id_floatingpointformat: u16,
-    /// version number, valid for both 3.x and 4.x
-    pub id_ver: u16,
-    /// code page (only for version 3.3)
-    pub id_codepage: u16,
-    /// check
-    id_check: [u8; 2],
-    id_fill: [u8; 26],
-    /// only valid for 4.x but can exist in 3.x
-    id_unfin_flags: u16,
-    /// only valid for 4.x but can exist in 3.x
-    id_custom_unfin_flags: u16,
-}
-
-impl Default for IdBlock {
-    fn default() -> Self {
-        IdBlock {
-            id_file_id: [77, 68, 70, 32, 32, 32, 32, 32], // "MDF     "
-            id_vers: [52, 46, 51, 48, 32, 32, 32, 32],    // "4.30    "
-            id_prog: [109, 100, 102, 114, 32, 32, 32, 32], // "mdfr    "
-            id_ver: 430,
-            id_default_byteorder: 0,
-            id_floatingpointformat: 0,
-            id_codepage: 0,
-            id_check: [0, 0],
-            id_fill: [0u8; 26],
-            id_unfin_flags: 0,
-            id_custom_unfin_flags: 0,
-        }
-    }
 }
 
 /// implements MdfInfo creation and manipulation functions
