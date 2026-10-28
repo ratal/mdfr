@@ -27,7 +27,7 @@ use crate::{
         mdfinfo4::{
             At4Block, BlockType, Blockheader4, Ca4Block, Cg4, Cg4Block, Ch4Block, Cn4, Cn4Block,
             Compo, Composition, Dg4, Dg4Block, Dz4Block, Endianness, Ev4Block, FhBlock, Ld4Block,
-            MdfInfo4, MetaData, MetaDataBlockType, Si4Block, default_short_header,
+            MdfInfo4, MetaData, MetaDataBlockType, Si4Block, default_short_header, new_fh_block,
         },
     },
     mdfreader::Mdf,
@@ -101,7 +101,7 @@ pub fn mdfwriter4(
     }
 
     // Add new FH block documenting mdfr modification
-    let mut mdfr_fh = FhBlock::default();
+    let mut mdfr_fh = new_fh_block();
     let mdfr_fh_position = pointer;
     pointer += 56;
 

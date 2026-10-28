@@ -3,9 +3,7 @@
 //! Each FHBLOCK records a creation or modification event with a timestamp and
 //! an optional MD comment. FHBLOCKs form a linked list from `hd_fh_first`.
 use anyhow::{Context, Result};
-use binrw::binrw;
-use chrono::{DateTime, Local};
-use std::fmt::{self, Display};
+use chrono::Local;
 use std::fs::File;
 use std::io::{Cursor, Read};
 
@@ -14,86 +12,16 @@ use super::metadata::BlockType;
 use crate::mdfinfo::block_chain::BlockChain;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 
-/// FHBLOCK structure (MDF 4.2 spec, Table 18)
-#[derive(Debug, Copy, Clone)]
-#[binrw]
-#[br(little)]
-#[repr(C)]
-pub struct FhBlock {
-    /// '##FH'
-    fh_id: [u8; 4],
-    /// reserved, must be 0
-    fh_gap: [u8; 4],
-    /// Length of block in bytes
-    fh_len: u64,
-    /// # of links
-    fh_links: u64,
-    /// Link to next FHBLOCK (can be NIL if list finished)
-    pub fh_fh_next: i64,
-    /// Link to MDBLOCK containing comment about the creation or modification of the MDF file.
-    pub fh_md_comment: i64,
-    /// time stamp in nanosecs
-    pub fh_time_ns: u64,
-    /// time zone offset on minutes
-    pub fh_tz_offset_min: i16,
-    /// daylight saving time offset in minutes for start time stamp
-    pub fh_dst_offset_min: i16,
-    /// time flags, but 1 local, bit 2 time offsets
-    pub fh_time_flags: u8,
-    /// reserved
-    fh_reserved: [u8; 3],
-}
+pub use mdfr_core::blocks::fh::FhBlock;
 
-impl Default for FhBlock {
-    fn default() -> Self {
-        FhBlock {
-            fh_id: [35, 35, 70, 72], // '##FH'
-            fh_gap: [0u8; 4],
-            fh_len: 56,
-            fh_links: 2,
-            fh_fh_next: 0,
-            fh_md_comment: 0,
-            fh_time_ns: Local::now()
-                .timestamp_nanos_opt()
-                .map(|t| t as u64)
-                .unwrap_or(0),
-            fh_tz_offset_min: 0,
-            fh_dst_offset_min: 0,
-            fh_time_flags: 0,
-            fh_reserved: [0u8; 3],
-        }
-    }
-}
-
-impl Display for FhBlock {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let secs = (self.fh_time_ns / 1_000_000_000) as i64;
-        let nsecs = (self.fh_time_ns % 1_000_000_000) as u32;
-        let datetime = DateTime::from_timestamp(secs, nsecs)
-            .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
-            .unwrap_or_else(|| "Invalid timestamp".to_string());
-        let local_time = if self.fh_time_flags & 0b1 != 0 {
-            "local"
-        } else {
-            "UTC"
-        };
-        write!(
-            f,
-            "FH  |  {} {}  |  tz={}, dst={}",
-            datetime,
-            local_time,
-            format_minutes_as_offset(self.fh_tz_offset_min),
-            format_minutes_as_offset(self.fh_dst_offset_min)
-        )
-    }
-}
-
-fn format_minutes_as_offset(minutes: i16) -> String {
-    let sign = if minutes >= 0 { '+' } else { '-' };
-    let abs_minutes = minutes.unsigned_abs();
-    let hours = abs_minutes / 60;
-    let mins = abs_minutes % 60;
-    format!("{}{:02}:{:02}", sign, hours, mins)
+/// Creates an FH block with the current local time.
+pub fn new_fh_block() -> FhBlock {
+    FhBlock::new_at(
+        Local::now()
+            .timestamp_nanos_opt()
+            .map(|t| t as u64)
+            .unwrap_or(0),
+    )
 }
 
 /// Parses a single FHBLOCK from the file at the given target position.
@@ -144,49 +72,4 @@ pub fn parse_fh(
         }
     }
     Ok((fh, position))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_default() {
-        let fh = FhBlock::default();
-        assert_eq!(fh.fh_fh_next, 0);
-        assert_eq!(fh.fh_md_comment, 0);
-        assert!(fh.fh_time_ns > 0); // current time
-    }
-
-    #[test]
-    fn test_display_utc() {
-        let fh = FhBlock {
-            fh_time_ns: 1_700_000_000_000_000_000, // 2023-11-14T22:13:20 UTC
-            fh_time_flags: 0,                      // UTC
-            fh_tz_offset_min: 0,
-            fh_dst_offset_min: 0,
-            ..Default::default()
-        };
-        let display = format!("{fh}");
-        assert!(display.contains("FH"));
-        assert!(display.contains("2023-11-14"));
-        assert!(display.contains("UTC"));
-        assert!(display.contains("tz=+00:00"));
-        assert!(display.contains("dst=+00:00"));
-    }
-
-    #[test]
-    fn test_display_local() {
-        let fh = FhBlock {
-            fh_time_ns: 1_700_000_000_000_000_000,
-            fh_time_flags: 0b1, // local time
-            fh_tz_offset_min: 60,
-            fh_dst_offset_min: 0,
-            ..Default::default()
-        };
-        let display = format!("{fh}");
-        assert!(display.contains("local"));
-        assert!(display.contains("tz=+01:00"));
-        assert!(display.contains("dst=+00:00"));
-    }
 }

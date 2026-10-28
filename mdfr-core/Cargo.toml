@@ -9,12 +9,13 @@ publish = false
 
 [features]
 default = []
-std = ["binrw/std", "thiserror/std", "log/std"]
+std = ["binrw/std", "thiserror/std", "log/std", "chrono/std"]
 
 [dependencies]
 binrw = { version = "0.15.2", default-features = false }
 thiserror = { version = "2", default-features = false }
 log = { version = "0.4", default-features = false }
+chrono = { version = "0.4", default-features = false, features = ["alloc"] }
 
 [lib]
 crate-type = ["rlib"]

@@ -451,7 +451,7 @@ impl MdfInfo4 {
             fh: Vec::new(),
             at: HashMap::new(),
             ev: HashMap::new(),
-            hd_block: Hd4::default(),
+            hd_block: new_hd4(),
             ch: HashMap::new(),
             is_unfinalized: false,
         }
