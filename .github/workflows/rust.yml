@@ -10,7 +10,7 @@ env:
 jobs:
   test-parquet:
     name: Tests (parquet)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - name: Unzip local test fixtures
@@ -26,7 +26,7 @@ jobs:
 
   test-polars-rust:
     name: Tests (polars Rust-native)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - name: Rust-native polars tests
@@ -34,7 +34,7 @@ jobs:
 
   test-polars-python:
     name: Tests (polars + numpy Python)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
