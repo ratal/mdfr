@@ -8,5 +8,15 @@ extern crate alloc;
 extern crate std;
 
 pub mod blocks;
+pub mod compress;
 pub mod error;
 pub mod io;
+pub mod logger;
+pub mod time;
+
+#[cfg(feature = "capi")]
+pub mod capi;
+
+pub use error::{Error, Result};
+pub use io::{SeekFrom, Sink, VecSink};
+pub use time::{ManualClock, TimeSource};

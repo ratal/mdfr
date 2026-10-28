@@ -8,14 +8,22 @@ license = "GPL-3.0"
 publish = false
 
 [features]
-default = []
+default = ["deflate", "lz4"]
 std = ["binrw/std", "thiserror/std", "log/std", "chrono/std"]
+deflate = ["dep:miniz_oxide"]
+lz4 = ["dep:lz4_flex"]
+zstd = ["std", "dep:zstd"]
+capi = []
 
 [dependencies]
 binrw = { version = "0.15.2", default-features = false }
 thiserror = { version = "2", default-features = false }
 log = { version = "0.4", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["alloc"] }
+transpose = "0.2.3"
+miniz_oxide = { version = "0.9.1", default-features = false, features = ["with-alloc"], optional = true }
+lz4_flex = { version = "0.14.0", default-features = false, features = ["alloc", "safe-encode", "safe-decode"], optional = true }
+zstd = { version = "0.14.3", optional = true }
 
 [lib]
 crate-type = ["rlib"]

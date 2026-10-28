@@ -750,3 +750,173 @@ pub unsafe extern "C" fn list_source_information(mdf: *const Mdf) -> *const c_ch
         std::ptr::null()
     }
 }
+
+pub use mdfr_core::capi::*;
+
+extern "C" fn std_file_sink_write(ctx: *mut core::ffi::c_void, buf: *const u8, len: usize) -> i32 {
+    if ctx.is_null() || (buf.is_null() && len > 0) {
+        return -3;
+    }
+    let file = unsafe { &mut *(ctx as *mut std::fs::File) };
+    let slice = if len == 0 {
+        &[][..]
+    } else {
+        unsafe { std::slice::from_raw_parts(buf, len) }
+    };
+    match std::io::Write::write_all(file, slice) {
+        Ok(()) => 0,
+        Err(_) => -1,
+    }
+}
+
+extern "C" fn std_file_sink_seek(ctx: *mut core::ffi::c_void, pos: u64) -> i32 {
+    if ctx.is_null() {
+        return -3;
+    }
+    let file = unsafe { &mut *(ctx as *mut std::fs::File) };
+    match std::io::Seek::seek(file, std::io::SeekFrom::Start(pos)) {
+        Ok(_) => 0,
+        Err(_) => -1,
+    }
+}
+
+extern "C" fn std_file_sink_flush(ctx: *mut core::ffi::c_void) -> i32 {
+    if ctx.is_null() {
+        return -3;
+    }
+    let file = unsafe { &mut *(ctx as *mut std::fs::File) };
+    match std::io::Write::flush(file) {
+        Ok(()) => 0,
+        Err(_) => -1,
+    }
+}
+
+extern "C" fn std_file_sink_close(ctx: *mut core::ffi::c_void) -> i32 {
+    if !ctx.is_null() {
+        unsafe {
+            let mut f = Box::from_raw(ctx as *mut std::fs::File);
+            let _ = std::io::Write::flush(&mut *f);
+            drop(f);
+        }
+    }
+    0
+}
+
+extern "C" fn std_clock_now_ticks(_ctx: *mut core::ffi::c_void) -> u64 {
+    static EPOCH: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+    let start = EPOCH.get_or_init(std::time::Instant::now);
+    start.elapsed().as_micros() as u64
+}
+
+extern "C" fn std_clock_wall_ns(_ctx: *mut core::ffi::c_void, out_ns: *mut u64) -> i32 {
+    if out_ns.is_null() {
+        return -3;
+    }
+    match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+        Ok(d) => {
+            unsafe {
+                *out_ns = d.as_nanos() as u64;
+            }
+            0
+        }
+        Err(_) => -1,
+    }
+}
+
+fn make_file_sink_vtable(path_str: &str) -> Result<MdfrSinkVtable, i32> {
+    let f = std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(path_str)
+        .map_err(|_| -1i32)?;
+    let ctx = Box::into_raw(Box::new(f)) as *mut core::ffi::c_void;
+    Ok(MdfrSinkVtable {
+        ctx,
+        write: Some(std_file_sink_write),
+        seek: Some(std_file_sink_seek),
+        flush: Some(std_file_sink_flush),
+        close: Some(std_file_sink_close),
+    })
+}
+
+/// Starts an MDF 4.3 streaming logger writing directly to a filesystem `path` using the OS clock (`1 us` tick resolution).
+/// Consumes `builder`. Returns null and sets `*out_err` on failure.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mdfr_logger_open(
+    builder: *mut MdfrBuilderHandle,
+    path: *const c_char,
+    out_err: *mut i32,
+) -> *mut MdfrLoggerHandle {
+    if builder.is_null() || path.is_null() {
+        if !out_err.is_null() {
+            unsafe {
+                *out_err = -3;
+            }
+        }
+        return std::ptr::null_mut();
+    }
+    let Ok(path_str) = (unsafe { CStr::from_ptr(path).to_str() }) else {
+        unsafe { mdfr_logger_builder_free(builder) };
+        if !out_err.is_null() {
+            unsafe {
+                *out_err = -3;
+            }
+        }
+        return std::ptr::null_mut();
+    };
+    let sink = match make_file_sink_vtable(path_str) {
+        Ok(s) => s,
+        Err(code) => {
+            unsafe { mdfr_logger_builder_free(builder) };
+            if !out_err.is_null() {
+                unsafe {
+                    *out_err = code;
+                }
+            }
+            return std::ptr::null_mut();
+        }
+    };
+    let clock = MdfrClockVtable {
+        ctx: std::ptr::null_mut(),
+        now_ticks: Some(std_clock_now_ticks),
+        tick_ns: 1_000,
+        wall_clock_ns: Some(std_clock_wall_ns),
+    };
+    unsafe { mdfr_logger_start(builder, sink, clock, out_err) }
+}
+
+/// Rotates an active logger to a new filesystem `new_path`, finalizing the previous file in place.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mdfr_logger_rotate_path(
+    logger: *mut MdfrLoggerHandle,
+    new_path: *const c_char,
+) -> i32 {
+    if logger.is_null() || new_path.is_null() {
+        return -3;
+    }
+    let Ok(path_str) = (unsafe { CStr::from_ptr(new_path).to_str() }) else {
+        return -3;
+    };
+    let sink = match make_file_sink_vtable(path_str) {
+        Ok(s) => s,
+        Err(code) => return code,
+    };
+    unsafe { mdfr_logger_rotate(logger, sink) }
+}
+
+/// Finalizes an unfinalized MDF 4.x file (`"UnFinMF "`) in place on disk without copying.
+/// Returns `0` on success, negative error code on failure.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mdfr_finalize_file_in_place(file_name: *const c_char) -> i32 {
+    if file_name.is_null() {
+        return -3;
+    }
+    let Ok(path_str) = (unsafe { CStr::from_ptr(file_name).to_str() }) else {
+        return -3;
+    };
+    match crate::mdfinfo::mdfinfo4::finalize::finalize_file_in_place(path_str) {
+        Ok(_) => 0,
+        Err(_) => -1,
+    }
+}

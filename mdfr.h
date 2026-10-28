@@ -371,3 +371,6 @@ const FFI_ArrowArray *get_channel_array(const struct Mdf *mdf, const char *chann
 void export_to_parquet(const struct Mdf *mdf, const char *file_name, const char *compression);
 
 void export_to_hdf5(const struct Mdf *mdf, const char *file_name, const char *compression);
+
+#include "include/mdfr_logger.h"
+

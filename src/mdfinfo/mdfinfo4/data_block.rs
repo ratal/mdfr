@@ -28,6 +28,34 @@ pub enum CompressionAlgorithm {
     Lz4Transpose = 5,
 }
 
+impl From<CompressionAlgorithm> for mdfr_core::compress::CompressionAlgorithm {
+    fn from(c: CompressionAlgorithm) -> Self {
+        match c {
+            CompressionAlgorithm::NoCompression => Self::NoCompression,
+            CompressionAlgorithm::Deflate => Self::Deflate,
+            CompressionAlgorithm::DeflateTranspose => Self::DeflateTranspose,
+            CompressionAlgorithm::Zstd => Self::Zstd,
+            CompressionAlgorithm::ZstdTranspose => Self::ZstdTranspose,
+            CompressionAlgorithm::Lz4 => Self::Lz4,
+            CompressionAlgorithm::Lz4Transpose => Self::Lz4Transpose,
+        }
+    }
+}
+
+impl From<mdfr_core::compress::CompressionAlgorithm> for CompressionAlgorithm {
+    fn from(c: mdfr_core::compress::CompressionAlgorithm) -> Self {
+        match c {
+            mdfr_core::compress::CompressionAlgorithm::NoCompression => Self::NoCompression,
+            mdfr_core::compress::CompressionAlgorithm::Deflate => Self::Deflate,
+            mdfr_core::compress::CompressionAlgorithm::DeflateTranspose => Self::DeflateTranspose,
+            mdfr_core::compress::CompressionAlgorithm::Zstd => Self::Zstd,
+            mdfr_core::compress::CompressionAlgorithm::ZstdTranspose => Self::ZstdTranspose,
+            mdfr_core::compress::CompressionAlgorithm::Lz4 => Self::Lz4,
+            mdfr_core::compress::CompressionAlgorithm::Lz4Transpose => Self::Lz4Transpose,
+        }
+    }
+}
+
 pub use mdfr_core::blocks::data::{Dl4Block, Dt4Block, Dz4Block, Gd4Block, Hl4Block, Ld4Block};
 
 /// parses Data List block
@@ -411,5 +439,22 @@ mod tests {
         };
         let display = format!("{gd}");
         assert!(display.contains("min_version=4.1.0"));
+    }
+    #[test]
+    fn core_compress_decompress_interop() {
+        let orig: Vec<u8> = (0..1000u32).flat_map(|v| v.to_le_bytes()).collect();
+        for (algo, zip_type) in [
+            (mdfr_core::compress::CompressionAlgorithm::Deflate, 0u8),
+            (
+                mdfr_core::compress::CompressionAlgorithm::DeflateTranspose,
+                1u8,
+            ),
+            (mdfr_core::compress::CompressionAlgorithm::Lz4, 4u8),
+            (mdfr_core::compress::CompressionAlgorithm::Lz4Transpose, 5u8),
+        ] {
+            let comp = mdfr_core::compress::compress_dz_data(&orig, algo, 4).unwrap();
+            let decomp = decompress_data(zip_type, 4, comp, orig.len() as u64).unwrap();
+            assert_eq!(decomp, orig, "failed for {algo:?}");
+        }
     }
 }
