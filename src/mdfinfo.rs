@@ -588,6 +588,20 @@ impl MdfInfo {
         };
         channel_master_list
     }
+    /// returns an iterator over all channel names (zero-copy)
+    pub fn channel_names(&self) -> Box<dyn Iterator<Item = &String> + '_> {
+        match self {
+            MdfInfo::V3(mdfinfo3) => mdfinfo3.channel_names(),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.channel_names(),
+        }
+    }
+    /// returns a reference to the channel names in the same channel group (zero-copy)
+    pub fn channel_names_cg_set_ref(&self, channel_name: &str) -> Option<&HashSet<String>> {
+        match self {
+            MdfInfo::V3(mdfinfo3) => mdfinfo3.channel_names_cg_set_ref(channel_name),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.channel_names_cg_set_ref(channel_name),
+        }
+    }
     /// Clears all data arrays
     pub fn clear_channel_data_from_memory(&mut self, channel_names: HashSet<String>) -> Result<()> {
         match self {

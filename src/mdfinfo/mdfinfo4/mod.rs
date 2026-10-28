@@ -43,12 +43,12 @@ pub use si_impl::*;
 use anyhow::{Context, Error, Result};
 use rustc_hash::FxHashMap;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fmt;
+use std::sync::Arc;
 
 /// ChannelId : (Option<master_channelname>, dg_pos, (cg_pos, rec_id), (cn_pos, rec_pos))
 pub(crate) type ChannelId = (Option<String>, i64, (i64, u64), (i64, i32));
 pub(crate) type ChannelNamesSet = HashMap<String, ChannelId>;
-use std::fmt;
-use std::sync::Arc;
 
 use arrow::array::Array;
 
@@ -362,6 +362,10 @@ impl MdfInfo4 {
     pub fn get_channel_names_set(&self) -> HashSet<String> {
         self.channel_names_set.keys().cloned().collect()
     }
+    /// returns an iterator over all channel names (zero-copy)
+    pub fn channel_names(&self) -> Box<dyn Iterator<Item = &String> + '_> {
+        Box::new(self.channel_names_set.keys())
+    }
     /// returns the set of channel names that are in same channel group as input channel name
     pub fn get_channel_names_cg_set(&self, channel_name: &str) -> HashSet<String> {
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, _rec_pos))) =
@@ -376,6 +380,18 @@ impl MdfInfo4 {
             channel_list
         } else {
             HashSet::new()
+        }
+    }
+    /// returns a reference to the channel names in the same channel group (zero-copy)
+    pub fn channel_names_cg_set_ref(&self, channel_name: &str) -> Option<&HashSet<String>> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, _rec_pos))) =
+            self.get_channel_id(channel_name)
+        {
+            self.dg.get(dg_pos)?
+                .cg.get(rec_id)
+                .map(|cg| &cg.channel_names)
+        } else {
+            None
         }
     }
     /// returns a hashmap for which master channel names are keys and values its corresponding set of channel names

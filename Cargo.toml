@@ -101,6 +101,10 @@ harness = false
 name = "logger_benchmark"
 harness = false
 
+[[bench]]
+name = "memory_benchmark"
+harness = false
+
 [profile.release]
 opt-level = 3
 debug = false
