@@ -129,6 +129,7 @@ impl<T: ArrowPrimitiveType> ComplexArrow<T> {
 #[cfg(feature = "ndarray")]
 impl ComplexArrow<Float32Type> {
     /// to convert ComplexArrow into ndarray
+    #[allow(dead_code)]
     pub fn to_ndarray(&self) -> Result<Array<f32, IxDyn>, Error> {
         let vector: Vec<f32> = self.values_builder.values_slice().to_vec();
         let mut full_shape = vec![self.len()];
@@ -142,6 +143,7 @@ impl ComplexArrow<Float32Type> {
 #[cfg(feature = "ndarray")]
 impl ComplexArrow<Float64Type> {
     /// to convert ComplexArrow into ndarray
+    #[allow(dead_code)]
     pub fn to_ndarray(&self) -> Result<Array<f64, IxDyn>, Error> {
         let vector: Vec<f64> = self.values_builder.values_slice().to_vec();
         let mut full_shape = vec![self.len()];

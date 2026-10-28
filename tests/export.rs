@@ -25,7 +25,7 @@ fn export_to_parquet() -> Result<()> {
     let file = format!(
         "{}{}",
         BASE_PATH_MDF4.as_str(),
-        &"Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
+        "Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
     );
     let mut mdf = Mdf::new(&file)?;
     mdf.load_all_channels_data_in_memory()?;
@@ -36,7 +36,7 @@ fn export_to_parquet() -> Result<()> {
     let file = format!(
         "{}{}",
         BASE_PATH_MDF3.as_str(),
-        &"RJ_N16-12-363_BM-15C-0024_228_2_20170116094355_CAN.dat"
+        "RJ_N16-12-363_BM-15C-0024_228_2_20170116094355_CAN.dat"
     );
     let mut mdf = Mdf::new(&file)?;
     mdf.load_all_channels_data_in_memory()?;
@@ -58,22 +58,22 @@ fn export_to_hdf5() -> Result<()> {
     let file = format!(
         "{}{}",
         BASE_PATH_MDF4.as_str(),
-        &"Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
+        "Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
     );
     let mut mdf = Mdf::new(&file)?;
     mdf.load_all_channels_data_in_memory()?;
-    mdf.export_to_hdf5(writing_hdf5_file, Some(&"lzf"))
+    mdf.export_to_hdf5(writing_hdf5_file, Some("lzf"))
         .expect("failed writing mdf4 hdf5 file");
 
     // Export mdf3 to HDF5 file
     let file = format!(
         "{}{}",
         BASE_PATH_MDF3.as_str(),
-        &"RJ_N16-12-363_BM-15C-0024_228_2_20170116094355_CAN.dat"
+        "RJ_N16-12-363_BM-15C-0024_228_2_20170116094355_CAN.dat"
     );
     let mut mdf = Mdf::new(&file)?;
     mdf.load_all_channels_data_in_memory()?;
-    mdf.export_to_hdf5(writing_hdf5_file, Some(&"deflate"))
+    mdf.export_to_hdf5(writing_hdf5_file, Some("deflate"))
         .expect("failed writing mdf3 hdf5 file");
 
     // tmp_dir cleaned up on drop
@@ -90,7 +90,7 @@ fn export_and_verify_parquet() -> Result<()> {
     let file = format!(
         "{}{}",
         BASE_PATH_MDF4.as_str(),
-        &"Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
+        "Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
     );
     let mut mdf = Mdf::new(&file)?;
     mdf.load_all_channels_data_in_memory()?;
@@ -109,12 +109,12 @@ fn export_and_verify_parquet() -> Result<()> {
 
     let file = std::fs::File::open(parquet_path)?;
     let builder = parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder::try_new(file)?;
-    let mut reader = builder.build()?;
+    let reader = builder.build()?;
 
     let mut total_rows = 0;
     let mut first_val: Option<f64> = None;
 
-    while let Some(batch) = reader.next() {
+    for batch in reader {
         let batch = batch?;
         let rows = batch.num_rows();
         total_rows += rows;
@@ -126,7 +126,7 @@ fn export_and_verify_parquet() -> Result<()> {
                 .as_any()
                 .downcast_ref::<arrow::array::Float64Array>()
                 .unwrap();
-            if first_val.is_none() && float_col.len() > 0 {
+            if first_val.is_none() && !float_col.is_empty() {
                 first_val = Some(float_col.value(0));
             }
         }
@@ -137,7 +137,7 @@ fn export_and_verify_parquet() -> Result<()> {
 
     if let mdfr::data_holder::channel_data::ChannelData::Float64(b) = orig_data {
         let arr = b.finish_cloned();
-        if arr.len() > 0 {
+        if !arr.is_empty() {
             assert_eq!(first_val.unwrap(), arr.value(0));
         }
     } else {
@@ -156,7 +156,7 @@ fn export_and_verify_csv() -> Result<()> {
     let file = format!(
         "{}{}",
         BASE_PATH_MDF4.as_str(),
-        &"Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
+        "Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
     );
     let mut mdf = Mdf::new(&file)?;
     mdf.load_all_channels_data_in_memory()?;
@@ -205,7 +205,7 @@ fn export_and_verify_csv() -> Result<()> {
 
     if let mdfr::data_holder::channel_data::ChannelData::UInt8(b) = orig_data {
         let arr = b.finish_cloned();
-        if arr.len() > 0 {
+        if !arr.is_empty() {
             assert_eq!(first_val.unwrap().parse::<u8>().unwrap(), arr.value(0));
         }
     } else {
@@ -225,7 +225,7 @@ fn export_and_verify_hdf5() -> Result<()> {
     let file = format!(
         "{}{}",
         BASE_PATH_MDF4.as_str(),
-        &"Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
+        "Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
     );
     let mut mdf = Mdf::new(&file)?;
     mdf.load_all_channels_data_in_memory()?;
@@ -252,7 +252,7 @@ fn export_and_verify_hdf5() -> Result<()> {
 
     if let mdfr::data_holder::channel_data::ChannelData::Float64(b) = orig_data {
         let arr = b.finish_cloned();
-        if arr.len() > 0 {
+        if !arr.is_empty() {
             let hdf5_data = dataset.read_raw::<f64>()?;
             assert_eq!(hdf5_data[0], arr.value(0));
         }

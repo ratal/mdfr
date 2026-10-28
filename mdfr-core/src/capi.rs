@@ -2,6 +2,8 @@
 //!
 //! Uses C function-pointer vtables for [`Sink`] (`mdfr_sink_t`) and [`TimeSource`] (`mdfr_clock_t`),
 //! returns integer error codes (`0` = OK, negative = [`Error::code`]), and never panics across FFI.
+#![allow(clippy::missing_safety_doc)]
+
 use alloc::boxed::Box;
 use alloc::string::String;
 use core::ffi::c_char;
@@ -63,10 +65,10 @@ impl Sink for MdfrSinkVtable {
     }
 
     fn flush(&mut self) -> Result<()> {
-        if let Some(cb) = self.flush {
-            if cb(self.ctx) != 0 {
-                return Err(Error::Io);
-            }
+        if let Some(cb) = self.flush
+            && cb(self.ctx) != 0
+        {
+            return Err(Error::Io);
         }
         Ok(())
     }

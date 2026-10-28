@@ -39,6 +39,12 @@ pub struct StaticArena {
 
 unsafe impl Sync for StaticArena {}
 
+impl Default for StaticArena {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl StaticArena {
     pub const fn new() -> Self {
         Self {

@@ -1116,8 +1116,10 @@ fn write_sd_block(
 /// Creates an LDBLOCK (list data block, spec Table 61) to wrap DV+DI block pairs.
 /// Sets `ld_flags` bit 7 if an invalidation mask is present.
 fn create_ld(m: &Option<NullBuffer>, offset: &mut i64) -> Option<Ld4Block> {
-    let mut ld_block = Ld4Block::default();
-    ld_block.ld_count = 1;
+    let mut ld_block = Ld4Block {
+        ld_count: 1,
+        ..Default::default()
+    };
     ld_block.ld_sample_offset.push(0);
     if m.is_some() {
         ld_block.ld_n_links = (ld_block.ld_count * 2 + 1) as u64;
@@ -1174,9 +1176,11 @@ fn create_dz_dv(
     offset: &mut i64,
     algo: CompressionAlgorithm,
 ) -> Result<(DataBlock, usize, Vec<u8>), Error> {
-    let mut dz_block = Dz4Block::default();
-    dz_block.dz_zip_type = algo as u8;
-    dz_block.dz_zip_parameter = data.byte_count();
+    let mut dz_block = Dz4Block {
+        dz_zip_type: algo as u8,
+        dz_zip_parameter: data.byte_count(),
+        ..Default::default()
+    };
     let bytes = data
         .to_bytes()
         .context("failed converting array data into bytes for dz or dv block")?;
@@ -1222,10 +1226,12 @@ fn create_dz_di(
     offset: &mut i64,
     algo: CompressionAlgorithm,
 ) -> Result<Option<(DataBlock, Vec<u8>)>, Error> {
-    let mut dz_invalid_block = Dz4Block::default();
-    dz_invalid_block.dz_zip_type = algo as u8;
-    dz_invalid_block.dz_zip_parameter = 1;
-    dz_invalid_block.dz_org_data_length = mask.len() as u64;
+    let mut dz_invalid_block = Dz4Block {
+        dz_zip_type: algo as u8,
+        dz_zip_parameter: 1,
+        dz_org_data_length: mask.len() as u64,
+        ..Default::default()
+    };
     let mask_bytes: Vec<u8> = mask.iter().map(|v| v as u8).collect();
     let mut data_bytes = compress_bytes(&mask_bytes, algo, 1)?;
     dz_invalid_block.dz_data_length = data_bytes.len() as u64;
@@ -1598,9 +1604,11 @@ fn create_dz_sd(
     offset: &mut i64,
     algo: CompressionAlgorithm,
 ) -> Result<(DataBlock, usize, Vec<u8>), Error> {
-    let mut dz_block = Dz4Block::default();
-    dz_block.dz_zip_type = algo as u8;
-    dz_block.dz_zip_parameter = data.byte_count();
+    let mut dz_block = Dz4Block {
+        dz_zip_type: algo as u8,
+        dz_zip_parameter: data.byte_count(),
+        ..Default::default()
+    };
     let bytes = to_sd_bytes(data).context("failed converting data to SD format")?;
     dz_block.dz_org_data_length = bytes.len() as u64;
 

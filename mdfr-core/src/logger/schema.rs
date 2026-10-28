@@ -366,7 +366,11 @@ impl LoggerBuilder {
         elem_bit_count: u32,
         dims: Vec<u64>,
     ) -> Result<ChannelHandle> {
-        if dims.is_empty() || dims.contains(&0) || elem_bit_count == 0 || elem_bit_count % 8 != 0 {
+        if dims.is_empty()
+            || dims.contains(&0)
+            || elem_bit_count == 0
+            || !elem_bit_count.is_multiple_of(8)
+        {
             return Err(Error::InvalidSchema(format!(
                 "invalid array channel '{name}': elem_bit_count={elem_bit_count} dims={dims:?}"
             )));

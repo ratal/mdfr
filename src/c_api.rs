@@ -1,4 +1,5 @@
 //! C API
+#![allow(clippy::missing_safety_doc)]
 use crate::mdfreader::Mdf;
 use arrow::ffi::{FFI_ArrowArray, to_ffi};
 use libc::c_char;
@@ -362,10 +363,10 @@ pub unsafe extern "C" fn export_to_hdf5(
                 Err(_) => return,
             }
         };
-        if let Some(mdf) = mdf.as_ref() {
-            if let Err(e) = mdf.export_to_hdf5(name, comp) {
-                log::error!("export_to_hdf5 failed: {e}");
-            }
+        if let Some(mdf) = mdf.as_ref()
+            && let Err(e) = mdf.export_to_hdf5(name, comp)
+        {
+            log::error!("export_to_hdf5 failed: {e}");
         }
     }
 }

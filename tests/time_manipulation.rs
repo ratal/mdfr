@@ -146,19 +146,19 @@ fn keep_channels_drops_others() -> Result<()> {
 
     assert!(
         mdf.get_channel_data(&keep_a)
-            .map(|d| d.len() > 0)
+            .map(|d| !d.is_empty())
             .unwrap_or(false),
         "kept channel A has no data"
     );
     assert!(
         mdf.get_channel_data(&keep_b)
-            .map(|d| d.len() > 0)
+            .map(|d| !d.is_empty())
             .unwrap_or(false),
         "kept channel B has no data"
     );
     let dropped_empty = mdf
         .get_channel_data(&dropped)
-        .map(|d| d.len() == 0)
+        .map(|d| d.is_empty())
         .unwrap_or(true);
     assert!(dropped_empty, "dropped channel still has data");
     Ok(())
@@ -173,8 +173,7 @@ fn keep_channels_preserves_master() -> Result<()> {
         .mdf_info
         .get_channel_names_cg_set(&master)
         .into_iter()
-        .filter(|n| n != &master)
-        .next()
+        .find(|n| n != &master)
         .expect("need at least one data channel");
 
     let master_len_before = mdf.get_channel_data(&master).map(|d| d.len()).unwrap_or(0);
@@ -377,8 +376,7 @@ fn datetimes_length_and_type() -> Result<()> {
         .mdf_info
         .get_channel_names_cg_set(&master)
         .into_iter()
-        .filter(|n| n != &master)
-        .next()
+        .find(|n| n != &master)
         .expect("need a data channel");
 
     let master_len = mdf.get_channel_data(&master).map(|d| d.len()).unwrap_or(0);

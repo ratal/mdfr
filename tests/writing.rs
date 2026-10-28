@@ -34,7 +34,7 @@ fn writing_mdf4() -> Result<()> {
     let file = format!(
         "{}{}",
         BASE_PATH_MDF4.as_str(),
-        &"Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
+        "Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
     );
     let ref_channel = r"NO";
     let mut mdf = Mdf::new(&file)?;
@@ -75,7 +75,7 @@ fn writing_mdf4_many_channels() -> Result<()> {
     let writing_mdf_file = tmp_file.path().to_str().unwrap().to_string();
 
     // write file with many channels
-    let file = format!("{}{}", BASE_PATH_MDF4.as_str(), &"Simple/test.mf4");
+    let file = format!("{}{}", BASE_PATH_MDF4.as_str(), "Simple/test.mf4");
     let ref_channel = r"C90 CG21 in error.mdf";
     let mut mdf = Mdf::new(&file)?;
     mdf.load_all_channels_data_in_memory()?;
@@ -118,7 +118,7 @@ fn mdf3_to_mdf4_conversion() -> Result<()> {
     let file = format!(
         "{}{}",
         BASE_PATH_MDF3.as_str(),
-        &"RJ_N16-12-363_BM-15C-0024_228_2_20170116094355_CAN.dat"
+        "RJ_N16-12-363_BM-15C-0024_228_2_20170116094355_CAN.dat"
     );
     let mut mdf = Mdf::new(&file)?;
     mdf.load_all_channels_data_in_memory()?;
@@ -138,7 +138,7 @@ fn mdf_modifications() -> Result<()> {
     let file = format!(
         "{}{}",
         BASE_PATH_MDF4.as_str(),
-        &"Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
+        "Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
     );
     let ref_channel = r"PANS";
     let ref_desc = r"tralala";
@@ -194,7 +194,7 @@ fn mdf_add_channel() -> Result<()> {
     let file = format!(
         "{}{}",
         BASE_PATH_MDF4.as_str(),
-        &"Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
+        "Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
     );
     let ref_channel = r"PANS";
     let ref_desc = r"tralala";

@@ -18,7 +18,7 @@ default = ["numpy", "parquet", "polars", "cli"]
 # links against libpython, enabling embedded-Python tests.  maturin auto-enables this.
 extension-module = ["pyo3/extension-module"]
 numpy = ["dep:numpy", "dep:pyo3", "arrow/pyarrow"]
-polars = ["dep:polars", "dep:numpy", "dep:pyo3", "arrow/pyarrow"] # numpy and pyo3 are required transitive deps for polars Python interop
+polars = ["dep:polars", "numpy"] # numpy and pyo3 are required transitive deps for polars Python interop
 parquet = ["dep:parquet"]
 cli = ["dep:clap", "dep:env_logger"]
 hdf5 = ["dep:rust-hdf5"]

@@ -218,6 +218,7 @@ macro_rules! tensor_arrow_to_ndarray {
         #[cfg(feature = "ndarray")]
         impl TensorArrow<$arrow_type> {
             /// to convert TensorArrow into ndarray
+            #[allow(dead_code)]
             pub fn to_ndarray(&self) -> Result<Array<$rust_type, IxDyn>, Error> {
                 let vector: Vec<$rust_type> =
                     self.values_builder.values_slice().iter().copied().collect();

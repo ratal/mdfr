@@ -190,7 +190,7 @@ impl Ca4Block {
         buffer
             .write_le(&self.ca_composition)
             .map_err(|_| Error::Io)?;
-        for opt in [
+        for vals in [
             &self.ca_data,
             &self.ca_dynamic_size,
             &self.ca_input_quantity,
@@ -198,11 +198,12 @@ impl Ca4Block {
             &self.ca_comparison_quantity,
             &self.ca_cc_axis_conversion,
             &self.ca_axis,
-        ] {
-            if let Some(vals) = opt {
-                for val in vals {
-                    buffer.write_le(val).map_err(|_| Error::Io)?;
-                }
+        ]
+        .into_iter()
+        .flatten()
+        {
+            for val in vals {
+                buffer.write_le(val).map_err(|_| Error::Io)?;
             }
         }
         buffer.write_le(&self.ca_type).map_err(|_| Error::Io)?;

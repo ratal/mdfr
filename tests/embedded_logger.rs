@@ -676,22 +676,68 @@ fn asammdf_cross_check_if_available() -> Result<()> {
     for (layout, algo) in [
         (DataLayout::Sorted, CompressionAlgorithm::NoCompression),
         (DataLayout::Sorted, CompressionAlgorithm::DeflateTranspose),
+        (DataLayout::Sorted, CompressionAlgorithm::Lz4Transpose),
         (DataLayout::Unsorted, CompressionAlgorithm::NoCompression),
+        (DataLayout::Unsorted, CompressionAlgorithm::DeflateTranspose),
     ] {
         let mut b = LoggerBuilder::new(layout, algo);
         let g0 = b.add_group("Vehicle");
         let ch_v = b.add_channel(g0, "Velocity", CnDataType::FloatLE, 64)?;
         b.set_channel_unit(ch_v, "m/s")?;
+
+        let ch_curr = b.add_channel(g0, "Current", CnDataType::IntLE, 16)?;
+        b.set_channel_conversion(
+            ch_curr,
+            ConversionDef::Linear {
+                p1: -100.0,
+                p2: 0.1,
+            },
+        )?;
+        b.set_channel_unit(ch_curr, "A")?;
+
+        let ch_press = b.add_channel(g0, "Pressure", CnDataType::UIntLE, 16)?;
+        b.set_channel_conversion(
+            ch_press,
+            ConversionDef::Rational([0.0, 0.5, 0.0, 0.0, 0.0, 1.0]),
+        )?;
+        b.set_channel_unit(ch_press, "bar")?;
+
+        let ch_status = b.add_channel(g0, "StatusByte", CnDataType::UIntLE, 8)?;
+        let ch_raw = b.add_channel(g0, "RawPayload", CnDataType::ByteArray, 32)?;
+        let ch_flag = b.add_bit_channel(g0, "StatusFlag", CnDataType::UIntLE, 25, 0, 1)?;
+
+        let g_pt = b.add_record_group::<PowertrainRecord>()?;
+
         let schema = b.build()?;
 
         let tmp = tempfile::Builder::new().suffix(".mf4").tempfile()?;
         let clock = ManualClock::new(0.01, 1);
         let mut logger = Logger::start(schema, tmp.reopen()?, clock)?;
-        for i in 0..25 {
+        for i in 0..25u64 {
             logger
                 .begin_record(g0)?
                 .set_f64(ch_v, i as f64 * 1.5)?
+                .set_i64(ch_curr, (i * 10) as i64)?
+                .set_u64(ch_press, 100 + i * 5)?
+                .set_u64(ch_status, i % 256)?
+                .set_u64(ch_flag, i % 2)?
+                .set_bytes(
+                    ch_raw,
+                    &[i as u8, (i + 1) as u8, (i + 2) as u8, (i + 3) as u8],
+                )?
                 .commit()?;
+
+            if i < 20 {
+                let rec = PowertrainRecord {
+                    rpm_raw: 4000 + i as u16 * 40,
+                    torque_raw: 400 + i as i16 * 2,
+                    throttle: 25.0 + i as f32 * 0.5,
+                    gear: (i % 6) as u8,
+                    fault: i % 2 == 1,
+                    raw_frame: [i as u8, (i + 1) as u8, (i + 2) as u8, (i + 3) as u8],
+                };
+                logger.push_record(g_pt, &rec)?;
+            }
         }
         logger.close()?;
 
@@ -707,10 +753,50 @@ fn asammdf_cross_check_if_available() -> Result<()> {
                         r#"
 from asammdf import MDF
 m = MDF(path)
+
+# 1. Float channel
 sig = m.get("Velocity")
-assert len(sig.samples) == 25, f"expected 25 samples, got {len(sig.samples)}"
-assert abs(float(sig.samples[0]) - 0.0) < 1e-6
-assert abs(float(sig.samples[24]) - 36.0) < 1e-6
+assert len(sig.samples) == 25, f"Velocity len: {len(sig.samples)}"
+assert abs(float(sig.samples[0]) - 0.0) < 1e-5
+assert abs(float(sig.samples[24]) - 36.0) < 1e-5
+
+# 2. Linear converted channel: phys = -100.0 + 0.1 * (i * 10) = -100.0 + i
+sig_c = m.get("Current")
+assert len(sig_c.samples) == 25, f"Current len: {len(sig_c.samples)}"
+assert abs(float(sig_c.samples[0]) - (-100.0)) < 1e-4
+assert abs(float(sig_c.samples[24]) - (-76.0)) < 1e-4
+
+# 3. Rational converted channel: phys = 0.5 * (100 + i * 5) = 50.0 + 2.5 * i
+sig_p = m.get("Pressure")
+assert len(sig_p.samples) == 25, f"Pressure len: {len(sig_p.samples)}"
+assert abs(float(sig_p.samples[0]) - 50.0) < 1e-4
+assert abs(float(sig_p.samples[24]) - 110.0) < 1e-4
+
+# 4. StatusByte and bit-channel
+sig_s = m.get("StatusByte")
+assert int(sig_s.samples[0]) == 0
+assert int(sig_s.samples[24]) == 24
+
+sig_f = m.get("StatusFlag")
+assert int(sig_f.samples[0]) == 0
+assert int(sig_f.samples[1]) == 1
+
+# 5. #[derive(MdfRecord)] struct channels
+sig_rpm = m.get("EngineSpeed")
+assert len(sig_rpm.samples) == 20
+assert abs(float(sig_rpm.samples[0]) - 1000.0) < 1e-4
+assert abs(float(sig_rpm.samples[19]) - 1190.0) < 1e-4
+
+sig_trq = m.get("Torque")
+assert len(sig_trq.samples) == 20
+assert abs(float(sig_trq.samples[0]) - 100.0) < 1e-4
+assert abs(float(sig_trq.samples[19]) - 119.0) < 1e-4
+
+sig_th = m.get("Throttle")
+assert len(sig_th.samples) == 20
+assert abs(float(sig_th.samples[0]) - 25.0) < 1e-4
+assert abs(float(sig_th.samples[19]) - 34.5) < 1e-4
+
 m.close()
 "#
                     ),
