@@ -29,6 +29,12 @@ pub enum Error {
 /// Result alias for the core.
 pub type Result<T> = core::result::Result<T, Error>;
 
+impl From<binrw::Error> for Error {
+    fn from(e: binrw::Error) -> Self {
+        Error::InvalidBlock(alloc::format!("{e}"))
+    }
+}
+
 impl Error {
     /// Stable integer code for the C API (0 is success).
     pub fn code(&self) -> i32 {

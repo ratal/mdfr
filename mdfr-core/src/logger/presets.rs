@@ -136,4 +136,27 @@ impl BusPreset {
         builder.add_vlsd_channel(group, "ETH_Frame.DataBytes", CnDataType::ByteArray)?;
         Ok(group)
     }
+
+    /// Adds a FlexRay frame group (`ID`, `Cycle`, `Channel`, `PayloadLength`, VLSD `DataBytes`)
+    /// with `SIBLOCK(Bus, FlexRay)`.
+    pub fn flexray(builder: &mut LoggerBuilder, bus_name: &str) -> Result<GroupHandle> {
+        let g_name = alloc::format!("{bus_name}_FLX_Frame");
+        let group = builder.add_group(&g_name);
+        builder.set_group_source(
+            group,
+            SourceDef {
+                name: alloc::string::String::from(bus_name),
+                path: Some(alloc::format!("{bus_name}/FLX_Frame")),
+                si_type: 2,
+                si_bus_type: 5, // FlexRay
+                si_flags: 0,
+            },
+        )?;
+        builder.add_channel(group, "FLX_Frame.ID", CnDataType::UIntLE, 16)?;
+        builder.add_channel(group, "FLX_Frame.Cycle", CnDataType::UIntLE, 8)?;
+        builder.add_channel(group, "FLX_Frame.Channel", CnDataType::UIntLE, 8)?;
+        builder.add_channel(group, "FLX_Frame.PayloadLength", CnDataType::UIntLE, 8)?;
+        builder.add_vlsd_channel(group, "FLX_Frame.DataBytes", CnDataType::ByteArray)?;
+        Ok(group)
+    }
 }

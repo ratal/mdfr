@@ -119,4 +119,3 @@ mod tests {
         assert!(display.contains("elements=5"));
     }
 }
-

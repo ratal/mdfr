@@ -45,6 +45,7 @@ extern "C" {
 #define MDFR_BUS_CAN_FD            1
 #define MDFR_BUS_LIN               2
 #define MDFR_BUS_ETHERNET          3
+#define MDFR_BUS_FLEXRAY           4
 
 typedef struct MdfrBuilderHandle MdfrBuilderHandle;
 typedef struct MdfrLoggerHandle MdfrLoggerHandle;
@@ -148,6 +149,9 @@ int32_t mdfr_logger_record_commit(MdfrLoggerHandle *logger, uint16_t group);
 int32_t mdfr_logger_checkpoint(MdfrLoggerHandle *logger);
 int32_t mdfr_logger_rotate(MdfrLoggerHandle *logger, MdfrSinkVtable new_sink);
 int32_t mdfr_logger_close(MdfrLoggerHandle *logger);
+
+int32_t mdfr_heap_init(uint8_t *buf, size_t len);
+const char *mdfr_error_str(int32_t err);
 
 /* POSIX / std convenience helpers (available when linked with libmdfr) */
 MdfrLoggerHandle *mdfr_logger_open(

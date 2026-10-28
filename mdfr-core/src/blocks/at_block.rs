@@ -182,4 +182,3 @@ mod tests {
         assert!(format!("{at}").contains("external"));
     }
 }
-

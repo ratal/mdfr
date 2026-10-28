@@ -7,6 +7,7 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
+pub mod arena;
 pub mod blocks;
 pub mod compress;
 pub mod error;

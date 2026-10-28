@@ -151,4 +151,3 @@ mod tests {
         assert!(display.contains("cycle_count=1000"));
     }
 }
-

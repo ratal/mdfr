@@ -29,6 +29,18 @@ pub struct VecSink {
     pos: usize,
 }
 
+impl VecSink {
+    /// Returns the current cursor byte position.
+    pub fn position(&self) -> u64 {
+        self.pos as u64
+    }
+
+    /// Returns a slice of the written bytes.
+    pub fn as_slice(&self) -> &[u8] {
+        &self.data
+    }
+}
+
 impl Sink for VecSink {
     fn write_all(&mut self, buf: &[u8]) -> Result<()> {
         let end = self.pos + buf.len();

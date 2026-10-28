@@ -14,6 +14,7 @@ deflate = ["dep:miniz_oxide"]
 lz4 = ["dep:lz4_flex"]
 zstd = ["std", "dep:zstd"]
 capi = []
+capi-arena = ["capi"]
 
 [dependencies]
 binrw = { version = "0.15.2", default-features = false }

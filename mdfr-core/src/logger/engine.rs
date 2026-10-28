@@ -1303,6 +1303,11 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
     pub fn sink(&self) -> &S {
         &self.sink
     }
+
+    /// Consumes the logger without finalizing `IdBlock` (useful for power-loss recovery tests on `VecSink`).
+    pub fn into_sink_unfinalized(self) -> S {
+        self.sink
+    }
 }
 
 /// Ergonomic dynamic record builder returned by [`Logger::begin_record`].

@@ -238,4 +238,3 @@ mod tests {
         assert_eq!(ev.calculate_block_size(), 120);
     }
 }
-

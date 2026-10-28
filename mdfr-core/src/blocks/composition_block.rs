@@ -199,4 +199,3 @@ mod tests {
         assert!(format!("{cu}").contains("5 members"));
     }
 }
-

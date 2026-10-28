@@ -288,7 +288,7 @@ pub unsafe extern "C" fn mdfr_logger_set_channel_unit(
     }
 }
 
-/// Adds an ASAM bus logging preset group (`bus_kind`: `0` = CAN, `1` = CAN-FD, `2` = LIN, `3` = Ethernet).
+/// Adds an ASAM bus logging preset group (`bus_kind`: `0` = CAN, `1` = CAN-FD, `2` = LIN, `3` = Ethernet, `4` = FlexRay).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mdfr_logger_add_bus_preset(
     builder: *mut MdfrBuilderHandle,
@@ -307,6 +307,7 @@ pub unsafe extern "C" fn mdfr_logger_add_bus_preset(
         1 => BusPreset::can_fd(&mut b.0, name_str).map(|h| h.group),
         2 => BusPreset::lin(&mut b.0, name_str),
         3 => BusPreset::ethernet(&mut b.0, name_str),
+        4 => BusPreset::flexray(&mut b.0, name_str),
         _ => return -5,
     };
     match res {
@@ -320,6 +321,36 @@ pub unsafe extern "C" fn mdfr_logger_add_bus_preset(
         }
         Err(e) => e.code(),
     }
+}
+
+/// Optional: initializes the dedicated `mdfr-core` static arena with a caller-provided static buffer `[buf..buf+len)`.
+/// If not called, `capi-arena` automatically uses its built-in 64 KiB `.bss` arena.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mdfr_heap_init(buf: *mut u8, len: usize) -> i32 {
+    if unsafe { crate::arena::GLOBAL_ARENA.init_custom(buf, len) } {
+        0
+    } else {
+        -3
+    }
+}
+
+/// Returns a static null-terminated ASCII description for an `MDFR_ERR_*` code.
+#[unsafe(no_mangle)]
+pub extern "C" fn mdfr_error_str(err: i32) -> *const c_char {
+    let bytes: &'static [u8] = match err {
+        0 => b"OK\0",
+        -1 => b"I/O error on sink\0",
+        -2 => b"block serialization error\0",
+        -3 => b"invalid schema or null pointer\0",
+        -4 => b"invalid channel or group handle\0",
+        -5 => b"unsupported feature\0",
+        -6 => b"compression error\0",
+        -7 => b"SPSC ring buffer is full\0",
+        -8 => b"logger is already closed\0",
+        -9 => b"record byte length mismatch\0",
+        _ => b"unknown error\0",
+    };
+    bytes.as_ptr() as *const c_char
 }
 
 /// Consumes `builder`, writes the MDF 4.3 header hierarchy to `sink`, and returns an active [`MdfrLoggerHandle`].
