@@ -5,6 +5,7 @@ description = "no_std core of mdfr: MDF 4.3 block model, codecs and embedded log
 authors = ["ratal <ratal@ratal.org>"]
 edition = "2024"
 license = "GPL-3.0"
+readme = "README.md"
 publish = false
 
 [features]
