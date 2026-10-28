@@ -2160,6 +2160,7 @@ dependencies = [
  "log",
  "lz4",
  "md-5",
+ "mdfr-core",
  "ndarray",
  "num",
  "numpy",
@@ -2178,6 +2179,15 @@ dependencies = [
  "unicode-bom",
  "whoami",
  "zstd 0.14.3",
+]
+
+[[package]]
+name = "mdfr-core"
+version = "0.8.0"
+dependencies = [
+ "binrw",
+ "log",
+ "thiserror",
 ]
 
 [[package]]

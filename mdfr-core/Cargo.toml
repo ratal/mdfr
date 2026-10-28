@@ -1,0 +1,20 @@
+[package]
+name = "mdfr-core"
+version = "0.8.0"
+description = "no_std core of mdfr: MDF 4.3 block model, codecs and embedded logger"
+authors = ["ratal <ratal@ratal.org>"]
+edition = "2024"
+license = "GPL-3.0"
+publish = false
+
+[features]
+default = []
+std = ["binrw/std", "thiserror/std", "log/std"]
+
+[dependencies]
+binrw = { version = "0.15.2", default-features = false }
+thiserror = { version = "2", default-features = false }
+log = { version = "0.4", default-features = false }
+
+[lib]
+crate-type = ["rlib"]

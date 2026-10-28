@@ -24,6 +24,7 @@ hdf5 = ["dep:rust-hdf5"]
 ndarray = ["dep:ndarray"]
 
 [dependencies]
+mdfr-core = { path = "mdfr-core", features = ["std"] }
 clap = { version = "4.6.7", optional = true } # for input arguments (cli feature)
 anyhow = { version = "1.0.104", features = ["backtrace"] } # error handling
 log = "0.4.34" # to log events
@@ -112,3 +113,5 @@ opt-level = 0
 
 [profile.test]
 opt-level=1
+[workspace]
+members = ["mdfr-core"]
