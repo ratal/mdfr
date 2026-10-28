@@ -14,18 +14,16 @@ fn read_proc_status() -> std::collections::HashMap<String, u64> {
     let mut map = std::collections::HashMap::new();
     if let Ok(content) = fs::read_to_string("/proc/self/status") {
         for line in content.lines() {
-            if let Some(rest) = line.strip_prefix("VmPeak:") {
-                if let Some(val) = rest.trim().split_whitespace().next() {
-                    if let Ok(kb) = val.parse::<u64>() {
-                        map.insert("VmPeak".to_string(), kb);
-                    }
-                }
-            } else if let Some(rest) = line.strip_prefix("VmRSS:") {
-                if let Some(val) = rest.trim().split_whitespace().next() {
-                    if let Ok(kb) = val.parse::<u64>() {
-                        map.insert("VmRSS".to_string(), kb);
-                    }
-                }
+            if let Some(rest) = line.strip_prefix("VmPeak:")
+                && let Some(val) = rest.split_whitespace().next()
+                && let Ok(kb) = val.parse::<u64>()
+            {
+                map.insert("VmPeak".to_string(), kb);
+            } else if let Some(rest) = line.strip_prefix("VmRSS:")
+                && let Some(val) = rest.split_whitespace().next()
+                && let Ok(kb) = val.parse::<u64>()
+            {
+                map.insert("VmRSS".to_string(), kb);
             }
         }
     }
