@@ -30,6 +30,19 @@ pub struct VecSink {
 }
 
 impl VecSink {
+    /// Creates an empty [`VecSink`].
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Creates an empty [`VecSink`] with pre-allocated capacity.
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            data: alloc::vec::Vec::with_capacity(capacity),
+            pos: 0,
+        }
+    }
+
     /// Returns the current cursor byte position.
     pub fn position(&self) -> u64 {
         self.pos as u64

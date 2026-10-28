@@ -342,3 +342,345 @@ fn c_api_roundtrip_and_spsc_drain() -> Result<()> {
 
     Ok(())
 }
+
+#[test]
+fn roundtrip_bitpacked_rational_2d_array_and_all_bus_presets() -> Result<()> {
+    use mdfr_core::logger::{ChannelHandle, SpscRing};
+
+    let mut b = LoggerBuilder::new(DataLayout::Sorted, CompressionAlgorithm::NoCompression);
+    let g_bits = b.add_group("BitPackedGroup");
+    // 3-bit + 5-bit = 1 byte; 12-bit signed + 4-bit unsigned = 2 bytes
+    let ch_u3 = b.add_channel(g_bits, "Flag3Bit", CnDataType::UIntLE, 3)?;
+    let ch_u5 = b.add_channel(g_bits, "Counter5Bit", CnDataType::UIntLE, 5)?;
+    let ch_i12 = b.add_channel(g_bits, "Signed12Bit", CnDataType::IntLE, 12)?;
+    let ch_u4 = b.add_channel(g_bits, "Mode4Bit", CnDataType::UIntLE, 4)?;
+    let ch_rat = b.add_channel(g_bits, "RationalSensor", CnDataType::UIntLE, 16)?;
+    // Rational: Y = (0*X^2 + 2.0*X + 10.0) / (0*X^2 + 0*X + 1.0) = 2*X + 10
+    b.set_channel_conversion(
+        ch_rat,
+        ConversionDef::Rational([0.0, 2.0, 10.0, 0.0, 0.0, 1.0]),
+    )?;
+    let ch_mat = b.add_array_channel(g_bits, "Matrix2x3", CnDataType::UIntLE, 8, vec![2, 3])?;
+
+    let can_fd = BusPreset::can_fd(&mut b, "CANFD_Bus")?;
+    let g_lin = BusPreset::lin(&mut b, "LIN_Bus")?;
+    let g_flexray = BusPreset::flexray(&mut b, "FlexRay_Bus")?;
+    let g_eth = BusPreset::ethernet(&mut b, "ETH_Bus")?;
+
+    // Raw fixed-size group for push_raw_at & SpscRing
+    let g_raw = b.add_group("FastRaw");
+    let _ch_raw_val = b.add_channel(g_raw, "RawVal", CnDataType::UIntLE, 32)?;
+
+    let schema = b.build()?;
+    let tmp = tempfile::Builder::new().suffix(".mf4").tempfile()?;
+    let clock = ManualClock::new(0.001, 1);
+    let mut logger = Logger::start(schema, tmp.reopen()?, clock)?;
+
+    for i in 0..20u64 {
+        let mat: [u8; 6] = [
+            i as u8,
+            (i + 1) as u8,
+            (i + 2) as u8,
+            (i + 3) as u8,
+            (i + 4) as u8,
+            (i + 5) as u8,
+        ];
+        logger
+            .begin_record(g_bits)?
+            .set_u64(ch_u3, i & 0x07)?
+            .set_u64(ch_u5, (i * 2) & 0x1F)?
+            .set_i64(ch_i12, -100 + i as i64 * 10)?
+            .set_u64(ch_u4, i & 0x0F)?
+            .set_u64(ch_rat, i * 5)?
+            .set_bytes(ch_mat, &mat)?
+            .commit()?;
+
+        let fd_payload = [0xAAu8; 64];
+        logger
+            .begin_record_at(can_fd.group, 1000 + i * 10)?
+            .set_u64(can_fd.bus_channel, 1)?
+            .set_u64(can_fd.can_id, 0x18FF_1234)?
+            .set_u64(can_fd.dir, 1)?
+            .set_u64(can_fd.dlc, 15)?
+            .set_u64(can_fd.data_length, 64)?
+            .set_bytes(can_fd.data_bytes, &fd_payload)?
+            .commit()?;
+
+        let lin_payload = [0x55u8; 8];
+        logger
+            .begin_record(g_lin)?
+            .set_u64(ChannelHandle { group: g_lin.0, channel: 1 }, 0x2A)?
+            .set_u64(ChannelHandle { group: g_lin.0, channel: 2 }, 8)?
+            .set_u64(ChannelHandle { group: g_lin.0, channel: 3 }, 8)?
+            .set_bytes(ChannelHandle { group: g_lin.0, channel: 4 }, &lin_payload)?
+            .commit()?;
+
+        let fr_payload = [0x33u8; 12];
+        logger
+            .begin_record(g_flexray)?
+            .set_u64(ChannelHandle { group: g_flexray.0, channel: 1 }, 15)?
+            .set_u64(ChannelHandle { group: g_flexray.0, channel: 2 }, i & 0x3F)?
+            .set_u64(ChannelHandle { group: g_flexray.0, channel: 3 }, 0)?
+            .set_u64(ChannelHandle { group: g_flexray.0, channel: 4 }, 12)?
+            .set_bytes(ChannelHandle { group: g_flexray.0, channel: 5 }, &fr_payload)?
+            .commit()?;
+
+        let eth_payload = [0x11u8; 32];
+        logger
+            .begin_record(g_eth)?
+            .set_bytes(
+                ChannelHandle { group: g_eth.0, channel: 1 },
+                &[0x00, 0x11, 0x22, 0x33, 0x44, 0x55],
+            )?
+            .set_bytes(
+                ChannelHandle { group: g_eth.0, channel: 2 },
+                &[0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF],
+            )?
+            .set_u64(ChannelHandle { group: g_eth.0, channel: 3 }, 0x0800)?
+            .set_u64(ChannelHandle { group: g_eth.0, channel: 4 }, 32)?
+            .set_bytes(ChannelHandle { group: g_eth.0, channel: 5 }, &eth_payload)?
+            .commit()?;
+    }
+
+    // Exercise SpscRing ISR queue + push_raw_at
+    let ring = SpscRing::with_capacity(1024);
+    for i in 0..10u32 {
+        let mut raw_rec = [0u8; 12]; // 8B master timestamp + 4B u32
+        raw_rec[8..12].copy_from_slice(&(1000 + i).to_le_bytes());
+        assert!(ring.try_push(g_raw, (500 + i as u64) * 10, &raw_rec));
+    }
+    assert_eq!(ring.drain_into(&mut logger)?, 10);
+    // Also exercise push_raw_at directly (patches master timestamp at bytes 0..8)
+    let mut raw_rec = [0u8; 12];
+    raw_rec[8..12].copy_from_slice(&2000u32.to_le_bytes());
+    logger.push_raw_at(g_raw, 9999, &raw_rec)?;
+
+    logger.close()?;
+
+    let mut mdf = Mdf::new(tmp.path().to_str().unwrap())?;
+    mdf.load_all_channels_data_in_memory()?;
+
+    // Verify bit-packed channels
+    if let Some(ChannelData::UInt8(arr)) = mdf.get_channel_data("Flag3Bit") {
+        let s = arr.values_slice();
+        assert_eq!(s.len(), 20);
+        for (i, &val) in s.iter().enumerate() {
+            assert_eq!(val, (i as u8) & 0x07);
+        }
+    } else {
+        panic!("Flag3Bit missing");
+    }
+
+    if let Some(ChannelData::UInt8(arr)) = mdf.get_channel_data("Counter5Bit") {
+        let s = arr.values_slice();
+        assert_eq!(s.len(), 20);
+        for (i, &val) in s.iter().enumerate() {
+            assert_eq!(val, ((i as u8) * 2) & 0x1F);
+        }
+    } else {
+        panic!("Counter5Bit missing");
+    }
+
+    if let Some(ChannelData::Int16(arr)) = mdf.get_channel_data("Signed12Bit") {
+        let s = arr.values_slice();
+        assert_eq!(s.len(), 20);
+        assert_eq!(s[0], -100);
+        assert_eq!(s[19], -100 + 190);
+    } else {
+        panic!("Signed12Bit missing");
+    }
+
+    // Verify Rational conversion: Y = 2*X + 10 where X = i * 5
+    if let Some(ChannelData::Float64(arr)) = mdf.get_channel_data("RationalSensor") {
+        let s = arr.values_slice();
+        assert_eq!(s.len(), 20);
+        assert!((s[0] - 10.0).abs() < 1e-6);
+        assert!((s[10] - (2.0 * 50.0 + 10.0)).abs() < 1e-6);
+    } else {
+        panic!("RationalSensor missing");
+    }
+
+    // Verify RawVal (10 via SpscRing + 1 via push_raw_at = 11)
+    if let Some(ChannelData::UInt32(arr)) = mdf.get_channel_data("RawVal") {
+        let s = arr.values_slice();
+        assert_eq!(s.len(), 11);
+        assert_eq!(s[0], 1000);
+        assert_eq!(s[9], 1009);
+        assert_eq!(s[10], 2000);
+    } else {
+        panic!("RawVal missing");
+    }
+
+    Ok(())
+}
+
+#[test]
+fn mid_record_truncation_and_on_device_recovery() -> Result<()> {
+    use std::io::{Seek, SeekFrom, Write};
+
+    // Build an uncompressed sorted file so records stream into a DTBLOCK, then simulate
+    // a mid-record power loss by writing partial record bytes and leaving hdr_len = 24.
+    let mut b = LoggerBuilder::new(DataLayout::Sorted, CompressionAlgorithm::NoCompression);
+    let g0 = b.add_group("PowerCutGroup");
+    b.set_group_flush_threshold(g0, 64)?;
+    let ch_v = b.add_channel(g0, "Voltage", CnDataType::UIntLE, 32)?;
+    let schema = b.build()?;
+
+    let tmp = tempfile::Builder::new().suffix(".mf4").tempfile()?;
+    let clock = ManualClock::new(0.001, 1);
+    let mut logger = Logger::start(schema, tmp.reopen()?, clock)?;
+
+    // Each record is 8B (time) + 4B (u32) = 12 bytes.
+    // Push 20 records (240 bytes -> flushes into DTBLOCK).
+    for i in 0..20u64 {
+        logger.begin_record(g0)?.set_u64(ch_v, 3300 + i)?.commit()?;
+    }
+    logger.checkpoint()?;
+    drop(logger); // Unfinalized!
+
+    // Append 7 stray bytes at EOF to simulate power loss mid-record, and reset the DTBLOCK
+    // hdr_len to 24 (header only) so recovery must infer the valid length from file size
+    // and truncate the partial record.
+    {
+        let mut f = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(tmp.path())?;
+        f.seek(SeekFrom::End(0))?;
+        f.write_all(&[0xDE, 0xAD, 0xBE, 0xEF, 0x01, 0x02, 0x03])?;
+        f.flush()?;
+    }
+
+    // Run `no_std` on-device recovery (`mdfr_core::logger::recover_in_place`) on a copy first
+    let tmp_copy = tempfile::Builder::new().suffix(".mf4").tempfile()?;
+    std::fs::copy(tmp.path(), tmp_copy.path())?;
+    {
+        let mut f_dev = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(tmp_copy.path())?;
+        let recovered = mdfr_core::logger::recover_in_place(&mut f_dev)
+            .expect("on-device recover_in_place failed");
+        assert!(recovered > 0);
+    }
+
+    let mut mdf_dev = Mdf::new(tmp_copy.path().to_str().unwrap())?;
+    assert!(!mdf_dev.mdf_info.is_unfinalized());
+    mdf_dev.load_all_channels_data_in_memory()?;
+    if let Some(ChannelData::UInt32(arr)) = mdf_dev.get_channel_data("Voltage") {
+        assert_eq!(arr.values_slice().len(), 20);
+        assert_eq!(arr.values_slice()[0], 3300);
+        assert_eq!(arr.values_slice()[19], 3319);
+    } else {
+        panic!("Voltage channel missing after on-device recovery");
+    }
+
+    // Also verify host-side `finalize_file_in_place` on the original truncated file
+    mdfr::mdfinfo::mdfinfo4::finalize::finalize_file_in_place(tmp.path().to_str().unwrap())?;
+    let mut mdf_host = Mdf::new(tmp.path().to_str().unwrap())?;
+    assert!(!mdf_host.mdf_info.is_unfinalized());
+    mdf_host.load_all_channels_data_in_memory()?;
+    if let Some(ChannelData::UInt32(arr)) = mdf_host.get_channel_data("Voltage") {
+        assert_eq!(arr.values_slice().len(), 20);
+        assert_eq!(arr.values_slice()[19], 3319);
+    } else {
+        panic!("Voltage channel missing after host finalize_file_in_place");
+    }
+
+    Ok(())
+}
+
+#[test]
+fn asammdf_cross_check_if_available() -> Result<()> {
+    use pyo3::prelude::*;
+    use pyo3::types::PyDict;
+
+    for (layout, algo) in [
+        (DataLayout::Sorted, CompressionAlgorithm::NoCompression),
+        (DataLayout::Sorted, CompressionAlgorithm::DeflateTranspose),
+        (DataLayout::Unsorted, CompressionAlgorithm::NoCompression),
+    ] {
+        let mut b = LoggerBuilder::new(layout, algo);
+        let g0 = b.add_group("Vehicle");
+        let ch_v = b.add_channel(g0, "Velocity", CnDataType::FloatLE, 64)?;
+        b.set_channel_unit(ch_v, "m/s")?;
+        let schema = b.build()?;
+
+        let tmp = tempfile::Builder::new().suffix(".mf4").tempfile()?;
+        let clock = ManualClock::new(0.01, 1);
+        let mut logger = Logger::start(schema, tmp.reopen()?, clock)?;
+        for i in 0..25 {
+            logger
+                .begin_record(g0)?
+                .set_f64(ch_v, i as f64 * 1.5)?
+                .commit()?;
+        }
+        logger.close()?;
+
+        let path_str = tmp.path().to_str().unwrap().to_string();
+
+        Python::attach(|py| -> PyResult<()> {
+            // Check if asammdf is installed in the current Python environment
+            if py.import("asammdf").is_ok() {
+                let locals = PyDict::new(py);
+                locals.set_item("path", &path_str)?;
+                py.run(
+                    pyo3::ffi::c_str!(
+                        r#"
+from asammdf import MDF
+m = MDF(path)
+sig = m.get("Velocity")
+assert len(sig.samples) == 25, f"expected 25 samples, got {len(sig.samples)}"
+assert abs(float(sig.samples[0]) - 0.0) < 1e-6
+assert abs(float(sig.samples[24]) - 36.0) < 1e-6
+m.close()
+"#
+                    ),
+                    None,
+                    Some(&locals),
+                )?;
+            }
+            Ok(())
+        })?;
+    }
+    Ok(())
+}
+
+#[test]
+fn no_std_cortex_m_cross_build() -> Result<()> {
+    use std::process::Command;
+
+    // Check if thumbv7em-none-eabihf is installed in rustup/rustc sysroot
+    let sysroot_out = Command::new("rustc")
+        .args(["--print", "target-libdir", "--target", "thumbv7em-none-eabihf"])
+        .output()?;
+    if !sysroot_out.status.success() {
+        return Ok(());
+    }
+    let libdir = String::from_utf8_lossy(&sysroot_out.stdout)
+        .trim()
+        .to_string();
+    if !std::path::Path::new(&libdir).exists() {
+        return Ok(());
+    }
+
+    let tmp_target = tempfile::tempdir()?;
+    let status = Command::new("cargo")
+        .args([
+            "check",
+            "--offline",
+            "--manifest-path",
+            concat!(env!("CARGO_MANIFEST_DIR"), "/mdfr-core/Cargo.toml"),
+            "--target",
+            "thumbv7em-none-eabihf",
+            "--features",
+            "capi-arena",
+        ])
+        .env("CARGO_TARGET_DIR", tmp_target.path())
+        .status()?;
+    assert!(
+        status.success(),
+        "no_std Cortex-M4F (thumbv7em-none-eabihf) cross-check failed"
+    );
+    Ok(())
+}
