@@ -1,92 +1,17 @@
-//! Channel Hierarchy block (CHBLOCK) for MDF4 — spec section 6.2, Tables 15-17
+//! Channel Hierarchy block (CHBLOCK) parsing for MDF4 — spec section 6.2, Tables 15-17
 //!
 //! CHBLOCKs organize channels into a display hierarchy tree (groups, functions,
 //! input/output variables). The hierarchy is separate from the DG→CG→CN data structure.
 use anyhow::{Context, Result, bail};
-use binrw::binrw;
 use std::collections::HashMap;
-use std::fmt::{self, Display};
 use std::fs::File;
 
-use super::block_header::{SharableBlocks, parse_block_short, read_meta_data};
+use super::block_header_impl::{SharableBlocks, parse_block_short, read_meta_data};
 use super::metadata::BlockType;
 use crate::mdfinfo::block_chain::BlockChain;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 
-/// CHBLOCK structure (MDF 4.2 spec, Table 15)
-#[derive(Debug, PartialEq, Eq, Default, Clone)]
-#[binrw]
-#[br(little)]
-#[repr(C)]
-pub struct Ch4Block {
-    // header
-    // ##CH
-    // ch_id [u8;4]
-    /// reserved
-    // reserved: [u8; 4],
-    /// Length of block in bytes
-    // pub ch_len: u64,
-    /// # of links
-    pub ch_links: u64,
-
-    // link section
-    /// link to next CHBLOCK at this hierarchy level
-    pub ch_ch_next: i64,
-    /// link to first CHBLOCK at the next hierarchy level (child)
-    pub ch_ch_first: i64,
-    /// link to TXBLOCK with the name of the hierarchy level
-    pub ch_tx_name: i64,
-    /// link to MDBLOCK with a comment/description
-    pub ch_md_comment: i64,
-    /// list of elements in this hierarchy level
-    #[br(count = ch_links.saturating_sub(4))]
-    pub ch_element: Vec<i64>,
-
-    // data section
-    /// number of elements in this hierarchy level (Nx3)
-    pub ch_element_count: u32,
-    /// hierarchy level type
-    pub ch_type: u8,
-    /// reserved
-    pub ch_reserved: [u8; 3],
-}
-
-impl Ch4Block {
-    /// Calculate the total block size (header + links + data)
-    pub fn calculate_block_size(&self) -> i64 {
-        // 16 (short header) + 8 (link count) + 8*ch_links (links) + 8 (data members)
-        16 + 8 + (self.ch_links * 8) as i64 + 8
-    }
-
-    /// Returns the hierarchy type as a string description
-    pub fn get_type_str(&self) -> &'static str {
-        match self.ch_type {
-            0 => "Group",
-            1 => "Function",
-            2 => "Structure",
-            3 => "Map list",
-            4 => "Input variables",
-            5 => "Output variables",
-            6 => "Local variables",
-            7 => "Defined calibration objects",
-            8 => "Referenced calibration objects",
-            _ => "Unknown",
-        }
-    }
-}
-
-impl Display for Ch4Block {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "CH: type={} ({}) elements={} children={}",
-            self.get_type_str(),
-            self.ch_type,
-            self.ch_element_count,
-            if self.ch_ch_first > 0 { "yes" } else { "no" }
-        )
-    }
-}
+pub use mdfr_core::blocks::ch_block::Ch4Block;
 
 /// parser Ch4Block
 fn parser_ch4_block(

@@ -19,16 +19,15 @@ use crate::data_holder::channel_data::ChannelData;
 use crate::mdfinfo::block_chain::BlockChain;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 
-use super::block_header::{
+use super::block_header_impl::{
     Blockheader4Short, SharableBlocks, parse_block_header_short, parse_block_short, read_meta_data,
 };
-use super::cn_block::{Cn4, CnType, parse_cn4};
-use super::composition::Compo;
+use super::cn_impl::{Cn4, CnType, parse_cn4};
+use super::composition_impl::Compo;
 use super::metadata::BlockType;
-
-use super::si_block::{Si4Block, Si4BlockExt};
-use super::sr_block::Sr4Block;
-pub use mdfr_core::blocks::cg::*;
+use super::si_impl::{Si4Block, Si4BlockExt};
+pub use mdfr_core::blocks::cg_block::*;
+use mdfr_core::blocks::sr_block::Sr4Block;
 
 /// Cg4 (Channel Group) block struct parser with linked comments Source Information in sharable blocks
 fn parse_cg4_block(

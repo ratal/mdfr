@@ -7,7 +7,7 @@ use chrono::Local;
 use std::fs::File;
 use std::io::{Cursor, Read};
 
-use super::block_header::{SharableBlocks, read_meta_data};
+use super::block_header_impl::{SharableBlocks, read_meta_data};
 use super::metadata::BlockType;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 

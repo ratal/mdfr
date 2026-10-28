@@ -4,42 +4,41 @@
 //! sub-modules per block type for maintainability.
 
 // Sub-modules
-pub mod at_block;
-mod block_header;
-mod ca_block;
-mod cc_block;
-mod cg_block;
-mod ch_block;
-mod cn_block;
-mod composition;
-mod data_block;
-mod dg_block;
-mod ev_block;
-mod fh_block;
+pub mod at_impl;
+mod block_header_impl;
+mod ca_impl;
+mod cc_impl;
+mod cg_impl;
+mod ch_impl;
+mod cn_impl;
+mod composition_impl;
+mod data_impl;
+mod dg_impl;
+mod ev_impl;
+mod fh_impl;
 pub mod finalize;
-mod hd_block;
+mod hd_impl;
 mod metadata;
 pub mod scanner;
-mod si_block;
-mod sr_block;
+mod si_impl;
 
 // Re-exports for backward compatibility
-pub use at_block::*;
-pub use block_header::*;
-pub use ca_block::*;
-pub use cc_block::*;
-pub use cg_block::*;
-pub use ch_block::*;
-pub use cn_block::*;
-pub use composition::*;
-pub use data_block::*;
-pub use dg_block::*;
-pub use ev_block::*;
-pub use fh_block::*;
-pub use hd_block::*;
+pub use at_impl::*;
+pub use block_header_impl::*;
+pub use ca_impl::*;
+pub use cc_impl::*;
+pub use cg_impl::*;
+pub use ch_impl::*;
+pub use cn_impl::*;
+pub use composition_impl::*;
+pub use data_impl::*;
+pub use dg_impl::*;
+pub use ev_impl::*;
+pub use fh_impl::*;
+pub use hd_impl::*;
+pub use mdfr_core::blocks::sr_block::*;
 pub use metadata::*;
-pub use si_block::*;
-pub use sr_block::*;
+pub use si_impl::*;
 
 use anyhow::{Context, Error, Result};
 use rustc_hash::FxHashMap;

@@ -9,9 +9,9 @@ use std::fmt;
 use std::fs::File;
 use std::io::{Cursor, Read};
 
-use super::cc_block::Cc4Block;
+use super::cc_impl::Cc4Block;
 use super::metadata::{BlockType, HdComment, MdComment, MetaData, MetaDataBlockType};
-use super::si_block::Si4Block;
+use super::si_impl::Si4Block;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 
 pub use mdfr_core::blocks::header::{Blockheader4, Blockheader4Short};

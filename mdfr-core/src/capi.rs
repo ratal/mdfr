@@ -391,6 +391,28 @@ pub unsafe extern "C" fn mdfr_logger_push_raw(
     }
 }
 
+/// Pushes a complete raw record (`len` bytes) with an explicit hardware tick timestamp `ticks`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mdfr_logger_push_raw_at(
+    logger: *mut MdfrLoggerHandle,
+    group: u16,
+    ticks: u64,
+    record_bytes: *const u8,
+    len: usize,
+) -> i32 {
+    let Some(l) = (unsafe { logger.as_mut() }) else {
+        return -3;
+    };
+    if record_bytes.is_null() {
+        return -3;
+    }
+    let slice = unsafe { slice::from_raw_parts(record_bytes, len) };
+    match l.0.push_raw_at(GroupHandle(group), ticks, slice) {
+        Ok(()) => 0,
+        Err(e) => e.code(),
+    }
+}
+
 /// Begins assembling a record for `group` (stamping the master time channel from the logger's clock).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mdfr_logger_record_begin(
@@ -401,6 +423,22 @@ pub unsafe extern "C" fn mdfr_logger_record_begin(
         return -3;
     };
     match l.0.begin_record(GroupHandle(group)) {
+        Ok(_) => 0,
+        Err(e) => e.code(),
+    }
+}
+
+/// Begins assembling a record for `group` with an explicit hardware tick timestamp `ticks`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mdfr_logger_record_begin_at(
+    logger: *mut MdfrLoggerHandle,
+    group: u16,
+    ticks: u64,
+) -> i32 {
+    let Some(l) = (unsafe { logger.as_mut() }) else {
+        return -3;
+    };
+    match l.0.begin_record_at(GroupHandle(group), ticks) {
         Ok(_) => 0,
         Err(e) => e.code(),
     }

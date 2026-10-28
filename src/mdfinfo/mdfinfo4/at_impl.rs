@@ -1,136 +1,21 @@
-//! Attachment block (ATBLOCK) for MDF4 — spec section 6.10, Table 47
+//! Attachment block (ATBLOCK) parsing for MDF4 — spec section 6.10, Table 47
 //!
 //! Stores or references external files (e.g. calibration data, images) attached to the MDF file.
 //! Attachments can be embedded or external, with optional MD5 checksum verification.
 use anyhow::{Context, Result, bail};
-use binrw::binrw;
 use log::warn;
 use md5::{Digest, Md5};
 use std::collections::HashMap;
-use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{Cursor, Read};
 
-use super::block_header::{SharableBlocks, read_meta_data};
-use super::data_block::decompress_data;
+use super::block_header_impl::{SharableBlocks, read_meta_data};
+use super::data_impl::decompress_data;
 use super::metadata::BlockType;
 use crate::mdfinfo::block_chain::BlockChain;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 
-/// At4 Attachment block struct
-#[derive(Debug, Copy, Clone)]
-#[binrw]
-#[br(little)]
-#[repr(C)]
-pub struct At4Block {
-    /// ##DG
-    at_id: [u8; 4],
-    /// reserved
-    reserved: [u8; 4],
-    /// Length of block in bytes
-    pub at_len: u64,
-    /// # of links
-    at_links: u64,
-    /// Link to next ATBLOCK (linked list) (can be NIL)
-    pub at_at_next: i64,
-    /// Link to TXBLOCK with the path and file name of the embedded or referenced file (can only be NIL if data is embedded). The path of the file can be relative or absolute. If relative, it is relative to the directory of the MDF file. If no path is given, the file must be in the same directory as the MDF file.
-    pub at_tx_filename: i64,
-    /// Link to TXBLOCK with MIME content-type text that gives information about the attached data. Can be NIL if the content-type is unknown, but should be specified whenever possible. The MIME content-type string must be written in lowercase.
-    pub at_tx_mimetype: i64,
-    /// Link to MDBLOCK with comment and additional information about the attachment (can be NIL).
-    pub at_md_comment: i64,
-    /// Flags The value contains the following bit flags (see AT_FL_xxx):
-    pub at_flags: u16,
-    /// Creator index, i.e. zero-based index of FHBLOCK in global list of FHBLOCKs that specifies which application has created this attachment, or changed it most recently.
-    pub at_creator_index: u16,
-    /// Compression algorithm used for embedded data
-    pub at_zip_type: u8,
-    /// File path format
-    pub at_path_syntax: u8,
-    /// Reserved
-    at_reserved: [u8; 2],
-    /// 128-bit value for MD5 check sum (of the uncompressed data if data is embedded and compressed). Only valid if "MD5 check sum valid" flag (bit 2) is set.
-    pub at_md5_checksum: [u8; 16],
-    /// Original data size in Bytes, i.e. either for external file or for uncompressed data.
-    pub at_original_size: u64,
-    /// Embedded data size N, i.e. number of Bytes for binary embedded data following this element. Must be 0 if external file is referenced.
-    pub at_embedded_size: u64,
-    // followed by embedded data depending of flag
-}
-
-impl Default for At4Block {
-    fn default() -> Self {
-        At4Block {
-            at_id: [35, 35, 65, 84], // ##AT
-            reserved: [0; 4],
-            at_len: 96,
-            at_links: 4,
-            at_at_next: 0,
-            at_tx_filename: 0,
-            at_tx_mimetype: 0,
-            at_md_comment: 0,
-            at_flags: 0,
-            at_creator_index: 0,
-            at_zip_type: 0,
-            at_path_syntax: 0,
-            at_reserved: [0; 2],
-            at_md5_checksum: [0; 16],
-            at_original_size: 0,
-            at_embedded_size: 0,
-        }
-    }
-}
-
-impl At4Block {
-    /// Returns true if this attachment has embedded data
-    pub fn is_embedded(&self) -> bool {
-        (self.at_flags & 0b1) > 0
-    }
-
-    /// Returns true if the data is compressed
-    pub fn is_compressed(&self) -> bool {
-        (self.at_flags & 0b10) > 0
-    }
-
-    /// Returns true if the MD5 checksum is valid
-    #[allow(dead_code)]
-    pub fn has_md5_checksum(&self) -> bool {
-        (self.at_flags & 0b100) > 0
-    }
-
-    /// Returns the compression type as a string description
-    pub fn get_compression_str(&self) -> &'static str {
-        if !self.is_compressed() {
-            return "None";
-        }
-        match self.at_zip_type {
-            0 | 1 => "Deflate",
-            2 | 3 => "Zstd",
-            4 | 5 => "LZ4",
-            _ => "Unknown",
-        }
-    }
-}
-
-impl Display for At4Block {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let storage = if self.is_embedded() {
-            "embedded"
-        } else {
-            "external"
-        };
-        let compression = self.get_compression_str();
-        write!(
-            f,
-            "AT: {} size={} original={} compression={} creator_index={}",
-            storage,
-            self.at_embedded_size,
-            self.at_original_size,
-            compression,
-            self.at_creator_index
-        )
-    }
-}
+pub use mdfr_core::blocks::at_block::At4Block;
 
 /// At4 (Attachment) block struct parser
 fn parser_at4_block(

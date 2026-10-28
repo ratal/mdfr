@@ -124,7 +124,16 @@ int32_t mdfr_logger_push_raw(
     size_t len
 );
 
+int32_t mdfr_logger_push_raw_at(
+    MdfrLoggerHandle *logger,
+    uint16_t group,
+    uint64_t ticks,
+    const uint8_t *record_bytes,
+    size_t len
+);
+
 int32_t mdfr_logger_record_begin(MdfrLoggerHandle *logger, uint16_t group);
+int32_t mdfr_logger_record_begin_at(MdfrLoggerHandle *logger, uint16_t group, uint64_t ticks);
 int32_t mdfr_logger_record_set_u64(MdfrLoggerHandle *logger, uint32_t ch_packed, uint64_t val);
 int32_t mdfr_logger_record_set_i64(MdfrLoggerHandle *logger, uint32_t ch_packed, int64_t val);
 int32_t mdfr_logger_record_set_f64(MdfrLoggerHandle *logger, uint32_t ch_packed, double val);

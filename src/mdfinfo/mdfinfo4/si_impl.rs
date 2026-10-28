@@ -4,7 +4,7 @@
 //! SIBLOCKs are sharable and stored in the SharableBlocks hashmap.
 use anyhow::Result;
 
-use super::block_header::SharableBlocks;
+use super::block_header_impl::SharableBlocks;
 
 pub use mdfr_core::blocks::si::Si4Block;
 

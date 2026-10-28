@@ -12,15 +12,14 @@ use rustc_hash::FxHashMap;
 use std::fmt::{self, Display};
 use std::fs::File;
 
-use super::block_header::{
+use super::block_header_impl::{
     Blockheader4Short, SharableBlocks, default_short_header, parse_block_short, read_meta_data,
 };
-use super::cc_block::read_cc;
-use super::composition::{Composition, parse_composition};
-use super::ev_block::{Ev4Block, parse_ev4_block};
+use super::cc_impl::read_cc;
+use super::composition_impl::{Composition, parse_composition};
+use super::ev_impl::{Ev4Block, parse_ev4_block};
 use super::metadata::BlockType;
-
-use super::si_block::{Si4Block, Si4BlockExt};
+use super::si_impl::{Si4Block, Si4BlockExt};
 pub use mdfr_core::blocks::cn::*;
 
 /// Cn4 structure containing block but also unique_name, ndarray data, composition

@@ -1,13 +1,55 @@
-//! MDF 4.x block model (pure data, no file I/O), shared by the reader, writer and logger.
-pub mod ca;
-pub mod cc;
-pub mod cg;
-pub mod cn;
-pub mod data;
-pub mod dg;
-pub mod fh;
-pub mod hd;
-pub mod header;
-pub mod id;
-pub mod si;
-pub mod tx;
+//! MDF 4.3 block definitions (`no_std + alloc`, `binrw` little-endian).
+pub mod at_block;
+pub mod block_header;
+pub mod ca_block;
+pub mod cc_block;
+pub mod cg_block;
+pub mod ch_block;
+pub mod cn_block;
+pub mod composition_block;
+pub mod data_block;
+pub mod dg_block;
+pub mod ev_block;
+pub mod fh_block;
+pub mod hd_block;
+pub mod id_block;
+pub mod si_block;
+pub mod sr_block;
+pub mod tx_block;
+
+// Short module aliases for ergonomic paths (`mdfr_core::blocks::cn`, etc.)
+pub use at_block as at;
+pub use block_header as header;
+pub use ca_block as ca;
+pub use cc_block as cc;
+pub use cg_block as cg;
+pub use ch_block as ch;
+pub use cn_block as cn;
+pub use composition_block as composition;
+pub use data_block as data;
+pub use dg_block as dg;
+pub use ev_block as ev;
+pub use fh_block as fh;
+pub use hd_block as hd;
+pub use id_block as id;
+pub use si_block as si;
+pub use sr_block as sr;
+pub use tx_block as tx;
+
+pub use at_block::*;
+pub use block_header::*;
+pub use ca_block::*;
+pub use cc_block::*;
+pub use cg_block::*;
+pub use ch_block::*;
+pub use cn_block::*;
+pub use composition_block::*;
+pub use data_block::*;
+pub use dg_block::*;
+pub use ev_block::*;
+pub use fh_block::*;
+pub use hd_block::*;
+pub use id_block::*;
+pub use si_block::*;
+pub use sr_block::*;
+pub use tx_block::*;

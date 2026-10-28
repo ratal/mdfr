@@ -23,7 +23,7 @@ use std::collections::BTreeMap;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 
-use super::cg_block::{CG_F_VLSC, CG_F_VLSD};
+use super::cg_impl::{CG_F_VLSC, CG_F_VLSD};
 use super::{Dg4, Dl4Block, Dt4Block, Dz4Block, Hl4Block};
 use crate::mdfinfo::IdBlock;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
@@ -242,7 +242,7 @@ fn append_dl_stream(
                         let mut comp = vec![0u8; dz.dz_data_length as usize];
                         rdr.read_exact(&mut comp)?;
                         *position += dz.dz_data_length as i64;
-                        if let Ok(decomp) = super::data_block::decompress_data(
+                        if let Ok(decomp) = super::data_impl::decompress_data(
                             dz.dz_zip_type,
                             dz.dz_zip_parameter,
                             comp,

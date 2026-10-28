@@ -7,7 +7,7 @@ use anyhow::{Context, Result};
 use std::fs::File;
 use std::io::Cursor;
 
-use super::block_header::{SharableBlocks, parse_block_short, read_meta_data};
+use super::block_header_impl::{SharableBlocks, parse_block_short, read_meta_data};
 use super::metadata::BlockType;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 

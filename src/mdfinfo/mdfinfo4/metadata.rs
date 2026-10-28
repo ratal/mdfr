@@ -10,7 +10,7 @@ use std::fmt::{self, Display};
 use std::io::{Seek, Write};
 use std::str;
 
-use super::block_header::Blockheader4;
+use super::block_header_impl::Blockheader4;
 
 /// metadata are either stored in TX (text) or MD (xml) blocks for mdf version 4
 #[derive(Debug, Clone, PartialEq, Eq)]

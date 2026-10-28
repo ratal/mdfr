@@ -7,7 +7,7 @@ use byteorder::{LittleEndian, ReadBytesExt};
 use std::collections::VecDeque;
 use std::io::Cursor;
 
-use super::block_header::Blockheader4Short;
+use super::block_header_impl::Blockheader4Short;
 use crate::data_holder::tensor_arrow::Order;
 
 /// type alias for Ca4Block parse result
