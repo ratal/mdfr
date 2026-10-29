@@ -155,6 +155,7 @@ impl<T: embedded_io::Write + embedded_io::Seek> Sink for EmbeddedIoSink<T> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "embedded-io")]
     use super::*;
 
     #[cfg(feature = "embedded-io")]

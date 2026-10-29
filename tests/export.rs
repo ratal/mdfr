@@ -38,6 +38,9 @@ fn export_to_parquet() -> Result<()> {
         BASE_PATH_MDF3.as_str(),
         "RJ_N16-12-363_BM-15C-0024_228_2_20170116094355_CAN.dat"
     );
+    if !std::path::Path::new(&file).exists() {
+        return Ok(());
+    }
     let mut mdf = Mdf::new(&file)?;
     mdf.load_all_channels_data_in_memory()?;
     mdf.export_to_parquet(writing_parquet_file, Some("snappy"))

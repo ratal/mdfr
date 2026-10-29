@@ -560,3 +560,105 @@ impl LoggerBuilder {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_schema_empty_fails() {
+        let builder = LoggerBuilder::new(DataLayout::Sorted, CompressionAlgorithm::NoCompression);
+        assert!(builder.build().is_err());
+    }
+
+    #[test]
+    fn test_schema_full_features() {
+        let mut builder = LoggerBuilder::new(DataLayout::Sorted, CompressionAlgorithm::Deflate);
+        builder.max_blocks_per_dl(16);
+        builder.checkpoint_every_n_blocks(4);
+
+        let g = builder.add_group_with_master("Powertrain", "CustomTime");
+        builder.set_group_flush_threshold(g, 64 * 1024).expect("flush threshold");
+
+        // Source
+        builder.set_group_source(
+            g,
+            SourceDef {
+                name: "ECU_1".to_string(),
+                path: Some("CAN/ECU_1".to_string()),
+                si_type: 1, // ECU
+                si_bus_type: 0,
+                si_flags: 0,
+            },
+        ).expect("group source");
+
+        // Channels
+        let ch_scalar = builder.add_channel(g, "RPM", CnDataType::UIntLE, 16).expect("scalar");
+        builder.set_channel_unit(ch_scalar, "rpm").expect("unit");
+        builder.set_channel_comment(ch_scalar, "Engine RPM").expect("comment");
+        builder.set_channel_conversion(ch_scalar, ConversionDef::Linear { p1: 0.0, p2: 0.25 }).expect("conversion");
+        builder.set_channel_source(
+            ch_scalar,
+            SourceDef {
+                name: "Tachometer".to_string(),
+                path: None,
+                si_type: 3, // Sensor
+                si_bus_type: 0,
+                si_flags: 0,
+            },
+        ).expect("channel source");
+
+        // Bit channel at byte 10, bit 0, 1 bit
+        let ch_bit = builder.add_bit_channel(g, "WarningFlag", CnDataType::UIntLE, 10, 0, 1).expect("bit channel");
+        assert_eq!(ch_bit.group, g.0);
+
+        // Array channel
+        let ch_arr = builder.add_array_channel(g, "Coils", CnDataType::FloatLE, 32, alloc::vec![4]).expect("array channel");
+        assert_eq!(ch_arr.group, g.0);
+
+        // VLSD channel
+        let ch_vlsd = builder.add_vlsd_channel(g, "DiagnosticMsg", CnDataType::StringUtf8).expect("vlsd channel");
+        assert_eq!(ch_vlsd.group, g.0);
+
+        // VLSC channel
+        let ch_vlsc = builder.add_vlsc_channel(g, "BlobData", CnDataType::ByteArray).expect("vlsc channel");
+        assert_eq!(ch_vlsc.group, g.0);
+
+        assert!(builder.estimated_ram_budget() >= 64 * 1024);
+
+        let schema = builder.build().expect("valid build");
+        assert_eq!(schema.groups.len(), 1);
+        assert_eq!(schema.max_blocks_per_dl, 16);
+        assert_eq!(schema.checkpoint_every_n_blocks, 4);
+    }
+
+    #[test]
+    fn test_schema_error_paths() {
+        let mut builder = LoggerBuilder::new(DataLayout::Unsorted, CompressionAlgorithm::NoCompression);
+        let g_bogus = GroupHandle(999);
+        let ch_bogus = ChannelHandle { group: 999, channel: 999 };
+
+        assert!(builder.set_group_flush_threshold(g_bogus, 1024).is_err());
+        assert!(builder.set_group_source(g_bogus, SourceDef { name: "x".to_string(), path: None, si_type: 0, si_bus_type: 0, si_flags: 0 }).is_err());
+        assert!(builder.add_channel(g_bogus, "x", CnDataType::UIntLE, 8).is_err());
+        assert!(builder.add_bit_channel(g_bogus, "x", CnDataType::UIntLE, 10, 0, 1).is_err());
+        assert!(builder.add_array_channel(g_bogus, "x", CnDataType::FloatLE, 32, alloc::vec![2]).is_err());
+        assert!(builder.add_vlsd_channel(g_bogus, "x", CnDataType::ByteArray).is_err());
+        assert!(builder.add_vlsc_channel(g_bogus, "x", CnDataType::ByteArray).is_err());
+
+        assert!(builder.set_channel_unit(ch_bogus, "unit").is_err());
+        assert!(builder.set_channel_comment(ch_bogus, "comment").is_err());
+        assert!(builder.set_channel_conversion(ch_bogus, ConversionDef::Linear { p1: 0.0, p2: 1.0 }).is_err());
+        assert!(builder.set_channel_source(ch_bogus, SourceDef { name: "s".to_string(), path: None, si_type: 0, si_bus_type: 0, si_flags: 0 }).is_err());
+
+        let g = builder.add_group("G");
+        // bit_offset > 7 should fail
+        assert!(builder.add_bit_channel(g, "bad_bit", CnDataType::UIntLE, 10, 8, 1).is_err());
+        // byte_offset < 8 should fail (overlaps master time)
+        assert!(builder.add_bit_channel(g, "bad_bit2", CnDataType::UIntLE, 4, 0, 1).is_err());
+        // empty dims array should fail
+        assert!(builder.add_array_channel(g, "bad_arr", CnDataType::FloatLE, 32, alloc::vec![]).is_err());
+
+        assert_eq!(builder.estimated_ram_budget(), 32 * 1024);
+    }
+}

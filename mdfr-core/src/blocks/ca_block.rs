@@ -289,3 +289,69 @@ impl Display for Ca4BlockMembers {
         write!(f, "CA: {}D array dims={:?}", self.ca_ndim, self.ca_dim_size)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use binrw::io::Cursor;
+
+    #[test]
+    fn test_ca_default_and_display() {
+        let ca = Ca4Block::default();
+        assert_eq!(ca.get_ca_type_str(), "Array");
+        assert_eq!(ca.get_storage_str(), "CN Template");
+        let s = alloc::format!("{ca}");
+        assert!(s.contains("CA: type=Array"));
+        assert!(s.contains("storage=CN Template"));
+
+        let members = Ca4BlockMembers::default();
+        let sm = alloc::format!("{members}");
+        assert!(sm.contains("CA: 1D array"));
+    }
+
+    #[test]
+    #[allow(clippy::field_reassign_with_default)]
+    fn test_ca_type_strings() {
+        let mut ca = Ca4Block::default();
+        ca.ca_type = 1;
+        assert_eq!(ca.get_ca_type_str(), "ScalingAxis");
+        ca.ca_type = 2;
+        assert_eq!(ca.get_ca_type_str(), "LookUp");
+        ca.ca_type = 3;
+        assert_eq!(ca.get_ca_type_str(), "IntervalAxis");
+        ca.ca_type = 4;
+        assert_eq!(ca.get_ca_type_str(), "ClassificationResult");
+        ca.ca_type = 99;
+        assert_eq!(ca.get_ca_type_str(), "Unknown");
+
+        ca.ca_storage = 1;
+        assert_eq!(ca.get_storage_str(), "CG Template");
+        ca.ca_storage = 2;
+        assert_eq!(ca.get_storage_str(), "DG Template");
+        ca.ca_storage = 99;
+        assert_eq!(ca.get_storage_str(), "Unknown");
+    }
+
+    #[test]
+    fn test_ca_calculate_link_count_and_len() {
+        let mut ca = Ca4Block {
+            ca_ndim: 2,
+            ca_dim_size: vec![3, 4],
+            ca_storage: 0, // CN template
+            ca_flags: 0,
+            ..Default::default()
+        };
+        let links = ca.calculate_link_count();
+        assert_eq!(links, 1);
+        let len = ca.calculate_block_len();
+        assert!(len > 48);
+
+        ca.prepare_for_write();
+        assert_eq!(ca.ca_links, links);
+        assert_eq!(ca.ca_len, len);
+
+        let mut buf = Cursor::new(Vec::new());
+        assert!(ca.write_to(&mut buf).is_ok());
+        assert_eq!(buf.into_inner().len() as u64, len);
+    }
+}

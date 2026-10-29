@@ -649,3 +649,178 @@ fn unpack_ch(packed: u32) -> ChannelHandle {
 const _: fn() = || {
     let _ = String::new;
 };
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::vec::Vec;
+
+    struct MemSink {
+        data: Vec<u8>,
+        pos: u64,
+        closed: bool,
+    }
+
+    extern "C" fn mem_write(ctx: *mut core::ffi::c_void, buf: *const u8, len: usize) -> i32 {
+        let s = unsafe { &mut *(ctx as *mut MemSink) };
+        let slice = unsafe { core::slice::from_raw_parts(buf, len) };
+        let end = (s.pos as usize) + len;
+        if end > s.data.len() {
+            s.data.resize(end, 0);
+        }
+        s.data[s.pos as usize..end].copy_from_slice(slice);
+        s.pos += len as u64;
+        0
+    }
+
+    extern "C" fn mem_seek(ctx: *mut core::ffi::c_void, pos: u64) -> i32 {
+        let s = unsafe { &mut *(ctx as *mut MemSink) };
+        s.pos = pos;
+        0
+    }
+
+    extern "C" fn mem_flush(_ctx: *mut core::ffi::c_void) -> i32 {
+        0
+    }
+
+    extern "C" fn mem_close(ctx: *mut core::ffi::c_void) -> i32 {
+        let s = unsafe { &mut *(ctx as *mut MemSink) };
+        s.closed = true;
+        0
+    }
+
+    extern "C" fn mock_now_ticks(_ctx: *mut core::ffi::c_void) -> u64 {
+        42_000
+    }
+
+    extern "C" fn mock_wall_clock(_ctx: *mut core::ffi::c_void, out_ns: *mut u64) -> i32 {
+        if !out_ns.is_null() {
+            unsafe {
+                *out_ns = 1_700_000_000_000_000_000;
+            }
+            0
+        } else {
+            -1
+        }
+    }
+
+    #[test]
+    fn test_capi_builder_and_logger_lifecycle() {
+        unsafe {
+            let builder = mdfr_logger_builder_new(0, 255); // Sorted, NoCompression
+            assert!(!builder.is_null());
+
+            let mut g0 = 0u16;
+            assert_eq!(mdfr_logger_add_group(builder, c"Engine".as_ptr(), &mut g0), 0);
+            assert_eq!(g0, 0);
+
+            let mut ch_u = 0u32;
+            assert_eq!(mdfr_logger_add_channel(builder, g0, c"RPM".as_ptr(), 0, 16, &mut ch_u), 0);
+
+            let mut ch_i = 0u32;
+            assert_eq!(mdfr_logger_add_channel(builder, g0, c"Torque".as_ptr(), 2, 16, &mut ch_i), 0);
+
+            let mut ch_f = 0u32;
+            assert_eq!(mdfr_logger_add_channel(builder, g0, c"Temp".as_ptr(), 4, 32, &mut ch_f), 0);
+
+            let mut ch_vlsd = 0u32;
+            assert_eq!(mdfr_logger_add_vlsd_channel(builder, g0, c"Msg".as_ptr(), 7, &mut ch_vlsd), 0);
+
+            assert_eq!(mdfr_logger_set_conversion_linear(builder, ch_u, 0.0, 0.5), 0);
+            assert_eq!(mdfr_logger_set_channel_unit(builder, ch_u, c"rpm".as_ptr()), 0);
+
+            let mut g_can = 0u16;
+            assert_eq!(mdfr_logger_add_bus_preset(builder, 0, c"CAN1".as_ptr(), &mut g_can), 0);
+            assert_eq!(g_can, 1);
+
+            let mut mem1 = Box::new(MemSink { data: Vec::new(), pos: 0, closed: false });
+            let sink1 = MdfrSinkVtable {
+                ctx: &mut *mem1 as *mut MemSink as *mut core::ffi::c_void,
+                write: Some(mem_write),
+                seek: Some(mem_seek),
+                flush: Some(mem_flush),
+                close: Some(mem_close),
+            };
+
+            let clock = MdfrClockVtable {
+                ctx: core::ptr::null_mut(),
+                now_ticks: Some(mock_now_ticks),
+                tick_ns: 1_000,
+                wall_clock_ns: Some(mock_wall_clock),
+            };
+
+            let mut err = -999;
+            let logger = mdfr_logger_start(builder, sink1, clock, &mut err);
+            assert!(!logger.is_null());
+            assert_eq!(err, 0);
+
+            // Record with begin_record
+            assert_eq!(mdfr_logger_record_begin(logger, g0), 0);
+            assert_eq!(mdfr_logger_record_set_u64(logger, ch_u, 3000), 0);
+            assert_eq!(mdfr_logger_record_set_i64(logger, ch_i, -150), 0);
+            assert_eq!(mdfr_logger_record_set_f64(logger, ch_f, 92.5), 0);
+            assert_eq!(mdfr_logger_record_set_bytes(logger, ch_vlsd, b"running".as_ptr(), 7), 0);
+            assert_eq!(mdfr_logger_record_commit(logger, g0), 0);
+
+            // Record with begin_at
+            assert_eq!(mdfr_logger_record_begin_at(logger, g0, 50_000), 0);
+            assert_eq!(mdfr_logger_record_set_u64(logger, ch_u, 3100), 0);
+            assert_eq!(mdfr_logger_record_commit(logger, g0), 0);
+
+            // Checkpoint
+            assert_eq!(mdfr_logger_checkpoint(logger), 0);
+
+            // Rotate
+            let mut mem2 = Box::new(MemSink { data: Vec::new(), pos: 0, closed: false });
+            let sink2 = MdfrSinkVtable {
+                ctx: &mut *mem2 as *mut MemSink as *mut core::ffi::c_void,
+                write: Some(mem_write),
+                seek: Some(mem_seek),
+                flush: Some(mem_flush),
+                close: Some(mem_close),
+            };
+            assert_eq!(mdfr_logger_rotate(logger, sink2), 0);
+            assert!(mem1.closed);
+
+            // Close
+            assert_eq!(mdfr_logger_close(logger), 0);
+            assert!(mem2.closed);
+        }
+    }
+
+    #[test]
+    fn test_capi_null_safety_and_errors() {
+        unsafe {
+            assert_eq!(mdfr_logger_add_group(core::ptr::null_mut(), c"G".as_ptr(), core::ptr::null_mut()), -3);
+            assert_eq!(mdfr_logger_add_channel(core::ptr::null_mut(), 0, c"C".as_ptr(), 0, 8, core::ptr::null_mut()), -3);
+            assert_eq!(mdfr_logger_add_vlsd_channel(core::ptr::null_mut(), 0, c"V".as_ptr(), 7, core::ptr::null_mut()), -3);
+            assert_eq!(mdfr_logger_set_conversion_linear(core::ptr::null_mut(), 0, 0.0, 1.0), -3);
+            assert_eq!(mdfr_logger_set_channel_unit(core::ptr::null_mut(), 0, c"u".as_ptr()), -3);
+            assert_eq!(mdfr_logger_add_bus_preset(core::ptr::null_mut(), 0, c"B".as_ptr(), core::ptr::null_mut()), -3);
+            assert_eq!(mdfr_logger_record_begin(core::ptr::null_mut(), 0), -3);
+            assert_eq!(mdfr_logger_record_begin_at(core::ptr::null_mut(), 0, 100), -3);
+            assert_eq!(mdfr_logger_record_set_u64(core::ptr::null_mut(), 0, 1), -3);
+            assert_eq!(mdfr_logger_record_set_i64(core::ptr::null_mut(), 0, 1), -3);
+            assert_eq!(mdfr_logger_record_set_f64(core::ptr::null_mut(), 0, 1.0), -3);
+            assert_eq!(mdfr_logger_record_set_bytes(core::ptr::null_mut(), 0, b"a".as_ptr(), 1), -3);
+            assert_eq!(mdfr_logger_record_commit(core::ptr::null_mut(), 0), -3);
+            assert_eq!(mdfr_logger_push_raw(core::ptr::null_mut(), 0, b"a".as_ptr(), 1), -3);
+            assert_eq!(mdfr_logger_push_raw_at(core::ptr::null_mut(), 0, 100, b"a".as_ptr(), 1), -3);
+            assert_eq!(mdfr_logger_checkpoint(core::ptr::null_mut()), -3);
+            assert_eq!(mdfr_logger_close(core::ptr::null_mut()), -3);
+
+            // Builder free with null
+            mdfr_logger_builder_free(core::ptr::null_mut());
+
+            // Builder free with valid pointer
+            let b = mdfr_logger_builder_new(1, 0);
+            mdfr_logger_builder_free(b);
+
+            // Error strings
+            assert_eq!(core::ffi::CStr::from_ptr(mdfr_error_str(0)).to_bytes(), b"OK");
+            assert_eq!(core::ffi::CStr::from_ptr(mdfr_error_str(-1)).to_bytes(), b"I/O error on sink");
+            assert_eq!(core::ffi::CStr::from_ptr(mdfr_error_str(-3)).to_bytes(), b"invalid schema or null pointer");
+            assert_eq!(core::ffi::CStr::from_ptr(mdfr_error_str(-999)).to_bytes(), b"unknown error");
+        }
+    }
+}

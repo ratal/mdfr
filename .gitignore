@@ -22,6 +22,10 @@ test_files/test.parquet
 pyvenv.cfg
 /.continue
 test_files/synthetic
+test_files/Examples
+test_files/Examples/
+test_files/mdfreader
+test_files/mdfreader/
 .claude/settings.json
 .idea
 .kilo

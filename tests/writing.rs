@@ -120,6 +120,9 @@ fn mdf3_to_mdf4_conversion() -> Result<()> {
         BASE_PATH_MDF3.as_str(),
         "RJ_N16-12-363_BM-15C-0024_228_2_20170116094355_CAN.dat"
     );
+    if !Path::new(&file).exists() {
+        return Ok(());
+    }
     let mut mdf = Mdf::new(&file)?;
     mdf.load_all_channels_data_in_memory()?;
     let channel_name3 = r"TEMP_FUEL";

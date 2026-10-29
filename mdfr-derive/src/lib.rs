@@ -415,3 +415,133 @@ fn impl_mdf_record(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream>
         }
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use syn::parse_quote;
+
+    #[test]
+    fn test_derive_valid_struct_all_types() {
+        let input: DeriveInput = parse_quote! {
+            #[mdf(group = "VehicleTelemetry")]
+            pub struct TelemetrySample {
+                #[mdf(name = "EngineSpeed", unit = "rpm", comment = "crankshaft RPM", linear(0.0, 0.5))]
+                pub rpm: u16,
+                #[mdf(rational(0.0, 1.0, 0.0, 0.0, 0.0, 1.0))]
+                pub temp: f32,
+                pub flag: bool,
+                pub u8_val: u8,
+                pub u32_val: u32,
+                pub u64_val: u64,
+                pub i8_val: i8,
+                pub i16_val: i16,
+                pub i32_val: i32,
+                pub i64_val: i64,
+                pub f64_val: f64,
+                pub raw_payload: [u8; 8],
+            }
+        };
+
+        let res = impl_mdf_record(&input);
+        assert!(res.is_ok(), "Failed to implement MdfRecord: {:?}", res.err());
+        let tokens = res.unwrap().to_string();
+        assert!(tokens.contains("impl :: mdfr_core :: logger :: MdfRecord for TelemetrySample"));
+        assert!(tokens.contains("const GROUP_NAME : & 'static str = \"VehicleTelemetry\""));
+        // 8 master + 2 + 4 + 1 + 1 + 4 + 8 + 1 + 2 + 4 + 8 + 8 + 8 = 59 bytes
+        assert!(tokens.contains("const RECORD_BYTES : usize = 59usize"));
+    }
+
+    #[test]
+    fn test_derive_negative_numbers() {
+        let input: DeriveInput = parse_quote! {
+            struct Sample {
+                #[mdf(linear(-10.5, -2))]
+                val1: f32,
+                #[mdf(rational(-1, -2.5, -3, -4, -5, -6.2))]
+                val2: f64,
+            }
+        };
+        let res = impl_mdf_record(&input);
+        assert!(res.is_ok(), "Failed on negative numbers: {:?}", res.err());
+    }
+
+    #[test]
+    fn test_derive_error_tuple_struct() {
+        let input: DeriveInput = parse_quote! {
+            struct TupleSample(u8, u16);
+        };
+        let err = impl_mdf_record(&input).unwrap_err().to_string();
+        assert!(err.contains("requires named struct fields"));
+    }
+
+    #[test]
+    fn test_derive_error_enum() {
+        let input: DeriveInput = parse_quote! {
+            enum EnumSample {
+                A,
+                B,
+            }
+        };
+        let err = impl_mdf_record(&input).unwrap_err().to_string();
+        assert!(err.contains("can only be applied to structs with named fields"));
+    }
+
+    #[test]
+    fn test_derive_error_unsupported_field_type() {
+        let input: DeriveInput = parse_quote! {
+            struct BadField {
+                msg: String,
+            }
+        };
+        let err = impl_mdf_record(&input).unwrap_err().to_string();
+        assert!(err.contains("unsupported field type for #[derive(MdfRecord)]"));
+    }
+
+    #[test]
+    fn test_derive_error_unsupported_array() {
+        let input: DeriveInput = parse_quote! {
+            struct BadArray {
+                payload: [u16; 4],
+            }
+        };
+        let err = impl_mdf_record(&input).unwrap_err().to_string();
+        assert!(err.contains("only non-empty [u8; N] is supported"));
+    }
+
+    #[test]
+    fn test_derive_error_invalid_struct_attr() {
+        let input: DeriveInput = parse_quote! {
+            #[mdf(invalid_attr = "val")]
+            struct BadAttr {
+                x: u8,
+            }
+        };
+        let err = impl_mdf_record(&input).unwrap_err().to_string();
+        assert!(err.contains("unsupported struct-level #[mdf(...)] attribute"));
+    }
+
+    #[test]
+    fn test_derive_error_linear_arguments() {
+        let input: DeriveInput = parse_quote! {
+            struct BadLinear {
+                #[mdf(linear(1.0))]
+                x: u8,
+            }
+        };
+        let err = impl_mdf_record(&input).unwrap_err().to_string();
+        assert!(err.contains("linear(...) expects 2 arguments"));
+    }
+
+    #[test]
+    fn test_derive_error_rational_arguments() {
+        let input: DeriveInput = parse_quote! {
+            struct BadRational {
+                #[mdf(rational(1.0, 2.0))]
+                x: u8,
+            }
+        };
+        let err = impl_mdf_record(&input).unwrap_err().to_string();
+        assert!(err.contains("rational(...) expects 6 arguments"));
+    }
+}
