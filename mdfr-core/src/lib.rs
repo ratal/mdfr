@@ -26,3 +26,5 @@ pub use io::EmbeddedIoSink;
 #[cfg(feature = "derive")]
 pub use mdfr_derive::MdfRecord;
 pub use time::{ManualClock, TimeSource};
+#[cfg(feature = "std")]
+pub use time::StdClock;

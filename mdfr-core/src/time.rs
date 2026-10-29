@@ -62,3 +62,45 @@ impl TimeSource for ManualClock {
         self.start_time_ns
     }
 }
+
+/// System clock using `std::time::Instant` and `std::time::SystemTime` (`1 us` tick resolution).
+#[cfg(feature = "std")]
+#[derive(Debug)]
+pub struct StdClock {
+    epoch: std::time::Instant,
+}
+
+#[cfg(feature = "std")]
+impl Default for StdClock {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(feature = "std")]
+impl StdClock {
+    /// Creates a new [`StdClock`] with `epoch` set to the current instant.
+    pub fn new() -> Self {
+        Self {
+            epoch: std::time::Instant::now(),
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl TimeSource for StdClock {
+    fn now_ticks(&mut self) -> u64 {
+        self.epoch.elapsed().as_micros() as u64
+    }
+
+    fn seconds_per_tick(&self) -> f64 {
+        1e-6
+    }
+
+    fn wall_clock_ns(&mut self) -> Option<u64> {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()
+            .map(|d| d.as_nanos() as u64)
+    }
+}

@@ -1130,34 +1130,7 @@ fn finalize_file_in_place(file_name: &str) -> PyResult<usize> {
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
 }
 
-struct StdClock {
-    epoch: std::time::Instant,
-}
-
-impl StdClock {
-    fn new() -> Self {
-        Self {
-            epoch: std::time::Instant::now(),
-        }
-    }
-}
-
-impl mdfr_core::TimeSource for StdClock {
-    fn now_ticks(&mut self) -> u64 {
-        self.epoch.elapsed().as_micros() as u64
-    }
-
-    fn seconds_per_tick(&self) -> f64 {
-        1e-6
-    }
-
-    fn wall_clock_ns(&mut self) -> Option<u64> {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .ok()
-            .map(|d| d.as_nanos() as u64)
-    }
-}
+use mdfr_core::StdClock;
 
 enum PyLoggerState {
     Building {
