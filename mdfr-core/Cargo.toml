@@ -6,6 +6,7 @@ authors = ["ratal <ratal@ratal.org>"]
 edition = "2024"
 license = "GPL-3.0"
 readme = "README.md"
+repository = "https://github.com/ratal/mdfr/"
 publish = false
 
 [features]
@@ -18,6 +19,7 @@ capi = []
 capi-arena = ["capi"]
 derive = ["dep:mdfr-derive"]
 defmt = ["dep:defmt"]
+embedded-io = ["dep:embedded-io"]
 
 [dependencies]
 binrw = { version = "0.15.2", default-features = false }
@@ -28,8 +30,15 @@ transpose = "0.2.3"
 miniz_oxide = { version = "0.9.1", default-features = false, features = ["with-alloc"], optional = true }
 lz4_flex = { version = "0.14.0", default-features = false, features = ["alloc", "safe-encode", "safe-decode"], optional = true }
 zstd = { version = "0.14.3", optional = true }
-mdfr-derive = { path = "../mdfr-derive", optional = true }
+mdfr-derive = { path = "../mdfr-derive", version = "0.8.0", optional = true }
 defmt = { version = "=1.1.1", features = ["alloc"], optional = true }
+embedded-io = { version = "0.7.1", default-features = false, optional = true }
 
 [lib]
 crate-type = ["rlib"]
+
+[[example]]
+name = "mdfr_core_c"
+crate-type = ["staticlib"]
+path = "examples/c_staticlib.rs"
+required-features = ["capi-arena"]

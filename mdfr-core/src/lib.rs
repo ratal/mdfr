@@ -21,6 +21,8 @@ pub mod capi;
 
 pub use error::{Error, Result};
 pub use io::{SeekFrom, Sink, VecSink};
+#[cfg(feature = "embedded-io")]
+pub use io::EmbeddedIoSink;
 #[cfg(feature = "derive")]
 pub use mdfr_derive::MdfRecord;
 pub use time::{ManualClock, TimeSource};

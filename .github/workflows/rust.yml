@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
+      - uses: Swatinem/rust-cache@v2
       - name: Unzip local test fixtures
         run: cd test_files && unzip -o test_mdf3.mdf.zip && unzip -o test_mdf4.mf4.zip
       - name: Build
@@ -23,12 +24,32 @@ jobs:
         run: cargo test --test basic --verbose --no-default-features --features parquet
       - name: Conversion unit tests
         run: cargo test --lib --verbose --no-default-features --features parquet conversions4
+      - name: Embedded logger tests
+        run: cargo test --test embedded_logger --verbose --no-default-features --features parquet
+      - name: mdfr-core tests
+        run: cargo test -p mdfr-core --all-features --verbose
+
+  test-embedded-nostd:
+    name: Check no_std embedded (Cortex-M4F)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: Swatinem/rust-cache@v2
+      - name: Install ARM target
+        run: rustup target add thumbv7em-none-eabihf
+      - name: Check mdfr-core no_std minimal
+        run: cargo check -p mdfr-core --target thumbv7em-none-eabihf --no-default-features
+      - name: Check mdfr-core no_std all features
+        run: cargo check -p mdfr-core --target thumbv7em-none-eabihf --no-default-features --features deflate,lz4,capi-arena,defmt,derive,embedded-io
+      - name: Build standalone C staticlib for Cortex-M
+        run: cargo build -p mdfr-core --example mdfr_core_c --target thumbv7em-none-eabihf --no-default-features --features capi-arena
 
   test-polars-rust:
     name: Tests (polars Rust-native)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
+      - uses: Swatinem/rust-cache@v2
       - name: Rust-native polars tests
         run: cargo test --test numpy_polars rust_polars --verbose --features polars
 
@@ -37,6 +58,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
+      - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
