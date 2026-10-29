@@ -173,6 +173,10 @@ impl MdfInfo3 {
     pub fn get_channel_names_set(&self) -> HashSet<String> {
         self.channel_names_set.keys().cloned().collect()
     }
+    /// returns an iterator over all channel names (zero-copy)
+    pub fn channel_names(&self) -> Box<dyn Iterator<Item = &String> + '_> {
+        Box::new(self.channel_names_set.keys())
+    }
     /// returns the set of channel names that are in same channel group as input channel name
     pub fn get_channel_names_cg_set(&self, channel_name: &str) -> HashSet<String> {
         if let Some((_master, dg_pos, (_cg_pos, rec_id), _cn_pos)) =
@@ -187,6 +191,18 @@ impl MdfInfo3 {
             channel_list
         } else {
             HashSet::new()
+        }
+    }
+    /// returns a reference to the channel names in the same channel group (zero-copy)
+    pub fn channel_names_cg_set_ref(&self, channel_name: &str) -> Option<&HashSet<String>> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), _cn_pos)) =
+            self.get_channel_id(channel_name)
+        {
+            self.dg.get(dg_pos)?
+                .cg.get(rec_id)
+                .map(|cg| &cg.channel_names)
+        } else {
+            None
         }
     }
     /// returns a hashmap for which master channel names are keys and values its corresponding set of channel names

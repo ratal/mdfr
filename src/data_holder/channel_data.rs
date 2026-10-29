@@ -316,13 +316,10 @@ impl ChannelData {
         shape: (Vec<usize>, Order),
     ) -> Result<ChannelData, Error> {
         if cn_type == 3 || cn_type == 6 {
-            // virtual channel
-            let mut vect = vec![0u64; cycle_count as usize];
-            let mut counter = 0u64;
-            vect.iter_mut().for_each(|v| {
-                *v = counter;
-                counter += 1;
-            });
+            let mut vect = Vec::with_capacity(cycle_count as usize);
+            for i in 0..cycle_count {
+                vect.push(i);
+            }
             Ok(ChannelData::UInt64(PrimitiveBuilder::new_from_buffer(
                 vect.into(),
                 None,

@@ -1,0 +1,18 @@
+[package]
+name = "mdfr-derive"
+version = "0.8.0"
+description = "Proc-macro derive for #[derive(MdfRecord)] in mdfr-core"
+authors = ["ratal <ratal@ratal.org>"]
+edition = "2024"
+license = "GPL-3.0"
+readme = "README.md"
+publish = false
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1.0.106"
+quote = "1.0.45"
+syn = "2.0.117"
+

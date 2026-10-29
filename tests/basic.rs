@@ -154,7 +154,7 @@ fn parse_all_folders4() -> io::Result<()> {
     ];
     for path in list_of_paths.iter() {
         println!("reading folder : {}", path);
-        parse_info_folder(&format!("{}{}", BASE_PATH_MDF4.as_str(), &path)).unwrap();
+        parse_info_folder(&format!("{}{}", BASE_PATH_MDF4.as_str(), path)).unwrap();
     }
     Ok(())
 }

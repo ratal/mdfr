@@ -464,13 +464,15 @@ fn test_dg_template_array() -> Result<()> {
 
     // Write CABLOCK
     let ca_pos = buf.len() as i64;
-    let mut ca = Ca4Block::default();
-    ca.ca_type = 0; // Array
-    ca.ca_storage = 2; // DG template
-    ca.ca_ndim = 2;
-    ca.ca_dim_size = vec![2, 3]; // 2 rows, 3 cols
-    ca.ca_data = Some(dv_ptrs.clone());
-    ca.ca_cycle_count = Some(vec![4; 6]);
+    let mut ca = Ca4Block {
+        ca_type: 0,    // Array
+        ca_storage: 2, // DG template
+        ca_ndim: 2,
+        ca_dim_size: vec![2, 3], // 2 rows, 3 cols
+        ca_data: Some(dv_ptrs.clone()),
+        ca_cycle_count: Some(vec![4; 6]),
+        ..Default::default()
+    };
     ca.prepare_for_write();
     ca.ca_data = Some(dv_ptrs); // Preserve data pointers
     let mut ca_bytes = Vec::new();
@@ -573,12 +575,14 @@ fn test_cg_template_array() -> Result<()> {
 
     // Write CABLOCK
     let ca_pos = buf.len() as i64;
-    let mut ca = Ca4Block::default();
-    ca.ca_type = 0; // Array
-    ca.ca_storage = 1; // CG template
-    ca.ca_ndim = 1;
-    ca.ca_dim_size = vec![2]; // 2 elements
-    ca.ca_cycle_count = Some(vec![3, 3]);
+    let mut ca = Ca4Block {
+        ca_type: 0,    // Array
+        ca_storage: 1, // CG template
+        ca_ndim: 1,
+        ca_dim_size: vec![2], // 2 elements
+        ca_cycle_count: Some(vec![3, 3]),
+        ..Default::default()
+    };
     ca.prepare_for_write();
     let mut ca_bytes = Vec::new();
     ca.write_to(&mut std::io::Cursor::new(&mut ca_bytes))?;
@@ -1223,9 +1227,11 @@ fn test_mdf4_spec_fig45_le_and_fig46_be_bit_offset_mask() -> Result<()> {
 
     read_channels_from_bytes(&bytes, &mut cn_map, 3, 0, false)?;
 
-    let mut cg_block = Cg4Block::default();
-    cg_block.cg_cycle_count = 1;
-    cg_block.cg_data_bytes = 3;
+    let cg_block = Cg4Block {
+        cg_cycle_count: 1,
+        cg_data_bytes: 3,
+        ..Default::default()
+    };
 
     let mut dg = Dg4 {
         block: Dg4Block::default(),

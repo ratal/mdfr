@@ -4,79 +4,17 @@
 //! 8-byte length, and 8-byte link count. This module also manages SharableBlocks
 //! (CC, SI, TX, MD blocks) stored in a global hashmap for deduplication.
 use anyhow::{Context, Result};
-use binrw::binrw;
 use rustc_hash::FxHashMap;
-use std::fmt::{self, Display};
+use std::fmt;
 use std::fs::File;
 use std::io::{Cursor, Read};
-use std::str;
 
-use super::cc_block::Cc4Block;
+use super::cc_impl::Cc4Block;
 use super::metadata::{BlockType, HdComment, MdComment, MetaData, MetaDataBlockType};
-use super::si_block::Si4Block;
+use super::si_impl::Si4Block;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 
-/// MDF4 block header (spec Table 2) — common 24-byte prefix for all blocks
-#[derive(Debug, Copy, Clone)]
-#[binrw]
-#[br(little)]
-#[repr(C)]
-pub struct Blockheader4 {
-    /// '##XX'
-    pub hdr_id: [u8; 4],
-    /// reserved, must be 0
-    pub hdr_gap: [u8; 4],
-    /// Length of block in bytes
-    pub hdr_len: u64,
-    /// # of links
-    pub hdr_links: u64,
-}
-
-impl Default for Blockheader4 {
-    fn default() -> Self {
-        Blockheader4 {
-            hdr_id: [35, 35, 84, 88], // ##TX
-            hdr_gap: [0x00, 0x00, 0x00, 0x00],
-            hdr_len: 24,
-            hdr_links: 0,
-        }
-    }
-}
-
-impl Display for Blockheader4 {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let id = str::from_utf8(&self.hdr_id).unwrap_or("????");
-        write!(
-            f,
-            "Block: {} len={} links={}",
-            id, self.hdr_len, self.hdr_links
-        )
-    }
-}
-
-impl Blockheader4 {
-    /// Validates that hdr_len is plausible before allocating the block body buffer.
-    /// Guards against corrupted length fields causing OOM or arithmetic overflow.
-    pub fn validate_len(&self, file_size: u64) -> Result<()> {
-        use anyhow::bail;
-        if self.hdr_len < 24 {
-            bail!(
-                "block {:?} has hdr_len={} < 24 (minimum header size)",
-                self.hdr_id,
-                self.hdr_len
-            );
-        }
-        if self.hdr_len > file_size {
-            bail!(
-                "block {:?} has hdr_len={} > file size {} — corrupted length",
-                self.hdr_id,
-                self.hdr_len,
-                file_size
-            );
-        }
-        Ok(())
-    }
-}
+pub use mdfr_core::blocks::header::{Blockheader4, Blockheader4Short};
 
 /// parse the block header and its fields id, (reserved), length and number of links
 #[inline]
@@ -88,60 +26,6 @@ pub fn parse_block_header(rdr: &mut SymBufReader<&File>) -> Result<Blockheader4>
     let header: Blockheader4 =
         binrw::BinReaderExt::read_le(&mut block).context("binread could not parse blockheader4")?;
     Ok(header)
-}
-
-/// MDF4 - common block Header without the number of links
-#[derive(Debug, Copy, Clone)]
-#[binrw]
-#[br(little)]
-#[repr(C)]
-pub struct Blockheader4Short {
-    /// '##XX'
-    pub hdr_id: [u8; 4],
-    /// reserved, must be 0
-    pub hdr_gap: [u8; 4],
-    /// Length of block in bytes
-    pub hdr_len: u64,
-}
-
-impl Default for Blockheader4Short {
-    fn default() -> Self {
-        Blockheader4Short {
-            hdr_id: [35, 35, 67, 78], // ##CN
-            hdr_gap: [0u8; 4],
-            hdr_len: 160,
-        }
-    }
-}
-
-impl Display for Blockheader4Short {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let id = str::from_utf8(&self.hdr_id).unwrap_or("????");
-        write!(f, "Block: {} len={}", id, self.hdr_len)
-    }
-}
-
-impl Blockheader4Short {
-    /// Validates that hdr_len is plausible before allocating the block body buffer.
-    pub fn validate_len(&self, file_size: u64) -> Result<()> {
-        use anyhow::bail;
-        if self.hdr_len < 16 {
-            bail!(
-                "block {:?} has hdr_len={} < 16 (minimum short header size)",
-                self.hdr_id,
-                self.hdr_len
-            );
-        }
-        if self.hdr_len > file_size {
-            bail!(
-                "block {:?} has hdr_len={} > file size {} — corrupted length",
-                self.hdr_id,
-                self.hdr_len,
-                file_size
-            );
-        }
-        Ok(())
-    }
 }
 
 pub fn default_short_header(variant: BlockType) -> Blockheader4Short {

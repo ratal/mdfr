@@ -3,69 +3,19 @@
 //! Each DGBLOCK groups one or more CGBLOCKs that share the same data block.
 //! DGBLOCKs form a linked list from `hd_dg_first`.
 use anyhow::{Context, Result};
-use binrw::binrw;
 use rustc_hash::FxHashMap;
 use std::collections::BTreeMap;
 use std::fmt::{self, Display};
 use std::fs::File;
 use std::io::{Cursor, Read};
 
-use super::block_header::{SharableBlocks, read_meta_data};
-use super::cg_block::{CG_F_VLSC, CG_F_VLSD, Cg4, parse_cg4};
+use super::block_header_impl::{SharableBlocks, read_meta_data};
+use super::cg_impl::{CG_F_VLSC, CG_F_VLSD, Cg4, parse_cg4};
 use super::metadata::BlockType;
 use crate::mdfinfo::block_chain::BlockChain;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 
-/// DGBLOCK structure (MDF 4.2 spec, Table 19)
-#[derive(Debug, Copy, Clone)]
-#[binrw]
-#[br(little)]
-#[repr(C)]
-pub struct Dg4Block {
-    /// ##DG
-    dg_id: [u8; 4],
-    /// reserved
-    reserved: [u8; 4],
-    /// Length of block in bytes
-    pub dg_len: u64,
-    /// # of links
-    dg_links: u64,
-    /// Pointer to next data group block (DGBLOCK) (can be NIL)
-    pub dg_dg_next: i64,
-    /// Pointer to first channel group block (CGBLOCK) (can be NIL)
-    pub dg_cg_first: i64,
-    // Pointer to data block (DTBLOCK or DZBLOCK for this block type) or data list block (DLBLOCK of data blocks or its HLBLOCK)  (can be NIL)
-    pub dg_data: i64,
-    /// comment
-    dg_md_comment: i64,
-    /// number of bytes used for record IDs. 0 no recordID
-    pub dg_rec_id_size: u8,
-    // reserved
-    reserved_2: [u8; 7],
-}
-
-impl Default for Dg4Block {
-    fn default() -> Self {
-        Dg4Block {
-            dg_id: [35, 35, 68, 71], // ##DG
-            reserved: [0; 4],
-            dg_len: 64,
-            dg_links: 4,
-            dg_dg_next: 0,
-            dg_cg_first: 0,
-            dg_data: 0,
-            dg_md_comment: 0,
-            dg_rec_id_size: 0,
-            reserved_2: [0; 7],
-        }
-    }
-}
-
-impl Display for Dg4Block {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "DG: rec_id_size={}", self.dg_rec_id_size)
-    }
-}
+pub use mdfr_core::blocks::dg::Dg4Block;
 
 /// Parses a single DGBLOCK and its MD comment from the file.
 fn parse_dg4_block(
@@ -198,9 +148,9 @@ fn identify_vlsd_cg(cg: &mut FxHashMap<u64, Cg4>) {
 
 #[cfg(test)]
 mod tests {
-    use super::super::block_header::default_short_header;
-    use super::super::cg_block::Cg4Block;
-    use super::super::cn_block::Cn4;
+    use super::super::block_header_impl::default_short_header;
+    use super::super::cg_impl::Cg4Block;
+    use super::super::cn_impl::Cn4;
     use super::super::metadata::BlockType;
     use super::*;
     use crate::mdfinfo::mdfinfo4::CnType;

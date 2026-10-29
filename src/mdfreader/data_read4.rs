@@ -942,7 +942,14 @@ pub fn read_channels_from_bytes(
             if cn.block.cn_type == 0
                 || cn.block.cn_type == 2
                 || cn.block.cn_type == 5
-                || cn.block.cn_type == 7
+                || (cn.block.cn_type == 7
+                    && matches!(
+                        cn.data,
+                        ChannelData::UInt8(_)
+                            | ChannelData::UInt16(_)
+                            | ChannelData::UInt32(_)
+                            | ChannelData::UInt64(_)
+                    ))
             {
                 let mut value: &[u8];
                 let pos_byte_beg = cn.pos_byte_beg as usize;
@@ -2032,10 +2039,6 @@ pub fn read_channels_from_bytes(
                 }
 
                 if is_dynamic {
-                    // cn_type == 1: VLSD - SD Block attached as data block
-                    // cn_type == 7: VLSC - VD Block with (time, size, offset) triplet
-                    // CN_F_DATA_STREAM_MODE: Data Stream - DS Block points to data
-                    // ca_storage == 5: Dynamic array storage
                     let c_vlsd_channel = Arc::clone(&vlsd_channels);
                     let mut vlsd_channel = c_vlsd_channel
                         .lock()

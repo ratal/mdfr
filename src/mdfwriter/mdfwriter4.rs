@@ -1,6 +1,6 @@
-//! MDF 4.2 file writer — spec sections 5-6
+//! MDF 4.3 file writer — spec sections 5-6
 //!
-//! Writes in-memory channel data to an MDF 4.2 file. The writer always produces
+//! Writes in-memory channel data to an MDF 4.3 file. The writer always produces
 //! sorted data (one DG per channel, `dg_rec_id_size=0`), converting VLSC channels
 //! to fixed-length. Two-phase approach:
 //! - **Phase 1** (sequential): builds the metadata block hierarchy (HD→FH, EV, AT, SI, DG→CG→CN)
@@ -27,7 +27,7 @@ use crate::{
         mdfinfo4::{
             At4Block, BlockType, Blockheader4, Ca4Block, Cg4, Cg4Block, Ch4Block, Cn4, Cn4Block,
             Compo, Composition, Dg4, Dg4Block, Dz4Block, Endianness, Ev4Block, FhBlock, Ld4Block,
-            MdfInfo4, MetaData, MetaDataBlockType, Si4Block, default_short_header,
+            MdfInfo4, MetaData, MetaDataBlockType, Si4Block, default_short_header, new_fh_block,
         },
     },
     mdfreader::Mdf,
@@ -37,17 +37,15 @@ use arrow::array::Array;
 use arrow::buffer::NullBuffer;
 use binrw::BinWriterExt;
 use crossbeam_channel::bounded;
-use flate2::Compression;
-use flate2::write::ZlibEncoder;
 use parking_lot::Mutex;
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 use std::fs::File;
 
-/// Main entry point: writes an MDF 4.2 file from in-memory `Mdf` data.
+/// Main entry point: writes an MDF 4.3 file from in-memory `Mdf` data.
 ///
 /// Converts MDF3 sources to MDF4 if needed. Preserves file history (FH), events (EV),
 /// attachments (AT), source info (SI), and channel hierarchy (CH) from the source file.
-/// Supports optional zlib compression for data blocks.
+/// Supports optional zlib, zstd, and LZ4 compression for data blocks.
 pub fn mdfwriter4(
     mdf: &mut Mdf,
     file_name: &str,
@@ -101,7 +99,7 @@ pub fn mdfwriter4(
     }
 
     // Add new FH block documenting mdfr modification
-    let mut mdfr_fh = FhBlock::default();
+    let mut mdfr_fh = new_fh_block();
     let mdfr_fh_position = pointer;
     pointer += 56;
 
@@ -742,24 +740,18 @@ pub fn mdfwriter4(
             .write_le(&si_header)
             .context("Could not write SIBlock header")?;
 
-        // Write SI block links and data
-        let si_links: u64 = 3; // always 3 links: name, path, comment
-        buffer
-            .write_le(&si_links)
-            .context("Could not write SIBlock link count")?;
-
-        // Calculate link positions
+        // Calculate link positions and serialize SI4Block via mdfr-core binrw
         let mut link_offset = si.calculate_block_size();
-        let new_si_name = if si_name_md.is_some() {
+        let new_si_name = if let Some(name_md) = si_name_md {
             let pos = si_position_map.get(orig_pos).unwrap_or(&0) + link_offset;
-            link_offset += si_name_md.as_ref().unwrap().block.hdr_len as i64;
+            link_offset += name_md.block.hdr_len as i64;
             pos
         } else {
             0
         };
-        let new_si_path = if si_path_md.is_some() {
+        let new_si_path = if let Some(path_md) = si_path_md {
             let pos = si_position_map.get(orig_pos).unwrap_or(&0) + link_offset;
-            link_offset += si_path_md.as_ref().unwrap().block.hdr_len as i64;
+            link_offset += path_md.block.hdr_len as i64;
             pos
         } else {
             0
@@ -770,30 +762,19 @@ pub fn mdfwriter4(
             0
         };
 
+        let si_out = Si4Block {
+            si_links: 3,
+            si_tx_name: new_si_name,
+            si_tx_path: new_si_path,
+            si_md_comment: new_si_comment,
+            si_type: si.si_type,
+            si_bus_type: si.si_bus_type,
+            si_flags: si.si_flags,
+            si_reserved: [0u8; 5],
+        };
         buffer
-            .write_le(&new_si_name)
-            .context("Could not write SIBlock si_tx_name")?;
-        buffer
-            .write_le(&new_si_path)
-            .context("Could not write SIBlock si_tx_path")?;
-        buffer
-            .write_le(&new_si_comment)
-            .context("Could not write SIBlock si_md_comment")?;
-
-        // Write SI data members (type, bus_type, flags, reserved)
-        buffer
-            .write_le(&si.si_type)
-            .context("Could not write SIBlock si_type")?;
-        buffer
-            .write_le(&si.si_bus_type)
-            .context("Could not write SIBlock si_bus_type")?;
-        buffer
-            .write_le(&si.si_flags)
-            .context("Could not write SIBlock si_flags")?;
-        let si_reserved: [u8; 5] = [0u8; 5];
-        buffer
-            .write_all(&si_reserved)
-            .context("Could not write SIBlock si_reserved")?;
+            .write_le(&si_out)
+            .context("Could not write SIBlock body")?;
 
         // Write SI name TX block if present
         if let Some(name_md) = si_name_md {
@@ -829,42 +810,10 @@ pub fn mdfwriter4(
             .write_le(&ch_header)
             .context("Could not write CHBlock header")?;
 
-        // Write link count
+        // Write CH4Block body via mdfr-core binrw
         buffer
-            .write_le(&ch.ch_links)
-            .context("Could not write CHBlock link count")?;
-
-        // Write fixed links
-        buffer
-            .write_le(&ch.ch_ch_next)
-            .context("Could not write ch_ch_next")?;
-        buffer
-            .write_le(&ch.ch_ch_first)
-            .context("Could not write ch_ch_first")?;
-        buffer
-            .write_le(&ch.ch_tx_name)
-            .context("Could not write ch_tx_name")?;
-        buffer
-            .write_le(&ch.ch_md_comment)
-            .context("Could not write ch_md_comment")?;
-
-        // Write element links (DG/CG/CN triplets)
-        for elem in &ch.ch_element {
-            buffer
-                .write_le(elem)
-                .context("Could not write ch_element link")?;
-        }
-
-        // Write data members
-        buffer
-            .write_le(&ch.ch_element_count)
-            .context("Could not write ch_element_count")?;
-        buffer
-            .write_le(&ch.ch_type)
-            .context("Could not write ch_type")?;
-        buffer
-            .write_all(&ch.ch_reserved)
-            .context("Could not write ch_reserved")?;
+            .write_le(ch)
+            .context("Could not write CHBlock body")?;
 
         // Write TX name block if present
         if let Some(name_md) = ch_name_md {
@@ -1167,8 +1116,10 @@ fn write_sd_block(
 /// Creates an LDBLOCK (list data block, spec Table 61) to wrap DV+DI block pairs.
 /// Sets `ld_flags` bit 7 if an invalidation mask is present.
 fn create_ld(m: &Option<NullBuffer>, offset: &mut i64) -> Option<Ld4Block> {
-    let mut ld_block = Ld4Block::default();
-    ld_block.ld_count = 1;
+    let mut ld_block = Ld4Block {
+        ld_count: 1,
+        ..Default::default()
+    };
     ld_block.ld_sample_offset.push(0);
     if m.is_some() {
         ld_block.ld_n_links = (ld_block.ld_count * 2 + 1) as u64;
@@ -1207,45 +1158,8 @@ fn compress_bytes(
     algo: CompressionAlgorithm,
     width: usize,
 ) -> Result<Vec<u8>, Error> {
-    let mut to_compress = bytes;
-    let mut transposed = Vec::new();
-
-    match algo {
-        CompressionAlgorithm::DeflateTranspose
-        | CompressionAlgorithm::ZstdTranspose
-        | CompressionAlgorithm::Lz4Transpose
-            if width > 0 && bytes.len().is_multiple_of(width) =>
-        {
-            let height = bytes.len() / width;
-            transposed.resize(bytes.len(), 0);
-            transpose::transpose(bytes, &mut transposed, width, height);
-            to_compress = &transposed;
-        }
-        _ => {}
-    }
-
-    match algo {
-        CompressionAlgorithm::Deflate | CompressionAlgorithm::DeflateTranspose => {
-            let mut encoder = ZlibEncoder::new(Vec::new(), Compression::best());
-            encoder
-                .write_all(to_compress)
-                .expect("Could not compress data");
-            Ok(encoder.finish().expect("failed finishing to compress data"))
-        }
-        CompressionAlgorithm::Zstd | CompressionAlgorithm::ZstdTranspose => {
-            let mut encoder = zstd::Encoder::new(Vec::new(), 0)?;
-            encoder.write_all(to_compress)?;
-            Ok(encoder.finish()?)
-        }
-        CompressionAlgorithm::Lz4 | CompressionAlgorithm::Lz4Transpose => {
-            let mut encoder = lz4::EncoderBuilder::new().build(Vec::new())?;
-            encoder.write_all(to_compress)?;
-            let (result, err) = encoder.finish();
-            err.context("lz4 compression failed")?;
-            Ok(result)
-        }
-        CompressionAlgorithm::NoCompression => Ok(bytes.to_vec()),
-    }
+    mdfr_core::compress::compress_dz_data(bytes, algo.into(), width)
+        .map_err(|e| anyhow::anyhow!("DZ compression failed: {e}"))
 }
 
 /// Writer-internal enum: either a compressed DZBLOCK or an uncompressed DV/DI/SD block.
@@ -1262,9 +1176,11 @@ fn create_dz_dv(
     offset: &mut i64,
     algo: CompressionAlgorithm,
 ) -> Result<(DataBlock, usize, Vec<u8>), Error> {
-    let mut dz_block = Dz4Block::default();
-    dz_block.dz_zip_type = algo as u8;
-    dz_block.dz_zip_parameter = data.byte_count();
+    let mut dz_block = Dz4Block {
+        dz_zip_type: algo as u8,
+        dz_zip_parameter: data.byte_count(),
+        ..Default::default()
+    };
     let bytes = data
         .to_bytes()
         .context("failed converting array data into bytes for dz or dv block")?;
@@ -1310,10 +1226,12 @@ fn create_dz_di(
     offset: &mut i64,
     algo: CompressionAlgorithm,
 ) -> Result<Option<(DataBlock, Vec<u8>)>, Error> {
-    let mut dz_invalid_block = Dz4Block::default();
-    dz_invalid_block.dz_zip_type = algo as u8;
-    dz_invalid_block.dz_zip_parameter = 1;
-    dz_invalid_block.dz_org_data_length = mask.len() as u64;
+    let mut dz_invalid_block = Dz4Block {
+        dz_zip_type: algo as u8,
+        dz_zip_parameter: 1,
+        dz_org_data_length: mask.len() as u64,
+        ..Default::default()
+    };
     let mask_bytes: Vec<u8> = mask.iter().map(|v| v as u8).collect();
     let mut data_bytes = compress_bytes(&mask_bytes, algo, 1)?;
     dz_invalid_block.dz_data_length = data_bytes.len() as u64;
@@ -1686,9 +1604,11 @@ fn create_dz_sd(
     offset: &mut i64,
     algo: CompressionAlgorithm,
 ) -> Result<(DataBlock, usize, Vec<u8>), Error> {
-    let mut dz_block = Dz4Block::default();
-    dz_block.dz_zip_type = algo as u8;
-    dz_block.dz_zip_parameter = data.byte_count();
+    let mut dz_block = Dz4Block {
+        dz_zip_type: algo as u8,
+        dz_zip_parameter: data.byte_count(),
+        ..Default::default()
+    };
     let bytes = to_sd_bytes(data).context("failed converting data to SD format")?;
     dz_block.dz_org_data_length = bytes.len() as u64;
 

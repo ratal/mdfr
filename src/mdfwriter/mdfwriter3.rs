@@ -5,7 +5,7 @@ use crate::mdfreader::{DataSignature, MasterSignature};
 
 use crate::mdfinfo::{
     mdfinfo3::MdfInfo3,
-    mdfinfo4::{FhBlock, MdfInfo4},
+    mdfinfo4::{MdfInfo4, new_fh_block},
 };
 use anyhow::{Context, Error, Result};
 
@@ -14,7 +14,7 @@ pub fn convert3to4(mdf3: &MdfInfo3, file_name: &str) -> Result<MdfInfo4, Error> 
     let n_channels = mdf3.get_channel_names_set().len();
     let mut mdf4 = MdfInfo4::new(file_name, n_channels);
     // FH
-    let fh = FhBlock::default();
+    let fh = new_fh_block();
     mdf4.fh.push(fh);
 
     mdf3.dg.iter().try_for_each(

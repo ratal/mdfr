@@ -383,6 +383,14 @@ impl Mdf {
     pub fn get_master_channel_names_set(&self) -> HashMap<Option<String>, HashSet<String>> {
         self.mdf_info.get_master_channel_names_set()
     }
+    /// returns an iterator over all channel names (zero-copy)
+    pub fn channel_names(&self) -> impl Iterator<Item = &String> {
+        self.mdf_info.channel_names()
+    }
+    /// returns a reference to the channel names in the same channel group (zero-copy)
+    pub fn channel_names_cg_set_ref(&self, channel_name: &str) -> Option<&HashSet<String>> {
+        self.mdf_info.channel_names_cg_set_ref(channel_name)
+    }
     /// Eagerly converts all channels to physical values.
     pub fn convert_all_channels(&mut self) -> Result<(), Error> {
         self.mdf_info.convert_all_channels()
@@ -887,32 +895,34 @@ impl fmt::Display for Mdf {
                     mdfinfo3.hd_block.hd_date, mdfinfo3.hd_block.hd_time
                 )?;
                 writeln!(f, "Comments: {}", mdfinfo3.hd_comment)?;
-                for (master, list) in &self.get_master_channel_names_set() {
-                    if let Some(master_name) = master {
-                        writeln!(f, "\nMaster: {master_name}")?;
-                    } else {
-                        writeln!(f, "\nWithout Master channel")?;
-                    }
-                    for channel in list {
-                        writeln!(f, " {channel} ")?;
-                        if let Some(data) = self.get_channel_converted_data(channel)
-                            && !data.is_empty()
-                        {
-                            let array = &data.as_ref();
-                            let displayer = ArrayFormatter::try_new(array, &format_option)
-                                .map_err(|e| {
-                                    log::warn!("Mdf Display: ArrayFormatter failed: {e}");
-                                    std::fmt::Error
-                                })?;
-                            write!(f, "{}", displayer.value(0))?;
-                            write!(f, " ")?;
-                            write!(f, "{}", displayer.value(data.len() - 1))?;
+                for dg in mdfinfo3.dg.values() {
+                    for cg in dg.cg.values() {
+                        if let Some(master_name) = &cg.master_channel_name {
+                            writeln!(f, "\nMaster: {master_name}")?;
+                        } else {
+                            writeln!(f, "\nWithout Master channel")?;
                         }
-                        if let Ok(Some(unit)) = self.get_channel_unit(channel) {
-                            writeln!(f, " {unit} ")?;
-                        }
-                        if let Ok(Some(desc)) = self.get_channel_desc(channel) {
-                            writeln!(f, " {desc} ")?;
+                        for channel in &cg.channel_names {
+                            writeln!(f, " {channel} ")?;
+                            if let Some(data) = self.get_channel_converted_data(channel)
+                                && !data.is_empty()
+                            {
+                                let array = &data.as_ref();
+                                let displayer = ArrayFormatter::try_new(array, &format_option)
+                                    .map_err(|e| {
+                                        log::warn!("Mdf Display: ArrayFormatter failed: {e}");
+                                        std::fmt::Error
+                                    })?;
+                                write!(f, "{}", displayer.value(0))?;
+                                write!(f, " ")?;
+                                write!(f, "{}", displayer.value(data.len() - 1))?;
+                            }
+                            if let Ok(Some(unit)) = self.get_channel_unit(channel) {
+                                writeln!(f, " {unit} ")?;
+                            }
+                            if let Ok(Some(desc)) = self.get_channel_desc(channel) {
+                                writeln!(f, " {desc} ")?;
+                            }
                         }
                     }
                 }
@@ -927,32 +937,34 @@ impl fmt::Display for Mdf {
                 {
                     writeln!(f, "{hd}")?;
                 }
-                for (master, list) in &self.get_master_channel_names_set() {
-                    if let Some(master_name) = master {
-                        writeln!(f, "\nMaster: {master_name}")?;
-                    } else {
-                        writeln!(f, "\nWithout Master channel")?;
-                    }
-                    for channel in list {
-                        writeln!(f, " {channel} ")?;
-                        if let Some(data) = self.get_channel_converted_data(channel)
-                            && !data.is_empty()
-                        {
-                            let array = &data.as_ref();
-                            let displayer = ArrayFormatter::try_new(array, &format_option)
-                                .map_err(|e| {
-                                    log::warn!("Mdf Display: ArrayFormatter failed: {e}");
-                                    std::fmt::Error
-                                })?;
-                            write!(f, "{}", displayer.value(0))?;
-                            write!(f, " ")?;
-                            write!(f, "{}", displayer.value(data.len() - 1))?;
+                for dg in mdfinfo4.dg.values() {
+                    for cg in dg.cg.values() {
+                        if let Some(master_name) = &cg.master_channel_name {
+                            writeln!(f, "\nMaster: {master_name}")?;
+                        } else {
+                            writeln!(f, "\nWithout Master channel")?;
                         }
-                        if let Ok(Some(unit)) = self.get_channel_unit(channel) {
-                            writeln!(f, " {unit} ")?;
-                        }
-                        if let Ok(Some(desc)) = self.get_channel_desc(channel) {
-                            writeln!(f, " {desc} ")?;
+                        for channel in &cg.channel_names {
+                            writeln!(f, " {channel} ")?;
+                            if let Some(data) = self.get_channel_converted_data(channel)
+                                && !data.is_empty()
+                            {
+                                let array = &data.as_ref();
+                                let displayer = ArrayFormatter::try_new(array, &format_option)
+                                    .map_err(|e| {
+                                        log::warn!("Mdf Display: ArrayFormatter failed: {e}");
+                                        std::fmt::Error
+                                    })?;
+                                write!(f, "{}", displayer.value(0))?;
+                                write!(f, " ")?;
+                                write!(f, "{}", displayer.value(data.len() - 1))?;
+                            }
+                            if let Ok(Some(unit)) = self.get_channel_unit(channel) {
+                                writeln!(f, " {unit} ")?;
+                            }
+                            if let Ok(Some(desc)) = self.get_channel_desc(channel) {
+                                writeln!(f, " {desc} ")?;
+                            }
                         }
                     }
                 }

@@ -48,8 +48,8 @@ pub fn export_to_hdf5(mdf: &Mdf, file_name: &str, compression: Option<&str>) -> 
         }
         MdfInfo::V3(mdfinfo3) => {
             mdf3_metadata(&mut file, mdfinfo3).context("failed creating metadata for mdf3")?;
-            for (_dg_block_position, dg) in mdfinfo3.dg.iter() {
-                for (_rec_id, cg) in dg.cg.iter() {
+            for dg in mdfinfo3.dg.values() {
+                for cg in dg.cg.values() {
                     mdf3_cg_to_hdf5(&mut file, mdfinfo3, cg, &hdf5_compression)
                         .context("failed converting Channel Group 3 to hdf5")?;
                 }
@@ -73,28 +73,22 @@ pub fn export_dataframe_to_hdf5(
             mdf4_metadata(&mut file, mdfinfo4).context("failed creating metadata for mdf4")?;
             if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, _rec_pos))) =
                 mdfinfo4.get_channel_id(channel_name)
+                && let Some(dg) = mdfinfo4.dg.get(dg_pos)
+                && let Some(cg) = dg.cg.get(rec_id)
             {
-                if let Some(dg) = mdfinfo4.dg.get(dg_pos) {
-                    if let Some(cg) = dg.cg.get(rec_id) {
-                        mdf4_cg_to_hdf5(&mut file, mdfinfo4, cg, &hdf5_compression).context(
-                            "failed converting Channel Group 4 to hdf5 containing channel",
-                        )?;
-                    }
-                }
+                mdf4_cg_to_hdf5(&mut file, mdfinfo4, cg, &hdf5_compression)
+                    .context("failed converting Channel Group 4 to hdf5 containing channel")?;
             }
         }
         MdfInfo::V3(mdfinfo3) => {
             mdf3_metadata(&mut file, mdfinfo3).context("failed creating metadata for mdf3")?;
             if let Some((_master, dg_pos, (_cg_pos, rec_id), _cn_pos)) =
                 mdfinfo3.get_channel_id(channel_name)
+                && let Some(dg) = mdfinfo3.dg.get(dg_pos)
+                && let Some(cg) = dg.cg.get(rec_id)
             {
-                if let Some(dg) = mdfinfo3.dg.get(dg_pos) {
-                    if let Some(cg) = dg.cg.get(rec_id) {
-                        mdf3_cg_to_hdf5(&mut file, mdfinfo3, cg, &hdf5_compression).context(
-                            "failed converting Channel Group 3 to hdf5 containing channel",
-                        )?;
-                    }
-                }
+                mdf3_cg_to_hdf5(&mut file, mdfinfo3, cg, &hdf5_compression)
+                    .context("failed converting Channel Group 3 to hdf5 containing channel")?;
             }
         }
     }
@@ -140,26 +134,26 @@ pub fn mdf4_cn_to_hdf5(
         convert_channel_data_into_h5dataset(compression, group, &cn.data, &cn.unique_name)
             .with_context(|| format!("failed writing channel {} dataset", cn.unique_name))?;
     // writing channel unit if existing
-    if let Ok(Some(unit)) = mdfinfo4.sharable.get_tx(cn.block.cn_md_unit) {
-        if !unit.is_empty() {
-            create_str_attr(&dataset, "unit", &unit).with_context(|| {
-                format!(
-                    "failed writing unit attribute for channel {}",
-                    cn.unique_name
-                )
-            })?;
-        }
+    if let Ok(Some(unit)) = mdfinfo4.sharable.get_tx(cn.block.cn_md_unit)
+        && !unit.is_empty()
+    {
+        create_str_attr(&dataset, "unit", &unit).with_context(|| {
+            format!(
+                "failed writing unit attribute for channel {}",
+                cn.unique_name
+            )
+        })?;
     }
     // writing channel description if existing
-    if let Ok(Some(desc)) = mdfinfo4.sharable.get_tx(cn.block.cn_md_comment) {
-        if !desc.is_empty() {
-            create_str_attr(&dataset, "description", &desc).with_context(|| {
-                format!(
-                    "failed writing description attribute for channel {}",
-                    cn.unique_name
-                )
-            })?;
-        }
+    if let Ok(Some(desc)) = mdfinfo4.sharable.get_tx(cn.block.cn_md_comment)
+        && !desc.is_empty()
+    {
+        create_str_attr(&dataset, "description", &desc).with_context(|| {
+            format!(
+                "failed writing description attribute for channel {}",
+                cn.unique_name
+            )
+        })?;
     };
     // sync type
     create_scalar_attr(&dataset, "sync_type", &cn.block.cn_sync_type).with_context(|| {
@@ -210,15 +204,15 @@ fn mdf3_cn_to_hdf5(
         convert_channel_data_into_h5dataset(compression, group, &cn.data, &cn.unique_name)
             .with_context(|| format!("failed writing channel {} dataset", cn.unique_name))?;
     // writing channel unit if existing
-    if let Some(unit) = mdfinfo3._get_unit(&cn.block1.cn_cc_conversion) {
-        if !unit.is_empty() {
-            create_str_attr(&dataset, "unit", &unit).with_context(|| {
-                format!(
-                    "failed writing unit attribute for channel {}",
-                    cn.unique_name
-                )
-            })?;
-        }
+    if let Some(unit) = mdfinfo3._get_unit(&cn.block1.cn_cc_conversion)
+        && !unit.is_empty()
+    {
+        create_str_attr(&dataset, "unit", &unit).with_context(|| {
+            format!(
+                "failed writing unit attribute for channel {}",
+                cn.unique_name
+            )
+        })?;
     }
     // writing channel description if existing
     create_str_attr(&dataset, "description", &cn.description).with_context(|| {

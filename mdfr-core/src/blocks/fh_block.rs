@@ -1,33 +1,31 @@
-//! File History block (FHBLOCK) for MDF4 — spec section 6.3, Table 18
+//! File History block (FHBLOCK) — spec section 6.3, Table 18.
 //!
 //! Each FHBLOCK records a creation or modification event with a timestamp and
 //! an optional MD comment. FHBLOCKs form a linked list from `hd_fh_first`.
-use anyhow::{Context, Result};
+use alloc::format;
+use alloc::string::{String, ToString};
 use binrw::binrw;
-use chrono::{DateTime, Local};
-use std::fmt::{self, Display};
-use std::fs::File;
-use std::io::{Cursor, Read};
+use chrono::DateTime;
+use core::fmt::{self, Display};
 
-use super::block_header::{SharableBlocks, read_meta_data};
-use super::metadata::BlockType;
-use crate::mdfinfo::block_chain::BlockChain;
-use crate::mdfinfo::sym_buf_reader::SymBufReader;
+/// Size of the FH block in bytes.
+pub const FH_LEN: u64 = 56;
 
 /// FHBLOCK structure (MDF 4.2 spec, Table 18)
 #[derive(Debug, Copy, Clone)]
 #[binrw]
 #[br(little)]
+#[bw(little)]
 #[repr(C)]
 pub struct FhBlock {
     /// '##FH'
-    fh_id: [u8; 4],
+    pub fh_id: [u8; 4],
     /// reserved, must be 0
-    fh_gap: [u8; 4],
+    pub fh_gap: [u8; 4],
     /// Length of block in bytes
-    fh_len: u64,
+    pub fh_len: u64,
     /// # of links
-    fh_links: u64,
+    pub fh_links: u64,
     /// Link to next FHBLOCK (can be NIL if list finished)
     pub fh_fh_next: i64,
     /// Link to MDBLOCK containing comment about the creation or modification of the MDF file.
@@ -41,26 +39,34 @@ pub struct FhBlock {
     /// time flags, but 1 local, bit 2 time offsets
     pub fh_time_flags: u8,
     /// reserved
-    fh_reserved: [u8; 3],
+    pub fh_reserved: [u8; 3],
 }
 
+/// Default has a time of 0: `no_std` has no clock. Use [`FhBlock::new_at`] to set it.
 impl Default for FhBlock {
     fn default() -> Self {
         FhBlock {
             fh_id: [35, 35, 70, 72], // '##FH'
             fh_gap: [0u8; 4],
-            fh_len: 56,
+            fh_len: FH_LEN,
             fh_links: 2,
             fh_fh_next: 0,
             fh_md_comment: 0,
-            fh_time_ns: Local::now()
-                .timestamp_nanos_opt()
-                .map(|t| t as u64)
-                .unwrap_or(0),
+            fh_time_ns: 0,
             fh_tz_offset_min: 0,
             fh_dst_offset_min: 0,
             fh_time_flags: 0,
             fh_reserved: [0u8; 3],
+        }
+    }
+}
+
+impl FhBlock {
+    /// New FH with the given time (ns since 1970-01-01).
+    pub fn new_at(time_ns: u64) -> Self {
+        FhBlock {
+            fh_time_ns: time_ns,
+            ..Default::default()
         }
     }
 }
@@ -71,7 +77,7 @@ impl Display for FhBlock {
         let nsecs = (self.fh_time_ns % 1_000_000_000) as u32;
         let datetime = DateTime::from_timestamp(secs, nsecs)
             .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
-            .unwrap_or_else(|| "Invalid timestamp".to_string());
+            .unwrap_or_else(|| String::from("Invalid timestamp"));
         let local_time = if self.fh_time_flags & 0b1 != 0 {
             "local"
         } else {
@@ -96,77 +102,22 @@ fn format_minutes_as_offset(minutes: i16) -> String {
     format!("{}{:02}:{:02}", sign, hours, mins)
 }
 
-/// Parses a single FHBLOCK from the file at the given target position.
-fn parse_fh_block(
-    rdr: &mut SymBufReader<&File>,
-    target: i64,
-    position: i64,
-) -> Result<(FhBlock, i64)> {
-    rdr.seek_relative(target - position)
-        .context("Could not reach FH Block position")?; // change buffer position
-    let mut buf = [0u8; 56];
-    rdr.read_exact(&mut buf)
-        .context("Could not read FH block buffer")?;
-    let mut block = Cursor::new(buf);
-    let fh: FhBlock = binrw::BinReaderExt::read_le(&mut block)
-        .with_context(|| format!("Error parsing fh block into FhBlock struct \n{block:?}"))?; // reads the fh block
-    Ok((fh, target + 56))
-}
-
-pub type Fh = Vec<FhBlock>;
-
-/// Parses the FHBLOCK linked list starting from `target`, including MD comments.
-/// Returns a Vec of all FHBLOCKs in the chain.
-pub fn parse_fh(
-    rdr: &mut SymBufReader<&File>,
-    sharable: &mut SharableBlocks,
-    target: i64,
-    mut position: i64,
-) -> Result<(Fh, i64)> {
-    let mut fh: Fh = Vec::new();
-    if target > 0 {
-        let (block, pos) = parse_fh_block(rdr, target, position)?;
-        position = pos;
-        position = read_meta_data(rdr, sharable, block.fh_md_comment, position, BlockType::FH)?;
-        let mut next_pointer = block.fh_fh_next;
-        fh.push(block);
-        let mut chain = BlockChain::new("FH");
-        chain.visit(target);
-        while next_pointer != 0 {
-            if !chain.visit(next_pointer) {
-                break;
-            }
-            let (block, pos) = parse_fh_block(rdr, next_pointer, position)?;
-            position = pos;
-            next_pointer = block.fh_fh_next;
-            position = read_meta_data(rdr, sharable, block.fh_md_comment, position, BlockType::FH)?;
-            fh.push(block);
-        }
-    }
-    Ok((fh, position))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec::Vec;
+    use binrw::{BinReaderExt, BinWrite, io::Cursor};
 
     #[test]
     fn test_default() {
         let fh = FhBlock::default();
         assert_eq!(fh.fh_fh_next, 0);
         assert_eq!(fh.fh_md_comment, 0);
-        assert!(fh.fh_time_ns > 0); // current time
     }
 
     #[test]
     fn test_display_utc() {
-        let fh = FhBlock {
-            fh_time_ns: 1_700_000_000_000_000_000, // 2023-11-14T22:13:20 UTC
-            fh_time_flags: 0,                      // UTC
-            fh_tz_offset_min: 0,
-            fh_dst_offset_min: 0,
-            ..Default::default()
-        };
+        let fh = FhBlock::new_at(1_700_000_000_000_000_000);
         let display = format!("{fh}");
         assert!(display.contains("FH"));
         assert!(display.contains("2023-11-14"));
@@ -178,15 +129,23 @@ mod tests {
     #[test]
     fn test_display_local() {
         let fh = FhBlock {
-            fh_time_ns: 1_700_000_000_000_000_000,
-            fh_time_flags: 0b1, // local time
+            fh_time_flags: 0b1,
             fh_tz_offset_min: 60,
-            fh_dst_offset_min: 0,
-            ..Default::default()
+            ..FhBlock::new_at(1_700_000_000_000_000_000)
         };
         let display = format!("{fh}");
         assert!(display.contains("local"));
         assert!(display.contains("tz=+01:00"));
-        assert!(display.contains("dst=+00:00"));
+    }
+
+    #[test]
+    fn roundtrip_is_56_bytes() {
+        let fh = FhBlock::new_at(7);
+        let mut c = Cursor::new(Vec::new());
+        fh.write_le(&mut c).unwrap();
+        let buf = c.into_inner();
+        assert_eq!(buf.len() as u64, FH_LEN);
+        let back: FhBlock = Cursor::new(buf).read_le().unwrap();
+        assert_eq!(back.fh_time_ns, 7);
     }
 }

@@ -34,6 +34,8 @@ struct Mdfr(Mdf);
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Mdfr>()?;
     m.add_class::<CompressionAlgorithm>()?;
+    m.add_class::<MdfLogger>()?;
+    m.add_function(wrap_pyfunction!(finalize_file_in_place, m)?)?;
     Ok(())
 }
 
@@ -1117,5 +1119,314 @@ pyplot.show()
         }
 
         Ok(output)
+    }
+}
+
+/// Finalizes an unfinalized MDF 4.x file (`"UnFinMF "`) in place on disk without copying.
+/// Returns the number of channel groups patched.
+#[pyfunction]
+fn finalize_file_in_place(file_name: &str) -> PyResult<usize> {
+    crate::mdfinfo::mdfinfo4::finalize::finalize_file_in_place(file_name)
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+}
+
+struct StdClock {
+    epoch: std::time::Instant,
+}
+
+impl StdClock {
+    fn new() -> Self {
+        Self {
+            epoch: std::time::Instant::now(),
+        }
+    }
+}
+
+impl mdfr_core::TimeSource for StdClock {
+    fn now_ticks(&mut self) -> u64 {
+        self.epoch.elapsed().as_micros() as u64
+    }
+
+    fn seconds_per_tick(&self) -> f64 {
+        1e-6
+    }
+
+    fn wall_clock_ns(&mut self) -> Option<u64> {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()
+            .map(|d| d.as_nanos() as u64)
+    }
+}
+
+enum PyLoggerState {
+    Building {
+        path: String,
+        builder: mdfr_core::logger::LoggerBuilder,
+    },
+    Active(mdfr_core::logger::Logger<std::fs::File, StdClock>),
+    Closed,
+}
+
+/// Streaming MDF 4.3 logger backed by `mdfr-core`.
+#[pyclass]
+pub struct MdfLogger {
+    state: PyLoggerState,
+}
+
+#[pymethods]
+impl MdfLogger {
+    #[new]
+    #[pyo3(signature = (file_name, layout="sorted", compression=CompressionAlgorithm::NoCompression))]
+    fn new(file_name: &str, layout: &str, compression: CompressionAlgorithm) -> PyResult<Self> {
+        let dl = if layout.eq_ignore_ascii_case("unsorted") {
+            mdfr_core::logger::DataLayout::Unsorted
+        } else {
+            mdfr_core::logger::DataLayout::Sorted
+        };
+        let builder = mdfr_core::logger::LoggerBuilder::new(dl, compression.into());
+        Ok(Self {
+            state: PyLoggerState::Building {
+                path: file_name.to_string(),
+                builder,
+            },
+        })
+    }
+
+    /// Adds a channel group with a 64-bit microsecond master time channel. Returns the group index (`u16`).
+    pub fn add_group(&mut self, name: &str) -> PyResult<u16> {
+        match &mut self.state {
+            PyLoggerState::Building { builder, .. } => Ok(builder.add_group(name).0),
+            _ => Err(pyo3::exceptions::PyRuntimeError::new_err(
+                "cannot add group after start()",
+            )),
+        }
+    }
+
+    /// Appends a scalar channel (`data_type`: 0=UintLE, 2=IntLE, 4=FloatLE) and returns a packed channel handle (`u32`).
+    #[pyo3(signature = (group, name, data_type, bit_count, unit=None))]
+    pub fn add_channel(
+        &mut self,
+        group: u16,
+        name: &str,
+        data_type: u8,
+        bit_count: u32,
+        unit: Option<&str>,
+    ) -> PyResult<u32> {
+        let dt = mdfr_core::blocks::cn::CnDataType::try_from(data_type).map_err(|e| {
+            pyo3::exceptions::PyValueError::new_err(format!("invalid data_type: {e}"))
+        })?;
+        match &mut self.state {
+            PyLoggerState::Building { builder, .. } => {
+                let ch = builder
+                    .add_channel(mdfr_core::logger::GroupHandle(group), name, dt, bit_count)
+                    .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+                if let Some(u) = unit {
+                    builder
+                        .set_channel_unit(ch, u)
+                        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+                }
+                Ok(((ch.group as u32) << 16) | (ch.channel as u32))
+            }
+            _ => Err(pyo3::exceptions::PyRuntimeError::new_err(
+                "cannot add channel after start()",
+            )),
+        }
+    }
+
+    /// Appends a VLSD channel (`data_type`: 7=StringUtf8, 10=ByteArray) and returns a packed channel handle (`u32`).
+    pub fn add_vlsd_channel(&mut self, group: u16, name: &str, data_type: u8) -> PyResult<u32> {
+        let dt = mdfr_core::blocks::cn::CnDataType::try_from(data_type).map_err(|e| {
+            pyo3::exceptions::PyValueError::new_err(format!("invalid data_type: {e}"))
+        })?;
+        match &mut self.state {
+            PyLoggerState::Building { builder, .. } => {
+                let ch = builder
+                    .add_vlsd_channel(mdfr_core::logger::GroupHandle(group), name, dt)
+                    .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+                Ok(((ch.group as u32) << 16) | (ch.channel as u32))
+            }
+            _ => Err(pyo3::exceptions::PyRuntimeError::new_err(
+                "cannot add VLSD channel after start()",
+            )),
+        }
+    }
+
+    /// Appends an MDF 4.3 VLSC channel (`data_type`: 7=StringUtf8, 10=ByteArray) and its companion size channel, returning a packed channel handle (`u32`).
+    pub fn add_vlsc_channel(&mut self, group: u16, name: &str, data_type: u8) -> PyResult<u32> {
+        let dt = mdfr_core::blocks::cn::CnDataType::try_from(data_type).map_err(|e| {
+            pyo3::exceptions::PyValueError::new_err(format!("invalid data_type: {e}"))
+        })?;
+        match &mut self.state {
+            PyLoggerState::Building { builder, .. } => {
+                let ch = builder
+                    .add_vlsc_channel(mdfr_core::logger::GroupHandle(group), name, dt)
+                    .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+                Ok(((ch.group as u32) << 16) | (ch.channel as u32))
+            }
+            _ => Err(pyo3::exceptions::PyRuntimeError::new_err(
+                "cannot add VLSC channel after start()",
+            )),
+        }
+    }
+
+    /// Transitions from schema builder to active streaming logger, writing the MDF 4.3 header hierarchy.
+    pub fn start(&mut self) -> PyResult<()> {
+        let prev = std::mem::replace(&mut self.state, PyLoggerState::Closed);
+        match prev {
+            PyLoggerState::Building { path, builder } => {
+                let schema = builder
+                    .build()
+                    .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+                let file = std::fs::OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .truncate(true)
+                    .open(&path)
+                    .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
+                let logger = mdfr_core::logger::Logger::start(schema, file, StdClock::new())
+                    .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+                self.state = PyLoggerState::Active(logger);
+                Ok(())
+            }
+            other => {
+                self.state = other;
+                Err(pyo3::exceptions::PyRuntimeError::new_err(
+                    "logger already started or closed",
+                ))
+            }
+        }
+    }
+
+    /// Begins assembling a record for `group`.
+    pub fn record_begin(&mut self, group: u16) -> PyResult<()> {
+        match &mut self.state {
+            PyLoggerState::Active(l) => {
+                l.begin_record(mdfr_core::logger::GroupHandle(group))
+                    .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+                Ok(())
+            }
+            _ => Err(pyo3::exceptions::PyRuntimeError::new_err(
+                "logger is not active",
+            )),
+        }
+    }
+
+    /// Sets an unsigned integer channel value in the staged record.
+    pub fn record_set_u64(&mut self, ch_packed: u32, val: u64) -> PyResult<()> {
+        let ch = mdfr_core::logger::ChannelHandle {
+            group: (ch_packed >> 16) as u16,
+            channel: (ch_packed & 0xFFFF) as u16,
+        };
+        match &mut self.state {
+            PyLoggerState::Active(l) => l
+                .set_channel_u64(ch, val)
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string())),
+            _ => Err(pyo3::exceptions::PyRuntimeError::new_err(
+                "logger is not active",
+            )),
+        }
+    }
+
+    /// Sets a signed integer channel value in the staged record.
+    pub fn record_set_i64(&mut self, ch_packed: u32, val: i64) -> PyResult<()> {
+        let ch = mdfr_core::logger::ChannelHandle {
+            group: (ch_packed >> 16) as u16,
+            channel: (ch_packed & 0xFFFF) as u16,
+        };
+        match &mut self.state {
+            PyLoggerState::Active(l) => l
+                .set_channel_i64(ch, val)
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string())),
+            _ => Err(pyo3::exceptions::PyRuntimeError::new_err(
+                "logger is not active",
+            )),
+        }
+    }
+
+    /// Sets a float channel value in the staged record.
+    pub fn record_set_f64(&mut self, ch_packed: u32, val: f64) -> PyResult<()> {
+        let ch = mdfr_core::logger::ChannelHandle {
+            group: (ch_packed >> 16) as u16,
+            channel: (ch_packed & 0xFFFF) as u16,
+        };
+        match &mut self.state {
+            PyLoggerState::Active(l) => l
+                .set_channel_f64(ch, val)
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string())),
+            _ => Err(pyo3::exceptions::PyRuntimeError::new_err(
+                "logger is not active",
+            )),
+        }
+    }
+
+    /// Sets a byte slice / UTF-8 string channel value in the staged record.
+    pub fn record_set_bytes(&mut self, ch_packed: u32, data: &[u8]) -> PyResult<()> {
+        let ch = mdfr_core::logger::ChannelHandle {
+            group: (ch_packed >> 16) as u16,
+            channel: (ch_packed & 0xFFFF) as u16,
+        };
+        match &mut self.state {
+            PyLoggerState::Active(l) => l
+                .set_channel_bytes(ch, data)
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string())),
+            _ => Err(pyo3::exceptions::PyRuntimeError::new_err(
+                "logger is not active",
+            )),
+        }
+    }
+
+    /// Commits the staged record for `group`.
+    pub fn record_commit(&mut self, group: u16) -> PyResult<()> {
+        match &mut self.state {
+            PyLoggerState::Active(l) => l
+                .commit_staged_record(mdfr_core::logger::GroupHandle(group))
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string())),
+            _ => Err(pyo3::exceptions::PyRuntimeError::new_err(
+                "logger is not active",
+            )),
+        }
+    }
+
+    /// Flushes buffered data and patches `DL`/`CG` links and cycle counts in place.
+    pub fn checkpoint(&mut self) -> PyResult<()> {
+        match &mut self.state {
+            PyLoggerState::Active(l) => l
+                .checkpoint()
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string())),
+            _ => Err(pyo3::exceptions::PyRuntimeError::new_err(
+                "logger is not active",
+            )),
+        }
+    }
+
+    /// Rotates to `new_file_name`, finalizing the current file in place and incrementing the sequence index.
+    pub fn rotate(&mut self, new_file_name: &str) -> PyResult<()> {
+        match &mut self.state {
+            PyLoggerState::Active(l) => {
+                let file = std::fs::OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .truncate(true)
+                    .open(new_file_name)
+                    .map_err(|e| pyo3::exceptions::PyIOError::new_err(e.to_string()))?;
+                l.rotate(file, None)
+                    .map(|_| ())
+                    .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+            }
+            _ => Err(pyo3::exceptions::PyRuntimeError::new_err(
+                "logger is not active",
+            )),
+        }
+    }
+
+    /// Finalizes the MDF 4.3 file in place and closes the logger.
+    pub fn close(&mut self) -> PyResult<()> {
+        let prev = std::mem::replace(&mut self.state, PyLoggerState::Closed);
+        if let PyLoggerState::Active(l) = prev {
+            l.close()
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+        }
+        Ok(())
     }
 }

@@ -104,13 +104,15 @@ fn make_cn4(
     cn_flags: u32,
 ) -> Cn4 {
     use mdfr::mdfinfo::mdfinfo4::Cn4Block;
-    let mut block = Cn4Block::default();
-    block.cn_type = cn_type;
-    block.cn_bit_count = cn_bit_count;
-    block.cn_alignment = cn_alignment;
-    block.cn_byte_offset = cn_byte_offset;
-    block.cn_bit_offset = cn_bit_offset;
-    block.cn_flags = cn_flags;
+    let block = Cn4Block {
+        cn_type,
+        cn_bit_count,
+        cn_alignment,
+        cn_byte_offset,
+        cn_bit_offset,
+        cn_flags,
+        ..Default::default()
+    };
     Cn4 {
         block,
         ..Default::default()

@@ -740,7 +740,7 @@ fn verify_unsorted_fixture_loads() {
 /// CG layout:
 /// - CG 1: rec_id=1, VLSD flag, contains offset/length storage (cn_type = 1)
 /// - CG 2: rec_id=2, no VLSD flag, contains the actual UTF-8 channel
-///          with cn_data pointing to CG1's block position
+///   with cn_data pointing to CG1's block position
 pub fn create_unsorted_vlsd_vlsc_fixture() -> Result<()> {
     const PATH: &str = "test_files/synthetic/unsorted_vlsd_vlsc.mf4";
     const N_RECORDS_PER_CG: u64 = 100_000;
@@ -829,6 +829,7 @@ pub fn create_unsorted_vlsd_vlsc_fixture() -> Result<()> {
 }
 
 /// CN block with cn_data support.
+#[allow(clippy::too_many_arguments)]
 fn write_cn4_with_data(
     buf: &mut Vec<u8>,
     cn_type: u8,

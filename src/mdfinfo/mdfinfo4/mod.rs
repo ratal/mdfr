@@ -4,52 +4,51 @@
 //! sub-modules per block type for maintainability.
 
 // Sub-modules
-pub mod at_block;
-mod block_header;
-mod ca_block;
-mod cc_block;
-mod cg_block;
-mod ch_block;
-mod cn_block;
-mod composition;
-mod data_block;
-mod dg_block;
-mod ev_block;
-mod fh_block;
+pub mod at_impl;
+mod block_header_impl;
+mod ca_impl;
+mod cc_impl;
+mod cg_impl;
+mod ch_impl;
+mod cn_impl;
+mod composition_impl;
+mod data_impl;
+mod dg_impl;
+mod ev_impl;
+mod fh_impl;
 pub mod finalize;
-mod hd_block;
+mod hd_impl;
 mod metadata;
 pub mod scanner;
-mod si_block;
-mod sr_block;
+mod si_impl;
 
 // Re-exports for backward compatibility
-pub use at_block::*;
-pub use block_header::*;
-pub use ca_block::*;
-pub use cc_block::*;
-pub use cg_block::*;
-pub use ch_block::*;
-pub use cn_block::*;
-pub use composition::*;
-pub use data_block::*;
-pub use dg_block::*;
-pub use ev_block::*;
-pub use fh_block::*;
-pub use hd_block::*;
+pub use at_impl::*;
+pub use block_header_impl::*;
+pub use ca_impl::*;
+pub use cc_impl::*;
+pub use cg_impl::*;
+pub use ch_impl::*;
+pub use cn_impl::*;
+pub use composition_impl::*;
+pub use data_impl::*;
+pub use dg_impl::*;
+pub use ev_impl::*;
+pub use fh_impl::*;
+pub use hd_impl::*;
+pub use mdfr_core::blocks::sr_block::*;
 pub use metadata::*;
-pub use si_block::*;
-pub use sr_block::*;
+pub use si_impl::*;
 
 use anyhow::{Context, Error, Result};
 use rustc_hash::FxHashMap;
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fmt;
+use std::sync::Arc;
 
 /// ChannelId : (Option<master_channelname>, dg_pos, (cg_pos, rec_id), (cn_pos, rec_pos))
 pub(crate) type ChannelId = (Option<String>, i64, (i64, u64), (i64, i32));
 pub(crate) type ChannelNamesSet = HashMap<String, ChannelId>;
-use std::fmt;
-use std::sync::Arc;
 
 use arrow::array::Array;
 
@@ -363,6 +362,10 @@ impl MdfInfo4 {
     pub fn get_channel_names_set(&self) -> HashSet<String> {
         self.channel_names_set.keys().cloned().collect()
     }
+    /// returns an iterator over all channel names (zero-copy)
+    pub fn channel_names(&self) -> Box<dyn Iterator<Item = &String> + '_> {
+        Box::new(self.channel_names_set.keys())
+    }
     /// returns the set of channel names that are in same channel group as input channel name
     pub fn get_channel_names_cg_set(&self, channel_name: &str) -> HashSet<String> {
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, _rec_pos))) =
@@ -377,6 +380,18 @@ impl MdfInfo4 {
             channel_list
         } else {
             HashSet::new()
+        }
+    }
+    /// returns a reference to the channel names in the same channel group (zero-copy)
+    pub fn channel_names_cg_set_ref(&self, channel_name: &str) -> Option<&HashSet<String>> {
+        if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, _rec_pos))) =
+            self.get_channel_id(channel_name)
+        {
+            self.dg.get(dg_pos)?
+                .cg.get(rec_id)
+                .map(|cg| &cg.channel_names)
+        } else {
+            None
         }
     }
     /// returns a hashmap for which master channel names are keys and values its corresponding set of channel names
@@ -451,7 +466,7 @@ impl MdfInfo4 {
             fh: Vec::new(),
             at: HashMap::new(),
             ev: HashMap::new(),
-            hd_block: Hd4::default(),
+            hd_block: new_hd4(),
             ch: HashMap::new(),
             is_unfinalized: false,
         }
@@ -466,8 +481,10 @@ impl MdfInfo4 {
         unit: Option<String>,
         description: Option<String>,
     ) -> Result<(), Error> {
-        let mut cg_block = Cg4Block::default();
-        cg_block.cg_cycle_count = data_signature.len as u64;
+        let mut cg_block = Cg4Block {
+            cg_cycle_count: data_signature.len as u64,
+            ..Default::default()
+        };
         // Basic channel block
         let mut cn_block = Cn4Block::default();
         let machine_endian: bool = cfg!(target_endian = "big");

@@ -14,7 +14,7 @@
 
 #![allow(unstable_name_collisions)]
 //#![forbid(unsafe_code)]
-mod c_api;
+pub mod c_api;
 pub mod data_holder;
 pub mod export;
 pub mod mdfinfo;
@@ -23,3 +23,5 @@ pub mod mdfr;
 
 pub mod mdfreader;
 pub mod mdfwriter;
+pub use mdfr_core::logger;
+pub use mdfr_core::{Error as CoreError, SeekFrom, Sink, TimeSource, VecSink};

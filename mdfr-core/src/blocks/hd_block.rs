@@ -1,32 +1,33 @@
-//! Header block (HDBLOCK) for MDF4 — spec section 6.1, Tables 13-14
+//! Header block (HDBLOCK) — spec section 6.1, Tables 13-14.
 //!
 //! The HDBLOCK is the root of the block hierarchy. It contains the start timestamp,
 //! time zone information, and links to DG, FH, CH, AT, and EV blocks.
-use anyhow::{Context, Result};
+use alloc::format;
+use alloc::string::ToString;
 use binrw::binrw;
-use chrono::{DateTime, FixedOffset, Local, TimeZone};
-use std::fmt;
-use std::fs::File;
-use std::io::{Cursor, Read};
+use chrono::{DateTime, FixedOffset, TimeZone};
+use core::fmt;
 
-use super::block_header::{SharableBlocks, read_meta_data};
-use super::metadata::BlockType;
-use crate::mdfinfo::sym_buf_reader::SymBufReader;
+/// Size of the HD block in bytes, located at file offset 64 (after the ID block).
+pub const HD_LEN: u64 = 104;
+/// Position of the first block after ID (64 bytes) and HD (104 bytes).
+pub const HD_END_POSITION: i64 = 168;
 
 /// HDBLOCK structure (MDF 4.2 spec, Table 13)
 #[derive(Debug, Copy, Clone)]
 #[binrw]
 #[br(little)]
+#[bw(little)]
 #[repr(C)]
 pub struct Hd4 {
     /// ##HD
-    hd_id: [u8; 4],
+    pub hd_id: [u8; 4],
     /// reserved
-    hd_reserved: [u8; 4],
+    pub hd_reserved: [u8; 4],
     /// Length of block in bytes
-    hd_len: u64,
+    pub hd_len: u64,
     /// # of links
-    hd_link_counts: u64,
+    pub hd_link_counts: u64,
     /// Pointer to the first data group block (DGBLOCK) (can be NIL)
     pub hd_dg_first: i64,
     /// Pointer to first file history block (FHBLOCK)
@@ -61,11 +62,12 @@ pub struct Hd4 {
     pub hd_start_distance_m: f64,
 }
 
+/// Default has a start time of 0: `no_std` has no clock. Use [`Hd4::new_at`] to set it.
 impl Default for Hd4 {
     fn default() -> Self {
         Hd4 {
             hd_id: [35, 35, 72, 68], // ##HD
-            hd_len: 104,
+            hd_len: HD_LEN,
             hd_link_counts: 6,
             hd_reserved: [0u8; 4],
             hd_dg_first: 0,
@@ -74,10 +76,7 @@ impl Default for Hd4 {
             hd_at_first: 0,
             hd_ev_first: 0,
             hd_md_comment: 0,
-            hd_start_time_ns: Local::now()
-                .timestamp_nanos_opt()
-                .map(|t| t as u64)
-                .unwrap_or(0),
+            hd_start_time_ns: 0,
             hd_tz_offset_min: 0,
             hd_dst_offset_min: 0,
             hd_time_flags: 0,
@@ -86,6 +85,16 @@ impl Default for Hd4 {
             hd_reserved2: 0,
             hd_start_angle_rad: 0.0,
             hd_start_distance_m: 0.0,
+        }
+    }
+}
+
+impl Hd4 {
+    /// New HD with the given start time (ns since 1970-01-01).
+    pub fn new_at(start_time_ns: u64) -> Self {
+        Hd4 {
+            hd_start_time_ns: start_time_ns,
+            ..Default::default()
         }
     }
 }
@@ -129,25 +138,11 @@ impl fmt::Display for Hd4 {
     }
 }
 
-/// Parses the HDBLOCK at file offset 168 (after the 64-byte ID block + 104-byte HD header).
-/// Also reads the HD metadata comment block (Table 14).
-pub fn hd4_parser(
-    rdr: &mut SymBufReader<&File>,
-    sharable: &mut SharableBlocks,
-) -> Result<(Hd4, i64)> {
-    let mut buf = [0u8; 104];
-    rdr.read_exact(&mut buf)
-        .context("could not read HD block buffer")?;
-    let mut block = Cursor::new(buf);
-    let hd: Hd4 = binrw::BinReaderExt::read_le(&mut block)
-        .context("Could not parse HD block buffer into Hd4 struct")?;
-    let position = read_meta_data(rdr, sharable, hd.hd_md_comment, 168, BlockType::HD)?;
-    Ok((hd, position))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec::Vec;
+    use binrw::{BinReaderExt, BinWrite, io::Cursor};
 
     #[test]
     fn test_default() {
@@ -160,12 +155,22 @@ mod tests {
 
     #[test]
     fn test_display() {
-        let hd = Hd4 {
-            hd_start_time_ns: 1_700_000_000_000_000_000, // 2023-11-14T22:13:20 UTC
-            ..Default::default()
-        };
+        let hd = Hd4::new_at(1_700_000_000_000_000_000); // 2023-11-14T22:13:20 UTC
         let display = format!("{hd}");
         assert!(display.contains("Time :"));
         assert!(display.contains("2023-11-14"));
+    }
+
+    #[test]
+    fn roundtrip_is_104_bytes() {
+        let mut hd = Hd4::new_at(42);
+        hd.hd_dg_first = 0x1234;
+        let mut c = Cursor::new(Vec::new());
+        hd.write_le(&mut c).unwrap();
+        let buf = c.into_inner();
+        assert_eq!(buf.len() as u64, HD_LEN);
+        let back: Hd4 = Cursor::new(buf).read_le().unwrap();
+        assert_eq!(back.hd_dg_first, 0x1234);
+        assert_eq!(back.hd_start_time_ns, 42);
     }
 }
