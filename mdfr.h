@@ -1,376 +1,225 @@
-#include <stdarg.h>
+#ifndef MDFR_H
+#define MDFR_H
+
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
-#include <stdlib.h>
-
-/**
- * reader buffer size, by default same as Rust BufReader
- */
-#define DEFAULT_BUF_SIZE 8192
-
-/**
- * The following constant represents the size of data chunk to be read and processed.
- * a big chunk will improve performance but consume more memory
- * a small chunk will not consume too much memory but will cause many read calls, penalising performance
- */
-#define CHUNK_SIZE_READING_3 524288
-
-/**
- * The following constant represents the size of data chunk to be read and processed.
- * a big chunk will improve performance but consume more memory
- * a small chunk will not consume too much memory but will cause many read calls, penalising performance
- */
-#define CHUNK_SIZE_READING_4 524288
-
-typedef struct At At;
-
-typedef struct BTreeMap_i64__Dg4 BTreeMap_i64__Dg4;
-
-typedef struct BTreeMap_u32__Dg3 BTreeMap_u32__Dg3;
-
-typedef struct HashMap_String__ChannelId HashMap_String__ChannelId;
-
-typedef struct HashMap_String__ChannelId3 HashMap_String__ChannelId3;
-
-typedef struct HashMap_i64__Cc4Block HashMap_i64__Cc4Block;
-
-typedef struct HashMap_i64__Ev4Block HashMap_i64__Ev4Block;
-
-typedef struct HashMap_i64__MetaData HashMap_i64__MetaData;
-
-typedef struct HashMap_i64__Si4Block HashMap_i64__Si4Block;
-
-/**
- * HD3 strucutre
- */
-typedef struct Hd3 Hd3;
-
-/**
- * sharable blocks (most likely referenced multiple times and shared by several blocks)
- * that are in sharable fields and holds CC, CE, TX blocks
- */
-typedef struct SharableBlocks3 SharableBlocks3;
-
-typedef struct String String;
-
-typedef struct Vec_FhBlock Vec_FhBlock;
-
-/**
- * Common Id block structure for both versions 2 and 3
- */
-typedef struct IdBlock {
-  /**
-   * "MDF
-   */
-  uint8_t id_file_id[8];
-  /**
-   * version in char
-   */
-  uint8_t id_vers[8];
-  uint8_t id_prog[8];
-  /**
-   * 0 Little endian, >= 1 Big endian, only valid for 3.x
-   */
-  uint16_t id_default_byteorder;
-  /**
-   * default floating point number. 0: IEEE754, 1: G_Float, 2: D_Float, only valid for 3.x
-   */
-  uint16_t id_floatingpointformat;
-  /**
-   * version number, valid for both 3.x and 4.x
-   */
-  uint16_t id_ver;
-  /**
-   * code page (only for version 3.3)
-   */
-  uint16_t id_codepage;
-  /**
-   * check
-   */
-  uint8_t id_check[2];
-  uint8_t id_fill[26];
-  /**
-   * only valid for 4.x but can exist in 3.x
-   */
-  uint16_t id_unfin_flags;
-  /**
-   * only valid for 4.x but can exist in 3.x
-   */
-  uint16_t id_custom_unfin_flags;
-} IdBlock;
-
-typedef struct HashMap_String__ChannelId3 ChannelNamesSet3;
-
-/**
- * Specific to version 3.x mdf metadata structure
- */
-typedef struct MdfInfo3 {
-  /**
-   * file name string
-   */
-  struct String file_name;
-  /**
-   * Identification block
-   */
-  struct IdBlock id_block;
-  /**
-   * code page
-   */
-  const Encoding *encoding;
-  /**
-   * Header block
-   */
-  struct Hd3 hd_block;
-  /**
-   * Header comments
-   */
-  struct String hd_comment;
-  /**
-   * data group block linking channel group/channel/conversion/..etc. and data block
-   */
-  struct BTreeMap_u32__Dg3 dg;
-  /**
-   * Conversion and CE blocks
-   */
-  struct SharableBlocks3 sharable;
-  /**
-   * set of all channel names
-   */
-  ChannelNamesSet3 channel_names_set;
-} MdfInfo3;
-
-/**
- * Hd4 (Header) block structure
- */
-typedef struct Hd4 {
-  /**
-   * ##HD
-   */
-  uint8_t hd_id[4];
-  /**
-   * reserved
-   */
-  uint8_t hd_reserved[4];
-  /**
-   * Length of block in bytes
-   */
-  uint64_t hd_len;
-  /**
-   * # of links
-   */
-  uint64_t hd_link_counts;
-  /**
-   * Pointer to the first data group block (DGBLOCK) (can be NIL)
-   */
-  int64_t hd_dg_first;
-  /**
-   * Pointer to first file history block (FHBLOCK)
-   * There must be at least one FHBLOCK with information about the application which created the MDF file.
-   */
-  int64_t hd_fh_first;
-  /**
-   * Pointer to first channel hierarchy block (CHBLOCK) (can be NIL).
-   */
-  int64_t hd_ch_first;
-  /**
-   * Pointer to first attachment block (ATBLOCK) (can be NIL)
-   */
-  int64_t hd_at_first;
-  /**
-   * Pointer to first event block (EVBLOCK) (can be NIL)
-   */
-  int64_t hd_ev_first;
-  /**
-   * Pointer to the measurement file comment (TXBLOCK or MDBLOCK) (can be NIL) For MDBLOCK contents, see Table 14.
-   */
-  int64_t hd_md_comment;
-  /**
-   * Data members
-   * Time stamp in nanoseconds elapsed since 00:00:00 01.01.1970 (UTC time or local time, depending on "local time" flag)
-   */
-  uint64_t hd_start_time_ns;
-  /**
-   * Time zone offset in minutes. The value must be in range [-720,720], i.e. it can be negative! For example a value of 60 (min) means UTC+1 time zone = Central European Time (CET). Only valid if "time offsets valid" flag is set in time flags.
-   */
-  int16_t hd_tz_offset_min;
-  /**
-   * Daylight saving time (DST) offset in minutes for start time stamp. During the summer months, most regions observe a DST offset of 60 min (1 hour). Only valid if "time offsets valid" flag is set in time flags.
-   */
-  int16_t hd_dst_offset_min;
-  /**
-   * Time flags The value contains the following bit flags (see HD_TF_xxx)
-   */
-  uint8_t hd_time_flags;
-  /**
-   * Time quality class (see HD_TC[35, 35, 72, 68]_xxx)
-   */
-  uint8_t hd_time_class;
-  /**
-   * Flags The value contains the following bit flags (see HD_FL_xxx):
-   */
-  uint8_t hd_flags;
-  /**
-   * reserved
-   */
-  uint8_t hd_reserved2;
-  /**
-   * Start angle in radians at start of measurement (only for angle synchronous measurements) Only valid if "start angle valid" flag is set. All angle values for angle synchronized master channels or events are relative to this start angle.
-   */
-  double hd_start_angle_rad;
-  /**
-   * Start distance in meters at start of measurement (only for distance synchronous measurements) Only valid if "start distance valid" flag is set. All distance values for distance synchronized master channels or events are relative to this start distance.
-   */
-  double hd_start_distance_m;
-} Hd4;
-
-typedef struct Vec_FhBlock Fh;
-
-/**
- * sharable blocks (most likely referenced multiple times and shared by several blocks)
- * that are in sharable fields and holds CC, SI, TX and MD blocks
- */
-typedef struct SharableBlocks {
-  struct HashMap_i64__MetaData md_tx;
-  struct HashMap_i64__Cc4Block cc;
-  struct HashMap_i64__Si4Block si;
-} SharableBlocks;
-
-typedef struct HashMap_String__ChannelId ChannelNamesSet;
-
-/**
- * MdfInfo4 is the struct holding whole metadata of mdf4.x files
- * * blocks with unique links are at top level like attachment, events and file history
- * * sharable blocks (most likely referenced multiple times and shared by several blocks)
- *   that are in sharable fields and holds CC, SI, TX and MD blocks
- * * the dg fields nests cg itself nesting cn blocks and eventually compositions
- *   (other cn or ca blocks) and conversion
- * * channel_names_set is the complete set of channel names contained in file
- * * in general the blocks are contained in HashMaps with key corresponding
- *   to their position in the file
- */
-typedef struct MdfInfo4 {
-  /**
-   * file name string
-   */
-  struct String file_name;
-  /**
-   * Identifier block
-   */
-  struct IdBlock id_block;
-  /**
-   * header block
-   */
-  struct Hd4 hd_block;
-  /**
-   * file history blocks
-   */
-  Fh fh;
-  /**
-   * attachment blocks
-   */
-  struct At at;
-  /**
-   * event blocks
-   */
-  struct HashMap_i64__Ev4Block ev;
-  /**
-   * data group block linking channel group/channel/conversion/compostion/..etc. and data block
-   */
-  struct BTreeMap_i64__Dg4 dg;
-  /**
-   * cc, md, tx and si blocks that can be referenced by several blocks
-   */
-  struct SharableBlocks sharable;
-  /**
-   * set of all channel names
-   */
-  ChannelNamesSet channel_names_set;
-} MdfInfo4;
-
-/**
- * joins mdf versions 3.x and 4.x
- */
-typedef enum MdfInfo_Tag {
-  V3,
-  V4,
-} MdfInfo_Tag;
-
-typedef struct MdfInfo {
-  MdfInfo_Tag tag;
-  union {
-    struct {
-      struct MdfInfo3 *v3;
-    };
-    struct {
-      struct MdfInfo4 *v4;
-    };
-  };
-} MdfInfo;
-
-/**
- * Main Mdf struct holding mdfinfo, arrow data and schema
- */
-typedef struct Mdf {
-  /**
-   * MdfInfo enum
-   */
-  struct MdfInfo mdf_info;
-} Mdf;
-
-/**
- * create a new mdf from a file and its metadata
- */
-struct Mdf *new_mdf(const char *file_name);
-
-/**
- * returns mdf file version
- */
-unsigned short get_version(const struct Mdf *mdf);
-
-/**
- * returns channel's unit string
- * if no unit is existing for this channel, returns a null pointer
- */
-const char *get_channel_unit(const struct Mdf *mdf, const char *channel_name);
-
-/**
- * returns channel's description string
- * if no description is existing for this channel, returns null pointer
- */
-const char *get_channel_desc(const struct Mdf *mdf, const char *channel_name);
-
-/**
- * returns channel's associated master channel name string
- * if no master channel existing, returns null pointer
- */
-const char *get_channel_master(const struct Mdf *mdf, const char *channel_name);
-
-/**
- * returns channel's associated master channel type string
- * 0 = None (normal data channels), 1 = Time (seconds), 2 = Angle (radians),
- * 3 = Distance (meters), 4 = Index (zero-based index values)
- */
-unsigned char get_channel_master_type(const struct Mdf *mdf, const char *channel_name);
-
-/**
- * returns a sorted array of strings of all channel names contained in file
- */
-char *const *get_channel_names_set(const struct Mdf *mdf);
-
-/**
- * load all channels data in memory
- */
-void load_all_channels_data_in_memory(struct Mdf *mdf);
-
-/**
- * returns channel's arrow Array.
- * null pointer returned if not found
- */
-const FFI_ArrowArray *get_channel_array(const struct Mdf *mdf, const char *channel_name);
-
-void export_to_parquet(const struct Mdf *mdf, const char *file_name, const char *compression);
-
-void export_to_hdf5(const struct Mdf *mdf, const char *file_name, const char *compression);
 
 #include "include/mdfr_logger.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* ========================================================================= */
+/* Arrow C Data Interface Specification                                      */
+/* ========================================================================= */
+
+#ifndef ARROW_C_DATA_INTERFACE
+#define ARROW_C_DATA_INTERFACE
+
+#define ARROW_FLAG_DICTIONARY_ORDERED 1
+#define ARROW_FLAG_NULLABLE 2
+#define ARROW_FLAG_MAP_KEYS_SORTED 4
+
+struct ArrowSchema {
+  const char *format;
+  const char *name;
+  const char *metadata;
+  int64_t flags;
+  int64_t n_children;
+  struct ArrowSchema **children;
+  struct ArrowSchema *dictionary;
+  void (*release)(struct ArrowSchema *);
+  void *private_data;
+};
+
+struct ArrowArray {
+  int64_t length;
+  int64_t null_count;
+  int64_t offset;
+  int64_t n_buffers;
+  int64_t n_children;
+  const void **buffers;
+  struct ArrowArray **children;
+  struct ArrowArray *dictionary;
+  void (*release)(struct ArrowArray *);
+  void *private_data;
+};
+
+#endif /* ARROW_C_DATA_INTERFACE */
+
+typedef struct ArrowArray FFI_ArrowArray;
+typedef struct ArrowSchema FFI_ArrowSchema;
+
+/* ========================================================================= */
+/* Opaque Handles and Structs                                                */
+/* ========================================================================= */
+
+/**
+ * Main Mdf struct holding file metadata, Arrow data, and schemas.
+ * Created via `new_mdf()` and freed with `free_mdf()`.
+ */
+typedef struct Mdf Mdf;
+
+/**
+ * Uniquely identifies a channel by its file position.
+ * `master_name` is heap-allocated; free with `free_channel_id_master()`.
+ */
+typedef struct ChannelIdC {
+  char *master_name;
+  int64_t dg_pos;
+  int64_t cg_pos;
+  uint64_t rec_id;
+  int64_t cn_pos;
+  int32_t rec_pos;
+} ChannelIdC;
+
+/* ========================================================================= */
+/* Reader Lifecycle & General Information                                    */
+/* ========================================================================= */
+
+/**
+ * Creates a new Mdf reader from a file path.
+ * Returns a heap-allocated Mdf pointer, or NULL on error.
+ * Caller must free the returned pointer with `free_mdf()`.
+ */
+Mdf *new_mdf(const char *file_name);
+
+/**
+ * Frees an Mdf object previously returned by `new_mdf()`.
+ */
+void free_mdf(Mdf *mdf);
+
+/**
+ * Returns the MDF file version (e.g. 410 for 4.10, 430 for 4.30).
+ * Returns 0 on NULL input.
+ */
+unsigned short get_version(const Mdf *mdf);
+
+/* ========================================================================= */
+/* Channel Metadata & Access                                                 */
+/* ========================================================================= */
+
+/**
+ * Returns the channel's unit string, or NULL if none exists.
+ * The returned pointer is heap-allocated; caller must free with `free_c_string()`.
+ */
+const char *get_channel_unit(const Mdf *mdf, const char *channel_name);
+
+/**
+ * Returns the channel's description string, or NULL if none exists.
+ * The returned pointer is heap-allocated; caller must free with `free_c_string()`.
+ */
+const char *get_channel_desc(const Mdf *mdf, const char *channel_name);
+
+/**
+ * Returns the channel's associated master channel name, or NULL if none exists.
+ * The returned pointer is heap-allocated; caller must free with `free_c_string()`.
+ */
+const char *get_channel_master(const Mdf *mdf, const char *channel_name);
+
+/**
+ * Returns the channel's associated master channel type:
+ * 0 = None, 1 = Time (s), 2 = Angle (rad), 3 = Distance (m), 4 = Index
+ */
+unsigned char get_channel_master_type(const Mdf *mdf, const char *channel_name);
+
+/**
+ * Returns a sorted array of all channel names in the file.
+ * The returned pointer is heap-allocated; free with `free_channel_names_set(ptr, len)`.
+ */
+const char *const *get_channel_names_set(const Mdf *mdf);
+
+/**
+ * Frees a channel names array returned by `get_channel_names_set()`.
+ */
+void free_channel_names_set(char *const *ptr, size_t len);
+
+/**
+ * Frees a null-terminated C string allocated by any `get_*` function.
+ */
+void free_c_string(char *ptr);
+
+/**
+ * Preloads all channel raw and converted data into memory.
+ */
+void load_all_channels_data_in_memory(Mdf *mdf);
+
+/**
+ * Returns a channel's Arrow Array pointer.
+ * Caller must free with `free_channel_array()`.
+ */
+FFI_ArrowArray *get_channel_array(const Mdf *mdf, const char *channel_name);
+
+/**
+ * Frees an Arrow Array returned by `get_channel_array()`.
+ */
+void free_channel_array(FFI_ArrowArray *array);
+
+/**
+ * Returns a channel's Arrow Schema pointer.
+ * Caller must free with `free_channel_schema()`.
+ */
+FFI_ArrowSchema *get_channel_schema(const Mdf *mdf, const char *channel_name);
+
+/**
+ * Frees an Arrow Schema returned by `get_channel_schema()`.
+ */
+void free_channel_schema(FFI_ArrowSchema *schema);
+
+/* ========================================================================= */
+/* Export Functions                                                          */
+/* ========================================================================= */
+
+/**
+ * Exports loaded channels to an Apache Parquet file.
+ * `compression` can be "snappy", "gzip", "lz4", "zstd", etc., or NULL.
+ */
+void export_to_parquet(const Mdf *mdf, const char *file_name, const char *compression);
+
+/**
+ * Exports loaded channels to an HDF5 file.
+ * `compression` can be "deflate", "lzf", or NULL.
+ */
+void export_to_hdf5(const Mdf *mdf, const char *file_name, const char *compression);
+
+/* ========================================================================= */
+/* MDF 4.3 Common Properties & Metadata                                      */
+/* ========================================================================= */
+
+bool get_recorder_sequence_index(const Mdf *mdf, uint64_t *out);
+bool get_recorder_file_index(const Mdf *mdf, uint64_t *out);
+bool get_recorder_file_last(const Mdf *mdf, unsigned char *out);
+const char *get_recorder_uuid(const Mdf *mdf);
+const char *get_measurement_uuid(const Mdf *mdf);
+
+const char *get_author(const Mdf *mdf);
+const char *get_department(const Mdf *mdf);
+const char *get_project(const Mdf *mdf);
+const char *get_subject(const Mdf *mdf);
+
+bool get_channel_id(const Mdf *mdf, const char *channel_name, ChannelIdC *out);
+void free_channel_id_master(ChannelIdC *id);
+
+/* ========================================================================= */
+/* Diagnostics, File History, Events, Hierarchy, Source Info                 */
+/* ========================================================================= */
+
+size_t get_file_history_count(const Mdf *mdf);
+bool get_file_history_time_ns(const Mdf *mdf, size_t index, uint64_t *out);
+
+size_t get_event_count(const Mdf *mdf);
+uint8_t get_event_type(const Mdf *mdf, size_t index);
+
+size_t get_channel_hierarchy_count(const Mdf *mdf);
+const char *list_channel_hierarchy(const Mdf *mdf);
+
+size_t get_source_information_count(const Mdf *mdf);
+const char *list_source_information(const Mdf *mdf);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* MDFR_H */

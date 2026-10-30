@@ -20,21 +20,27 @@ fn load_mdf3(filename: &str) -> Result<Option<Mdf>> {
 
 #[test]
 fn mdf3_canape_loads() -> Result<()> {
-    let Some(mdf) = load_mdf3("MDF_CANAPE.mdf")? else { return Ok(()); };
+    let Some(mdf) = load_mdf3("MDF_CANAPE.mdf")? else {
+        return Ok(());
+    };
     assert!(!mdf.get_channel_names_set().is_empty());
     Ok(())
 }
 
 #[test]
 fn mdf3_ascet_loads() -> Result<()> {
-    let Some(mdf) = load_mdf3("ASCET.dat")? else { return Ok(()); };
+    let Some(mdf) = load_mdf3("ASCET.dat")? else {
+        return Ok(());
+    };
     assert!(!mdf.get_channel_names_set().is_empty());
     Ok(())
 }
 
 #[test]
 fn mdf3_mda71_loads() -> Result<()> {
-    let Some(mdf) = load_mdf3("MDA71.dat")? else { return Ok(()); };
+    let Some(mdf) = load_mdf3("MDA71.dat")? else {
+        return Ok(());
+    };
     assert!(!mdf.get_channel_names_set().is_empty());
     Ok(())
 }
@@ -42,49 +48,63 @@ fn mdf3_mda71_loads() -> Result<()> {
 #[test]
 fn mdf3_rj_can_loads() -> Result<()> {
     // RJ file has linear conversion channels
-    let Some(mdf) = load_mdf3("RJ_N16-12-363_BM-15C-0024_228_2_20170116094355_CAN.dat")? else { return Ok(()); };
+    let Some(mdf) = load_mdf3("RJ_N16-12-363_BM-15C-0024_228_2_20170116094355_CAN.dat")? else {
+        return Ok(());
+    };
     assert!(!mdf.get_channel_names_set().is_empty());
     Ok(())
 }
 
 #[test]
 fn mdf3_measure_loads() -> Result<()> {
-    let Some(mdf) = load_mdf3("Measure.dat")? else { return Ok(()); };
+    let Some(mdf) = load_mdf3("Measure.dat")? else {
+        return Ok(());
+    };
     assert!(!mdf.get_channel_names_set().is_empty());
     Ok(())
 }
 
 #[test]
 fn mdf3_t3_nedc_loads() -> Result<()> {
-    let Some(mdf) = load_mdf3("T3_121121_000_6NEDC.dat")? else { return Ok(()); };
+    let Some(mdf) = load_mdf3("T3_121121_000_6NEDC.dat")? else {
+        return Ok(());
+    };
     assert!(!mdf.get_channel_names_set().is_empty());
     Ok(())
 }
 
 #[test]
 fn mdf3_738l10_loads() -> Result<()> {
-    let Some(mdf) = load_mdf3("738L10_040410 Base Acc 30km_hr.dat")? else { return Ok(()); };
+    let Some(mdf) = load_mdf3("738L10_040410 Base Acc 30km_hr.dat")? else {
+        return Ok(());
+    };
     assert!(!mdf.get_channel_names_set().is_empty());
     Ok(())
 }
 
 #[test]
 fn mdf3_hidden_bytes_loads() -> Result<()> {
-    let Some(mdf) = load_mdf3("Mdf3_hiddenBytes_NotAlignedBytes.dat")? else { return Ok(()); };
+    let Some(mdf) = load_mdf3("Mdf3_hiddenBytes_NotAlignedBytes.dat")? else {
+        return Ok(());
+    };
     assert!(!mdf.get_channel_names_set().is_empty());
     Ok(())
 }
 
 #[test]
 fn mdf3_tgt_loads() -> Result<()> {
-    let Some(mdf) = load_mdf3("TGT.dat")? else { return Ok(()); };
+    let Some(mdf) = load_mdf3("TGT.dat")? else {
+        return Ok(());
+    };
     assert!(!mdf.get_channel_names_set().is_empty());
     Ok(())
 }
 
 #[test]
 fn mdf3_canoe_unsorted_loads() -> Result<()> {
-    let Some(mdf) = load_mdf3("CANoe3_unsorted.mdf")? else { return Ok(()); };
+    let Some(mdf) = load_mdf3("CANoe3_unsorted.mdf")? else {
+        return Ok(());
+    };
     assert!(!mdf.get_channel_names_set().is_empty());
     Ok(())
 }

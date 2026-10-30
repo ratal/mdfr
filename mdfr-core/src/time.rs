@@ -104,3 +104,27 @@ impl TimeSource for StdClock {
             .map(|d| d.as_nanos() as u64)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_manual_clock() {
+        let mut clk = ManualClock::new(1e-3, 5);
+        assert_eq!(clk.seconds_per_tick(), 1e-3);
+        assert_eq!(clk.now_ticks(), 0);
+        assert_eq!(clk.now_ticks(), 5);
+        assert_eq!(clk.now_ticks(), 10);
+        assert_eq!(clk.wall_clock_ns(), Some(1_700_000_000_000_000_000));
+    }
+
+    #[cfg(feature = "std")]
+    #[test]
+    fn test_std_clock() {
+        let mut clk = StdClock::default();
+        assert_eq!(clk.seconds_per_tick(), 1e-6);
+        let _ = clk.now_ticks();
+        assert!(clk.wall_clock_ns().is_some());
+    }
+}

@@ -145,6 +145,14 @@ pub struct Schema {
     pub checkpoint_every_n_blocks: usize,
     /// Defined channel groups.
     pub groups: Vec<GroupDef>,
+    /// Optional custom comment for the HD block.
+    pub hd_comment: Option<String>,
+    /// Optional tool name for the FH block.
+    pub tool_id: Option<String>,
+    /// Optional tool vendor for the FH block.
+    pub tool_vendor: Option<String>,
+    /// Optional tool version for the FH block.
+    pub tool_version: Option<String>,
 }
 
 /// Fluent builder for constructing a [`Schema`].
@@ -155,6 +163,10 @@ pub struct LoggerBuilder {
     max_blocks_per_dl: usize,
     checkpoint_every_n_blocks: usize,
     groups: Vec<GroupDef>,
+    hd_comment: Option<String>,
+    tool_id: Option<String>,
+    tool_vendor: Option<String>,
+    tool_version: Option<String>,
 }
 
 impl LoggerBuilder {
@@ -166,7 +178,30 @@ impl LoggerBuilder {
             max_blocks_per_dl: 64,
             checkpoint_every_n_blocks: 0,
             groups: Vec::new(),
+            hd_comment: None,
+            tool_id: None,
+            tool_vendor: None,
+            tool_version: None,
         }
+    }
+
+    /// Sets the custom HD block comment text.
+    pub fn set_hd_comment(&mut self, comment: &str) -> &mut Self {
+        self.hd_comment = Some(comment.to_string());
+        self
+    }
+
+    /// Sets custom tool metadata for the file history (FHBLOCK).
+    pub fn set_tool_info(
+        &mut self,
+        tool_id: &str,
+        tool_vendor: &str,
+        tool_version: &str,
+    ) -> &mut Self {
+        self.tool_id = Some(tool_id.to_string());
+        self.tool_vendor = Some(tool_vendor.to_string());
+        self.tool_version = Some(tool_version.to_string());
+        self
     }
 
     /// Sets the flush buffer threshold (in bytes) for newly added groups or overrides a specific group.
@@ -557,6 +592,10 @@ impl LoggerBuilder {
             max_blocks_per_dl: self.max_blocks_per_dl,
             checkpoint_every_n_blocks: self.checkpoint_every_n_blocks,
             groups: self.groups,
+            hd_comment: self.hd_comment,
+            tool_id: self.tool_id,
+            tool_vendor: self.tool_vendor,
+            tool_version: self.tool_version,
         })
     }
 }
@@ -578,50 +617,70 @@ mod tests {
         builder.checkpoint_every_n_blocks(4);
 
         let g = builder.add_group_with_master("Powertrain", "CustomTime");
-        builder.set_group_flush_threshold(g, 64 * 1024).expect("flush threshold");
+        builder
+            .set_group_flush_threshold(g, 64 * 1024)
+            .expect("flush threshold");
 
         // Source
-        builder.set_group_source(
-            g,
-            SourceDef {
-                name: "ECU_1".to_string(),
-                path: Some("CAN/ECU_1".to_string()),
-                si_type: 1, // ECU
-                si_bus_type: 0,
-                si_flags: 0,
-            },
-        ).expect("group source");
+        builder
+            .set_group_source(
+                g,
+                SourceDef {
+                    name: "ECU_1".to_string(),
+                    path: Some("CAN/ECU_1".to_string()),
+                    si_type: 1, // ECU
+                    si_bus_type: 0,
+                    si_flags: 0,
+                },
+            )
+            .expect("group source");
 
         // Channels
-        let ch_scalar = builder.add_channel(g, "RPM", CnDataType::UIntLE, 16).expect("scalar");
+        let ch_scalar = builder
+            .add_channel(g, "RPM", CnDataType::UIntLE, 16)
+            .expect("scalar");
         builder.set_channel_unit(ch_scalar, "rpm").expect("unit");
-        builder.set_channel_comment(ch_scalar, "Engine RPM").expect("comment");
-        builder.set_channel_conversion(ch_scalar, ConversionDef::Linear { p1: 0.0, p2: 0.25 }).expect("conversion");
-        builder.set_channel_source(
-            ch_scalar,
-            SourceDef {
-                name: "Tachometer".to_string(),
-                path: None,
-                si_type: 3, // Sensor
-                si_bus_type: 0,
-                si_flags: 0,
-            },
-        ).expect("channel source");
+        builder
+            .set_channel_comment(ch_scalar, "Engine RPM")
+            .expect("comment");
+        builder
+            .set_channel_conversion(ch_scalar, ConversionDef::Linear { p1: 0.0, p2: 0.25 })
+            .expect("conversion");
+        builder
+            .set_channel_source(
+                ch_scalar,
+                SourceDef {
+                    name: "Tachometer".to_string(),
+                    path: None,
+                    si_type: 3, // Sensor
+                    si_bus_type: 0,
+                    si_flags: 0,
+                },
+            )
+            .expect("channel source");
 
         // Bit channel at byte 10, bit 0, 1 bit
-        let ch_bit = builder.add_bit_channel(g, "WarningFlag", CnDataType::UIntLE, 10, 0, 1).expect("bit channel");
+        let ch_bit = builder
+            .add_bit_channel(g, "WarningFlag", CnDataType::UIntLE, 10, 0, 1)
+            .expect("bit channel");
         assert_eq!(ch_bit.group, g.0);
 
         // Array channel
-        let ch_arr = builder.add_array_channel(g, "Coils", CnDataType::FloatLE, 32, alloc::vec![4]).expect("array channel");
+        let ch_arr = builder
+            .add_array_channel(g, "Coils", CnDataType::FloatLE, 32, alloc::vec![4])
+            .expect("array channel");
         assert_eq!(ch_arr.group, g.0);
 
         // VLSD channel
-        let ch_vlsd = builder.add_vlsd_channel(g, "DiagnosticMsg", CnDataType::StringUtf8).expect("vlsd channel");
+        let ch_vlsd = builder
+            .add_vlsd_channel(g, "DiagnosticMsg", CnDataType::StringUtf8)
+            .expect("vlsd channel");
         assert_eq!(ch_vlsd.group, g.0);
 
         // VLSC channel
-        let ch_vlsc = builder.add_vlsc_channel(g, "BlobData", CnDataType::ByteArray).expect("vlsc channel");
+        let ch_vlsc = builder
+            .add_vlsc_channel(g, "BlobData", CnDataType::ByteArray)
+            .expect("vlsc channel");
         assert_eq!(ch_vlsc.group, g.0);
 
         assert!(builder.estimated_ram_budget() >= 64 * 1024);
@@ -634,30 +693,96 @@ mod tests {
 
     #[test]
     fn test_schema_error_paths() {
-        let mut builder = LoggerBuilder::new(DataLayout::Unsorted, CompressionAlgorithm::NoCompression);
+        let mut builder =
+            LoggerBuilder::new(DataLayout::Unsorted, CompressionAlgorithm::NoCompression);
         let g_bogus = GroupHandle(999);
-        let ch_bogus = ChannelHandle { group: 999, channel: 999 };
+        let ch_bogus = ChannelHandle {
+            group: 999,
+            channel: 999,
+        };
 
         assert!(builder.set_group_flush_threshold(g_bogus, 1024).is_err());
-        assert!(builder.set_group_source(g_bogus, SourceDef { name: "x".to_string(), path: None, si_type: 0, si_bus_type: 0, si_flags: 0 }).is_err());
-        assert!(builder.add_channel(g_bogus, "x", CnDataType::UIntLE, 8).is_err());
-        assert!(builder.add_bit_channel(g_bogus, "x", CnDataType::UIntLE, 10, 0, 1).is_err());
-        assert!(builder.add_array_channel(g_bogus, "x", CnDataType::FloatLE, 32, alloc::vec![2]).is_err());
-        assert!(builder.add_vlsd_channel(g_bogus, "x", CnDataType::ByteArray).is_err());
-        assert!(builder.add_vlsc_channel(g_bogus, "x", CnDataType::ByteArray).is_err());
+        assert!(
+            builder
+                .set_group_source(
+                    g_bogus,
+                    SourceDef {
+                        name: "x".to_string(),
+                        path: None,
+                        si_type: 0,
+                        si_bus_type: 0,
+                        si_flags: 0
+                    }
+                )
+                .is_err()
+        );
+        assert!(
+            builder
+                .add_channel(g_bogus, "x", CnDataType::UIntLE, 8)
+                .is_err()
+        );
+        assert!(
+            builder
+                .add_bit_channel(g_bogus, "x", CnDataType::UIntLE, 10, 0, 1)
+                .is_err()
+        );
+        assert!(
+            builder
+                .add_array_channel(g_bogus, "x", CnDataType::FloatLE, 32, alloc::vec![2])
+                .is_err()
+        );
+        assert!(
+            builder
+                .add_vlsd_channel(g_bogus, "x", CnDataType::ByteArray)
+                .is_err()
+        );
+        assert!(
+            builder
+                .add_vlsc_channel(g_bogus, "x", CnDataType::ByteArray)
+                .is_err()
+        );
 
         assert!(builder.set_channel_unit(ch_bogus, "unit").is_err());
         assert!(builder.set_channel_comment(ch_bogus, "comment").is_err());
-        assert!(builder.set_channel_conversion(ch_bogus, ConversionDef::Linear { p1: 0.0, p2: 1.0 }).is_err());
-        assert!(builder.set_channel_source(ch_bogus, SourceDef { name: "s".to_string(), path: None, si_type: 0, si_bus_type: 0, si_flags: 0 }).is_err());
+        assert!(
+            builder
+                .set_channel_conversion(ch_bogus, ConversionDef::Linear { p1: 0.0, p2: 1.0 })
+                .is_err()
+        );
+        assert!(
+            builder
+                .set_channel_source(
+                    ch_bogus,
+                    SourceDef {
+                        name: "s".to_string(),
+                        path: None,
+                        si_type: 0,
+                        si_bus_type: 0,
+                        si_flags: 0
+                    }
+                )
+                .is_err()
+        );
 
         let g = builder.add_group("G");
         // bit_offset > 7 should fail
-        assert!(builder.add_bit_channel(g, "bad_bit", CnDataType::UIntLE, 10, 8, 1).is_err());
+        assert!(
+            builder
+                .add_bit_channel(g, "bad_bit", CnDataType::UIntLE, 10, 8, 1)
+                .is_err()
+        );
         // byte_offset < 8 should fail (overlaps master time)
-        assert!(builder.add_bit_channel(g, "bad_bit2", CnDataType::UIntLE, 4, 0, 1).is_err());
+        assert!(
+            builder
+                .add_bit_channel(g, "bad_bit2", CnDataType::UIntLE, 4, 0, 1)
+                .is_err()
+        );
         // empty dims array should fail
-        assert!(builder.add_array_channel(g, "bad_arr", CnDataType::FloatLE, 32, alloc::vec![]).is_err());
+        assert!(
+            builder
+                .add_array_channel(g, "bad_arr", CnDataType::FloatLE, 32, alloc::vec![])
+                .is_err()
+        );
 
         assert_eq!(builder.estimated_ram_budget(), 32 * 1024);
     }

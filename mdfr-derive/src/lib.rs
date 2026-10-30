@@ -35,17 +35,26 @@ struct FieldSpec {
     comment: Option<String>,
     linear: Option<(f64, f64)>,
     rational: Option<[f64; 6]>,
+    big_endian: bool,
     kind: FieldKind,
 }
 
 enum FieldKind {
     Scalar {
-        cn_data_type: proc_macro2::TokenStream,
+        cn_data_type_le: proc_macro2::TokenStream,
+        cn_data_type_be: proc_macro2::TokenStream,
         bit_count: u32,
         byte_len: usize,
-        encode_expr: fn(&syn::Ident) -> proc_macro2::TokenStream,
+        is_bool: bool,
     },
     ByteArray {
+        len: usize,
+    },
+    TypedArray {
+        elem_data_type_le: proc_macro2::TokenStream,
+        elem_data_type_be: proc_macro2::TokenStream,
+        elem_bit_count: u32,
+        elem_byte_len: usize,
         len: usize,
     },
 }
@@ -62,8 +71,9 @@ fn parse_f64_expr(expr: &Expr) -> syn::Result<f64> {
     }
 }
 
-fn parse_struct_group_name(attrs: &[Attribute], default_name: &str) -> syn::Result<String> {
+fn parse_struct_attributes(attrs: &[Attribute], default_name: &str) -> syn::Result<(String, bool)> {
     let mut group_name = default_name.to_string();
+    let mut struct_big_endian = false;
     for attr in attrs {
         if !attr.path().is_ident("mdf") {
             continue;
@@ -74,14 +84,17 @@ fn parse_struct_group_name(attrs: &[Attribute], default_name: &str) -> syn::Resu
                 let s: syn::LitStr = v.parse()?;
                 group_name = s.value();
                 Ok(())
+            } else if meta.path.is_ident("big_endian") || meta.path.is_ident("be") {
+                struct_big_endian = true;
+                Ok(())
             } else {
                 Err(meta.error(
-                    "unsupported struct-level #[mdf(...)] attribute; expected `group = \"...\"`",
+                    "unsupported struct-level #[mdf(...)] attribute; expected `group = \"...\"` or `big_endian`",
                 ))
             }
         })?;
     }
-    Ok(group_name)
+    Ok((group_name, struct_big_endian))
 }
 
 fn classify_type(ty: &Type) -> syn::Result<FieldKind> {
@@ -96,92 +109,185 @@ fn classify_type(ty: &Type) -> syn::Result<FieldKind> {
             let s = ident.to_string();
             match s.as_str() {
                 "u8" => Ok(FieldKind::Scalar {
-                    cn_data_type: quote!(::mdfr_core::blocks::cn::CnDataType::UIntLE),
+                    cn_data_type_le: quote!(::mdfr_core::blocks::cn::CnDataType::UIntLE),
+                    cn_data_type_be: quote!(::mdfr_core::blocks::cn::CnDataType::UIntBE),
                     bit_count: 8,
                     byte_len: 1,
-                    encode_expr: |id| quote!(self.#id.to_le_bytes()),
+                    is_bool: false,
                 }),
                 "u16" => Ok(FieldKind::Scalar {
-                    cn_data_type: quote!(::mdfr_core::blocks::cn::CnDataType::UIntLE),
+                    cn_data_type_le: quote!(::mdfr_core::blocks::cn::CnDataType::UIntLE),
+                    cn_data_type_be: quote!(::mdfr_core::blocks::cn::CnDataType::UIntBE),
                     bit_count: 16,
                     byte_len: 2,
-                    encode_expr: |id| quote!(self.#id.to_le_bytes()),
+                    is_bool: false,
                 }),
                 "u32" => Ok(FieldKind::Scalar {
-                    cn_data_type: quote!(::mdfr_core::blocks::cn::CnDataType::UIntLE),
+                    cn_data_type_le: quote!(::mdfr_core::blocks::cn::CnDataType::UIntLE),
+                    cn_data_type_be: quote!(::mdfr_core::blocks::cn::CnDataType::UIntBE),
                     bit_count: 32,
                     byte_len: 4,
-                    encode_expr: |id| quote!(self.#id.to_le_bytes()),
+                    is_bool: false,
                 }),
                 "u64" => Ok(FieldKind::Scalar {
-                    cn_data_type: quote!(::mdfr_core::blocks::cn::CnDataType::UIntLE),
+                    cn_data_type_le: quote!(::mdfr_core::blocks::cn::CnDataType::UIntLE),
+                    cn_data_type_be: quote!(::mdfr_core::blocks::cn::CnDataType::UIntBE),
                     bit_count: 64,
                     byte_len: 8,
-                    encode_expr: |id| quote!(self.#id.to_le_bytes()),
+                    is_bool: false,
                 }),
                 "i8" => Ok(FieldKind::Scalar {
-                    cn_data_type: quote!(::mdfr_core::blocks::cn::CnDataType::IntLE),
+                    cn_data_type_le: quote!(::mdfr_core::blocks::cn::CnDataType::IntLE),
+                    cn_data_type_be: quote!(::mdfr_core::blocks::cn::CnDataType::IntBE),
                     bit_count: 8,
                     byte_len: 1,
-                    encode_expr: |id| quote!(self.#id.to_le_bytes()),
+                    is_bool: false,
                 }),
                 "i16" => Ok(FieldKind::Scalar {
-                    cn_data_type: quote!(::mdfr_core::blocks::cn::CnDataType::IntLE),
+                    cn_data_type_le: quote!(::mdfr_core::blocks::cn::CnDataType::IntLE),
+                    cn_data_type_be: quote!(::mdfr_core::blocks::cn::CnDataType::IntBE),
                     bit_count: 16,
                     byte_len: 2,
-                    encode_expr: |id| quote!(self.#id.to_le_bytes()),
+                    is_bool: false,
                 }),
                 "i32" => Ok(FieldKind::Scalar {
-                    cn_data_type: quote!(::mdfr_core::blocks::cn::CnDataType::IntLE),
+                    cn_data_type_le: quote!(::mdfr_core::blocks::cn::CnDataType::IntLE),
+                    cn_data_type_be: quote!(::mdfr_core::blocks::cn::CnDataType::IntBE),
                     bit_count: 32,
                     byte_len: 4,
-                    encode_expr: |id| quote!(self.#id.to_le_bytes()),
+                    is_bool: false,
                 }),
                 "i64" => Ok(FieldKind::Scalar {
-                    cn_data_type: quote!(::mdfr_core::blocks::cn::CnDataType::IntLE),
+                    cn_data_type_le: quote!(::mdfr_core::blocks::cn::CnDataType::IntLE),
+                    cn_data_type_be: quote!(::mdfr_core::blocks::cn::CnDataType::IntBE),
                     bit_count: 64,
                     byte_len: 8,
-                    encode_expr: |id| quote!(self.#id.to_le_bytes()),
+                    is_bool: false,
                 }),
                 "f32" => Ok(FieldKind::Scalar {
-                    cn_data_type: quote!(::mdfr_core::blocks::cn::CnDataType::FloatLE),
+                    cn_data_type_le: quote!(::mdfr_core::blocks::cn::CnDataType::FloatLE),
+                    cn_data_type_be: quote!(::mdfr_core::blocks::cn::CnDataType::FloatBE),
                     bit_count: 32,
                     byte_len: 4,
-                    encode_expr: |id| quote!(self.#id.to_le_bytes()),
+                    is_bool: false,
                 }),
                 "f64" => Ok(FieldKind::Scalar {
-                    cn_data_type: quote!(::mdfr_core::blocks::cn::CnDataType::FloatLE),
+                    cn_data_type_le: quote!(::mdfr_core::blocks::cn::CnDataType::FloatLE),
+                    cn_data_type_be: quote!(::mdfr_core::blocks::cn::CnDataType::FloatBE),
                     bit_count: 64,
                     byte_len: 8,
-                    encode_expr: |id| quote!(self.#id.to_le_bytes()),
+                    is_bool: false,
                 }),
                 "bool" => Ok(FieldKind::Scalar {
-                    cn_data_type: quote!(::mdfr_core::blocks::cn::CnDataType::UIntLE),
+                    cn_data_type_le: quote!(::mdfr_core::blocks::cn::CnDataType::UIntLE),
+                    cn_data_type_be: quote!(::mdfr_core::blocks::cn::CnDataType::UIntLE),
                     bit_count: 8,
                     byte_len: 1,
-                    encode_expr: |id| quote!([self.#id as u8]),
+                    is_bool: true,
                 }),
                 _ => Err(syn::Error::new_spanned(
                     ty,
-                    "unsupported field type for #[derive(MdfRecord)]; expected u8/u16/u32/u64, i8/i16/i32/i64, f32/f64, bool, or [u8; N]",
+                    "unsupported field type for #[derive(MdfRecord)]; expected u8/u16/u32/u64, i8/i16/i32/i64, f32/f64, bool, or [T; N]",
                 )),
             }
         }
         Type::Array(arr) => {
-            if let Type::Path(tp) = &*arr.elem
-                && tp.path.is_ident("u8")
-                && let Expr::Lit(el) = &arr.len
+            let len = if let Expr::Lit(el) = &arr.len
                 && let Lit::Int(li) = &el.lit
             {
-                let n = li.base10_parse::<usize>()?;
-                if n > 0 {
-                    return Ok(FieldKind::ByteArray { len: n });
-                }
+                li.base10_parse::<usize>()?
+            } else {
+                return Err(syn::Error::new_spanned(
+                    &arr.len,
+                    "expected integer literal array length",
+                ));
+            };
+            if len == 0 {
+                return Err(syn::Error::new_spanned(
+                    arr,
+                    "zero-length arrays are not supported in #[derive(MdfRecord)]",
+                ));
             }
-            Err(syn::Error::new_spanned(
-                ty,
-                "unsupported array field for #[derive(MdfRecord)]; only non-empty [u8; N] is supported",
-            ))
+
+            if let Type::Path(tp) = &*arr.elem
+                && let Some(ident) = tp.path.get_ident()
+            {
+                match ident.to_string().as_str() {
+                    "u8" => Ok(FieldKind::ByteArray { len }),
+                    "u16" => Ok(FieldKind::TypedArray {
+                        elem_data_type_le: quote!(::mdfr_core::blocks::cn::CnDataType::UIntLE),
+                        elem_data_type_be: quote!(::mdfr_core::blocks::cn::CnDataType::UIntBE),
+                        elem_bit_count: 16,
+                        elem_byte_len: 2,
+                        len,
+                    }),
+                    "u32" => Ok(FieldKind::TypedArray {
+                        elem_data_type_le: quote!(::mdfr_core::blocks::cn::CnDataType::UIntLE),
+                        elem_data_type_be: quote!(::mdfr_core::blocks::cn::CnDataType::UIntBE),
+                        elem_bit_count: 32,
+                        elem_byte_len: 4,
+                        len,
+                    }),
+                    "u64" => Ok(FieldKind::TypedArray {
+                        elem_data_type_le: quote!(::mdfr_core::blocks::cn::CnDataType::UIntLE),
+                        elem_data_type_be: quote!(::mdfr_core::blocks::cn::CnDataType::UIntBE),
+                        elem_bit_count: 64,
+                        elem_byte_len: 8,
+                        len,
+                    }),
+                    "i8" => Ok(FieldKind::TypedArray {
+                        elem_data_type_le: quote!(::mdfr_core::blocks::cn::CnDataType::IntLE),
+                        elem_data_type_be: quote!(::mdfr_core::blocks::cn::CnDataType::IntBE),
+                        elem_bit_count: 8,
+                        elem_byte_len: 1,
+                        len,
+                    }),
+                    "i16" => Ok(FieldKind::TypedArray {
+                        elem_data_type_le: quote!(::mdfr_core::blocks::cn::CnDataType::IntLE),
+                        elem_data_type_be: quote!(::mdfr_core::blocks::cn::CnDataType::IntBE),
+                        elem_bit_count: 16,
+                        elem_byte_len: 2,
+                        len,
+                    }),
+                    "i32" => Ok(FieldKind::TypedArray {
+                        elem_data_type_le: quote!(::mdfr_core::blocks::cn::CnDataType::IntLE),
+                        elem_data_type_be: quote!(::mdfr_core::blocks::cn::CnDataType::IntBE),
+                        elem_bit_count: 32,
+                        elem_byte_len: 4,
+                        len,
+                    }),
+                    "i64" => Ok(FieldKind::TypedArray {
+                        elem_data_type_le: quote!(::mdfr_core::blocks::cn::CnDataType::IntLE),
+                        elem_data_type_be: quote!(::mdfr_core::blocks::cn::CnDataType::IntBE),
+                        elem_bit_count: 64,
+                        elem_byte_len: 8,
+                        len,
+                    }),
+                    "f32" => Ok(FieldKind::TypedArray {
+                        elem_data_type_le: quote!(::mdfr_core::blocks::cn::CnDataType::FloatLE),
+                        elem_data_type_be: quote!(::mdfr_core::blocks::cn::CnDataType::FloatBE),
+                        elem_bit_count: 32,
+                        elem_byte_len: 4,
+                        len,
+                    }),
+                    "f64" => Ok(FieldKind::TypedArray {
+                        elem_data_type_le: quote!(::mdfr_core::blocks::cn::CnDataType::FloatLE),
+                        elem_data_type_be: quote!(::mdfr_core::blocks::cn::CnDataType::FloatBE),
+                        elem_bit_count: 64,
+                        elem_byte_len: 8,
+                        len,
+                    }),
+                    _ => Err(syn::Error::new_spanned(
+                        arr,
+                        "unsupported array element type for #[derive(MdfRecord)]; expected numeric primitive (u8..u64, i8..i64, f32/f64)",
+                    )),
+                }
+            } else {
+                Err(syn::Error::new_spanned(
+                    arr,
+                    "unsupported array element type for #[derive(MdfRecord)]",
+                ))
+            }
         }
         _ => Err(syn::Error::new_spanned(
             ty,
@@ -192,7 +298,7 @@ fn classify_type(ty: &Type) -> syn::Result<FieldKind> {
 
 fn impl_mdf_record(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     let struct_ident = &input.ident;
-    let group_name = parse_struct_group_name(&input.attrs, &struct_ident.to_string())?;
+    let (group_name, struct_big_endian) = parse_struct_attributes(&input.attrs, &struct_ident.to_string())?;
 
     let Data::Struct(data_struct) = &input.data else {
         return Err(syn::Error::new_spanned(
@@ -217,6 +323,7 @@ fn impl_mdf_record(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream>
         let mut comment: Option<String> = None;
         let mut linear: Option<(f64, f64)> = None;
         let mut rational: Option<[f64; 6]> = None;
+        let mut big_endian = struct_big_endian;
 
         for attr in &field.attrs {
             if !attr.path().is_ident("mdf") {
@@ -227,6 +334,9 @@ fn impl_mdf_record(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream>
             )?;
             for meta in nested {
                 match meta {
+                    Meta::Path(p) if p.is_ident("big_endian") || p.is_ident("be") => {
+                        big_endian = true;
+                    }
                     Meta::NameValue(nv) if nv.path.is_ident("name") => {
                         if let Expr::Lit(el) = &nv.value
                             && let Lit::Str(s) = &el.lit
@@ -297,7 +407,7 @@ fn impl_mdf_record(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream>
                     other => {
                         return Err(syn::Error::new_spanned(
                             other,
-                            "unsupported #[mdf(...)] attribute; supported: `name = \"...\"`, `unit = \"...\"`, `comment = \"...\"`, `linear(p1, p2)`, `rational(p1..p6)`",
+                            "unsupported #[mdf(...)] attribute; supported: `name = \"...\"`, `unit = \"...\"`, `comment = \"...\"`, `big_endian`, `linear(p1, p2)`, `rational(p1..p6)`",
                         ));
                     }
                 }
@@ -308,6 +418,7 @@ fn impl_mdf_record(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream>
         match &kind {
             FieldKind::Scalar { byte_len, .. } => record_bytes += *byte_len,
             FieldKind::ByteArray { len } => record_bytes += *len,
+            FieldKind::TypedArray { elem_byte_len, len, .. } => record_bytes += *len * *elem_byte_len,
         }
         specs.push(FieldSpec {
             ident,
@@ -316,6 +427,7 @@ fn impl_mdf_record(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream>
             comment,
             linear,
             rational,
+            big_endian,
             kind,
         });
     }
@@ -327,22 +439,31 @@ fn impl_mdf_record(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream>
     for spec in &specs {
         let ident = &spec.ident;
         let ch_name = &spec.ch_name;
+        let is_be = spec.big_endian;
         let add_stmt = match &spec.kind {
             FieldKind::Scalar {
-                cn_data_type,
+                cn_data_type_le,
+                cn_data_type_be,
                 bit_count,
                 byte_len,
-                encode_expr,
+                is_bool,
             } => {
                 let start = offset;
                 let end = offset + *byte_len;
                 offset = end;
-                let expr = encode_expr(ident);
+                let dt = if is_be { cn_data_type_be } else { cn_data_type_le };
+                let expr = if *is_bool {
+                    quote!([self.#ident as u8])
+                } else if is_be {
+                    quote!(self.#ident.to_be_bytes())
+                } else {
+                    quote!(self.#ident.to_le_bytes())
+                };
                 encode_stmts.push(quote! {
                     buf[#start..#end].copy_from_slice(&#expr);
                 });
                 quote! {
-                    let ch = builder.add_channel(group, #ch_name, #cn_data_type, #bit_count)?;
+                    let ch = builder.add_channel(group, #ch_name, #dt, #bit_count)?;
                 }
             }
             FieldKind::ByteArray { len } => {
@@ -359,6 +480,40 @@ fn impl_mdf_record(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream>
                         #ch_name,
                         ::mdfr_core::blocks::cn::CnDataType::ByteArray,
                         #bit_count,
+                    )?;
+                }
+            }
+            FieldKind::TypedArray {
+                elem_data_type_le,
+                elem_data_type_be,
+                elem_bit_count,
+                elem_byte_len,
+                len,
+            } => {
+                let total_bytes = *len * *elem_byte_len;
+                let start = offset;
+                let end = offset + total_bytes;
+                offset = end;
+                let dt = if is_be { elem_data_type_be } else { elem_data_type_le };
+                let elem_expr = if is_be {
+                    quote!(elem.to_be_bytes())
+                } else {
+                    quote!(elem.to_le_bytes())
+                };
+                encode_stmts.push(quote! {
+                    for (i, elem) in self.#ident.iter().enumerate() {
+                        let s = #start + i * #elem_byte_len;
+                        let e = s + #elem_byte_len;
+                        buf[s..e].copy_from_slice(&#elem_expr);
+                    }
+                });
+                quote! {
+                    let ch = builder.add_array_channel(
+                        group,
+                        #ch_name,
+                        #dt,
+                        #elem_bit_count,
+                        ::mdfr_core::alloc::vec![#len as u64],
                     )?;
                 }
             }
@@ -444,7 +599,11 @@ mod tests {
         };
 
         let res = impl_mdf_record(&input);
-        assert!(res.is_ok(), "Failed to implement MdfRecord: {:?}", res.err());
+        assert!(
+            res.is_ok(),
+            "Failed to implement MdfRecord: {:?}",
+            res.err()
+        );
         let tokens = res.unwrap().to_string();
         assert!(tokens.contains("impl :: mdfr_core :: logger :: MdfRecord for TelemetrySample"));
         assert!(tokens.contains("const GROUP_NAME : & 'static str = \"VehicleTelemetry\""));
@@ -499,14 +658,37 @@ mod tests {
     }
 
     #[test]
+    fn test_derive_typed_arrays_and_big_endian() {
+        let input: DeriveInput = parse_quote! {
+            #[mdf(group = "SensorArray", big_endian)]
+            pub struct ArraySample {
+                pub accel: [f32; 3],
+                #[mdf(name = "Voltages", unit = "mV")]
+                pub cell_mv: [u16; 12],
+                #[mdf(big_endian)]
+                pub single_be: u32,
+            }
+        };
+
+        let res = impl_mdf_record(&input);
+        assert!(res.is_ok(), "Failed: {:?}", res.err());
+        let tokens = res.unwrap().to_string();
+        assert!(tokens.contains("add_array_channel"));
+        assert!(tokens.contains("CnDataType :: FloatBE"));
+        assert!(tokens.contains("CnDataType :: UIntBE"));
+        // 8 master + 3*4 + 12*2 + 4 = 8 + 12 + 24 + 4 = 48 bytes
+        assert!(tokens.contains("const RECORD_BYTES : usize = 48usize"));
+    }
+
+    #[test]
     fn test_derive_error_unsupported_array() {
         let input: DeriveInput = parse_quote! {
             struct BadArray {
-                payload: [u16; 4],
+                payload: [String; 4],
             }
         };
         let err = impl_mdf_record(&input).unwrap_err().to_string();
-        assert!(err.contains("only non-empty [u8; N] is supported"));
+        assert!(err.contains("unsupported array element type for #[derive(MdfRecord)]"));
     }
 
     #[test]

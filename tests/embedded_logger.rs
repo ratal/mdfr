@@ -812,6 +812,13 @@ m.close()
 
 #[test]
 fn no_std_cortex_m_cross_build() -> Result<()> {
+    if std::env::var_os("LLVM_PROFILE_FILE").is_some()
+        || std::env::var_os("CARGO_LLVM_COV").is_some()
+    {
+        // Skip during coverage profiling since prebuilt thumbv7em sysroot lacks profiler_builtins
+        return Ok(());
+    }
+
     use std::process::Command;
 
     // Check if thumbv7em-none-eabihf is installed in rustup/rustc sysroot
@@ -846,6 +853,13 @@ fn no_std_cortex_m_cross_build() -> Result<()> {
             "capi-arena,defmt",
         ])
         .env("CARGO_TARGET_DIR", tmp_target.path())
+        .env_remove("RUSTC_WRAPPER")
+        .env_remove("RUSTC_WORKSPACE_WRAPPER")
+        .env_remove("CARGO_BUILD_RUSTC_WRAPPER")
+        .env_remove("CARGO_BUILD_RUSTFLAGS")
+        .env_remove("RUSTFLAGS")
+        .env_remove("CARGO_ENCODED_RUSTFLAGS")
+        .env_remove("LLVM_PROFILE_FILE")
         .status()?;
     assert!(
         status.success(),
@@ -940,5 +954,49 @@ fn derive_mdf_record_and_vlsc_roundtrip() -> Result<()> {
             panic!("VlscText missing for layout={layout:?} algo={algo:?}");
         }
     }
+    Ok(())
+}
+
+#[derive(mdfr_core::MdfRecord)]
+#[mdf(group = "SensorFusion", big_endian)]
+struct SensorFusionRecord {
+    #[mdf(name = "Accel")]
+    accel: [f32; 3],
+    #[mdf(name = "BeCount")]
+    counter: u32,
+}
+
+#[test]
+fn derive_mdf_record_typed_array_and_be_roundtrip() -> Result<()> {
+    let mut b = LoggerBuilder::new(DataLayout::Sorted, CompressionAlgorithm::NoCompression);
+    let g_sf = b.add_record_group::<SensorFusionRecord>()?;
+
+    let schema = b.build()?;
+    let tmp = tempfile::Builder::new().suffix(".mf4").tempfile()?;
+    let clock = ManualClock::new(0.001, 1);
+    let mut logger = Logger::start(schema, tmp.reopen()?, clock)?;
+
+    for i in 0..10u32 {
+        let rec = SensorFusionRecord {
+            accel: [i as f32, (i as f32) * 2.0, (i as f32) * 3.0],
+            counter: 0x1234_0000 + i,
+        };
+        logger.push_record(g_sf, &rec)?;
+    }
+    logger.close()?;
+
+    let mut mdf = Mdf::new(tmp.path().to_str().unwrap())?;
+    mdf.load_all_channels_data_in_memory()?;
+
+    assert!(mdf.get_channel_data("Accel").is_some());
+    if let Some(ChannelData::UInt32(arr)) = mdf.get_channel_data("BeCount") {
+        let s = arr.values_slice();
+        assert_eq!(s.len(), 10);
+        assert_eq!(s[0], 0x1234_0000);
+        assert_eq!(s[9], 0x1234_0009);
+    } else {
+        panic!("BeCount missing or wrong type");
+    }
+
     Ok(())
 }

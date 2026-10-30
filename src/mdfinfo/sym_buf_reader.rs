@@ -41,7 +41,11 @@ where
     }
 
     pub fn buffer(&self) -> &[u8] {
-        &self.buf[self.pos..self.cap]
+        if self.pos >= self.cap {
+            &[]
+        } else {
+            &self.buf[self.pos..self.cap]
+        }
     }
 }
 
@@ -200,9 +204,16 @@ impl<R: Read + Seek> SymBufReader<R> {
                 && remaining <= 0
             {
                 self.rewind()?;
-                let n_read = self.reader.read(&mut self.buf)?;
-                self.cap = n_read;
-                self.pos = stream_position as usize;
+                let mut total_read = 0;
+                while total_read < self.buf.len() {
+                    let n = self.reader.read(&mut self.buf[total_read..])?;
+                    if n == 0 {
+                        break;
+                    }
+                    total_read += n;
+                }
+                self.cap = total_read;
+                self.pos = (stream_position as usize).min(self.cap);
                 return Ok(self.buffer());
             }
 
@@ -210,9 +221,16 @@ impl<R: Read + Seek> SymBufReader<R> {
             let result = self.seek(SeekFrom::Current(-middle_of_buffer));
             match result {
                 Ok(_) => {
-                    let n_read = self.reader.read(&mut self.buf)?;
-                    self.cap = n_read;
-                    self.pos = middle_of_buffer as usize;
+                    let mut total_read = 0;
+                    while total_read < self.buf.len() {
+                        let n = self.reader.read(&mut self.buf[total_read..])?;
+                        if n == 0 {
+                            break;
+                        }
+                        total_read += n;
+                    }
+                    self.cap = total_read;
+                    self.pos = (middle_of_buffer as usize).min(self.cap);
                 }
                 Err(e) => return Err(e),
             }

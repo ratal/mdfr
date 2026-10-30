@@ -198,8 +198,10 @@ impl MdfInfo3 {
         if let Some((_master, dg_pos, (_cg_pos, rec_id), _cn_pos)) =
             self.get_channel_id(channel_name)
         {
-            self.dg.get(dg_pos)?
-                .cg.get(rec_id)
+            self.dg
+                .get(dg_pos)?
+                .cg
+                .get(rec_id)
                 .map(|cg| &cg.channel_names)
         } else {
             None

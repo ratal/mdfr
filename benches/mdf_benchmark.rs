@@ -7,9 +7,25 @@ use std::sync::LazyLock;
 static TESTS_PATH: &str = "/home/ratal/workspace/mdfreader/mdfreader/tests/";
 const LOCAL_FILES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/test_files/");
 
-static MDF4_EXAMPLES: LazyLock<String> =
-    LazyLock::new(|| format!("{}MDF4/MDF4.3/Base_Standard/Examples/", TESTS_PATH));
-static MDF3_PATH: LazyLock<String> = LazyLock::new(|| format!("{}mdf3/", TESTS_PATH));
+static MDF4_EXAMPLES: LazyLock<String> = LazyLock::new(|| {
+    let local_examples = format!("{}Examples/", LOCAL_FILES);
+    if std::path::Path::new(&local_examples).is_dir() {
+        return local_examples;
+    }
+    let mdfreader_examples =
+        format!("{}mdfreader/MDF4/MDF4.3/Base_Standard/Examples/", LOCAL_FILES);
+    if std::path::Path::new(&mdfreader_examples).is_dir() {
+        return mdfreader_examples;
+    }
+    format!("{}MDF4/MDF4.3/Base_Standard/Examples/", TESTS_PATH)
+});
+static MDF3_PATH: LazyLock<String> = LazyLock::new(|| {
+    let local_mdf3 = format!("{}mdf3/", LOCAL_FILES);
+    if std::path::Path::new(&local_mdf3).is_dir() {
+        return local_mdf3;
+    }
+    format!("{}mdf3/", TESTS_PATH)
+});
 
 fn read_and_load(path: &str) {
     let mut mdf = Mdf::new(black_box(path)).expect("failed to open file");
@@ -35,9 +51,11 @@ fn bench_large_files(c: &mut Criterion) {
     group.measurement_time(Duration::from_secs(25));
 
     let mdf4_path = format!("{base}Simple/error.mf4");
-    group.bench_function("mdf4_sorted_184mb", |b| {
-        b.iter(|| read_and_load(&mdf4_path))
-    });
+    if std::path::Path::new(&mdf4_path).exists() {
+        group.bench_function("mdf4_sorted_184mb", |b| {
+            b.iter(|| read_and_load(&mdf4_path))
+        });
+    }
 
     for (name, file) in [
         (
@@ -47,7 +65,9 @@ fn bench_large_files(c: &mut Criterion) {
         ("mdf3_nedc_63mb", "738L10 cold nedc 05101001-1.dat"),
     ] {
         let path = format!("{}{file}", MDF3_PATH.as_str());
-        group.bench_function(name, |b| b.iter(|| read_and_load(&path)));
+        if std::path::Path::new(&path).exists() {
+            group.bench_function(name, |b| b.iter(|| read_and_load(&path)));
+        }
     }
 
     group.finish();
@@ -73,7 +93,9 @@ fn bench_medium_files(c: &mut Criterion) {
         ),
     ] {
         let path = format!("{base}{rel}");
-        group.bench_function(name, |b| b.iter(|| read_and_load(&path)));
+        if std::path::Path::new(&path).exists() {
+            group.bench_function(name, |b| b.iter(|| read_and_load(&path)));
+        }
     }
 
     group.finish();
@@ -107,7 +129,9 @@ fn bench_decompression(c: &mut Criterion) {
         ),
     ] {
         let path = format!("{base}{rel}");
-        group.bench_function(name, |b| b.iter(|| read_and_load(&path)));
+        if std::path::Path::new(&path).exists() {
+            group.bench_function(name, |b| b.iter(|| read_and_load(&path)));
+        }
     }
 
     group.finish();
@@ -128,7 +152,9 @@ fn bench_local_synthetic(c: &mut Criterion) {
         ("ld_be_channels", "synthetic/ld_be_channels.mf4"), // linked data blocks, BE
     ] {
         let path = format!("{LOCAL_FILES}{rel}");
-        group.bench_function(name, |b| b.iter(|| read_and_load(&path)));
+        if std::path::Path::new(&path).exists() {
+            group.bench_function(name, |b| b.iter(|| read_and_load(&path)));
+        }
     }
 
     group.finish();
@@ -152,9 +178,11 @@ fn bench_metadata(c: &mut Criterion) {
         ),
     ] {
         let path = format!("{base}{rel}");
-        group.bench_function(name, |b| {
-            b.iter(|| Mdf::new(black_box(&path)).expect("failed to open file"))
-        });
+        if std::path::Path::new(&path).exists() {
+            group.bench_function(name, |b| {
+                b.iter(|| Mdf::new(black_box(&path)).expect("failed to open file"))
+            });
+        }
     }
 
     group.finish();
@@ -169,27 +197,37 @@ fn bench_unsorted_data(c: &mut Criterion) {
     group.measurement_time(Duration::from_secs(15));
 
     // Synthetic large file with 4 channel groups, ~50MB (fixed-length records)
-    group.bench_function("unsorted_multi_cg_50mb", |b| {
-        b.iter(|| read_and_load("test_files/synthetic/unsorted_multi_cg.mf4"))
-    });
+    let p_multi_cg = "test_files/synthetic/unsorted_multi_cg.mf4";
+    if std::path::Path::new(p_multi_cg).exists() {
+        group.bench_function("unsorted_multi_cg_50mb", |b| {
+            b.iter(|| read_and_load(p_multi_cg))
+        });
+    }
 
     // Synthetic large file with VLSD (Variable Length Signal Data), ~30MB
-    group.bench_function("unsorted_vlsd_30mb", |b| {
-        b.iter(|| read_and_load("test_files/synthetic/unsorted_vlsd_vlsc.mf4"))
-    });
+    let p_vlsd = "test_files/synthetic/unsorted_vlsd_vlsc.mf4";
+    if std::path::Path::new(p_vlsd).exists() {
+        group.bench_function("unsorted_vlsd_30mb", |b| {
+            b.iter(|| read_and_load(p_vlsd))
+        });
+    }
 
     // Existing reference files from mdfreader tests
     let base = MDF4_EXAMPLES.as_str();
-    group.bench_function("mdf4_vlsd_60kb", |b| {
-        let path = format!("{base}UnsortedData/VLSD/Vector_Unsorted_VLSD.MF4");
-        b.iter(|| read_and_load(&path))
-    });
+    let p_ref_vlsd = format!("{base}UnsortedData/VLSD/Vector_Unsorted_VLSD.MF4");
+    if std::path::Path::new(&p_ref_vlsd).exists() {
+        group.bench_function("mdf4_vlsd_60kb", |b| {
+            b.iter(|| read_and_load(&p_ref_vlsd))
+        });
+    }
 
-    group.bench_function("mdf4_vlsc_5kb", |b| {
-        let path =
-            format!("{base}UnsortedData/VLSC/RAC_MDF430_Unsorted_VLSC_Compact_Structure.mf4");
-        b.iter(|| read_and_load(&path))
-    });
+    let p_ref_vlsc =
+        format!("{base}UnsortedData/VLSC/RAC_MDF430_Unsorted_VLSC_Compact_Structure.mf4");
+    if std::path::Path::new(&p_ref_vlsc).exists() {
+        group.bench_function("mdf4_vlsc_5kb", |b| {
+            b.iter(|| read_and_load(&p_ref_vlsc))
+        });
+    }
 
     group.finish();
 }
@@ -218,33 +256,38 @@ fn bench_conversion(c: &mut Criterion) {
     group.measurement_time(Duration::from_secs(15));
 
     // Full pipeline: load + conversion
-    group.bench_function("convert_184mb", |b| {
-        let path = format!("{base}Simple/error.mf4");
-        b.iter(|| read_load_convert(&path))
-    });
+    let path_err = format!("{base}Simple/error.mf4");
+    if std::path::Path::new(&path_err).exists() {
+        group.bench_function("convert_184mb", |b| {
+            b.iter(|| read_load_convert(&path_err))
+        });
+    }
 
-    group.bench_function("convert_47mb", |b| {
-        let path = format!("{base}Simple/measure2.mf4");
-        b.iter(|| read_load_convert(&path))
-    });
+    let path_m2 = format!("{base}Simple/measure2.mf4");
+    if std::path::Path::new(&path_m2).exists() {
+        group.bench_function("convert_47mb", |b| {
+            b.iter(|| read_load_convert(&path_m2))
+        });
 
-    // Conversion only (data already loaded)
-    group.bench_function("convert_only_47mb", |b| {
-        let path = format!("{base}Simple/measure2.mf4");
-        let mut mdf = Mdf::new(&path).expect("failed to open file");
-        mdf.load_all_channels_data_in_memory()
-            .expect("failed to load data");
-        b.iter(|| {
-            mdf.convert_all_channels().expect("failed to convert");
-            black_box(&mdf);
-        })
-    });
+        // Conversion only (data already loaded)
+        group.bench_function("convert_only_47mb", |b| {
+            let mut mdf = Mdf::new(&path_m2).expect("failed to open file");
+            mdf.load_all_channels_data_in_memory()
+                .expect("failed to load data");
+            b.iter(|| {
+                mdf.convert_all_channels().expect("failed to convert");
+                black_box(&mdf);
+            })
+        });
+    }
 
     // Integer + linear CC conversion
-    group.bench_function("convert_int_linear_cc", |b| {
-        let path = format!("{LOCAL_FILES}synthetic/int_linear_cc.mf4");
-        b.iter(|| read_load_convert(&path))
-    });
+    let path_int = format!("{LOCAL_FILES}synthetic/int_linear_cc.mf4");
+    if std::path::Path::new(&path_int).exists() {
+        group.bench_function("convert_int_linear_cc", |b| {
+            b.iter(|| read_load_convert(&path_int))
+        });
+    }
 
     group.finish();
 }
@@ -258,67 +301,66 @@ fn bench_export(c: &mut Criterion) {
     group.sample_size(10);
     group.measurement_time(Duration::from_secs(15));
 
-    // Parquet export
-    #[cfg(feature = "parquet")]
-    {
-        group.bench_function("export_parquet_47mb", |b| {
-            let path = format!("{base}Simple/measure2.mf4");
-            let mut mdf = Mdf::new(&path).expect("failed to open file");
-            mdf.load_all_channels_data_in_memory()
-                .expect("failed to load data");
-            mdf.convert_all_channels().expect("failed to convert");
-            let output = "/tmp/bench_export.parquet";
-            b.iter(|| {
-                mdf.export_to_parquet(black_box(output), None)
-                    .expect("failed to export");
-            })
-        });
+    let path = format!("{base}Simple/measure2.mf4");
+    if std::path::Path::new(&path).exists() {
+        // Parquet export
+        #[cfg(feature = "parquet")]
+        {
+            group.bench_function("export_parquet_47mb", |b| {
+                let mut mdf = Mdf::new(&path).expect("failed to open file");
+                mdf.load_all_channels_data_in_memory()
+                    .expect("failed to load data");
+                mdf.convert_all_channels().expect("failed to convert");
+                let output = "/tmp/bench_export.parquet";
+                b.iter(|| {
+                    mdf.export_to_parquet(black_box(output), None)
+                        .expect("failed to export");
+                })
+            });
 
-        // Parquet export with compression
-        group.bench_function("export_parquet_compressed_47mb", |b| {
-            let path = format!("{base}Simple/measure2.mf4");
+            // Parquet export with compression
+            group.bench_function("export_parquet_compressed_47mb", |b| {
+                let mut mdf = Mdf::new(&path).expect("failed to open file");
+                mdf.load_all_channels_data_in_memory()
+                    .expect("failed to load data");
+                mdf.convert_all_channels().expect("failed to convert");
+                let output = "/tmp/bench_export_compressed.parquet";
+                b.iter(|| {
+                    mdf.export_to_parquet(black_box(output), Some("snappy"))
+                        .expect("failed to export");
+                })
+            });
+        }
+
+        // HDF5 export
+        #[cfg(feature = "hdf5")]
+        {
+            group.bench_function("export_hdf5_47mb", |b| {
+                let mut mdf = Mdf::new(&path).expect("failed to open file");
+                mdf.load_all_channels_data_in_memory()
+                    .expect("failed to load data");
+                mdf.convert_all_channels().expect("failed to convert");
+                let output = "/tmp/bench_export.h5";
+                b.iter(|| {
+                    mdf.export_to_hdf5(black_box(output), None)
+                        .expect("failed to export");
+                })
+            });
+        }
+
+        // CSV export
+        group.bench_function("export_csv_47mb", |b| {
             let mut mdf = Mdf::new(&path).expect("failed to open file");
             mdf.load_all_channels_data_in_memory()
                 .expect("failed to load data");
             mdf.convert_all_channels().expect("failed to convert");
-            let output = "/tmp/bench_export_compressed.parquet";
+            let output = "/tmp/bench_export.csv";
             b.iter(|| {
-                mdf.export_to_parquet(black_box(output), Some("snappy"))
+                mdf.export_to_csv(black_box(output))
                     .expect("failed to export");
             })
         });
     }
-
-    // HDF5 export
-    #[cfg(feature = "hdf5")]
-    {
-        group.bench_function("export_hdf5_47mb", |b| {
-            let path = format!("{base}Simple/measure2.mf4");
-            let mut mdf = Mdf::new(&path).expect("failed to open file");
-            mdf.load_all_channels_data_in_memory()
-                .expect("failed to load data");
-            mdf.convert_all_channels().expect("failed to convert");
-            let output = "/tmp/bench_export.h5";
-            b.iter(|| {
-                mdf.export_to_hdf5(black_box(output), None)
-                    .expect("failed to export");
-            })
-        });
-    }
-
-    // CSV export
-    group.bench_function("export_csv_47mb", |b| {
-        let path = format!("{base}Simple/measure2.mf4");
-        let mut mdf = Mdf::new(&path).expect("failed to open file");
-        mdf.load_all_channels_data_in_memory()
-            .expect("failed to load data");
-        mdf.convert_all_channels().expect("failed to convert");
-        let output = "/tmp/bench_export.csv";
-        b.iter(|| {
-            mdf.export_to_csv(black_box(output))
-                .expect("failed to export");
-        })
-    });
 
     group.finish();
 }

@@ -20,7 +20,10 @@ pub fn base_path_mdf4() -> String {
     if std::path::Path::new("test_files/Examples").is_dir() {
         return "test_files/Examples/".to_string();
     }
-    format!("{}MDF4/MDF4.3/Base_Standard/Examples/", mdfreader_tests_path())
+    format!(
+        "{}MDF4/MDF4.3/Base_Standard/Examples/",
+        mdfreader_tests_path()
+    )
 }
 
 /// Relative path to mdfr's own test_files directory (relative to workspace root).

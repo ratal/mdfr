@@ -46,8 +46,6 @@ fn main() {
         let after = read_proc_status();
         let peak_delta = after.get("VmPeak").unwrap_or(&0) - before.get("VmPeak").unwrap_or(&0);
         let rss_delta = after.get("VmRSS").unwrap_or(&0) - before.get("VmRSS").unwrap_or(&0);
-        println!(
-            "{name}: peak_delta={peak_delta} kB, rss_delta={rss_delta} kB"
-        );
+        println!("{name}: peak_delta={peak_delta} kB, rss_delta={rss_delta} kB");
     }
 }

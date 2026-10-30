@@ -555,20 +555,34 @@ mod tests {
         assert_eq!(cn.limit_ext_max(), None);
 
         // Test other type strings
-        cn.cn_type = 1; assert_eq!(cn.get_cn_type_str(), "VLSD");
-        cn.cn_type = 2; assert_eq!(cn.get_cn_type_str(), "Master");
-        cn.cn_type = 3; assert_eq!(cn.get_cn_type_str(), "Virtual Master");
-        cn.cn_type = 4; assert_eq!(cn.get_cn_type_str(), "Sync");
-        cn.cn_type = 5; assert_eq!(cn.get_cn_type_str(), "MLSD");
-        cn.cn_type = 6; assert_eq!(cn.get_cn_type_str(), "Virtual Data");
-        cn.cn_type = 7; assert_eq!(cn.get_cn_type_str(), "VLSC");
-        cn.cn_type = 99; assert_eq!(cn.get_cn_type_str(), "Unknown");
+        cn.cn_type = 1;
+        assert_eq!(cn.get_cn_type_str(), "VLSD");
+        cn.cn_type = 2;
+        assert_eq!(cn.get_cn_type_str(), "Master");
+        cn.cn_type = 3;
+        assert_eq!(cn.get_cn_type_str(), "Virtual Master");
+        cn.cn_type = 4;
+        assert_eq!(cn.get_cn_type_str(), "Sync");
+        cn.cn_type = 5;
+        assert_eq!(cn.get_cn_type_str(), "MLSD");
+        cn.cn_type = 6;
+        assert_eq!(cn.get_cn_type_str(), "Virtual Data");
+        cn.cn_type = 7;
+        assert_eq!(cn.get_cn_type_str(), "VLSC");
+        cn.cn_type = 99;
+        assert_eq!(cn.get_cn_type_str(), "Unknown");
 
-        cn.cn_sync_type = 0; assert_eq!(cn.get_sync_type_str(), "None");
-        cn.cn_sync_type = 2; assert_eq!(cn.get_sync_type_str(), "Angle");
-        cn.cn_sync_type = 3; assert_eq!(cn.get_sync_type_str(), "Distance");
-        cn.cn_sync_type = 4; assert_eq!(cn.get_sync_type_str(), "Index");
-        cn.cn_sync_type = 5; assert_eq!(cn.get_sync_type_str(), "Frequency");
-        cn.cn_sync_type = 99; assert_eq!(cn.get_sync_type_str(), "Unknown");
+        cn.cn_sync_type = 0;
+        assert_eq!(cn.get_sync_type_str(), "None");
+        cn.cn_sync_type = 2;
+        assert_eq!(cn.get_sync_type_str(), "Angle");
+        cn.cn_sync_type = 3;
+        assert_eq!(cn.get_sync_type_str(), "Distance");
+        cn.cn_sync_type = 4;
+        assert_eq!(cn.get_sync_type_str(), "Index");
+        cn.cn_sync_type = 5;
+        assert_eq!(cn.get_sync_type_str(), "Frequency");
+        cn.cn_sync_type = 99;
+        assert_eq!(cn.get_sync_type_str(), "Unknown");
     }
 }

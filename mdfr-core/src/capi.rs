@@ -322,6 +322,46 @@ pub unsafe extern "C" fn mdfr_logger_set_channel_unit(
     }
 }
 
+/// Sets the custom HD block comment text.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mdfr_logger_set_hd_comment(
+    builder: *mut MdfrBuilderHandle,
+    comment: *const c_char,
+) -> i32 {
+    let Some(b) = (unsafe { builder.as_mut() }) else {
+        return -3;
+    };
+    let Some(comment_str) = (unsafe { cstr_to_str(comment) }) else {
+        return -3;
+    };
+    b.0.set_hd_comment(comment_str);
+    0
+}
+
+/// Sets custom tool metadata for the file history (FHBLOCK).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn mdfr_logger_set_tool_info(
+    builder: *mut MdfrBuilderHandle,
+    tool_id: *const c_char,
+    tool_vendor: *const c_char,
+    tool_version: *const c_char,
+) -> i32 {
+    let Some(b) = (unsafe { builder.as_mut() }) else {
+        return -3;
+    };
+    let Some(id_str) = (unsafe { cstr_to_str(tool_id) }) else {
+        return -3;
+    };
+    let Some(vendor_str) = (unsafe { cstr_to_str(tool_vendor) }) else {
+        return -3;
+    };
+    let Some(ver_str) = (unsafe { cstr_to_str(tool_version) }) else {
+        return -3;
+    };
+    b.0.set_tool_info(id_str, vendor_str, ver_str);
+    0
+}
+
 /// Adds an ASAM bus logging preset group (`bus_kind`: `0` = CAN, `1` = CAN-FD, `2` = LIN, `3` = Ethernet, `4` = FlexRay).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mdfr_logger_add_bus_preset(
@@ -711,29 +751,57 @@ mod tests {
             assert!(!builder.is_null());
 
             let mut g0 = 0u16;
-            assert_eq!(mdfr_logger_add_group(builder, c"Engine".as_ptr(), &mut g0), 0);
+            assert_eq!(
+                mdfr_logger_add_group(builder, c"Engine".as_ptr(), &mut g0),
+                0
+            );
             assert_eq!(g0, 0);
 
             let mut ch_u = 0u32;
-            assert_eq!(mdfr_logger_add_channel(builder, g0, c"RPM".as_ptr(), 0, 16, &mut ch_u), 0);
+            assert_eq!(
+                mdfr_logger_add_channel(builder, g0, c"RPM".as_ptr(), 0, 16, &mut ch_u),
+                0
+            );
 
             let mut ch_i = 0u32;
-            assert_eq!(mdfr_logger_add_channel(builder, g0, c"Torque".as_ptr(), 2, 16, &mut ch_i), 0);
+            assert_eq!(
+                mdfr_logger_add_channel(builder, g0, c"Torque".as_ptr(), 2, 16, &mut ch_i),
+                0
+            );
 
             let mut ch_f = 0u32;
-            assert_eq!(mdfr_logger_add_channel(builder, g0, c"Temp".as_ptr(), 4, 32, &mut ch_f), 0);
+            assert_eq!(
+                mdfr_logger_add_channel(builder, g0, c"Temp".as_ptr(), 4, 32, &mut ch_f),
+                0
+            );
 
             let mut ch_vlsd = 0u32;
-            assert_eq!(mdfr_logger_add_vlsd_channel(builder, g0, c"Msg".as_ptr(), 7, &mut ch_vlsd), 0);
+            assert_eq!(
+                mdfr_logger_add_vlsd_channel(builder, g0, c"Msg".as_ptr(), 7, &mut ch_vlsd),
+                0
+            );
 
-            assert_eq!(mdfr_logger_set_conversion_linear(builder, ch_u, 0.0, 0.5), 0);
-            assert_eq!(mdfr_logger_set_channel_unit(builder, ch_u, c"rpm".as_ptr()), 0);
+            assert_eq!(
+                mdfr_logger_set_conversion_linear(builder, ch_u, 0.0, 0.5),
+                0
+            );
+            assert_eq!(
+                mdfr_logger_set_channel_unit(builder, ch_u, c"rpm".as_ptr()),
+                0
+            );
 
             let mut g_can = 0u16;
-            assert_eq!(mdfr_logger_add_bus_preset(builder, 0, c"CAN1".as_ptr(), &mut g_can), 0);
+            assert_eq!(
+                mdfr_logger_add_bus_preset(builder, 0, c"CAN1".as_ptr(), &mut g_can),
+                0
+            );
             assert_eq!(g_can, 1);
 
-            let mut mem1 = Box::new(MemSink { data: Vec::new(), pos: 0, closed: false });
+            let mut mem1 = Box::new(MemSink {
+                data: Vec::new(),
+                pos: 0,
+                closed: false,
+            });
             let sink1 = MdfrSinkVtable {
                 ctx: &mut *mem1 as *mut MemSink as *mut core::ffi::c_void,
                 write: Some(mem_write),
@@ -759,7 +827,10 @@ mod tests {
             assert_eq!(mdfr_logger_record_set_u64(logger, ch_u, 3000), 0);
             assert_eq!(mdfr_logger_record_set_i64(logger, ch_i, -150), 0);
             assert_eq!(mdfr_logger_record_set_f64(logger, ch_f, 92.5), 0);
-            assert_eq!(mdfr_logger_record_set_bytes(logger, ch_vlsd, b"running".as_ptr(), 7), 0);
+            assert_eq!(
+                mdfr_logger_record_set_bytes(logger, ch_vlsd, b"running".as_ptr(), 7),
+                0
+            );
             assert_eq!(mdfr_logger_record_commit(logger, g0), 0);
 
             // Record with begin_at
@@ -771,7 +842,11 @@ mod tests {
             assert_eq!(mdfr_logger_checkpoint(logger), 0);
 
             // Rotate
-            let mut mem2 = Box::new(MemSink { data: Vec::new(), pos: 0, closed: false });
+            let mut mem2 = Box::new(MemSink {
+                data: Vec::new(),
+                pos: 0,
+                closed: false,
+            });
             let sink2 = MdfrSinkVtable {
                 ctx: &mut *mem2 as *mut MemSink as *mut core::ffi::c_void,
                 write: Some(mem_write),
@@ -791,21 +866,72 @@ mod tests {
     #[test]
     fn test_capi_null_safety_and_errors() {
         unsafe {
-            assert_eq!(mdfr_logger_add_group(core::ptr::null_mut(), c"G".as_ptr(), core::ptr::null_mut()), -3);
-            assert_eq!(mdfr_logger_add_channel(core::ptr::null_mut(), 0, c"C".as_ptr(), 0, 8, core::ptr::null_mut()), -3);
-            assert_eq!(mdfr_logger_add_vlsd_channel(core::ptr::null_mut(), 0, c"V".as_ptr(), 7, core::ptr::null_mut()), -3);
-            assert_eq!(mdfr_logger_set_conversion_linear(core::ptr::null_mut(), 0, 0.0, 1.0), -3);
-            assert_eq!(mdfr_logger_set_channel_unit(core::ptr::null_mut(), 0, c"u".as_ptr()), -3);
-            assert_eq!(mdfr_logger_add_bus_preset(core::ptr::null_mut(), 0, c"B".as_ptr(), core::ptr::null_mut()), -3);
+            assert_eq!(
+                mdfr_logger_add_group(core::ptr::null_mut(), c"G".as_ptr(), core::ptr::null_mut()),
+                -3
+            );
+            assert_eq!(
+                mdfr_logger_add_channel(
+                    core::ptr::null_mut(),
+                    0,
+                    c"C".as_ptr(),
+                    0,
+                    8,
+                    core::ptr::null_mut()
+                ),
+                -3
+            );
+            assert_eq!(
+                mdfr_logger_add_vlsd_channel(
+                    core::ptr::null_mut(),
+                    0,
+                    c"V".as_ptr(),
+                    7,
+                    core::ptr::null_mut()
+                ),
+                -3
+            );
+            assert_eq!(
+                mdfr_logger_set_conversion_linear(core::ptr::null_mut(), 0, 0.0, 1.0),
+                -3
+            );
+            assert_eq!(
+                mdfr_logger_set_channel_unit(core::ptr::null_mut(), 0, c"u".as_ptr()),
+                -3
+            );
+            assert_eq!(
+                mdfr_logger_add_bus_preset(
+                    core::ptr::null_mut(),
+                    0,
+                    c"B".as_ptr(),
+                    core::ptr::null_mut()
+                ),
+                -3
+            );
             assert_eq!(mdfr_logger_record_begin(core::ptr::null_mut(), 0), -3);
-            assert_eq!(mdfr_logger_record_begin_at(core::ptr::null_mut(), 0, 100), -3);
+            assert_eq!(
+                mdfr_logger_record_begin_at(core::ptr::null_mut(), 0, 100),
+                -3
+            );
             assert_eq!(mdfr_logger_record_set_u64(core::ptr::null_mut(), 0, 1), -3);
             assert_eq!(mdfr_logger_record_set_i64(core::ptr::null_mut(), 0, 1), -3);
-            assert_eq!(mdfr_logger_record_set_f64(core::ptr::null_mut(), 0, 1.0), -3);
-            assert_eq!(mdfr_logger_record_set_bytes(core::ptr::null_mut(), 0, b"a".as_ptr(), 1), -3);
+            assert_eq!(
+                mdfr_logger_record_set_f64(core::ptr::null_mut(), 0, 1.0),
+                -3
+            );
+            assert_eq!(
+                mdfr_logger_record_set_bytes(core::ptr::null_mut(), 0, b"a".as_ptr(), 1),
+                -3
+            );
             assert_eq!(mdfr_logger_record_commit(core::ptr::null_mut(), 0), -3);
-            assert_eq!(mdfr_logger_push_raw(core::ptr::null_mut(), 0, b"a".as_ptr(), 1), -3);
-            assert_eq!(mdfr_logger_push_raw_at(core::ptr::null_mut(), 0, 100, b"a".as_ptr(), 1), -3);
+            assert_eq!(
+                mdfr_logger_push_raw(core::ptr::null_mut(), 0, b"a".as_ptr(), 1),
+                -3
+            );
+            assert_eq!(
+                mdfr_logger_push_raw_at(core::ptr::null_mut(), 0, 100, b"a".as_ptr(), 1),
+                -3
+            );
             assert_eq!(mdfr_logger_checkpoint(core::ptr::null_mut()), -3);
             assert_eq!(mdfr_logger_close(core::ptr::null_mut()), -3);
 
@@ -817,10 +943,99 @@ mod tests {
             mdfr_logger_builder_free(b);
 
             // Error strings
-            assert_eq!(core::ffi::CStr::from_ptr(mdfr_error_str(0)).to_bytes(), b"OK");
-            assert_eq!(core::ffi::CStr::from_ptr(mdfr_error_str(-1)).to_bytes(), b"I/O error on sink");
-            assert_eq!(core::ffi::CStr::from_ptr(mdfr_error_str(-3)).to_bytes(), b"invalid schema or null pointer");
-            assert_eq!(core::ffi::CStr::from_ptr(mdfr_error_str(-999)).to_bytes(), b"unknown error");
+            assert_eq!(
+                core::ffi::CStr::from_ptr(mdfr_error_str(0)).to_bytes(),
+                b"OK"
+            );
+            assert_eq!(
+                core::ffi::CStr::from_ptr(mdfr_error_str(-1)).to_bytes(),
+                b"I/O error on sink"
+            );
+            assert_eq!(
+                core::ffi::CStr::from_ptr(mdfr_error_str(-3)).to_bytes(),
+                b"invalid schema or null pointer"
+            );
+            assert_eq!(
+                core::ffi::CStr::from_ptr(mdfr_error_str(-999)).to_bytes(),
+                b"unknown error"
+            );
+
+            // Bus preset invalid kind
+            let builder = mdfr_logger_builder_new(0, 255);
+            let mut g_out = 0u16;
+            assert_eq!(
+                mdfr_logger_add_bus_preset(builder, 99, c"UNKNOWN".as_ptr(), &mut g_out),
+                -5 // unsupported
+            );
+
+            // Test bus preset kinds 1 (CAN-FD), 2 (LIN), 3 (Ethernet), 4 (FlexRay)
+            for (kind, name) in [
+                (1, c"CANFD".as_ptr()),
+                (2, c"LIN1".as_ptr()),
+                (3, c"ETH1".as_ptr()),
+                (4, c"FR1".as_ptr()),
+            ] {
+                assert_eq!(mdfr_logger_add_bus_preset(builder, kind, name, &mut g_out), 0);
+            }
+
+            // Test VLSC channel addition
+            let mut ch_vlsc = 0u32;
+            assert_eq!(
+                mdfr_logger_add_vlsc_channel(builder, g_out, c"VLSC_Payload".as_ptr(), 7, &mut ch_vlsc),
+                0
+            );
+
+            // Test heap_init
+            let mut heap_buf = [0u8; 1024];
+            assert_eq!(mdfr_heap_init(core::ptr::null_mut(), 1024), -3);
+            assert_eq!(mdfr_heap_init(heap_buf.as_mut_ptr(), 0), -3);
+            assert_eq!(mdfr_heap_init(heap_buf.as_mut_ptr(), heap_buf.len()), 0);
+
+            // Add a simple group with 1 u32 channel for push_raw testing (record size = 8 + 4 = 12 bytes)
+            let mut g_raw = 0u16;
+            assert_eq!(
+                mdfr_logger_add_group(builder, c"RawGroup".as_ptr(), &mut g_raw),
+                0
+            );
+            let mut ch_raw = 0u32;
+            assert_eq!(
+                mdfr_logger_add_channel(builder, g_raw, c"Val".as_ptr(), 0, 32, &mut ch_raw),
+                0
+            );
+
+            // Start logger and test push_raw and push_raw_at
+            let mut mem = Box::new(MemSink {
+                data: Vec::new(),
+                pos: 0,
+                closed: false,
+            });
+            let sink = MdfrSinkVtable {
+                ctx: &mut *mem as *mut MemSink as *mut core::ffi::c_void,
+                write: Some(mem_write),
+                seek: Some(mem_seek),
+                flush: Some(mem_flush),
+                close: Some(mem_close),
+            };
+            let clock = MdfrClockVtable {
+                ctx: core::ptr::null_mut(),
+                now_ticks: Some(mock_now_ticks),
+                tick_ns: 1_000,
+                wall_clock_ns: Some(mock_wall_clock),
+            };
+            let mut err = 0;
+            let logger = mdfr_logger_start(builder, sink, clock, &mut err);
+            assert!(!logger.is_null());
+
+            // Push raw records (12 bytes)
+            let raw_data = [0u8; 12];
+            assert_eq!(mdfr_logger_push_raw(logger, g_raw, raw_data.as_ptr(), raw_data.len()), 0);
+            assert_eq!(mdfr_logger_push_raw_at(logger, g_raw, 60_000, raw_data.as_ptr(), raw_data.len()), 0);
+
+            // Mismatched record size
+            let bad_data = [0u8; 5];
+            assert_eq!(mdfr_logger_push_raw(logger, g_raw, bad_data.as_ptr(), bad_data.len()), -4);
+
+            assert_eq!(mdfr_logger_close(logger), 0);
         }
     }
 }

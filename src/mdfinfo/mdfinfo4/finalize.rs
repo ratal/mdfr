@@ -473,3 +473,71 @@ pub fn finalize_file_in_place(file_name: &str) -> Result<usize> {
 
     Ok(patched)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mdfr_core::blocks::cn::CnDataType;
+    use mdfr_core::compress::CompressionAlgorithm;
+    use mdfr_core::logger::{DataLayout, Logger, LoggerBuilder};
+    use mdfr_core::time::ManualClock;
+
+    #[test]
+    fn test_finalize_unfinalized_sorted_and_unsorted() -> Result<()> {
+        for (layout, algo) in [
+            (DataLayout::Sorted, CompressionAlgorithm::NoCompression),
+            (DataLayout::Sorted, CompressionAlgorithm::DeflateTranspose),
+            (DataLayout::Unsorted, CompressionAlgorithm::NoCompression),
+            (DataLayout::Unsorted, CompressionAlgorithm::DeflateTranspose),
+        ] {
+            let mut b = LoggerBuilder::new(layout, algo);
+            let g0 = b.add_group("Engine");
+            let ch_rpm = b.add_channel(g0, "RPM", CnDataType::UIntLE, 16)?;
+            let ch_vlsd = b.add_vlsd_channel(g0, "Msg", CnDataType::StringUtf8)?;
+
+            let schema = b.build()?;
+            let tmp = tempfile::Builder::new().suffix(".mf4").tempfile()?;
+            let file = tmp.reopen()?;
+            let clock = ManualClock::new(1e-3, 10);
+            let mut logger = Logger::start(schema, file, clock)?;
+
+            for i in 0..20u64 {
+                logger
+                    .begin_record(g0)?
+                    .set_u64(ch_rpm, 2000 + i * 20)?
+                    .set_bytes(ch_vlsd, format!("msg_{i}").as_bytes())?
+                    .commit()?;
+            }
+
+            // Checkpoint so all data is on disk and unfinalized flags are set
+            logger.checkpoint()?;
+            // Intentionally DO NOT call logger.close() to simulate a crash/unfinalized file!
+            drop(logger);
+
+            // Verify the file was left as "UnFinMF "
+            let path_str = tmp.path().to_str().unwrap();
+            let mut head = [0u8; 8];
+            File::open(path_str)?.read_exact(&mut head)?;
+            assert_eq!(&head, b"UnFinMF ");
+
+            // Run in-place finalization
+            let patched = finalize_file_in_place(path_str)?;
+            assert!(patched >= 1);
+
+            // Verify header is now "MDF     "
+            File::open(path_str)?.read_exact(&mut head)?;
+            assert_eq!(&head, b"MDF     ");
+
+            // Open with reader and verify cycles
+            let mut mdf = crate::mdfreader::Mdf::new(path_str)?;
+            mdf.load_all_channels_data_in_memory()?;
+            assert!(mdf.get_channel_data("RPM").is_some());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_finalize_nonexistent_and_invalid() {
+        assert!(finalize_file_in_place("/nonexistent/path/to/file.mf4").is_err());
+    }
+}

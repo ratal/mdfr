@@ -29,8 +29,10 @@ fn export_to_parquet() -> Result<()> {
     );
     let mut mdf = Mdf::new(&file)?;
     mdf.load_all_channels_data_in_memory()?;
-    mdf.export_to_parquet(writing_parquet_file, Some("zstd"))
-        .expect("failed writing mdf4 parquet file");
+    for comp in ["snappy", "zstd", "gzip", "lz4"] {
+        mdf.export_to_parquet(writing_parquet_file, Some(comp))
+            .unwrap_or_else(|_| panic!("failed writing mdf4 parquet file with {comp}"));
+    }
 
     // Export mdf3 to Parquet file
     let file = format!(
@@ -263,5 +265,28 @@ fn export_and_verify_hdf5() -> Result<()> {
         panic!("Expected Float64 channel");
     }
 
+    Ok(())
+}
+
+#[test]
+fn export_all_to_csv() -> Result<()> {
+    let tmp_dir = tempfile::tempdir()?;
+    let writing_csv_file = tmp_dir.path().join("all_cg");
+    let writing_csv_file = writing_csv_file.to_str().unwrap();
+
+    let file = format!(
+        "{}{}",
+        BASE_PATH_MDF4.as_str(),
+        "Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
+    );
+    let mut mdf = Mdf::new(&file)?;
+    mdf.load_all_channels_data_in_memory()?;
+    mdf.export_to_csv(writing_csv_file)?;
+
+    let count = std::fs::read_dir(tmp_dir.path())?
+        .filter_map(Result::ok)
+        .filter(|d| d.path().extension().and_then(|s| s.to_str()) == Some("csv"))
+        .count();
+    assert!(count >= 1);
     Ok(())
 }

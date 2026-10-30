@@ -30,3 +30,6 @@ test_files/mdfreader/
 .idea
 .kilo
 .claude
+*.profraw
+__pycache__/
+*.pyc

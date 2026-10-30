@@ -171,7 +171,8 @@ mod tests {
 
     #[test]
     fn test_all_bus_presets() {
-        let mut builder = LoggerBuilder::new(DataLayout::Sorted, CompressionAlgorithm::NoCompression);
+        let mut builder =
+            LoggerBuilder::new(DataLayout::Sorted, CompressionAlgorithm::NoCompression);
 
         let can_h = BusPreset::can(&mut builder, "CAN1").expect("can preset");
         assert_eq!(can_h.group.0, 0);
@@ -179,7 +180,8 @@ mod tests {
         let can_fd_h = BusPreset::can_fd(&mut builder, "CANFD1").expect("can_fd preset");
         assert_eq!(can_fd_h.group.0, 1);
 
-        let can_fd_vlsd_h = BusPreset::can_fd_vlsd(&mut builder, "CANFD2").expect("can_fd_vlsd preset");
+        let can_fd_vlsd_h =
+            BusPreset::can_fd_vlsd(&mut builder, "CANFD2").expect("can_fd_vlsd preset");
         assert_eq!(can_fd_vlsd_h.group.0, 2);
 
         let lin_g = BusPreset::lin(&mut builder, "LIN1").expect("lin preset");
@@ -203,14 +205,26 @@ mod tests {
         logger.set_channel_u64(can_h.dir, 0).expect("dir");
         logger.set_channel_u64(can_h.dlc, 8).expect("dlc");
         logger.set_channel_u64(can_h.data_length, 8).expect("len");
-        logger.set_channel_bytes(can_h.data_bytes, &[1, 2, 3, 4, 5, 6, 7, 8]).expect("bytes");
-        logger.commit_staged_record(can_h.group).expect("commit CAN");
+        logger
+            .set_channel_bytes(can_h.data_bytes, &[1, 2, 3, 4, 5, 6, 7, 8])
+            .expect("bytes");
+        logger
+            .commit_staged_record(can_h.group)
+            .expect("commit CAN");
 
         // Write sample CAN-FD VLSD record
-        logger.begin_record(can_fd_vlsd_h.group).expect("begin CAN-FD");
-        logger.set_channel_u64(can_fd_vlsd_h.can_id, 0x7E8).expect("id");
-        logger.set_channel_bytes(can_fd_vlsd_h.data_bytes, &[0xDE, 0xAD, 0xBE, 0xEF]).expect("vlsd payload");
-        logger.commit_staged_record(can_fd_vlsd_h.group).expect("commit CAN-FD");
+        logger
+            .begin_record(can_fd_vlsd_h.group)
+            .expect("begin CAN-FD");
+        logger
+            .set_channel_u64(can_fd_vlsd_h.can_id, 0x7E8)
+            .expect("id");
+        logger
+            .set_channel_bytes(can_fd_vlsd_h.data_bytes, &[0xDE, 0xAD, 0xBE, 0xEF])
+            .expect("vlsd payload");
+        logger
+            .commit_staged_record(can_fd_vlsd_h.group)
+            .expect("commit CAN-FD");
 
         let (sink, _stats) = logger.close().expect("close logger");
         assert!(!sink.data.is_empty());
