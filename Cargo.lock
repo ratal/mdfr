@@ -2180,7 +2180,7 @@ dependencies = [
 
 [[package]]
 name = "mdfr"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "anyhow",
  "arrow",
@@ -2226,7 +2226,7 @@ dependencies = [
 
 [[package]]
 name = "mdfr-core"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "binrw",
  "chrono",
@@ -2243,7 +2243,7 @@ dependencies = [
 
 [[package]]
 name = "mdfr-derive"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "proc-macro2",
  "quote",
