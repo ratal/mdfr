@@ -1146,7 +1146,7 @@ fn create_dv(data: &ChannelData, offset: &mut i64) -> Result<(DataBlock, usize, 
         .context("failed converting arraw data into bytes for dv block")?;
     let data_bytes_len = data_bytes.len();
     dv_block.hdr_len += data_bytes_len as u64;
-    let byte_aligned = 8 - data_bytes_len % 8;
+    let byte_aligned = (8 - (data_bytes_len % 8)) % 8;
 
     *offset += dv_block.hdr_len as i64 + byte_aligned as i64;
 
@@ -1193,7 +1193,7 @@ fn create_dz_dv(
     if dz_block.dz_org_data_length < dz_block.dz_data_length {
         (dv_dz_block, byte_aligned, data_bytes) = create_dv(data, offset)?;
     } else {
-        byte_aligned = (8 - dz_block.dz_data_length % 8) as usize;
+        byte_aligned = ((8 - (dz_block.dz_data_length % 8)) % 8) as usize;
         dz_block.len = dz_block.dz_data_length + 48;
         *offset += dz_block.len as i64 + byte_aligned as i64;
         dv_dz_block = DataBlock::DZ(dz_block);
@@ -1209,7 +1209,7 @@ fn create_di(mask: &NullBuffer, offset: &mut i64) -> Result<Option<(DataBlock, V
     };
     let mask_length = mask.len();
     dv_invalid_block.hdr_len += mask_length as u64;
-    let byte_aligned = 8 - mask_length % 8;
+    let byte_aligned = (8 - (mask_length % 8)) % 8;
     let invalid_data: Vec<u8> = [
         mask.iter().map(|v| v as u8).collect::<Vec<u8>>(),
         vec![0; byte_aligned],
@@ -1239,7 +1239,7 @@ fn create_dz_di(
         Ok(create_di(mask, offset)?)
     } else {
         dz_invalid_block.len = dz_invalid_block.dz_data_length + 48;
-        let byte_aligned = 8 - dz_invalid_block.dz_data_length as usize % 8;
+        let byte_aligned = (8 - (dz_invalid_block.dz_data_length as usize % 8)) % 8;
         data_bytes = [data_bytes, vec![0; byte_aligned]].concat();
         dz_invalid_block.dz_org_block_type = [68, 73]; // DI
         *offset += dz_invalid_block.len as i64 + byte_aligned as i64;
@@ -1454,6 +1454,7 @@ fn create_blocks(
             invalid_mask: None,
             event_template: None,
             should_read: false,
+            builder: None,
         };
         let mut new_cg = Cg4 {
             header: cg_block_header,
@@ -1525,8 +1526,7 @@ fn is_vlsd_data(data: &ChannelData) -> bool {
 /// followed by the raw bytes (with null terminator for UTF-8 strings).
 fn to_sd_bytes(data: &ChannelData) -> Result<Vec<u8>, Error> {
     match data {
-        ChannelData::Utf8(a) => {
-            let array = a.finish_cloned();
+        ChannelData::Utf8(array) => {
             let mut result = Vec::new();
             for i in 0..array.len() {
                 let value = array.value(i);
@@ -1539,8 +1539,7 @@ fn to_sd_bytes(data: &ChannelData) -> Result<Vec<u8>, Error> {
             }
             Ok(result)
         }
-        ChannelData::VariableSizeByteArray(a) => {
-            let array = a.finish_cloned();
+        ChannelData::VariableSizeByteArray(array) => {
             let mut result = Vec::new();
             for i in 0..array.len() {
                 let value = array.value(i);
@@ -1557,8 +1556,7 @@ fn to_sd_bytes(data: &ChannelData) -> Result<Vec<u8>, Error> {
 #[allow(dead_code)]
 fn calculate_sd_size(data: &ChannelData) -> usize {
     match data {
-        ChannelData::Utf8(a) => {
-            let array = a.finish_cloned();
+        ChannelData::Utf8(array) => {
             let mut size = 0usize;
             for i in 0..array.len() {
                 let value = array.value(i);
@@ -1567,8 +1565,7 @@ fn calculate_sd_size(data: &ChannelData) -> usize {
             }
             size
         }
-        ChannelData::VariableSizeByteArray(a) => {
-            let array = a.finish_cloned();
+        ChannelData::VariableSizeByteArray(array) => {
             let mut size = 0usize;
             for i in 0..array.len() {
                 let value = array.value(i);

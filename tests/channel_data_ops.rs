@@ -19,7 +19,7 @@ use mdfr::data_holder::tensor_arrow::{Order, TensorArrow};
 #[test]
 fn test_zeros_virtual_channel_cn_type_3() {
     // cn_type 3 always returns UInt64 counter regardless of self type.
-    let cd = ChannelData::Float64(Float64Builder::new());
+    let cd = ChannelData::Float64(Float64Builder::new().finish());
     let result = cd.zeros(3, 5, 8, (vec![1], Order::RowMajor)).unwrap();
     assert!(matches!(result, ChannelData::UInt64(_)));
     assert_eq!(result.len(), 5);
@@ -28,7 +28,7 @@ fn test_zeros_virtual_channel_cn_type_3() {
 
 #[test]
 fn test_zeros_virtual_channel_cn_type_6() {
-    let cd = ChannelData::Float64(Float64Builder::new());
+    let cd = ChannelData::Float64(Float64Builder::new().finish());
     let result = cd.zeros(6, 3, 8, (vec![1], Order::RowMajor)).unwrap();
     assert!(matches!(result, ChannelData::UInt64(_)));
     assert_eq!(result.len(), 3);
@@ -59,10 +59,10 @@ fn test_zeros_array_d_uint8() {
 
 #[test]
 fn test_zeros_fixed_size_byte() {
-    let cd = ChannelData::FixedSizeByteArray(FixedSizeBinaryBuilder::with_capacity(1, 4));
+    let cd = ChannelData::FixedSizeByteArray(FixedSizeBinaryBuilder::with_capacity(1, 4).finish());
     let result = cd.zeros(0, 3, 4, (vec![1], Order::RowMajor)).unwrap();
     assert!(matches!(result, ChannelData::FixedSizeByteArray(_)));
-    assert_eq!(result.len(), 0); // zeros creates empty builder with capacity
+    assert_eq!(result.len(), 3);
 }
 
 #[test]
@@ -89,7 +89,7 @@ fn test_zeros_complex64() {
 fn test_zeros_utf8() {
     let mut b = LargeStringBuilder::new();
     b.append_value("x");
-    let cd = ChannelData::Utf8(b);
+    let cd = ChannelData::Utf8(b.finish());
     let result = cd.zeros(0, 5, 10, (vec![1], Order::RowMajor)).unwrap();
     assert!(matches!(result, ChannelData::Utf8(_)));
     assert_eq!(result.len(), 0); // empty builder after zeros
@@ -125,8 +125,8 @@ fn test_len_array_d_from_buffer() {
     let buf = MutableBuffer::from_iter([1.0f64, 2.0, 3.0, 4.0].iter().copied());
     let ta = TensorArrow::<Float64Type>::new_from_buffer(buf, vec![1], Order::RowMajor);
     let cd = ChannelData::ArrayDFloat64(ta);
-    // internal len formula: byte_len / shape_product = 32 / 1 = 32
-    assert_eq!(cd.len(), 32);
+    // 4 f64 values, shape=[1]: 4 elements / 1 = 4
+    assert_eq!(cd.len(), 4);
     assert!(!cd.is_empty());
 }
 
@@ -194,7 +194,7 @@ fn test_to_u64_vec_int8() {
     let mut b = Int8Builder::new();
     b.append_value(10);
     b.append_value(-1); // cast to u64: 0xFFFFFFFFFFFFFFFF as u64
-    let cd = ChannelData::Int8(b);
+    let cd = ChannelData::Int8(b.finish());
     let v = cd.to_u64_vec().unwrap();
     assert_eq!(v.len(), 2);
     assert_eq!(v[0], 10u64);
@@ -207,7 +207,7 @@ fn test_to_u64_vec_uint8() {
     let mut b = UInt8Builder::new();
     b.append_value(255u8);
     b.append_value(0u8);
-    let cd = ChannelData::UInt8(b);
+    let cd = ChannelData::UInt8(b.finish());
     assert_eq!(cd.to_u64_vec().unwrap(), vec![255u64, 0u64]);
 }
 
@@ -215,7 +215,7 @@ fn test_to_u64_vec_uint8() {
 fn test_to_u64_vec_uint16() {
     let mut b = UInt16Builder::new();
     b.append_value(1000u16);
-    let cd = ChannelData::UInt16(b);
+    let cd = ChannelData::UInt16(b.finish());
     assert_eq!(cd.to_u64_vec().unwrap(), vec![1000u64]);
 }
 
@@ -223,7 +223,7 @@ fn test_to_u64_vec_uint16() {
 fn test_to_u64_vec_uint32() {
     let mut b = UInt32Builder::new();
     b.append_value(u32::MAX);
-    let cd = ChannelData::UInt32(b);
+    let cd = ChannelData::UInt32(b.finish());
     assert_eq!(cd.to_u64_vec().unwrap(), vec![u32::MAX as u64]);
 }
 
@@ -231,7 +231,7 @@ fn test_to_u64_vec_uint32() {
 fn test_to_u64_vec_uint64() {
     let mut b = UInt64Builder::new();
     b.append_value(u64::MAX);
-    let cd = ChannelData::UInt64(b);
+    let cd = ChannelData::UInt64(b.finish());
     assert_eq!(cd.to_u64_vec().unwrap(), vec![u64::MAX]);
 }
 
@@ -240,7 +240,7 @@ fn test_to_u64_vec_int64() {
     let mut b = Int64Builder::new();
     b.append_value(42i64);
     b.append_value(-100i64);
-    let cd = ChannelData::Int64(b);
+    let cd = ChannelData::Int64(b.finish());
     let v = cd.to_u64_vec().unwrap();
     assert_eq!(v[0], 42u64);
     assert_eq!(v[1], (-100i64) as u64);
@@ -251,7 +251,7 @@ fn test_to_u64_vec_int32() {
     let mut b = Int32Builder::new();
     b.append_value(7i32);
     b.append_value(-2i32);
-    let cd = ChannelData::Int32(b);
+    let cd = ChannelData::Int32(b.finish());
     let v = cd.to_u64_vec().unwrap();
     assert_eq!(v[0], 7u64);
     assert_eq!(v[1], (-2i32) as u64);
@@ -261,7 +261,7 @@ fn test_to_u64_vec_int32() {
 fn test_to_u64_vec_float64_returns_none() {
     let mut b = Float64Builder::new();
     b.append_value(1.0);
-    let cd = ChannelData::Float64(b);
+    let cd = ChannelData::Float64(b.finish());
     assert!(cd.to_u64_vec().is_none());
 }
 
@@ -269,7 +269,7 @@ fn test_to_u64_vec_float64_returns_none() {
 fn test_to_u64_vec_utf8_returns_none() {
     let mut b = LargeStringBuilder::new();
     b.append_value("abc");
-    let cd = ChannelData::Utf8(b);
+    let cd = ChannelData::Utf8(b.finish());
     assert!(cd.to_u64_vec().is_none());
 }
 
@@ -293,8 +293,8 @@ fn test_ndim_complex_is_1() {
 
 #[test]
 fn test_ndim_fixed_size_byte_is_1() {
-    let b = FixedSizeBinaryBuilder::with_capacity(1, 4);
-    let cd = ChannelData::FixedSizeByteArray(b);
+    let mut b = FixedSizeBinaryBuilder::with_capacity(1, 4);
+    let cd = ChannelData::FixedSizeByteArray(b.finish());
     assert_eq!(cd.ndim(), 1);
 }
 
@@ -308,13 +308,12 @@ fn test_clone_fixed_size_byte_with_nulls() {
     b.append_value(b"AAAA").unwrap();
     b.append_null();
     b.append_value(b"CCCC").unwrap();
-    let cd = ChannelData::FixedSizeByteArray(b);
+    let cd = ChannelData::FixedSizeByteArray(b.finish());
     let cloned = cd.clone();
 
     assert_eq!(cloned.len(), cd.len());
     assert!(matches!(cloned, ChannelData::FixedSizeByteArray(_)));
-    if let ChannelData::FixedSizeByteArray(mut b) = cloned {
-        let arr = b.finish();
+    if let ChannelData::FixedSizeByteArray(arr) = cloned {
         assert_eq!(arr.len(), 3);
         assert!(arr.is_null(1));
         assert!(!arr.is_null(0));
@@ -329,7 +328,7 @@ fn test_clone_utf8() {
     let mut b = LargeStringBuilder::new();
     b.append_value("hello");
     b.append_value("world");
-    let cd = ChannelData::Utf8(b);
+    let cd = ChannelData::Utf8(b.finish());
     let cloned = cd.clone();
     assert_eq!(cloned.len(), 2);
 }
@@ -350,7 +349,7 @@ fn test_clone_complex32() {
 fn test_bit_count_int8() {
     let mut b = Int8Builder::new();
     b.append_value(1);
-    let cd = ChannelData::Int8(b);
+    let cd = ChannelData::Int8(b.finish());
     assert_eq!(cd.bit_count(), 8);
 }
 
@@ -422,7 +421,7 @@ fn test_is_empty_complex32() {
 
 #[test]
 fn test_is_empty_fixed_size_byte() {
-    let cd = ChannelData::FixedSizeByteArray(FixedSizeBinaryBuilder::with_capacity(0, 4));
+    let cd = ChannelData::FixedSizeByteArray(FixedSizeBinaryBuilder::with_capacity(0, 4).finish());
     assert!(cd.is_empty());
 }
 
@@ -432,8 +431,8 @@ fn test_is_empty_fixed_size_byte() {
 
 #[test]
 fn test_data_type_fixed_size_byte_array() {
-    let b = FixedSizeBinaryBuilder::with_capacity(1, 4);
-    let cd = ChannelData::FixedSizeByteArray(b);
+    let mut b = FixedSizeBinaryBuilder::with_capacity(1, 4);
+    let cd = ChannelData::FixedSizeByteArray(b.finish());
     // LE: FixedSizeByteArray → 10; BE: also 10
     assert_eq!(cd.data_type(false), 10);
     assert_eq!(cd.data_type(true), 10);
@@ -493,7 +492,7 @@ fn test_data_type_array_d_int32() {
 fn test_as_u64_slice_non_uint64_returns_none() {
     let mut b = Int32Builder::new();
     b.append_value(1);
-    let cd = ChannelData::Int32(b);
+    let cd = ChannelData::Int32(b.finish());
     assert!(cd.as_u64_slice().is_none());
 }
 
@@ -501,7 +500,7 @@ fn test_as_u64_slice_non_uint64_returns_none() {
 fn test_as_u64_slice_float64_returns_none() {
     let mut b = Float64Builder::new();
     b.append_value(1.0);
-    let cd = ChannelData::Float64(b);
+    let cd = ChannelData::Float64(b.finish());
     assert!(cd.as_u64_slice().is_none());
 }
 
@@ -511,31 +510,31 @@ fn test_as_u64_slice_float64_returns_none() {
 
 #[test]
 fn test_byte_count_int8() {
-    let cd = ChannelData::Int8(Int8Builder::new());
+    let cd = ChannelData::Int8(Int8Builder::new().finish());
     assert_eq!(cd.byte_count(), 1);
 }
 
 #[test]
 fn test_byte_count_uint8() {
-    let cd = ChannelData::UInt8(UInt8Builder::new());
+    let cd = ChannelData::UInt8(UInt8Builder::new().finish());
     assert_eq!(cd.byte_count(), 1);
 }
 
 #[test]
 fn test_byte_count_int16() {
-    let cd = ChannelData::Int16(Int16Builder::new());
+    let cd = ChannelData::Int16(Int16Builder::new().finish());
     assert_eq!(cd.byte_count(), 2);
 }
 
 #[test]
 fn test_byte_count_int64() {
-    let cd = ChannelData::Int64(Int64Builder::new());
+    let cd = ChannelData::Int64(Int64Builder::new().finish());
     assert_eq!(cd.byte_count(), 8);
 }
 
 #[test]
 fn test_byte_count_uint64() {
-    let cd = ChannelData::UInt64(UInt64Builder::new());
+    let cd = ChannelData::UInt64(UInt64Builder::new().finish());
     assert_eq!(cd.byte_count(), 8);
 }
 
@@ -548,7 +547,7 @@ fn test_shape_fixed_size_byte() {
     let mut b = FixedSizeBinaryBuilder::with_capacity(2, 4);
     b.append_value(b"AAAA").unwrap();
     b.append_value(b"BBBB").unwrap();
-    let cd = ChannelData::FixedSizeByteArray(b);
+    let cd = ChannelData::FixedSizeByteArray(b.finish());
     let (shape, order) = cd.shape();
     assert_eq!(shape, vec![2]);
     assert_eq!(order, Order::RowMajor);
@@ -566,6 +565,6 @@ fn test_shape_complex32_with_data() {
     );
     let cd = ChannelData::Complex32(ca);
     let (shape, order) = cd.shape();
-    assert_eq!(shape, vec![8]); // len = byte_len / 2 = 16/2 = 8
+    assert_eq!(shape, vec![2]); // 4 f32 components / 2 = 2 complex numbers
     assert_eq!(order, Order::RowMajor);
 }

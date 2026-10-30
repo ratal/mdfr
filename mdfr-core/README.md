@@ -43,6 +43,7 @@
 | `capi` | Compiles the `extern "C"` FFI API | No |
 | `capi-arena` | Includes `StaticArena` bare-metal memory allocator | No |
 | `defmt` | Implements `defmt::Format` for error types | No |
+| `embedded-io` | `EmbeddedIoSink<T>` adapter for `embedded_io::Write + Seek` | No |
 
 ---
 
@@ -157,3 +158,17 @@ mdfr_logger_record_commit(logger, group);
 
 mdfr_logger_close(logger);
 ```
+
+### Standalone C Static Library (`libmdfr_core_c.a`)
+
+For linking directly into embedded C/C++ firmware projects (e.g. STM32, ESP32, NXP) with `arm-none-eabi-gcc`:
+
+```bash
+cargo build -p mdfr-core --example mdfr_core_c --target thumbv7em-none-eabihf --no-default-features --features capi-arena --release
+```
+
+The resulting archive is generated at:
+```text
+target/thumbv7em-none-eabihf/release/examples/libmdfr_core_c.a
+```
+Link it into your C firmware alongside [`include/mdfr_logger.h`](../include/mdfr_logger.h).

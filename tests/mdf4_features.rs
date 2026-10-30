@@ -7,6 +7,7 @@
 mod common;
 
 use anyhow::Result;
+use mdfr::data_holder::channel_data::AsValuesSlice;
 use mdfr::mdfinfo::MdfInfo;
 use mdfr::mdfreader::Mdf;
 use std::sync::LazyLock;
@@ -78,7 +79,7 @@ fn test_mlsd_channels_truncation() -> Result<()> {
     ];
 
     if let Some(ChannelData::Utf8(builder)) = mdf.get_channel_data("Data channel") {
-        let array = builder.finish_cloned();
+        let array = builder;
         assert_eq!(array.len(), 10);
         for (i, &exp) in expected.iter().enumerate() {
             assert_eq!(array.value(i), exp, "Mismatch at index {i}");
@@ -102,7 +103,7 @@ fn test_mlsd_channels_truncation() -> Result<()> {
     let mut mdf_sbc = Mdf::new(&file_sbc)?;
     mdf_sbc.load_all_channels_data_in_memory()?;
     if let Some(ChannelData::Utf8(builder)) = mdf_sbc.get_channel_data("Data channel") {
-        let array = builder.finish_cloned();
+        let array = builder;
         assert_eq!(array.len(), 10);
         for (i, &exp) in expected.iter().enumerate() {
             assert_eq!(array.value(i), exp, "SBC mismatch at index {i}");

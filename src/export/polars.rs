@@ -66,32 +66,29 @@ pub fn channel_data_to_series(name: &str, data: &ChannelData) -> PolarsResult<Se
     use ChannelData::*;
     Ok(match data {
         // ── scalar numerics ──────────────────────────────────────────────────
-        Int8(b) => Series::new(name.into(), b.finish_cloned().values().as_ref()),
-        UInt8(b) => Series::new(name.into(), b.finish_cloned().values().as_ref()),
-        Int16(b) => Series::new(name.into(), b.finish_cloned().values().as_ref()),
-        UInt16(b) => Series::new(name.into(), b.finish_cloned().values().as_ref()),
-        Int32(b) => Series::new(name.into(), b.finish_cloned().values().as_ref()),
-        UInt32(b) => Series::new(name.into(), b.finish_cloned().values().as_ref()),
-        Float32(b) => Series::new(name.into(), b.finish_cloned().values().as_ref()),
-        Int64(b) => Series::new(name.into(), b.finish_cloned().values().as_ref()),
-        UInt64(b) => Series::new(name.into(), b.finish_cloned().values().as_ref()),
-        Float64(b) => Series::new(name.into(), b.finish_cloned().values().as_ref()),
+        Int8(b) => Series::new(name.into(), b.values().as_ref()),
+        UInt8(b) => Series::new(name.into(), b.values().as_ref()),
+        Int16(b) => Series::new(name.into(), b.values().as_ref()),
+        UInt16(b) => Series::new(name.into(), b.values().as_ref()),
+        Int32(b) => Series::new(name.into(), b.values().as_ref()),
+        UInt32(b) => Series::new(name.into(), b.values().as_ref()),
+        Float32(b) => Series::new(name.into(), b.values().as_ref()),
+        Int64(b) => Series::new(name.into(), b.values().as_ref()),
+        UInt64(b) => Series::new(name.into(), b.values().as_ref()),
+        Float64(b) => Series::new(name.into(), b.values().as_ref()),
 
         // ── strings ──────────────────────────────────────────────────────────
         Utf8(b) => {
-            let arr = b.finish_cloned();
-            let v: Vec<Option<&str>> = arr.iter().collect();
+            let v: Vec<Option<&str>> = b.iter().collect();
             Series::new(name.into(), v)
         }
 
         // ── byte arrays ──────────────────────────────────────────────────────
         FixedSizeByteArray(b) => {
-            let arr = b.finish_cloned();
-            bytes_iter_to_series(name, arr.iter())
+            bytes_iter_to_series(name, b.iter())
         }
         VariableSizeByteArray(b) => {
-            let arr = b.finish_cloned();
-            bytes_iter_to_series(name, arr.iter())
+            bytes_iter_to_series(name, b.iter())
         }
 
         // ── complex ([re, im] per row) ────────────────────────────────────────

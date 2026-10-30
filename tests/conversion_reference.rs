@@ -2,7 +2,7 @@ mod common;
 
 use anyhow::Result;
 use arrow::array::Array;
-use mdfr::data_holder::channel_data::ChannelData;
+use mdfr::data_holder::channel_data::{AsValuesSlice, ChannelData};
 use mdfr::mdfreader::Mdf;
 use std::sync::LazyLock;
 
@@ -118,7 +118,7 @@ fn test_reference_value_to_text() -> Result<()> {
     ];
 
     if let Some(ChannelData::Utf8(builder)) = mdf.get_channel_data("Data channel") {
-        let array = builder.finish_cloned();
+        let array = builder;
         assert_eq!(array.len(), 10);
         for (i, &exp) in expected.iter().enumerate() {
             assert_eq!(
@@ -176,7 +176,7 @@ fn test_reference_bitfield_text_table() -> Result<()> {
 
     // BitfieldTest channel is converted to Utf8
     if let Some(ChannelData::Utf8(builder)) = mdf.get_channel_data("BitfieldTest") {
-        let array = builder.finish_cloned();
+        let array = builder;
         assert_eq!(array.len(), 366);
         // Ensure values were converted to text and not empty
         assert!(!array.value(0).is_empty());

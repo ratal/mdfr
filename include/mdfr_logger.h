@@ -112,6 +112,18 @@ int32_t mdfr_logger_set_channel_unit(
     const char *unit
 );
 
+int32_t mdfr_logger_set_hd_comment(
+    MdfrBuilderHandle *builder,
+    const char *comment
+);
+
+int32_t mdfr_logger_set_tool_info(
+    MdfrBuilderHandle *builder,
+    const char *tool_id,
+    const char *tool_vendor,
+    const char *tool_version
+);
+
 int32_t mdfr_logger_add_bus_preset(
     MdfrBuilderHandle *builder,
     uint8_t bus_kind,

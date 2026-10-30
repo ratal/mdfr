@@ -402,7 +402,7 @@ fn test_extract_u64_from_uint8() {
     builder.append_value(2);
     builder.append_value(3);
     let cn = Cn4 {
-        data: ChannelData::UInt8(builder),
+        data: ChannelData::UInt8(builder.finish()),
         ..Default::default()
     };
     let result = extract_channel_values_as_u64(&cn).unwrap();
@@ -413,8 +413,9 @@ fn test_extract_u64_from_uint8() {
 fn test_extract_u64_from_utf8_fails() {
     use arrow::array::LargeStringBuilder;
     use mdfr::data_holder::channel_data::ChannelData;
+    let mut builder = LargeStringBuilder::new();
     let cn = Cn4 {
-        data: ChannelData::Utf8(LargeStringBuilder::new()),
+        data: ChannelData::Utf8(builder.finish()),
         ..Default::default()
     };
     let result = extract_channel_values_as_u64(&cn);

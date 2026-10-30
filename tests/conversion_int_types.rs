@@ -4,7 +4,7 @@
 /// were never hit. These tests load a synthetic MDF4 fixture that has Int8/Int16/Float32
 /// channels with a linear CC block.
 use anyhow::Result;
-use mdfr::data_holder::channel_data::ChannelData;
+use mdfr::data_holder::channel_data::{AsValuesSlice, ChannelData};
 use mdfr::mdfreader::Mdf;
 use std::sync::LazyLock;
 

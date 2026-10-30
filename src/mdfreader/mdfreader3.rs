@@ -11,7 +11,6 @@ use std::io::{BufReader, Read};
 use crate::mdfreader::data_read3::read_channels_from_bytes;
 
 use super::Mdf;
-use crate::data_holder::tensor_arrow::Order;
 
 /// The following constant represents the size of data chunk to be read and processed.
 /// a big chunk will improve performance but consume more memory
@@ -88,14 +87,7 @@ fn initialise_arrays(channel_group: &mut Cg3, cg_cycle_count: &u32) -> Result<()
         .filter(|(_cn_position, cn)| cn.should_read)
         .try_for_each(
             |(_cn_position, cn): (&u32, &mut Cn3)| -> Result<(), Error> {
-                cn.data = cn
-                    .data
-                    .zeros(
-                        0,
-                        *cg_cycle_count as u64,
-                        cn.n_bytes as u32,
-                        (Vec::new(), Order::RowMajor),
-                    )
+                cn.init_builder(*cg_cycle_count as usize)
                     .with_context(|| {
                         format!(
                             "failed intialising with zeros the channel's array named {}",
@@ -149,6 +141,11 @@ fn read_all_channels_sorted(
         .context("failed reading channels from bytes")?;
         previous_index += n_record_chunk;
     }
+    for cn in channel_group.cn.values_mut() {
+        if let Some(b) = cn.builder.take() {
+            cn.data = b.finish();
+        }
+    }
     Ok(())
 }
 
@@ -183,6 +180,13 @@ fn read_all_channels_unsorted(
             .context("Could not read data chunk")?;
         read_all_channels_unsorted_from_bytes(&mut data_chunk, dg, &mut record_counter)
             .context("failed reading channels from bytes")?;
+    }
+    for cg in dg.cg.values_mut() {
+        for cn in cg.cn.values_mut() {
+            if let Some(b) = cn.builder.take() {
+                cn.data = b.finish();
+            }
+        }
     }
     Ok(())
 }

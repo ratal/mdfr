@@ -29,7 +29,7 @@ use crate::blocks::{
         UNFIN_VLSD_CG_BYTES,
     },
     si::Si4Block,
-    tx::{align8, encode_md, encode_tx},
+    tx::{align8, encode_md, encode_tx, escape_xml},
 };
 use crate::compress::{CompressionAlgorithm, compress_dz_data};
 use crate::error::{Error, Result};
@@ -136,6 +136,8 @@ pub struct Logger<S: Sink, T: TimeSource> {
     unsorted_chain: Option<DlChainState>,
     /// Unsorted mode: flush threshold in bytes.
     unsorted_flush_threshold: usize,
+    /// Unsorted mode: record ID size in bytes (1 or 2; 0 for sorted).
+    rec_id_size: u8,
     /// Number of data blocks flushed since the last `checkpoint()`.
     blocks_since_checkpoint: usize,
     /// Sequence index incremented across `rotate()` calls.
@@ -145,7 +147,7 @@ pub struct Logger<S: Sink, T: TimeSource> {
 impl<S: Sink, T: TimeSource> Logger<S, T> {
     /// Initializes a new MDF 4.3 file on `sink` and writes all metadata blocks (`ID`, `HD`, `FH`, `DG`, `CG`, `CN`, `CC`, `SI`, `CA`, `TX`, `MD`).
     pub fn start(schema: Schema, mut sink: S, mut clock: T) -> Result<Self> {
-        let (groups, unsorted_chain, eof_pos, hd_time_valid) =
+        let (groups, unsorted_chain, eof_pos, hd_time_valid, rec_id_size) =
             Self::write_metadata(&schema, &mut sink, &mut clock, 0)?;
         let unsorted_flush_threshold = schema
             .groups
@@ -162,17 +164,19 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
             unsorted_buf: Vec::new(),
             unsorted_chain,
             unsorted_flush_threshold,
+            rec_id_size,
             blocks_since_checkpoint: 0,
             sequence_index: 0,
         })
     }
 
+    #[allow(clippy::type_complexity)]
     fn write_metadata(
         schema: &Schema,
         sink: &mut S,
         clock: &mut T,
         seq_index: u64,
-    ) -> Result<(Vec<GroupRuntime>, Option<DlChainState>, u64, bool)> {
+    ) -> Result<(Vec<GroupRuntime>, Option<DlChainState>, u64, bool, u8)> {
         sink.seek(SeekFrom::Start(0))?;
 
         // 1. IDBlock (64 bytes at offset 0) — unfinalized
@@ -190,8 +194,14 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
         // 2. Prepare HD MD comment (written immediately after HD at offset 168 so hd_md_comment is known when HD is read)
         let wall_ns = clock.wall_clock_ns().unwrap_or(0);
         let hd_md_pos = HD_END_POSITION as u64;
+        let hd_comment_txt = escape_xml(
+            schema
+                .hd_comment
+                .as_deref()
+                .unwrap_or("MDF 4.3 embedded recording"),
+        );
         let hd_xml = format!(
-            "<HDcomment><TX>MDF 4.3 embedded recording</TX><common_properties><tree name=\"Recorder\"><e name=\"FileIndex\">{seq_index}</e><e name=\"SequenceIndex\">{seq_index}</e></tree></common_properties></HDcomment>"
+            "<HDcomment><TX>{hd_comment_txt}</TX><common_properties><tree name=\"Recorder\"><e name=\"FileIndex\">{seq_index}</e><e name=\"SequenceIndex\">{seq_index}</e></tree></common_properties></HDcomment>"
         );
         let hd_md = encode_md(&hd_xml)?;
         let fh_pos = hd_md_pos + hd_md.len() as u64;
@@ -211,14 +221,34 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
             ..Default::default()
         };
         write_binrw(sink, &fh)?;
-        let fh_xml = "<FHcomment><TX>Created by mdfr-core embedded MDF 4.3 logger</TX><tool_id>mdfr-core</tool_id><tool_vendor>mdfr</tool_vendor><tool_version>0.8.0</tool_version></FHcomment>";
-        let fh_md = encode_md(fh_xml)?;
+        let tool_id = escape_xml(schema.tool_id.as_deref().unwrap_or("mdfr-core"));
+        let tool_vendor = escape_xml(schema.tool_vendor.as_deref().unwrap_or("mdfr"));
+        let tool_version = escape_xml(schema.tool_version.as_deref().unwrap_or("0.8.0"));
+        let fh_xml = format!(
+            "<FHcomment><TX>Created by mdfr-core embedded MDF 4.3 logger</TX><tool_id>{tool_id}</tool_id><tool_vendor>{tool_vendor}</tool_vendor><tool_version>{tool_version}</tool_version></FHcomment>"
+        );
+        let fh_md = encode_md(&fh_xml)?;
         sink.write_all(&fh_md)?;
         let mut pos = fh_comment_pos + fh_md.len() as u64;
 
         let sec_per_tick = clock.seconds_per_tick();
         let mut group_runtimes = Vec::with_capacity(schema.groups.len());
         let mut unsorted_chain = None;
+        let rec_id_size: u8 = match schema.layout {
+            DataLayout::Sorted => 0,
+            DataLayout::Unsorted => {
+                let total_cgs: usize = schema
+                    .groups
+                    .iter()
+                    .map(|g| 1 + g.channels.iter().filter(|c| c.is_vlsd).count())
+                    .sum();
+                if total_cgs > 255 {
+                    2
+                } else {
+                    1
+                }
+            }
+        };
 
         let first_dg_pos: i64;
 
@@ -270,12 +300,11 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
                 let dg_pos = pos;
                 first_dg_pos = dg_pos as i64;
                 let cg_first_pos = dg_pos + 64;
-                // Use 1-byte record IDs (supports up to 255 CGs including VLSD companion CGs)
                 let dg = Dg4Block {
                     dg_dg_next: 0,
                     dg_cg_first: cg_first_pos as i64,
                     dg_data: 0,
-                    dg_rec_id_size: 1,
+                    dg_rec_id_size: rec_id_size,
                     ..Default::default()
                 };
                 write_binrw(sink, &dg)?;
@@ -371,7 +400,7 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
         // Patch HD's hd_dg_first (at offset 64 + 24 = 88)
         patch_i64(sink, 88, first_dg_pos, pos)?;
 
-        Ok((group_runtimes, unsorted_chain, pos, wall_ns != 0))
+        Ok((group_runtimes, unsorted_chain, pos, wall_ns != 0, rec_id_size))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -921,10 +950,15 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
                 }
             }
             DataLayout::Unsorted => {
-                // In unsorted mode, emit a VLSD/VLSC CG record (`[rec_id: u8][len: u32][data]`) into `unsorted_buf`
+                // In unsorted mode, emit a VLSD/VLSC CG record (`[rec_id: u8|u16][len: u32][data]`) into `unsorted_buf`
                 // before the main record is committed (per MDF4 spec §6.14.2).
-                let rec_id = vlsd.unsorted_vlsd_record_id as u8;
-                self.unsorted_buf.push(rec_id);
+                if self.rec_id_size == 2 {
+                    self.unsorted_buf
+                        .extend_from_slice(&(vlsd.unsorted_vlsd_record_id as u16).to_le_bytes());
+                } else {
+                    self.unsorted_buf
+                        .push(vlsd.unsorted_vlsd_record_id as u8);
+                }
                 self.unsorted_buf.extend_from_slice(&len_u32.to_le_bytes());
                 self.unsorted_buf.extend_from_slice(data);
                 vlsd.total_vlsd_bytes += data.len() as u64;
@@ -962,7 +996,12 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
             }
             DataLayout::Unsorted => {
                 let g = &mut self.groups[g_idx];
-                self.unsorted_buf.push(g.record_id as u8);
+                if self.rec_id_size == 2 {
+                    self.unsorted_buf
+                        .extend_from_slice(&(g.record_id as u16).to_le_bytes());
+                } else {
+                    self.unsorted_buf.push(g.record_id as u8);
+                }
                 self.unsorted_buf.extend_from_slice(&g.staging_record);
                 g.cycle_count += 1;
                 if self.unsorted_buf.len() >= self.unsorted_flush_threshold {
@@ -1178,8 +1217,13 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
         // Reserved size: 24 (hdr) + 8 (dl_dl_next) + max_blocks*8 (dl_data) + 8 (flags/reserved/count) + max_blocks*8 (dl_offset)
         let reserved_len = 24 + 8 + (max_blocks as u64) * 8 + 8 + (max_blocks as u64) * 8;
         sink.seek(SeekFrom::Start(dl_pos))?;
-        let zeros = vec![0u8; reserved_len as usize];
-        sink.write_all(&zeros)?;
+        let zeros = [0u8; 128];
+        let mut remaining = reserved_len as usize;
+        while remaining > 0 {
+            let chunk = remaining.min(zeros.len());
+            sink.write_all(&zeros[..chunk])?;
+            remaining -= chunk;
+        }
         // Write valid empty DL header so even before first patch the block ID is `##DL`
         sink.seek(SeekFrom::Start(dl_pos))?;
         sink.write_all(b"##DL")?;
@@ -1346,7 +1390,7 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
             self.schema = s;
         }
         self.sequence_index += 1;
-        let (groups, unsorted_chain, eof_pos, hd_time_valid) = Self::write_metadata(
+        let (groups, unsorted_chain, eof_pos, hd_time_valid, rec_id_size) = Self::write_metadata(
             &self.schema,
             &mut new_sink,
             &mut self.clock,
@@ -1358,6 +1402,7 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
         self.unsorted_buf.clear();
         self.eof_pos = eof_pos;
         self.hd_time_valid = hd_time_valid;
+        self.rec_id_size = rec_id_size;
         self.blocks_since_checkpoint = 0;
         Ok(old_sink)
     }
@@ -1413,9 +1458,20 @@ impl<'a, S: Sink, T: TimeSource> RecordWriter<'a, S, T> {
 // ── Low-level helpers ──
 
 fn write_binrw<S: Sink, B: for<'a> BinWrite<Args<'a> = ()>>(sink: &mut S, block: &B) -> Result<()> {
-    let mut c = Cursor::new(Vec::new());
-    block.write_le(&mut c).map_err(|_| Error::Io)?;
-    sink.write_all(&c.into_inner())
+    let mut buf = [0u8; 256];
+    let mut c = Cursor::new(&mut buf[..]);
+    match block.write_le(&mut c) {
+        Ok(()) => {
+            let len = c.position() as usize;
+            sink.write_all(&buf[..len])
+        }
+        Err(_) => {
+            // Block was larger than 256 bytes (e.g. large DLBlock), fallback to dynamic heap allocation
+            let mut heap_c = Cursor::new(Vec::new());
+            block.write_le(&mut heap_c).map_err(|_| Error::Io)?;
+            sink.write_all(&heap_c.into_inner())
+        }
+    }
 }
 
 fn patch_i64<S: Sink>(sink: &mut S, offset: u64, val: i64, restore_pos: u64) -> Result<()> {
@@ -1452,28 +1508,172 @@ fn write_bits(
         }
         return;
     }
-    // Bit-packed little-endian or big-endian field fitting inside 8 contiguous bytes
-    let n_bytes = ((bit_offset as u32 + bit_count).div_ceil(8) as usize).min(8);
-    let mask: u64 = if bit_count >= 64 {
-        u64::MAX
+    // Bit-packed little-endian or big-endian field fitting inside up to 16 contiguous bytes
+    let n_bytes = ((bit_offset as u32 + bit_count).div_ceil(8) as usize).min(16);
+    let mask: u128 = if bit_count >= 128 {
+        u128::MAX
     } else {
-        (1u64 << bit_count) - 1
+        (1u128 << bit_count) - 1
     };
-    let shifted = (val & mask) << bit_offset;
+    let shifted = ((val as u128) & mask) << bit_offset;
     let clear_mask = !(mask << bit_offset);
 
-    let mut raw = [0u8; 8];
+    let mut raw = [0u8; 16];
     if is_big_endian {
-        raw[8 - n_bytes..].copy_from_slice(&record[byte_offset..byte_offset + n_bytes]);
-        let cur = u64::from_be_bytes(raw);
+        raw[16 - n_bytes..].copy_from_slice(&record[byte_offset..byte_offset + n_bytes]);
+        let cur = u128::from_be_bytes(raw);
         let updated = (cur & clear_mask) | shifted;
         let out = updated.to_be_bytes();
-        record[byte_offset..byte_offset + n_bytes].copy_from_slice(&out[8 - n_bytes..]);
+        record[byte_offset..byte_offset + n_bytes].copy_from_slice(&out[16 - n_bytes..]);
     } else {
         raw[..n_bytes].copy_from_slice(&record[byte_offset..byte_offset + n_bytes]);
-        let cur = u64::from_le_bytes(raw);
+        let cur = u128::from_le_bytes(raw);
         let updated = (cur & clear_mask) | shifted;
         let out = updated.to_le_bytes();
         record[byte_offset..byte_offset + n_bytes].copy_from_slice(&out[..n_bytes]);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::blocks::cn::CnDataType;
+    use crate::compress::CompressionAlgorithm;
+    use crate::io::VecSink;
+    use crate::logger::LoggerBuilder;
+    use crate::time::ManualClock;
+
+    #[test]
+    fn test_engine_dl_chaining_and_checkpointing() {
+        let mut b = LoggerBuilder::new(DataLayout::Sorted, CompressionAlgorithm::DeflateTranspose);
+        b.max_blocks_per_dl(2);
+        b.checkpoint_every_n_blocks(2);
+
+        let g0 = b.add_group("Engine");
+        b.set_group_flush_threshold(g0, 24).unwrap(); // Flush every 2 records (12 bytes/rec)
+        let ch_rpm = b.add_channel(g0, "RPM", CnDataType::UIntLE, 32).unwrap();
+
+        let schema = b.build().unwrap();
+        let sink = VecSink::new();
+        let clock = ManualClock::new(1e-3, 10);
+        let mut logger = Logger::start(schema, sink, clock).unwrap();
+
+        // Push 10 records -> ~5 flushes -> at least 3 DT/DZ blocks -> DL chaining happens!
+        for i in 0..10u64 {
+            logger
+                .begin_record(g0)
+                .unwrap()
+                .set_u64(ch_rpm, 1000 + i * 50)
+                .unwrap()
+                .commit()
+                .unwrap();
+        }
+
+        assert!(logger.checkpoint().is_ok());
+        assert!(logger.close().is_ok());
+    }
+
+    #[test]
+    fn test_engine_unsorted_layout_and_lz4() {
+        let mut b = LoggerBuilder::new(DataLayout::Unsorted, CompressionAlgorithm::Lz4Transpose);
+        let g0 = b.add_group("G0");
+        let ch0 = b.add_channel(g0, "C0", CnDataType::FloatLE, 32).unwrap();
+
+        let g1 = b.add_group("G1");
+        let ch1 = b.add_channel(g1, "C1", CnDataType::IntLE, 16).unwrap();
+
+        let schema = b.build().unwrap();
+        let sink = VecSink::new();
+        let clock = ManualClock::new(1e-3, 5);
+        let mut logger = Logger::start(schema, sink, clock).unwrap();
+
+        for i in 0..5 {
+            logger
+                .begin_record(g0)
+                .unwrap()
+                .set_f64(ch0, 1.23 * i as f64)
+                .unwrap()
+                .commit()
+                .unwrap();
+
+            logger
+                .begin_record(g1)
+                .unwrap()
+                .set_i64(ch1, -10 * i as i64)
+                .unwrap()
+                .commit()
+                .unwrap();
+        }
+
+        // Test payload pushing
+        let payload = (-42i16).to_le_bytes();
+        logger.push_payload(g1, &payload).unwrap();
+
+        assert!(logger.close().is_ok());
+    }
+
+    #[test]
+    fn test_engine_error_paths() {
+        let mut b = LoggerBuilder::new(DataLayout::Sorted, CompressionAlgorithm::NoCompression);
+        let g0 = b.add_group("G0");
+        let _ch0 = b.add_channel(g0, "C0", CnDataType::UIntLE, 16).unwrap();
+        let schema = b.build().unwrap();
+
+        let sink = VecSink::new();
+        let clock = ManualClock::new(1e-3, 1);
+        let mut logger = Logger::start(schema, sink, clock).unwrap();
+
+        // Unknown group
+        let bad_g = GroupHandle(99);
+        assert!(logger.begin_record(bad_g).is_err());
+        assert!(logger.push_raw(bad_g, &[0; 10]).is_err());
+        assert!(logger.push_payload(bad_g, &[0; 2]).is_err());
+        assert!(logger.commit_staged_record(bad_g).is_err());
+
+        // Invalid channel on record builder
+        let bad_ch = ChannelHandle {
+            group: 99,
+            channel: 99,
+        };
+        assert!(logger.begin_record(g0).unwrap().set_u64(bad_ch, 10).is_err());
+        assert!(logger.begin_record(g0).unwrap().set_i64(bad_ch, -10).is_err());
+        assert!(logger.begin_record(g0).unwrap().set_f64(bad_ch, 1.0).is_err());
+        assert!(logger.begin_record(g0).unwrap().set_bytes(bad_ch, b"abc").is_err());
+
+        // Push payload with invalid size (record size is 8 + 2 = 10; payload must be 2)
+        assert!(logger.push_payload(g0, &[0; 5]).is_err());
+
+        assert!(logger.close().is_ok());
+    }
+
+    #[test]
+    fn test_write_bits_edge_cases() {
+        let mut rec = [0u8; 16];
+
+        // Byte-aligned big-endian
+        write_bits(&mut rec, 0, 0, 16, 0x1234, true);
+        assert_eq!(&rec[0..2], &[0x12, 0x34]);
+
+        // Bit-packed little-endian (e.g. 5 bits at bit_offset 3)
+        write_bits(&mut rec, 4, 3, 5, 0x1F, false);
+        assert_eq!(rec[4], 0x1F << 3);
+
+        // Bit-packed big-endian (e.g. 4 bits at bit_offset 2)
+        write_bits(&mut rec, 8, 2, 4, 0x0A, true);
+        assert_eq!(rec[8], 0x0A << 2);
+
+        // Bit-packed 64-bit little-endian across byte boundary (e.g. 64 bits at bit_offset 3 spanning 9 bytes)
+        let mut rec64 = [0u8; 16];
+        rec64[0] = 0b0000_0111; // preserve low 3 bits
+        rec64[8] = 0b1110_0000; // preserve high 5 bits
+        let val: u64 = 0x0123_4567_89AB_CDEF;
+        write_bits(&mut rec64, 0, 3, 64, val, false);
+        // Verify low 3 bits preserved
+        assert_eq!(rec64[0] & 0x07, 0x07);
+        // Verify high 5 bits preserved
+        assert_eq!(rec64[8] & 0xE0, 0xE0);
+        // Verify 64-bit value decoded matches val
+        let raw_val = (u128::from_le_bytes(rec64) >> 3) as u64;
+        assert_eq!(raw_val, val);
     }
 }

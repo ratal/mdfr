@@ -1,7 +1,7 @@
 mod common;
 
 use anyhow::Result;
-use mdfr::data_holder::channel_data::ChannelData;
+use mdfr::data_holder::channel_data::{AsValuesSlice, ChannelData};
 use mdfr::mdfreader::Mdf;
 use std::sync::LazyLock;
 

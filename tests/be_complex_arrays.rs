@@ -7,7 +7,7 @@
 ///  - `complex_f32_le.mf4`  → Complex32 LE f32-pair arm (lines 1040-1072)
 ///  - `array_f64_le.mf4`    → ArrayDFloat64 LE (lines 1624-1635) + CA block parsing
 use anyhow::Result;
-use mdfr::data_holder::channel_data::ChannelData;
+use mdfr::data_holder::channel_data::{AsValuesSlice, ChannelData};
 use mdfr::mdfreader::Mdf;
 use std::sync::LazyLock;
 

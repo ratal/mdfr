@@ -366,7 +366,7 @@ impl Mdf {
         match self.get_channel_data(&master)? {
             ChannelData::Float64(b) => {
                 let ns: Vec<i64> = b
-                    .values_slice()
+                    .values()
                     .iter()
                     .map(|&s| start_ns + (s * 1e9) as i64)
                     .collect();
@@ -543,7 +543,7 @@ impl Mdf {
         }
         // Collect values before taking a mutable borrow
         let values: Vec<f64> = match self.get_channel_data(master_name) {
-            Some(ChannelData::Float64(b)) => b.values_slice().to_vec(),
+            Some(ChannelData::Float64(b)) => b.values().to_vec(),
             Some(_) => bail!("cut: master channel '{master_name}' is not Float64"),
             None => bail!("cut: master channel '{master_name}' has no data loaded"),
         };
@@ -563,7 +563,7 @@ impl Mdf {
             bail!("resample_group: '{master_name}' is not a Time master channel");
         }
         let old_master: Vec<f64> = match self.get_channel_data(master_name) {
-            Some(ChannelData::Float64(b)) => b.values_slice().to_vec(),
+            Some(ChannelData::Float64(b)) => b.values().to_vec(),
             Some(_) => bail!("resample_group: master '{master_name}' is not Float64"),
             None => bail!("resample_group: master '{master_name}' has no data loaded"),
         };
@@ -577,24 +577,20 @@ impl Mdf {
             let n = ((last - first) / raster_s).floor() as usize + 1;
             (0..n).map(|i| first + i as f64 * raster_s).collect()
         };
-        // Collect channel data clones before taking mutable borrow
+        // Collect channel data clones before taking mutable borrow (O(1) clone)
         let mut channel_set = self.mdf_info.get_channel_names_cg_set(master_name);
         channel_set.insert(master_name.to_string());
         let cloned: Vec<(String, ChannelData)> = channel_set
             .iter()
             .filter_map(|name| {
                 let data = self.get_channel_data(name)?;
-                data.slice_range(0, data.len())
-                    .ok()
-                    .map(|d| (name.clone(), d))
+                Some((name.clone(), data.clone()))
             })
             .collect();
         // Apply interpolated data
         for (name, data) in cloned {
             let new_data = if name == master_name {
-                let mut b = arrow::array::Float64Builder::with_capacity(new_master.len());
-                new_master.iter().for_each(|&v| b.append_value(v));
-                ChannelData::Float64(b)
+                ChannelData::Float64(arrow::array::Float64Array::from(new_master.clone()))
             } else {
                 interp_channel(&old_master, &data, &new_master)?
             };
@@ -645,11 +641,11 @@ impl Mdf {
             };
             // Compute time offset: self_last + sample_interval - other_first
             let self_master_vals: Vec<f64> = match self.get_channel_data(&master_name) {
-                Some(ChannelData::Float64(b)) => b.values_slice().to_vec(),
+                Some(ChannelData::Float64(b)) => b.values().to_vec(),
                 _ => continue,
             };
             let other_master_vals: Vec<f64> = match other.get_channel_data(&master_name) {
-                Some(ChannelData::Float64(b)) => b.values_slice().to_vec(),
+                Some(ChannelData::Float64(b)) => b.values().to_vec(),
                 _ => continue,
             };
             if self_master_vals.is_empty() || other_master_vals.is_empty() {
@@ -685,17 +681,12 @@ impl Mdf {
                         // Build shifted other master
                         let shifted: Vec<f64> =
                             other_master_vals.iter().map(|&v| v + time_offset).collect();
-                        let mut b =
-                            arrow::array::Float64Builder::with_capacity(self_len + other_len);
-                        sd.finish_cloned()
-                            .as_any()
-                            .downcast_ref::<arrow::array::Float64Array>()
-                            .into_iter()
-                            .flat_map(|a| a.iter())
-                            .for_each(|v| b.append_option(v));
-                        shifted.iter().for_each(|&v| b.append_value(v));
-                        self.mdf_info
-                            .replace_channel_data(name, ChannelData::Float64(b))?;
+                        let mut combined = self_master_vals.clone();
+                        combined.extend(shifted);
+                        self.mdf_info.replace_channel_data(
+                            name,
+                            ChannelData::Float64(arrow::array::Float64Array::from(combined)),
+                        )?;
                     } else {
                         let self_arr = sd.finish_cloned();
                         let other_arr = od.finish_cloned();

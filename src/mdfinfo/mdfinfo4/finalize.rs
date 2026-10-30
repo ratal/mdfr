@@ -28,10 +28,9 @@ use super::{Dg4, Dl4Block, Dt4Block, Dz4Block, Hl4Block};
 use crate::mdfinfo::IdBlock;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 
-/// Reads and returns the 4-byte block id at `addr` without changing the caller's
-/// conceptual position tracker.
-fn read_block_id(rdr: &mut SymBufReader<&File>, addr: i64, position: i64) -> Result<[u8; 4]> {
-    rdr.seek_relative(addr - position)
+/// Reads and returns the 4-byte block id at `addr`.
+fn read_block_id(rdr: &mut SymBufReader<&File>, addr: i64) -> Result<[u8; 4]> {
+    rdr.seek(SeekFrom::Start(addr as u64))
         .context("finalize: could not seek to block")?;
     let mut id = [0u8; 4];
     rdr.read_exact(&mut id)
@@ -46,19 +45,20 @@ fn walk_dl_chain(
     dl_addr: i64,
     file_size: u64,
 ) -> Result<(u64, i64)> {
-    let mut position = dl_addr;
     let mut total_preceding_bytes: u64 = 0;
-
     let mut current_dl_addr = dl_addr;
     let mut last_dl: Option<Dl4Block> = None;
 
     for _ in 0..65536u32 {
-        rdr.seek_relative(current_dl_addr - position)
-            .context("finalize: could not seek to DL block")?;
+        if current_dl_addr <= 0 || (current_dl_addr as u64) + 24 > file_size {
+            break;
+        }
+        let id = read_block_id(rdr, current_dl_addr)?;
+        if &id != b"##DL" {
+            break;
+        }
         let dl: Dl4Block =
             binrw::BinReaderExt::read_le(rdr).context("finalize: could not parse DL block")?;
-        let dl_end = current_dl_addr + dl.dl_len as i64;
-        position = dl_end;
 
         let is_final_dl = dl.dl_dl_next <= 0;
         let last_idx = if is_final_dl {
@@ -71,8 +71,7 @@ fn walk_dl_chain(
             if dt_ptr <= 0 {
                 continue;
             }
-            let block_bytes =
-                read_data_block_uncompressed_len(rdr, dt_ptr, &mut position, file_size)?;
+            let block_bytes = read_data_block_uncompressed_len(rdr, dt_ptr, file_size)?;
             total_preceding_bytes += block_bytes;
         }
 
@@ -100,7 +99,7 @@ fn walk_dl_chain(
         return Ok((total_preceding_bytes, 0));
     }
 
-    let last_bytes = read_data_block_uncompressed_len(rdr, last_dt_ptr, &mut position, file_size)?;
+    let last_bytes = read_data_block_uncompressed_len(rdr, last_dt_ptr, file_size)?;
     Ok((total_preceding_bytes, last_bytes as i64))
 }
 
@@ -109,19 +108,16 @@ fn walk_dl_chain(
 fn read_data_block_uncompressed_len(
     rdr: &mut SymBufReader<&File>,
     ptr: i64,
-    position: &mut i64,
     file_size: u64,
 ) -> Result<u64> {
     if ptr <= 0 || (ptr as u64) + 24 > file_size {
         return Ok(0);
     }
-    let id = read_block_id(rdr, ptr, *position)?;
-    *position = ptr + 4;
+    let id = read_block_id(rdr, ptr)?;
     match &id {
         b"##DT" | b"##SD" | b"##DV" => {
             let dt: Dt4Block = binrw::BinReaderExt::read_le(rdr)
                 .context("finalize: could not parse DT/SD block")?;
-            *position = ptr + 24;
             let available = file_size.saturating_sub(ptr as u64 + 24);
             if dt.len >= 24 && (dt.len - 24) <= available {
                 Ok(dt.len - 24)
@@ -135,7 +131,6 @@ fn read_data_block_uncompressed_len(
             }
             let dz: Dz4Block =
                 binrw::BinReaderExt::read_le(rdr).context("finalize: could not parse DZ block")?;
-            *position = ptr + 48;
             let available_comp = file_size.saturating_sub(ptr as u64 + 48);
             if dz.dz_data_length <= available_comp {
                 Ok(dz.dz_org_data_length)
@@ -148,107 +143,110 @@ fn read_data_block_uncompressed_len(
     }
 }
 
-/// Reads the raw uncompressed byte stream of a DG's data chain (for unsorted record scanning).
-fn read_dg_stream_bytes(
+/// Visits the raw uncompressed byte stream of a DG's data chain chunk by chunk (for unsorted record scanning).
+fn visit_dg_stream_chunks<F>(
     rdr: &mut SymBufReader<&File>,
     dg_data: i64,
-    position: &mut i64,
     file_size: u64,
-) -> Result<Vec<u8>> {
-    let mut out = Vec::new();
+    mut visitor: F,
+) -> Result<()>
+where
+    F: FnMut(&[u8]),
+{
     if dg_data <= 0 || (dg_data as u64) + 24 > file_size {
-        return Ok(out);
+        return Ok(());
     }
-    let id = read_block_id(rdr, dg_data, *position)?;
-    *position = dg_data + 4;
+    let id = read_block_id(rdr, dg_data)?;
     match &id {
         b"##DT" => {
             let dt: Dt4Block = binrw::BinReaderExt::read_le(rdr)?;
-            *position = dg_data + 24;
             let avail = file_size.saturating_sub(dg_data as u64 + 24);
             let n = if dt.len >= 24 && (dt.len - 24) <= avail {
                 (dt.len - 24) as usize
             } else {
                 avail as usize
             };
-            out.resize(n, 0);
-            rdr.read_exact(&mut out)?;
-            *position += n as i64;
+            let mut remaining = n;
+            let mut buf = vec![0u8; 64 * 1024];
+            while remaining > 0 {
+                let to_read = remaining.min(buf.len());
+                rdr.read_exact(&mut buf[..to_read])?;
+                remaining -= to_read;
+                visitor(&buf[..to_read]);
+            }
         }
         b"##DL" => {
-            append_dl_stream(rdr, dg_data, position, file_size, &mut out)?;
+            visit_dl_stream_chunks(rdr, dg_data, file_size, visitor)?;
         }
         b"##HL" => {
             let hl: Hl4Block = binrw::BinReaderExt::read_le(rdr)?;
-            *position = dg_data + 40;
             if hl.hl_dl_first > 0 {
-                append_dl_stream(rdr, hl.hl_dl_first, position, file_size, &mut out)?;
+                visit_dl_stream_chunks(rdr, hl.hl_dl_first, file_size, visitor)?;
             }
         }
         _ => {}
     }
-    Ok(out)
+    Ok(())
 }
 
-fn append_dl_stream(
+fn visit_dl_stream_chunks<F>(
     rdr: &mut SymBufReader<&File>,
     mut dl_addr: i64,
-    position: &mut i64,
     file_size: u64,
-    out: &mut Vec<u8>,
-) -> Result<()> {
+    mut visitor: F,
+) -> Result<()>
+where
+    F: FnMut(&[u8]),
+{
+    let mut chunk_buf = vec![0u8; 64 * 1024];
     for _ in 0..65536u32 {
         if dl_addr <= 0 || (dl_addr as u64) + 24 > file_size {
             break;
         }
-        rdr.seek_relative(dl_addr - *position)?;
-        let mut id = [0u8; 4];
-        rdr.read_exact(&mut id)?;
+        let id = read_block_id(rdr, dl_addr)?;
         if &id != b"##DL" {
             break;
         }
         let dl: Dl4Block = binrw::BinReaderExt::read_le(rdr)?;
-        *position = dl_addr + dl.dl_len as i64;
 
         for &ptr in &dl.dl_data {
             if ptr <= 0 || (ptr as u64) + 24 > file_size {
                 continue;
             }
-            let bid = read_block_id(rdr, ptr, *position)?;
-            *position = ptr + 4;
+            let bid = read_block_id(rdr, ptr)?;
             match &bid {
                 b"##DT" | b"##SD" => {
                     let dt: Dt4Block = binrw::BinReaderExt::read_le(rdr)?;
-                    *position = ptr + 24;
                     let avail = file_size.saturating_sub(ptr as u64 + 24);
                     let n = if dt.len >= 24 && (dt.len - 24) <= avail {
                         (dt.len - 24) as usize
                     } else {
                         avail as usize
                     };
-                    let start = out.len();
-                    out.resize(start + n, 0);
-                    rdr.read_exact(&mut out[start..])?;
-                    *position += n as i64;
+                    let mut remaining = n;
+                    while remaining > 0 {
+                        let to_read = remaining.min(chunk_buf.len());
+                        rdr.read_exact(&mut chunk_buf[..to_read])?;
+                        remaining -= to_read;
+                        visitor(&chunk_buf[..to_read]);
+                    }
                 }
                 b"##DZ" => {
                     if (ptr as u64) + 48 > file_size {
                         continue;
                     }
                     let dz: Dz4Block = binrw::BinReaderExt::read_le(rdr)?;
-                    *position = ptr + 48;
                     let avail = file_size.saturating_sub(ptr as u64 + 48);
                     if dz.dz_data_length <= avail {
                         let mut comp = vec![0u8; dz.dz_data_length as usize];
                         rdr.read_exact(&mut comp)?;
-                        *position += dz.dz_data_length as i64;
                         if let Ok(decomp) = super::data_impl::decompress_data(
                             dz.dz_zip_type,
                             dz.dz_zip_parameter,
                             comp,
                             dz.dz_org_data_length,
                         ) {
-                            out.extend_from_slice(&decomp);
+                            visitor(&decomp);
                         }
                     }
                 }
@@ -276,7 +274,6 @@ pub fn fix_cycle_counts(
         .context("finalize: could not determine file size")?;
 
     let mut n_fixed = 0usize;
-    let mut position: i64 = 0;
 
     for dg_struct in dg.values_mut() {
         let dg_data = dg_struct.block.dg_data;
@@ -285,52 +282,66 @@ pub fn fix_cycle_counts(
         }
 
         // Unsorted DG (multiple CGs or rec_id_size > 0): scan the record stream to count cycles per record ID
-        // and total VLSD/VLSC payload bytes (bits 5–8).
+        // and total VLSD/VLSC payload bytes (bits 5–8) in a streaming fashion without allocating the whole stream.
         if dg_struct.block.dg_rec_id_size > 0 || dg_struct.cg.len() > 1 {
-            let stream = read_dg_stream_bytes(rdr, dg_data, &mut position, file_size)?;
-            position = 0;
             let rec_id_size = dg_struct.block.dg_rec_id_size as usize;
-            if rec_id_size > 0 && !stream.is_empty() {
+            if rec_id_size > 0 {
                 let mut cycles_per_id: FxHashMap<u64, u64> = FxHashMap::default();
                 let mut vlsd_bytes_per_id: FxHashMap<u64, u64> = FxHashMap::default();
+                let mut carry = Vec::new();
 
-                let mut pos = 0usize;
-                while pos + rec_id_size <= stream.len() {
-                    let rec_id: u64 = match rec_id_size {
-                        1 => stream[pos] as u64,
-                        2 => u16::from_le_bytes(stream[pos..pos + 2].try_into().unwrap()) as u64,
-                        4 => u32::from_le_bytes(stream[pos..pos + 4].try_into().unwrap()) as u64,
-                        8 => u64::from_le_bytes(stream[pos..pos + 8].try_into().unwrap()),
-                        _ => break,
-                    };
-                    let Some(cg) = dg_struct.cg.get(&rec_id) else {
-                        break;
-                    };
-                    if (cg.block.cg_flags & (CG_F_VLSD | CG_F_VLSC)) != 0 {
-                        if pos + rec_id_size + 4 > stream.len() {
-                            break;
-                        }
-                        let vlen = u32::from_le_bytes(
-                            stream[pos + rec_id_size..pos + rec_id_size + 4]
-                                .try_into()
-                                .unwrap(),
-                        ) as usize;
-                        if pos + rec_id_size + 4 + vlen > stream.len() {
-                            break;
-                        }
-                        *cycles_per_id.entry(rec_id).or_insert(0) += 1;
-                        *vlsd_bytes_per_id.entry(rec_id).or_insert(0) += vlen as u64;
-                        pos += rec_id_size + 4 + vlen;
+                visit_dg_stream_chunks(rdr, dg_data, file_size, |chunk| {
+                    let mut combined;
+                    let slice: &[u8] = if carry.is_empty() {
+                        chunk
                     } else {
-                        // `cg.record_length` includes `dg_rec_id_size` in `mdfr`
-                        let full_rec_len = cg.record_length as usize;
-                        if full_rec_len == 0 || pos + full_rec_len > stream.len() {
+                        combined = std::mem::take(&mut carry);
+                        combined.extend_from_slice(chunk);
+                        &combined
+                    };
+
+                    let mut pos = 0usize;
+                    while pos + rec_id_size <= slice.len() {
+                        let rec_id: u64 = match rec_id_size {
+                            1 => slice[pos] as u64,
+                            2 => u16::from_le_bytes(slice[pos..pos + 2].try_into().unwrap()) as u64,
+                            4 => u32::from_le_bytes(slice[pos..pos + 4].try_into().unwrap()) as u64,
+                            8 => u64::from_le_bytes(slice[pos..pos + 8].try_into().unwrap()),
+                            _ => break,
+                        };
+                        let Some(cg) = dg_struct.cg.get(&rec_id) else {
                             break;
+                        };
+                        if (cg.block.cg_flags & (CG_F_VLSD | CG_F_VLSC)) != 0 {
+                            if pos + rec_id_size + 4 > slice.len() {
+                                break;
+                            }
+                            let vlen = u32::from_le_bytes(
+                                slice[pos + rec_id_size..pos + rec_id_size + 4]
+                                    .try_into()
+                                    .unwrap(),
+                            ) as usize;
+                            if pos + rec_id_size + 4 + vlen > slice.len() {
+                                break;
+                            }
+                            *cycles_per_id.entry(rec_id).or_insert(0) += 1;
+                            *vlsd_bytes_per_id.entry(rec_id).or_insert(0) += vlen as u64;
+                            pos += rec_id_size + 4 + vlen;
+                        } else {
+                            // `cg.record_length` includes `dg_rec_id_size` in `mdfr`
+                            let full_rec_len = cg.record_length as usize;
+                            if full_rec_len == 0 || pos + full_rec_len > slice.len() {
+                                break;
+                            }
+                            *cycles_per_id.entry(rec_id).or_insert(0) += 1;
+                            pos += full_rec_len;
                         }
-                        *cycles_per_id.entry(rec_id).or_insert(0) += 1;
-                        pos += full_rec_len;
                     }
-                }
+
+                    if pos < slice.len() {
+                        carry.extend_from_slice(&slice[pos..]);
+                    }
+                })?;
 
                 for (&rec_id, cg) in dg_struct.cg.iter_mut() {
                     let actual_cycles = cycles_per_id.get(&rec_id).copied().unwrap_or(0);
@@ -354,14 +365,12 @@ pub fn fix_cycle_counts(
         }
 
         // Sorted DG: determine total data bytes available
-        let id = read_block_id(rdr, dg_data, position)?;
-        position = dg_data + 4;
+        let id = read_block_id(rdr, dg_data)?;
 
         let total_data_bytes: u64 = match &id {
             b"##DT" | b"##SD" | b"##DV" => {
                 let dt: Dt4Block = binrw::BinReaderExt::read_le(rdr)
                     .context("finalize: could not parse DT block header")?;
-                position = dg_data + 24;
 
                 let dt_data_start = dg_data + 24;
                 if dt.len >= 24 && (dt.len as i64) < file_size as i64 - dg_data {
@@ -374,17 +383,14 @@ pub fn fix_cycle_counts(
             b"##DL" => {
                 let (preceding, last_available) = walk_dl_chain(rdr, dg_data, file_size)
                     .context("finalize: DL chain walk failed")?;
-                position = 0;
                 preceding + last_available.max(0) as u64
             }
             b"##HL" => {
                 let hl: Hl4Block = binrw::BinReaderExt::read_le(rdr)
                     .context("finalize: could not parse HL block")?;
-                position = dg_data + 40;
                 if hl.hl_dl_first > 0 {
                     let (preceding, last_available) = walk_dl_chain(rdr, hl.hl_dl_first, file_size)
                         .context("finalize: HL->DL chain walk failed")?;
-                    position = 0;
                     preceding + last_available.max(0) as u64
                 } else {
                     0
@@ -449,10 +455,12 @@ pub fn finalize_file_in_place(file_name: &str) -> Result<usize> {
             if cg_pos == 0 {
                 continue;
             }
-            f.seek(SeekFrom::Start(cg_pos + 80))?;
+            let cycle_count_offset = 32 + cg.block.cg_links * 8;
+            f.seek(SeekFrom::Start(cg_pos + cycle_count_offset))?;
             f.write_all(&cg.block.cg_cycle_count.to_le_bytes())?;
             if (cg.block.cg_flags & (CG_F_VLSD | CG_F_VLSC)) != 0 {
-                f.seek(SeekFrom::Start(cg_pos + 96))?;
+                let vlsd_offset = cycle_count_offset + 16;
+                f.seek(SeekFrom::Start(cg_pos + vlsd_offset))?;
                 f.write_all(&cg.block.cg_data_bytes.to_le_bytes())?;
                 f.write_all(&cg.block.cg_inval_bytes.to_le_bytes())?;
             }
@@ -472,4 +480,73 @@ pub fn finalize_file_in_place(file_name: &str) -> Result<usize> {
     f.flush()?;
 
     Ok(patched)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mdfr_core::blocks::cn::CnDataType;
+    use mdfr_core::compress::CompressionAlgorithm;
+    use mdfr_core::logger::{DataLayout, Logger, LoggerBuilder};
+    use mdfr_core::time::ManualClock;
+
+    #[test]
+    fn test_finalize_unfinalized_sorted_and_unsorted() -> Result<()> {
+        for (layout, algo) in [
+            (DataLayout::Sorted, CompressionAlgorithm::NoCompression),
+            (DataLayout::Sorted, CompressionAlgorithm::DeflateTranspose),
+            (DataLayout::Unsorted, CompressionAlgorithm::NoCompression),
+            (DataLayout::Unsorted, CompressionAlgorithm::DeflateTranspose),
+        ] {
+            println!("Testing layout={layout:?}, algo={algo:?}");
+            let mut b = LoggerBuilder::new(layout, algo);
+            let g0 = b.add_group("Engine");
+            let ch_rpm = b.add_channel(g0, "RPM", CnDataType::UIntLE, 16)?;
+            let ch_vlsd = b.add_vlsd_channel(g0, "Msg", CnDataType::StringUtf8)?;
+
+            let schema = b.build()?;
+            let tmp = tempfile::Builder::new().suffix(".mf4").tempfile()?;
+            let file = tmp.reopen()?;
+            let clock = ManualClock::new(1e-3, 10);
+            let mut logger = Logger::start(schema, file, clock)?;
+
+            for i in 0..20u64 {
+                logger
+                    .begin_record(g0)?
+                    .set_u64(ch_rpm, 2000 + i * 20)?
+                    .set_bytes(ch_vlsd, format!("msg_{i}").as_bytes())?
+                    .commit()?;
+            }
+
+            // Checkpoint so all data is on disk and unfinalized flags are set
+            logger.checkpoint()?;
+            // Intentionally DO NOT call logger.close() to simulate a crash/unfinalized file!
+            drop(logger);
+
+            // Verify the file was left as "UnFinMF "
+            let path_str = tmp.path().to_str().unwrap();
+            let mut head = [0u8; 8];
+            File::open(path_str)?.read_exact(&mut head)?;
+            assert_eq!(&head, b"UnFinMF ");
+
+            // Run in-place finalization
+            let patched = finalize_file_in_place(path_str)?;
+            assert!(patched >= 1);
+
+            // Verify header is now "MDF     "
+            File::open(path_str)?.read_exact(&mut head)?;
+            assert_eq!(&head, b"MDF     ");
+
+            // Open with reader and verify cycles
+            let mut mdf = crate::mdfreader::Mdf::new(path_str)?;
+            mdf.load_all_channels_data_in_memory()?;
+            assert!(mdf.get_channel_data("RPM").is_some());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_finalize_nonexistent_and_invalid() {
+        assert!(finalize_file_in_place("/nonexistent/path/to/file.mf4").is_err());
+    }
 }

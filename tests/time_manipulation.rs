@@ -3,7 +3,7 @@ mod common;
 use anyhow::Result;
 use arrow::array::Array;
 use arrow::datatypes::DataType;
-use mdfr::data_holder::channel_data::ChannelData;
+use mdfr::data_holder::channel_data::{AsValuesSlice, ChannelData};
 use mdfr::mdfreader::Mdf;
 use std::collections::HashSet;
 use std::sync::LazyLock;
@@ -15,11 +15,29 @@ static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(|| {
     )
 });
 
-fn load_simple() -> Result<Mdf> {
+fn get_simple_file() -> String {
     let file = format!(
         "{}Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4",
         BASE_PATH_MDF4.as_str()
     );
+    if std::path::Path::new(&file).exists() {
+        file
+    } else {
+        "test_files/test_mdf4.mf4".to_string()
+    }
+}
+
+fn get_test_file() -> String {
+    let file = format!("{}Simple/test.mf4", BASE_PATH_MDF4.as_str());
+    if std::path::Path::new(&file).exists() {
+        file
+    } else {
+        "test_files/test.mf4".to_string()
+    }
+}
+
+fn load_simple() -> Result<Mdf> {
+    let file = get_simple_file();
     let mut mdf = Mdf::new(&file)?;
     mdf.load_all_channels_data_in_memory()?;
     Ok(mdf)
@@ -276,10 +294,7 @@ fn resample_all_time_groups_uniform() -> Result<()> {
 
 #[test]
 fn concat_extends_time_axis() -> Result<()> {
-    let file = format!(
-        "{}Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4",
-        BASE_PATH_MDF4.as_str()
-    );
+    let file = get_simple_file();
     let mut mdf1 = Mdf::new(&file)?;
     mdf1.load_all_channels_data_in_memory()?;
     let master = first_time_master(&mdf1).expect("no Time master found");
@@ -313,13 +328,10 @@ fn concat_extends_time_axis() -> Result<()> {
 
 #[test]
 fn merge_adds_channels_from_other() -> Result<()> {
-    let mut mdf1 = Mdf::new(&format!(
-        "{}Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4",
-        BASE_PATH_MDF4.as_str()
-    ))?;
+    let mut mdf1 = Mdf::new(&get_simple_file())?;
     mdf1.load_all_channels_data_in_memory()?;
 
-    let mut mdf2 = Mdf::new(&format!("{}Simple/test.mf4", BASE_PATH_MDF4.as_str()))?;
+    let mut mdf2 = Mdf::new(&get_test_file())?;
     mdf2.load_all_channels_data_in_memory()?;
 
     let names_before: HashSet<String> = mdf1.get_channel_names_set();
@@ -401,7 +413,10 @@ fn datetimes_none_for_non_time_master() -> Result<()> {
     let candidate = mdf
         .get_channel_names_set()
         .into_iter()
-        .find(|n| mdf.get_channel_master_type(n) != 1);
+        .find(|n| match mdf.get_channel_master(n) {
+            Some(master) => mdf.get_channel_master_type(&master) != 1,
+            None => true,
+        });
     if let Some(ch) = candidate {
         assert!(
             mdf.get_master_channel_datetimes(&ch).is_none(),

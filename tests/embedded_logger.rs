@@ -1,7 +1,7 @@
 //! End-to-end round-trip tests: `mdfr_core::logger::Logger` → `.mf4` file → `mdfr::mdfreader::Mdf`.
 use anyhow::Result;
 use arrow::array::Array;
-use mdfr::data_holder::channel_data::ChannelData;
+use mdfr::data_holder::channel_data::{AsValuesSlice, ChannelData};
 use mdfr::mdfreader::Mdf;
 use mdfr_core::blocks::cn::CnDataType;
 use mdfr_core::compress::CompressionAlgorithm;
@@ -125,7 +125,7 @@ fn roundtrip_sorted_uncompressed_and_compressed() -> Result<()> {
             .expect("DiagMsg channel missing");
         match diag {
             ChannelData::Utf8(arr) => {
-                let built = arr.finish_cloned();
+                let built = arr;
                 assert_eq!(built.len(), 50);
                 assert_eq!(built.value(0), "msg_0");
                 assert_eq!(built.value(49), "msg_49");
@@ -189,7 +189,7 @@ fn power_loss_unfinalized_recovery_and_in_place_finalize() -> Result<()> {
         );
         mdf2.load_all_channels_data_in_memory()?;
         if let Some(ChannelData::Utf8(arr)) = mdf2.get_channel_data("Tag") {
-            let built = arr.finish_cloned();
+            let built = arr;
             assert_eq!(built.len(), 30);
             assert_eq!(built.value(29), "tag_29");
         } else {
@@ -333,7 +333,7 @@ fn c_api_roundtrip_and_spsc_drain() -> Result<()> {
     let mut m2 = Mdf::new(tmp2.path().to_str().unwrap())?;
     m2.load_all_channels_data_in_memory()?;
     if let Some(ChannelData::Utf8(arr)) = m2.get_channel_data("Status") {
-        let built = arr.finish_cloned();
+        let built = arr;
         assert_eq!(built.len(), 10);
         assert_eq!(built.value(9), "ok_24");
     } else {
@@ -812,6 +812,13 @@ m.close()
 
 #[test]
 fn no_std_cortex_m_cross_build() -> Result<()> {
+    if std::env::var_os("LLVM_PROFILE_FILE").is_some()
+        || std::env::var_os("CARGO_LLVM_COV").is_some()
+    {
+        // Skip during coverage profiling since prebuilt thumbv7em sysroot lacks profiler_builtins
+        return Ok(());
+    }
+
     use std::process::Command;
 
     // Check if thumbv7em-none-eabihf is installed in rustup/rustc sysroot
@@ -846,6 +853,13 @@ fn no_std_cortex_m_cross_build() -> Result<()> {
             "capi-arena,defmt",
         ])
         .env("CARGO_TARGET_DIR", tmp_target.path())
+        .env_remove("RUSTC_WRAPPER")
+        .env_remove("RUSTC_WORKSPACE_WRAPPER")
+        .env_remove("CARGO_BUILD_RUSTC_WRAPPER")
+        .env_remove("CARGO_BUILD_RUSTFLAGS")
+        .env_remove("RUSTFLAGS")
+        .env_remove("CARGO_ENCODED_RUSTFLAGS")
+        .env_remove("LLVM_PROFILE_FILE")
         .status()?;
     assert!(
         status.success(),
@@ -913,7 +927,7 @@ fn derive_mdf_record_and_vlsc_roundtrip() -> Result<()> {
 
         // Verify #[derive(MdfRecord)] channels
         if let Some(ChannelData::Float64(arr)) = mdf.get_channel_data("EngineSpeed") {
-            let s = arr.values_slice();
+            let s = arr.values();
             assert_eq!(s.len(), 20);
             assert!((s[0] - 1000.0).abs() < 1e-6);
             assert!((s[19] - 1190.0).abs() < 1e-6);
@@ -922,7 +936,7 @@ fn derive_mdf_record_and_vlsc_roundtrip() -> Result<()> {
         }
 
         if let Some(ChannelData::Float64(arr)) = mdf.get_channel_data("Torque") {
-            let s = arr.values_slice();
+            let s = arr.values();
             assert_eq!(s.len(), 20);
             assert!((s[0] - 100.0).abs() < 1e-6);
             assert!((s[19] - 119.0).abs() < 1e-6);
@@ -932,13 +946,56 @@ fn derive_mdf_record_and_vlsc_roundtrip() -> Result<()> {
 
         // Verify MDF 4.3 VLSC channel (`cn_type = 7`, `cn_cn_size`, `VDBLOCK` / `CG_F_VLSC`)
         if let Some(ChannelData::Utf8(arr)) = mdf.get_channel_data("VlscText") {
-            let built = arr.finish_cloned();
-            assert_eq!(built.len(), 20);
-            assert_eq!(built.value(0), "vlsc_payload_0");
-            assert_eq!(built.value(19), "vlsc_payload_19");
+            assert_eq!(arr.len(), 20);
+            assert_eq!(arr.value(0), "vlsc_payload_0");
+            assert_eq!(arr.value(19), "vlsc_payload_19");
         } else {
             panic!("VlscText missing for layout={layout:?} algo={algo:?}");
         }
     }
+    Ok(())
+}
+
+#[derive(mdfr_core::MdfRecord)]
+#[mdf(group = "SensorFusion", big_endian)]
+struct SensorFusionRecord {
+    #[mdf(name = "Accel")]
+    accel: [f32; 3],
+    #[mdf(name = "BeCount")]
+    counter: u32,
+}
+
+#[test]
+fn derive_mdf_record_typed_array_and_be_roundtrip() -> Result<()> {
+    let mut b = LoggerBuilder::new(DataLayout::Sorted, CompressionAlgorithm::NoCompression);
+    let g_sf = b.add_record_group::<SensorFusionRecord>()?;
+
+    let schema = b.build()?;
+    let tmp = tempfile::Builder::new().suffix(".mf4").tempfile()?;
+    let clock = ManualClock::new(0.001, 1);
+    let mut logger = Logger::start(schema, tmp.reopen()?, clock)?;
+
+    for i in 0..10u32 {
+        let rec = SensorFusionRecord {
+            accel: [i as f32, (i as f32) * 2.0, (i as f32) * 3.0],
+            counter: 0x1234_0000 + i,
+        };
+        logger.push_record(g_sf, &rec)?;
+    }
+    logger.close()?;
+
+    let mut mdf = Mdf::new(tmp.path().to_str().unwrap())?;
+    mdf.load_all_channels_data_in_memory()?;
+
+    assert!(mdf.get_channel_data("Accel").is_some());
+    if let Some(ChannelData::UInt32(arr)) = mdf.get_channel_data("BeCount") {
+        let s = arr.values();
+        assert_eq!(s.len(), 10);
+        assert_eq!(s[0], 0x1234_0000);
+        assert_eq!(s[9], 0x1234_0009);
+    } else {
+        panic!("BeCount missing or wrong type");
+    }
+
     Ok(())
 }

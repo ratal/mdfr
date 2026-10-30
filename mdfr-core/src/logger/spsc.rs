@@ -3,8 +3,9 @@
 //! Allows an interrupt service routine (ISR) or high-priority acquisition task to push raw records
 //! (`(GroupHandle, ticks, &[u8])`) without blocking on flash/SD I/O or DZ compression, while a
 //! background task drains the queue into [`Logger`](super::Logger).
-use alloc::vec;
+use alloc::boxed::Box;
 use alloc::vec::Vec;
+use core::cell::UnsafeCell;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::error::Result;
@@ -21,22 +22,34 @@ use super::schema::GroupHandle;
 /// If a frame does not fit in the contiguous tail of the ring buffer, a sentinel `group = 0xFFFF`
 /// marker wraps the write cursor to index `0`.
 pub struct SpscRing {
-    buf: Vec<u8>,
+    buf: Box<[UnsafeCell<u8>]>,
     capacity: usize,
     head: AtomicUsize,
     tail: AtomicUsize,
 }
 
+unsafe impl Sync for SpscRing {}
+unsafe impl Send for SpscRing {}
+
 impl SpscRing {
     /// Allocates a new SPSC ring with `capacity_bytes` of storage (rounded up to at least 256 bytes).
     pub fn with_capacity(capacity_bytes: usize) -> Self {
         let cap = capacity_bytes.max(256);
+        let mut v = Vec::with_capacity(cap);
+        for _ in 0..cap {
+            v.push(UnsafeCell::new(0u8));
+        }
         Self {
-            buf: vec![0u8; cap],
+            buf: v.into_boxed_slice(),
             capacity: cap,
             head: AtomicUsize::new(0),
             tail: AtomicUsize::new(0),
         }
+    }
+
+    #[inline]
+    fn buffer_ptr(&self) -> *mut u8 {
+        self.buf.as_ptr() as *mut u8
     }
 
     /// Pushes a record (`group`, `ticks`, `record_bytes` including the 8-byte timestamp slot)
@@ -51,7 +64,7 @@ impl SpscRing {
         let head = self.head.load(Ordering::Relaxed);
         let tail = self.tail.load(Ordering::Acquire);
 
-        let ptr = self.buf.as_ptr() as *mut u8;
+        let ptr = self.buffer_ptr();
 
         if head >= tail {
             let right_free = self.capacity - head;
@@ -99,23 +112,36 @@ impl SpscRing {
         let mut tail = self.tail.load(Ordering::Relaxed);
         let head = self.head.load(Ordering::Acquire);
         let mut count = 0usize;
+        let ptr = self.buffer_ptr();
 
         while tail != head {
             if self.capacity - tail < 2 {
                 tail = 0;
                 continue;
             }
-            let g_raw = u16::from_le_bytes([self.buf[tail], self.buf[tail + 1]]);
+            let mut g_raw_bytes = [0u8; 2];
+            unsafe {
+                core::ptr::copy_nonoverlapping(ptr.add(tail), g_raw_bytes.as_mut_ptr(), 2);
+            }
+            let g_raw = u16::from_le_bytes(g_raw_bytes);
             if g_raw == 0xFFFF {
                 tail = 0;
                 if tail == head {
                     break;
                 }
             }
-            let group = u16::from_le_bytes([self.buf[tail], self.buf[tail + 1]]);
-            let len = u16::from_le_bytes([self.buf[tail + 2], self.buf[tail + 3]]) as usize;
-            let ticks = u64::from_le_bytes(self.buf[tail + 4..tail + 12].try_into().unwrap());
-            let payload = &self.buf[tail + 12..tail + 12 + len];
+            if self.capacity - tail < 12 {
+                tail = 0;
+                continue;
+            }
+            let mut frame_hdr = [0u8; 12];
+            unsafe {
+                core::ptr::copy_nonoverlapping(ptr.add(tail), frame_hdr.as_mut_ptr(), 12);
+            }
+            let group = u16::from_le_bytes([frame_hdr[0], frame_hdr[1]]);
+            let len = u16::from_le_bytes([frame_hdr[2], frame_hdr[3]]) as usize;
+            let ticks = u64::from_le_bytes(frame_hdr[4..12].try_into().unwrap());
+            let payload = unsafe { core::slice::from_raw_parts(ptr.add(tail + 12), len) };
             logger.push_raw_at(GroupHandle(group), ticks, payload)?;
             tail += 12 + len;
             count += 1;

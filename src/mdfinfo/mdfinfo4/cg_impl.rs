@@ -504,8 +504,7 @@ impl Cg4 {
 
             if let Some(mlsd_cn) = self.cn.get_mut(&mlsd_rec_pos) {
                 match &mut mlsd_cn.data {
-                    ChannelData::VariableSizeByteArray(builder) => {
-                        let current_array = builder.finish_cloned();
+                    ChannelData::VariableSizeByteArray(current_array) => {
                         let mut new_builder = arrow::array::LargeBinaryBuilder::new();
                         for (i, size) in size_values.iter().enumerate() {
                             if i < current_array.len() {
@@ -518,10 +517,9 @@ impl Cg4 {
                                 }
                             }
                         }
-                        mlsd_cn.data = ChannelData::VariableSizeByteArray(new_builder);
+                        mlsd_cn.data = ChannelData::VariableSizeByteArray(new_builder.finish());
                     }
-                    ChannelData::Utf8(builder) => {
-                        let current_array = builder.finish_cloned();
+                    ChannelData::Utf8(current_array) => {
                         let mut new_builder = arrow::array::LargeStringBuilder::new();
                         for (i, size) in size_values.iter().enumerate() {
                             if i < current_array.len() {
@@ -537,7 +535,7 @@ impl Cg4 {
                                 }
                             }
                         }
-                        mlsd_cn.data = ChannelData::Utf8(new_builder);
+                        mlsd_cn.data = ChannelData::Utf8(new_builder.finish());
                     }
                     _ => {}
                 }
@@ -681,15 +679,15 @@ fn merge_variant_data_owned(
             for (i, disc_val) in discriminator_values.iter().enumerate() {
                 if let Some(&opt_idx) = val_to_option.get(disc_val)
                     && let Some(Some(ChannelData::$variant(b))) = option_data.get(opt_idx)
-                    && i < b.values_slice().len()
+                    && i < b.values().len()
                 {
-                    builder.append_value(b.values_slice()[i]);
+                    builder.append_value(b.values()[i]);
                     continue;
                 }
                 // Default value if option not found
                 builder.append_value(Default::default());
             }
-            Some(ChannelData::$variant(builder))
+            Some(ChannelData::$variant(builder.finish()))
         }};
     }
 

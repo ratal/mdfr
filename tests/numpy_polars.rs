@@ -21,7 +21,7 @@ mod numpy_tests {
         init();
         let mut b = Float64Builder::with_capacity(4);
         b.append_slice(&[1.0_f64, 2.0, 3.0, 4.0]);
-        let cd = ChannelData::Float64(b);
+        let cd = ChannelData::Float64(b.finish());
         Python::attach(|py| {
             let obj = cd.into_pyobject(py).unwrap();
             let dtype_name: String = obj
@@ -44,7 +44,7 @@ mod numpy_tests {
         init();
         let mut b = Int16Builder::with_capacity(4);
         b.append_slice(&[-100_i16, 0, 100, 200]);
-        let cd = ChannelData::Int16(b);
+        let cd = ChannelData::Int16(b.finish());
         Python::attach(|py| {
             let obj = cd.into_pyobject(py).unwrap();
             let dtype_name: String = obj
@@ -110,7 +110,7 @@ mod numpy_tests {
         b.append_value("hello");
         b.append_value("world");
         b.append_value("!");
-        let cd = ChannelData::Utf8(b);
+        let cd = ChannelData::Utf8(b.finish());
         Python::attach(|py| {
             let obj = cd.into_pyobject(py).unwrap();
             let len: usize = obj.call_method0("__len__").unwrap().extract().unwrap();

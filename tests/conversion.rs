@@ -34,7 +34,7 @@ fn linear_conversion() -> Result<()> {
             counter += 1.
         });
         assert_eq!(
-            &ChannelData::Float64(Float64Builder::new_from_buffer(vect.into(), None)),
+            &ChannelData::Float64(Float64Builder::new_from_buffer(vect.into(), None).finish()),
             data
         );
     }
@@ -50,7 +50,7 @@ fn linear_conversion() -> Result<()> {
     if let Some(data) = mdf.get_channel_data("Data channel") {
         let vect: Vec<f64> = vec![3.; 10];
         assert_eq!(
-            &ChannelData::Float64(Float64Builder::new_from_buffer(vect.into(), None)),
+            &ChannelData::Float64(Float64Builder::new_from_buffer(vect.into(), None).finish()),
             data
         );
     }
@@ -116,7 +116,7 @@ fn algebraic_conversion() -> Result<()> {
     if let Some(data) = mdf.get_channel_data("Data channel") {
         let vect = Vec::from([1., 2., 5., 10., 17., 26., 37., 50., 65., 82.]);
         assert_eq!(
-            &ChannelData::Float64(Float64Builder::new_from_buffer(vect.into(), None)),
+            &ChannelData::Float64(Float64Builder::new_from_buffer(vect.into(), None).finish()),
             data
         );
     }
@@ -197,7 +197,7 @@ fn lookup_value_to_value_interpolation() -> Result<()> {
             0.,
         ]);
         assert_eq!(
-            &ChannelData::Float64(Float64Builder::new_from_buffer(vect.into(), None)),
+            &ChannelData::Float64(Float64Builder::new_from_buffer(vect.into(), None).finish()),
             data
         );
     }
@@ -232,7 +232,7 @@ fn lookup_value_to_value_no_interpolation() -> Result<()> {
             0., 0., 3., 3., 6., 6., 3., 3., 0., 0., 0.,
         ]);
         assert_eq!(
-            &ChannelData::Float64(Float64Builder::new_from_buffer(vect.into(), None)),
+            &ChannelData::Float64(Float64Builder::new_from_buffer(vect.into(), None).finish()),
             data
         );
     }
@@ -273,7 +273,7 @@ fn lookup_value_range_to_value() -> Result<()> {
             2.0, 3.0, 3.0, 3.0, 5.0, 6.0, 6.0, 6.0, 7.0, 8.0, 8.0, 9.0, 9.0, -1.0,
         ]);
         assert_eq!(
-            &ChannelData::Float64(Float64Builder::new_from_buffer(vect.into(), None)),
+            &ChannelData::Float64(Float64Builder::new_from_buffer(vect.into(), None).finish()),
             data
         );
     }
@@ -305,7 +305,7 @@ fn lookup_value_to_text() -> Result<()> {
         target.append_value("No match");
         target.append_value("No match");
         target.append_value("No match");
-        assert_eq!(&ChannelData::Utf8(target), data);
+        assert_eq!(&ChannelData::Utf8(target.finish()), data);
     }
 
     let file_name = format!(
@@ -344,7 +344,7 @@ fn lookup_value_range_to_text() -> Result<()> {
         target.append_value("medium");
         target.append_value("high");
         target.append_value("high");
-        assert_eq!(&ChannelData::Utf8(target), data);
+        assert_eq!(&ChannelData::Utf8(target.finish()), data);
     }
 
     let file_name = format!(
@@ -393,7 +393,7 @@ fn status_string_table_conversion() -> Result<()> {
             .as_string::<i64>()
             .iter()
             .collect::<Vec<Option<&str>>>();
-        let target_values = target.finish_cloned();
+        let target_values = target.finish();
         let target_values = target_values.iter().collect::<Vec<Option<&str>>>();
         assert_eq!(target_values[0], data_values[0]);
         assert_eq!(target_values[299], data_values[299]);
@@ -418,7 +418,7 @@ fn text_to_value_conversion() -> Result<()> {
     if let Some(data) = mdf.get_channel_data("Data channel") {
         let vect = Vec::from([-50., 1., 2., 3., 4., 5., 6., 7., 8., 9.]);
         assert_eq!(
-            &ChannelData::Float64(Float64Builder::new_from_buffer(vect.into(), None)),
+            &ChannelData::Float64(Float64Builder::new_from_buffer(vect.into(), None).finish()),
             data
         );
     }
@@ -450,7 +450,7 @@ fn text_to_text_conversion() -> Result<()> {
         target.append_value("Sieben");
         target.append_value("Acht");
         target.append_value("Neun");
-        assert_eq!(&ChannelData::Utf8(target), data);
+        assert_eq!(&ChannelData::Utf8(target.finish()), data);
     }
     Ok(())
 }
@@ -509,7 +509,7 @@ mod conversions4_tests {
     use arrow::array::{Float64Builder, Int32Builder, UInt16Builder};
     use fasteval::Compiler;
     use itertools::Itertools;
-    use mdfr::data_holder::channel_data::ChannelData;
+    use mdfr::data_holder::channel_data::{AsValuesSlice, ChannelData};
     use mdfr::mdfinfo::mdfinfo4::{Cc4Block, CcVal, Cn4, SharableBlocks};
     use mdfr::mdfreader::conversions4::*;
 
@@ -525,7 +525,7 @@ mod conversions4_tests {
         builder.append_value(1);
         builder.append_value(5);
         builder.append_value(-3);
-        let result = linear_calculation(&mut builder, p1, p2).unwrap();
+        let result = linear_calculation(&builder.finish(), p1, p2).unwrap();
         let values = result.values_slice();
         assert_eq!(values.len(), 4);
         assert!((values[0] - 10.0).abs() < 1e-12); // 0*2+10
@@ -537,7 +537,7 @@ mod conversions4_tests {
         let mut builder = Float64Builder::new();
         builder.append_value(1.5);
         builder.append_value(2.5);
-        let result = linear_calculation(&mut builder, p1, p2).unwrap();
+        let result = linear_calculation(&builder.finish(), p1, p2).unwrap();
         let values = result.values_slice();
         assert!((values[0] - 13.0).abs() < 1e-12); // 1.5*2+10
         assert!((values[1] - 15.0).abs() < 1e-12); // 2.5*2+10
@@ -546,7 +546,7 @@ mod conversions4_tests {
         let mut builder = UInt16Builder::new();
         builder.append_value(100);
         builder.append_value(0);
-        let result = linear_calculation(&mut builder, p1, p2).unwrap();
+        let result = linear_calculation(&builder.finish(), p1, p2).unwrap();
         let values = result.values_slice();
         assert!((values[0] - 210.0).abs() < 1e-12); // 100*2+10
         assert!((values[1] - 10.0).abs() < 1e-12); // 0*2+10
@@ -562,7 +562,7 @@ mod conversions4_tests {
         builder.append_value(0);
         builder.append_value(1);
         builder.append_value(5);
-        let result = rational_calculation(&builder, &cc_val).unwrap();
+        let result = rational_calculation(&builder.finish(), &cc_val).unwrap();
         let values = result.values_slice();
         assert!((values[0] - 1.0).abs() < 1e-12); // (0+0+1)/1
         assert!((values[1] - 3.0).abs() < 1e-12); // (0+2+1)/1
@@ -573,7 +573,7 @@ mod conversions4_tests {
         let mut builder = Float64Builder::new();
         builder.append_value(3.0);
         builder.append_value(4.0);
-        let result = rational_calculation(&builder, &cc_val).unwrap();
+        let result = rational_calculation(&builder.finish(), &cc_val).unwrap();
         let values = result.values_slice();
         assert!((values[0] - 9.0).abs() < 1e-12); // 3²
         assert!((values[1] - 16.0).abs() < 1e-12); // 4²
@@ -593,7 +593,7 @@ mod conversions4_tests {
         builder.append_value(-5.0); // below first → 0
         builder.append_value(25.0); // above last → 200
 
-        let result = value_to_value_with_interpolation_primitive(&builder, &val).unwrap();
+        let result = value_to_value_with_interpolation_primitive(&builder.finish(), &val).unwrap();
         let values = result.values_slice();
         assert_eq!(values.len(), 6);
         assert!((values[0] - 0.0).abs() < 1e-12);
@@ -618,7 +618,7 @@ mod conversions4_tests {
         builder.append_value(-5.0); // below first key → value[0] = 0
         builder.append_value(25.0); // above last key → value[n-1] = 200
 
-        let result = value_to_value_without_interpolation_primitive(&mut builder, &val).unwrap();
+        let result = value_to_value_without_interpolation_primitive(&builder.finish(), &val).unwrap();
         let values = result.values_slice();
         assert_eq!(values.len(), 6);
         assert!((values[0] - 0.0).abs() < 1e-12); // exact → 0
@@ -643,7 +643,7 @@ mod conversions4_tests {
         builder.append_value(25.0); // above last key_min but within last upper bound → 300
 
         let result =
-            value_range_to_value_table_calculation(&builder, &val, &default, false).unwrap();
+            value_range_to_value_table_calculation(&builder.finish(), &val, &default, false).unwrap();
         let values = result.values_slice();
         assert_eq!(values.len(), 5);
         assert!((values[0] - 100.0).abs() < 1e-12);
@@ -670,7 +670,7 @@ mod conversions4_tests {
         builder.append_value(100.0); // above all ranges → default -1
 
         let result =
-            value_range_to_value_table_calculation(&builder, &val, &default, false).unwrap();
+            value_range_to_value_table_calculation(&builder.finish(), &val, &default, false).unwrap();
         let values = result.values_slice();
         assert!(
             (values[0] - (-1.0)).abs() < 1e-12,
@@ -708,7 +708,7 @@ mod conversions4_tests {
         builder.append_value(5.0); // → 11
         builder.append_value(-3.0); // → -5
 
-        let result = alegbraic_conversion_primitive(&compiled, &slab, &builder).unwrap();
+        let result = alegbraic_conversion_primitive(&compiled, &slab, &builder.finish()).unwrap();
         let values = result.values_slice();
         assert_eq!(values.len(), 4);
         assert!((values[0] - 1.0).abs() < 1e-12);
@@ -734,7 +734,7 @@ mod conversions4_tests {
         let mut builder = UInt8Builder::new();
         builder.append_value(2);
         builder.append_value(4);
-        let mut cn = make_cn4_with_data(ChannelData::UInt8(builder));
+        let mut cn = make_cn4_with_data(ChannelData::UInt8(builder.finish()));
         linear_conversion(&mut cn, &[1.0, 2.0]).unwrap(); // p1=1, p2=2 → v*2+1
         if let ChannelData::Float64(ref b) = cn.data {
             let vals = b.values_slice();
@@ -750,7 +750,7 @@ mod conversions4_tests {
         use arrow::array::Int16Builder;
         let mut builder = Int16Builder::new();
         builder.append_value(10);
-        let mut cn = make_cn4_with_data(ChannelData::Int16(builder));
+        let mut cn = make_cn4_with_data(ChannelData::Int16(builder.finish()));
         linear_conversion(&mut cn, &[0.0, 0.5]).unwrap();
         if let ChannelData::Float64(ref b) = cn.data {
             let vals = b.values_slice();
@@ -803,7 +803,8 @@ mod conversions4_tests {
     fn test_linear_cn4_utf8_warn() {
         use arrow::array::LargeStringBuilder;
         // Utf8 data should produce a warn but NOT change data type and should return Ok
-        let mut cn = make_cn4_with_data(ChannelData::Utf8(LargeStringBuilder::new()));
+        let mut builder = LargeStringBuilder::new();
+        let mut cn = make_cn4_with_data(ChannelData::Utf8(builder.finish()));
         let result = linear_conversion(&mut cn, &[1.0, 2.0]);
         assert!(result.is_ok());
         // data type unchanged
@@ -815,7 +816,7 @@ mod conversions4_tests {
         use arrow::array::UInt8Builder;
         let mut builder = UInt8Builder::new();
         builder.append_value(7);
-        let mut cn = make_cn4_with_data(ChannelData::UInt8(builder));
+        let mut cn = make_cn4_with_data(ChannelData::UInt8(builder.finish()));
         // p1=0, p2=1 is identity → no change
         linear_conversion(&mut cn, &[0.0, 1.0]).unwrap();
         // data type should remain UInt8 (identity skipped)
@@ -830,7 +831,7 @@ mod conversions4_tests {
         let cc_val = vec![0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
         let mut builder = Float64Builder::new();
         builder.append_value(2.0);
-        let mut cn = make_cn4_with_data(ChannelData::Float64(builder));
+        let mut cn = make_cn4_with_data(ChannelData::Float64(builder.finish()));
         rational_conversion(&mut cn, &cc_val).unwrap();
         if let ChannelData::Float64(ref b) = cn.data {
             let vals = b.values_slice();
@@ -847,7 +848,7 @@ mod conversions4_tests {
         use arrow::array::UInt8Builder;
         let mut builder = UInt8Builder::new();
         builder.append_value(4);
-        let mut cn = make_cn4_with_data(ChannelData::UInt8(builder));
+        let mut cn = make_cn4_with_data(ChannelData::UInt8(builder.finish()));
         rational_conversion(&mut cn, &cc_val).unwrap();
         if let ChannelData::Float64(ref b) = cn.data {
             let vals = b.values_slice();
@@ -865,7 +866,7 @@ mod conversions4_tests {
         let cc_val = vec![1.0, 10.0, 2.0, 20.0];
         let mut builder = Float64Builder::new();
         builder.append_value(1.5); // interpolated: 15.0
-        let mut cn = make_cn4_with_data(ChannelData::Float64(builder));
+        let mut cn = make_cn4_with_data(ChannelData::Float64(builder.finish()));
         value_to_value_with_interpolation(&mut cn, cc_val).unwrap();
         if let ChannelData::Float64(ref b) = cn.data {
             let vals = b.values_slice();
@@ -882,7 +883,7 @@ mod conversions4_tests {
         use arrow::array::UInt8Builder;
         let mut builder = UInt8Builder::new();
         builder.append_value(5); // 50
-        let mut cn = make_cn4_with_data(ChannelData::UInt8(builder));
+        let mut cn = make_cn4_with_data(ChannelData::UInt8(builder.finish()));
         value_to_value_with_interpolation(&mut cn, cc_val).unwrap();
         if let ChannelData::Float64(ref b) = cn.data {
             let vals = b.values_slice();
@@ -913,7 +914,7 @@ mod conversions4_tests {
         // Int64 not handled in value_to_value_with_interpolation (falls through to warn)
         let mut builder = Int64Builder::new();
         builder.append_value(5);
-        let mut cn = make_cn4_with_data(ChannelData::Int64(builder));
+        let mut cn = make_cn4_with_data(ChannelData::Int64(builder.finish()));
         let result = value_to_value_with_interpolation(&mut cn, vec![0.0, 0.0, 10.0, 100.0]);
         assert!(result.is_ok());
     }
@@ -925,7 +926,7 @@ mod conversions4_tests {
         let cc_val = vec![1.0, 100.0, 2.0, 200.0];
         let mut builder = Float64Builder::new();
         builder.append_value(1.0); // exact match → 100.0
-        let mut cn = make_cn4_with_data(ChannelData::Float64(builder));
+        let mut cn = make_cn4_with_data(ChannelData::Float64(builder.finish()));
         value_to_value_without_interpolation(&mut cn, cc_val).unwrap();
         if let ChannelData::Float64(ref b) = cn.data {
             let vals = b.values_slice();
@@ -941,7 +942,7 @@ mod conversions4_tests {
         let cc_val = vec![1.0, 10.0, 2.0, 20.0];
         let mut builder = UInt8Builder::new();
         builder.append_value(2); // exact match → 20.0
-        let mut cn = make_cn4_with_data(ChannelData::UInt8(builder));
+        let mut cn = make_cn4_with_data(ChannelData::UInt8(builder.finish()));
         value_to_value_without_interpolation(&mut cn, cc_val).unwrap();
         if let ChannelData::Float64(ref b) = cn.data {
             let vals = b.values_slice();
@@ -960,7 +961,7 @@ mod conversions4_tests {
         let cc_val = vec![1.0, 2.0, 100.0];
         let mut builder = Float64Builder::new();
         builder.append_value(1.5); // in [1.0, 2.0] → 100.0
-        let mut cn = make_cn4_with_data(ChannelData::Float64(builder));
+        let mut cn = make_cn4_with_data(ChannelData::Float64(builder.finish()));
         value_range_to_value_table(&mut cn, cc_val).unwrap();
         if let ChannelData::Float64(ref b) = cn.data {
             let vals = b.values_slice();
@@ -977,7 +978,7 @@ mod conversions4_tests {
         let cc_val = vec![0.0, 10.0, 42.0];
         let mut builder = UInt8Builder::new();
         builder.append_value(5); // in [0, 10]
-        let mut cn = make_cn4_with_data(ChannelData::UInt8(builder));
+        let mut cn = make_cn4_with_data(ChannelData::UInt8(builder.finish()));
         value_range_to_value_table(&mut cn, cc_val).unwrap();
         if let ChannelData::Float64(ref b) = cn.data {
             let vals = b.values_slice();
@@ -1016,7 +1017,7 @@ mod conversions4_tests {
         }
 
         let start = std::time::Instant::now();
-        let result = alegbraic_conversion_primitive(&compiled, &slab, &builder).unwrap();
+        let result = alegbraic_conversion_primitive(&compiled, &slab, &builder.finish()).unwrap();
         let duration = start.elapsed();
         println!(
             "algebraic conversion 1,000,000 samples took: {:?}",
@@ -1048,13 +1049,12 @@ mod conversions4_tests {
         builder.append_value(0.9);
         builder.append_value(0.4);
 
-        let mut cn = make_cn4_with_data(ChannelData::Float32(builder));
+        let mut cn = make_cn4_with_data(ChannelData::Float32(builder.finish()));
         bitfield_text_table(&mut cn, &cc_val, &cc_ref, &sharable).unwrap();
 
         if let ChannelData::Utf8(ref s) = cn.data {
-            let res = s.finish_cloned();
-            assert_eq!(res.value(0), " | BIT0_ON");
-            assert_eq!(res.value(1), "DEFAULT");
+            assert_eq!(s.value(0), " | BIT0_ON");
+            assert_eq!(s.value(1), "DEFAULT");
         } else {
             panic!("Expected Utf8 channel data");
         }

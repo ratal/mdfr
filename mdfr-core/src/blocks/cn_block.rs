@@ -505,5 +505,84 @@ mod tests {
         assert_eq!(CnDataType::try_from(17), Ok(CnDataType::StringBom));
         assert_eq!(CnSyncType::try_from(9), Err(9));
         assert_eq!(Endianness::from(true), Endianness::Big);
+        assert!(Endianness::Big.is_big());
+        assert!(!Endianness::Little.is_big());
+    }
+
+    #[test]
+    fn test_cn_helpers_and_strings() {
+        let mut cn = Cn4Block {
+            cn_type: 0,
+            cn_sync_type: 1,
+            cn_data_type: 4,
+            cn_bit_count: 32,
+            cn_byte_offset: 8,
+            cn_flags: (1 << 2) | (1 << 3) | (1 << 4) | (1 << 5),
+            cn_precision: 3,
+            cn_val_range_min: -100.0,
+            cn_val_range_max: 100.0,
+            cn_limit_min: -50.0,
+            cn_limit_max: 50.0,
+            cn_limit_ext_min: -80.0,
+            cn_limit_ext_max: 80.0,
+            ..Default::default()
+        };
+
+        assert_eq!(cn.get_cn_type_str(), "Fixed");
+        assert_eq!(cn.get_sync_type_str(), "Time");
+        assert_eq!(cn.get_data_type_str(), "Float LE");
+
+        assert_eq!(cn.precision(), Some(3));
+        assert_eq!(cn.val_range_min(), Some(-100.0));
+        assert_eq!(cn.val_range_max(), Some(100.0));
+        assert_eq!(cn.limit_min(), Some(-50.0));
+        assert_eq!(cn.limit_max(), Some(50.0));
+        assert_eq!(cn.limit_ext_min(), Some(-80.0));
+        assert_eq!(cn.limit_ext_max(), Some(80.0));
+
+        let s = alloc::format!("{cn}");
+        assert!(s.contains("CN: type=Fixed"));
+        assert!(s.contains("data_type=Float LE"));
+
+        // Test flag unset returns None
+        cn.cn_flags = 0;
+        assert_eq!(cn.precision(), None);
+        assert_eq!(cn.val_range_min(), None);
+        assert_eq!(cn.val_range_max(), None);
+        assert_eq!(cn.limit_min(), None);
+        assert_eq!(cn.limit_max(), None);
+        assert_eq!(cn.limit_ext_min(), None);
+        assert_eq!(cn.limit_ext_max(), None);
+
+        // Test other type strings
+        cn.cn_type = 1;
+        assert_eq!(cn.get_cn_type_str(), "VLSD");
+        cn.cn_type = 2;
+        assert_eq!(cn.get_cn_type_str(), "Master");
+        cn.cn_type = 3;
+        assert_eq!(cn.get_cn_type_str(), "Virtual Master");
+        cn.cn_type = 4;
+        assert_eq!(cn.get_cn_type_str(), "Sync");
+        cn.cn_type = 5;
+        assert_eq!(cn.get_cn_type_str(), "MLSD");
+        cn.cn_type = 6;
+        assert_eq!(cn.get_cn_type_str(), "Virtual Data");
+        cn.cn_type = 7;
+        assert_eq!(cn.get_cn_type_str(), "VLSC");
+        cn.cn_type = 99;
+        assert_eq!(cn.get_cn_type_str(), "Unknown");
+
+        cn.cn_sync_type = 0;
+        assert_eq!(cn.get_sync_type_str(), "None");
+        cn.cn_sync_type = 2;
+        assert_eq!(cn.get_sync_type_str(), "Angle");
+        cn.cn_sync_type = 3;
+        assert_eq!(cn.get_sync_type_str(), "Distance");
+        cn.cn_sync_type = 4;
+        assert_eq!(cn.get_sync_type_str(), "Index");
+        cn.cn_sync_type = 5;
+        assert_eq!(cn.get_sync_type_str(), "Frequency");
+        cn.cn_sync_type = 99;
+        assert_eq!(cn.get_sync_type_str(), "Unknown");
     }
 }

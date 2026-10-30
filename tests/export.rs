@@ -29,8 +29,10 @@ fn export_to_parquet() -> Result<()> {
     );
     let mut mdf = Mdf::new(&file)?;
     mdf.load_all_channels_data_in_memory()?;
-    mdf.export_to_parquet(writing_parquet_file, Some("zstd"))
-        .expect("failed writing mdf4 parquet file");
+    for comp in ["snappy", "zstd", "gzip", "lz4"] {
+        mdf.export_to_parquet(writing_parquet_file, Some(comp))
+            .unwrap_or_else(|_| panic!("failed writing mdf4 parquet file with {comp}"));
+    }
 
     // Export mdf3 to Parquet file
     let file = format!(
@@ -38,6 +40,9 @@ fn export_to_parquet() -> Result<()> {
         BASE_PATH_MDF3.as_str(),
         "RJ_N16-12-363_BM-15C-0024_228_2_20170116094355_CAN.dat"
     );
+    if !std::path::Path::new(&file).exists() {
+        return Ok(());
+    }
     let mut mdf = Mdf::new(&file)?;
     mdf.load_all_channels_data_in_memory()?;
     mdf.export_to_parquet(writing_parquet_file, Some("snappy"))
@@ -136,7 +141,7 @@ fn export_and_verify_parquet() -> Result<()> {
     assert_eq!(orig_data.len(), total_rows);
 
     if let mdfr::data_holder::channel_data::ChannelData::Float64(b) = orig_data {
-        let arr = b.finish_cloned();
+        let arr = b;
         if !arr.is_empty() {
             assert_eq!(first_val.unwrap(), arr.value(0));
         }
@@ -204,7 +209,7 @@ fn export_and_verify_csv() -> Result<()> {
     assert_eq!(orig_data.len(), row_count);
 
     if let mdfr::data_holder::channel_data::ChannelData::UInt8(b) = orig_data {
-        let arr = b.finish_cloned();
+        let arr = b;
         if !arr.is_empty() {
             assert_eq!(first_val.unwrap().parse::<u8>().unwrap(), arr.value(0));
         }
@@ -251,7 +256,7 @@ fn export_and_verify_hdf5() -> Result<()> {
     assert_eq!(dataset.shape()[0], orig_data.len());
 
     if let mdfr::data_holder::channel_data::ChannelData::Float64(b) = orig_data {
-        let arr = b.finish_cloned();
+        let arr = b;
         if !arr.is_empty() {
             let hdf5_data = dataset.read_raw::<f64>()?;
             assert_eq!(hdf5_data[0], arr.value(0));
@@ -260,5 +265,28 @@ fn export_and_verify_hdf5() -> Result<()> {
         panic!("Expected Float64 channel");
     }
 
+    Ok(())
+}
+
+#[test]
+fn export_all_to_csv() -> Result<()> {
+    let tmp_dir = tempfile::tempdir()?;
+    let writing_csv_file = tmp_dir.path().join("all_cg");
+    let writing_csv_file = writing_csv_file.to_str().unwrap();
+
+    let file = format!(
+        "{}{}",
+        BASE_PATH_MDF4.as_str(),
+        "Simple/PCV_iO_Gen3_LK1__3l_TDI.mf4"
+    );
+    let mut mdf = Mdf::new(&file)?;
+    mdf.load_all_channels_data_in_memory()?;
+    mdf.export_to_csv(writing_csv_file)?;
+
+    let count = std::fs::read_dir(tmp_dir.path())?
+        .filter_map(Result::ok)
+        .filter(|d| d.path().extension().and_then(|s| s.to_str()) == Some("csv"))
+        .count();
+    assert!(count >= 1);
     Ok(())
 }

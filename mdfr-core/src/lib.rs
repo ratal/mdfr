@@ -3,7 +3,7 @@
 //! Shared MDF 4.3 block model, codecs and the embedded logger.
 //! Requires `alloc`; enable the `std` feature for `std::fs` sinks.
 #![no_std]
-extern crate alloc;
+pub extern crate alloc;
 extern crate self as mdfr_core;
 #[cfg(feature = "std")]
 extern crate std;
@@ -20,7 +20,11 @@ pub mod time;
 pub mod capi;
 
 pub use error::{Error, Result};
+#[cfg(feature = "embedded-io")]
+pub use io::EmbeddedIoSink;
 pub use io::{SeekFrom, Sink, VecSink};
 #[cfg(feature = "derive")]
 pub use mdfr_derive::MdfRecord;
+#[cfg(feature = "std")]
+pub use time::StdClock;
 pub use time::{ManualClock, TimeSource};

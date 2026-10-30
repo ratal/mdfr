@@ -1,7 +1,7 @@
 //! C API
 #![allow(clippy::missing_safety_doc)]
 use crate::mdfreader::Mdf;
-use arrow::ffi::{FFI_ArrowArray, to_ffi};
+use arrow::ffi::{FFI_ArrowArray, FFI_ArrowSchema, to_ffi};
 use libc::c_char;
 use std::ffi::{CStr, CString, c_uchar, c_ushort};
 
@@ -60,7 +60,7 @@ pub unsafe extern "C" fn get_version(mdf: *const Mdf) -> c_ushort {
 
 /// returns channel's unit string
 /// if no unit is existing for this channel, returns a null pointer.
-/// The returned pointer is heap-allocated; caller must free it with `libc::free()`.
+/// The returned pointer is heap-allocated; caller must free it with `free_c_string()`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_channel_unit(
     mdf: *const Mdf,
@@ -92,7 +92,7 @@ pub unsafe extern "C" fn get_channel_unit(
 
 /// returns channel's description string
 /// if no description is existing for this channel, returns null pointer.
-/// The returned pointer is heap-allocated; caller must free it with `libc::free()`.
+/// The returned pointer is heap-allocated; caller must free it with `free_c_string()`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_channel_desc(
     mdf: *const Mdf,
@@ -123,7 +123,7 @@ pub unsafe extern "C" fn get_channel_desc(
 
 /// returns channel's associated master channel name string
 /// if no master channel existing, returns null pointer.
-/// The returned pointer is heap-allocated; caller must free it with `libc::free()`.
+/// The returned pointer is heap-allocated; caller must free it with `free_c_string()`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_channel_master(
     mdf: *const Mdf,
@@ -177,9 +177,21 @@ pub unsafe extern "C" fn get_channel_master_type(
     }
 }
 
+/// returns total number of unique channel names in the mdf file. Returns 0 on null input.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn get_channel_count(mdf: *const Mdf) -> usize {
+    unsafe {
+        if let Some(mdf) = mdf.as_ref() {
+            mdf.get_channel_names_set().len()
+        } else {
+            0
+        }
+    }
+}
+
 /// returns a sorted array of strings of all channel names contained in file.
 /// The returned pointer is heap-allocated; call `free_channel_names_set(ptr, len)` to free it,
-/// where `len` is the number of channel names (obtained separately, e.g. via a count function).
+/// where `len` is the number of channel names (obtained via `get_channel_count()`).
 /// Returns null on null input.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_channel_names_set(mdf: *const Mdf) -> *const *mut c_char {
@@ -189,17 +201,16 @@ pub unsafe extern "C" fn get_channel_names_set(mdf: *const Mdf) -> *const *mut c
             let set = mdf.get_channel_names_set();
             let mut s = set.into_iter().collect::<Vec<String>>();
             s.sort();
-            let mut cstring_vec = s
+            let cstring_vec = s
                 .iter()
                 .filter_map(|e| CString::new(e.as_str()).ok())
                 .map(std::ffi::CString::into_raw)
                 .collect::<Vec<*mut c_char>>();
-            cstring_vec.shrink_to_fit();
-            let p = cstring_vec.as_ptr();
-            // SAFETY: We intentionally leak the Vec here to transfer ownership of the
-            // backing allocation to the caller. The pointer remains valid until
-            // free_channel_names_set() is called with the correct length.
-            std::mem::forget(cstring_vec);
+            let boxed = cstring_vec.into_boxed_slice();
+            let p = boxed.as_ptr();
+            // SAFETY: Box::into_raw transfers ownership of the slice allocation to caller.
+            // Caller frees with free_channel_names_set(ptr, len).
+            let _ = Box::into_raw(boxed);
             p
         } else {
             std::ptr::null()
@@ -215,14 +226,25 @@ pub unsafe extern "C" fn free_channel_names_set(ptr: *mut *mut c_char, len: usiz
         if ptr.is_null() {
             return;
         }
-        // SAFETY: ptr and each element were allocated by Rust (CString::into_raw / Vec::into_raw_parts).
-        let slice = std::slice::from_raw_parts_mut(ptr, len);
-        for p in slice.iter_mut() {
+        // SAFETY: ptr and each element were allocated by Rust (CString::into_raw / Box::into_raw).
+        let slice_ptr = std::ptr::slice_from_raw_parts_mut(ptr, len);
+        let boxed = Box::from_raw(slice_ptr);
+        for &p in boxed.iter() {
             if !p.is_null() {
-                drop(CString::from_raw(*p));
+                drop(CString::from_raw(p));
             }
         }
-        drop(Vec::from_raw_parts(ptr, len, len));
+        drop(boxed);
+    }
+}
+
+/// Frees a null-terminated C string allocated by any `get_*` function.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn free_c_string(ptr: *mut c_char) {
+    unsafe {
+        if !ptr.is_null() {
+            drop(CString::from_raw(ptr));
+        }
     }
 }
 
@@ -281,6 +303,49 @@ pub unsafe extern "C" fn free_channel_array(array: *mut FFI_ArrowArray) {
         if !array.is_null() {
             // SAFETY: array was created by Box::into_raw in get_channel_array().
             drop(Box::from_raw(array));
+        }
+    }
+}
+
+/// returns channel's arrow Schema as a heap-allocated pointer.
+/// Caller must free it with `free_channel_schema()`.
+/// Returns null pointer if channel not found.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn get_channel_schema(
+    mdf: *const Mdf,
+    channel_name: *const libc::c_char,
+) -> *mut FFI_ArrowSchema {
+    unsafe {
+        if mdf.is_null() || channel_name.is_null() {
+            return std::ptr::null_mut();
+        }
+        let name = match CStr::from_ptr(channel_name).to_str() {
+            Ok(s) => s,
+            Err(_) => return std::ptr::null_mut(),
+        };
+        if let Some(mdf) = mdf.as_ref() {
+            match mdf.get_channel_converted_data(name) {
+                Some(data) => match to_ffi(&data.to_data()) {
+                    Ok((_, schema)) => Box::into_raw(Box::new(schema)),
+                    Err(e) => {
+                        log::error!("get_channel_schema: FFI conversion failed: {e}");
+                        std::ptr::null_mut()
+                    }
+                },
+                None => std::ptr::null_mut(),
+            }
+        } else {
+            std::ptr::null_mut()
+        }
+    }
+}
+
+/// frees an FFI_ArrowSchema returned by `get_channel_schema()`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn free_channel_schema(schema: *mut FFI_ArrowSchema) {
+    unsafe {
+        if !schema.is_null() {
+            drop(Box::from_raw(schema));
         }
     }
 }
@@ -427,7 +492,7 @@ pub unsafe extern "C" fn get_recorder_file_last(mdf: *const Mdf, out: *mut c_uch
 }
 
 /// Returns the recorder UUID string (MDF 4.3 `Recorder.UUID` common_property).
-/// Returns a heap-allocated null-terminated C string; caller must free with `libc::free()`.
+/// Returns a heap-allocated null-terminated C string; caller must free with `free_c_string()`.
 /// Returns null pointer if the property is absent or on error.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_recorder_uuid(mdf: *const Mdf) -> *const c_char {
@@ -446,7 +511,7 @@ pub unsafe extern "C" fn get_recorder_uuid(mdf: *const Mdf) -> *const c_char {
 }
 
 /// Returns the measurement UUID string (MDF 4.3 `MeasurementUUID` common_property).
-/// Returns a heap-allocated null-terminated C string; caller must free with `libc::free()`.
+/// Returns a heap-allocated null-terminated C string; caller must free with `free_c_string()`.
 /// Returns null pointer if the property is absent or on error.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_measurement_uuid(mdf: *const Mdf) -> *const c_char {
@@ -465,7 +530,7 @@ pub unsafe extern "C" fn get_measurement_uuid(mdf: *const Mdf) -> *const c_char 
 }
 
 /// Returns the author string from HD common_properties (MDF 4.3).
-/// Returns a heap-allocated null-terminated C string; caller must free with `libc::free()`.
+/// Returns a heap-allocated null-terminated C string; caller must free with `free_c_string()`.
 /// Returns null pointer if the property is absent or on error.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_author(mdf: *const Mdf) -> *const c_char {
@@ -484,7 +549,7 @@ pub unsafe extern "C" fn get_author(mdf: *const Mdf) -> *const c_char {
 }
 
 /// Returns the department string from HD common_properties (MDF 4.3).
-/// Returns a heap-allocated null-terminated C string; caller must free with `libc::free()`.
+/// Returns a heap-allocated null-terminated C string; caller must free with `free_c_string()`.
 /// Returns null pointer if the property is absent or on error.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_department(mdf: *const Mdf) -> *const c_char {
@@ -503,7 +568,7 @@ pub unsafe extern "C" fn get_department(mdf: *const Mdf) -> *const c_char {
 }
 
 /// Returns the project string from HD common_properties (MDF 4.3).
-/// Returns a heap-allocated null-terminated C string; caller must free with `libc::free()`.
+/// Returns a heap-allocated null-terminated C string; caller must free with `free_c_string()`.
 /// Returns null pointer if the property is absent or on error.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_project(mdf: *const Mdf) -> *const c_char {
@@ -522,7 +587,7 @@ pub unsafe extern "C" fn get_project(mdf: *const Mdf) -> *const c_char {
 }
 
 /// Returns the subject string from HD common_properties (MDF 4.3).
-/// Returns a heap-allocated null-terminated C string; caller must free with `libc::free()`.
+/// Returns a heap-allocated null-terminated C string; caller must free with `free_c_string()`.
 /// Returns null pointer if the property is absent or on error.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_subject(mdf: *const Mdf) -> *const c_char {
@@ -699,7 +764,7 @@ pub unsafe extern "C" fn get_channel_hierarchy_count(mdf: *const Mdf) -> usize {
 }
 
 /// Returns a human-readable list of channel hierarchy.
-/// Returns a heap-allocated null-terminated C string; caller must free with `libc::free()`.
+/// Returns a heap-allocated null-terminated C string; caller must free with `free_c_string()`.
 /// Returns null pointer on error.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn list_channel_hierarchy(mdf: *const Mdf) -> *const c_char {
@@ -734,7 +799,7 @@ pub unsafe extern "C" fn get_source_information_count(mdf: *const Mdf) -> usize 
 }
 
 /// Returns a human-readable list of source information blocks.
-/// Returns a heap-allocated null-terminated C string; caller must free with `libc::free()`.
+/// Returns a heap-allocated null-terminated C string; caller must free with `free_c_string()`.
 /// Returns null pointer on error.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn list_source_information(mdf: *const Mdf) -> *const c_char {
@@ -919,5 +984,237 @@ pub unsafe extern "C" fn mdfr_finalize_file_in_place(file_name: *const c_char) -
     match crate::mdfinfo::mdfinfo4::finalize::finalize_file_in_place(path_str) {
         Ok(_) => 0,
         Err(_) => -1,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::CString;
+
+    #[test]
+    fn test_c_api_null_safety() {
+        unsafe {
+            assert!(new_mdf(std::ptr::null()).is_null());
+            free_mdf(std::ptr::null_mut());
+            assert_eq!(get_version(std::ptr::null()), 0);
+            assert!(get_channel_unit(std::ptr::null(), std::ptr::null()).is_null());
+            assert!(get_channel_desc(std::ptr::null(), std::ptr::null()).is_null());
+            assert!(get_channel_master(std::ptr::null(), std::ptr::null()).is_null());
+            assert_eq!(get_channel_master_type(std::ptr::null(), std::ptr::null()), 0);
+            assert_eq!(get_channel_count(std::ptr::null()), 0);
+            assert!(get_channel_names_set(std::ptr::null()).is_null());
+            free_channel_names_set(std::ptr::null_mut(), 0);
+            free_c_string(std::ptr::null_mut());
+            load_all_channels_data_in_memory(std::ptr::null_mut());
+            assert!(get_channel_array(std::ptr::null(), std::ptr::null()).is_null());
+            free_channel_array(std::ptr::null_mut());
+            assert!(get_channel_schema(std::ptr::null(), std::ptr::null()).is_null());
+            free_channel_schema(std::ptr::null_mut());
+
+            #[cfg(feature = "parquet")]
+            export_to_parquet(std::ptr::null(), std::ptr::null(), std::ptr::null());
+
+            #[cfg(feature = "hdf5")]
+            export_to_hdf5(std::ptr::null(), std::ptr::null(), std::ptr::null());
+
+            let mut u64_val = 0u64;
+            let mut u8_val = 0u8;
+            assert!(!get_recorder_sequence_index(std::ptr::null(), &mut u64_val));
+            assert!(!get_recorder_file_index(std::ptr::null(), &mut u64_val));
+            assert!(!get_recorder_file_last(std::ptr::null(), &mut u8_val));
+            assert!(get_recorder_uuid(std::ptr::null()).is_null());
+            assert!(get_measurement_uuid(std::ptr::null()).is_null());
+            assert!(get_author(std::ptr::null()).is_null());
+            assert!(get_department(std::ptr::null()).is_null());
+            assert!(get_project(std::ptr::null()).is_null());
+            assert!(get_subject(std::ptr::null()).is_null());
+
+            let mut ch_id = ChannelIdC {
+                master_name: std::ptr::null_mut(),
+                dg_pos: 0,
+                cg_pos: 0,
+                rec_id: 0,
+                cn_pos: 0,
+                rec_pos: 0,
+            };
+            assert!(!get_channel_id(std::ptr::null(), std::ptr::null(), &mut ch_id));
+            free_channel_id_master(std::ptr::null_mut());
+
+            assert_eq!(get_file_history_count(std::ptr::null()), 0);
+            assert!(!get_file_history_time_ns(std::ptr::null(), 0, &mut u64_val));
+            assert_eq!(get_event_count(std::ptr::null()), 0);
+            assert_eq!(get_event_type(std::ptr::null(), 0), 255);
+            assert_eq!(get_channel_hierarchy_count(std::ptr::null()), 0);
+            assert!(list_channel_hierarchy(std::ptr::null()).is_null());
+            assert_eq!(get_source_information_count(std::ptr::null()), 0);
+            assert!(list_source_information(std::ptr::null()).is_null());
+
+            assert!(mdfr_logger_open(std::ptr::null_mut(), std::ptr::null(), std::ptr::null_mut()).is_null());
+            assert_eq!(mdfr_logger_rotate_path(std::ptr::null_mut(), std::ptr::null()), -3);
+            assert_eq!(mdfr_finalize_file_in_place(std::ptr::null()), -3);
+        }
+    }
+
+    #[test]
+    fn test_c_api_roundtrip_file_and_reader() {
+        unsafe {
+            let tmp1 = tempfile::Builder::new().suffix(".mf4").tempfile().unwrap();
+            let p1 = CString::new(tmp1.path().to_str().unwrap()).unwrap();
+
+            let tmp2 = tempfile::Builder::new().suffix(".mf4").tempfile().unwrap();
+            let p2 = CString::new(tmp2.path().to_str().unwrap()).unwrap();
+
+            // Create and write with C logger API
+            let builder = mdfr_logger_builder_new(0, 255); // Sorted, NoCompression
+            assert!(!builder.is_null());
+
+            let mut g0 = 0u16;
+            let group_name = CString::new("Powertrain").unwrap();
+            assert_eq!(mdfr_logger_add_group(builder, group_name.as_ptr(), &mut g0), 0);
+
+            let mut ch_rpm = 0u32;
+            let ch_name = CString::new("EngineSpeed").unwrap();
+            assert_eq!(mdfr_logger_add_channel(builder, g0, ch_name.as_ptr(), 0, 16, &mut ch_rpm), 0);
+
+            let unit = CString::new("rpm").unwrap();
+            assert_eq!(mdfr_logger_set_channel_unit(builder, ch_rpm, unit.as_ptr()), 0);
+            assert_eq!(mdfr_logger_set_conversion_linear(builder, ch_rpm, 0.0, 0.25), 0);
+
+            let mut err = 0;
+            let logger = mdfr_logger_open(builder, p1.as_ptr(), &mut err);
+            assert!(!logger.is_null());
+            assert_eq!(err, 0);
+
+            // Record
+            assert_eq!(mdfr_logger_record_begin(logger, g0), 0);
+            assert_eq!(mdfr_logger_record_set_u64(logger, ch_rpm, 4000), 0);
+            assert_eq!(mdfr_logger_record_commit(logger, g0), 0);
+
+            // Rotate to p2
+            assert_eq!(mdfr_logger_rotate_path(logger, p2.as_ptr()), 0);
+
+            // Close
+            assert_eq!(mdfr_logger_close(logger), 0);
+
+            // Now open the rotated p1 file with C Reader API
+            let mdf = new_mdf(p1.as_ptr());
+            assert!(!mdf.is_null());
+
+            let ver = get_version(mdf);
+            assert!(ver >= 400);
+
+            let ch_names_ptr = get_channel_names_set(mdf);
+            assert!(!ch_names_ptr.is_null());
+            // Free the channel names set (we know it contains at least "time" and "EngineSpeed")
+            free_channel_names_set(ch_names_ptr as *mut *mut c_char, 2);
+
+            let u_ptr = get_channel_unit(mdf, ch_name.as_ptr());
+            assert!(!u_ptr.is_null());
+            assert_eq!(CStr::from_ptr(u_ptr).to_str().unwrap(), "rpm");
+            free_c_string(u_ptr as *mut c_char);
+
+            let desc_ptr = get_channel_desc(mdf, ch_name.as_ptr());
+            if !desc_ptr.is_null() {
+                free_c_string(desc_ptr as *mut c_char);
+            }
+
+            let m_ptr = get_channel_master(mdf, ch_name.as_ptr());
+            assert!(!m_ptr.is_null());
+            assert_eq!(CStr::from_ptr(m_ptr).to_str().unwrap(), "time");
+            free_c_string(m_ptr as *mut c_char);
+
+            let m_type = get_channel_master_type(mdf, ch_name.as_ptr());
+            assert_eq!(m_type, 0); // 0 = None (normal data channel)
+
+            let time_name = CString::new("time").unwrap();
+            let time_m_type = get_channel_master_type(mdf, time_name.as_ptr());
+            assert_eq!(time_m_type, 1); // 1 = Time (master channel)
+
+            load_all_channels_data_in_memory(mdf);
+
+            let arr_ptr = get_channel_array(mdf, ch_name.as_ptr());
+            assert!(!arr_ptr.is_null());
+            free_channel_array(arr_ptr);
+
+            let schema_ptr = get_channel_schema(mdf, ch_name.as_ptr());
+            assert!(!schema_ptr.is_null());
+            free_channel_schema(schema_ptr);
+
+            let mut cid = ChannelIdC {
+                master_name: std::ptr::null_mut(),
+                dg_pos: 0,
+                cg_pos: 0,
+                rec_id: 0,
+                cn_pos: 0,
+                rec_pos: 0,
+            };
+            assert!(get_channel_id(mdf, ch_name.as_ptr(), &mut cid));
+            assert!(!cid.master_name.is_null());
+            assert_eq!(CStr::from_ptr(cid.master_name).to_str().unwrap(), "time");
+            free_channel_id_master(&mut cid);
+
+            let mut out_u64 = 0u64;
+            let mut out_u8 = 0u8;
+            let _ = get_recorder_sequence_index(mdf, &mut out_u64);
+            let _ = get_recorder_file_index(mdf, &mut out_u64);
+            let _ = get_recorder_file_last(mdf, &mut out_u8);
+
+            let r_uuid = get_recorder_uuid(mdf);
+            if !r_uuid.is_null() {
+                free_c_string(r_uuid as *mut c_char);
+            }
+            let m_uuid = get_measurement_uuid(mdf);
+            if !m_uuid.is_null() {
+                free_c_string(m_uuid as *mut c_char);
+            }
+
+            let author = get_author(mdf);
+            if !author.is_null() {
+                free_c_string(author as *mut c_char);
+            }
+            let dept = get_department(mdf);
+            if !dept.is_null() {
+                free_c_string(dept as *mut c_char);
+            }
+            let proj = get_project(mdf);
+            if !proj.is_null() {
+                free_c_string(proj as *mut c_char);
+            }
+            let subj = get_subject(mdf);
+            if !subj.is_null() {
+                free_c_string(subj as *mut c_char);
+            }
+
+            let fh_count = get_file_history_count(mdf);
+            if fh_count > 0 {
+                let mut fh_time = 0u64;
+                let _ = get_file_history_time_ns(mdf, 0, &mut fh_time);
+            }
+
+            let _ = get_event_count(mdf);
+            let _ = get_channel_hierarchy_count(mdf);
+            let hier = list_channel_hierarchy(mdf);
+            if !hier.is_null() {
+                free_c_string(hier as *mut c_char);
+            }
+            let _ = get_source_information_count(mdf);
+            let si = list_source_information(mdf);
+            if !si.is_null() {
+                free_c_string(si as *mut c_char);
+            }
+
+            #[cfg(feature = "parquet")]
+            {
+                let pq_tmp = tempfile::Builder::new().suffix(".parquet").tempfile().unwrap();
+                let pq_path = CString::new(pq_tmp.path().to_str().unwrap()).unwrap();
+                export_to_parquet(mdf, pq_path.as_ptr(), std::ptr::null());
+            }
+
+            free_mdf(mdf);
+
+            // Finalize file in place check
+            assert_eq!(mdfr_finalize_file_in_place(p2.as_ptr()), 0);
+        }
     }
 }

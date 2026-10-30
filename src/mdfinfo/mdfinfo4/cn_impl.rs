@@ -6,8 +6,8 @@ use crate::data_holder::channel_data::{ChannelData, data_type_init};
 use crate::data_holder::tensor_arrow::Order;
 use crate::mdfinfo::block_chain::BlockChain;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
-use anyhow::{Context, Result};
-use arrow::array::{BooleanBufferBuilder, UInt8Builder, UInt16Builder, UInt32Builder};
+use anyhow::{Context, Error, Result};
+use arrow::array::{BooleanBufferBuilder, UInt8Array, UInt16Array, UInt32Array};
 use rustc_hash::FxHashMap;
 use std::fmt::{self, Display};
 use std::fs::File;
@@ -58,6 +58,8 @@ pub struct Cn4 {
     pub event_template: Option<Ev4Block>,
     /// flag set during data read to indicate this channel is in the read set
     pub should_read: bool,
+    /// Optional mutable staging builder used while decoding data blocks
+    pub builder: Option<crate::data_holder::channel_builder::ChannelBuilder>,
 }
 
 impl Clone for Cn4 {
@@ -88,6 +90,7 @@ impl Clone for Cn4 {
             invalid_mask,
             event_template: self.event_template.clone(),
             should_read: self.should_read,
+            builder: None,
         }
     }
 }
@@ -274,7 +277,8 @@ fn can_open_date(
         pos_byte_beg,
         n_bytes: 2,
         composition: None,
-        data: ChannelData::UInt16(UInt16Builder::new()),
+        data: ChannelData::UInt16(UInt16Array::from(Vec::<u16>::new())),
+        builder: None,
         is_converted: false,
         endian: Endianness::Little,
         list_size: 1,
@@ -297,7 +301,8 @@ fn can_open_date(
         pos_byte_beg: pos_byte_beg + 2,
         n_bytes: 1,
         composition: None,
-        data: ChannelData::UInt8(UInt8Builder::new()),
+        data: ChannelData::UInt8(UInt8Array::from(Vec::<u8>::new())),
+        builder: None,
         is_converted: false,
         endian: Endianness::Little,
         list_size: 1,
@@ -320,7 +325,8 @@ fn can_open_date(
         pos_byte_beg: pos_byte_beg + 3,
         n_bytes: 1,
         composition: None,
-        data: ChannelData::UInt8(UInt8Builder::new()),
+        data: ChannelData::UInt8(UInt8Array::from(Vec::<u8>::new())),
+        builder: None,
         is_converted: false,
         endian: Endianness::Little,
         list_size: 1,
@@ -343,7 +349,8 @@ fn can_open_date(
         pos_byte_beg: pos_byte_beg + 4,
         n_bytes: 1,
         composition: None,
-        data: ChannelData::UInt8(UInt8Builder::new()),
+        data: ChannelData::UInt8(UInt8Array::from(Vec::<u8>::new())),
+        builder: None,
         is_converted: false,
         endian: Endianness::Little,
         list_size: 1,
@@ -366,7 +373,8 @@ fn can_open_date(
         pos_byte_beg: pos_byte_beg + 5,
         n_bytes: 1,
         composition: None,
-        data: ChannelData::UInt8(UInt8Builder::new()),
+        data: ChannelData::UInt8(UInt8Array::from(Vec::<u8>::new())),
+        builder: None,
         is_converted: false,
         endian: Endianness::Little,
         list_size: 1,
@@ -389,7 +397,8 @@ fn can_open_date(
         pos_byte_beg: pos_byte_beg + 6,
         n_bytes: 1,
         composition: None,
-        data: ChannelData::UInt8(UInt8Builder::new()),
+        data: ChannelData::UInt8(UInt8Array::from(Vec::<u8>::new())),
+        builder: None,
         is_converted: false,
         endian: Endianness::Little,
         list_size: 1,
@@ -417,7 +426,8 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         pos_byte_beg,
         n_bytes: 4,
         composition: None,
-        data: ChannelData::UInt32(UInt32Builder::new()),
+        data: ChannelData::UInt32(UInt32Array::from(Vec::<u32>::new())),
+        builder: None,
         is_converted: false,
         endian: Endianness::Little,
         list_size: 1,
@@ -440,7 +450,8 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         pos_byte_beg: pos_byte_beg + 4,
         n_bytes: 2,
         composition: None,
-        data: ChannelData::UInt16(UInt16Builder::new()),
+        data: ChannelData::UInt16(UInt16Array::from(Vec::<u16>::new())),
+        builder: None,
         is_converted: false,
         endian: Endianness::Little,
         list_size: 1,
@@ -567,6 +578,15 @@ impl Cn4 {
 
 #[allow(dead_code)]
 impl Cn4 {
+    /// Extracts unsigned integer values as Vec<u64> from the active builder or finished data.
+    pub fn to_u64_vec(&self) -> Option<Vec<u64>> {
+        if let Some(ref b) = self.builder {
+            b.to_u64_vec()
+        } else {
+            self.data.to_u64_vec()
+        }
+    }
+
     /// Returns true if this channel is an event signal channel (cn_flags bit 13 set).
     /// Event signal channels store event data, with a template EVBLOCK describing the structure.
     pub fn is_event_signal(&self) -> bool {
@@ -589,6 +609,19 @@ impl Cn4 {
     /// MLSD channels have per-record lengths determined by a separate size channel.
     pub fn is_mlsd(&self) -> bool {
         self.block.cn_type == 5
+    }
+
+    /// Initializes builder for mutable record accumulation during file reading
+    pub fn init_builder(&mut self, cycle_count: usize) -> Result<(), Error> {
+        self.builder = Some(crate::data_holder::channel_builder::ChannelBuilder::new_zeroed(
+            self.block.cn_type,
+            self.block.cn_data_type,
+            cycle_count,
+            self.n_bytes as usize,
+            self.shape.clone(),
+            self.list_size,
+        )?);
+        Ok(())
     }
 
     /// Returns true if this channel is a synchronization channel.
@@ -775,6 +808,7 @@ pub(super) fn parse_cn4_block(
         n_bytes,
         composition: compo,
         data: data_type_init(cn_type, data_type, n_bytes, list_size, block.cn_flags)?,
+        builder: None,
         is_converted: false,
         block,
         endian,

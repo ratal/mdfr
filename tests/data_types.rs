@@ -47,7 +47,7 @@ fn data_types() -> Result<()> {
     });
     if let Some(data) = mdf.get_channel_data("Counter_INT64_BE") {
         assert_eq!(
-            ChannelData::Int64(Int64Builder::new_from_buffer(vect.clone().into(), None)),
+            ChannelData::Int64(Int64Builder::new_from_buffer(vect.clone().into(), None).finish()),
             data.clone()
         );
     }
@@ -55,7 +55,7 @@ fn data_types() -> Result<()> {
     mdf2.load_all_channels_data_in_memory()?;
     if let Some(data) = mdf2.get_channel_data("Counter_INT64_LE") {
         assert_eq!(
-            ChannelData::Int64(Int64Builder::new_from_buffer(vect.into(), None)),
+            ChannelData::Int64(Int64Builder::new_from_buffer(vect.into(), None).finish()),
             data.clone()
         );
     }
@@ -67,7 +67,7 @@ fn data_types() -> Result<()> {
     });
     if let Some(data) = mdf2.get_channel_data("Counter_INT32_LE") {
         assert_eq!(
-            ChannelData::Int32(Int32Builder::new_from_buffer(vect.into(), None)),
+            ChannelData::Int32(Int32Builder::new_from_buffer(vect.into(), None).finish()),
             data.clone()
         );
     }
@@ -79,13 +79,13 @@ fn data_types() -> Result<()> {
     });
     if let Some(data) = mdf.get_channel_data("Counter_INT16_BE") {
         assert_eq!(
-            ChannelData::Int16(Int16Builder::new_from_buffer(vect.clone().into(), None)),
+            ChannelData::Int16(Int16Builder::new_from_buffer(vect.clone().into(), None).finish()),
             data.clone()
         );
     }
     if let Some(data) = mdf2.get_channel_data("Counter_INT16_LE") {
         assert_eq!(
-            ChannelData::Int16(Int16Builder::new_from_buffer(vect.into(), None)),
+            ChannelData::Int16(Int16Builder::new_from_buffer(vect.into(), None).finish()),
             data.clone()
         );
     }
@@ -163,7 +163,7 @@ fn string_types() -> Result<()> {
     expected_string_result.append_value("seven");
     expected_string_result.append_value("eight");
     expected_string_result.append_value("nine");
-    let expected_string_result = ChannelData::Utf8(expected_string_result);
+    let expected_string_result = ChannelData::Utf8(expected_string_result.finish());
 
     let file_name = format!(
         "{}{}{}",
@@ -178,7 +178,7 @@ fn string_types() -> Result<()> {
             ChannelData::Float64(Float64Builder::new_from_buffer(
                 vec![0., 1., 2., 3., 4., 5., 6., 7., 8., 9.].into(),
                 None
-            )),
+            ).finish()),
             data.clone()
         );
     }
@@ -273,12 +273,12 @@ fn byte_array_types() -> Result<()> {
             ChannelData::Float64(Float64Builder::new_from_buffer(
                 vec![0., 1., 2., 3., 4., 5., 6., 7., 8., 9.].into(),
                 None
-            )),
+            ).finish()),
             data.clone()
         );
     }
     if let Some(data) = mdf.get_channel_data("Data channel") {
-        assert_eq!(&ChannelData::FixedSizeByteArray(byte_array), data);
+        assert_eq!(&ChannelData::FixedSizeByteArray(byte_array.finish()), data);
     }
     let mut mdf2 = mdf.write(&writing_mdf_file, CompressionAlgorithm::NoCompression)?;
     mdf2.load_all_channels_data_in_memory()?;
@@ -294,7 +294,7 @@ fn byte_array_types() -> Result<()> {
         byte_array.append_value(vec![240, 239, 238, 237, 236])?;
         byte_array.append_value(vec![235, 234, 233, 232, 231])?;
         byte_array.append_value(vec![255, 255, 255, 255, 255])?;
-        assert_eq!(&ChannelData::FixedSizeByteArray(byte_array), data);
+        assert_eq!(&ChannelData::FixedSizeByteArray(byte_array.finish()), data);
     }
 
     Ok(())

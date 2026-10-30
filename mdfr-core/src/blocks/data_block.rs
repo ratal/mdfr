@@ -45,7 +45,7 @@ pub struct Dl4Block {
     // links
     /// next DL
     pub dl_dl_next: i64,
-    #[br(if(dl_links > 1), little, count = dl_links - 1)]
+    #[br(if(dl_links > 1), little, count = dl_links.saturating_sub(1))]
     pub dl_data: Vec<i64>,
     // members
     /// Flags
@@ -401,5 +401,56 @@ mod tests {
         assert_eq!(4 + buf.len(), 40);
         let back: Hl4Block = Cursor::new(buf).read_le().unwrap();
         assert_eq!(back, hl);
+    }
+
+    #[test]
+    fn test_dz_get_compression_str() {
+        let mut dz = Dz4Block::default();
+        let expected = [
+            (0, "Deflate"),
+            (1, "Deflate+Transpose"),
+            (2, "Zstd"),
+            (3, "Zstd+Transpose"),
+            (4, "LZ4"),
+            (5, "LZ4+Transpose"),
+            (254, "Custom"),
+            (255, "Unknown"),
+        ];
+        for (val, name) in expected {
+            dz.dz_zip_type = val;
+            assert_eq!(dz.get_compression_str(), name, "dz_zip_type={val}");
+        }
+    }
+
+    #[test]
+    fn test_ld_data_and_invalidation() {
+        let ld = Ld4Block {
+            ld_count: 2,
+            ld_flags_ext: 1u8 << 7,
+            ld_links: vec![100, 200, 101, 201],
+            ..Default::default()
+        };
+        assert_eq!(ld.ld_data(), vec![100, 200]);
+        assert_eq!(ld.ld_invalid_data(), vec![101, 201]);
+    }
+
+    #[test]
+    fn test_hl_get_zip_type_str() {
+        let expected = [
+            (0, "Deflate"),
+            (1, "Deflate+Transpose"),
+            (2, "Zstd"),
+            (3, "Zstd+Transpose"),
+            (4, "LZ4"),
+            (5, "LZ4+Transpose"),
+            (255, "Unknown"),
+        ];
+        for (val, name) in expected {
+            let hl = Hl4Block {
+                hl_zip_type: val,
+                ..Default::default()
+            };
+            assert_eq!(hl.get_zip_type_str(), name, "hl_zip_type={val}");
+        }
     }
 }

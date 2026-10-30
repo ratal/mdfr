@@ -237,4 +237,58 @@ mod tests {
         ev.ev_links = 8;
         assert_eq!(ev.calculate_block_size(), 120);
     }
+
+    #[test]
+    fn test_ev_enum_strings() {
+        let mut ev = Ev4Block::default();
+        let expected_types = [
+            (EV_T_RECORDING, "Recording"),
+            (EV_T_RECORDING_INTERRUPT, "Recording Interrupt"),
+            (EV_T_ACQUISITION_INTERRUPT, "Acquisition Interrupt"),
+            (EV_T_TRIGGER, "Trigger"),
+            (EV_T_MARKER, "Marker"),
+            (255, "Unknown"),
+        ];
+        for (val, name) in expected_types {
+            ev.ev_type = val;
+            assert_eq!(ev.get_event_type_str(), name, "ev_type={val}");
+        }
+
+        let expected_syncs = [
+            (EV_S_NONE, "None"),
+            (EV_S_TIME, "Time"),
+            (EV_S_ANGLE, "Angle"),
+            (EV_S_DISTANCE, "Distance"),
+            (EV_S_INDEX, "Index"),
+            (EV_S_FREQUENCY, "Frequency"),
+            (255, "Unknown"),
+        ];
+        for (val, name) in expected_syncs {
+            ev.ev_sync_type = val;
+            assert_eq!(ev.get_sync_type_str(), name, "ev_sync_type={val}");
+        }
+
+        let expected_causes = [
+            (EV_C_OTHER, "Other/Unknown"),
+            (EV_C_ERROR, "Error"),
+            (EV_C_TOOL, "Tool Internal"),
+            (EV_C_SCRIPT, "Script"),
+            (EV_C_USER, "User"),
+            (255, "Unknown"),
+        ];
+        for (val, name) in expected_causes {
+            ev.ev_cause = val;
+            assert_eq!(ev.get_cause_str(), name, "ev_cause={val}");
+        }
+    }
+
+    #[test]
+    fn test_ev_sync_value() {
+        let ev = Ev4Block {
+            ev_sync_base_value: 1000,
+            ev_sync_factor: 1e-9,
+            ..Default::default()
+        };
+        assert!((ev.get_sync_value() - 1e-6).abs() < 1e-15);
+    }
 }

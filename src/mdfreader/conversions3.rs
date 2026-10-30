@@ -1,10 +1,9 @@
 //! this modules implements functions to convert arrays into physical arrays using CCBlock
 use anyhow::{Context, Error, Result};
 use arrow::array::{
-    ArrayBuilder, Float64Array, Float64Builder, LargeStringBuilder, PrimitiveBuilder,
+    Array, LargeStringArray, LargeStringBuilder, PrimitiveArray,
 };
 use arrow::datatypes::{ArrowPrimitiveType, Float64Type};
-use arrow::error::ArrowError;
 use itertools::Itertools;
 use num::NumCast;
 use num::abs;
@@ -243,9 +242,9 @@ pub fn rational_conversion(cn: &mut Cn3, cc_val: &[f64]) -> Result<(), Error> {
 /// Generic function calculating polynomial conversion
 #[inline]
 fn polynomial_calculation<T: ArrowPrimitiveType>(
-    array: &mut PrimitiveBuilder<T>,
+    array: &PrimitiveArray<T>,
     cc_val: &[f64],
-) -> Result<PrimitiveBuilder<Float64Type>, Error>
+) -> Result<PrimitiveArray<Float64Type>, Error>
 where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
@@ -256,21 +255,15 @@ where
     let p4 = cc_val[3];
     let p5 = cc_val[4];
     let p6 = cc_val[5];
-    let array_f64: Float64Array = array
-        .finish()
-        .try_unary(|value| {
-            num::cast::cast::<T::Native, f64>(value)
-                .ok_or_else(|| ArrowError::CastError(format!("Can't cast value {value:?} to f64")))
+    let values = array.values();
+    let converted: Vec<f64> = values
+        .iter()
+        .map(|v| {
+            let x: f64 = (*v).as_();
+            (p2 - (p4 * (x - p5 - p6))) / (p3 * (x - p5 - p6) - p1)
         })
-        .context("failed converting array to f64")?;
-    let mut out = Float64Builder::with_capacity(array.capacity());
-    out.values_slice_mut()
-        .iter_mut()
-        .zip(array_f64.values())
-        .for_each(|(y, x)| {
-            *y = (p2 - (p4 * (x - p5 - p6))) / (p3 * (x - p5 - p6) - p1);
-        });
-    Ok(out)
+        .collect();
+    Ok(PrimitiveArray::new(converted.into(), array.nulls().cloned()))
 }
 
 /// Apply polynomial conversion to get physical data
@@ -347,9 +340,9 @@ pub fn polynomial_conversion(cn: &mut Cn3, cc_val: &[f64]) -> Result<(), Error> 
 /// Generic function calculating exponential conversion
 #[inline]
 fn exponential_calculation<T: ArrowPrimitiveType>(
-    array: &mut PrimitiveBuilder<T>,
+    array: &PrimitiveArray<T>,
     cc_val: &[f64],
-) -> Result<Option<PrimitiveBuilder<Float64Type>>, Error>
+) -> Result<Option<PrimitiveArray<Float64Type>>, Error>
 where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
@@ -361,30 +354,25 @@ where
     let p5 = cc_val[4];
     let p6 = cc_val[5];
     let p7 = cc_val[6];
-    let array_f64: Float64Array = array
-        .finish()
-        .try_unary(|value| {
-            num::cast::cast::<T::Native, f64>(value)
-                .ok_or_else(|| ArrowError::CastError(format!("Can't cast value {value:?} to f64")))
-        })
-        .context("failed converting array to f64")?;
-    let mut out = Float64Builder::with_capacity(array.capacity());
+    let values = array.values();
     if p4 == 0.0 {
-        out.values_slice_mut()
-            .iter_mut()
-            .zip(array_f64.values())
-            .for_each(|(y, x)| {
-                *y = (((x - p7) * p6 - p3) / p1).ln() / p2;
-            });
-        Ok(Some(out))
+        let converted: Vec<f64> = values
+            .iter()
+            .map(|v| {
+                let x: f64 = (*v).as_();
+                (((x - p7) * p6 - p3) / p1).ln() / p2
+            })
+            .collect();
+        Ok(Some(PrimitiveArray::new(converted.into(), array.nulls().cloned())))
     } else if p1 == 0.0 {
-        out.values_slice_mut()
-            .iter_mut()
-            .zip(array_f64.values())
-            .for_each(|(y, x)| {
-                *y = ((p3 / (x - p7) - p6) / p4).ln() / p5;
-            });
-        Ok(Some(out))
+        let converted: Vec<f64> = values
+            .iter()
+            .map(|v| {
+                let x: f64 = (*v).as_();
+                ((p3 / (x - p7) - p6) / p4).ln() / p5
+            })
+            .collect();
+        Ok(Some(PrimitiveArray::new(converted.into(), array.nulls().cloned())))
     } else {
         Ok(None)
     }
@@ -467,9 +455,9 @@ pub fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64]) -> Result<(), Error>
 /// Generic function calculating value logarithmic conversion
 #[inline]
 fn logarithmic_calculation<T: ArrowPrimitiveType>(
-    array: &mut PrimitiveBuilder<T>,
+    array: &PrimitiveArray<T>,
     cc_val: &[f64],
-) -> Result<Option<PrimitiveBuilder<Float64Type>>, Error>
+) -> Result<Option<PrimitiveArray<Float64Type>>, Error>
 where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
@@ -481,30 +469,25 @@ where
     let p5 = cc_val[4];
     let p6 = cc_val[5];
     let p7 = cc_val[6];
-    let array_f64: Float64Array = array
-        .finish()
-        .try_unary(|value| {
-            num::cast::cast::<T::Native, f64>(value)
-                .ok_or_else(|| ArrowError::CastError(format!("Can't cast value {value:?} to f64")))
-        })
-        .context("failed converting array to f64")?;
-    let mut out = Float64Builder::with_capacity(array.capacity());
+    let values = array.values();
     if p4 == 0.0 {
-        out.values_slice_mut()
-            .iter_mut()
-            .zip(array_f64.values())
-            .for_each(|(y, x)| {
-                *y = (((x - p7) * p6 - p3) / p1).exp() / p2;
-            });
-        Ok(Some(out))
+        let converted: Vec<f64> = values
+            .iter()
+            .map(|v| {
+                let x: f64 = (*v).as_();
+                (((x - p7) * p6 - p3) / p1).exp() / p2
+            })
+            .collect();
+        Ok(Some(PrimitiveArray::new(converted.into(), array.nulls().cloned())))
     } else if p1 == 0.0 {
-        out.values_slice_mut()
-            .iter_mut()
-            .zip(array_f64.values())
-            .for_each(|(y, x)| {
-                *y = ((p3 / (x - p7) - p6) / p4).exp() / p5;
-            });
-        Ok(Some(out))
+        let converted: Vec<f64> = values
+            .iter()
+            .map(|v| {
+                let x: f64 = (*v).as_();
+                ((p3 / (x - p7) - p6) / p4).exp() / p5
+            })
+            .collect();
+        Ok(Some(PrimitiveArray::new(converted.into(), array.nulls().cloned())))
     } else {
         Ok(None)
     }
@@ -594,41 +577,36 @@ pub fn logarithmic_conversion(cn: &mut Cn3, cc_val: &[f64]) -> Result<(), Error>
 /// Generic function calculating algebraic expression conversion
 #[inline]
 fn alegbraic_conversion_calculation<T: ArrowPrimitiveType>(
-    array: &mut PrimitiveBuilder<T>,
+    array: &PrimitiveArray<T>,
     compiled: &Instruction,
     slab: &Slab,
     formulae: &str,
     name: &str,
-) -> Result<PrimitiveBuilder<Float64Type>, Error>
+) -> Result<PrimitiveArray<Float64Type>, Error>
 where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
-    let array_f64: Float64Array = array
-        .finish()
-        .try_unary(|value| {
-            num::cast::cast::<T::Native, f64>(value)
-                .ok_or_else(|| ArrowError::CastError(format!("Can't cast value {value:?} to f64")))
-        })
-        .context("failed converting array to f64")?;
-    let mut new_array = vec![0f64; array_f64.len()];
+    let values = array.values();
+    let mut new_array = vec![0f64; values.len()];
     new_array
         .iter_mut()
-        .zip(array_f64.values())
+        .zip(values)
         .for_each(|(new_array, a)| {
+            let a_f64: f64 = (*a).as_();
             let mut map = BTreeMap::new();
-            map.insert("X".to_string(), *a);
+            map.insert("X".to_string(), a_f64);
             match compiled.eval(slab, &mut map) {
                 Ok(res) => *new_array = res,
                 Err(error_message) => {
-                    *new_array = *a;
+                    *new_array = a_f64;
                     warn!(
-                        "{error_message}\n Could not compute formulae {formulae} for channel {name} and value {a}",
+                        "{error_message}\n Could not compute formulae {formulae} for channel {name} and value {a_f64}",
                     );
                 }
             }
         });
-    Ok(PrimitiveBuilder::new_from_buffer(new_array.into(), None))
+    Ok(PrimitiveArray::new(new_array.into(), array.nulls().cloned()))
 }
 
 /// Apply algebraic conversion to get physical data
@@ -779,28 +757,23 @@ fn algebraic_conversion(cn: &mut Cn3, formulae: &str) -> Result<(), Error> {
 /// Generic function calculating value to value with interpolation conversion
 #[inline]
 pub fn value_to_value_with_interpolation_calculation<T: ArrowPrimitiveType>(
-    array: &mut PrimitiveBuilder<T>,
+    array: &PrimitiveArray<T>,
     cc_val: Vec<f64>,
-) -> Result<PrimitiveBuilder<Float64Type>, Error>
+) -> Result<PrimitiveArray<Float64Type>, Error>
 where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
     let val: Vec<(&f64, &f64)> = cc_val.iter().tuples().collect();
-    let array_f64: Float64Array = array
-        .finish()
-        .try_unary(|value| {
-            num::cast::cast::<T::Native, f64>(value)
-                .ok_or_else(|| ArrowError::CastError(format!("Can't cast value {value:?} to f64")))
-        })
-        .context("failed converting array to f64")?;
-    let mut new_array = vec![0f64; array_f64.len()];
+    let values = array.values();
+    let mut new_array = vec![0f64; values.len()];
     new_array
         .iter_mut()
-        .zip(array_f64.values())
+        .zip(values)
         .for_each(|(new_array, a)| {
+            let a_f64: f64 = (*a).as_();
             *new_array = match val
-                .binary_search_by(|&(xi, _)| xi.partial_cmp(a).expect("Could not compare values"))
+                .binary_search_by(|&(xi, _)| xi.partial_cmp(&a_f64).expect("Could not compare values"))
             {
                 Ok(idx) => *val[idx].1,
                 Err(0) => *val[0].1,
@@ -808,11 +781,11 @@ where
                 Err(idx) => {
                     let (x0, y0) = val[idx - 1];
                     let (x1, y1) = val[idx];
-                    (y0 * (x1 - a) + y1 * (a - x0)) / (x1 - x0)
+                    (y0 * (x1 - a_f64) + y1 * (a_f64 - x0)) / (x1 - x0)
                 }
             };
         });
-    Ok(PrimitiveBuilder::new_from_buffer(new_array.into(), None))
+    Ok(PrimitiveArray::new(new_array.into(), array.nulls().cloned()))
 }
 
 /// Apply value to value with interpolation conversion to get physical data
@@ -897,28 +870,23 @@ pub fn value_to_value_with_interpolation(cn: &mut Cn3, cc_val: Vec<f64>) -> Resu
 /// Generic function calculating algebraic expression
 #[inline]
 pub fn value_to_value_without_interpolation_calculation<T: ArrowPrimitiveType>(
-    array: &mut PrimitiveBuilder<T>,
+    array: &PrimitiveArray<T>,
     cc_val: Vec<f64>,
-) -> Result<PrimitiveBuilder<Float64Type>, Error>
+) -> Result<PrimitiveArray<Float64Type>, Error>
 where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
     let val: Vec<(&f64, &f64)> = cc_val.iter().tuples().collect();
-    let array_f64: Float64Array = array
-        .finish()
-        .try_unary(|value| {
-            num::cast::cast::<T::Native, f64>(value)
-                .ok_or_else(|| ArrowError::CastError(format!("Can't cast value {value:?} to f64")))
-        })
-        .context("failed converting array to f64")?;
-    let mut new_array = vec![0f64; array_f64.len()];
+    let values = array.values();
+    let mut new_array = vec![0f64; values.len()];
     new_array
         .iter_mut()
-        .zip(array_f64.values())
+        .zip(values)
         .for_each(|(new_array, a)| {
+            let a_f64: f64 = (*a).as_();
             *new_array = match val
-                .binary_search_by(|&(xi, _)| xi.partial_cmp(a).expect("Could not compare values"))
+                .binary_search_by(|&(xi, _)| xi.partial_cmp(&a_f64).expect("Could not compare values"))
             {
                 Ok(idx) => *val[idx].1,
                 Err(0) => *val[0].1,
@@ -926,11 +894,11 @@ where
                 Err(idx) => {
                     let (x0, y0) = val[idx - 1];
                     let (x1, y1) = val[idx];
-                    if (a - x0) > (x1 - a) { *y1 } else { *y0 }
+                    if (a_f64 - x0) > (x1 - a_f64) { *y1 } else { *y0 }
                 }
             };
         });
-    Ok(PrimitiveBuilder::new_from_buffer(new_array.into(), None))
+    Ok(PrimitiveArray::new(new_array.into(), array.nulls().cloned()))
 }
 
 /// Apply value to value without interpolation conversion to get physical data
@@ -1017,30 +985,28 @@ pub fn value_to_value_without_interpolation(cn: &mut Cn3, cc_val: Vec<f64>) -> R
 /// Generic function calculating value to text expression
 #[inline]
 pub fn value_to_text_calculation<T: ArrowPrimitiveType>(
-    array: &mut PrimitiveBuilder<T>,
+    array: &PrimitiveArray<T>,
     cc_val_ref: &[(f64, String)],
-) -> Result<LargeStringBuilder, Error>
+) -> Result<LargeStringArray, Error>
 where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
     let mut new_array = LargeStringBuilder::with_capacity(array.len(), 32);
-    let array_f64: Float64Array = array
-        .finish()
-        .try_unary(|value| {
-            num::cast::cast::<T::Native, f64>(value)
-                .ok_or_else(|| ArrowError::CastError(format!("Can't cast value {value:?} to f64")))
-        })
-        .context("failed converting array to f64")?;
-    array_f64.values().iter().for_each(|val| {
-        let matched_key = cc_val_ref.iter().find(|&x| x.0 == *val);
+    for (i, val) in array.values().iter().enumerate() {
+        if array.is_null(i) {
+            new_array.append_null();
+            continue;
+        }
+        let val_f64: f64 = (*val).as_();
+        let matched_key = cc_val_ref.iter().find(|&x| x.0 == val_f64);
         if let Some(key) = matched_key {
             new_array.append_value(key.1.clone());
         } else {
             new_array.append_value(cc_val_ref[0].1.clone());
         }
-    });
-    Ok(new_array)
+    }
+    Ok(new_array.finish())
 }
 
 /// Apply value to text or scale conversion to get physical data
@@ -1118,34 +1084,32 @@ pub fn value_to_text(cn: &mut Cn3, cc_val_ref: &[(f64, String)]) -> Result<(), E
 /// Generic function calculating value range to text expression
 #[inline]
 pub fn value_range_to_text_calculation<T: ArrowPrimitiveType>(
-    array: &mut PrimitiveBuilder<T>,
+    array: &PrimitiveArray<T>,
     cc_val_ref: &(Vec<(f64, f64, String)>, String),
-) -> Result<LargeStringBuilder, Error>
+) -> Result<LargeStringArray, Error>
 where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
     let mut new_array = LargeStringBuilder::with_capacity(array.len(), 32);
-    let array_f64: Float64Array = array
-        .finish()
-        .try_unary(|value| {
-            num::cast::cast::<T::Native, f64>(value)
-                .ok_or_else(|| ArrowError::CastError(format!("Can't cast value {value:?} to f64")))
-        })
-        .context("failed converting array to f64")?;
-    array_f64.values().iter().for_each(|a| {
+    for (i, val) in array.values().iter().enumerate() {
+        if array.is_null(i) {
+            new_array.append_null();
+            continue;
+        }
+        let a: f64 = (*val).as_();
         let matched_key = cc_val_ref
             .0
             .iter()
             .enumerate()
-            .find(|&x| (x.1.0 <= *a) && (*a < x.1.1));
+            .find(|&x| (x.1.0 <= a) && (a < x.1.1));
         if let Some(key) = matched_key {
             new_array.append_value(key.1.2.clone());
         } else {
             new_array.append_value(cc_val_ref.1.clone());
         }
-    });
-    Ok(new_array)
+    }
+    Ok(new_array.finish())
 }
 
 /// Apply value range to text or scale conversion to get physical data
