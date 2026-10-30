@@ -141,7 +141,7 @@ fn export_and_verify_parquet() -> Result<()> {
     assert_eq!(orig_data.len(), total_rows);
 
     if let mdfr::data_holder::channel_data::ChannelData::Float64(b) = orig_data {
-        let arr = b.finish_cloned();
+        let arr = b;
         if !arr.is_empty() {
             assert_eq!(first_val.unwrap(), arr.value(0));
         }
@@ -209,7 +209,7 @@ fn export_and_verify_csv() -> Result<()> {
     assert_eq!(orig_data.len(), row_count);
 
     if let mdfr::data_holder::channel_data::ChannelData::UInt8(b) = orig_data {
-        let arr = b.finish_cloned();
+        let arr = b;
         if !arr.is_empty() {
             assert_eq!(first_val.unwrap().parse::<u8>().unwrap(), arr.value(0));
         }
@@ -256,7 +256,7 @@ fn export_and_verify_hdf5() -> Result<()> {
     assert_eq!(dataset.shape()[0], orig_data.len());
 
     if let mdfr::data_holder::channel_data::ChannelData::Float64(b) = orig_data {
-        let arr = b.finish_cloned();
+        let arr = b;
         if !arr.is_empty() {
             let hdf5_data = dataset.read_raw::<f64>()?;
             assert_eq!(hdf5_data[0], arr.value(0));

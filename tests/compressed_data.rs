@@ -104,7 +104,7 @@ fn deflate_data_list() -> Result<()> {
             counter += 1;
         });
         assert_eq!(
-            &ChannelData::Float64(Float64Builder::new_from_buffer(vect.into(), None)),
+            &ChannelData::Float64(Float64Builder::new_from_buffer(vect.into(), None).finish()),
             data
         );
     }
@@ -129,7 +129,7 @@ fn transpose_deflate_data_list() -> Result<()> {
             counter += 1;
         });
         assert_eq!(
-            &ChannelData::Float64(Float64Builder::new_from_buffer(vect.into(), None)),
+            &ChannelData::Float64(Float64Builder::new_from_buffer(vect.into(), None).finish()),
             data
         );
     }

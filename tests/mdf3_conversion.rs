@@ -128,8 +128,8 @@ mod conversions3_tests {
         builder.append_value(-5.0); // below first → first y = 0
         builder.append_value(25.0); // above last → last y = 200
 
-        let result = value_to_value_with_interpolation_calculation(&mut builder, cc_val).unwrap();
-        let values = result.values_slice();
+        let result = value_to_value_with_interpolation_calculation(&builder.finish(), cc_val).unwrap();
+        let values = result.values();
         assert_eq!(values.len(), 6);
         assert!((values[0] - 0.0).abs() < 1e-12);
         assert!((values[1] - 50.0).abs() < 1e-12);
@@ -153,8 +153,8 @@ mod conversions3_tests {
         builder.append_value(25.0); // above last → 200
 
         let result =
-            value_to_value_without_interpolation_calculation(&mut builder, cc_val).unwrap();
-        let values = result.values_slice();
+            value_to_value_without_interpolation_calculation(&builder.finish(), cc_val).unwrap();
+        let values = result.values();
         assert_eq!(values.len(), 6);
         assert!((values[0] - 0.0).abs() < 1e-12);
         assert!((values[1] - 0.0).abs() < 1e-12);
@@ -178,12 +178,11 @@ mod conversions3_tests {
         builder.append_value(3); // matches 3.0 → "three"
         builder.append_value(99); // no match → defaults to first entry ("one")
 
-        let result = value_to_text_calculation(&mut builder, &cc_val_ref).unwrap();
-        let arr = result.finish_cloned();
-        assert_eq!(arr.value(0), "one");
-        assert_eq!(arr.value(1), "two");
-        assert_eq!(arr.value(2), "three");
-        assert_eq!(arr.value(3), "one");
+        let result = value_to_text_calculation(&builder.finish(), &cc_val_ref).unwrap();
+        assert_eq!(result.value(0), "one");
+        assert_eq!(result.value(1), "two");
+        assert_eq!(result.value(2), "three");
+        assert_eq!(result.value(3), "one");
     }
 
     #[test]
@@ -201,12 +200,11 @@ mod conversions3_tests {
         builder.append_value(25.0); // in [20, 30) → "high"
         builder.append_value(35.0); // out of range → "unknown"
 
-        let result = value_range_to_text_calculation(&mut builder, &cc_val_ref).unwrap();
-        let arr = result.finish_cloned();
-        assert_eq!(arr.value(0), "low");
-        assert_eq!(arr.value(1), "medium");
-        assert_eq!(arr.value(2), "high");
-        assert_eq!(arr.value(3), "unknown");
+        let result = value_range_to_text_calculation(&builder.finish(), &cc_val_ref).unwrap();
+        assert_eq!(result.value(0), "low");
+        assert_eq!(result.value(1), "medium");
+        assert_eq!(result.value(2), "high");
+        assert_eq!(result.value(3), "unknown");
     }
 
     // ── Helper ──
@@ -225,10 +223,10 @@ mod conversions3_tests {
         use arrow::array::UInt16Builder;
         let mut builder = UInt16Builder::new();
         builder.append_value(10);
-        let mut cn = make_cn3(ChannelData::UInt16(builder));
+        let mut cn = make_cn3(ChannelData::UInt16(builder.finish()));
         linear_conversion(&mut cn, &[0.0, 3.0]).unwrap(); // 10*3+0 = 30
         if let ChannelData::Float64(ref b) = cn.data {
-            let vals = b.values_slice();
+            let vals = b.values();
             assert!((vals[0] - 30.0).abs() < 1e-12);
         } else {
             panic!("Expected Float64");
@@ -245,7 +243,7 @@ mod conversions3_tests {
         let cc_val = vec![0.0, 1.0, 1.0, 0.0, 0.0, 0.0];
         let mut builder = Float64Builder::new();
         builder.append_value(2.0);
-        let mut cn = make_cn3(ChannelData::Float64(builder));
+        let mut cn = make_cn3(ChannelData::Float64(builder.finish()));
         let result = polynomial_conversion(&mut cn, &cc_val);
         assert!(result.is_ok());
         // Data should now be Float64 (conversion applied)
@@ -262,7 +260,7 @@ mod conversions3_tests {
         let cc_val = vec![1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
         let mut builder = Float64Builder::new();
         builder.append_value(std::f64::consts::E);
-        let mut cn = make_cn3(ChannelData::Float64(builder));
+        let mut cn = make_cn3(ChannelData::Float64(builder.finish()));
         let result = exponential_conversion(&mut cn, &cc_val);
         assert!(result.is_ok());
         assert!(matches!(cn.data, ChannelData::Float64(_)));
@@ -278,7 +276,7 @@ mod conversions3_tests {
         let cc_val = vec![1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
         let mut builder = Float64Builder::new();
         builder.append_value(0.0);
-        let mut cn = make_cn3(ChannelData::Float64(builder));
+        let mut cn = make_cn3(ChannelData::Float64(builder.finish()));
         let result = logarithmic_conversion(&mut cn, &cc_val);
         assert!(result.is_ok());
         assert!(matches!(cn.data, ChannelData::Float64(_)));
@@ -293,10 +291,10 @@ mod conversions3_tests {
         let cc_val = vec![0.0, 0.0, 10.0, 100.0];
         let mut builder = UInt8Builder::new();
         builder.append_value(5); // 50
-        let mut cn = make_cn3(ChannelData::UInt8(builder));
+        let mut cn = make_cn3(ChannelData::UInt8(builder.finish()));
         value_to_value_with_interpolation(&mut cn, cc_val).unwrap();
         if let ChannelData::Float64(ref b) = cn.data {
-            let vals = b.values_slice();
+            let vals = b.values();
             assert!((vals[0] - 50.0).abs() < 1e-9);
         } else {
             panic!("Expected Float64");
@@ -311,10 +309,10 @@ mod conversions3_tests {
         let cc_val = vec![1.0, 10.0, 2.0, 20.0];
         let mut builder = UInt8Builder::new();
         builder.append_value(2); // exact match → 20.0
-        let mut cn = make_cn3(ChannelData::UInt8(builder));
+        let mut cn = make_cn3(ChannelData::UInt8(builder.finish()));
         value_to_value_without_interpolation(&mut cn, cc_val).unwrap();
         if let ChannelData::Float64(ref b) = cn.data {
-            let vals = b.values_slice();
+            let vals = b.values();
             assert!((vals[0] - 20.0).abs() < 1e-12);
         } else {
             panic!("Expected Float64");
@@ -329,11 +327,10 @@ mod conversions3_tests {
         let cc_val_ref = vec![(1.0, "one".to_string()), (2.0, "two".to_string())];
         let mut builder = UInt8Builder::new();
         builder.append_value(1);
-        let mut cn = make_cn3(ChannelData::UInt8(builder));
+        let mut cn = make_cn3(ChannelData::UInt8(builder.finish()));
         value_to_text(&mut cn, &cc_val_ref).unwrap();
         if let ChannelData::Utf8(ref b) = cn.data {
-            let arr = b.finish_cloned();
-            assert_eq!(arr.value(0), "one");
+            assert_eq!(b.value(0), "one");
         } else {
             panic!("Expected Utf8");
         }
@@ -350,11 +347,10 @@ mod conversions3_tests {
         let cc_val_ref = (ranges, "default".to_string());
         let mut builder = Float64Builder::new();
         builder.append_value(1.5); // in [1.0, 2.0)
-        let mut cn = make_cn3(ChannelData::Float64(builder));
+        let mut cn = make_cn3(ChannelData::Float64(builder.finish()));
         value_range_to_text(&mut cn, &cc_val_ref).unwrap();
         if let ChannelData::Utf8(ref b) = cn.data {
-            let arr = b.finish_cloned();
-            assert_eq!(arr.value(0), "in_range");
+            assert_eq!(b.value(0), "in_range");
         } else {
             panic!("Expected Utf8");
         }

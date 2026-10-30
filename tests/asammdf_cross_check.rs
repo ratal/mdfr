@@ -2,7 +2,7 @@ mod common;
 
 use anyhow::Result;
 use arrow::array::Array;
-use mdfr::data_holder::channel_data::ChannelData;
+use mdfr::data_holder::channel_data::{AsValuesSlice, ChannelData};
 use mdfr::mdfreader::Mdf;
 use pyo3::prelude::*;
 use pyo3::types::{PyAnyMethods, PyDict};
@@ -213,7 +213,7 @@ m.close()
             )?;
 
             if let Some(ChannelData::Utf8(b)) = mdf.get_channel_data("Data channel") {
-                let arr = b.finish_cloned();
+                let arr = b;
                 let py_vals: Vec<String> = locals.get_item("str_vals")?.unwrap().extract()?;
                 assert_eq!(arr.len(), py_vals.len());
                 for (i, py_val) in py_vals.iter().enumerate().take(arr.len()) {
@@ -252,7 +252,7 @@ m.close()
             )?;
 
             if let Some(ChannelData::FixedSizeByteArray(b)) = mdf.get_channel_data("Data channel") {
-                let arr = b.finish_cloned();
+                let arr = b;
                 let py_vals: Vec<Vec<u8>> = locals.get_item("raw_bytes")?.unwrap().extract()?;
                 assert_eq!(arr.len(), py_vals.len());
                 for (i, py_val) in py_vals.iter().enumerate().take(arr.len()) {
@@ -368,7 +368,7 @@ m.close()
             )?;
 
             if let Some(ChannelData::Utf8(b)) = mdf.get_channel_data("Data channel") {
-                let arr = b.finish_cloned();
+                let arr = b;
                 let py_vals: Vec<String> = locals.get_item("str_vals")?.unwrap().extract()?;
                 assert_eq!(arr.len(), py_vals.len());
                 for (i, py_val) in py_vals.iter().enumerate().take(arr.len()) {
@@ -499,7 +499,7 @@ m.close()
             )?;
 
             if let Some(ChannelData::Utf8(b)) = mdf.get_channel_data("Data channel") {
-                let arr = b.finish_cloned();
+                let arr = b;
                 let py_vals: Vec<String> = locals.get_item("text_vals")?.unwrap().extract()?;
                 assert_eq!(arr.len(), py_vals.len());
                 for (i, py_val) in py_vals.iter().enumerate().take(arr.len()) {

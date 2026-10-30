@@ -132,19 +132,19 @@ fn bench_channel_data_equality() {
         b1.append_value(v);
         b2.append_value(v);
     }
-    let cd1 = ChannelData::Float64(b1);
-    let cd2 = ChannelData::Float64(b2);
+    let cd1 = ChannelData::Float64(b1.finish());
+    let cd2 = ChannelData::Float64(b2.finish());
 
     // Baseline: Old .finish_cloned() deep-copy + Arrow Array equality
     let iterations = 100;
     let start_baseline = Instant::now();
     for _ in 0..iterations {
         let a1: ArrayRef = match &cd1 {
-            ChannelData::Float64(b) => std::sync::Arc::new(b.finish_cloned()),
+            ChannelData::Float64(b) => std::sync::Arc::new(b.clone()),
             _ => unreachable!(),
         };
         let a2: ArrayRef = match &cd2 {
-            ChannelData::Float64(b) => std::sync::Arc::new(b.finish_cloned()),
+            ChannelData::Float64(b) => std::sync::Arc::new(b.clone()),
             _ => unreachable!(),
         };
         let eq = black_box(a1 == a2);
@@ -180,14 +180,13 @@ fn bench_channel_data_equality() {
     for _ in 0..FSB_N {
         fsb_builder.append_value(raw_chunk).unwrap();
     }
-    let cd_fsb = ChannelData::FixedSizeByteArray(fsb_builder);
+    let cd_fsb = ChannelData::FixedSizeByteArray(fsb_builder.finish());
 
     // Old manual clone logic:
     let start_old_clone = Instant::now();
     for _ in 0..50 {
         let cloned = match &cd_fsb {
-            ChannelData::FixedSizeByteArray(b) => {
-                let arr = b.finish_cloned();
+            ChannelData::FixedSizeByteArray(arr) => {
                 let width = arr.value_length();
                 let len = arr.len();
                 let mut new_b = FixedSizeBinaryBuilder::with_capacity(len, width);
@@ -198,7 +197,7 @@ fn bench_channel_data_equality() {
                         new_b.append_value(arr.value(i)).unwrap();
                     }
                 }
-                ChannelData::FixedSizeByteArray(new_b)
+                ChannelData::FixedSizeByteArray(new_b.finish())
             }
             _ => unreachable!(),
         };
@@ -224,6 +223,89 @@ fn bench_channel_data_equality() {
         dur_new_clone / 50,
         clone_speedup
     );
+}
+
+fn bench_path1_immutable_array_lifecycle() {
+    println!("\n─── 1b. Path 1: Immutable ChannelData O(1) Zero-Copy vs Mutable Builder Clone ───");
+
+    const N: usize = 1_000_000;
+    let mut b = Float64Builder::with_capacity(N);
+    for i in 0..N {
+        b.append_value((i as f64) * 0.25);
+    }
+    let immutable_arr = b.finish();
+    let cd = ChannelData::Float64(immutable_arr);
+
+    const CLONE_ITERS: usize = 1_000;
+
+    // 1. Baseline: Old MutableBuilder Clone (allocates 8MB buffer and copies bytes on every clone)
+    let start_baseline = Instant::now();
+    for _ in 0..CLONE_ITERS {
+        let simulated_builder_clone: Vec<f64> = match &cd {
+            ChannelData::Float64(arr) => arr.values().to_vec(),
+            _ => unreachable!(),
+        };
+        black_box(simulated_builder_clone);
+    }
+    let dur_baseline = start_baseline.elapsed();
+
+    // 2. Path 1: Immutable Array Clone (O(1) Arc pointer bump, 0 bytes allocated, 0 copies)
+    let start_path1 = Instant::now();
+    for _ in 0..CLONE_ITERS {
+        let cloned_cd = cd.clone();
+        black_box(cloned_cd);
+    }
+    let dur_path1 = start_path1.elapsed();
+
+    let speedup = dur_baseline.as_nanos() as f64 / dur_path1.as_nanos().max(1) as f64;
+    let baseline_per_op = dur_baseline / (CLONE_ITERS as u32);
+    let path1_per_op = dur_path1 / (CLONE_ITERS as u32);
+
+    println!(
+        "Cloning 1,000,000 Float64 ChannelData (8.00 MB data):\n  \
+         • Baseline (Old Builder clone: 8 MB heap allocation + memcpy): {:?} / op\n  \
+         • Path 1 (Immutable Array clone: O(1) Arc bump, 0 bytes copied): {:?} / op\n  \
+         • Measured Speedup:                                            {:.2}x faster",
+        baseline_per_op, path1_per_op, speedup
+    );
+
+    #[cfg(feature = "polars")]
+    {
+        use polars::prelude::NamedFrom;
+
+        // Polars zero-copy export comparison
+        const POLARS_ITERS: usize = 1_000;
+        let start_polars_baseline = Instant::now();
+        for _ in 0..POLARS_ITERS {
+            // Old approach: finish_cloned() deep copy into Series
+            let vals = match &cd {
+                ChannelData::Float64(arr) => arr.values().to_vec(),
+                _ => unreachable!(),
+            };
+            let series = polars::prelude::Series::new("test".into(), vals);
+            let _ = black_box(series);
+        }
+        let dur_polars_baseline = start_polars_baseline.elapsed();
+
+        let start_polars_path1 = Instant::now();
+        for _ in 0..POLARS_ITERS {
+            // Path 1 approach: direct zero-copy conversion
+            let series = mdfr::export::polars::channel_data_to_series("test", &cd).unwrap();
+            let _ = black_box(series);
+        }
+        let dur_polars_path1 = start_polars_path1.elapsed();
+
+        let polars_speedup = dur_polars_baseline.as_nanos() as f64 / dur_polars_path1.as_nanos().max(1) as f64;
+        println!(
+            "Polars Series Conversion (1,000,000 Float64 elements):\n  \
+             • Baseline (Deep-copy into Series):        {:?} / op\n  \
+             • Path 1 (Zero-copy Arrow Array to Series): {:?} / op\n  \
+             • Measured Speedup:                        {:.2}x faster",
+            dur_polars_baseline / (POLARS_ITERS as u32),
+            dur_polars_path1 / (POLARS_ITERS as u32),
+            polars_speedup
+        );
+    }
 }
 
 fn bench_sym_buf_reader_sequential_io() {
@@ -448,6 +530,7 @@ fn main() {
     println!("══════════════════════════════════════════════════════════════════════");
 
     bench_channel_data_equality();
+    bench_path1_immutable_array_lifecycle();
     bench_sym_buf_reader_sequential_io();
     bench_channel_decoding_slice();
     bench_block_header_serialization();

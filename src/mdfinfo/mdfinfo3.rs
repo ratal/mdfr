@@ -1,6 +1,6 @@
 //! Parsing of file metadata into MdfInfo3 struct
 use anyhow::{Context, Error, Result, bail};
-use arrow::array::{UInt8Builder, UInt16Builder, UInt32Builder};
+use arrow::array::{UInt8Array, UInt16Array, UInt32Array};
 use binrw::BinRead;
 use byteorder::{LittleEndian, ReadBytesExt};
 use chrono::{DateTime, FixedOffset, NaiveDate, TimeZone};
@@ -1076,6 +1076,8 @@ pub struct Cn3 {
     pub channel_data_valid: bool,
     /// flag set during data read to indicate this channel is in the read set
     pub should_read: bool,
+    /// Optional mutable staging builder used while decoding data blocks
+    pub builder: Option<crate::data_holder::channel_builder::ChannelBuilder>,
 }
 
 impl Clone for Cn3 {
@@ -1093,11 +1095,25 @@ impl Clone for Cn3 {
             endian: self.endian,
             channel_data_valid: self.channel_data_valid,
             should_read: self.should_read,
+            builder: None,
         }
     }
 }
 
 impl Cn3 {
+    /// Initializes builder for mutable record accumulation during file reading
+    pub fn init_builder(&mut self, cycle_count: usize) -> Result<(), Error> {
+        let data_type = convert_data_type_3to4(self.block2.cn_data_type);
+        self.builder = Some(crate::data_holder::channel_builder::ChannelBuilder::new_zeroed(
+            0,
+            data_type,
+            cycle_count,
+            self.n_bytes as usize,
+            (Vec::new(), crate::data_holder::tensor_arrow::Order::RowMajor),
+            1,
+        )?);
+        Ok(())
+    }
     /// Returns the minimum signal value if the value range valid flag (bit 3) is set.
     /// Returns `None` if the flag is not set.
     pub fn val_range_min(&self) -> Option<f64> {
@@ -1335,6 +1351,7 @@ fn parse_cn3_block(
         pos_byte_beg,
         n_bytes,
         data: data_type_init(0, data_type, n_bytes as u32, 1, 0)?,
+        builder: None,
         is_converted: false,
         endian,
         channel_data_valid: false,
@@ -1387,7 +1404,8 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Milliseconds"),
         pos_byte_beg,
         n_bytes: 2,
-        data: ChannelData::UInt16(UInt16Builder::new()),
+        data: ChannelData::UInt16(UInt16Array::from(Vec::<u16>::new())),
+        builder: None,
         is_converted: false,
         endian: Endianness::Little,
         channel_data_valid: false,
@@ -1408,7 +1426,8 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Minutes"),
         pos_byte_beg: pos_byte_beg + 2,
         n_bytes: 1,
-        data: ChannelData::UInt8(UInt8Builder::new()),
+        data: ChannelData::UInt8(UInt8Array::from(Vec::<u8>::new())),
+        builder: None,
         is_converted: false,
         endian: Endianness::Little,
         channel_data_valid: false,
@@ -1429,7 +1448,8 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Hours"),
         pos_byte_beg: pos_byte_beg + 3,
         n_bytes: 1,
-        data: ChannelData::UInt8(UInt8Builder::new()),
+        data: ChannelData::UInt8(UInt8Array::from(Vec::<u8>::new())),
+        builder: None,
         is_converted: false,
         endian: Endianness::Little,
         channel_data_valid: false,
@@ -1450,7 +1470,8 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Days"),
         pos_byte_beg: pos_byte_beg + 4,
         n_bytes: 1,
-        data: ChannelData::UInt8(UInt8Builder::new()),
+        data: ChannelData::UInt8(UInt8Array::from(Vec::<u8>::new())),
+        builder: None,
         is_converted: false,
         endian: Endianness::Little,
         channel_data_valid: false,
@@ -1471,7 +1492,8 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Month"),
         pos_byte_beg: pos_byte_beg + 5,
         n_bytes: 1,
-        data: ChannelData::UInt8(UInt8Builder::new()),
+        data: ChannelData::UInt8(UInt8Array::from(Vec::<u8>::new())),
+        builder: None,
         is_converted: false,
         endian: Endianness::Little,
         channel_data_valid: false,
@@ -1492,7 +1514,8 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         description: String::from("Years"),
         pos_byte_beg: pos_byte_beg + 7,
         n_bytes: 1,
-        data: ChannelData::UInt8(UInt8Builder::new()),
+        data: ChannelData::UInt8(UInt8Array::from(Vec::<u8>::new())),
+        builder: None,
         is_converted: false,
         endian: Endianness::Little,
         channel_data_valid: false,
@@ -1523,7 +1546,8 @@ fn can_open_time(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3) {
         description: String::from("Milliseconds"),
         pos_byte_beg,
         n_bytes: 4,
-        data: ChannelData::UInt32(UInt32Builder::new()),
+        data: ChannelData::UInt32(UInt32Array::from(Vec::<u32>::new())),
+        builder: None,
         is_converted: false,
         endian: Endianness::Little,
         channel_data_valid: false,
@@ -1544,7 +1568,8 @@ fn can_open_time(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3) {
         description: String::from("Days"),
         pos_byte_beg: pos_byte_beg + 4,
         n_bytes: 2,
-        data: ChannelData::UInt16(UInt16Builder::new()),
+        data: ChannelData::UInt16(UInt16Array::from(Vec::<u16>::new())),
+        builder: None,
         is_converted: false,
         endian: Endianness::Little,
         channel_data_valid: false,

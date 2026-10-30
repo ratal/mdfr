@@ -1,5 +1,5 @@
 //! data read and load in memory based in MdfInfo4's metadata
-use crate::data_holder::channel_data::ChannelData;
+use crate::data_holder::channel_builder::ChannelBuilder;
 use crate::mdfinfo::MdfInfo;
 use crate::mdfinfo::block_chain::BlockChain;
 use crate::mdfinfo::mdfinfo4::{
@@ -127,6 +127,11 @@ pub fn mdfreader4<'a>(
                     channel_group
                         .process_mlsd_channels()
                         .context("failed processing mlsd channels")?;
+                    for cn in channel_group.cn.values_mut() {
+                        if let Some(b) = cn.builder.take() {
+                            cn.data = b.finish();
+                        }
+                    }
                 }
                 // Defer conversion of channels to physical values (handled lazily on access)
             }
@@ -455,6 +460,9 @@ fn read_sd(
                     let (dl_blocks, pos) = parser_dl4(rdr, position)?;
                     position = read_vlsd_from_dl_blocks(rdr, dl_blocks, pos, cn, decoder)?;
                 }
+                if let Some(b) = cn.builder.take() {
+                    cn.data = b.finish();
+                }
             }
         }
     }
@@ -491,7 +499,7 @@ fn read_vd(
             }
 
             // Get offsets from the VLSC channel data
-            let offsets: Vec<u64> = cn.data.to_u64_vec().unwrap_or_default();
+            let offsets: Vec<u64> = cn.to_u64_vec().unwrap_or_default();
 
             if offsets.is_empty() {
                 continue;
@@ -506,7 +514,7 @@ fn read_vd(
                         .cn
                         .values()
                         .find(|cn| cn.block_position == size_pos)
-                        .and_then(|size_cn| size_cn.data.to_u64_vec())
+                        .and_then(|size_cn| size_cn.to_u64_vec())
                 })
                 .unwrap_or_default();
 
@@ -538,13 +546,16 @@ fn read_vd(
         if let Some(cn) = channel_group.cn.get_mut(rec_pos) {
             // Reinitialize cn.data for the actual variable length data
             // cn_data_type: 6=SBC, 7=UTF-8, 8=UTF-16 LE, 9=UTF-16 BE, 10=byte array, 17=UTF-8 with BOM
-            cn.data = match cn_data_type {
-                6..=9 | 17 => ChannelData::Utf8(arrow::array::LargeStringBuilder::new()),
-                10 => ChannelData::VariableSizeByteArray(arrow::array::LargeBinaryBuilder::new()),
+            cn.builder = match cn_data_type {
+                6..=9 | 17 => Some(ChannelBuilder::Utf8(arrow::array::LargeStringBuilder::new())),
+                10 => Some(ChannelBuilder::VariableSizeByteArray(arrow::array::LargeBinaryBuilder::new())),
                 _ => continue,
             };
 
             read_vlsc_from_bytes(&data, cn, &offsets, &sizes, decoder)?;
+            if let Some(b) = cn.builder.take() {
+                cn.data = b.finish();
+            }
         }
     }
     Ok(position)
@@ -564,8 +575,12 @@ fn read_vlsd_from_bytes(
     let mut remaining: usize = data_length - position;
     let mut nrecord: usize = 0;
     let mut str_buf = String::new();
-    match &mut cn.data {
-        ChannelData::Utf8(array) => {
+    if cn.builder.is_none() {
+        cn.init_builder(0)?;
+    }
+    let builder = cn.builder.as_mut().unwrap();
+    match builder {
+        ChannelBuilder::Utf8(array) => {
             let cn_data_type = cn.block.cn_data_type;
             while remaining > 0 {
                 let len = &data[position..position + std::mem::size_of::<u32>()];
@@ -608,7 +623,7 @@ fn read_vlsd_from_bytes(
                 data.clear()
             }
         }
-        ChannelData::VariableSizeByteArray(array) => {
+        ChannelBuilder::VariableSizeByteArray(array) => {
             while remaining > 0 {
                 let len = &data[position..position + std::mem::size_of::<u32>()];
                 let length: usize =
@@ -653,8 +668,12 @@ fn read_vlsc_from_bytes(
     let data_length = data.len();
     let mut max_position: usize = 0;
     let mut str_buf = String::new();
-    match &mut cn.data {
-        ChannelData::Utf8(array) => {
+    let builder = match &mut cn.builder {
+        Some(b) => b,
+        None => return Ok(0),
+    };
+    match builder {
+        ChannelBuilder::Utf8(array) => {
             let cn_data_type = cn.block.cn_data_type;
             for (offset, size) in offsets.iter().zip(sizes.iter()) {
                 let start = *offset as usize;
@@ -675,7 +694,7 @@ fn read_vlsc_from_bytes(
                 }
             }
         }
-        ChannelData::VariableSizeByteArray(array) => {
+        ChannelBuilder::VariableSizeByteArray(array) => {
             for (offset, size) in offsets.iter().zip(sizes.iter()) {
                 let start = *offset as usize;
                 let length = *size as usize;
@@ -704,14 +723,6 @@ fn read_independent_channel_data(
     let cn_data = cn.block.cn_data;
     if cn_data == 0 || cycle_count == 0 {
         return Ok(position);
-    }
-    if cn.data.is_empty() {
-        cn.data = cn.data.zeros(
-            cn.block.cn_type,
-            cycle_count as u64,
-            cn.n_bytes,
-            cn.shape.clone(),
-        )?;
     }
 
     rdr.seek_relative(cn_data - position)
@@ -1037,14 +1048,6 @@ fn read_dg_template_array(
         }
     }
 
-    if cn.data.is_empty() {
-        cn.data = cn.data.zeros(
-            cn.block.cn_type,
-            cycle_count as u64,
-            cn.n_bytes,
-            cn.shape.clone(),
-        )?;
-    }
     read_one_channel_array(&interleaved, cn, cycle_count)?;
     Ok(position)
 }
@@ -1858,21 +1861,25 @@ fn read_all_channels_unsorted_from_bytes(
                                         if *nrecord == 0 && target_cn.block.cn_type == 7 {
                                             match target_cn.block.cn_data_type {
                                                 6..=9 | 17 => {
-                                                    target_cn.data = ChannelData::Utf8(
+                                                    target_cn.builder = Some(ChannelBuilder::Utf8(
                                                         arrow::array::LargeStringBuilder::new(),
-                                                    );
+                                                    ));
                                                 }
                                                 10 => {
-                                                    target_cn.data =
-                                                        ChannelData::VariableSizeByteArray(
+                                                    target_cn.builder = Some(
+                                                        ChannelBuilder::VariableSizeByteArray(
                                                             arrow::array::LargeBinaryBuilder::new(),
-                                                        );
+                                                        ),
+                                                    );
                                                 }
                                                 _ => {}
                                             }
                                         }
-                                        match &mut target_cn.data {
-                                            ChannelData::Utf8(array) => {
+                                        if target_cn.builder.is_none() {
+                                            target_cn.init_builder(0)?;
+                                        }
+                                        match target_cn.builder.as_mut().unwrap() {
+                                            ChannelBuilder::Utf8(array) => {
                                                 if target_cn.block.cn_data_type == 7 {
                                                     // UTF-8: no decoding needed, use &str directly
                                                     array.append_value(
@@ -1925,7 +1932,7 @@ fn read_all_channels_unsorted_from_bytes(
                                                     );
                                                 }
                                             }
-                                            ChannelData::VariableSizeByteArray(array) => {
+                                            ChannelBuilder::VariableSizeByteArray(array) => {
                                                 array.append_value(record);
                                             }
                                             _ => {
@@ -2032,17 +2039,6 @@ fn read_all_channels_unsorted_from_bytes(
                         record_data.clear();
                     }
                 }
-                if cn.data.is_empty() {
-                    let _ = cn
-                        .data
-                        .zeros(
-                            cn.block.cn_type,
-                            cycle_count as u64,
-                            cn.n_bytes,
-                            cn.shape.clone(),
-                        )
-                        .map(|d| cn.data = d);
-                }
                 let _ = read_one_channel_array(&interleaved, cn, cycle_count);
             }
         }
@@ -2129,14 +2125,7 @@ fn initialise_arrays(channel_group: &mut Cg4, cg_cycle_count: &u64) -> Result<()
         .filter(|(_cn_record_position, cn)| cn.should_read)
         .try_for_each(
             |(_cn_record_position, cn): (&i32, &mut Cn4)| -> Result<(), Error> {
-                cn.data = cn
-                    .data
-                    .zeros(
-                        cn.block.cn_type,
-                        *cg_cycle_count,
-                        cn.n_bytes,
-                        cn.shape.clone(),
-                    )
+                cn.init_builder(*cg_cycle_count as usize)
                     .with_context(|| {
                         format!("Zeros initialisation of channel {} failed", cn.unique_name)
                     })?;
@@ -2198,34 +2187,39 @@ pub fn apply_bit_mask_offset(dg: &mut Dg4) -> Result<(), Error> {
                                 }
                             }};
                         }
-                        match &mut cn.data {
-                            ChannelData::Int8(array) => shift_slice!(array, 8),
-                            ChannelData::UInt8(array) => shift_slice!(array, 8),
-                            ChannelData::Int16(array) => shift_slice!(array, 16),
-                            ChannelData::UInt16(array) => shift_slice!(array, 16),
-                            ChannelData::Int32(array) => shift_slice!(array, 32),
-                            ChannelData::UInt32(array) => shift_slice!(array, 32),
-                            ChannelData::Float32(_) => (),
-                            ChannelData::Int64(array) => shift_slice!(array, 64),
-                            ChannelData::UInt64(array) => shift_slice!(array, 64),
-                            ChannelData::Float64(_) => (),
-                            ChannelData::Complex32(_) => (),
-                            ChannelData::Complex64(_) => (),
-                            ChannelData::Utf8(_) => (),
-                            ChannelData::VariableSizeByteArray(_) => (),
-                            ChannelData::FixedSizeByteArray(_) => (),
-                            ChannelData::ArrayDInt8(array) => shift_slice!(array, 8),
-                            ChannelData::ArrayDUInt8(array) => shift_slice!(array, 8),
-                            ChannelData::ArrayDInt16(array) => shift_slice!(array, 16),
-                            ChannelData::ArrayDUInt16(array) => shift_slice!(array, 16),
-                            ChannelData::ArrayDInt32(array) => shift_slice!(array, 32),
-                            ChannelData::ArrayDUInt32(array) => shift_slice!(array, 32),
-                            ChannelData::ArrayDFloat32(_) => (),
-                            ChannelData::ArrayDInt64(array) => shift_slice!(array, 64),
-                            ChannelData::ArrayDUInt64(array) => shift_slice!(array, 64),
-                            ChannelData::ArrayDFloat64(_) => (),
-                            ChannelData::Union(_) => (),
+                        if let Some(builder) = &mut cn.builder {
+                            match builder {
+                                ChannelBuilder::Int8(array) => shift_slice!(array, 8),
+                                ChannelBuilder::UInt8(array) => shift_slice!(array, 8),
+                                ChannelBuilder::Int16(array) => shift_slice!(array, 16),
+                                ChannelBuilder::UInt16(array) => shift_slice!(array, 16),
+                                ChannelBuilder::Int32(array) => shift_slice!(array, 32),
+                                ChannelBuilder::UInt32(array) => shift_slice!(array, 32),
+                                ChannelBuilder::Float32(_) => (),
+                                ChannelBuilder::Int64(array) => shift_slice!(array, 64),
+                                ChannelBuilder::UInt64(array) => shift_slice!(array, 64),
+                                ChannelBuilder::Float64(_) => (),
+                                ChannelBuilder::Complex32(_) => (),
+                                ChannelBuilder::Complex64(_) => (),
+                                ChannelBuilder::Utf8(_) => (),
+                                ChannelBuilder::VariableSizeByteArray(_) => (),
+                                ChannelBuilder::FixedSizeByteArray(_) => (),
+                                ChannelBuilder::ArrayDInt8(array) => shift_slice!(array, 8),
+                                ChannelBuilder::ArrayDUInt8(array) => shift_slice!(array, 8),
+                                ChannelBuilder::ArrayDInt16(array) => shift_slice!(array, 16),
+                                ChannelBuilder::ArrayDUInt16(array) => shift_slice!(array, 16),
+                                ChannelBuilder::ArrayDInt32(array) => shift_slice!(array, 32),
+                                ChannelBuilder::ArrayDUInt32(array) => shift_slice!(array, 32),
+                                ChannelBuilder::ArrayDFloat32(_) => (),
+                                ChannelBuilder::ArrayDInt64(array) => shift_slice!(array, 64),
+                                ChannelBuilder::ArrayDUInt64(array) => shift_slice!(array, 64),
+                                ChannelBuilder::ArrayDFloat64(_) => (),
+                                ChannelBuilder::Union(_) => (),
+                            }
                         }
+                    }
+                    if let Some(b) = cn.builder.take() {
+                        cn.data = b.finish();
                     }
                     Ok(())
                 })
@@ -2426,95 +2420,100 @@ fn store_decoded_values_in_channel(
     values: Vec<Vec<u8>>,
     decoder: &mut Dec,
 ) -> Result<()> {
+    if cn.builder.is_none() {
+        cn.init_builder(values.len())?;
+    }
     let mut str_buf = String::new();
+    let builder = cn.builder.as_mut().expect("builder should be initialized");
     for value_bytes in values {
-        match &mut cn.data {
-            ChannelData::Int8(builder) if !value_bytes.is_empty() => {
-                builder.append_value(value_bytes[0] as i8);
+        match builder {
+            ChannelBuilder::Int8(b) if !value_bytes.is_empty() => {
+                b.append_value(value_bytes[0] as i8);
             }
-            ChannelData::UInt8(builder) if !value_bytes.is_empty() => {
-                builder.append_value(value_bytes[0]);
+            ChannelBuilder::UInt8(b) if !value_bytes.is_empty() => {
+                b.append_value(value_bytes[0]);
             }
-            ChannelData::Int16(builder) if value_bytes.len() >= 2 => {
+            ChannelBuilder::Int16(b) if value_bytes.len() >= 2 => {
                 let val = if cn.endian.is_big() {
                     i16::from_be_bytes(value_bytes[..2].try_into()?)
                 } else {
                     i16::from_le_bytes(value_bytes[..2].try_into()?)
                 };
-                builder.append_value(val);
+                b.append_value(val);
             }
-            ChannelData::UInt16(builder) if value_bytes.len() >= 2 => {
+            ChannelBuilder::UInt16(b) if value_bytes.len() >= 2 => {
                 let val = if cn.endian.is_big() {
                     u16::from_be_bytes(value_bytes[..2].try_into()?)
                 } else {
                     u16::from_le_bytes(value_bytes[..2].try_into()?)
                 };
-                builder.append_value(val);
+                b.append_value(val);
             }
-            ChannelData::Int32(builder) if value_bytes.len() >= 4 => {
+            ChannelBuilder::Int32(b) if value_bytes.len() >= 4 => {
                 let val = if cn.endian.is_big() {
                     i32::from_be_bytes(value_bytes[..4].try_into()?)
                 } else {
                     i32::from_le_bytes(value_bytes[..4].try_into()?)
                 };
-                builder.append_value(val);
+                b.append_value(val);
             }
-            ChannelData::UInt32(builder) if value_bytes.len() >= 4 => {
+            ChannelBuilder::UInt32(b) if value_bytes.len() >= 4 => {
                 let val = if cn.endian.is_big() {
                     u32::from_be_bytes(value_bytes[..4].try_into()?)
                 } else {
                     u32::from_le_bytes(value_bytes[..4].try_into()?)
                 };
-                builder.append_value(val);
+                b.append_value(val);
             }
-            ChannelData::Float32(builder) if value_bytes.len() >= 4 => {
+            ChannelBuilder::Float32(b) if value_bytes.len() >= 4 => {
                 let val = if cn.endian.is_big() {
                     f32::from_be_bytes(value_bytes[..4].try_into()?)
                 } else {
                     f32::from_le_bytes(value_bytes[..4].try_into()?)
                 };
-                builder.append_value(val);
+                b.append_value(val);
             }
-            ChannelData::Int64(builder) if value_bytes.len() >= 8 => {
+            ChannelBuilder::Int64(b) if value_bytes.len() >= 8 => {
                 let val = if cn.endian.is_big() {
                     i64::from_be_bytes(value_bytes[..8].try_into()?)
                 } else {
                     i64::from_le_bytes(value_bytes[..8].try_into()?)
                 };
-                builder.append_value(val);
+                b.append_value(val);
             }
-            ChannelData::UInt64(builder) if value_bytes.len() >= 8 => {
+            ChannelBuilder::UInt64(b) if value_bytes.len() >= 8 => {
                 let val = if cn.endian.is_big() {
                     u64::from_be_bytes(value_bytes[..8].try_into()?)
                 } else {
                     u64::from_le_bytes(value_bytes[..8].try_into()?)
                 };
-                builder.append_value(val);
+                b.append_value(val);
             }
-            ChannelData::Float64(builder) if value_bytes.len() >= 8 => {
+            ChannelBuilder::Float64(b) if value_bytes.len() >= 8 => {
                 let val = if cn.endian.is_big() {
                     f64::from_be_bytes(value_bytes[..8].try_into()?)
                 } else {
                     f64::from_le_bytes(value_bytes[..8].try_into()?)
                 };
-                builder.append_value(val);
+                b.append_value(val);
             }
-            ChannelData::Utf8(builder) => {
-                builder.append_value(decode_string_bytes(
+            ChannelBuilder::Utf8(b) => {
+                b.append_value(decode_string_bytes(
                     &value_bytes,
                     cn.block.cn_data_type,
                     decoder,
                     &mut str_buf,
                 )?);
             }
-            ChannelData::VariableSizeByteArray(builder) => {
-                builder.append_value(&value_bytes);
+            ChannelBuilder::VariableSizeByteArray(b) => {
+                b.append_value(&value_bytes);
             }
             _ => {
                 // For other types (complex, tensor, etc.), skip for now
             }
         }
     }
+    cn.data = cn.builder.take().unwrap().finish();
     Ok(())
 }
 

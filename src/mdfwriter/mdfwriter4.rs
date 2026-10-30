@@ -1454,6 +1454,7 @@ fn create_blocks(
             invalid_mask: None,
             event_template: None,
             should_read: false,
+            builder: None,
         };
         let mut new_cg = Cg4 {
             header: cg_block_header,
@@ -1525,8 +1526,7 @@ fn is_vlsd_data(data: &ChannelData) -> bool {
 /// followed by the raw bytes (with null terminator for UTF-8 strings).
 fn to_sd_bytes(data: &ChannelData) -> Result<Vec<u8>, Error> {
     match data {
-        ChannelData::Utf8(a) => {
-            let array = a.finish_cloned();
+        ChannelData::Utf8(array) => {
             let mut result = Vec::new();
             for i in 0..array.len() {
                 let value = array.value(i);
@@ -1539,8 +1539,7 @@ fn to_sd_bytes(data: &ChannelData) -> Result<Vec<u8>, Error> {
             }
             Ok(result)
         }
-        ChannelData::VariableSizeByteArray(a) => {
-            let array = a.finish_cloned();
+        ChannelData::VariableSizeByteArray(array) => {
             let mut result = Vec::new();
             for i in 0..array.len() {
                 let value = array.value(i);
@@ -1557,8 +1556,7 @@ fn to_sd_bytes(data: &ChannelData) -> Result<Vec<u8>, Error> {
 #[allow(dead_code)]
 fn calculate_sd_size(data: &ChannelData) -> usize {
     match data {
-        ChannelData::Utf8(a) => {
-            let array = a.finish_cloned();
+        ChannelData::Utf8(array) => {
             let mut size = 0usize;
             for i in 0..array.len() {
                 let value = array.value(i);
@@ -1567,8 +1565,7 @@ fn calculate_sd_size(data: &ChannelData) -> usize {
             }
             size
         }
-        ChannelData::VariableSizeByteArray(a) => {
-            let array = a.finish_cloned();
+        ChannelData::VariableSizeByteArray(array) => {
             let mut size = 0usize;
             for i in 0..array.len() {
                 let value = array.value(i);

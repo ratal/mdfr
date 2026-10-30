@@ -10,7 +10,7 @@ use crate::error::{Error, Result};
 
 /// On-disk data layout strategy for the logger.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(all(feature = "defmt", not(feature = "std")), derive(defmt::Format))]
 pub enum DataLayout {
     /// Sorted: one DGBLOCK per channel group, each with its own DT/DZ block chain (via DL/HL).
     /// Highest read speed in `mdfr` (no sorting pass required).
@@ -23,12 +23,12 @@ pub enum DataLayout {
 
 /// Opaque handle to a channel group in a [`Schema`] / [`Logger`](super::Logger).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(all(feature = "defmt", not(feature = "std")), derive(defmt::Format))]
 pub struct GroupHandle(pub u16);
 
 /// Opaque handle to a channel within a group.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(all(feature = "defmt", not(feature = "std")), derive(defmt::Format))]
 pub struct ChannelHandle {
     /// Group index (`0..groups.len()`).
     pub group: u16,

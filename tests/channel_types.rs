@@ -28,7 +28,7 @@ fn master_channels() -> Result<()> {
         *v = counter * 0.03;
         counter += 1.
     });
-    let expected_master = ChannelData::Float64(Float64Builder::new_from_buffer(vect.into(), None));
+    let expected_master = ChannelData::Float64(Float64Builder::new_from_buffer(vect.into(), None).finish());
 
     let file_name = format!(
         "{}{}{}",
@@ -84,7 +84,7 @@ fn mlsd_channels() -> Result<()> {
     expected_string_result.append_value("seven");
     expected_string_result.append_value("eight");
     expected_string_result.append_value("nine");
-    let expected_string_result = ChannelData::Utf8(expected_string_result);
+    let expected_string_result = ChannelData::Utf8(expected_string_result.finish());
 
     let file_name = format!(
         "{}{}{}",
@@ -147,7 +147,7 @@ fn virtual_data_channels() -> Result<()> {
         *v += counter;
         counter += 1
     });
-    let virtal_vect = UInt64Builder::new_from_buffer(vect.into(), None);
+    let mut virtal_vect = UInt64Builder::new_from_buffer(vect.into(), None);
 
     let file_name = format!(
         "{}{}{}",
@@ -158,7 +158,7 @@ fn virtual_data_channels() -> Result<()> {
     let mut mdf = Mdf::new(&file_name)?;
     mdf.load_all_channels_data_in_memory()?;
     if let Some(data) = mdf.get_channel_data("Data channel") {
-        assert_eq!(ChannelData::UInt64(virtal_vect), *data);
+        assert_eq!(ChannelData::UInt64(virtal_vect.finish()), *data);
     }
 
     let mut vect: Vec<f64> = vec![100.0f64; 200];
@@ -167,7 +167,7 @@ fn virtual_data_channels() -> Result<()> {
         *v += counter;
         counter -= 2.0
     });
-    let virtal_linear_vect = Float64Builder::new_from_buffer(vect.into(), None);
+    let mut virtal_linear_vect = Float64Builder::new_from_buffer(vect.into(), None);
 
     let file_name = format!(
         "{}{}{}",
@@ -178,7 +178,7 @@ fn virtual_data_channels() -> Result<()> {
     let mut mdf = Mdf::new(&file_name)?;
     mdf.load_all_channels_data_in_memory()?;
     if let Some(data) = mdf.get_channel_data("Data channel") {
-        assert_eq!(ChannelData::Float64(virtal_linear_vect), *data);
+        assert_eq!(ChannelData::Float64(virtal_linear_vect.finish()), *data);
     }
 
     let file_name = format!(
@@ -191,10 +191,9 @@ fn virtual_data_channels() -> Result<()> {
     mdf.load_all_channels_data_in_memory()?;
     if let Some(data) = mdf.get_channel_data("Data channel") {
         assert_eq!(
-            ChannelData::Float64(Float64Builder::new_from_buffer(
-                vec![42f64; 200].into(),
-                None
-            )),
+            ChannelData::Float64(
+                Float64Builder::new_from_buffer(vec![42f64; 200].into(), None).finish()
+            ),
             *data
         );
     }
@@ -216,7 +215,7 @@ fn vlsd_channels() -> Result<()> {
     expected_string_result.append_value("seven");
     expected_string_result.append_value("eight");
     expected_string_result.append_value("nine");
-    let expected_string_result = ChannelData::Utf8(expected_string_result);
+    let expected_string_result = ChannelData::Utf8(expected_string_result.finish());
 
     // VLSD testing
     let file_name = format!(
@@ -272,7 +271,7 @@ fn vlsc_channels() -> Result<()> {
     expected_string_result.append_value("seven");
     expected_string_result.append_value("eight");
     expected_string_result.append_value("nine");
-    let expected_string_result = ChannelData::Utf8(expected_string_result);
+    let expected_string_result = ChannelData::Utf8(expected_string_result.finish());
 
     // VLSC
     let file_name = format!(
@@ -437,10 +436,9 @@ fn channel_list() -> Result<()> {
     if let Some(size_data) = mdf.get_channel_data("size") {
         assert_eq!(size_data.len(), 2, "size should have 2 samples");
         // Size values: [0, 202]
-        let expected_size = ChannelData::UInt16(UInt16Builder::new_from_buffer(
-            vec![0u16, 202u16].into(),
-            None,
-        ));
+        let expected_size = ChannelData::UInt16(
+            UInt16Builder::new_from_buffer(vec![0u16, 202u16].into(), None).finish(),
+        );
         assert_eq!(
             &expected_size, size_data,
             "size channel values should match"
@@ -450,10 +448,9 @@ fn channel_list() -> Result<()> {
     // Verify x.a channel values (Int32)
     if let Some(xa_data) = mdf.get_channel_data("x.a") {
         assert_eq!(xa_data.len(), 2, "x.a should have 2 samples");
-        let expected_xa = ChannelData::Int32(Int32Builder::new_from_buffer(
-            vec![0i32, 1000000000i32].into(),
-            None,
-        ));
+        let expected_xa = ChannelData::Int32(
+            Int32Builder::new_from_buffer(vec![0i32, 1000000000i32].into(), None).finish(),
+        );
         assert_eq!(&expected_xa, xa_data, "x.a channel values should match");
     }
 
@@ -499,10 +496,9 @@ fn channel_variant() -> Result<()> {
     // Verify time channel (master)
     if let Some(time_data) = mdf.get_channel_data("time") {
         assert_eq!(time_data.len(), 3, "time should have 3 samples");
-        let expected_time = ChannelData::Float64(Float64Builder::new_from_buffer(
-            vec![0.0f64, 1.0f64, 2.0f64].into(),
-            None,
-        ));
+        let expected_time = ChannelData::Float64(
+            Float64Builder::new_from_buffer(vec![0.0f64, 1.0f64, 2.0f64].into(), None).finish(),
+        );
         assert_eq!(
             &expected_time, time_data,
             "time channel values should match [0.0, 1.0, 2.0]"
@@ -517,10 +513,9 @@ fn channel_variant() -> Result<()> {
     // Verify discriminator channel
     if let Some(disc_data) = mdf.get_channel_data("discriminator") {
         assert_eq!(disc_data.len(), 3, "discriminator should have 3 samples");
-        let expected_disc = ChannelData::UInt16(UInt16Builder::new_from_buffer(
-            vec![0u16, 1u16, 2u16].into(),
-            None,
-        ));
+        let expected_disc = ChannelData::UInt16(
+            UInt16Builder::new_from_buffer(vec![0u16, 1u16, 2u16].into(), None).finish(),
+        );
         assert_eq!(
             &expected_disc, disc_data,
             "discriminator values should match [0, 1, 2]"
@@ -603,10 +598,10 @@ fn channel_union() -> Result<()> {
         // Verify time channel
         if let Some(time_data) = mdf.get_channel_data("time") {
             assert_eq!(time_data.len(), 3, "time should have 3 samples");
-            let expected_time = ChannelData::Float64(Float64Builder::new_from_buffer(
-                vec![0.0f64, 1.0f64, 2.0f64].into(),
-                None,
-            ));
+            let expected_time = ChannelData::Float64(
+                Float64Builder::new_from_buffer(vec![0.0f64, 1.0f64, 2.0f64].into(), None)
+                    .finish(),
+            );
             assert_eq!(
                 &expected_time, time_data,
                 "time channel values should match [0.0, 1.0, 2.0]"

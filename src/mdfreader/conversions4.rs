@@ -1,6 +1,6 @@
 //! this modules implements functions to convert arrays into physical arrays using CCBlock
 use anyhow::{Context, Error, Result, bail};
-use arrow::array::{ArrayBuilder, Float64Builder, LargeStringBuilder, PrimitiveBuilder};
+use arrow::array::{Array, LargeStringArray, LargeStringBuilder, PrimitiveArray};
 use arrow::datatypes::{ArrowPrimitiveType, Float32Type, Float64Type};
 use itertools::Itertools;
 use log::warn;
@@ -195,97 +195,97 @@ macro_rules! apply_conversion_f64 {
             }
             ChannelData::Float64($af) => $f64_block,
             ChannelData::Complex32($ac) => {
-                $cn.data = ChannelData::Complex64(ComplexArrow::new_from_primitive(
+                $cn.data = ChannelData::Complex64(ComplexArrow::new_from_array(
                     $complex_body,
-                    $ac.nulls(),
+                    $ac.nulls().cloned(),
                     $ac.shape().clone(),
                     $ac.order().clone(),
                 ));
             }
             ChannelData::Complex64($ac) => {
-                $cn.data = ChannelData::Complex64(ComplexArrow::new_from_primitive(
+                $cn.data = ChannelData::Complex64(ComplexArrow::new_from_array(
                     $complex_body,
-                    $ac.nulls(),
+                    $ac.nulls().cloned(),
                     $ac.shape().clone(),
                     $ac.order().clone(),
                 ));
             }
             ChannelData::ArrayDInt8($ad) => {
-                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_array(
                     $arrayd_body,
-                    $ad.nulls(),
+                    $ad.nulls().cloned(),
                     $ad.shape().clone(),
                     $ad.order().clone(),
                 ));
             }
             ChannelData::ArrayDUInt8($ad) => {
-                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_array(
                     $arrayd_body,
-                    $ad.nulls(),
+                    $ad.nulls().cloned(),
                     $ad.shape().clone(),
                     $ad.order().clone(),
                 ));
             }
             ChannelData::ArrayDInt16($ad) => {
-                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_array(
                     $arrayd_body,
-                    $ad.nulls(),
+                    $ad.nulls().cloned(),
                     $ad.shape().clone(),
                     $ad.order().clone(),
                 ));
             }
             ChannelData::ArrayDUInt16($ad) => {
-                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_array(
                     $arrayd_body,
-                    $ad.nulls(),
+                    $ad.nulls().cloned(),
                     $ad.shape().clone(),
                     $ad.order().clone(),
                 ));
             }
             ChannelData::ArrayDInt32($ad) => {
-                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_array(
                     $arrayd_body,
-                    $ad.nulls(),
+                    $ad.nulls().cloned(),
                     $ad.shape().clone(),
                     $ad.order().clone(),
                 ));
             }
             ChannelData::ArrayDUInt32($ad) => {
-                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_array(
                     $arrayd_body,
-                    $ad.nulls(),
+                    $ad.nulls().cloned(),
                     $ad.shape().clone(),
                     $ad.order().clone(),
                 ));
             }
             ChannelData::ArrayDFloat32($ad) => {
-                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_array(
                     $arrayd_body,
-                    $ad.nulls(),
+                    $ad.nulls().cloned(),
                     $ad.shape().clone(),
                     $ad.order().clone(),
                 ));
             }
             ChannelData::ArrayDInt64($ad) => {
-                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_array(
                     $arrayd_body,
-                    $ad.nulls(),
+                    $ad.nulls().cloned(),
                     $ad.shape().clone(),
                     $ad.order().clone(),
                 ));
             }
             ChannelData::ArrayDUInt64($ad) => {
-                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_array(
                     $arrayd_body,
-                    $ad.nulls(),
+                    $ad.nulls().cloned(),
                     $ad.shape().clone(),
                     $ad.order().clone(),
                 ));
             }
             ChannelData::ArrayDFloat64($ad) => {
-                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_array(
                     $arrayd_body,
-                    $ad.nulls(),
+                    $ad.nulls().cloned(),
                     $ad.shape().clone(),
                     $ad.order().clone(),
                 ));
@@ -334,81 +334,81 @@ macro_rules! apply_conversion_f64 {
             }
             ChannelData::Float64($af) => $f64_block,
             ChannelData::ArrayDInt8($ad) => {
-                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_array(
                     $arrayd_body,
-                    $ad.nulls(),
+                    $ad.nulls().cloned(),
                     $ad.shape().clone(),
                     $ad.order().clone(),
                 ));
             }
             ChannelData::ArrayDUInt8($ad) => {
-                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_array(
                     $arrayd_body,
-                    $ad.nulls(),
+                    $ad.nulls().cloned(),
                     $ad.shape().clone(),
                     $ad.order().clone(),
                 ));
             }
             ChannelData::ArrayDInt16($ad) => {
-                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_array(
                     $arrayd_body,
-                    $ad.nulls(),
+                    $ad.nulls().cloned(),
                     $ad.shape().clone(),
                     $ad.order().clone(),
                 ));
             }
             ChannelData::ArrayDUInt16($ad) => {
-                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_array(
                     $arrayd_body,
-                    $ad.nulls(),
+                    $ad.nulls().cloned(),
                     $ad.shape().clone(),
                     $ad.order().clone(),
                 ));
             }
             ChannelData::ArrayDInt32($ad) => {
-                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_array(
                     $arrayd_body,
-                    $ad.nulls(),
+                    $ad.nulls().cloned(),
                     $ad.shape().clone(),
                     $ad.order().clone(),
                 ));
             }
             ChannelData::ArrayDUInt32($ad) => {
-                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_array(
                     $arrayd_body,
-                    $ad.nulls(),
+                    $ad.nulls().cloned(),
                     $ad.shape().clone(),
                     $ad.order().clone(),
                 ));
             }
             ChannelData::ArrayDFloat32($ad) => {
-                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_array(
                     $arrayd_body,
-                    $ad.nulls(),
+                    $ad.nulls().cloned(),
                     $ad.shape().clone(),
                     $ad.order().clone(),
                 ));
             }
             ChannelData::ArrayDInt64($ad) => {
-                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_array(
                     $arrayd_body,
-                    $ad.nulls(),
+                    $ad.nulls().cloned(),
                     $ad.shape().clone(),
                     $ad.order().clone(),
                 ));
             }
             ChannelData::ArrayDUInt64($ad) => {
-                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_array(
                     $arrayd_body,
-                    $ad.nulls(),
+                    $ad.nulls().cloned(),
                     $ad.shape().clone(),
                     $ad.order().clone(),
                 ));
             }
             ChannelData::ArrayDFloat64($ad) => {
-                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_primitive(
+                $cn.data = ChannelData::ArrayDFloat64(TensorArrow::new_from_array(
                     $arrayd_body,
-                    $ad.nulls(),
+                    $ad.nulls().cloned(),
                     $ad.shape().clone(),
                     $ad.order().clone(),
                 ));
@@ -424,17 +424,17 @@ macro_rules! apply_conversion_f64 {
 /// Generic function calculating linear expression
 #[inline]
 pub fn linear_calculation<T: ArrowPrimitiveType>(
-    array: &mut PrimitiveBuilder<T>,
+    array: &PrimitiveArray<T>,
     p1: f64,
     p2: f64,
-) -> Result<PrimitiveBuilder<Float64Type>, Error>
+) -> Result<PrimitiveArray<Float64Type>, Error>
 where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
-    let values = array.values_slice();
+    let values = array.values();
     let converted: Vec<f64> = values.iter().map(|v| (*v).as_() * p2 + p1).collect();
-    Ok(Float64Builder::new_from_buffer(converted.into(), None))
+    Ok(PrimitiveArray::new(converted.into(), array.nulls().cloned()))
 }
 
 /// Apply linear conversion to get physical data
@@ -445,8 +445,9 @@ pub fn linear_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
             cn,
             scalar(a) => linear_calculation(a, p1, p2).context("failed linear conversion")?,
             f64(a) => {
-                // in-place for f64 avoids reallocation
-                a.values_slice_mut().iter_mut().for_each(|x| { *x = *x * p2 + p1; });
+                let values = a.values();
+                let converted: Vec<f64> = values.iter().map(|&x| x * p2 + p1).collect();
+                *a = PrimitiveArray::new(converted.into(), a.nulls().cloned());
             },
             complex(a) => linear_calculation(a.values(), p1, p2).context("failed linear conversion of complex channel")?,
             arrayd(a) => linear_calculation(a.values(), p1, p2).context("failed linear conversion of tensor channel")?,
@@ -458,9 +459,9 @@ pub fn linear_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
 /// Generic function calculating rational expression for a primitive
 #[inline]
 pub fn rational_calculation<T: ArrowPrimitiveType>(
-    array: &PrimitiveBuilder<T>,
+    array: &PrimitiveArray<T>,
     cc_val: &[f64],
-) -> Result<PrimitiveBuilder<Float64Type>, Error>
+) -> Result<PrimitiveArray<Float64Type>, Error>
 where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
@@ -471,7 +472,7 @@ where
     let p4 = cc_val[3];
     let p5 = cc_val[4];
     let p6 = cc_val[5];
-    let values = array.values_slice();
+    let values = array.values();
     let converted: Vec<f64> = values
         .iter()
         .map(|v| {
@@ -479,7 +480,7 @@ where
             (x * x * p1 + x * p2 + p3) / (x * x * p4 + x * p5 + p6)
         })
         .collect();
-    Ok(Float64Builder::new_from_buffer(converted.into(), None))
+    Ok(PrimitiveArray::new(converted.into(), array.nulls().cloned()))
 }
 
 /// Apply rational conversion to get physical data
@@ -489,11 +490,14 @@ pub fn rational_conversion(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
         scalar(a) => rational_calculation(a, cc_val).context("failed rational conversion")?,
         f64(a) => {
             let (p1, p2, p3, p4, p5, p6) = (cc_val[0], cc_val[1], cc_val[2], cc_val[3], cc_val[4], cc_val[5]);
-            // in-place for f64 avoids reallocation
-            a.values_slice_mut().iter_mut().for_each(|x| {
-                let v = *x;
-                *x = (v * v * p1 + v * p2 + p3) / (v * v * p4 + v * p5 + p6);
-            });
+            let values = a.values();
+            let converted: Vec<f64> = values
+                .iter()
+                .map(|&v| {
+                    (v * v * p1 + v * p2 + p3) / (v * v * p4 + v * p5 + p6)
+                })
+                .collect();
+            *a = PrimitiveArray::new(converted.into(), a.nulls().cloned());
         },
         complex(a) => rational_calculation(a.values(), cc_val).context("failed rational conversion of complex channel")?,
         arrayd(a) => rational_calculation(a.values(), cc_val).context("failed rational conversion of tensor channel")?,
@@ -521,14 +525,14 @@ impl fasteval::EvalNamespace for SingleVarNamespace {
 pub fn alegbraic_conversion_primitive<T: ArrowPrimitiveType>(
     compiled: &Instruction,
     slab: &Slab,
-    array: &PrimitiveBuilder<T>,
-) -> Result<PrimitiveBuilder<Float64Type>, Error>
+    array: &PrimitiveArray<T>,
+) -> Result<PrimitiveArray<Float64Type>, Error>
 where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
     <T as ArrowPrimitiveType>::Native: Sync,
 {
-    let values = array.values_slice();
+    let values = array.values();
     let mut new_array = vec![0f64; values.len()];
     if values.len() > 1024 {
         new_array
@@ -563,7 +567,7 @@ where
             };
         });
     }
-    Ok(PrimitiveBuilder::new_from_buffer(new_array.into(), None))
+    Ok(PrimitiveArray::new(new_array.into(), array.nulls().cloned()))
 }
 
 /// Apply algebraic conversion to get physical data
@@ -577,7 +581,7 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str) -> Result<(), Error> {
                 cn,
                 scalar(a) => alegbraic_conversion_primitive(&compiled, &slab, a).context("failed algebraic conversion")?,
                 f64(a) => {
-                    cn.data = ChannelData::Float64(alegbraic_conversion_primitive(&compiled, &slab, a).context("failed algebraic conversion")?);
+                    *a = alegbraic_conversion_primitive(&compiled, &slab, a).context("failed algebraic conversion")?;
                 },
                 complex(a) => alegbraic_conversion_primitive(&compiled, &slab, a.values()).context("failed algebraic conversion of complex channel")?,
                 arrayd(a) => alegbraic_conversion_primitive(&compiled, &slab, a.values()).context("failed algebraic conversion of tensor channel")?,
@@ -594,14 +598,14 @@ fn algebraic_conversion(cn: &mut Cn4, formulae: &str) -> Result<(), Error> {
 /// Generic function calculating value to value interpolation for a primitive
 #[inline]
 pub fn value_to_value_with_interpolation_primitive<T: ArrowPrimitiveType>(
-    array: &PrimitiveBuilder<T>,
+    array: &PrimitiveArray<T>,
     val: &[(&f64, &f64)],
-) -> Result<PrimitiveBuilder<Float64Type>, Error>
+) -> Result<PrimitiveArray<Float64Type>, Error>
 where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
-    let values = array.values_slice();
+    let values = array.values();
     let mut new_array = vec![0f64; values.len()];
     new_array.iter_mut().zip(values).for_each(|(new_a, v)| {
         let a: f64 = (*v).as_();
@@ -617,12 +621,7 @@ where
                 }
             };
     });
-    Ok(PrimitiveBuilder::new_from_buffer(
-        new_array.into(),
-        array
-            .validity_slice()
-            .map(|validity| validity.to_vec().into()),
-    ))
+    Ok(PrimitiveArray::new(new_array.into(), array.nulls().cloned()))
 }
 
 /// Apply value to value with interpolation conversion to get physical data
@@ -632,7 +631,7 @@ pub fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>) -> Resu
         cn,
         scalar(a) => value_to_value_with_interpolation_primitive(a, &val).context("failed value to value with interpolation conversion")?,
         f64(a) => {
-            cn.data = ChannelData::Float64(value_to_value_with_interpolation_primitive(a, &val).context("failed value to value with interpolation conversion")?);
+            *a = value_to_value_with_interpolation_primitive(a, &val).context("failed value to value with interpolation conversion")?;
         },
         arrayd(a) => value_to_value_with_interpolation_primitive(a.values(), &val).context("failed value to value with interpolation conversion of tensor channel")?,
     );
@@ -642,14 +641,14 @@ pub fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>) -> Resu
 /// Generic function calculating value to value without interpolation for a primitive
 #[inline]
 pub fn value_to_value_without_interpolation_primitive<T: ArrowPrimitiveType>(
-    array: &mut PrimitiveBuilder<T>,
+    array: &PrimitiveArray<T>,
     val: &[(&f64, &f64)],
-) -> Result<PrimitiveBuilder<Float64Type>, Error>
+) -> Result<PrimitiveArray<Float64Type>, Error>
 where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
-    let values = array.values_slice();
+    let values = array.values();
     let mut new_array = vec![0f64; values.len()];
     new_array.iter_mut().zip(values).for_each(|(new_a, v)| {
         let a: f64 = (*v).as_();
@@ -671,12 +670,7 @@ where
                 }
             };
     });
-    Ok(PrimitiveBuilder::new_from_buffer(
-        new_array.into(),
-        array
-            .validity_slice()
-            .map(|validity| validity.to_vec().into()),
-    ))
+    Ok(PrimitiveArray::new(new_array.into(), array.nulls().cloned()))
 }
 
 /// Apply value to value without interpolation conversion to get physical data
@@ -686,7 +680,7 @@ pub fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>) -> R
         cn,
         scalar(a) => value_to_value_without_interpolation_primitive(a, &val).context("failed value to value without interpolation conversion")?,
         f64(a) => {
-            cn.data = ChannelData::Float64(value_to_value_without_interpolation_primitive(a, &val).context("failed value to value without interpolation conversion")?);
+            *a = value_to_value_without_interpolation_primitive(a, &val).context("failed value to value without interpolation conversion")?;
         },
         arrayd(a) => value_to_value_without_interpolation_primitive(a.values(), &val).context("failed value to value without interpolation conversion of tensor channel")?,
     );
@@ -696,16 +690,16 @@ pub fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>) -> R
 /// Generic function calculating value range to value table without interpolation
 #[inline]
 pub fn value_range_to_value_table_calculation<T: ArrowPrimitiveType>(
-    array: &PrimitiveBuilder<T>,
+    array: &PrimitiveArray<T>,
     val: &[(f64, f64, f64)],
     default_value: &f64,
     inclusive_upper: bool,
-) -> Result<PrimitiveBuilder<Float64Type>, Error>
+) -> Result<PrimitiveArray<Float64Type>, Error>
 where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
-    let values = array.values_slice();
+    let values = array.values();
     let mut new_array = vec![0f64; values.len()];
     new_array.iter_mut().zip(values).for_each(|(new_a, v)| {
         let a: f64 = (*v).as_();
@@ -739,12 +733,7 @@ where
             }
         };
     });
-    Ok(PrimitiveBuilder::new_from_buffer(
-        new_array.into(),
-        array
-            .validity_slice()
-            .map(|validity| validity.to_vec().into()),
-    ))
+    Ok(PrimitiveArray::new(new_array.into(), array.nulls().cloned()))
 }
 
 /// Apply value range to value table without interpolation conversion to get physical data
@@ -843,12 +832,12 @@ enum DefaultTextOrScaleConversion {
 /// Generic function calculating integer value range to text
 #[inline]
 fn value_to_text_calculation_int<T: ArrowPrimitiveType>(
-    array: &mut PrimitiveBuilder<T>,
+    array: &PrimitiveArray<T>,
     cc_val: &[f64],
     cc_ref: &[i64],
     def: &DefaultTextOrScaleConversion,
     sharable: &SharableBlocks,
-) -> Result<LargeStringBuilder, Error>
+) -> Result<LargeStringArray, Error>
 where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64> + AsPrimitive<i64>,
 {
@@ -870,9 +859,13 @@ where
             }
         }
     }
-    let values = array.values_slice();
+    let values = array.values();
     let mut new_array = LargeStringBuilder::with_capacity(values.len(), 32);
-    values.iter().for_each(|v| {
+    for (i, v) in values.iter().enumerate() {
+        if array.is_null(i) {
+            new_array.append_null();
+            continue;
+        }
         let a_f64: f64 = (*v).as_();
         let a_i64: i64 = (*v).as_();
         if let Some(tosc) = table_int.get(&a_i64) {
@@ -900,23 +893,20 @@ where
                 }
             }
         }
-    });
-    if let Some(validity) = array.validity_slice_mut() {
-        let _ = new_array.validity_slice_mut().insert(validity);
     }
-    Ok(new_array)
+    Ok(new_array.finish())
 }
 
 /// Generic function calculating float value range to text
 #[inline]
 fn value_to_text_calculation_f32(
-    a: &PrimitiveBuilder<Float32Type>,
+    a: &PrimitiveArray<Float32Type>,
     cc_val: &[f64],
     cc_ref: &[i64],
     canonization_value: f64,
     def: &DefaultTextOrScaleConversion,
     sharable: &SharableBlocks,
-) -> LargeStringBuilder {
+) -> LargeStringArray {
     // table for floating point comparison
     let mut table_float: HashMap<i64, TextOrScaleConversion> = HashMap::with_capacity(cc_val.len());
     for (ind, val) in cc_val.iter().enumerate() {
@@ -936,8 +926,12 @@ fn value_to_text_calculation_f32(
         }
     }
     let mut new_array = LargeStringBuilder::with_capacity(a.len(), 32);
-    a.values_slice().iter().for_each(|a| {
-        let ref_val = (a * canonization_value as f32)
+    for (i, val) in a.values().iter().enumerate() {
+        if a.is_null(i) {
+            new_array.append_null();
+            continue;
+        }
+        let ref_val = (val * canonization_value as f32)
             .round()
             .to_i64()
             .unwrap_or_default();
@@ -947,10 +941,10 @@ fn value_to_text_calculation_f32(
                     new_array.append_value(txt.clone());
                 }
                 TextOrScaleConversion::Scale(conv) => {
-                    new_array.append_value(conv.eval_to_txt(a.to_f64().unwrap_or_default()));
+                    new_array.append_value(conv.eval_to_txt(val.to_f64().unwrap_or_default()));
                 }
                 _ => {
-                    new_array.append_value(a.to_string());
+                    new_array.append_value(val.to_string());
                 }
             }
         } else {
@@ -959,15 +953,15 @@ fn value_to_text_calculation_f32(
                     new_array.append_value(txt.clone());
                 }
                 DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                    new_array.append_value(conv.eval_to_txt(a.to_f64().unwrap_or_default()));
+                    new_array.append_value(conv.eval_to_txt(val.to_f64().unwrap_or_default()));
                 }
                 _ => {
-                    new_array.append_value(a.to_string());
+                    new_array.append_value(val.to_string());
                 }
             }
         }
-    });
-    new_array
+    }
+    new_array.finish()
 }
 
 /// Apply value to text or scale conversion to get physical data
@@ -1072,18 +1066,22 @@ fn value_to_text(
                 }
             }
             let mut new_array = LargeStringBuilder::with_capacity(a.len(), 32);
-            a.values_slice().iter().for_each(|a| {
-                let ref_val = (a * 1024.0 * 1024.0).round() as i64;
+            for (i, val) in a.values().iter().enumerate() {
+                if a.is_null(i) {
+                    new_array.append_null();
+                    continue;
+                }
+                let ref_val = (val * 1024.0 * 1024.0).round() as i64;
                 if let Some(tosc) = table_float.get(&ref_val) {
                     match tosc {
                         TextOrScaleConversion::Txt(txt) => {
                             new_array.append_value(txt.clone());
                         }
                         TextOrScaleConversion::Scale(conv) => {
-                            new_array.append_value(conv.eval_to_txt(*a));
+                            new_array.append_value(conv.eval_to_txt(*val));
                         }
                         _ => {
-                            new_array.append_value(a.to_string());
+                            new_array.append_value(val.to_string());
                         }
                     }
                 } else {
@@ -1092,15 +1090,15 @@ fn value_to_text(
                             new_array.append_value(txt.clone());
                         }
                         DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                            new_array.append_value(conv.eval_to_txt(*a));
+                            new_array.append_value(conv.eval_to_txt(*val));
                         }
                         _ => {
-                            new_array.append_value(a.to_string());
+                            new_array.append_value(val.to_string());
                         }
                     }
                 }
-            });
-            cn.data = ChannelData::Utf8(new_array);
+            }
+            cn.data = ChannelData::Utf8(new_array.finish());
         }
         _ => warn!(
             "value to text conversion of channel {} not possible, channel does not contain primitive",
@@ -1194,11 +1192,11 @@ struct KeyRange {
 /// Generic function calculating value range to text
 #[inline]
 fn value_range_to_text_calculation<T: ArrowPrimitiveType>(
-    array: &PrimitiveBuilder<T>,
+    array: &PrimitiveArray<T>,
     cc_val: &[f64],
     cc_ref: &[i64],
     sharable: &SharableBlocks,
-) -> LargeStringBuilder
+) -> LargeStringArray
 where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
 {
@@ -1241,9 +1239,13 @@ where
             }
         }
     }
-    let values = array.values_slice();
+    let values = array.values();
     let mut new_array = LargeStringBuilder::with_capacity(values.len(), 32);
-    values.iter().for_each(|v| {
+    for (i, v) in values.iter().enumerate() {
+        if array.is_null(i) {
+            new_array.append_null();
+            continue;
+        }
         let a: &f64 = &(*v).as_();
         let matched_key = keys
             .iter()
@@ -1274,8 +1276,8 @@ where
                 }
             }
         }
-    });
-    new_array
+    }
+    new_array.finish()
 }
 
 /// Apply value range to text or scale conversion to get physical data
@@ -1337,11 +1339,11 @@ fn value_range_to_text(
 /// Generic function calculating text to value
 #[inline]
 fn text_to_value_calculation(
-    array: &LargeStringBuilder,
+    array: &LargeStringArray,
     cc_val: &[f64],
     cc_ref: &[i64],
     sharable: &SharableBlocks,
-) -> PrimitiveBuilder<Float64Type> {
+) -> PrimitiveArray<Float64Type> {
     let mut table: HashMap<String, f64> = HashMap::with_capacity(cc_ref.len());
     for (ind, ccref) in cc_ref.iter().enumerate() {
         if let Ok(Some(txt)) = sharable.get_tx(*ccref) {
@@ -1350,30 +1352,19 @@ fn text_to_value_calculation(
     }
     let default = cc_val[cc_val.len() - 1];
     let mut new_array = vec![0f64; array.len()];
-    // Iterate without cloning: use values_slice() and offsets_slice()
-    let values = array.values_slice();
-    let offsets = array.offsets_slice();
-    new_array.iter_mut().enumerate().for_each(|(i, new_a)| {
-        let s = if i + 1 < offsets.len() {
-            let start = offsets[i] as usize;
-            let end = offsets[i + 1] as usize;
-            let bytes = &values[start..end];
-            std::str::from_utf8(bytes).unwrap_or_default()
-        } else {
-            ""
-        };
+    for (i, new_a) in new_array.iter_mut().enumerate() {
+        if array.is_null(i) {
+            *new_a = default;
+            continue;
+        }
+        let s = array.value(i);
         if let Some(val) = table.get(s) {
             *new_a = *val;
         } else {
             *new_a = default;
         }
-    });
-    PrimitiveBuilder::new_from_buffer(
-        new_array.into(),
-        array
-            .validity_slice()
-            .map(|validity| validity.to_vec().into()),
-    )
+    }
+    PrimitiveArray::new(new_array.into(), array.nulls().cloned())
 }
 
 /// Apply text to value conversion to get physical data
@@ -1398,10 +1389,10 @@ fn text_to_value(
 /// Generic function calculating text to value
 #[inline]
 fn text_to_text_calculation(
-    array: &LargeStringBuilder,
+    array: &LargeStringArray,
     cc_ref: &[i64],
     sharable: &SharableBlocks,
-) -> LargeStringBuilder {
+) -> LargeStringArray {
     let pairs: Vec<(&i64, &i64)> = cc_ref.iter().tuples().collect();
     let mut table: HashMap<String, Option<String>> = HashMap::with_capacity(cc_ref.len());
     for ccref in &pairs {
@@ -1421,18 +1412,12 @@ fn text_to_text_calculation(
         default = Some(txt);
     }
     let mut new_array = LargeStringBuilder::with_capacity(array.len(), 32);
-    // Iterate without cloning: use values_slice() and offsets_slice()
-    let values = array.values_slice();
-    let offsets = array.offsets_slice();
     for i in 0..array.len() {
-        let s = if i + 1 < offsets.len() {
-            let start = offsets[i] as usize;
-            let end = offsets[i + 1] as usize;
-            let bytes = &values[start..end];
-            std::str::from_utf8(bytes).unwrap_or_default()
-        } else {
-            ""
-        };
+        if array.is_null(i) {
+            new_array.append_null();
+            continue;
+        }
+        let s = array.value(i);
         if let Some(val) = table.get(s) {
             if let Some(txt) = val.clone() {
                 new_array.append_value(txt);
@@ -1445,7 +1430,7 @@ fn text_to_text_calculation(
             new_array.append_value(s);
         }
     }
-    new_array
+    new_array.finish()
 }
 
 /// Apply text to text conversion to get physical data
@@ -1477,11 +1462,11 @@ enum ValueOrValueRangeToText {
 /// Generic function calculating text to value
 #[inline]
 fn bitfield_text_table_calculation<T: ArrowPrimitiveType>(
-    array: &PrimitiveBuilder<T>,
+    array: &PrimitiveArray<T>,
     cc_val: &[u64],
     cc_ref: &[i64],
     sharable: &SharableBlocks,
-) -> Result<LargeStringBuilder>
+) -> Result<LargeStringArray>
 where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64> + AsPrimitive<i64>,
 {
@@ -1597,9 +1582,13 @@ where
         }
     }
 
-    let values = array.values_slice();
+    let values = array.values();
     let mut new_array = LargeStringBuilder::with_capacity(values.len(), 32);
-    values.iter().for_each(|v| {
+    values.iter().enumerate().for_each(|(i, v)| {
+        if array.is_null(i) {
+            new_array.append_null();
+            return;
+        }
         let a_f64: f64 = (*v).as_();
         let a_i64: i64 = a_f64.round() as i64;
         let mut new_a = String::new();
@@ -1695,7 +1684,7 @@ where
         }
         new_array.append_value(new_a);
     });
-    Ok(new_array)
+    Ok(new_array.finish())
 }
 
 pub fn bitfield_text_table(

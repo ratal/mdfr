@@ -2,29 +2,41 @@
 #[cfg(feature = "ndarray")]
 use anyhow::{Context, Error, Result};
 use arrow::{
-    array::{ArrayBuilder, BooleanBufferBuilder, PrimitiveArray, PrimitiveBuilder},
-    buffer::{BooleanBuffer, MutableBuffer},
-    datatypes::{
-        ArrowPrimitiveType, Float32Type, Float64Type, Int8Type, Int16Type, Int32Type, Int64Type,
-        UInt8Type, UInt16Type, UInt32Type, UInt64Type,
-    },
+    array::{BooleanBufferBuilder, PrimitiveArray, PrimitiveBuilder},
+    buffer::{BooleanBuffer, MutableBuffer, ScalarBuffer},
+    datatypes::ArrowPrimitiveType,
+};
+#[allow(unused_imports)]
+use arrow::datatypes::{
+    Float32Type, Float64Type, Int8Type, Int16Type, Int32Type, Int64Type,
+    UInt8Type, UInt16Type, UInt32Type, UInt64Type,
 };
 #[cfg(feature = "ndarray")]
-use ndarray::{Array, IxDyn};
+use ndarray::{Array as NdArray, IxDyn};
+use std::mem::size_of;
 
-/// Tensor with innner arrow primitive builder
+/// Immutable Tensor wrapping an Arrow [`PrimitiveArray`]
 #[derive(Debug)]
 pub struct TensorArrow<T: ArrowPrimitiveType> {
-    /// The validity mask booolean buffer
-    null_buffer_builder: Option<BooleanBuffer>,
-    /// the primitive builder
-    values_builder: PrimitiveBuilder<T>,
-    /// number of samples
-    len: usize,
-    /// shape of tensor
-    shape: Vec<usize>,
-    /// order of tensor, row or column major
-    order: Order,
+    /// The validity mask boolean buffer
+    pub(crate) null_buffer: Option<BooleanBuffer>,
+    /// The immutable Arrow primitive array
+    pub(crate) values: PrimitiveArray<T>,
+    /// Number of samples
+    pub(crate) len: usize,
+    /// Shape of tensor
+    pub(crate) shape: Vec<usize>,
+    /// Order of tensor, row or column major
+    pub(crate) order: Order,
+}
+
+/// Mutable Tensor builder for staging tensor arrays during reading
+#[derive(Debug)]
+pub struct TensorBuilder<T: ArrowPrimitiveType> {
+    pub(crate) null_buffer_builder: Option<BooleanBuffer>,
+    pub(crate) values_builder: PrimitiveBuilder<T>,
+    pub(crate) shape: Vec<usize>,
+    pub(crate) order: Order,
 }
 
 /// Order of the array, Row or Column Major (first)
@@ -38,107 +50,197 @@ pub enum Order {
 impl<T: ArrowPrimitiveType> TensorArrow<T> {
     /// Create new empty tensor
     pub fn new() -> Self {
-        Self::with_capacity(1024, vec![1], Order::RowMajor)
-    }
-    /// Create new empty tensor with capacity
-    pub fn with_capacity(capacity: usize, shape: Vec<usize>, order: Order) -> Self {
         Self {
-            null_buffer_builder: None,
-            values_builder: PrimitiveBuilder::with_capacity(capacity * 2),
+            null_buffer: None,
+            values: PrimitiveArray::<T>::new(ScalarBuffer::default(), None),
             len: 0,
-            shape,
-            order,
+            shape: vec![1],
+            order: Order::RowMajor,
         }
     }
-    /// Create new tensor from mutable buffer
+
+    /// Create new tensor from a MutableBuffer
     pub fn new_from_buffer(values_buffer: MutableBuffer, shape: Vec<usize>, order: Order) -> Self {
-        let length = values_buffer.len() / shape.iter().product::<usize>();
-        let values_builder = PrimitiveBuilder::new_from_buffer(values_buffer, None);
+        let elem_count = shape.iter().product::<usize>();
+        let num_elements = values_buffer.len() / size_of::<T::Native>();
+        let length = num_elements.checked_div(elem_count).unwrap_or(0);
+        let buffer: arrow::buffer::Buffer = values_buffer.into();
+        let scalar_buffer = ScalarBuffer::<T::Native>::new(buffer, 0, num_elements);
+        let values = PrimitiveArray::<T>::new(scalar_buffer, None);
         Self {
-            null_buffer_builder: None,
-            values_builder,
+            null_buffer: None,
+            values,
             len: length,
             shape,
             order,
         }
     }
-    /// Create new tensor from primitive builder
+
+    /// Create a new tensor from a primitive array and optionally its validity buffer
+    pub fn new_from_array(
+        values: PrimitiveArray<T>,
+        null_buffer: Option<BooleanBuffer>,
+        shape: Vec<usize>,
+        order: Order,
+    ) -> Self {
+        let elem_count = shape.iter().product::<usize>();
+        let length = values.len().checked_div(elem_count).unwrap_or(0);
+        Self {
+            null_buffer,
+            values,
+            len: length,
+            shape,
+            order,
+        }
+    }
+
+    /// Create a new tensor from a primitive builder (for compatibility)
+    #[allow(dead_code)]
     pub fn new_from_primitive(
-        primitive_builder: PrimitiveBuilder<T>,
+        mut primitive_builder: PrimitiveBuilder<T>,
         null_buffer: Option<&BooleanBuffer>,
         shape: Vec<usize>,
         order: Order,
     ) -> Self {
-        let length = primitive_builder.len() / shape.iter().product::<usize>();
-        if let Some(null_buffer_builder) = null_buffer {
-            assert_eq!(
-                null_buffer_builder.len() * shape.iter().product::<usize>(),
-                primitive_builder.len()
-            )
-        };
-        let null_buffer_builder = null_buffer.cloned();
+        let values = primitive_builder.finish();
+        let elem_count = shape.iter().product::<usize>();
+        let length = values.len().checked_div(elem_count).unwrap_or(0);
         Self {
-            null_buffer_builder,
-            values_builder: primitive_builder,
+            null_buffer: null_buffer.cloned(),
+            values,
             len: length,
             shape,
             order,
         }
     }
-    /// returns the mutable reference of the internal primitive builder array
-    pub fn values(&mut self) -> &mut PrimitiveBuilder<T> {
-        &mut self.values_builder
+
+    /// Slices the tensor array with zero-copy
+    pub fn slice(&self, offset: usize, length: usize) -> Self {
+        let elem_count = self.shape.iter().product::<usize>();
+        let values_slice = self.values.slice(offset * elem_count, length * elem_count);
+        let null_buffer = self.null_buffer.as_ref().map(|nb| nb.slice(offset, length));
+        Self {
+            null_buffer,
+            values: values_slice,
+            len: length,
+            shape: self.shape.clone(),
+            order: self.order.clone(),
+        }
     }
-    /// returns the length (number of samples) of the tensor.
-    /// Equals first value of shape vector.
-    pub fn len(&self) -> usize {
-        self.len
+
+    /// returns the reference of the internal primitive array
+    pub fn values(&self) -> &PrimitiveArray<T> {
+        &self.values
     }
-    /// Shape vector
+
+    /// returns the shape of the tensor
     pub fn shape(&self) -> &Vec<usize> {
         &self.shape
     }
+
+    /// number of samples
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
     /// number of dimensions, length of shape vector
     pub fn ndim(&self) -> usize {
         self.shape.len()
     }
+
     /// returns True if the tensor is empty
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        self.len == 0
     }
+
     /// returns order of tensor, either row or column major
     pub fn order(&self) -> &Order {
         &self.order
     }
-    /// returns inner primitive builder as a slice
+
+    /// returns inner primitive array as a slice
     pub fn values_slice(&self) -> &[T::Native] {
-        self.values_builder.values_slice()
+        self.values.values()
     }
+
+    /// returns the validity array
+    pub fn nulls(&self) -> Option<&BooleanBuffer> {
+        self.null_buffer.as_ref()
+    }
+
+    /// returns a cloned primitive array of the inner primitive array (O(1) Arc clone)
+    pub fn finish_cloned(&self) -> PrimitiveArray<T> {
+        self.values.clone()
+    }
+
+    /// returns a cloned primitive array of the inner primitive array (O(1) Arc clone)
+    #[allow(dead_code)]
+    pub fn finish(&self) -> PrimitiveArray<T> {
+        self.values.clone()
+    }
+
+    /// overwrite the validity array
+    pub fn set_validity(&mut self, mask: &mut BooleanBufferBuilder) {
+        self.null_buffer = Some(mask.finish());
+    }
+
+    /// returns the optional validity array as a slice
+    pub fn validity_slice(&self) -> Option<&[u8]> {
+        self.null_buffer.as_ref().map(arrow::buffer::BooleanBuffer::values)
+    }
+}
+
+impl<T: ArrowPrimitiveType> TensorBuilder<T> {
+    /// Create new empty tensor builder
+    pub fn new() -> Self {
+        Self::with_capacity(1024, vec![1], Order::RowMajor)
+    }
+
+    /// Create new tensor builder with capacity
+    pub fn with_capacity(capacity: usize, shape: Vec<usize>, order: Order) -> Self {
+        let elem_count = shape.iter().product::<usize>().max(1);
+        Self {
+            null_buffer_builder: None,
+            values_builder: PrimitiveBuilder::with_capacity(capacity * elem_count),
+            shape,
+            order,
+        }
+    }
+
+    /// Create new tensor builder from a MutableBuffer
+    pub fn new_from_buffer(values_buffer: MutableBuffer, shape: Vec<usize>, order: Order) -> Self {
+        let values_builder = PrimitiveBuilder::new_from_buffer(values_buffer, None);
+        Self {
+            null_buffer_builder: None,
+            values_builder,
+            shape,
+            order,
+        }
+    }
+
     /// returns inner primitive builder as a mutable slice
     pub fn values_slice_mut(&mut self) -> &mut [T::Native] {
         self.values_builder.values_slice_mut()
     }
-    /// returns the validity array
-    pub fn nulls(&self) -> Option<&BooleanBuffer> {
-        self.null_buffer_builder.as_ref()
+
+    /// returns inner primitive builder as a slice
+    #[allow(dead_code)]
+    pub fn values_slice(&self) -> &[T::Native] {
+        self.values_builder.values_slice()
     }
-    /// returns a finished cloned primitive array of the inner primitive builder
-    pub fn finish_cloned(&self) -> PrimitiveArray<T> {
-        self.values_builder.finish_cloned()
-    }
-    /// returns a finished primitive array of the inner primitive builder
-    pub fn finish(&mut self) -> PrimitiveArray<T> {
-        self.values_builder.finish()
-    }
-    /// overwrite the validity array
-    pub fn set_validity(&mut self, mask: &mut BooleanBufferBuilder) {
-        self.null_buffer_builder = Some(mask.finish());
-    }
-    /// returns the optional validity array as a slice
-    pub fn validity_slice(&self) -> Option<&[u8]> {
-        self.null_buffer_builder
-            .as_ref()
-            .map(arrow::buffer::BooleanBuffer::values)
+
+    /// finishes building and converts to an immutable TensorArrow (0 copies)
+    pub fn finish(mut self) -> TensorArrow<T> {
+        let values = self.values_builder.finish();
+        let prod = self.shape.iter().product::<usize>();
+        let len = values.len().checked_div(prod).unwrap_or(0);
+        TensorArrow {
+            null_buffer: self.null_buffer_builder,
+            values,
+            len,
+            shape: self.shape,
+            order: self.order,
+        }
     }
 }
 
@@ -148,69 +250,32 @@ impl<T: ArrowPrimitiveType> Default for TensorArrow<T> {
     }
 }
 
-#[macro_export]
-macro_rules! tensor_arrow_peq {
-    ($type:tt) => {
-        impl PartialEq for TensorArrow<$type> {
-            fn eq(&self, other: &Self) -> bool {
-                if self.values_builder.finish_cloned() == other.values_builder.finish_cloned() {
-                    match &self.null_buffer_builder {
-                        Some(buffer) => match &other.null_buffer_builder {
-                            Some(other_buffer) => buffer == other_buffer,
-                            None => false,
-                        },
-                        None => other.null_buffer_builder.is_none(),
-                    }
-                } else {
-                    false
-                }
-            }
-        }
-    };
+impl<T: ArrowPrimitiveType> Default for TensorBuilder<T> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
-tensor_arrow_peq!(Int8Type);
-tensor_arrow_peq!(UInt8Type);
-tensor_arrow_peq!(Int16Type);
-tensor_arrow_peq!(UInt16Type);
-tensor_arrow_peq!(Int32Type);
-tensor_arrow_peq!(UInt32Type);
-tensor_arrow_peq!(Int64Type);
-tensor_arrow_peq!(UInt64Type);
-tensor_arrow_peq!(Float32Type);
-tensor_arrow_peq!(Float64Type);
-
-#[macro_export]
-macro_rules! tensor_arrow_clone {
-    ($type:tt) => {
-        impl Clone for TensorArrow<$type> {
-            fn clone(&self) -> Self {
-                Self {
-                    null_buffer_builder: self.null_buffer_builder.clone(),
-                    values_builder: self
-                        .values_builder
-                        .finish_cloned()
-                        .into_builder()
-                        .expect("failed getting builder from Primitive array"),
-                    len: self.len,
-                    shape: self.shape.clone(),
-                    order: self.order.clone(),
-                }
-            }
-        }
-    };
+impl<T: ArrowPrimitiveType> PartialEq for TensorArrow<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.values == other.values
+            && self.null_buffer == other.null_buffer
+            && self.shape == other.shape
+            && self.order == other.order
+    }
 }
 
-tensor_arrow_clone!(Int8Type);
-tensor_arrow_clone!(UInt8Type);
-tensor_arrow_clone!(Int16Type);
-tensor_arrow_clone!(UInt16Type);
-tensor_arrow_clone!(Int32Type);
-tensor_arrow_clone!(UInt32Type);
-tensor_arrow_clone!(Int64Type);
-tensor_arrow_clone!(UInt64Type);
-tensor_arrow_clone!(Float32Type);
-tensor_arrow_clone!(Float64Type);
+impl<T: ArrowPrimitiveType> Clone for TensorArrow<T> {
+    fn clone(&self) -> Self {
+        Self {
+            null_buffer: self.null_buffer.clone(),
+            values: self.values.clone(), // O(1) Arc clone
+            len: self.len,
+            shape: self.shape.clone(),
+            order: self.order.clone(),
+        }
+    }
+}
 
 #[macro_export]
 macro_rules! tensor_arrow_to_ndarray {
@@ -219,12 +284,12 @@ macro_rules! tensor_arrow_to_ndarray {
         impl TensorArrow<$arrow_type> {
             /// to convert TensorArrow into ndarray
             #[allow(dead_code)]
-            pub fn to_ndarray(&self) -> Result<Array<$rust_type, IxDyn>, Error> {
+            pub fn to_ndarray(&self) -> Result<NdArray<$rust_type, IxDyn>, Error> {
                 let vector: Vec<$rust_type> =
-                    self.values_builder.values_slice().iter().copied().collect();
+                    self.values.values().iter().copied().collect();
                 let mut shape = self.shape().clone();
                 shape.push(self.len());
-                Array::from_shape_vec(IxDyn(&shape), vector)
+                NdArray::from_shape_vec(IxDyn(&shape), vector)
                     .context("Failed reshaping tensor arrow into ndarray")
             }
         }
@@ -263,7 +328,8 @@ mod tests {
 
     #[test]
     fn test_with_capacity() {
-        let t = TensorArrow::<Float32Type>::with_capacity(100, vec![2, 3], Order::ColumnMajor);
+        let tb = TensorBuilder::<Float32Type>::with_capacity(100, vec![2, 3], Order::ColumnMajor);
+        let t = tb.finish();
         assert!(t.is_empty());
         assert_eq!(t.ndim(), 2);
         assert_eq!(t.shape(), &vec![2, 3]);
@@ -276,12 +342,9 @@ mod tests {
         let data: Vec<f64> = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
         let buf = MutableBuffer::from_iter(data.iter().copied());
         let t = TensorArrow::<Float64Type>::new_from_buffer(buf, vec![2, 3], Order::RowMajor);
-        // len = buf_bytes / (sizeof(f64) * product(shape)) but new_from_buffer divides by product of shape
-        // buf.len() = 48 bytes, shape product = 6, so len = 48/6 = 8... no
-        // Actually values_buffer.len() returns byte count: 48 bytes. shape product = 6.
-        // length = 48 / 6 = 8. That seems byte-based again.
         assert!(!t.is_empty());
         assert_eq!(t.values_slice().len(), 6);
+        assert_eq!(t.len(), 1);
         assert_eq!(t.ndim(), 2);
         assert_eq!(t.shape(), &vec![2, 3]);
     }
@@ -340,9 +403,10 @@ mod tests {
     #[test]
     fn test_values_slice_mut() {
         let buf = MutableBuffer::from_iter([1.0f64, 2.0, 3.0].iter().copied());
-        let mut t = TensorArrow::<Float64Type>::new_from_buffer(buf, vec![3], Order::RowMajor);
-        let slice = t.values_slice_mut();
+        let mut tb = TensorBuilder::<Float64Type>::new_from_buffer(buf, vec![3], Order::RowMajor);
+        let slice = tb.values_slice_mut();
         slice[0] = 99.0;
+        let t = tb.finish();
         assert_eq!(t.values_slice()[0], 99.0);
     }
 }

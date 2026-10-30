@@ -41,29 +41,28 @@ impl<'py> IntoPyObject<'py> for ChannelData {
     /// IntoPyObject implementation to convert a ChannelData into a PyObject
     fn into_pyobject(self, py: Python<'py>) -> Result<Self::Output, Self::Error> {
         match self {
-            ChannelData::Int8(array) => Ok(array.values_slice().to_pyarray(py).into_any()),
-            ChannelData::UInt8(array) => Ok(array.values_slice().to_pyarray(py).into_any()),
-            ChannelData::Int16(array) => Ok(array.values_slice().to_pyarray(py).into_any()),
-            ChannelData::UInt16(array) => Ok(array.values_slice().to_pyarray(py).into_any()),
-            ChannelData::Int32(array) => Ok(array.values_slice().to_pyarray(py).into_any()),
-            ChannelData::UInt32(array) => Ok(array.values_slice().to_pyarray(py).into_any()),
-            ChannelData::Float32(array) => Ok(array.values_slice().to_pyarray(py).into_any()),
-            ChannelData::Int64(array) => Ok(array.values_slice().to_pyarray(py).into_any()),
-            ChannelData::UInt64(array) => Ok(array.values_slice().to_pyarray(py).into_any()),
-            ChannelData::Float64(array) => Ok(array.values_slice().to_pyarray(py).into_any()),
+            ChannelData::Int8(array) => Ok(array.values().to_pyarray(py).into_any()),
+            ChannelData::UInt8(array) => Ok(array.values().to_pyarray(py).into_any()),
+            ChannelData::Int16(array) => Ok(array.values().to_pyarray(py).into_any()),
+            ChannelData::UInt16(array) => Ok(array.values().to_pyarray(py).into_any()),
+            ChannelData::Int32(array) => Ok(array.values().to_pyarray(py).into_any()),
+            ChannelData::UInt32(array) => Ok(array.values().to_pyarray(py).into_any()),
+            ChannelData::Float32(array) => Ok(array.values().to_pyarray(py).into_any()),
+            ChannelData::Int64(array) => Ok(array.values().to_pyarray(py).into_any()),
+            ChannelData::UInt64(array) => Ok(array.values().to_pyarray(py).into_any()),
+            ChannelData::Float64(array) => Ok(array.values().to_pyarray(py).into_any()),
             ChannelData::Complex32(array) => Ok(array.values_slice().to_pyarray(py).into_any()),
             ChannelData::Complex64(array) => Ok(array.values_slice().to_pyarray(py).into_any()),
             ChannelData::VariableSizeByteArray(array) => {
-                Ok(array.values_slice().to_pyarray(py).into_any())
+                Ok(array.values().as_slice().to_pyarray(py).into_any())
             }
             ChannelData::FixedSizeByteArray(array) => {
-                let binary_array = array.finish_cloned();
-                let out: Vec<Vec<u8>> = if binary_array.value_length() == 0 {
-                    vec![vec![]; binary_array.len()]
+                let out: Vec<Vec<u8>> = if array.value_length() == 0 {
+                    vec![vec![]; array.len()]
                 } else {
-                    binary_array
+                    array
                         .values()
-                        .chunks(binary_array.value_length() as usize)
+                        .chunks(array.value_length() as usize)
                         .map(<[u8]>::to_vec)
                         .collect()
                 };
@@ -130,8 +129,7 @@ impl<'py> IntoPyObject<'py> for ChannelData {
                     .into_any())
             }
             ChannelData::Utf8(array) => {
-                let string_array = array.finish_cloned();
-                let strings: Vec<Option<&str>> = string_array.iter().collect();
+                let strings: Vec<Option<&str>> = array.iter().collect();
                 strings.into_pyobject(py)
             }
             ChannelData::Union(array) => {

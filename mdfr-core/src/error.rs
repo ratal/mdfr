@@ -3,7 +3,7 @@ use alloc::string::String;
 
 /// Errors of the core and logger.
 #[derive(Debug, thiserror::Error)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[cfg_attr(all(feature = "defmt", not(feature = "std")), derive(defmt::Format))]
 pub enum Error {
     /// Sink I/O failure (write, seek or flush).
     #[error("sink I/O error")]

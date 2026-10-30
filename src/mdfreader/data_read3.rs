@@ -8,7 +8,7 @@ use rayon::prelude::*;
 use std::collections::HashMap;
 use std::io::Cursor;
 
-use crate::data_holder::channel_data::ChannelData;
+use crate::data_holder::channel_builder::ChannelBuilder;
 
 /// copies data from data_chunk into each channel array
 pub fn read_channels_from_bytes(
@@ -25,8 +25,12 @@ pub fn read_channels_from_bytes(
             let mut value: &[u8]; // value of channel at record
             let pos_byte_beg = cn.pos_byte_beg as usize;
             let n_bytes = cn.n_bytes as usize;
-            match &mut cn.data {
-                ChannelData::Int8(a) => {
+            let builder = match &mut cn.builder {
+                Some(b) => b,
+                None => return Ok(()),
+            };
+            match builder {
+                ChannelBuilder::Int8(a) => {
                     let data = a.values_slice_mut();
                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
                         value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<i8>()];
@@ -34,7 +38,7 @@ pub fn read_channels_from_bytes(
                             i8::from_le_bytes(value.try_into().context("Could not read i8")?);
                     }
                 }
-                ChannelData::UInt8(a) => {
+                ChannelBuilder::UInt8(a) => {
                     let data = a.values_slice_mut();
                     for (i, record) in data_chunk.chunks(record_length).enumerate() {
                         value = &record[pos_byte_beg..pos_byte_beg + std::mem::size_of::<u8>()];
@@ -42,7 +46,7 @@ pub fn read_channels_from_bytes(
                             u8::from_le_bytes(value.try_into().context("Could not read u8")?);
                     }
                 }
-                ChannelData::Int16(a) => {
+                ChannelBuilder::Int16(a) => {
                     let data = a.values_slice_mut();
                     if cn.endian.is_big() {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -62,7 +66,7 @@ pub fn read_channels_from_bytes(
                         }
                     }
                 }
-                ChannelData::UInt16(a) => {
+                ChannelBuilder::UInt16(a) => {
                     let data = a.values_slice_mut();
                     if cn.endian.is_big() {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -82,7 +86,7 @@ pub fn read_channels_from_bytes(
                         }
                     }
                 }
-                ChannelData::Int32(a) => {
+                ChannelBuilder::Int32(a) => {
                     let data = a.values_slice_mut();
                     if n_bytes == 3 {
                         if cn.endian.is_big() {
@@ -118,7 +122,7 @@ pub fn read_channels_from_bytes(
                         }
                     }
                 }
-                ChannelData::UInt32(a) => {
+                ChannelBuilder::UInt32(a) => {
                     let data = a.values_slice_mut();
                     if n_bytes == 3 {
                         if cn.endian.is_big() {
@@ -154,7 +158,7 @@ pub fn read_channels_from_bytes(
                         }
                     }
                 }
-                ChannelData::Float32(a) => {
+                ChannelBuilder::Float32(a) => {
                     let data = a.values_slice_mut();
                     if cn.endian.is_big() {
                         if n_bytes == 2 {
@@ -194,7 +198,7 @@ pub fn read_channels_from_bytes(
                         }
                     }
                 }
-                ChannelData::Int64(a) => {
+                ChannelBuilder::Int64(a) => {
                     let data = a.values_slice_mut();
                     if cn.endian.is_big() {
                         if n_bytes == 8 {
@@ -228,7 +232,7 @@ pub fn read_channels_from_bytes(
                         }
                     }
                 }
-                ChannelData::UInt64(a) => {
+                ChannelBuilder::UInt64(a) => {
                     let data = a.values_slice_mut();
                     if cn.endian.is_big() {
                         if n_bytes == 8 {
@@ -293,7 +297,7 @@ pub fn read_channels_from_bytes(
                         }
                     }
                 }
-                ChannelData::Float64(a) => {
+                ChannelBuilder::Float64(a) => {
                     let data = a.values_slice_mut();
                     if cn.endian.is_big() {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
@@ -313,7 +317,7 @@ pub fn read_channels_from_bytes(
                         }
                     }
                 }
-                ChannelData::Utf8(array) => {
+                ChannelBuilder::Utf8(array) => {
                     let n_bytes = cn.n_bytes as usize;
                     // SBC ISO-8859-1 to be converted into UTF8
                     let mut decoder = WINDOWS_1252.new_decoder();
@@ -325,13 +329,13 @@ pub fn read_channels_from_bytes(
                         array.append_value(dst.trim_end_matches('\0'));
                     }
                 }
-                ChannelData::VariableSizeByteArray(array) => {
+                ChannelBuilder::VariableSizeByteArray(array) => {
                     let n_bytes = cn.n_bytes as usize;
                     for record in data_chunk.chunks(record_length) {
                         array.append_value(&record[pos_byte_beg..pos_byte_beg + n_bytes]);
                     }
                 }
-                ChannelData::FixedSizeByteArray(a) => {
+                ChannelBuilder::FixedSizeByteArray(a) => {
                     let n_bytes = cn.n_bytes as usize;
                     for record in data_chunk.chunks(record_length) {
                         a.append_value(&record[pos_byte_beg..pos_byte_beg + n_bytes])

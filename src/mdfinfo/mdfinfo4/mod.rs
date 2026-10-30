@@ -574,6 +574,7 @@ impl MdfInfo4 {
             header: default_short_header(BlockType::CN),
             unique_name: channel_name.to_string(),
             data,
+            builder: None,
             block: cn_block,
             endian: Endianness::from(machine_endian),
             block_position: cn_pos,

@@ -336,70 +336,70 @@ fn convert_channel_data_into_h5dataset(
             name,
             ndim,
             compression,
-            data.values_slice(),
+            data.values(),
         )?),
         ChannelData::UInt8(data) => Ok(create_dataset::<u8, UInt8Type>(
             group,
             name,
             ndim,
             compression,
-            data.values_slice(),
+            data.values(),
         )?),
         ChannelData::Int16(data) => Ok(create_dataset::<i16, Int16Type>(
             group,
             name,
             ndim,
             compression,
-            data.values_slice(),
+            data.values(),
         )?),
         ChannelData::UInt16(data) => Ok(create_dataset::<u16, UInt16Type>(
             group,
             name,
             ndim,
             compression,
-            data.values_slice(),
+            data.values(),
         )?),
         ChannelData::Int32(data) => Ok(create_dataset::<i32, Int32Type>(
             group,
             name,
             ndim,
             compression,
-            data.values_slice(),
+            data.values(),
         )?),
         ChannelData::UInt32(data) => Ok(create_dataset::<u32, UInt32Type>(
             group,
             name,
             ndim,
             compression,
-            data.values_slice(),
+            data.values(),
         )?),
         ChannelData::Float32(data) => Ok(create_dataset::<f32, Float32Type>(
             group,
             name,
             ndim,
             compression,
-            data.values_slice(),
+            data.values(),
         )?),
         ChannelData::Int64(data) => Ok(create_dataset::<i64, Int64Type>(
             group,
             name,
             ndim,
             compression,
-            data.values_slice(),
+            data.values(),
         )?),
         ChannelData::UInt64(data) => Ok(create_dataset::<u64, UInt64Type>(
             group,
             name,
             ndim,
             compression,
-            data.values_slice(),
+            data.values(),
         )?),
         ChannelData::Float64(data) => Ok(create_dataset::<f64, Float64Type>(
             group,
             name,
             ndim,
             compression,
-            data.values_slice(),
+            data.values(),
         )?),
         ChannelData::Complex32(data) => {
             let filter = get_filter(compression);
@@ -423,22 +423,18 @@ fn convert_channel_data_into_h5dataset(
         }
         ChannelData::Utf8(data) => {
             let filter = get_filter(compression);
-            let array = data.finish_cloned();
-            let strings: Vec<&str> = array.iter().map(|opt| opt.unwrap_or("")).collect();
+            let strings: Vec<&str> = data.iter().map(|opt| opt.unwrap_or("")).collect();
             let chunk_size = strings.len().max(1);
             Ok(group.write_vlen_strings_compressed(name, &strings, chunk_size, filter)?)
         }
         ChannelData::VariableSizeByteArray(data) => {
-            // Convert LargeBinaryBuilder -> LargeBinaryArray -> Vec<&[u8]>
-            let array = data.finish_cloned();
-            let bytes: Vec<&[u8]> = array.iter().map(|opt| opt.unwrap_or(&[])).collect();
+            let bytes: Vec<&[u8]> = data.iter().map(|opt| opt.unwrap_or(&[])).collect();
             Ok(group.write_vlen_bytes(name, &bytes)?)
         }
         ChannelData::FixedSizeByteArray(data) => {
-            let fixed_binary = data.finish_cloned();
-            let value_length = fixed_binary.value_length();
-            let vector = fixed_binary.value_data().to_vec();
-            let shape = vec![fixed_binary.len(), value_length as usize];
+            let value_length = data.value_length();
+            let vector = data.values().as_slice().to_vec();
+            let shape = vec![data.len(), value_length as usize];
             let filter = get_filter(compression);
             let dataset = group
                 .new_dataset::<u8>()

@@ -4,7 +4,7 @@
 //! 3. Array storage types: DG template (`ca_storage == 2`) and CG template (`ca_storage == 1`).
 
 use anyhow::Result;
-use mdfr::data_holder::channel_data::ChannelData;
+use mdfr::data_holder::channel_data::{AsValuesSlice, ChannelData};
 use mdfr::mdfinfo::mdfinfo4::Ca4Block;
 use mdfr::mdfreader::Mdf;
 use std::io::Write;
@@ -281,8 +281,7 @@ fn test_virtual_data_channel_with_conversion() -> Result<()> {
     mdf.load_all_channels_data_in_memory()?;
 
     let cd = mdf.get_channel_data("VirtualRamp");
-    if let Some(ChannelData::Float64(builder)) = cd {
-        let arr = builder.finish_cloned();
+    if let Some(ChannelData::Float64(arr)) = cd {
         let values: Vec<f64> = arr.values().to_vec();
         assert_eq!(values, vec![100.0, 102.5, 105.0, 107.5, 110.0]);
     } else {
@@ -347,8 +346,7 @@ fn test_independent_column_oriented_dvblock() -> Result<()> {
     let mut mdf = Mdf::new(temp.path().to_str().unwrap())?;
     mdf.load_all_channels_data_in_memory()?;
 
-    if let Some(ChannelData::Float32(builder)) = mdf.get_channel_data("ColFloat32") {
-        let arr = builder.finish_cloned();
+    if let Some(ChannelData::Float32(arr)) = mdf.get_channel_data("ColFloat32") {
         assert_eq!(arr.values(), &[1.25, 2.5, 5.0, 10.0]);
     } else {
         panic!("Expected Float32 for ColFloat32");
@@ -415,8 +413,7 @@ fn test_independent_column_oriented_ldblock() -> Result<()> {
     let mut mdf = Mdf::new(temp.path().to_str().unwrap())?;
     mdf.load_all_channels_data_in_memory()?;
 
-    if let Some(ChannelData::Float64(builder)) = mdf.get_channel_data("ColFloat64BE") {
-        let arr = builder.finish_cloned();
+    if let Some(ChannelData::Float64(arr)) = mdf.get_channel_data("ColFloat64BE") {
         assert_eq!(arr.values(), &[11.0, 22.0, 33.0]);
     } else {
         panic!("Expected Float64 for ColFloat64BE");
@@ -726,8 +723,7 @@ fn test_string_null_termination_truncation() -> Result<()> {
     let mut mdf = Mdf::new(temp.path().to_str().unwrap())?;
     mdf.load_all_channels_data_in_memory()?;
 
-    if let Some(ChannelData::Utf8(builder)) = mdf.get_channel_data("SensorName") {
-        let array = builder.finish_cloned();
+    if let Some(ChannelData::Utf8(array)) = mdf.get_channel_data("SensorName") {
         assert_eq!(array.len(), 3);
         // MDF 4.3 §6.16.4 requires truncating at the FIRST null character
         assert_eq!(array.value(0), "Speed_kmh");
@@ -893,19 +889,18 @@ fn test_bitfield_rounding_edge_cases() -> Result<()> {
     builder.append_value(1.5);
 
     let mut cn = Cn4 {
-        data: ChannelData::Float64(builder),
+        data: ChannelData::Float64(builder.finish()),
         ..Default::default()
     };
 
     mdfr::mdfreader::conversions4::bitfield_text_table(&mut cn, &cc_val, &cc_ref, &sharable)?;
 
     if let ChannelData::Utf8(ref s) = cn.data {
-        let res = s.finish_cloned();
-        assert_eq!(res.value(0), " | VAL_NEG_1");
-        assert_eq!(res.value(1), " | VAL_0");
-        assert_eq!(res.value(2), " | VAL_1");
-        assert_eq!(res.value(3), " | VAL_1");
-        assert_eq!(res.value(4), " | VAL_2");
+        assert_eq!(s.value(0), " | VAL_NEG_1");
+        assert_eq!(s.value(1), " | VAL_0");
+        assert_eq!(s.value(2), " | VAL_1");
+        assert_eq!(s.value(3), " | VAL_1");
+        assert_eq!(s.value(4), " | VAL_2");
     } else {
         panic!("Expected Utf8 channel data");
     }
@@ -1076,10 +1071,13 @@ fn test_be_7byte_uint64_and_array_uint64() -> Result<()> {
     }
 
     // Also test via read_channels_from_bytes
-    cn.data = cn.data.zeros(0, 2, 7, (vec![1], Order::RowMajor))?;
+    cn.init_builder(2)?;
     let mut channels = CnType::default();
     channels.insert(0, cn);
     read_channels_from_bytes(&raw_bytes, &mut channels, 7, 0, false)?;
+    if let Some(b) = channels.get_mut(&0).unwrap().builder.take() {
+        channels.get_mut(&0).unwrap().data = b.finish();
+    }
     if let ChannelData::UInt64(arr) = &channels[&0].data {
         assert_eq!(arr.values_slice(), &[0x0001_0203_0405_0607u64, 256u64]);
     } else {
@@ -1100,7 +1098,7 @@ fn test_be_7byte_uint64_and_array_uint64() -> Result<()> {
     };
     cn_arr.block.cn_data_type = 1; // UInt BE
     cn_arr.block.cn_bit_count = 64;
-    cn_arr.data = cn_arr.data.zeros(0, 2, 8, shape)?;
+    cn_arr.init_builder(2)?;
     let mut raw_arr = Vec::new();
     for v in [10u64, 20, 30, 40] {
         raw_arr.extend_from_slice(&v.to_be_bytes());
@@ -1108,6 +1106,9 @@ fn test_be_7byte_uint64_and_array_uint64() -> Result<()> {
     let mut channels_arr = CnType::default();
     channels_arr.insert(0, cn_arr);
     read_channels_from_bytes(&raw_arr, &mut channels_arr, 16, 0, false)?;
+    if let Some(b) = channels_arr.get_mut(&0).unwrap().builder.take() {
+        channels_arr.get_mut(&0).unwrap().data = b.finish();
+    }
     if let ChannelData::ArrayDUInt64(arr) = &channels_arr[&0].data {
         assert_eq!(arr.values_slice(), &[10u64, 20, 30, 40]);
     } else {
@@ -1180,7 +1181,7 @@ fn test_mdf4_spec_fig45_le_and_fig46_be_bit_offset_mask() -> Result<()> {
     cn_le.block.cn_data_type = 0; // Unsigned LE
     cn_le.block.cn_bit_offset = 6;
     cn_le.block.cn_bit_count = 14;
-    cn_le.data = cn_le.data.zeros(0, 1, 3, (vec![1], Order::RowMajor))?;
+    cn_le.init_builder(1)?;
 
     // MDF 4.3.0 §6.26.5.2 Figure 46:
     // Bytes on disk: [0xAB, 0xCD, 0xEF]
@@ -1199,7 +1200,7 @@ fn test_mdf4_spec_fig45_le_and_fig46_be_bit_offset_mask() -> Result<()> {
     cn_be.block.cn_data_type = 1; // Unsigned BE
     cn_be.block.cn_bit_offset = 6;
     cn_be.block.cn_bit_count = 14;
-    cn_be.data = cn_be.data.zeros(0, 1, 3, (vec![1], Order::RowMajor))?;
+    cn_be.init_builder(1)?;
 
     // Signed LE 14-bit with MSB=1 (0x3F36 has bit 13 set -> negative in 14-bit two's complement:
     // 16182 - 16384 = -202)
@@ -1216,9 +1217,7 @@ fn test_mdf4_spec_fig45_le_and_fig46_be_bit_offset_mask() -> Result<()> {
     cn_signed_le.block.cn_data_type = 2; // Signed LE
     cn_signed_le.block.cn_bit_offset = 6;
     cn_signed_le.block.cn_bit_count = 14;
-    cn_signed_le.data = cn_signed_le
-        .data
-        .zeros(0, 1, 3, (vec![1], Order::RowMajor))?;
+    cn_signed_le.init_builder(1)?;
 
     let mut cn_map = CnType::default();
     cn_map.insert(0, cn_le);

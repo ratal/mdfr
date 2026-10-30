@@ -172,7 +172,7 @@ pub fn calculate_final_byte_offset(
 /// # Returns
 /// Vector of u64 values extracted from the channel data
 pub fn extract_channel_values_as_u64(cn: &Cn4) -> Result<Vec<u64>> {
-    cn.data.to_u64_vec().ok_or_else(|| {
+    cn.to_u64_vec().ok_or_else(|| {
         anyhow::anyhow!(
             "Cannot extract u64 values from channel data type: {:?}",
             std::mem::discriminant(&cn.data)

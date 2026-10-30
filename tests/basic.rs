@@ -190,7 +190,7 @@ fn record_layout() -> Result<()> {
             counter += 1
         });
         assert_eq!(
-            ChannelData::UInt64(UInt64Builder::new_from_buffer(vect.into(), None)),
+            ChannelData::UInt64(UInt64Builder::new_from_buffer(vect.into(), None).finish()),
             data.clone()
         );
     }
@@ -249,7 +249,7 @@ fn unsorted_data() -> Result<()> {
     expected_string_result.append_value("seven");
     expected_string_result.append_value("eight");
     expected_string_result.append_value("nine");
-    let expected_string_result = ChannelData::Utf8(expected_string_result);
+    let expected_string_result = ChannelData::Utf8(expected_string_result.finish());
 
     if let Some(data) = mdf.get_channel_data("Data channel") {
         assert_eq!(expected_string_result, data.clone());
@@ -275,7 +275,7 @@ fn bus_logging() -> Result<()> {
     {
         let vect: Vec<f64> = vec![101.; 79];
         assert_eq!(
-            ChannelData::Float64(Float64Builder::new_from_buffer(vect.into(), None)),
+            ChannelData::Float64(Float64Builder::new_from_buffer(vect.into(), None).finish()),
             *data
         );
     }
