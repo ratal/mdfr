@@ -14,6 +14,7 @@ where
     cap: usize,
     buf: Vec<u8>,
     file_size_cache: Option<u64>,
+    last_seek_backward: bool,
 }
 
 impl<R> SymBufReader<R>
@@ -30,6 +31,7 @@ where
             cap: 0,
             pos: 0,
             file_size_cache: None,
+            last_seek_backward: false,
         }
     }
 
@@ -46,6 +48,18 @@ where
         } else {
             &self.buf[self.pos..self.cap]
         }
+    }
+
+    /// Gets a reference to the underlying reader.
+    #[allow(dead_code)]
+    pub fn get_ref(&self) -> &R {
+        &self.reader
+    }
+
+    /// Unwraps this `SymBufReader<R>`, returning the underlying reader.
+    #[allow(dead_code)]
+    pub fn into_inner(self) -> R {
+        self.reader
     }
 }
 
@@ -120,6 +134,7 @@ where
         let result: u64;
         match pos {
             SeekFrom::Current(n) => {
+                self.last_seek_backward = n < 0;
                 let remainder = (self.cap - self.pos) as i64;
                 // it should be safe to assume that remainder fits within an i64 as the alternative
                 // means we managed to allocate 8 exbibytes and that's absurd.
@@ -136,6 +151,7 @@ where
                 }
             }
             _ => {
+                self.last_seek_backward = false;
                 // Seeking with Start/End doesn't care about our buffer length.
                 result = self.reader.seek(pos)?;
             }
@@ -174,15 +190,19 @@ impl<R: Read + Seek> SymBufReader<R> {
     pub fn seek_relative(&mut self, offset: i64) -> Result<()> {
         let pos = self.pos as u64;
         if offset < 0 {
+            self.last_seek_backward = true;
             if let Some(new_pos) = pos.checked_sub((-offset) as u64) {
                 self.pos = new_pos as usize;
                 return Ok(());
             }
-        } else if let Some(new_pos) = pos.checked_add(offset as u64)
-            && new_pos <= self.cap as u64
-        {
-            self.pos = new_pos as usize;
-            return Ok(());
+        } else {
+            self.last_seek_backward = false;
+            if let Some(new_pos) = pos.checked_add(offset as u64)
+                && new_pos <= self.cap as u64
+            {
+                self.pos = new_pos as usize;
+                return Ok(());
+            }
         }
 
         // Flushes the buffer
@@ -197,9 +217,26 @@ impl<R: Read + Seek> SymBufReader<R> {
         if self.pos >= self.cap {
             debug_assert!(self.pos == self.cap);
 
+            let stream_position = self.stream_position()? as i64;
+
+            if !self.last_seek_backward {
+                // Forward sequential read: read from stream_position without rewinding
+                self.reader.seek(SeekFrom::Start(stream_position as u64))?;
+                let mut total_read = 0;
+                while total_read < self.buf.len() {
+                    let n = self.reader.read(&mut self.buf[total_read..])?;
+                    if n == 0 {
+                        break;
+                    }
+                    total_read += n;
+                }
+                self.cap = total_read;
+                self.pos = 0;
+                return Ok(self.buffer());
+            }
+
             let middle_of_buffer = (DEFAULT_BUF_SIZE as i64) / 2;
             // checks if close to stream start
-            let stream_position = self.stream_position()? as i64;
             if let Some(remaining) = stream_position.checked_sub(middle_of_buffer)
                 && remaining <= 0
             {

@@ -649,8 +649,11 @@ fn write_cg4_with_rec_id(
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
 
+static FIXTURE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[test]
 fn create_fixtures() {
+    let _lock = FIXTURE_LOCK.lock().unwrap();
     create_int_linear_cc_fixture().expect("failed to create int_linear_cc fixture");
     assert!(
         std::path::Path::new("test_files/synthetic/int_linear_cc.mf4").exists(),
@@ -670,6 +673,7 @@ fn create_fixtures() {
 
 #[test]
 fn verify_unsorted_vlsd_vlsc_fixture_loads() {
+    let _lock = FIXTURE_LOCK.lock().unwrap();
     create_unsorted_vlsd_vlsc_fixture().expect("failed to create unsorted VLSD/VLSC fixture");
     use mdfr::mdfreader::Mdf;
     let path = "test_files/synthetic/unsorted_vlsd_vlsc.mf4";
@@ -690,6 +694,7 @@ fn verify_unsorted_vlsd_vlsc_fixture_loads() {
 
 #[test]
 fn verify_unsorted_fixture_loads() {
+    let _lock = FIXTURE_LOCK.lock().unwrap();
     create_unsorted_multi_cg_fixture().expect("failed to create unsorted_multi_cg fixture");
     use mdfr::mdfreader::Mdf;
     let path = "test_files/synthetic/unsorted_multi_cg.mf4";

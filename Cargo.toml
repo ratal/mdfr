@@ -105,6 +105,10 @@ harness = false
 name = "memory_benchmark"
 harness = false
 
+[[bench]]
+name = "improvement_measurements"
+harness = false
+
 [profile.release]
 opt-level = 3
 debug = false

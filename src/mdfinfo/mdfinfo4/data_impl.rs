@@ -5,12 +5,8 @@
 //! HLBLOCK is a header list for DZBLOCK chains, LDBLOCK is a list for sorted data,
 //! and GDBLOCK guards MDF 4.3 features in unsorted data.
 use anyhow::{Context, Result, bail};
-use flate2::read::{DeflateDecoder, ZlibDecoder};
-use log::warn;
-use lz4::Decoder as Lz4Decoder;
 use std::fs::File;
-use std::io::{BufReader, Cursor, Read, Seek};
-use zstd::Decoder as ZstdDecoder;
+use std::io::{BufReader, Read, Seek};
 
 #[cfg(feature = "numpy")]
 use pyo3::prelude::*;
@@ -80,62 +76,8 @@ pub fn decompress_data(
     buf: Vec<u8>,
     org_data_length: u64,
 ) -> Result<Vec<u8>> {
-    let mut data = Vec::<u8>::with_capacity(org_data_length as usize);
-    match zip_type {
-        0 | 1 => {
-            let reader = Cursor::new(&buf);
-            let mut decoder = ZlibDecoder::new(reader);
-            let zlib_ok = decoder.read_to_end(&mut data).is_ok();
-            if !zlib_ok {
-                warn!(
-                    "zlib stream has invalid checksum or is truncated, falling back to raw deflate"
-                );
-                data.clear();
-                let reader: Cursor<&[u8]> = if buf.len() >= 2
-                    && ((buf[0] as u16) << 8 | buf[1] as u16).is_multiple_of(31)
-                {
-                    Cursor::new(&buf[2..])
-                } else {
-                    Cursor::new(&buf)
-                };
-                let mut decoder = DeflateDecoder::new(reader);
-                decoder
-                    .read_to_end(&mut data)
-                    .context("Error decompressing Deflate data")?;
-            }
-        }
-        2 | 3 => {
-            // zstd algorithm
-            let reader = Cursor::new(buf);
-            let mut decoder =
-                ZstdDecoder::new(reader).context("Error creating Zstd decoder from read vector")?;
-            let _nbbytesread = decoder
-                .read_to_end(&mut data)
-                .context("error reading the compressed bytes")?;
-        }
-        4 | 5 => {
-            // lz4 algorithm
-            let reader = Cursor::new(buf);
-            let mut decoder =
-                Lz4Decoder::new(reader).context("Error creating Lz4 decoder from read vector")?;
-            let _nbbytesread = decoder
-                .read_to_end(&mut data)
-                .context("error reading the compressed bytes")?;
-        }
-        254 => {
-            // MDF 4.3 custom/vendor-specific compression
-            warn!("Custom compression (zip_type=254) not supported - data will be empty");
-            return Ok(data);
-        }
-        _ => {
-            bail!("not implemented compression algorithm: {zip_type}")
-        }
-    };
-    // transpose data
-    if matches!(zip_type, 1 | 3 | 5) && zip_parameter > 0 {
-        data = mdfr_core::compress::untranspose_after_decompression(&data, zip_parameter as usize);
-    }
-    Ok(data)
+    mdfr_core::compress::decompress_dz_data(zip_type, zip_parameter, &buf, org_data_length)
+        .map_err(|e| anyhow::anyhow!("DZ decompression failed: {e}"))
 }
 
 /// Number of bytes left between the current position and the end of the file.

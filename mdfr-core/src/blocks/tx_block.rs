@@ -4,6 +4,7 @@
 //! - 24-byte [`Blockheader4`] (`hdr_id = b"##TX"` or `b"##MD"`, `hdr_links = 0`)
 //! - Null-terminated UTF-8 string bytes
 //! - Zero-padding to 8-byte alignment
+use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 use binrw::{BinWrite, io::Cursor};
@@ -15,6 +16,23 @@ use crate::error::{Error, Result};
 #[inline]
 pub const fn align8(n: u64) -> u64 {
     (n + 7) & !7
+}
+
+/// Escapes special XML characters in `s` per the XML 1.0 specification:
+/// `&` -> `&amp;`, `<` -> `&lt;`, `>` -> `&gt;`, `"` -> `&quot;`, `'` -> `&apos;`.
+pub fn escape_xml(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&apos;"),
+            _ => out.push(c),
+        }
+    }
+    out
 }
 
 /// Computes the serialized byte length of a TX or MD block containing `text` (without trailing NUL in `text`).
@@ -76,5 +94,12 @@ mod tests {
         assert_eq!(u64::from_le_bytes(b[8..16].try_into().unwrap()), 32);
         assert_eq!(&b[24..28], b"rpm\0");
         assert_eq!(&b[28..32], &[0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn test_escape_xml() {
+        assert_eq!(escape_xml("hello & world"), "hello &amp; world");
+        assert_eq!(escape_xml("<tag attr=\"val\">'x'</tag>"), "&lt;tag attr=&quot;val&quot;&gt;&apos;x&apos;&lt;/tag&gt;");
+        assert_eq!(escape_xml("plain text"), "plain text");
     }
 }

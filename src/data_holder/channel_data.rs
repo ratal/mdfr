@@ -136,25 +136,56 @@ macro_rules! dispatch_numeric {
 
 impl PartialEq for ChannelData {
     fn eq(&self, other: &Self) -> bool {
+        macro_rules! check_primitive_eq {
+            ($l:ident, $r:ident) => {{
+                if $l.len() != $r.len() {
+                    false
+                } else if $l.validity_slice().is_none() && $r.validity_slice().is_none() {
+                    $l.values_slice() == $r.values_slice()
+                } else {
+                    $l.finish_cloned() == $r.finish_cloned()
+                }
+            }};
+        }
         match (self, other) {
-            (Self::Int8(l0), Self::Int8(r0)) => l0.finish_cloned() == r0.finish_cloned(),
-            (Self::UInt8(l0), Self::UInt8(r0)) => l0.finish_cloned() == r0.finish_cloned(),
-            (Self::Int16(l0), Self::Int16(r0)) => l0.finish_cloned() == r0.finish_cloned(),
-            (Self::UInt16(l0), Self::UInt16(r0)) => l0.finish_cloned() == r0.finish_cloned(),
-            (Self::Int32(l0), Self::Int32(r0)) => l0.finish_cloned() == r0.finish_cloned(),
-            (Self::UInt32(l0), Self::UInt32(r0)) => l0.finish_cloned() == r0.finish_cloned(),
-            (Self::Float32(l0), Self::Float32(r0)) => l0.finish_cloned() == r0.finish_cloned(),
-            (Self::Int64(l0), Self::Int64(r0)) => l0.finish_cloned() == r0.finish_cloned(),
-            (Self::UInt64(l0), Self::UInt64(r0)) => l0.finish_cloned() == r0.finish_cloned(),
-            (Self::Float64(l0), Self::Float64(r0)) => l0.finish_cloned() == r0.finish_cloned(),
+            (Self::Int8(l0), Self::Int8(r0)) => check_primitive_eq!(l0, r0),
+            (Self::UInt8(l0), Self::UInt8(r0)) => check_primitive_eq!(l0, r0),
+            (Self::Int16(l0), Self::Int16(r0)) => check_primitive_eq!(l0, r0),
+            (Self::UInt16(l0), Self::UInt16(r0)) => check_primitive_eq!(l0, r0),
+            (Self::Int32(l0), Self::Int32(r0)) => check_primitive_eq!(l0, r0),
+            (Self::UInt32(l0), Self::UInt32(r0)) => check_primitive_eq!(l0, r0),
+            (Self::Float32(l0), Self::Float32(r0)) => check_primitive_eq!(l0, r0),
+            (Self::Int64(l0), Self::Int64(r0)) => check_primitive_eq!(l0, r0),
+            (Self::UInt64(l0), Self::UInt64(r0)) => check_primitive_eq!(l0, r0),
+            (Self::Float64(l0), Self::Float64(r0)) => check_primitive_eq!(l0, r0),
             (Self::Complex32(l0), Self::Complex32(r0)) => l0 == r0,
             (Self::Complex64(l0), Self::Complex64(r0)) => l0 == r0,
-            (Self::Utf8(l0), Self::Utf8(r0)) => l0.finish_cloned() == r0.finish_cloned(),
+            (Self::Utf8(l0), Self::Utf8(r0)) => {
+                if l0.len() != r0.len() {
+                    false
+                } else if l0.validity_slice().is_none() && r0.validity_slice().is_none() {
+                    l0.offsets_slice() == r0.offsets_slice() && l0.values_slice() == r0.values_slice()
+                } else {
+                    l0.finish_cloned() == r0.finish_cloned()
+                }
+            }
             (Self::VariableSizeByteArray(l0), Self::VariableSizeByteArray(r0)) => {
-                l0.finish_cloned() == r0.finish_cloned()
+                if l0.len() != r0.len() {
+                    false
+                } else if l0.validity_slice().is_none() && r0.validity_slice().is_none() {
+                    l0.offsets_slice() == r0.offsets_slice() && l0.values_slice() == r0.values_slice()
+                } else {
+                    l0.finish_cloned() == r0.finish_cloned()
+                }
             }
             (Self::FixedSizeByteArray(l0), Self::FixedSizeByteArray(r0)) => {
-                l0.finish_cloned() == r0.finish_cloned()
+                if l0.len() != r0.len() {
+                    false
+                } else if l0.validity_slice().is_none() && r0.validity_slice().is_none() {
+                    l0.values_slice() == r0.values_slice()
+                } else {
+                    l0.finish_cloned() == r0.finish_cloned()
+                }
             }
             (Self::ArrayDInt8(l0), Self::ArrayDInt8(r0)) => l0 == r0,
             (Self::ArrayDUInt8(l0), Self::ArrayDUInt8(r0)) => l0 == r0,
@@ -232,61 +263,10 @@ impl Clone for ChannelData {
                 }),
             ),
             Self::FixedSizeByteArray(array) => {
-                let array: FixedSizeBinaryArray = array.finish_cloned();
+                let array = array.finish_cloned();
                 let mut new_array =
                     FixedSizeBinaryBuilder::with_capacity(array.len(), array.value_length());
-                if array.value_length() == 0 {
-                    match array.logical_nulls() {
-                        Some(validity) => {
-                            for valid in validity.iter() {
-                                if valid {
-                                    new_array
-                                        .append_value([])
-                                        .unwrap_or_else(|_| new_array.append_null());
-                                } else {
-                                    new_array.append_null();
-                                }
-                            }
-                        }
-                        _ => {
-                            for _ in 0..array.len() {
-                                new_array
-                                    .append_value([])
-                                    .unwrap_or_else(|_| new_array.append_null());
-                            }
-                        }
-                    }
-                } else {
-                    match array.logical_nulls() {
-                        // append_value can only fail if slice length != value_length,
-                        // which can't happen since we chunk by value_length().
-                        Some(validity) => {
-                            array
-                                .values()
-                                .chunks(array.value_length() as usize)
-                                .zip(validity.iter())
-                                .for_each(|(value, valid)| {
-                                    if valid {
-                                        new_array
-                                            .append_value(value)
-                                            .unwrap_or_else(|_| new_array.append_null());
-                                    } else {
-                                        new_array.append_null();
-                                    }
-                                });
-                        }
-                        _ => {
-                            array
-                                .values()
-                                .chunks(array.value_length() as usize)
-                                .for_each(|value| {
-                                    new_array
-                                        .append_value(value)
-                                        .unwrap_or_else(|_| new_array.append_null());
-                                });
-                        }
-                    }
-                }
+                let _ = new_array.append_array(&array);
                 Self::FixedSizeByteArray(new_array)
             }
             Self::ArrayDInt8(arg0) => Self::ArrayDInt8(arg0.clone()),
@@ -668,7 +648,12 @@ impl ChannelData {
                     * 8) as u32
             }
             ChannelData::FixedSizeByteArray(data) => {
-                (data.finish_cloned().value_length() * 8) as u32
+                let byte_len = if data.len() > 0 {
+                    (data.values_slice().len() / data.len()) as u32
+                } else {
+                    data.finish_cloned().value_length() as u32
+                };
+                byte_len * 8
             }
             ChannelData::ArrayDInt8(_) => 8,
             ChannelData::ArrayDUInt8(_) => 8,
@@ -716,7 +701,13 @@ impl ChannelData {
                     .max()
                     .unwrap_or(0)) as u32
             }
-            ChannelData::FixedSizeByteArray(data) => data.finish_cloned().value_length() as u32,
+            ChannelData::FixedSizeByteArray(data) => {
+                if data.len() > 0 {
+                    (data.values_slice().len() / data.len()) as u32
+                } else {
+                    data.finish_cloned().value_length() as u32
+                }
+            }
             ChannelData::ArrayDInt8(_) => 1,
             ChannelData::ArrayDUInt8(_) => 1,
             ChannelData::ArrayDInt16(_) => 2,
@@ -847,7 +838,12 @@ impl ChannelData {
             ChannelData::Complex64(_) => DataType::Float64,
             ChannelData::VariableSizeByteArray(_) => DataType::LargeBinary,
             ChannelData::FixedSizeByteArray(a) => {
-                DataType::FixedSizeBinary(a.finish_cloned().value_length())
+                let width = if a.len() > 0 {
+                    (a.values_slice().len() / a.len()) as i32
+                } else {
+                    a.finish_cloned().value_length()
+                };
+                DataType::FixedSizeBinary(width)
             }
             ChannelData::ArrayDInt8(_a) => DataType::Int8,
             ChannelData::ArrayDUInt8(_a) => DataType::UInt8,
@@ -2612,5 +2608,18 @@ mod tests {
         let display = format!("{cd}");
         assert!(display.contains('1'));
         assert!(display.contains('2'));
+    }
+
+    #[test]
+    fn test_fixed_size_binary_clone_and_eq() {
+        let mut b = FixedSizeBinaryBuilder::new(4);
+        b.append_value(b"test").unwrap();
+        b.append_value(b"rust").unwrap();
+        let cd1 = ChannelData::FixedSizeByteArray(b);
+        let cd2 = cd1.clone();
+        assert_eq!(cd1, cd2);
+        assert_eq!(cd1.len(), 2);
+        assert_eq!(cd1.byte_count(), 4);
+        assert_eq!(cd1.bit_count(), 32);
     }
 }

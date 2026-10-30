@@ -45,7 +45,7 @@ pub struct Dl4Block {
     // links
     /// next DL
     pub dl_dl_next: i64,
-    #[br(if(dl_links > 1), little, count = dl_links - 1)]
+    #[br(if(dl_links > 1), little, count = dl_links.saturating_sub(1))]
     pub dl_data: Vec<i64>,
     // members
     /// Flags

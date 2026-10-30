@@ -106,6 +106,120 @@ pub fn compress_dz_data(
     }
 }
 
+/// Decompresses DZBLOCK payload according to `zip_type` (0..=5, 254), `zip_parameter` (transposition record width),
+/// and expected `org_data_length`.
+pub fn decompress_dz_data(
+    zip_type: u8,
+    zip_parameter: u32,
+    buf: &[u8],
+    org_data_length: u64,
+) -> Result<Vec<u8>> {
+    let mut data = match zip_type {
+        0 | 1 => decompress_deflate(buf)?,
+        2 | 3 => decompress_zstd(buf)?,
+        4 | 5 => decompress_lz4_frame(buf)?,
+        254 => {
+            // Vendor custom compression: return empty
+            Vec::new()
+        }
+        _other => return Err(Error::Unsupported("unknown zip_type")),
+    };
+
+    // Untranspose if transposed zip_type (1, 3, 5)
+    if matches!(zip_type, 1 | 3 | 5) && zip_parameter > 0 {
+        data = untranspose_after_decompression(&data, zip_parameter as usize);
+    }
+
+    if org_data_length > 0 && data.len() > org_data_length as usize {
+        data.truncate(org_data_length as usize);
+    }
+    Ok(data)
+}
+
+#[cfg(feature = "deflate")]
+fn decompress_deflate(input: &[u8]) -> Result<Vec<u8>> {
+    miniz_oxide::inflate::decompress_to_vec_zlib(input)
+        .or_else(|_| miniz_oxide::inflate::decompress_to_vec(input))
+        .or_else(|err| {
+            if input.len() >= 2 && ((input[0] as u16) << 8 | input[1] as u16).is_multiple_of(31) {
+                miniz_oxide::inflate::decompress_to_vec(&input[2..])
+            } else {
+                Err(err)
+            }
+        })
+        .map_err(|_| Error::InvalidBlock(alloc::string::String::from("zlib/deflate decompression failed")))
+}
+
+#[cfg(not(feature = "deflate"))]
+fn decompress_deflate(_input: &[u8]) -> Result<Vec<u8>> {
+    Err(Error::Unsupported("deflate feature not enabled"))
+}
+
+#[cfg(feature = "lz4")]
+pub fn decompress_lz4_frame(input: &[u8]) -> Result<Vec<u8>> {
+    if input.len() < 7 {
+        return Err(Error::InvalidBlock(alloc::string::String::from("lz4 frame too short")));
+    }
+    const LZ4F_MAGIC: [u8; 4] = 0x184D_2204u32.to_le_bytes();
+    if input[..4] != LZ4F_MAGIC {
+        return Err(Error::InvalidBlock(alloc::string::String::from("invalid lz4 frame magic")));
+    }
+    let flg = input[4];
+    let has_content_size = (flg & (1 << 3)) != 0;
+    let has_dict_id = (flg & 1) != 0;
+    let mut offset = 7;
+    if has_content_size {
+        offset += 8;
+    }
+    if has_dict_id {
+        offset += 4;
+    }
+    if input.len() < offset {
+        return Err(Error::InvalidBlock(alloc::string::String::from("lz4 frame header truncated")));
+    }
+
+    let mut out = Vec::new();
+    let mut pos = offset;
+    while pos + 4 <= input.len() {
+        let block_len = u32::from_le_bytes(input[pos..pos + 4].try_into().unwrap());
+        pos += 4;
+        if block_len == 0 {
+            break; // EndMark
+        }
+        let uncompressed = (block_len & 0x8000_0000) != 0;
+        let len = (block_len & 0x7FFF_FFFF) as usize;
+        if pos + len > input.len() {
+            return Err(Error::InvalidBlock(alloc::string::String::from("lz4 block truncated")));
+        }
+        let block_data = &input[pos..pos + len];
+        pos += len;
+        if uncompressed {
+            out.extend_from_slice(block_data);
+        } else {
+            // MDF4 blocks are max 4 MB uncompressed
+            let decomp = lz4_flex::block::decompress(block_data, 4 * 1024 * 1024)
+                .map_err(|_| Error::InvalidBlock(alloc::string::String::from("lz4 block decompress failed")))?;
+            out.extend_from_slice(&decomp);
+        }
+    }
+    Ok(out)
+}
+
+#[cfg(not(feature = "lz4"))]
+pub fn decompress_lz4_frame(_input: &[u8]) -> Result<Vec<u8>> {
+    Err(Error::Unsupported("lz4 feature not enabled"))
+}
+
+#[cfg(feature = "zstd")]
+fn decompress_zstd(input: &[u8]) -> Result<Vec<u8>> {
+    zstd::decode_all(input).map_err(|_| Error::InvalidBlock(alloc::string::String::from("zstd decompression failed")))
+}
+
+#[cfg(not(feature = "zstd"))]
+fn decompress_zstd(_input: &[u8]) -> Result<Vec<u8>> {
+    Err(Error::Unsupported("zstd feature not enabled"))
+}
+
 #[cfg(feature = "deflate")]
 fn compress_deflate(input: &[u8]) -> Result<Vec<u8>> {
     // Level 6 (default) zlib stream as required by MDF4 DZBLOCK zip_type 0/1
@@ -203,5 +317,7 @@ mod tests {
         let comp = compress_dz_data(&orig, CompressionAlgorithm::Lz4Transpose, 4).unwrap();
         assert_eq!(&comp[0..4], &0x184D_2204u32.to_le_bytes());
         assert!(comp.len() < orig.len());
+        let decomp = decompress_dz_data(5, 4, &comp, orig.len() as u64).unwrap();
+        assert_eq!(decomp, orig);
     }
 }

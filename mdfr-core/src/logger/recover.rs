@@ -150,6 +150,160 @@ fn sum_dl_chain<S: ReadWriteSeek>(
     Ok(total)
 }
 
+struct CgRecEntry {
+    rec_id: u64,
+    rec_len: u64,
+    is_vlsd: bool,
+    cycle_offset: u64,
+    cycle_count: u64,
+}
+
+fn scan_unsorted_data_block<S: ReadWriteSeek>(
+    sink: &mut S,
+    blk_pos: u64,
+    file_len: u64,
+    rec_id_size: usize,
+    cg_entries: &mut [CgRecEntry],
+) -> Result<()> {
+    if blk_pos == 0 || blk_pos + 24 > file_len {
+        return Ok(());
+    }
+    let hdr_bytes = read_at::<S, 24>(sink, blk_pos)?;
+    let hdr: Blockheader4 = Cursor::new(hdr_bytes).read_le()?;
+
+    let bytes = match &hdr.hdr_id {
+        b"##DT" | b"##SD" => {
+            let max_avail = file_len.saturating_sub(blk_pos);
+            let len = if hdr.hdr_len >= 24 && (hdr.hdr_len - 24) <= max_avail {
+                (hdr.hdr_len - 24) as usize
+            } else {
+                max_avail.saturating_sub(24) as usize
+            };
+            sink.seek(SeekFrom::Start(blk_pos + 24))?;
+            let mut buf = alloc::vec![0u8; len];
+            sink.read_exact(&mut buf)?;
+            buf
+        }
+        b"##DZ" => {
+            if blk_pos + 48 > file_len {
+                return Ok(());
+            }
+            let dz_bytes = read_at::<S, 48>(sink, blk_pos)?;
+            let dz: Dz4Block = Cursor::new(dz_bytes).read_le()?;
+            let avail = file_len.saturating_sub(blk_pos + 48);
+            if dz.dz_data_length > avail {
+                return Ok(());
+            }
+            sink.seek(SeekFrom::Start(blk_pos + 48))?;
+            let mut comp = alloc::vec![0u8; dz.dz_data_length as usize];
+            sink.read_exact(&mut comp)?;
+            crate::compress::decompress_dz_data(
+                dz.dz_zip_type,
+                dz.dz_zip_parameter,
+                &comp,
+                dz.dz_org_data_length,
+            )?
+        }
+        _ => return Ok(()),
+    };
+
+    let mut pos = 0usize;
+    while pos + rec_id_size <= bytes.len() {
+        let rec_id = match rec_id_size {
+            1 => bytes[pos] as u64,
+            2 => u16::from_le_bytes(bytes[pos..pos + 2].try_into().unwrap()) as u64,
+            4 => u32::from_le_bytes(bytes[pos..pos + 4].try_into().unwrap()) as u64,
+            8 => u64::from_le_bytes(bytes[pos..pos + 8].try_into().unwrap()),
+            _ => break,
+        };
+        let Some(entry) = cg_entries.iter_mut().find(|e| e.rec_id == rec_id) else {
+            break;
+        };
+        if entry.is_vlsd {
+            if pos + rec_id_size + 4 > bytes.len() {
+                break;
+            }
+            let vlen = u32::from_le_bytes(
+                bytes[pos + rec_id_size..pos + rec_id_size + 4]
+                    .try_into()
+                    .unwrap(),
+            ) as usize;
+            if pos + rec_id_size + 4 + vlen > bytes.len() {
+                break;
+            }
+            entry.cycle_count += 1;
+            pos += rec_id_size + 4 + vlen;
+        } else {
+            let full_len = rec_id_size + entry.rec_len as usize;
+            if pos + full_len > bytes.len() {
+                break;
+            }
+            entry.cycle_count += 1;
+            pos += full_len;
+        }
+    }
+    Ok(())
+}
+
+fn scan_unsorted_chain<S: ReadWriteSeek>(
+    sink: &mut S,
+    data_pos: u64,
+    file_len: u64,
+    rec_id_size: usize,
+    cg_entries: &mut [CgRecEntry],
+) -> Result<()> {
+    if data_pos == 0 || data_pos + 24 > file_len {
+        return Ok(());
+    }
+    let hdr_bytes = read_at::<S, 24>(sink, data_pos)?;
+    let hdr: Blockheader4 = Cursor::new(hdr_bytes).read_le()?;
+
+    match &hdr.hdr_id {
+        b"##DT" | b"##SD" | b"##DZ" => {
+            scan_unsorted_data_block(sink, data_pos, file_len, rec_id_size, cg_entries)?;
+        }
+        b"##HL" => {
+            let hl_bytes = read_at::<S, 40>(sink, data_pos)?;
+            let hl: Hl4Block = Cursor::new(hl_bytes).read_le()?;
+            if hl.hl_dl_first > 0 {
+                scan_unsorted_chain(sink, hl.hl_dl_first as u64, file_len, rec_id_size, cg_entries)?;
+            }
+        }
+        b"##DL" => {
+            let mut dl_pos = data_pos;
+            let mut guard = 0usize;
+            while dl_pos > 0 && dl_pos + 32 <= file_len && guard < 65536 {
+                guard += 1;
+                let dl_bytes = read_at::<S, 24>(sink, dl_pos)?;
+                let dl_hdr: Blockheader4 = Cursor::new(dl_bytes).read_le()?;
+                let dl_len = dl_hdr.hdr_len as usize;
+                sink.seek(SeekFrom::Start(dl_pos + 4))?;
+                let mut body = alloc::vec![0u8; dl_len.saturating_sub(4)];
+                sink.read_exact(&mut body)?;
+                let dl: Dl4Block = Cursor::new(body).read_le()?;
+                for &ptr in &dl.dl_data {
+                    if ptr > 0 && (ptr as u64) + 24 <= file_len {
+                        let _ = scan_unsorted_data_block(
+                            sink,
+                            ptr as u64,
+                            file_len,
+                            rec_id_size,
+                            cg_entries,
+                        );
+                    }
+                }
+                dl_pos = if dl.dl_dl_next > 0 {
+                    dl.dl_dl_next as u64
+                } else {
+                    0
+                };
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
 /// Recovers and finalizes an unfinalized (`"UnFinMF "`) MDF 4.x stream in place on `sink`.
 /// Returns the number of channel groups patched (`0` if the stream was already finalized).
 pub fn recover_in_place<S: ReadWriteSeek>(sink: &mut S) -> Result<usize> {
@@ -175,56 +329,98 @@ pub fn recover_in_place<S: ReadWriteSeek>(sink: &mut S) -> Result<usize> {
         let dg_bytes = read_at::<S, 64>(sink, dg_pos as u64)?;
         let dg: Dg4Block = Cursor::new(dg_bytes).read_le()?;
 
-        // Walk CG list in this DG
-        let mut cg_pos = dg.dg_cg_first;
-        let mut cg_guard = 0usize;
-        while cg_pos > 0 && (cg_pos as u64) + 104 <= file_len && cg_guard < 4096 {
-            cg_guard += 1;
-            let short_bytes = read_at::<S, 16>(sink, cg_pos as u64)?;
-            let short_hdr: Blockheader4Short = Cursor::new(short_bytes).read_le()?;
-            let body_len = (short_hdr.hdr_len as usize).saturating_sub(16);
-            sink.seek(SeekFrom::Start((cg_pos as u64) + 16))?;
-            let mut cg_buf = alloc::vec![0u8; body_len];
-            sink.read_exact(&mut cg_buf)?;
-            let cg: Cg4Block = Cursor::new(cg_buf).read_le()?;
-
-            let is_vlsd_cg = (cg.cg_flags & (CG_F_VLSD | CG_F_VLSC)) != 0;
-
-            // Walk CN chain to repair any sorted VLSD `cn_data` SDBLOCK chains
-            let mut cn_pos = cg.cg_cn_first;
-            let mut cn_guard = 0usize;
-            while cn_pos > 0 && (cn_pos as u64) + 160 <= file_len && cn_guard < 4096 {
-                cn_guard += 1;
-                let cn_short_bytes = read_at::<S, 16>(sink, cn_pos as u64)?;
-                let cn_short: Blockheader4Short = Cursor::new(cn_short_bytes).read_le()?;
-                let cn_body_len = (cn_short.hdr_len as usize).saturating_sub(16);
-                sink.seek(SeekFrom::Start((cn_pos as u64) + 16))?;
-                let mut cn_buf = alloc::vec![0u8; cn_body_len];
-                sink.read_exact(&mut cn_buf)?;
-                let cn: Cn4Block = Cursor::new(cn_buf).read_le()?;
-                if cn.cn_type == 1 && cn.cn_data > 0 && dg.dg_rec_id_size == 0 {
-                    let _ = sum_chain_payload_bytes(sink, cn.cn_data as u64, file_len, 1)?;
-                }
-                cn_pos = cn.cn_cn_next;
+        if dg.dg_rec_id_size > 0 && dg.dg_data > 0 {
+            // Unsorted DG: collect CG entries and scan the multiplexed record stream
+            let mut cg_entries = alloc::vec::Vec::new();
+            let mut cg_pos = dg.dg_cg_first;
+            let mut cg_guard = 0usize;
+            while cg_pos > 0 && (cg_pos as u64) + 104 <= file_len && cg_guard < 4096 {
+                cg_guard += 1;
+                let cg_short_bytes = read_at::<S, 16>(sink, cg_pos as u64)?;
+                let cg_short: Blockheader4Short = Cursor::new(cg_short_bytes).read_le()?;
+                let cg_body_len = (cg_short.hdr_len as usize).saturating_sub(16);
+                sink.seek(SeekFrom::Start((cg_pos as u64) + 16))?;
+                let mut cg_buf = alloc::vec![0u8; cg_body_len];
+                sink.read_exact(&mut cg_buf)?;
+                let cg: Cg4Block = Cursor::new(cg_buf).read_le()?;
+                let is_vlsd = (cg.cg_flags & (CG_F_VLSD | CG_F_VLSC)) != 0;
+                let cycle_offset = (cg_pos as u64) + 16 + 8 + cg.cg_links * 8 + 8;
+                cg_entries.push(CgRecEntry {
+                    rec_id: cg.cg_record_id,
+                    rec_len: (cg.cg_data_bytes as u64) + (cg.cg_inval_bytes as u64),
+                    is_vlsd,
+                    cycle_offset,
+                    cycle_count: 0,
+                });
+                cg_pos = cg.cg_cg_next;
             }
 
-            if dg.dg_rec_id_size == 0 && !is_vlsd_cg {
-                let rec_len = (cg.cg_data_bytes as u64) + (cg.cg_inval_bytes as u64);
-                if rec_len > 0 && dg.dg_data > 0 {
-                    let total_bytes =
-                        sum_chain_payload_bytes(sink, dg.dg_data as u64, file_len, rec_len)?;
-                    let cycles = total_bytes / rec_len;
-                    let cycle_offset = (cg_pos as u64) + 16 + 8 + cg.cg_links * 8 + 8;
-                    if read_u64_at(sink, cycle_offset)? != cycles {
-                        write_u64_at(sink, cycle_offset, cycles)?;
-                    }
-                    patched_cgs += 1;
+            let _ = scan_unsorted_chain(
+                sink,
+                dg.dg_data as u64,
+                file_len,
+                dg.dg_rec_id_size as usize,
+                &mut cg_entries,
+            );
+
+            for entry in cg_entries {
+                if read_u64_at(sink, entry.cycle_offset)? != entry.cycle_count {
+                    write_u64_at(sink, entry.cycle_offset, entry.cycle_count)?;
                 }
-            } else {
                 patched_cgs += 1;
             }
+        } else {
+            // Walk CG list in this sorted DG
+            let mut cg_pos = dg.dg_cg_first;
+            let mut cg_guard = 0usize;
+            while cg_pos > 0 && (cg_pos as u64) + 104 <= file_len && cg_guard < 4096 {
+                cg_guard += 1;
+                let short_bytes = read_at::<S, 16>(sink, cg_pos as u64)?;
+                let short_hdr: Blockheader4Short = Cursor::new(short_bytes).read_le()?;
+                let body_len = (short_hdr.hdr_len as usize).saturating_sub(16);
+                sink.seek(SeekFrom::Start((cg_pos as u64) + 16))?;
+                let mut cg_buf = alloc::vec![0u8; body_len];
+                sink.read_exact(&mut cg_buf)?;
+                let cg: Cg4Block = Cursor::new(cg_buf).read_le()?;
 
-            cg_pos = cg.cg_cg_next;
+                let is_vlsd_cg = (cg.cg_flags & (CG_F_VLSD | CG_F_VLSC)) != 0;
+
+                // Walk CN chain to repair any sorted VLSD `cn_data` SDBLOCK chains
+                let mut cn_pos = cg.cg_cn_first;
+                let mut cn_guard = 0usize;
+                while cn_pos > 0 && (cn_pos as u64) + 160 <= file_len && cn_guard < 4096 {
+                    cn_guard += 1;
+                    let cn_short_bytes = read_at::<S, 16>(sink, cn_pos as u64)?;
+                    let cn_short: Blockheader4Short = Cursor::new(cn_short_bytes).read_le()?;
+                    let cn_body_len = (cn_short.hdr_len as usize).saturating_sub(16);
+                    sink.seek(SeekFrom::Start((cn_pos as u64) + 16))?;
+                    let mut cn_buf = alloc::vec![0u8; cn_body_len];
+                    sink.read_exact(&mut cn_buf)?;
+                    let cn: Cn4Block = Cursor::new(cn_buf).read_le()?;
+                    if cn.cn_type == 1 && cn.cn_data > 0 && dg.dg_rec_id_size == 0 {
+                        let _ = sum_chain_payload_bytes(sink, cn.cn_data as u64, file_len, 1)?;
+                    }
+                    cn_pos = cn.cn_cn_next;
+                }
+
+                if dg.dg_rec_id_size == 0 && !is_vlsd_cg {
+                    let rec_len = (cg.cg_data_bytes as u64) + (cg.cg_inval_bytes as u64);
+                    if rec_len > 0 && dg.dg_data > 0 {
+                        let total_bytes =
+                            sum_chain_payload_bytes(sink, dg.dg_data as u64, file_len, rec_len)?;
+                        let cycles = total_bytes / rec_len;
+                        let cycle_offset = (cg_pos as u64) + 16 + 8 + cg.cg_links * 8 + 8;
+                        if read_u64_at(sink, cycle_offset)? != cycles {
+                            write_u64_at(sink, cycle_offset, cycles)?;
+                        }
+                        patched_cgs += 1;
+                    }
+                } else {
+                    patched_cgs += 1;
+                }
+
+                cg_pos = cg.cg_cg_next;
+            }
         }
 
         dg_pos = dg.dg_dg_next;
@@ -277,6 +473,32 @@ mod tests {
 
         let patched = recover_in_place(&mut sink).unwrap();
         assert_eq!(patched, 1);
+        assert_eq!(&sink.as_slice()[0..8], b"MDF     ");
+    }
+
+    #[test]
+    fn no_std_recover_in_place_unsorted() {
+        let mut b = LoggerBuilder::new(DataLayout::Unsorted, CompressionAlgorithm::NoCompression);
+        let g1 = b.add_group("G1");
+        let ch1 = b.add_channel(g1, "V1", CnDataType::UIntLE, 16).unwrap();
+        let g2 = b.add_group("G2");
+        let ch2 = b.add_channel(g2, "V2", CnDataType::UIntLE, 32).unwrap();
+        let schema = b.build().unwrap();
+
+        let mut sink = VecSink::default();
+        let mut logger = Logger::start(schema, sink, ManualClock::new(0.01, 1)).unwrap();
+        for i in 0..5 {
+            logger.begin_record(g1).unwrap().set_u64(ch1, i).unwrap().commit().unwrap();
+        }
+        for i in 0..7 {
+            logger.begin_record(g2).unwrap().set_u64(ch2, i).unwrap().commit().unwrap();
+        }
+        logger.checkpoint().unwrap();
+        sink = logger.into_sink_unfinalized();
+        assert_eq!(&sink.as_slice()[0..8], b"UnFinMF ");
+
+        let patched = recover_in_place(&mut sink).unwrap();
+        assert_eq!(patched, 2);
         assert_eq!(&sink.as_slice()[0..8], b"MDF     ");
     }
 }

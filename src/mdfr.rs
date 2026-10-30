@@ -19,7 +19,7 @@ use crate::mdfinfo::mdfinfo4::CompressionAlgorithm;
 use pyo3::exceptions::PyUnicodeDecodeError;
 use pyo3::ffi::c_str;
 use pyo3::prelude::*;
-use pyo3::types::{IntoPyDict, PyBytes, PyDict, PyList};
+use pyo3::types::{PyBytes, PyDict, PyList};
 
 #[pymodule]
 fn mdfr(m: &Bound<'_, PyModule>) -> PyResult<()> {
@@ -127,28 +127,17 @@ impl Mdfr {
                         .into_pyobject(py)
                         .context("error converting validity into python object")?
                         .into();
-                    let locals = [(
-                        "numpy",
-                        py.import("numpy").context("could not import numpy")?,
-                    )]
-                    .into_py_dict(py)
-                    .context("error converting validity into dictionary")?;
-                    locals
-                        .set_item("py_array", &py_array)
-                        .context("cannot set python data")?;
-                    locals
-                        .set_item("mask", mask)
+                    let np_ma = py.import("numpy.ma").context("could not import numpy.ma")?;
+                    let kwargs = pyo3::types::PyDict::new(py);
+                    kwargs
+                        .set_item(pyo3::intern!(py, "mask"), mask)
                         .context("cannot set python mask")?;
-                    py_array = py
-                        .eval(
-                            c_str!("numpy.ma.array(py_array, mask=mask)"),
-                            None,
-                            Some(&locals),
-                        )
+                    py_array = np_ma
+                        .getattr(pyo3::intern!(py, "array"))
+                        .context("could not get numpy.ma.array")?
+                        .call((&py_array,), Some(&kwargs))
                         .context("masked array creation failed")?
-                        .into_pyobject(py)
-                        .context("error converting masked array into python object")?
-                        .into();
+                        .unbind();
                 }
             } else {
                 py_array = Python::None(py);
@@ -224,25 +213,13 @@ impl Mdfr {
                 }
             }
             if !series_dict.is_empty() {
-                let locals = PyDict::new(py);
-                locals
-                    .set_item("series", series_dict)
-                    .context("cannot set python series_list")?;
-                py.import("polars").context("Could import polars")?;
-                py.run(
-                    c_str!(
-                        r#"
-import polars
-df=polars.DataFrame(series)
-"#
-                    ),
-                    None,
-                    Some(&locals),
-                )
-                .context("dataframe creation failed")?;
-                if let Ok(Some(df)) = locals.get_item("df") {
-                    py_dataframe = df.into();
-                }
+                let polars = py.import("polars").context("Could not import polars")?;
+                let df = polars
+                    .getattr(pyo3::intern!(py, "DataFrame"))
+                    .context("could not get polars.DataFrame")?
+                    .call1((series_dict,))
+                    .context("dataframe creation failed")?;
+                py_dataframe = df.unbind();
             }
             Ok(py_dataframe)
         })
@@ -288,11 +265,14 @@ df=polars.DataFrame(series)
     }
     /// returns channel's master data, numpy array or list, depending if data type is numeric or string|bytes
     fn get_channel_master_data(&mut self, channel_name: String) -> PyResult<Py<PyAny>> {
-        // default py_array value is python None
-        let master = self
-            .get_channel_master(channel_name)
-            .context("error getting master channel name")?;
-        self.get_channel_data(master.to_string())
+        let master_opt = {
+            let Mdfr(mdf) = self;
+            mdf.mdf_info.get_channel_master(&channel_name).map(|s| s.to_string())
+        };
+        match master_opt {
+            Some(master) => self.get_channel_data(master),
+            None => pyo3::Python::attach(|py| Ok(py.None())),
+        }
     }
     /// returns channel's associated master channel type string
     /// 0 = None (normal data channels), 1 = Time (seconds), 2 = Angle (radians),
@@ -435,20 +415,16 @@ df=polars.DataFrame(series)
         let Mdfr(mdf) = self;
         let ns = mdf.get_start_time_ns();
         let offset_s = mdf.get_tz_offset_min() as i32 * 60;
-        let locals = pyo3::types::PyDict::new(py);
-        locals.set_item("ts", ns as f64 / 1e9)?;
-        locals.set_item("offset_s", offset_s)?;
-        Ok(py
-            .eval(
-                c_str!(
-                    "import datetime; \
-                     tz = datetime.timezone(datetime.timedelta(seconds=offset_s)); \
-                     datetime.datetime.fromtimestamp(ts, tz)"
-                ),
-                None,
-                Some(&locals),
-            )?
-            .unbind())
+        let dt_mod = py.import("datetime")?;
+        let td_kw = pyo3::types::PyDict::new(py);
+        td_kw.set_item(pyo3::intern!(py, "seconds"), offset_s)?;
+        let tz_delta = dt_mod.getattr(pyo3::intern!(py, "timedelta"))?.call((), Some(&td_kw))?;
+        let tz = dt_mod.getattr(pyo3::intern!(py, "timezone"))?.call1((tz_delta,))?;
+        let dt = dt_mod
+            .getattr(pyo3::intern!(py, "datetime"))?
+            .getattr(pyo3::intern!(py, "fromtimestamp"))?
+            .call1((ns as f64 / 1e9, tz))?;
+        Ok(dt.unbind())
     }
     /// returns master channel data as an Arrow TimestampNanosecond array with timezone.
     /// Raises ValueError if the channel has no Time master.
@@ -627,12 +603,10 @@ df=polars.DataFrame(series)
         data: PyArrowType<ArrayData>,
     ) -> PyResult<()> {
         let Mdfr(mdf) = self;
-        pyo3::Python::attach(|_| {
-            let array = array_to_rust(data)
-                .expect("data modification failed, could not extract numpy array");
-            mdf.set_channel_data(channel_name, array)?;
-            Ok(())
-        })
+        let array = array_to_rust(data)
+            .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("data modification failed, could not extract array: {e}")))?;
+        mdf.set_channel_data(channel_name, array)?;
+        Ok(())
     }
     /// Sets the channel's related master channel type in memory
     pub fn set_channel_master_type(&mut self, master_name: &str, master_type: u8) -> PyResult<()> {
@@ -1243,6 +1217,101 @@ impl MdfLogger {
         }
     }
 
+    /// Appends an N-D array channel (`CABLOCK`) and returns a packed channel handle (`u32`).
+    #[pyo3(signature = (group, name, data_type, bit_count, dims, unit=None))]
+    pub fn add_array_channel(
+        &mut self,
+        group: u16,
+        name: &str,
+        data_type: u8,
+        bit_count: u32,
+        dims: Vec<u64>,
+        unit: Option<&str>,
+    ) -> PyResult<u32> {
+        let dt = mdfr_core::blocks::cn::CnDataType::try_from(data_type).map_err(|e| {
+            pyo3::exceptions::PyValueError::new_err(format!("invalid data_type: {e}"))
+        })?;
+        match &mut self.state {
+            PyLoggerState::Building { builder, .. } => {
+                let ch = builder
+                    .add_array_channel(
+                        mdfr_core::logger::GroupHandle(group),
+                        name,
+                        dt,
+                        bit_count,
+                        dims,
+                    )
+                    .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+                if let Some(u) = unit {
+                    builder
+                        .set_channel_unit(ch, u)
+                        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+                }
+                Ok(((ch.group as u32) << 16) | (ch.channel as u32))
+            }
+            _ => Err(pyo3::exceptions::PyRuntimeError::new_err(
+                "cannot add array channel after start()",
+            )),
+        }
+    }
+
+    /// Sets a linear conversion rule (`phys = p1 + p2 * raw`) on a channel before `start()`.
+    pub fn set_channel_conversion_linear(
+        &mut self,
+        ch_packed: u32,
+        p1: f64,
+        p2: f64,
+    ) -> PyResult<()> {
+        let ch = mdfr_core::logger::ChannelHandle {
+            group: (ch_packed >> 16) as u16,
+            channel: (ch_packed & 0xFFFF) as u16,
+        };
+        match &mut self.state {
+            PyLoggerState::Building { builder, .. } => {
+                builder
+                    .set_channel_conversion(
+                        ch,
+                        mdfr_core::logger::ConversionDef::Linear { p1, p2 },
+                    )
+                    .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+                Ok(())
+            }
+            _ => Err(pyo3::exceptions::PyRuntimeError::new_err(
+                "cannot set conversion after start()",
+            )),
+        }
+    }
+
+    /// Adds an ASAM bus logging preset group (`bus_type`: "can", "can_fd", "can_fd_vlsd", "lin", "ethernet", "flexray").
+    pub fn add_bus_preset(&mut self, bus_type: &str, name: &str) -> PyResult<u16> {
+        match &mut self.state {
+            PyLoggerState::Building { builder, .. } => {
+                let g = match bus_type.to_ascii_lowercase().as_str() {
+                    "can" => mdfr_core::logger::BusPreset::can(builder, name).map(|h| h.group),
+                    "can_fd" | "can-fd" | "canfd" => {
+                        mdfr_core::logger::BusPreset::can_fd(builder, name).map(|h| h.group)
+                    }
+                    "can_fd_vlsd" | "can-fd-vlsd" | "canfd_vlsd" => {
+                        mdfr_core::logger::BusPreset::can_fd_vlsd(builder, name).map(|h| h.group)
+                    }
+                    "lin" => mdfr_core::logger::BusPreset::lin(builder, name),
+                    "ethernet" | "eth" => mdfr_core::logger::BusPreset::ethernet(builder, name),
+                    "flexray" | "flx" => mdfr_core::logger::BusPreset::flexray(builder, name),
+                    other => {
+                        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                            "unsupported bus preset '{other}': expected 'can', 'can_fd', 'can_fd_vlsd', 'lin', 'ethernet', or 'flexray'"
+                        )));
+                    }
+                }
+                .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+                Ok(g.0)
+            }
+            _ => Err(pyo3::exceptions::PyRuntimeError::new_err(
+                "cannot add bus preset after start()",
+            )),
+        }
+    }
+
     /// Transitions from schema builder to active streaming logger, writing the MDF 4.3 header hierarchy.
     pub fn start(&mut self) -> PyResult<()> {
         let prev = std::mem::replace(&mut self.state, PyLoggerState::Closed);
@@ -1401,5 +1470,22 @@ impl MdfLogger {
                 .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
         }
         Ok(())
+    }
+
+    /// Context manager entry.
+    pub fn __enter__(slf: Py<Self>) -> Py<Self> {
+        slf
+    }
+
+    /// Context manager exit: finalizes and closes the logger.
+    #[pyo3(signature = (_exc_type=None, _exc_val=None, _exc_tb=None))]
+    pub fn __exit__(
+        &mut self,
+        _exc_type: Option<&Bound<'_, PyAny>>,
+        _exc_val: Option<&Bound<'_, PyAny>>,
+        _exc_tb: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<bool> {
+        self.close()?;
+        Ok(false)
     }
 }

@@ -586,6 +586,18 @@ impl LoggerBuilder {
                 "schema must contain at least one channel group".to_string(),
             ));
         }
+        if self.layout == DataLayout::Unsorted {
+            let total_cgs: usize = self
+                .groups
+                .iter()
+                .map(|g| 1 + g.channels.iter().filter(|c| c.is_vlsd).count())
+                .sum();
+            if total_cgs > 65535 {
+                return Err(Error::InvalidSchema(
+                    "unsorted mode supports at most 65535 channel groups".to_string(),
+                ));
+            }
+        }
         Ok(Schema {
             layout: self.layout,
             compression: self.compression,

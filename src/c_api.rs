@@ -60,7 +60,7 @@ pub unsafe extern "C" fn get_version(mdf: *const Mdf) -> c_ushort {
 
 /// returns channel's unit string
 /// if no unit is existing for this channel, returns a null pointer.
-/// The returned pointer is heap-allocated; caller must free it with `libc::free()`.
+/// The returned pointer is heap-allocated; caller must free it with `free_c_string()`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_channel_unit(
     mdf: *const Mdf,
@@ -92,7 +92,7 @@ pub unsafe extern "C" fn get_channel_unit(
 
 /// returns channel's description string
 /// if no description is existing for this channel, returns null pointer.
-/// The returned pointer is heap-allocated; caller must free it with `libc::free()`.
+/// The returned pointer is heap-allocated; caller must free it with `free_c_string()`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_channel_desc(
     mdf: *const Mdf,
@@ -123,7 +123,7 @@ pub unsafe extern "C" fn get_channel_desc(
 
 /// returns channel's associated master channel name string
 /// if no master channel existing, returns null pointer.
-/// The returned pointer is heap-allocated; caller must free it with `libc::free()`.
+/// The returned pointer is heap-allocated; caller must free it with `free_c_string()`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_channel_master(
     mdf: *const Mdf,
@@ -177,9 +177,21 @@ pub unsafe extern "C" fn get_channel_master_type(
     }
 }
 
+/// returns total number of unique channel names in the mdf file. Returns 0 on null input.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn get_channel_count(mdf: *const Mdf) -> usize {
+    unsafe {
+        if let Some(mdf) = mdf.as_ref() {
+            mdf.get_channel_names_set().len()
+        } else {
+            0
+        }
+    }
+}
+
 /// returns a sorted array of strings of all channel names contained in file.
 /// The returned pointer is heap-allocated; call `free_channel_names_set(ptr, len)` to free it,
-/// where `len` is the number of channel names (obtained separately, e.g. via a count function).
+/// where `len` is the number of channel names (obtained via `get_channel_count()`).
 /// Returns null on null input.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_channel_names_set(mdf: *const Mdf) -> *const *mut c_char {
@@ -189,17 +201,16 @@ pub unsafe extern "C" fn get_channel_names_set(mdf: *const Mdf) -> *const *mut c
             let set = mdf.get_channel_names_set();
             let mut s = set.into_iter().collect::<Vec<String>>();
             s.sort();
-            let mut cstring_vec = s
+            let cstring_vec = s
                 .iter()
                 .filter_map(|e| CString::new(e.as_str()).ok())
                 .map(std::ffi::CString::into_raw)
                 .collect::<Vec<*mut c_char>>();
-            cstring_vec.shrink_to_fit();
-            let p = cstring_vec.as_ptr();
-            // SAFETY: We intentionally leak the Vec here to transfer ownership of the
-            // backing allocation to the caller. The pointer remains valid until
-            // free_channel_names_set() is called with the correct length.
-            std::mem::forget(cstring_vec);
+            let boxed = cstring_vec.into_boxed_slice();
+            let p = boxed.as_ptr();
+            // SAFETY: Box::into_raw transfers ownership of the slice allocation to caller.
+            // Caller frees with free_channel_names_set(ptr, len).
+            let _ = Box::into_raw(boxed);
             p
         } else {
             std::ptr::null()
@@ -215,14 +226,15 @@ pub unsafe extern "C" fn free_channel_names_set(ptr: *mut *mut c_char, len: usiz
         if ptr.is_null() {
             return;
         }
-        // SAFETY: ptr and each element were allocated by Rust (CString::into_raw / Vec::into_raw_parts).
-        let slice = std::slice::from_raw_parts_mut(ptr, len);
-        for p in slice.iter_mut() {
+        // SAFETY: ptr and each element were allocated by Rust (CString::into_raw / Box::into_raw).
+        let slice_ptr = std::ptr::slice_from_raw_parts_mut(ptr, len);
+        let boxed = Box::from_raw(slice_ptr);
+        for &p in boxed.iter() {
             if !p.is_null() {
-                drop(CString::from_raw(*p));
+                drop(CString::from_raw(p));
             }
         }
-        drop(Vec::from_raw_parts(ptr, len, len));
+        drop(boxed);
     }
 }
 
@@ -480,7 +492,7 @@ pub unsafe extern "C" fn get_recorder_file_last(mdf: *const Mdf, out: *mut c_uch
 }
 
 /// Returns the recorder UUID string (MDF 4.3 `Recorder.UUID` common_property).
-/// Returns a heap-allocated null-terminated C string; caller must free with `libc::free()`.
+/// Returns a heap-allocated null-terminated C string; caller must free with `free_c_string()`.
 /// Returns null pointer if the property is absent or on error.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_recorder_uuid(mdf: *const Mdf) -> *const c_char {
@@ -499,7 +511,7 @@ pub unsafe extern "C" fn get_recorder_uuid(mdf: *const Mdf) -> *const c_char {
 }
 
 /// Returns the measurement UUID string (MDF 4.3 `MeasurementUUID` common_property).
-/// Returns a heap-allocated null-terminated C string; caller must free with `libc::free()`.
+/// Returns a heap-allocated null-terminated C string; caller must free with `free_c_string()`.
 /// Returns null pointer if the property is absent or on error.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_measurement_uuid(mdf: *const Mdf) -> *const c_char {
@@ -518,7 +530,7 @@ pub unsafe extern "C" fn get_measurement_uuid(mdf: *const Mdf) -> *const c_char 
 }
 
 /// Returns the author string from HD common_properties (MDF 4.3).
-/// Returns a heap-allocated null-terminated C string; caller must free with `libc::free()`.
+/// Returns a heap-allocated null-terminated C string; caller must free with `free_c_string()`.
 /// Returns null pointer if the property is absent or on error.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_author(mdf: *const Mdf) -> *const c_char {
@@ -537,7 +549,7 @@ pub unsafe extern "C" fn get_author(mdf: *const Mdf) -> *const c_char {
 }
 
 /// Returns the department string from HD common_properties (MDF 4.3).
-/// Returns a heap-allocated null-terminated C string; caller must free with `libc::free()`.
+/// Returns a heap-allocated null-terminated C string; caller must free with `free_c_string()`.
 /// Returns null pointer if the property is absent or on error.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_department(mdf: *const Mdf) -> *const c_char {
@@ -556,7 +568,7 @@ pub unsafe extern "C" fn get_department(mdf: *const Mdf) -> *const c_char {
 }
 
 /// Returns the project string from HD common_properties (MDF 4.3).
-/// Returns a heap-allocated null-terminated C string; caller must free with `libc::free()`.
+/// Returns a heap-allocated null-terminated C string; caller must free with `free_c_string()`.
 /// Returns null pointer if the property is absent or on error.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_project(mdf: *const Mdf) -> *const c_char {
@@ -575,7 +587,7 @@ pub unsafe extern "C" fn get_project(mdf: *const Mdf) -> *const c_char {
 }
 
 /// Returns the subject string from HD common_properties (MDF 4.3).
-/// Returns a heap-allocated null-terminated C string; caller must free with `libc::free()`.
+/// Returns a heap-allocated null-terminated C string; caller must free with `free_c_string()`.
 /// Returns null pointer if the property is absent or on error.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn get_subject(mdf: *const Mdf) -> *const c_char {
@@ -752,7 +764,7 @@ pub unsafe extern "C" fn get_channel_hierarchy_count(mdf: *const Mdf) -> usize {
 }
 
 /// Returns a human-readable list of channel hierarchy.
-/// Returns a heap-allocated null-terminated C string; caller must free with `libc::free()`.
+/// Returns a heap-allocated null-terminated C string; caller must free with `free_c_string()`.
 /// Returns null pointer on error.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn list_channel_hierarchy(mdf: *const Mdf) -> *const c_char {
@@ -787,7 +799,7 @@ pub unsafe extern "C" fn get_source_information_count(mdf: *const Mdf) -> usize 
 }
 
 /// Returns a human-readable list of source information blocks.
-/// Returns a heap-allocated null-terminated C string; caller must free with `libc::free()`.
+/// Returns a heap-allocated null-terminated C string; caller must free with `free_c_string()`.
 /// Returns null pointer on error.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn list_source_information(mdf: *const Mdf) -> *const c_char {
@@ -990,6 +1002,7 @@ mod tests {
             assert!(get_channel_desc(std::ptr::null(), std::ptr::null()).is_null());
             assert!(get_channel_master(std::ptr::null(), std::ptr::null()).is_null());
             assert_eq!(get_channel_master_type(std::ptr::null(), std::ptr::null()), 0);
+            assert_eq!(get_channel_count(std::ptr::null()), 0);
             assert!(get_channel_names_set(std::ptr::null()).is_null());
             free_channel_names_set(std::ptr::null_mut(), 0);
             free_c_string(std::ptr::null_mut());
