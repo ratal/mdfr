@@ -21,6 +21,9 @@ fn push_i16(buf: &mut Vec<u8>, v: i16) {
 fn push_u32(buf: &mut Vec<u8>, v: u32) {
     buf.extend_from_slice(&v.to_le_bytes());
 }
+fn push_i32(buf: &mut Vec<u8>, v: i32) {
+    buf.extend_from_slice(&v.to_le_bytes());
+}
 fn push_u64(buf: &mut Vec<u8>, v: u64) {
     buf.extend_from_slice(&v.to_le_bytes());
 }
@@ -653,7 +656,7 @@ static FIXTURE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 #[test]
 fn create_fixtures() {
-    let _lock = FIXTURE_LOCK.lock().unwrap();
+    let _lock = FIXTURE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     create_int_linear_cc_fixture().expect("failed to create int_linear_cc fixture");
     assert!(
         std::path::Path::new("test_files/synthetic/int_linear_cc.mf4").exists(),
@@ -669,11 +672,71 @@ fn create_fixtures() {
         std::path::Path::new("test_files/synthetic/unsorted_vlsd_vlsc.mf4").exists(),
         "unsorted VLSD/VLSC fixture file not created"
     );
+    create_synthetic_array_fixture().expect("failed to create synthetic_array fixture");
+    assert!(
+        std::path::Path::new("test_files/synthetic/synthetic_array.mf4").exists(),
+        "synthetic_array fixture file not created"
+    );
+    create_synthetic_dz_deflate_fixture().expect("failed to create synthetic_dz_deflate fixture");
+    assert!(
+        std::path::Path::new("test_files/synthetic/synthetic_dz_deflate.mf4").exists(),
+        "synthetic_dz_deflate fixture file not created"
+    );
+}
+
+#[test]
+fn verify_synthetic_array_fixture_loads() {
+    let _lock = FIXTURE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    create_synthetic_array_fixture().expect("failed to create synthetic_array fixture");
+    use mdfr::data_holder::channel_data::ChannelData;
+    use mdfr::mdfreader::Mdf;
+    let path = "test_files/synthetic/synthetic_array.mf4";
+    let mut mdf = Mdf::new(path).expect("failed to open synthetic_array fixture");
+    mdf.load_all_channels_data_in_memory()
+        .expect("failed to load synthetic array data");
+
+    let names = mdf.get_channel_names_set();
+    assert!(names.contains("array2d"), "missing array2d channel");
+    if let Some(ChannelData::ArrayDFloat64(arr)) = mdf.get_channel_data("array2d") {
+        let vals = arr.values_slice();
+        assert_eq!(vals.len(), 12, "should have 12 total values (3 cycles * 4 elements)");
+        assert_eq!(arr.shape().as_slice(), &[3usize, 2, 2], "shape should be [3, 2, 2]");
+        assert_eq!(arr.ndim(), 3, "ndim should be 3");
+        for (i, &v) in vals.iter().enumerate() {
+            assert_eq!(v, (i + 1) as f64);
+        }
+    } else {
+        panic!("array2d channel is not ArrayDFloat64");
+    }
+}
+
+#[test]
+fn verify_synthetic_dz_fixture_loads() {
+    let _lock = FIXTURE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    create_synthetic_dz_deflate_fixture().expect("failed to create synthetic_dz_deflate fixture");
+    use mdfr::data_holder::channel_data::{AsValuesSlice, ChannelData};
+    use mdfr::mdfreader::Mdf;
+    let path = "test_files/synthetic/synthetic_dz_deflate.mf4";
+    let mut mdf = Mdf::new(path).expect("failed to open synthetic_dz_deflate fixture");
+    mdf.load_all_channels_data_in_memory()
+        .expect("failed to load synthetic dz data");
+
+    let names = mdf.get_channel_names_set();
+    assert!(names.contains("time_ch"), "missing time_ch channel");
+    if let Some(ChannelData::Float64(arr)) = mdf.get_channel_data("time_ch") {
+        let vals = arr.values_slice();
+        assert_eq!(vals.len(), 10);
+        for (i, &v) in vals.iter().enumerate() {
+            assert_eq!(v, i as f64);
+        }
+    } else {
+        panic!("time_ch channel is not Float64");
+    }
 }
 
 #[test]
 fn verify_unsorted_vlsd_vlsc_fixture_loads() {
-    let _lock = FIXTURE_LOCK.lock().unwrap();
+    let _lock = FIXTURE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     create_unsorted_vlsd_vlsc_fixture().expect("failed to create unsorted VLSD/VLSC fixture");
     use mdfr::mdfreader::Mdf;
     let path = "test_files/synthetic/unsorted_vlsd_vlsc.mf4";
@@ -694,7 +757,7 @@ fn verify_unsorted_vlsd_vlsc_fixture_loads() {
 
 #[test]
 fn verify_unsorted_fixture_loads() {
-    let _lock = FIXTURE_LOCK.lock().unwrap();
+    let _lock = FIXTURE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     create_unsorted_multi_cg_fixture().expect("failed to create unsorted_multi_cg fixture");
     use mdfr::mdfreader::Mdf;
     let path = "test_files/synthetic/unsorted_multi_cg.mf4";
@@ -908,4 +971,165 @@ fn write_cg4_vlsd(
     push_zeros(buf, 4); // cg_reserved
     push_u32(buf, 0); // cg_data_bytes (0 for VLSD)
     push_u32(buf, 0); // cg_inval_bytes
+}
+
+/// CA block (plain array): Blockheader4Short(16) + Ca4Block body = 64 bytes for 2D.
+fn write_ca4(buf: &mut Vec<u8>, dims: &[u64]) {
+    buf.extend_from_slice(b"##CA");
+    push_zeros(buf, 4);
+    let len = 24 + 8 + 1 + 1 + 2 + 4 + 4 + 4 + (dims.len() * 8);
+    push_u64(buf, len as u64);
+    push_u64(buf, 1); // 1 link: ca_composition = 0
+    push_i64(buf, 0); // ca_composition = 0
+    push_u8(buf, 0); // ca_type = 0 (Array)
+    push_u8(buf, 0); // ca_storage = 0 (CN template)
+    push_u16(buf, dims.len() as u16); // ca_ndim
+    push_u32(buf, 0); // ca_flags = 0
+    push_i32(buf, 0); // ca_byte_offset_base
+    push_u32(buf, 0); // ca_inval_bit_pos_base
+    for &d in dims {
+        push_u64(buf, d);
+    }
+}
+
+/// DZ block: compressed data block.
+fn write_dz(
+    buf: &mut Vec<u8>,
+    org_block_type: &[u8; 2],
+    zip_type: u8,
+    zip_parameter: u32,
+    org_data_length: u64,
+    compressed: &[u8],
+) {
+    let total_len = 48u64 + compressed.len() as u64;
+    buf.extend_from_slice(b"##DZ");
+    push_zeros(buf, 4);
+    push_u64(buf, total_len);
+    push_u64(buf, 0); // dz_links = 0
+    buf.extend_from_slice(org_block_type);
+    push_u8(buf, zip_type);
+    push_u8(buf, 0); // dz_reserved
+    push_u32(buf, zip_parameter);
+    push_u64(buf, org_data_length);
+    push_u64(buf, compressed.len() as u64);
+    buf.extend_from_slice(compressed);
+}
+
+/// CN block with cn_composition link support.
+#[allow(clippy::too_many_arguments)]
+fn write_cn4_with_composition(
+    buf: &mut Vec<u8>,
+    cn_type: u8,
+    cn_sync_type: u8,
+    cn_data_type: u8,
+    cn_byte_offset: u32,
+    cn_bit_count: u32,
+    cn_cn_next: i64,
+    cn_tx_name: i64,
+    cn_cc_conversion: i64,
+    cn_composition: i64,
+) {
+    buf.extend_from_slice(b"##CN");
+    push_zeros(buf, 4);
+    push_u64(buf, 160);
+    push_u64(buf, 8); // 8 links
+    push_i64(buf, cn_cn_next);
+    push_i64(buf, cn_composition);
+    push_i64(buf, cn_tx_name);
+    push_i64(buf, 0);
+    push_i64(buf, cn_cc_conversion);
+    push_i64(buf, 0);
+    push_i64(buf, 0);
+    push_i64(buf, 0);
+    push_u8(buf, cn_type);
+    push_u8(buf, cn_sync_type);
+    push_u8(buf, cn_data_type);
+    push_u8(buf, 0);
+    push_u32(buf, cn_byte_offset);
+    push_u32(buf, cn_bit_count);
+    push_u32(buf, 0);
+    push_u32(buf, 0);
+    push_u8(buf, 0xff);
+    push_u8(buf, 0);
+    push_u16(buf, 0);
+    push_f64(buf, 0.0);
+    push_f64(buf, 0.0);
+    push_f64(buf, 0.0);
+    push_f64(buf, 0.0);
+    push_f64(buf, 0.0);
+    push_f64(buf, 0.0);
+}
+
+fn create_synthetic_array_fixture() -> Result<()> {
+    const PATH: &str = "test_files/synthetic/synthetic_array.mf4";
+    let mut buf = Vec::with_capacity(2048);
+
+    write_id_block(&mut buf);
+    debug_assert_eq!(buf.len(), 64);
+    write_hd4(&mut buf, 224, 168);
+    debug_assert_eq!(buf.len(), 168);
+    write_fh(&mut buf);
+    debug_assert_eq!(buf.len(), 224);
+    write_dg4(&mut buf, 288, 840);
+    debug_assert_eq!(buf.len(), 288);
+    write_cg4(&mut buf, 392, 3, 40);
+    debug_assert_eq!(buf.len(), 392);
+    write_cn4(&mut buf, 2, 1, 4, 0, 64, 552, 776, 0);
+    debug_assert_eq!(buf.len(), 552);
+    write_cn4_with_composition(&mut buf, 0, 0, 4, 8, 64, 0, 808, 0, 712);
+    debug_assert_eq!(buf.len(), 712);
+    write_ca4(&mut buf, &[2, 2]);
+    debug_assert_eq!(buf.len(), 776);
+    write_tx(&mut buf, "time_ch");
+    debug_assert_eq!(buf.len(), 808);
+    write_tx(&mut buf, "array2d");
+    debug_assert_eq!(buf.len(), 840);
+
+    let mut dt_data = Vec::with_capacity(120);
+    for i in 0..3 {
+        dt_data.extend_from_slice(&(i as f64).to_le_bytes());
+        for j in 0..4 {
+            let val = (i * 4 + j + 1) as f64;
+            dt_data.extend_from_slice(&val.to_le_bytes());
+        }
+    }
+    write_dt(&mut buf, &dt_data);
+
+    std::fs::write(PATH, &buf)?;
+    Ok(())
+}
+
+fn create_synthetic_dz_deflate_fixture() -> Result<()> {
+    use std::io::Write;
+    const PATH: &str = "test_files/synthetic/synthetic_dz_deflate.mf4";
+    let mut buf = Vec::with_capacity(2048);
+
+    write_id_block(&mut buf);
+    debug_assert_eq!(buf.len(), 64);
+    write_hd4(&mut buf, 224, 168);
+    debug_assert_eq!(buf.len(), 168);
+    write_fh(&mut buf);
+    debug_assert_eq!(buf.len(), 224);
+    write_dg4(&mut buf, 288, 584);
+    debug_assert_eq!(buf.len(), 288);
+    write_cg4(&mut buf, 392, 10, 8);
+    debug_assert_eq!(buf.len(), 392);
+    write_cn4(&mut buf, 2, 1, 4, 0, 64, 0, 552, 0);
+    debug_assert_eq!(buf.len(), 552);
+    write_tx(&mut buf, "time_ch");
+    debug_assert_eq!(buf.len(), 584);
+
+    let mut raw_data = Vec::with_capacity(80);
+    for i in 0..10 {
+        raw_data.extend_from_slice(&(i as f64).to_le_bytes());
+    }
+
+    let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+    encoder.write_all(&raw_data)?;
+    let compressed = encoder.finish()?;
+
+    write_dz(&mut buf, b"DT", 0, 0, raw_data.len() as u64, &compressed);
+
+    std::fs::write(PATH, &buf)?;
+    Ok(())
 }

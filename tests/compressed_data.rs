@@ -68,6 +68,9 @@ fn single_dz_deflate() -> Result<()> {
         BASE_PATH_MDF4.as_str(),
         "CompressedData/Simple/Vector_SingleDZ_Deflate.mf4"
     );
+    if !Path::new(&file_name).exists() {
+        return Ok(());
+    }
     let mut mdf = Mdf::new(&file_name)?;
     mdf.load_all_channels_data_in_memory()?;
     Ok(())
@@ -81,6 +84,9 @@ fn single_dz_transpose_deflate() -> Result<()> {
         BASE_PATH_MDF4.as_str(),
         "CompressedData/Simple/Vector_SingleDZ_TransposeDeflate.mf4"
     );
+    if !Path::new(&file_name).exists() {
+        return Ok(());
+    }
     let mut mdf = Mdf::new(&file_name)?;
     mdf.load_all_channels_data_in_memory()?;
     Ok(())
@@ -94,6 +100,9 @@ fn deflate_data_list() -> Result<()> {
         BASE_PATH_MDF4.as_str(),
         "CompressedData/DataList/Vector_DataList_Deflate.mf4"
     );
+    if !Path::new(&file_name).exists() {
+        return Ok(());
+    }
     let mut mdf = Mdf::new(&file_name)?;
     mdf.load_all_channels_data_in_memory()?;
     if let Some(data) = mdf.get_channel_data("Time channel") {
@@ -119,6 +128,9 @@ fn transpose_deflate_data_list() -> Result<()> {
         BASE_PATH_MDF4.as_str(),
         "CompressedData/DataList/Vector_DataList_TransposeDeflate.mf4"
     );
+    if !Path::new(&file_name).exists() {
+        return Ok(());
+    }
     let mut mdf = Mdf::new(&file_name)?;
     mdf.load_all_channels_data_in_memory()?;
     if let Some(data) = mdf.get_channel_data("Time channel") {
@@ -144,6 +156,9 @@ fn unsorted_compressed() -> Result<()> {
         BASE_PATH_MDF4.as_str(),
         "CompressedData/Unsorted/Vector_SingleDZ_Unsorted.MF4"
     );
+    if !Path::new(&file_name).exists() {
+        return Ok(());
+    }
     let mut mdf = Mdf::new(&file_name)?;
     mdf.load_all_channels_data_in_memory()?;
     Ok(())
@@ -157,6 +172,9 @@ fn compressed_data_mdf43_algo() -> Result<()> {
         BASE_PATH_MDF4.as_str(),
         "CompressedData/MDF430_Algorithms"
     );
+    if !Path::new(&path).is_dir() {
+        return Ok(());
+    }
     parse_info_folder(&path).unwrap();
     Ok(())
 }

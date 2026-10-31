@@ -862,6 +862,24 @@ impl Mdf {
     > {
         crate::export::polars::mdf_to_dataframes(self)
     }
+    /// Creates an in-memory `Mdf` from a Polars [`DataFrame`].
+    #[cfg(feature = "polars")]
+    pub fn from_polars_df(
+        df: &polars::prelude::DataFrame,
+        time_col: Option<&str>,
+    ) -> Result<Mdf> {
+        crate::export::polars::from_polars_df(df, time_col)
+    }
+    /// Writes a Polars [`DataFrame`] directly to an MDF 4.3 file.
+    #[cfg(feature = "polars")]
+    pub fn write_polars(
+        df: &polars::prelude::DataFrame,
+        file_name: &str,
+        time_col: Option<&str>,
+        compression: CompressionAlgorithm,
+    ) -> Result<Mdf> {
+        crate::export::polars::write_polars(df, file_name, time_col, compression)
+    }
 }
 
 impl fmt::Display for Mdf {

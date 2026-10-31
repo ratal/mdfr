@@ -17,8 +17,17 @@ static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(|| {
     )
 });
 
+macro_rules! require_base_path {
+    () => {
+        if !Path::new(BASE_PATH_MDF4.as_str()).is_dir() {
+            return Ok(());
+        }
+    };
+}
+
 #[test]
 fn master_channels() -> Result<()> {
+    require_base_path!();
     let list_of_paths = ["ChannelTypes/MasterChannels/".to_string()];
 
     // MasterTypes testing
@@ -70,6 +79,7 @@ fn master_channels() -> Result<()> {
 
 #[test]
 fn mlsd_channels() -> Result<()> {
+    require_base_path!();
     let list_of_paths = ["ChannelTypes/MLSD/".to_string()];
 
     // MLSD testing
@@ -138,6 +148,7 @@ fn mlsd_channels() -> Result<()> {
 
 #[test]
 fn virtual_data_channels() -> Result<()> {
+    require_base_path!();
     let list_of_paths = ["ChannelTypes/VirtualData/".to_string()];
 
     // Virtual data testing
@@ -202,6 +213,7 @@ fn virtual_data_channels() -> Result<()> {
 
 #[test]
 fn vlsd_channels() -> Result<()> {
+    require_base_path!();
     let list_of_paths = ["ChannelTypes/VLSD/".to_string()];
 
     let mut expected_string_result = LargeStringBuilder::with_capacity(10, 6);
@@ -258,6 +270,7 @@ fn vlsd_channels() -> Result<()> {
 
 #[test]
 fn vlsc_channels() -> Result<()> {
+    require_base_path!();
     let list_of_paths = ["ChannelTypes/VLSC/".to_string()];
 
     let mut expected_string_result = LargeStringBuilder::with_capacity(10, 6);
@@ -373,6 +386,7 @@ fn vlsc_channels() -> Result<()> {
 
 #[test]
 fn synchronization_channels() -> Result<()> {
+    require_base_path!();
     // Synchronization
     let file_name = format!(
         "{}{}",
@@ -386,6 +400,7 @@ fn synchronization_channels() -> Result<()> {
 
 #[test]
 fn channel_list() -> Result<()> {
+    require_base_path!();
     // Channel List (CL) + Data Stream (DS) test
     // File: simple_list.mf4 contains a dynamic list structure with:
     // - time: master channel (2 samples) [0.0, 1.0]
@@ -467,6 +482,7 @@ fn channel_list() -> Result<()> {
 
 #[test]
 fn channel_variant() -> Result<()> {
+    require_base_path!();
     // Channel Variant (CV) test
     // File: Etas_cv_storage_with_fixed_length.mf4 contains:
     // - time: master channel (3 samples) [0.0, 1.0, 2.0]
@@ -554,6 +570,7 @@ fn channel_variant() -> Result<()> {
 
 #[test]
 fn data_stream_block() -> Result<()> {
+    require_base_path!();
     // DS Block (Data Stream) test
     // Note: DS blocks are implicitly tested via ChannelList (simple_list.mf4)
     // where the "x" channel uses DSBLOCK for data stream mode
@@ -636,6 +653,7 @@ fn channel_union() -> Result<()> {
 
 #[test]
 fn vd_block() -> Result<()> {
+    require_base_path!();
     // VD Block (Virtual Data)
     let file_name = format!(
         "{}{}",

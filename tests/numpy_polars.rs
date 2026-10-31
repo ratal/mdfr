@@ -393,6 +393,65 @@ mod rust_polars_tests {
         assert!(df.column("be_f64").is_ok());
         assert!(df.column("be_i16").is_ok());
     }
+
+    #[test]
+    fn test_from_polars_df_and_write_roundtrip() {
+        use mdfr::mdfinfo::mdfinfo4::CompressionAlgorithm;
+        use polars::df;
+        let df = df!(
+            "time" => [0.0f64, 0.1, 0.2, 0.3],
+            "speed" => [10.0f64, 20.0, 30.0, 40.0],
+            "gear" => [1i32, 2, 2, 3],
+            "label" => ["idle", "run", "run", "fast"],
+        )
+        .expect("df creation");
+
+        let tmp_file = tempfile::Builder::new().suffix(".mf4").tempfile().unwrap();
+        let file_path = tmp_file.path().to_str().unwrap();
+
+        let _written = Mdf::write_polars(
+            &df,
+            file_path,
+            Some("time"),
+            CompressionAlgorithm::NoCompression,
+        )
+        .expect("write_polars failed");
+
+        // Read back the written file
+        let mut read_mdf = Mdf::new(file_path).expect("open failed");
+        read_mdf
+            .load_all_channels_data_in_memory()
+            .expect("load failed");
+
+        let names = read_mdf.get_channel_names_set();
+        eprintln!("Channels in written file: {:?}", names);
+        for name in &names {
+            let master = read_mdf.get_channel_master(name);
+            let has_data = read_mdf.get_channel_data(name).is_some();
+            eprintln!("Channel {name}: master={master:?}, data_is_some={has_data}");
+        }
+
+        let read_df = read_mdf
+            .get_channel_polars_dataframe(Some("time"))
+            .expect("get df failed");
+        assert_eq!(read_df.height(), 4);
+        assert_eq!(read_df.width(), 4);
+
+        let speed_col = read_df.column("speed").expect("speed col");
+        let speed_vals: Vec<f64> = speed_col.f64().unwrap().iter().flatten().collect();
+        assert_eq!(speed_vals, vec![10.0, 20.0, 30.0, 40.0]);
+
+        let gear_col = read_df.column("gear").expect("gear col");
+        let gear_vals: Vec<i32> = gear_col.i32().unwrap().iter().flatten().collect();
+        assert_eq!(gear_vals, vec![1, 2, 2, 3]);
+
+        let label_col = read_df.column("label").expect("label col");
+        let label_vals: Vec<Option<&str>> = label_col.str().unwrap().iter().collect();
+        assert_eq!(
+            label_vals,
+            vec![Some("idle"), Some("run"), Some("run"), Some("fast")]
+        );
+    }
 }
 
 #[cfg(feature = "polars")]

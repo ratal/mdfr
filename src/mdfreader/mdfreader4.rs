@@ -106,10 +106,34 @@ pub fn mdfreader4<'a>(
                             && (cn.block.cn_flags & crate::mdfinfo::mdfinfo4::CN_F_EVENT_SIGNAL
                                 == 0)
                             && cn.event_template.is_none()
-                            && (cn.block.cn_type == 0 || cn.block.cn_type == 2)
                         {
-                            position =
-                                read_independent_channel_data(rdr, cn, cycle_count, position)?;
+                            if cn.block.cn_type == 0 || cn.block.cn_type == 2 {
+                                position =
+                                    read_independent_channel_data(rdr, cn, cycle_count, position)?;
+                            } else if cn.block.cn_type == 1 {
+                                rdr.seek_relative(cn.block.cn_data - position)
+                                    .context("Could not position buffer for VLSD channel")?;
+                                position = cn.block.cn_data;
+                                let mut id = [0u8; 4];
+                                rdr.read_exact(&mut id)
+                                    .context("could not read block id for VLSD")?;
+                                if "##SD".as_bytes() == id {
+                                    let block_header: Dt4Block = binrw::BinReaderExt::read_le(rdr)
+                                        .context("Could not read SD block struct")?;
+                                    let mut data = vec![0u8; block_header.len as usize - 24];
+                                    rdr.read_exact(&mut data)
+                                        .context("could not read SD data buffer")?;
+                                    position += block_header.len as i64;
+                                    read_vlsd_from_bytes(&mut data, cn, 0, &mut decoder)?;
+                                } else if "##DZ".as_bytes() == id {
+                                    let (mut data, block_header) = parse_dz(rdr)?;
+                                    position += block_header.len as i64;
+                                    read_vlsd_from_bytes(&mut data, cn, 0, &mut decoder)?;
+                                }
+                                if let Some(b) = cn.builder.take() {
+                                    cn.data = b.finish();
+                                }
+                            }
                         }
                     }
                     channel_group
@@ -459,6 +483,8 @@ fn read_sd(
                 } else if "##DL".as_bytes() == id {
                     let (dl_blocks, pos) = parser_dl4(rdr, position)?;
                     position = read_vlsd_from_dl_blocks(rdr, dl_blocks, pos, cn, decoder)?;
+                } else {
+                    eprintln!("read_sd: UNEXPECTED ID: {:?} at cn_data={}", String::from_utf8_lossy(&id), cn.block.cn_data);
                 }
                 if let Some(b) = cn.builder.take() {
                     cn.data = b.finish();
@@ -1596,6 +1622,9 @@ fn parser_dl4_unsorted(
 /// Returns chunk size and corresponding number of records from a channel group
 fn generate_chunks(channel_group: &Cg4) -> Vec<(usize, usize)> {
     let record_length = channel_group.record_length as usize;
+    if record_length == 0 {
+        return Vec::new();
+    }
     let cg_cycle_count = channel_group.block.cg_cycle_count as usize;
     let n_chunks = (record_length * cg_cycle_count) / CHUNK_SIZE_READING_4 + 1; // number of chunks
     let chunk_length = (record_length * cg_cycle_count) / n_chunks; // chunks length

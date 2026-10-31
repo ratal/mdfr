@@ -502,12 +502,16 @@ impl MdfInfo4 {
             .create_tx(channel_name_position, channel_name.to_string());
 
         // Channel array
-        let mut list_size = data_signature.shape.0.iter().product(); // primitive list size is 1
-        if data_signature.data_type == 15 | 16 {
+        let data_ndim = data_signature.ndim.saturating_sub(1);
+        let mut list_size = if data_ndim > 0 {
+            data_signature.shape.0.iter().skip(1).product()
+        } else {
+            1
+        };
+        if data_signature.data_type == 15 || data_signature.data_type == 16 {
             //complex
             list_size *= 2;
         }
-        let data_ndim = data_signature.ndim - 1;
         let mut composition: Option<Composition> = None;
         if data_ndim > 0 {
             let data_dim_size = data
@@ -535,18 +539,20 @@ impl MdfInfo4 {
         // master channel
         if master.master_flag {
             cn_block.cn_type = 2; // master channel
+            master.master_channel = Some(channel_name.to_string());
         } else {
             cn_block.cn_type = 0; // data channel
-            if let Some(master_channel_name) = master.master_channel.clone() {
+            if let Some(ref master_channel_name) = master.master_channel {
                 // looking for the master channel's cg position
                 if let Some((m, _dg_pos, (cg_pos, _rec_id), (_cn_pos, _rec_pos))) =
-                    self.channel_names_set.get(&master_channel_name)
+                    self.channel_names_set.get(master_channel_name)
                 {
                     cg_block.cg_cg_master = Some(*cg_pos);
                     cg_block.cg_flags = 0b1000;
                     cg_block.cg_links = 7; // with cg_cg_master
-                    // cg_block.cg_len = 112;
-                    master.master_channel.clone_from(m);
+                    if m.is_some() {
+                        master.master_channel.clone_from(m);
+                    }
                 }
             }
         }
@@ -588,6 +594,29 @@ impl MdfInfo4 {
             event_template: None,
             should_read: false,
         };
+
+        // If this channel belongs to an existing master's group, attach to its existing DG/CG
+        let existing_target = if !master.master_flag && let Some(ref master_name) = master.master_channel {
+            self.channel_names_set
+                .get(master_name)
+                .map(|(_m, dg_pos, (cg_pos, rec_id), _)| (*dg_pos, *cg_pos, *rec_id))
+        } else {
+            None
+        };
+
+        if let Some((dg_pos, cg_pos, rec_id)) = existing_target
+            && let Some(dg) = self.dg.get_mut(&dg_pos)
+            && let Some(cg) = dg.cg.get_mut(&rec_id)
+        {
+            let rec_pos = cg.cn.len() as i32;
+            cg.cn.insert(rec_pos, cn);
+            cg.channel_names.insert(channel_name.to_string());
+            self.channel_names_set.insert(
+                channel_name,
+                (master.master_channel, dg_pos, (cg_pos, rec_id), (cn_pos, rec_pos)),
+            );
+            return Ok(());
+        }
 
         // CG
         let cg_pos = position_generator();

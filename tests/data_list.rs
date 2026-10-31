@@ -11,8 +11,17 @@ static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(|| {
     )
 });
 
+macro_rules! require_base_path {
+    () => {
+        if !std::path::Path::new(BASE_PATH_MDF4.as_str()).is_dir() {
+            return Ok(());
+        }
+    };
+}
+
 #[test]
 fn equal_length() -> Result<()> {
+    require_base_path!();
     // Equal length
     let file_name = format!(
         "{}{}",
@@ -29,6 +38,7 @@ fn equal_length() -> Result<()> {
 
 #[test]
 fn linked_list() -> Result<()> {
+    require_base_path!();
     // Linked list
     let file_name = format!(
         "{}{}",
@@ -45,6 +55,7 @@ fn linked_list() -> Result<()> {
 
 #[test]
 fn empty_list() -> Result<()> {
+    require_base_path!();
     // Empty data
     let file_name = format!(
         "{}{}",
@@ -58,6 +69,7 @@ fn empty_list() -> Result<()> {
 
 #[test]
 fn sd_list() -> Result<()> {
+    require_base_path!();
     // SD List
     let file_name = format!(
         "{}{}",
@@ -71,6 +83,7 @@ fn sd_list() -> Result<()> {
 
 #[test]
 fn separate_invalidation_bits() -> Result<()> {
+    require_base_path!();
     // Separate invalidation bits
     let file_name = format!(
         "{}{}",

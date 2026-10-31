@@ -1,6 +1,7 @@
 //! This module provides python interface using pyo3s
 use std::collections::HashSet;
 use std::fmt::Write;
+use std::sync::Arc;
 
 use crate::data_holder::channel_data::ChannelData;
 
@@ -8,7 +9,7 @@ use crate::mdfinfo::{ChannelsDb, MdfInfo};
 use crate::mdfreader::MasterSignature;
 use crate::mdfreader::Mdf;
 use anyhow::Context;
-use arrow::array::{Array, ArrayData};
+use arrow::array::{Array, ArrayData, RecordBatchReader};
 use arrow::pyarrow::PyArrowType;
 use arrow::util::display::{ArrayFormatter, FormatOptions};
 
@@ -27,15 +28,172 @@ fn mdfr(m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
+/// Represents an MDF channel in Python with metadata and direct Arrow/NumPy/Polars integration.
+#[pyclass(from_py_object)]
+#[derive(Clone)]
+pub struct PyChannel {
+    pub(crate) name: String,
+    pub(crate) data: ChannelData,
+    pub(crate) unit: Option<String>,
+    pub(crate) desc: Option<String>,
+    pub(crate) master_name: Option<String>,
+}
+
+#[pymethods]
+impl PyChannel {
+    /// Channel name
+    #[getter]
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Engineering unit (e.g. "km/h", "bar")
+    #[getter]
+    pub fn unit(&self) -> Option<&str> {
+        self.unit.as_deref()
+    }
+
+    /// Channel description / comment
+    #[getter]
+    pub fn comment(&self) -> Option<&str> {
+        self.desc.as_deref()
+    }
+
+    /// Channel description (alias for comment)
+    #[getter]
+    pub fn desc(&self) -> Option<&str> {
+        self.desc.as_deref()
+    }
+
+    /// Associated master channel name, if any
+    #[getter]
+    pub fn master(&self) -> Option<&str> {
+        self.master_name.as_deref()
+    }
+
+    /// Number of samples in the channel
+    pub fn __len__(&self) -> usize {
+        self.data.len()
+    }
+
+    pub fn __repr__(&self) -> String {
+        format!(
+            "<PyChannel '{}' len={} unit={:?}>",
+            self.name,
+            self.data.len(),
+            self.unit
+        )
+    }
+
+    /// Converts channel data to a NumPy ndarray (or MaskedArray if invalid samples exist).
+    pub fn to_numpy(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let py_obj = self
+            .data
+            .clone()
+            .into_pyobject(py)
+            .context("error converting ChannelData into python numpy object")?;
+        let mut py_array: Py<PyAny> = py_obj.into();
+        if let Some(m) = self.data.validity() {
+            let mask: Py<PyAny> = m
+                .iter()
+                .collect::<Vec<bool>>()
+                .into_pyobject(py)
+                .context("error converting validity into python object")?
+                .into();
+            let np_ma = py.import("numpy.ma").context("could not import numpy.ma")?;
+            let kwargs = pyo3::types::PyDict::new(py);
+            kwargs
+                .set_item(pyo3::intern!(py, "mask"), mask)
+                .context("cannot set python mask")?;
+            py_array = np_ma
+                .getattr(pyo3::intern!(py, "array"))
+                .context("could not get numpy.ma.array")?
+                .call((&py_array,), Some(&kwargs))
+                .context("masked array creation failed")?
+                .unbind();
+        }
+        Ok(py_array)
+    }
+
+    /// NumPy array protocol: np.asarray(channel)
+    #[pyo3(signature = (dtype=None, copy=None))]
+    pub fn __array__(
+        &self,
+        py: Python<'_>,
+        dtype: Option<&Bound<'_, PyAny>>,
+        copy: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<Py<PyAny>> {
+        let np_arr = self.to_numpy(py)?;
+        let bound = np_arr.bind(py);
+        if dtype.is_some() || copy.is_some() {
+            let np = py.import("numpy")?;
+            let kwargs = pyo3::types::PyDict::new(py);
+            if let Some(d) = dtype {
+                kwargs.set_item("dtype", d)?;
+            }
+            if let Some(c) = copy {
+                kwargs.set_item("copy", c)?;
+            }
+            Ok(np.call_method("asarray", (bound,), Some(&kwargs))?.unbind())
+        } else {
+            Ok(np_arr)
+        }
+    }
+
+    /// Indexing and slicing: ch[0], ch[-1], ch[10:20]
+    pub fn __getitem__(&self, py: Python<'_>, index: &Bound<'_, PyAny>) -> PyResult<Py<PyAny>> {
+        let np_arr = self.to_numpy(py)?;
+        np_arr.bind(py).get_item(index).map(|b| b.unbind())
+    }
+
+    /// Arrow PyCapsule zero-copy Array protocol: pa.array(channel), pl.Series("name", channel)
+    #[pyo3(signature = (requested_schema=None))]
+    #[allow(unused_variables)]
+    pub fn __arrow_c_array__<'py>(
+        &self,
+        py: Python<'py>,
+        requested_schema: Option<Bound<'py, PyAny>>,
+    ) -> PyResult<(Bound<'py, PyAny>, Bound<'py, PyAny>)> {
+        let arr_data = self.data.to_data();
+        crate::export::arrow_capsule::export_array_to_pycapsules(py, &arr_data)
+    }
+
+    /// Arrow PyCapsule Stream protocol: pa.table(channel), pl.DataFrame(channel)
+    #[pyo3(signature = (requested_schema=None))]
+    #[allow(unused_variables)]
+    pub fn __arrow_c_stream__<'py>(
+        &self,
+        py: Python<'py>,
+        requested_schema: Option<Bound<'py, PyAny>>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let arr = self.data.as_arrow();
+        let field = arrow::datatypes::Field::new(&self.name, arr.data_type().clone(), true);
+        let schema = Arc::new(arrow::datatypes::Schema::new(vec![field]));
+        let batch = arrow::array::RecordBatch::try_new(schema.clone(), vec![arr])
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+        let reader = Box::new(arrow::array::RecordBatchIterator::new(vec![Ok(batch)], schema));
+        crate::export::arrow_capsule::export_reader_to_pycapsule(py, reader)
+    }
+
+    /// Converts channel to a Polars Series using the Arrow PyCapsule protocol zero-copy.
+    #[cfg(feature = "polars")]
+    pub fn to_polars(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let polars = py.import("polars")?;
+        polars.call_method1("Series", (self.name.as_str(), self.clone())).map(|b| b.unbind())
+    }
+}
+
 /// This function is used to create a python dictionary from a MdfInfo object
 #[pyclass]
-struct Mdfr(Mdf);
+pub struct Mdfr(Mdf);
 
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Mdfr>()?;
+    m.add_class::<PyChannel>()?;
     m.add_class::<CompressionAlgorithm>()?;
     m.add_class::<MdfLogger>()?;
     m.add_function(wrap_pyfunction!(finalize_file_in_place, m)?)?;
+    m.add_function(wrap_pyfunction!(write_polars, m)?)?;
     Ok(())
 }
 
@@ -1094,6 +1252,193 @@ pyplot.show()
 
         Ok(output)
     }
+
+    /// Dictionary indexing: mdf["ChannelName"] -> PyChannel
+    pub fn __getitem__(&mut self, channel_name: &str) -> PyResult<PyChannel> {
+        let Mdfr(mdf) = self;
+        if !mdf.get_channel_names_set().contains(channel_name) {
+            return Err(pyo3::exceptions::PyKeyError::new_err(format!(
+                "Channel '{channel_name}' not found in MDF file"
+            )));
+        }
+        if mdf.get_channel_converted_data(channel_name).is_none() {
+            let mut set = HashSet::new();
+            set.insert(channel_name.to_string());
+            let _ = mdf.load_channels_data_in_memory(set);
+        }
+        let data = mdf.get_channel_converted_data(channel_name).ok_or_else(|| {
+            pyo3::exceptions::PyKeyError::new_err(format!(
+                "Failed to read data for channel '{channel_name}'"
+            ))
+        })?;
+        let unit = mdf.mdf_info.get_channel_unit(channel_name).ok().flatten();
+        let desc = mdf.mdf_info.get_channel_desc(channel_name).ok().flatten();
+        let master_name = mdf.mdf_info.get_channel_master(channel_name).map(|s| s.to_string());
+        Ok(PyChannel {
+            name: channel_name.to_string(),
+            data,
+            unit,
+            desc,
+            master_name,
+        })
+    }
+
+    /// Membership check: "ChannelName" in mdf
+    pub fn __contains__(&self, channel_name: &str) -> bool {
+        let Mdfr(mdf) = self;
+        mdf.get_channel_names_set().contains(channel_name)
+    }
+
+    /// Total number of channels in the MDF file
+    pub fn __len__(&self) -> usize {
+        let Mdfr(mdf) = self;
+        mdf.get_channel_names_set().len()
+    }
+
+    /// List of all channel names in the MDF file
+    pub fn keys(&self) -> Vec<String> {
+        let Mdfr(mdf) = self;
+        let mut list: Vec<String> = mdf.get_channel_names_set().into_iter().collect();
+        list.sort();
+        list
+    }
+
+    /// Iterator over channel names
+    pub fn __iter__(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
+        let keys = self.keys();
+        PyList::new(py, keys)?.call_method0("__iter__").map(|b| b.unbind())
+    }
+
+    /// List of all PyChannel objects
+    pub fn values(&mut self) -> PyResult<Vec<PyChannel>> {
+        let keys = self.keys();
+        let mut vals = Vec::with_capacity(keys.len());
+        for k in keys {
+            vals.push(self.__getitem__(&k)?);
+        }
+        Ok(vals)
+    }
+
+    /// List of (name, PyChannel) tuples
+    pub fn items(&mut self) -> PyResult<Vec<(String, PyChannel)>> {
+        let keys = self.keys();
+        let mut items = Vec::with_capacity(keys.len());
+        for k in keys {
+            let ch = self.__getitem__(&k)?;
+            items.push((k, ch));
+        }
+        Ok(items)
+    }
+
+    /// Context manager entry
+    pub fn __enter__(slf: Py<Self>) -> Py<Self> {
+        slf
+    }
+
+    /// Context manager exit
+    #[pyo3(signature = (_exc_type=None, _exc_val=None, _exc_tb=None))]
+    pub fn __exit__(
+        &mut self,
+        _exc_type: Option<&Bound<'_, PyAny>>,
+        _exc_val: Option<&Bound<'_, PyAny>>,
+        _exc_tb: Option<&Bound<'_, PyAny>>,
+    ) -> PyResult<bool> {
+        Ok(false)
+    }
+
+    /// Exports the MDF file's default channel group as an Arrow StructArray PyCapsule.
+    /// Compatible with PyArrow (`pa.table(mdf)`) and Polars (`pl.from_arrow(mdf)`).
+    #[pyo3(signature = (requested_schema=None))]
+    #[allow(unused_variables)]
+    pub fn __arrow_c_array__<'py>(
+        &mut self,
+        py: Python<'py>,
+        requested_schema: Option<Bound<'py, PyAny>>,
+    ) -> PyResult<(Bound<'py, PyAny>, Bound<'py, PyAny>)> {
+        let Mdfr(mdf) = self;
+        let groups = mdf.get_master_channel_names_set();
+        let selected_channels: HashSet<String> = if let Some(chs) = groups.iter().find(|(m, _)| {
+            m.as_ref().map(|s| s.to_lowercase() == "time").unwrap_or(false)
+        }).map(|(_, chs)| chs) {
+            chs.clone()
+        } else if let Some((_, chs)) = groups.iter().find(|(m, _)| m.is_some()) {
+            chs.clone()
+        } else if let Some((_, chs)) = groups.iter().next() {
+            chs.clone()
+        } else {
+            HashSet::new()
+        };
+
+        if !selected_channels.is_empty() {
+            mdf.load_channels_data_in_memory(selected_channels.clone())
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+        }
+
+        let mut fields = Vec::new();
+        let mut arrays = Vec::new();
+        for ch_name in &selected_channels {
+            if let Some(ch_data) = mdf.get_channel_converted_data(ch_name) {
+                let arr = ch_data.as_arrow();
+                let field = arrow::datatypes::Field::new(ch_name, arr.data_type().clone(), true);
+                fields.push(field);
+                arrays.push(arr);
+            }
+        }
+
+        let struct_arr = arrow::array::StructArray::try_new(
+            arrow::datatypes::Fields::from(fields),
+            arrays,
+            None,
+        ).map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+
+        crate::export::arrow_capsule::export_array_to_pycapsules(py, &struct_arr.to_data())
+    }
+
+    /// Exports the MDF file's default channel group as an Arrow ArrayStream PyCapsule.
+    /// Compatible with PyArrow (`pa.table(mdf)`) and Polars (`pl.DataFrame(mdf)`).
+    #[pyo3(signature = (requested_schema=None))]
+    #[allow(unused_variables)]
+    pub fn __arrow_c_stream__<'py>(
+        &mut self,
+        py: Python<'py>,
+        requested_schema: Option<Bound<'py, PyAny>>,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let Mdfr(mdf) = self;
+        let groups = mdf.get_master_channel_names_set();
+        let selected_channels: HashSet<String> = if let Some(chs) = groups.iter().find(|(m, _)| {
+            m.as_ref().map(|s| s.to_lowercase() == "time").unwrap_or(false)
+        }).map(|(_, chs)| chs) {
+            chs.clone()
+        } else if let Some((_, chs)) = groups.iter().find(|(m, _)| m.is_some()) {
+            chs.clone()
+        } else if let Some((_, chs)) = groups.iter().next() {
+            chs.clone()
+        } else {
+            HashSet::new()
+        };
+
+        if !selected_channels.is_empty() {
+            mdf.load_channels_data_in_memory(selected_channels.clone())
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+        }
+
+        let mut fields = Vec::new();
+        let mut arrays = Vec::new();
+        for ch_name in &selected_channels {
+            if let Some(ch_data) = mdf.get_channel_converted_data(ch_name) {
+                let arr = ch_data.as_arrow();
+                let field = arrow::datatypes::Field::new(ch_name, arr.data_type().clone(), true);
+                fields.push(field);
+                arrays.push(arr);
+            }
+        }
+
+        let schema = Arc::new(arrow::datatypes::Schema::new(fields));
+        let batch = arrow::array::RecordBatch::try_new(schema.clone(), arrays)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+        let reader = Box::new(arrow::array::RecordBatchIterator::new(vec![Ok(batch)], schema));
+        crate::export::arrow_capsule::export_reader_to_pycapsule(py, reader)
+    }
 }
 
 /// Finalizes an unfinalized MDF 4.x file (`"UnFinMF "`) in place on disk without copying.
@@ -1102,6 +1447,119 @@ pyplot.show()
 fn finalize_file_in_place(file_name: &str) -> PyResult<usize> {
     crate::mdfinfo::mdfinfo4::finalize::finalize_file_in_place(file_name)
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
+}
+
+/// Directly writes a Polars DataFrame, PyArrow Table, or any object implementing
+/// the Arrow PyCapsule stream interface to an MDF 4.3 file.
+#[pyfunction]
+#[pyo3(signature = (df, file_name, time_col=None, compression=CompressionAlgorithm::NoCompression))]
+pub fn write_polars(
+    _py: Python<'_>,
+    df: &Bound<'_, PyAny>,
+    file_name: &str,
+    time_col: Option<&str>,
+    compression: CompressionAlgorithm,
+) -> PyResult<Mdfr> {
+    let stream_capsule = if let Ok(stream) = df.call_method0("__arrow_c_stream__") {
+        stream
+    } else if let Ok(table) = df.call_method0("to_arrow") {
+        table.call_method0("__arrow_c_stream__")?
+    } else {
+        return Err(pyo3::exceptions::PyTypeError::new_err(
+            "Expected a Polars DataFrame, PyArrow Table, or object implementing __arrow_c_stream__",
+        ));
+    };
+
+    let reader = crate::export::arrow_capsule::import_stream_from_pycapsule(&stream_capsule)?;
+    let schema = reader.schema();
+
+    let mut batches = Vec::new();
+    for batch_res in reader {
+        let batch = batch_res.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+        batches.push(batch);
+    }
+    if batches.is_empty() {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "DataFrame / Arrow stream contains no batches",
+        ));
+    }
+
+    let batch = if batches.len() == 1 {
+        batches.pop().unwrap()
+    } else {
+        arrow::compute::concat_batches(&schema, &batches)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?
+    };
+
+    let master_name = if let Some(tc) = time_col {
+        tc.to_string()
+    } else if schema.column_with_name("time").is_some() {
+        "time".to_string()
+    } else if schema.column_with_name("Time").is_some() {
+        "Time".to_string()
+    } else if let Some(first_field) = schema.fields().first() {
+        first_field.name().to_string()
+    } else {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "DataFrame has no columns",
+        ));
+    };
+
+    let num_cols = schema.fields().len() + 1;
+    let mut mdf = Mdf {
+        mdf_info: crate::mdfinfo::MdfInfo::V4(Box::new(
+            crate::mdfinfo::mdfinfo4::MdfInfo4::new(file_name, num_cols),
+        )),
+    };
+
+    let has_master_in_df = schema.column_with_name(&master_name).is_some();
+
+    if has_master_in_df {
+        let (idx, _) = schema.column_with_name(&master_name).unwrap();
+        let col_array = batch.column(idx).clone();
+        mdf.add_channel(
+            master_name.clone(),
+            col_array,
+            None,
+            Some(1), // 1 = Time
+            true,    // master_flag = true
+            Some("s".to_string()),
+            None,
+        ).map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+    } else {
+        let time_vals: Vec<f64> = (0..batch.num_rows()).map(|i| i as f64).collect();
+        let time_arr = Arc::new(arrow::array::Float64Array::from(time_vals));
+        mdf.add_channel(
+            master_name.clone(),
+            time_arr,
+            None,
+            Some(1), // 1 = Time
+            true,    // master_flag = true
+            Some("s".to_string()),
+            Some("Synthetic master time channel".to_string()),
+        ).map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+    }
+
+    for (idx, field) in schema.fields().iter().enumerate() {
+        let col_name = field.name().as_str();
+        if col_name == master_name {
+            continue;
+        }
+        let col_array = batch.column(idx).clone();
+        mdf.add_channel(
+            col_name.to_string(),
+            col_array,
+            Some(master_name.clone()),
+            None,
+            false,
+            None,
+            None,
+        ).map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+    }
+
+    let written = mdf.write(file_name, compression)
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+    Ok(Mdfr(written))
 }
 
 use mdfr_core::StdClock;

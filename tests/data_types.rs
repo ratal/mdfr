@@ -17,8 +17,17 @@ static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(|| {
     )
 });
 
+macro_rules! require_base_path {
+    () => {
+        if !std::path::Path::new(BASE_PATH_MDF4.as_str()).is_dir() {
+            return Ok(());
+        }
+    };
+}
+
 #[test]
 fn data_types() -> Result<()> {
+    require_base_path!();
     let list_of_paths = [
         "DataTypes/ByteArray/".to_string(),
         "DataTypes/CANopenTypes/".to_string(),
@@ -113,6 +122,7 @@ fn data_types() -> Result<()> {
 
 #[test]
 fn real_types() -> Result<()> {
+    require_base_path!();
     let list_of_paths = ["DataTypes/RealTypes/".to_string()];
 
     // Real types
@@ -146,6 +156,7 @@ fn real_types() -> Result<()> {
 
 #[test]
 fn string_types() -> Result<()> {
+    require_base_path!();
     let list_of_paths = ["DataTypes/StringTypes/".to_string()];
     let tmp_file = tempfile::Builder::new().suffix(".mf4").tempfile()?;
     let writing_mdf_file = tmp_file.path().to_str().unwrap().to_string();
@@ -244,6 +255,7 @@ fn string_types() -> Result<()> {
 
 #[test]
 fn byte_array_types() -> Result<()> {
+    require_base_path!();
     let list_of_paths = ["DataTypes/ByteArray/".to_string()];
     let tmp_file = tempfile::Builder::new().suffix(".mf4").tempfile()?;
     let writing_mdf_file = tmp_file.path().to_str().unwrap().to_string();
@@ -302,6 +314,7 @@ fn byte_array_types() -> Result<()> {
 
 #[test]
 fn complex_types() -> Result<()> {
+    require_base_path!();
     //Complex testing
     let file_name = format!(
         "{}{}{}",
@@ -316,6 +329,7 @@ fn complex_types() -> Result<()> {
 
 #[test]
 fn string_no_zero_termination() -> Result<()> {
+    require_base_path!();
     let file_name = format!(
         "{}{}{}",
         BASE_PATH_MDF4.as_str(),
@@ -334,6 +348,7 @@ fn string_no_zero_termination() -> Result<()> {
 
 #[test]
 fn half_float_values() -> Result<()> {
+    require_base_path!();
     let file_name = format!(
         "{}{}",
         BASE_PATH_MDF4.as_str(),

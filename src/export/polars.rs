@@ -183,6 +183,203 @@ pub fn mdf_to_dataframes(mdf: &mut Mdf) -> PolarsResult<HashMap<Option<String>, 
         .collect()
 }
 
+/// Converts a Polars [`Series`] into an Apache Arrow [`Array`].
+pub fn series_to_arrow_array(series: &Series) -> anyhow::Result<Arc<dyn Array>> {
+    use arrow::array::*;
+    use arrow::datatypes::*;
+    use polars::prelude::DataType as PDT;
+
+    let s = series.rechunk();
+    match s.dtype() {
+        PDT::Float64 => {
+            let ca = s.f64().map_err(|e| anyhow::anyhow!("{e}"))?;
+            let arr: PrimitiveArray<Float64Type> = ca.iter().collect();
+            Ok(Arc::new(arr))
+        }
+        PDT::Float32 => {
+            let ca = s.f32().map_err(|e| anyhow::anyhow!("{e}"))?;
+            let arr: PrimitiveArray<Float32Type> = ca.iter().collect();
+            Ok(Arc::new(arr))
+        }
+        PDT::Int64 => {
+            let ca = s.i64().map_err(|e| anyhow::anyhow!("{e}"))?;
+            let arr: PrimitiveArray<Int64Type> = ca.iter().collect();
+            Ok(Arc::new(arr))
+        }
+        PDT::Int32 => {
+            let ca = s.i32().map_err(|e| anyhow::anyhow!("{e}"))?;
+            let arr: PrimitiveArray<Int32Type> = ca.iter().collect();
+            Ok(Arc::new(arr))
+        }
+        PDT::Int16 => {
+            let ca = s.i16().map_err(|e| anyhow::anyhow!("{e}"))?;
+            let arr: PrimitiveArray<Int16Type> = ca.iter().collect();
+            Ok(Arc::new(arr))
+        }
+        PDT::Int8 => {
+            let ca = s.i8().map_err(|e| anyhow::anyhow!("{e}"))?;
+            let arr: PrimitiveArray<Int8Type> = ca.iter().collect();
+            Ok(Arc::new(arr))
+        }
+        PDT::UInt64 => {
+            let ca = s.u64().map_err(|e| anyhow::anyhow!("{e}"))?;
+            let arr: PrimitiveArray<UInt64Type> = ca.iter().collect();
+            Ok(Arc::new(arr))
+        }
+        PDT::UInt32 => {
+            let ca = s.u32().map_err(|e| anyhow::anyhow!("{e}"))?;
+            let arr: PrimitiveArray<UInt32Type> = ca.iter().collect();
+            Ok(Arc::new(arr))
+        }
+        PDT::UInt16 => {
+            let ca = s.u16().map_err(|e| anyhow::anyhow!("{e}"))?;
+            let arr: PrimitiveArray<UInt16Type> = ca.iter().collect();
+            Ok(Arc::new(arr))
+        }
+        PDT::UInt8 => {
+            let ca = s.u8().map_err(|e| anyhow::anyhow!("{e}"))?;
+            let arr: PrimitiveArray<UInt8Type> = ca.iter().collect();
+            Ok(Arc::new(arr))
+        }
+        PDT::Boolean => {
+            let ca = s.bool().map_err(|e| anyhow::anyhow!("{e}"))?;
+            let arr: PrimitiveArray<UInt8Type> = ca
+                .iter()
+                .map(|opt| opt.map(|b| if b { 1u8 } else { 0u8 }))
+                .collect();
+            Ok(Arc::new(arr))
+        }
+        PDT::String => {
+            let ca = s.str().map_err(|e| anyhow::anyhow!("{e}"))?;
+            let arr: LargeStringArray = ca.iter().collect();
+            Ok(Arc::new(arr))
+        }
+        PDT::Binary => {
+            let ca = s.binary().map_err(|e| anyhow::anyhow!("{e}"))?;
+            let arr: LargeBinaryArray = ca.iter().collect();
+            Ok(Arc::new(arr))
+        }
+        PDT::Datetime(_time_unit, _tz) => {
+            let ca = s.datetime().map_err(|e| anyhow::anyhow!("{e}"))?;
+            let arr: PrimitiveArray<Int64Type> = ca.physical().iter().collect();
+            Ok(Arc::new(arr))
+        }
+        PDT::Date => {
+            let ca = s.date().map_err(|e| anyhow::anyhow!("{e}"))?;
+            let arr: PrimitiveArray<Int32Type> = ca.physical().iter().collect();
+            Ok(Arc::new(arr))
+        }
+        other => anyhow::bail!("Unsupported Polars data type: {other:?}"),
+    }
+}
+
+/// Creates an in-memory MDF structure from a Polars [`DataFrame`].
+pub fn from_polars_df(df: &DataFrame, time_col: Option<&str>) -> anyhow::Result<Mdf> {
+    let height = df.height();
+    if height == 0 {
+        anyhow::bail!("Cannot create MDF from an empty DataFrame");
+    }
+
+    // Determine master time column name
+    let master_name = if let Some(tc) = time_col {
+        if df.column(tc).is_err() {
+            anyhow::bail!("Specified time column '{tc}' not found in DataFrame");
+        }
+        tc.to_string()
+    } else {
+        // Check common candidates
+        let candidates = ["time", "t", "timestamp", "zeit", "Time", "Timestamp"];
+        let mut found = None;
+        for cand in candidates {
+            if df.column(cand).is_ok() {
+                found = Some(cand.to_string());
+                break;
+            }
+        }
+        if let Some(name) = found {
+            name
+        } else {
+            // Check if first column is numeric
+            let first_col = df
+                .columns()
+                .first()
+                .ok_or_else(|| anyhow::anyhow!("No columns in DataFrame"))?;
+            if first_col.dtype().is_numeric() {
+                first_col.name().to_string()
+            } else {
+                "time".to_string()
+            }
+        }
+    };
+
+    let num_cols = df.width() + 1;
+    let mut mdf = Mdf {
+        mdf_info: crate::mdfinfo::MdfInfo::V4(Box::new(
+            crate::mdfinfo::mdfinfo4::MdfInfo4::new("polars_export.mf4", num_cols),
+        )),
+    };
+
+    let has_master_in_df = df.column(&master_name).is_ok();
+
+    if has_master_in_df {
+        let master_col = df.column(&master_name)?;
+        let arrow_arr = series_to_arrow_array(master_col.as_materialized_series())?;
+        mdf.add_channel(
+            master_name.clone(),
+            arrow_arr,
+            None,
+            Some(1),
+            true,
+            Some("s".to_string()),
+            None,
+        )?;
+    } else {
+        let time_vals: Vec<f64> = (0..height).map(|i| i as f64).collect();
+        let time_arr = Arc::new(arrow::array::Float64Array::from(time_vals));
+        mdf.add_channel(
+            master_name.clone(),
+            time_arr,
+            None,
+            Some(1), // sync_type = Time
+            true,    // master_flag = true
+            Some("s".to_string()),
+            Some("Synthetic master time channel".to_string()),
+        )?;
+    }
+
+    for col in df.columns() {
+        let col_name = col.name().to_string();
+        if col_name == master_name {
+            continue;
+        }
+        let series = col.as_materialized_series();
+        let arrow_arr = series_to_arrow_array(series)?;
+
+        mdf.add_channel(
+            col_name,
+            arrow_arr,
+            Some(master_name.clone()),
+            None,
+            false,
+            None,
+            None,
+        )?;
+    }
+
+    Ok(mdf)
+}
+
+/// Directly writes a Polars [`DataFrame`] to an MDF 4.3 file.
+pub fn write_polars(
+    df: &DataFrame,
+    file_name: &str,
+    time_col: Option<&str>,
+    compression: crate::mdfinfo::mdfinfo4::CompressionAlgorithm,
+) -> anyhow::Result<Mdf> {
+    let mut mdf = from_polars_df(df, time_col)?;
+    mdf.write(file_name, compression)
+}
+
 /// Converts a rust Apache Arrow array into a Python polars Series via PyArrow FFI.
 #[allow(dead_code)] // used from src/mdfr.rs (PyO3 bindings), invisible to the bin target
 pub fn rust_arrow_to_py_series(array: Arc<dyn Array>, name: &str) -> PyResult<Py<PyAny>> {

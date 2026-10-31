@@ -3,9 +3,9 @@
 use crate::mdfinfo::mdfinfo4::{CN_F_DATA_STREAM_MODE, CN_F_EVENT_SIGNAL};
 use anyhow::{Context, Error, Result, bail};
 use arrow::array::{
-    Array, ArrayData, ArrayRef, BinaryArray, BooleanBufferBuilder,
+    Array, ArrayData, ArrayRef, BinaryArray, BinaryViewArray, BooleanBufferBuilder,
     FixedSizeBinaryArray, FixedSizeListArray, Int8Array, LargeBinaryArray,
-    LargeStringArray, PrimitiveArray, StringArray, UnionArray, as_primitive_array,
+    LargeStringArray, PrimitiveArray, StringArray, StringViewArray, UnionArray, as_primitive_array,
 };
 use arrow::buffer::{Buffer, MutableBuffer, NullBuffer, ScalarBuffer};
 use arrow::datatypes::{
@@ -1605,6 +1605,22 @@ pub fn try_from(value: &dyn Array) -> Result<ChannelData, Error> {
                 .context("could not downcast to Utf8 array")?;
             let array_i64 = LargeStringArray::from(array.iter().collect::<Vec<_>>());
             Ok(ChannelData::Utf8(array_i64))
+        }
+        DataType::Utf8View => {
+            let array = value
+                .as_any()
+                .downcast_ref::<StringViewArray>()
+                .context("could not downcast to Utf8View array")?;
+            let array_i64 = LargeStringArray::from(array.iter().collect::<Vec<_>>());
+            Ok(ChannelData::Utf8(array_i64))
+        }
+        DataType::BinaryView => {
+            let array = value
+                .as_any()
+                .downcast_ref::<BinaryViewArray>()
+                .context("could not downcast to BinaryView array")?;
+            let array_i64 = LargeBinaryArray::from(array.iter().collect::<Vec<_>>());
+            Ok(ChannelData::VariableSizeByteArray(array_i64))
         }
         DataType::LargeUtf8 => {
             let array = value
