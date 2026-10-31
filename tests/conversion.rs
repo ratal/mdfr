@@ -639,7 +639,8 @@ mod conversions4_tests {
         builder.append_value(-5.0); // below first key → value[0] = 0
         builder.append_value(25.0); // above last key → value[n-1] = 200
 
-        let result = value_to_value_without_interpolation_primitive(&builder.finish(), &val).unwrap();
+        let result =
+            value_to_value_without_interpolation_primitive(&builder.finish(), &val).unwrap();
         let values = result.values_slice();
         assert_eq!(values.len(), 6);
         assert!((values[0] - 0.0).abs() < 1e-12); // exact → 0
@@ -664,7 +665,8 @@ mod conversions4_tests {
         builder.append_value(25.0); // above last key_min but within last upper bound → 300
 
         let result =
-            value_range_to_value_table_calculation(&builder.finish(), &val, &default, false).unwrap();
+            value_range_to_value_table_calculation(&builder.finish(), &val, &default, false)
+                .unwrap();
         let values = result.values_slice();
         assert_eq!(values.len(), 5);
         assert!((values[0] - 100.0).abs() < 1e-12);
@@ -691,7 +693,8 @@ mod conversions4_tests {
         builder.append_value(100.0); // above all ranges → default -1
 
         let result =
-            value_range_to_value_table_calculation(&builder.finish(), &val, &default, false).unwrap();
+            value_range_to_value_table_calculation(&builder.finish(), &val, &default, false)
+                .unwrap();
         let values = result.values_slice();
         assert!(
             (values[0] - (-1.0)).abs() < 1e-12,

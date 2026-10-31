@@ -266,7 +266,13 @@ fn scan_unsorted_chain<S: ReadWriteSeek>(
             let hl_bytes = read_at::<S, 40>(sink, data_pos)?;
             let hl: Hl4Block = Cursor::new(hl_bytes).read_le()?;
             if hl.hl_dl_first > 0 {
-                scan_unsorted_chain(sink, hl.hl_dl_first as u64, file_len, rec_id_size, cg_entries)?;
+                scan_unsorted_chain(
+                    sink,
+                    hl.hl_dl_first as u64,
+                    file_len,
+                    rec_id_size,
+                    cg_entries,
+                )?;
             }
         }
         b"##DL" => {
@@ -488,10 +494,22 @@ mod tests {
         let mut sink = VecSink::default();
         let mut logger = Logger::start(schema, sink, ManualClock::new(0.01, 1)).unwrap();
         for i in 0..5 {
-            logger.begin_record(g1).unwrap().set_u64(ch1, i).unwrap().commit().unwrap();
+            logger
+                .begin_record(g1)
+                .unwrap()
+                .set_u64(ch1, i)
+                .unwrap()
+                .commit()
+                .unwrap();
         }
         for i in 0..7 {
-            logger.begin_record(g2).unwrap().set_u64(ch2, i).unwrap().commit().unwrap();
+            logger
+                .begin_record(g2)
+                .unwrap()
+                .set_u64(ch2, i)
+                .unwrap()
+                .commit()
+                .unwrap();
         }
         logger.checkpoint().unwrap();
         sink = logger.into_sink_unfinalized();

@@ -1078,12 +1078,8 @@ pub fn read_channels_from_bytes(
                         for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
                             let dst_idx = (i + previous_index) * 2;
                             data[dst_idx] = read_f32_at(record, pos_byte_beg, elem_bytes, is_big);
-                            data[dst_idx + 1] = read_f32_at(
-                                record,
-                                pos_byte_beg + elem_bytes,
-                                elem_bytes,
-                                is_big,
-                            );
+                            data[dst_idx + 1] =
+                                read_f32_at(record, pos_byte_beg + elem_bytes, elem_bytes, is_big);
                         }
                     }
                     ChannelBuilder::Complex64(a) => {

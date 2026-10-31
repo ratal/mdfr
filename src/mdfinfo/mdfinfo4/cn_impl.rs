@@ -613,14 +613,16 @@ impl Cn4 {
 
     /// Initializes builder for mutable record accumulation during file reading
     pub fn init_builder(&mut self, cycle_count: usize) -> Result<(), Error> {
-        self.builder = Some(crate::data_holder::channel_builder::ChannelBuilder::new_zeroed(
-            self.block.cn_type,
-            self.block.cn_data_type,
-            cycle_count,
-            self.n_bytes as usize,
-            self.shape.clone(),
-            self.list_size,
-        )?);
+        self.builder = Some(
+            crate::data_holder::channel_builder::ChannelBuilder::new_zeroed(
+                self.block.cn_type,
+                self.block.cn_data_type,
+                cycle_count,
+                self.n_bytes as usize,
+                self.shape.clone(),
+                self.list_size,
+            )?,
+        );
         Ok(())
     }
 

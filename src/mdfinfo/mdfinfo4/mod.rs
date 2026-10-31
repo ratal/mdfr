@@ -596,7 +596,9 @@ impl MdfInfo4 {
         };
 
         // If this channel belongs to an existing master's group, attach to its existing DG/CG
-        let existing_target = if !master.master_flag && let Some(ref master_name) = master.master_channel {
+        let existing_target = if !master.master_flag
+            && let Some(ref master_name) = master.master_channel
+        {
             self.channel_names_set
                 .get(master_name)
                 .map(|(_m, dg_pos, (cg_pos, rec_id), _)| (*dg_pos, *cg_pos, *rec_id))
@@ -613,7 +615,12 @@ impl MdfInfo4 {
             cg.channel_names.insert(channel_name.to_string());
             self.channel_names_set.insert(
                 channel_name,
-                (master.master_channel, dg_pos, (cg_pos, rec_id), (cn_pos, rec_pos)),
+                (
+                    master.master_channel,
+                    dg_pos,
+                    (cg_pos, rec_id),
+                    (cn_pos, rec_pos),
+                ),
             );
             return Ok(());
         }

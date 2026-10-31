@@ -434,7 +434,10 @@ where
 {
     let values = array.values();
     let converted: Vec<f64> = values.iter().map(|v| (*v).as_() * p2 + p1).collect();
-    Ok(PrimitiveArray::new(converted.into(), array.nulls().cloned()))
+    Ok(PrimitiveArray::new(
+        converted.into(),
+        array.nulls().cloned(),
+    ))
 }
 
 /// Apply linear conversion to get physical data
@@ -480,7 +483,10 @@ where
             (x * x * p1 + x * p2 + p3) / (x * x * p4 + x * p5 + p6)
         })
         .collect();
-    Ok(PrimitiveArray::new(converted.into(), array.nulls().cloned()))
+    Ok(PrimitiveArray::new(
+        converted.into(),
+        array.nulls().cloned(),
+    ))
 }
 
 /// Apply rational conversion to get physical data
@@ -567,7 +573,10 @@ where
             };
         });
     }
-    Ok(PrimitiveArray::new(new_array.into(), array.nulls().cloned()))
+    Ok(PrimitiveArray::new(
+        new_array.into(),
+        array.nulls().cloned(),
+    ))
 }
 
 /// Apply algebraic conversion to get physical data
@@ -621,7 +630,10 @@ where
                 }
             };
     });
-    Ok(PrimitiveArray::new(new_array.into(), array.nulls().cloned()))
+    Ok(PrimitiveArray::new(
+        new_array.into(),
+        array.nulls().cloned(),
+    ))
 }
 
 /// Apply value to value with interpolation conversion to get physical data
@@ -670,7 +682,10 @@ where
                 }
             };
     });
-    Ok(PrimitiveArray::new(new_array.into(), array.nulls().cloned()))
+    Ok(PrimitiveArray::new(
+        new_array.into(),
+        array.nulls().cloned(),
+    ))
 }
 
 /// Apply value to value without interpolation conversion to get physical data
@@ -733,7 +748,10 @@ where
             }
         };
     });
-    Ok(PrimitiveArray::new(new_array.into(), array.nulls().cloned()))
+    Ok(PrimitiveArray::new(
+        new_array.into(),
+        array.nulls().cloned(),
+    ))
 }
 
 /// Apply value range to value table without interpolation conversion to get physical data

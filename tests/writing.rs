@@ -166,7 +166,10 @@ fn mdf_modifications() -> Result<()> {
             .iter()
             .for_each(|v| new_data.append_option(v));
         new_data.values_slice_mut()[0] = 0.0f32;
-        mdf.set_channel_data(ref_channel, ChannelData::Float32(new_data.finish()).as_ref())?;
+        mdf.set_channel_data(
+            ref_channel,
+            ChannelData::Float32(new_data.finish()).as_ref(),
+        )?;
         mdf.set_channel_desc(ref_channel, ref_desc);
         mdf.set_channel_unit(ref_channel, ref_unit);
         mdf.set_channel_master_type(ref_channel, 1)?;

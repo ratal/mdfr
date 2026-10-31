@@ -84,12 +84,8 @@ pub fn channel_data_to_series(name: &str, data: &ChannelData) -> PolarsResult<Se
         }
 
         // ── byte arrays ──────────────────────────────────────────────────────
-        FixedSizeByteArray(b) => {
-            bytes_iter_to_series(name, b.iter())
-        }
-        VariableSizeByteArray(b) => {
-            bytes_iter_to_series(name, b.iter())
-        }
+        FixedSizeByteArray(b) => bytes_iter_to_series(name, b.iter()),
+        VariableSizeByteArray(b) => bytes_iter_to_series(name, b.iter()),
 
         // ── complex ([re, im] per row) ────────────────────────────────────────
         Complex32(cx) => complex_to_list!(name, cx, Float32Type, DataType::Float32),
@@ -314,9 +310,10 @@ pub fn from_polars_df(df: &DataFrame, time_col: Option<&str>) -> anyhow::Result<
 
     let num_cols = df.width() + 1;
     let mut mdf = Mdf {
-        mdf_info: crate::mdfinfo::MdfInfo::V4(Box::new(
-            crate::mdfinfo::mdfinfo4::MdfInfo4::new("polars_export.mf4", num_cols),
-        )),
+        mdf_info: crate::mdfinfo::MdfInfo::V4(Box::new(crate::mdfinfo::mdfinfo4::MdfInfo4::new(
+            "polars_export.mf4",
+            num_cols,
+        ))),
     };
 
     let has_master_in_df = df.column(&master_name).is_ok();

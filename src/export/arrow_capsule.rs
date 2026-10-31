@@ -6,7 +6,7 @@
 #![allow(dead_code)]
 
 use arrow::array::{ArrayData, RecordBatchReader};
-use arrow::ffi::{to_ffi, FFI_ArrowArray, FFI_ArrowSchema};
+use arrow::ffi::{FFI_ArrowArray, FFI_ArrowSchema, to_ffi};
 use arrow::ffi_stream::{ArrowArrayStreamReader, FFI_ArrowArrayStream};
 use pyo3::prelude::*;
 

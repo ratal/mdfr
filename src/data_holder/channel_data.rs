@@ -4,8 +4,8 @@ use crate::mdfinfo::mdfinfo4::{CN_F_DATA_STREAM_MODE, CN_F_EVENT_SIGNAL};
 use anyhow::{Context, Error, Result, bail};
 use arrow::array::{
     Array, ArrayData, ArrayRef, BinaryArray, BinaryViewArray, BooleanBufferBuilder,
-    FixedSizeBinaryArray, FixedSizeListArray, Int8Array, LargeBinaryArray,
-    LargeStringArray, PrimitiveArray, StringArray, StringViewArray, UnionArray, as_primitive_array,
+    FixedSizeBinaryArray, FixedSizeListArray, Int8Array, LargeBinaryArray, LargeStringArray,
+    PrimitiveArray, StringArray, StringViewArray, UnionArray, as_primitive_array,
 };
 use arrow::buffer::{Buffer, MutableBuffer, NullBuffer, ScalarBuffer};
 use arrow::datatypes::{
@@ -299,9 +299,9 @@ impl ChannelData {
                         buf, shape.0, shape.1,
                     )))
                 }
-                ChannelData::Utf8(_) => {
-                    Ok(ChannelData::Utf8(LargeStringArray::from(Vec::<&str>::new())))
-                }
+                ChannelData::Utf8(_) => Ok(ChannelData::Utf8(LargeStringArray::from(
+                    Vec::<&str>::new(),
+                ))),
                 ChannelData::VariableSizeByteArray(_) => Ok(ChannelData::VariableSizeByteArray(
                     LargeBinaryArray::from(Vec::<&[u8]>::new()),
                 )),
@@ -317,90 +317,80 @@ impl ChannelData {
                 }
                 ChannelData::ArrayDInt8(_) => {
                     let n = shape.0.iter().product::<usize>();
-                    let buf = MutableBuffer::from_len_zeroed(
-                        cycle_count as usize * n * size_of::<i8>(),
-                    );
+                    let buf =
+                        MutableBuffer::from_len_zeroed(cycle_count as usize * n * size_of::<i8>());
                     Ok(ChannelData::ArrayDInt8(TensorArrow::new_from_buffer(
                         buf, shape.0, shape.1,
                     )))
                 }
                 ChannelData::ArrayDUInt8(_) => {
                     let n = shape.0.iter().product::<usize>();
-                    let buf = MutableBuffer::from_len_zeroed(
-                        cycle_count as usize * n * size_of::<u8>(),
-                    );
+                    let buf =
+                        MutableBuffer::from_len_zeroed(cycle_count as usize * n * size_of::<u8>());
                     Ok(ChannelData::ArrayDUInt8(TensorArrow::new_from_buffer(
                         buf, shape.0, shape.1,
                     )))
                 }
                 ChannelData::ArrayDInt16(_) => {
                     let n = shape.0.iter().product::<usize>();
-                    let buf = MutableBuffer::from_len_zeroed(
-                        cycle_count as usize * n * size_of::<i16>(),
-                    );
+                    let buf =
+                        MutableBuffer::from_len_zeroed(cycle_count as usize * n * size_of::<i16>());
                     Ok(ChannelData::ArrayDInt16(TensorArrow::new_from_buffer(
                         buf, shape.0, shape.1,
                     )))
                 }
                 ChannelData::ArrayDUInt16(_) => {
                     let n = shape.0.iter().product::<usize>();
-                    let buf = MutableBuffer::from_len_zeroed(
-                        cycle_count as usize * n * size_of::<u16>(),
-                    );
+                    let buf =
+                        MutableBuffer::from_len_zeroed(cycle_count as usize * n * size_of::<u16>());
                     Ok(ChannelData::ArrayDUInt16(TensorArrow::new_from_buffer(
                         buf, shape.0, shape.1,
                     )))
                 }
                 ChannelData::ArrayDInt32(_) => {
                     let n = shape.0.iter().product::<usize>();
-                    let buf = MutableBuffer::from_len_zeroed(
-                        cycle_count as usize * n * size_of::<i32>(),
-                    );
+                    let buf =
+                        MutableBuffer::from_len_zeroed(cycle_count as usize * n * size_of::<i32>());
                     Ok(ChannelData::ArrayDInt32(TensorArrow::new_from_buffer(
                         buf, shape.0, shape.1,
                     )))
                 }
                 ChannelData::ArrayDUInt32(_) => {
                     let n = shape.0.iter().product::<usize>();
-                    let buf = MutableBuffer::from_len_zeroed(
-                        cycle_count as usize * n * size_of::<u32>(),
-                    );
+                    let buf =
+                        MutableBuffer::from_len_zeroed(cycle_count as usize * n * size_of::<u32>());
                     Ok(ChannelData::ArrayDUInt32(TensorArrow::new_from_buffer(
                         buf, shape.0, shape.1,
                     )))
                 }
                 ChannelData::ArrayDFloat32(_) => {
                     let n = shape.0.iter().product::<usize>();
-                    let buf = MutableBuffer::from_len_zeroed(
-                        cycle_count as usize * n * size_of::<f32>(),
-                    );
+                    let buf =
+                        MutableBuffer::from_len_zeroed(cycle_count as usize * n * size_of::<f32>());
                     Ok(ChannelData::ArrayDFloat32(TensorArrow::new_from_buffer(
                         buf, shape.0, shape.1,
                     )))
                 }
                 ChannelData::ArrayDInt64(_) => {
                     let n = shape.0.iter().product::<usize>();
-                    let buf = MutableBuffer::from_len_zeroed(
-                        cycle_count as usize * n * size_of::<i64>(),
-                    );
+                    let buf =
+                        MutableBuffer::from_len_zeroed(cycle_count as usize * n * size_of::<i64>());
                     Ok(ChannelData::ArrayDInt64(TensorArrow::new_from_buffer(
                         buf, shape.0, shape.1,
                     )))
                 }
                 ChannelData::ArrayDUInt64(_) => {
                     let n = shape.0.iter().product::<usize>();
-                    let buf = MutableBuffer::from_len_zeroed(
-                        cycle_count as usize * n * size_of::<u64>(),
-                    );
+                    let buf =
+                        MutableBuffer::from_len_zeroed(cycle_count as usize * n * size_of::<u64>());
                     Ok(ChannelData::ArrayDUInt64(TensorArrow::new_from_buffer(
                         buf, shape.0, shape.1,
                     )))
                 }
                 ChannelData::ArrayDFloat64(_) => {
                     let n = shape.0.iter().product::<usize>();
-                    let buf = MutableBuffer::from_len_zeroed(
-                        cycle_count as usize * n * size_of::<f64>(),
-                    );
+                    let buf =
+                        MutableBuffer::from_len_zeroed(cycle_count as usize * n * size_of::<f64>());
                     Ok(ChannelData::ArrayDFloat64(TensorArrow::new_from_buffer(
                         buf, shape.0, shape.1,
                     )))
@@ -515,20 +505,18 @@ impl ChannelData {
             ChannelData::Float64(_) => 8,
             ChannelData::Complex32(_) => 8,
             ChannelData::Complex64(_) => 16,
-            ChannelData::Utf8(data) => {
-                data.offsets()
-                    .windows(2)
-                    .map(|w| (w[1] - w[0]) as u32)
-                    .max()
-                    .unwrap_or(0)
-            }
-            ChannelData::VariableSizeByteArray(data) => {
-                data.offsets()
-                    .windows(2)
-                    .map(|w| (w[1] - w[0]) as u32)
-                    .max()
-                    .unwrap_or(0)
-            }
+            ChannelData::Utf8(data) => data
+                .offsets()
+                .windows(2)
+                .map(|w| (w[1] - w[0]) as u32)
+                .max()
+                .unwrap_or(0),
+            ChannelData::VariableSizeByteArray(data) => data
+                .offsets()
+                .windows(2)
+                .map(|w| (w[1] - w[0]) as u32)
+                .max()
+                .unwrap_or(0),
             ChannelData::FixedSizeByteArray(data) => data.value_length() as u32,
             ChannelData::ArrayDInt8(_) => 1,
             ChannelData::ArrayDUInt8(_) => 1,
@@ -1338,9 +1326,11 @@ pub fn data_type_init(
     cn_flags: u32,
 ) -> Result<ChannelData, Error> {
     if (cn_flags & CN_F_EVENT_SIGNAL) != 0 {
-        return Ok(ChannelData::FixedSizeByteArray(
-            FixedSizeBinaryArray::new(n_bytes as i32, Buffer::default(), None),
-        ));
+        return Ok(ChannelData::FixedSizeByteArray(FixedSizeBinaryArray::new(
+            n_bytes as i32,
+            Buffer::default(),
+            None,
+        )));
     }
     if list_size == 1 {
         // Not an array
@@ -1408,11 +1398,15 @@ pub fn data_type_init(
                 }
                 6..=9 => {
                     // String UTF8
-                    Ok(ChannelData::Utf8(LargeStringArray::from(Vec::<&str>::new())))
+                    Ok(ChannelData::Utf8(
+                        LargeStringArray::from(Vec::<&str>::new()),
+                    ))
                 }
                 17 => {
                     // String Unicode with Byte Order Mark
-                    Ok(ChannelData::Utf8(LargeStringArray::from(Vec::<&str>::new())))
+                    Ok(ChannelData::Utf8(
+                        LargeStringArray::from(Vec::<&str>::new()),
+                    ))
                 }
                 10 => {
                     // bytearray
@@ -1422,9 +1416,11 @@ pub fn data_type_init(
                             Vec::<&[u8]>::new(),
                         )))
                     } else {
-                        Ok(ChannelData::FixedSizeByteArray(
-                            FixedSizeBinaryArray::new(n_bytes as i32, Buffer::default(), None),
-                        ))
+                        Ok(ChannelData::FixedSizeByteArray(FixedSizeBinaryArray::new(
+                            n_bytes as i32,
+                            Buffer::default(),
+                            None,
+                        )))
                     }
                 }
                 11 | 12 => {
@@ -1434,9 +1430,11 @@ pub fn data_type_init(
                             Vec::<&[u8]>::new(),
                         )))
                     } else {
-                        Ok(ChannelData::FixedSizeByteArray(
-                            FixedSizeBinaryArray::new(n_bytes as i32, Buffer::default(), None),
-                        ))
+                        Ok(ChannelData::FixedSizeByteArray(FixedSizeBinaryArray::new(
+                            n_bytes as i32,
+                            Buffer::default(),
+                            None,
+                        )))
                     }
                 }
                 13 | 14 => {
@@ -1502,9 +1500,11 @@ pub fn data_type_init(
                         Vec::<&[u8]>::new(),
                     )))
                 } else {
-                    Ok(ChannelData::FixedSizeByteArray(
-                        FixedSizeBinaryArray::new(n_bytes as i32, Buffer::default(), None),
-                    ))
+                    Ok(ChannelData::FixedSizeByteArray(FixedSizeBinaryArray::new(
+                        n_bytes as i32,
+                        Buffer::default(),
+                        None,
+                    )))
                 }
             }
             _ => {
@@ -1777,7 +1777,9 @@ pub fn interp_channel(
         }
         ChannelData::VariableSizeByteArray(b) => {
             let vals: Vec<&[u8]> = new_master.iter().map(|&t| b.value(prev_idx(t))).collect();
-            Ok(ChannelData::VariableSizeByteArray(LargeBinaryArray::from(vals)))
+            Ok(ChannelData::VariableSizeByteArray(LargeBinaryArray::from(
+                vals,
+            )))
         }
         ChannelData::FixedSizeByteArray(b) => {
             let width = b.value_length();
@@ -2039,8 +2041,7 @@ mod tests {
     }
 
     fn make_array_d_float64() -> ChannelData {
-        let buf =
-            MutableBuffer::from_iter([1.0f64, 2.0, 3.0, 4.0, 5.0, 6.0].iter().copied());
+        let buf = MutableBuffer::from_iter([1.0f64, 2.0, 3.0, 4.0, 5.0, 6.0].iter().copied());
         ChannelData::ArrayDFloat64(TensorArrow::new_from_buffer(
             buf,
             vec![2, 3],

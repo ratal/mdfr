@@ -147,7 +147,11 @@ fn decompress_deflate(input: &[u8]) -> Result<Vec<u8>> {
                 Err(err)
             }
         })
-        .map_err(|_| Error::InvalidBlock(alloc::string::String::from("zlib/deflate decompression failed")))
+        .map_err(|_| {
+            Error::InvalidBlock(alloc::string::String::from(
+                "zlib/deflate decompression failed",
+            ))
+        })
 }
 
 #[cfg(not(feature = "deflate"))]
@@ -158,11 +162,15 @@ fn decompress_deflate(_input: &[u8]) -> Result<Vec<u8>> {
 #[cfg(feature = "lz4")]
 pub fn decompress_lz4_frame(input: &[u8]) -> Result<Vec<u8>> {
     if input.len() < 7 {
-        return Err(Error::InvalidBlock(alloc::string::String::from("lz4 frame too short")));
+        return Err(Error::InvalidBlock(alloc::string::String::from(
+            "lz4 frame too short",
+        )));
     }
     const LZ4F_MAGIC: [u8; 4] = 0x184D_2204u32.to_le_bytes();
     if input[..4] != LZ4F_MAGIC {
-        return Err(Error::InvalidBlock(alloc::string::String::from("invalid lz4 frame magic")));
+        return Err(Error::InvalidBlock(alloc::string::String::from(
+            "invalid lz4 frame magic",
+        )));
     }
     let flg = input[4];
     let has_content_size = (flg & (1 << 3)) != 0;
@@ -175,7 +183,9 @@ pub fn decompress_lz4_frame(input: &[u8]) -> Result<Vec<u8>> {
         offset += 4;
     }
     if input.len() < offset {
-        return Err(Error::InvalidBlock(alloc::string::String::from("lz4 frame header truncated")));
+        return Err(Error::InvalidBlock(alloc::string::String::from(
+            "lz4 frame header truncated",
+        )));
     }
 
     let mut out = Vec::new();
@@ -189,7 +199,9 @@ pub fn decompress_lz4_frame(input: &[u8]) -> Result<Vec<u8>> {
         let uncompressed = (block_len & 0x8000_0000) != 0;
         let len = (block_len & 0x7FFF_FFFF) as usize;
         if pos + len > input.len() {
-            return Err(Error::InvalidBlock(alloc::string::String::from("lz4 block truncated")));
+            return Err(Error::InvalidBlock(alloc::string::String::from(
+                "lz4 block truncated",
+            )));
         }
         let block_data = &input[pos..pos + len];
         pos += len;
@@ -197,8 +209,10 @@ pub fn decompress_lz4_frame(input: &[u8]) -> Result<Vec<u8>> {
             out.extend_from_slice(block_data);
         } else {
             // MDF4 blocks are max 4 MB uncompressed
-            let decomp = lz4_flex::block::decompress(block_data, 4 * 1024 * 1024)
-                .map_err(|_| Error::InvalidBlock(alloc::string::String::from("lz4 block decompress failed")))?;
+            let decomp =
+                lz4_flex::block::decompress(block_data, 4 * 1024 * 1024).map_err(|_| {
+                    Error::InvalidBlock(alloc::string::String::from("lz4 block decompress failed"))
+                })?;
             out.extend_from_slice(&decomp);
         }
     }
@@ -212,7 +226,8 @@ pub fn decompress_lz4_frame(_input: &[u8]) -> Result<Vec<u8>> {
 
 #[cfg(feature = "zstd")]
 fn decompress_zstd(input: &[u8]) -> Result<Vec<u8>> {
-    zstd::decode_all(input).map_err(|_| Error::InvalidBlock(alloc::string::String::from("zstd decompression failed")))
+    zstd::decode_all(input)
+        .map_err(|_| Error::InvalidBlock(alloc::string::String::from("zstd decompression failed")))
 }
 
 #[cfg(not(feature = "zstd"))]

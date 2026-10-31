@@ -2,8 +2,8 @@
 
 use anyhow::{Error, Result};
 use arrow::array::{
-    FixedSizeBinaryBuilder, Int8Builder, LargeBinaryBuilder, LargeStringBuilder,
-    PrimitiveBuilder, UnionArray,
+    FixedSizeBinaryBuilder, Int8Builder, LargeBinaryBuilder, LargeStringBuilder, PrimitiveBuilder,
+    UnionArray,
 };
 use arrow::buffer::MutableBuffer;
 use arrow::datatypes::{
@@ -127,12 +127,14 @@ impl ChannelBuilder {
         if cn_data_type == 15 || cn_data_type == 16 {
             let elem_count = shape.0.iter().product::<usize>().max(1);
             if n_bytes <= 8 {
-                let buf = MutableBuffer::from_len_zeroed(cycle_count * elem_count * 2 * size_of::<f32>());
+                let buf =
+                    MutableBuffer::from_len_zeroed(cycle_count * elem_count * 2 * size_of::<f32>());
                 return Ok(ChannelBuilder::Complex32(ComplexBuilder::new_from_buffer(
                     buf, shape.0, shape.1,
                 )));
             } else {
-                let buf = MutableBuffer::from_len_zeroed(cycle_count * elem_count * 2 * size_of::<f64>());
+                let buf =
+                    MutableBuffer::from_len_zeroed(cycle_count * elem_count * 2 * size_of::<f64>());
                 return Ok(ChannelBuilder::Complex64(ComplexBuilder::new_from_buffer(
                     buf, shape.0, shape.1,
                 )));
@@ -153,21 +155,21 @@ impl ChannelBuilder {
                     }
                     2 => {
                         let buf = MutableBuffer::from_len_zeroed(total_elems * size_of::<u16>());
-                        Ok(ChannelBuilder::ArrayDUInt16(TensorBuilder::new_from_buffer(
-                            buf, shape.0, shape.1,
-                        )))
+                        Ok(ChannelBuilder::ArrayDUInt16(
+                            TensorBuilder::new_from_buffer(buf, shape.0, shape.1),
+                        ))
                     }
                     3 | 4 => {
                         let buf = MutableBuffer::from_len_zeroed(total_elems * size_of::<u32>());
-                        Ok(ChannelBuilder::ArrayDUInt32(TensorBuilder::new_from_buffer(
-                            buf, shape.0, shape.1,
-                        )))
+                        Ok(ChannelBuilder::ArrayDUInt32(
+                            TensorBuilder::new_from_buffer(buf, shape.0, shape.1),
+                        ))
                     }
                     _ => {
                         let buf = MutableBuffer::from_len_zeroed(total_elems * size_of::<u64>());
-                        Ok(ChannelBuilder::ArrayDUInt64(TensorBuilder::new_from_buffer(
-                            buf, shape.0, shape.1,
-                        )))
+                        Ok(ChannelBuilder::ArrayDUInt64(
+                            TensorBuilder::new_from_buffer(buf, shape.0, shape.1),
+                        ))
                     }
                 },
                 2 | 3 => match n_bytes {
@@ -199,22 +201,22 @@ impl ChannelBuilder {
                 4 | 5 => match n_bytes {
                     1..=4 => {
                         let buf = MutableBuffer::from_len_zeroed(total_elems * size_of::<f32>());
-                        Ok(ChannelBuilder::ArrayDFloat32(TensorBuilder::new_from_buffer(
-                            buf, shape.0, shape.1,
-                        )))
+                        Ok(ChannelBuilder::ArrayDFloat32(
+                            TensorBuilder::new_from_buffer(buf, shape.0, shape.1),
+                        ))
                     }
                     _ => {
                         let buf = MutableBuffer::from_len_zeroed(total_elems * size_of::<f64>());
-                        Ok(ChannelBuilder::ArrayDFloat64(TensorBuilder::new_from_buffer(
-                            buf, shape.0, shape.1,
-                        )))
+                        Ok(ChannelBuilder::ArrayDFloat64(
+                            TensorBuilder::new_from_buffer(buf, shape.0, shape.1),
+                        ))
                     }
                 },
                 _ => {
                     let buf = MutableBuffer::from_len_zeroed(total_elems * size_of::<f64>());
-                    Ok(ChannelBuilder::ArrayDFloat64(TensorBuilder::new_from_buffer(
-                        buf, shape.0, shape.1,
-                    )))
+                    Ok(ChannelBuilder::ArrayDFloat64(
+                        TensorBuilder::new_from_buffer(buf, shape.0, shape.1),
+                    ))
                 }
             };
         }
@@ -273,7 +275,10 @@ impl ChannelBuilder {
             10..=12 => {
                 if cn_type == 1 {
                     Ok(ChannelBuilder::VariableSizeByteArray(
-                        LargeBinaryBuilder::with_capacity(cycle_count, cycle_count * n_bytes.max(1)),
+                        LargeBinaryBuilder::with_capacity(
+                            cycle_count,
+                            cycle_count * n_bytes.max(1),
+                        ),
                     ))
                 } else {
                     Ok(ChannelBuilder::FixedSizeByteArray(

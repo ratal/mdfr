@@ -975,13 +975,22 @@ mod tests {
                 (3, c"ETH1".as_ptr()),
                 (4, c"FR1".as_ptr()),
             ] {
-                assert_eq!(mdfr_logger_add_bus_preset(builder, kind, name, &mut g_out), 0);
+                assert_eq!(
+                    mdfr_logger_add_bus_preset(builder, kind, name, &mut g_out),
+                    0
+                );
             }
 
             // Test VLSC channel addition
             let mut ch_vlsc = 0u32;
             assert_eq!(
-                mdfr_logger_add_vlsc_channel(builder, g_out, c"VLSC_Payload".as_ptr(), 7, &mut ch_vlsc),
+                mdfr_logger_add_vlsc_channel(
+                    builder,
+                    g_out,
+                    c"VLSC_Payload".as_ptr(),
+                    7,
+                    &mut ch_vlsc
+                ),
                 0
             );
 
@@ -1028,12 +1037,21 @@ mod tests {
 
             // Push raw records (12 bytes)
             let raw_data = [0u8; 12];
-            assert_eq!(mdfr_logger_push_raw(logger, g_raw, raw_data.as_ptr(), raw_data.len()), 0);
-            assert_eq!(mdfr_logger_push_raw_at(logger, g_raw, 60_000, raw_data.as_ptr(), raw_data.len()), 0);
+            assert_eq!(
+                mdfr_logger_push_raw(logger, g_raw, raw_data.as_ptr(), raw_data.len()),
+                0
+            );
+            assert_eq!(
+                mdfr_logger_push_raw_at(logger, g_raw, 60_000, raw_data.as_ptr(), raw_data.len()),
+                0
+            );
 
             // Mismatched record size
             let bad_data = [0u8; 5];
-            assert_eq!(mdfr_logger_push_raw(logger, g_raw, bad_data.as_ptr(), bad_data.len()), -4);
+            assert_eq!(
+                mdfr_logger_push_raw(logger, g_raw, bad_data.as_ptr(), bad_data.len()),
+                -4
+            );
 
             assert_eq!(mdfr_logger_close(logger), 0);
         }

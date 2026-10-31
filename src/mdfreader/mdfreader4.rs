@@ -484,7 +484,11 @@ fn read_sd(
                     let (dl_blocks, pos) = parser_dl4(rdr, position)?;
                     position = read_vlsd_from_dl_blocks(rdr, dl_blocks, pos, cn, decoder)?;
                 } else {
-                    eprintln!("read_sd: UNEXPECTED ID: {:?} at cn_data={}", String::from_utf8_lossy(&id), cn.block.cn_data);
+                    eprintln!(
+                        "read_sd: UNEXPECTED ID: {:?} at cn_data={}",
+                        String::from_utf8_lossy(&id),
+                        cn.block.cn_data
+                    );
                 }
                 if let Some(b) = cn.builder.take() {
                     cn.data = b.finish();
@@ -574,7 +578,9 @@ fn read_vd(
             // cn_data_type: 6=SBC, 7=UTF-8, 8=UTF-16 LE, 9=UTF-16 BE, 10=byte array, 17=UTF-8 with BOM
             cn.builder = match cn_data_type {
                 6..=9 | 17 => Some(ChannelBuilder::Utf8(arrow::array::LargeStringBuilder::new())),
-                10 => Some(ChannelBuilder::VariableSizeByteArray(arrow::array::LargeBinaryBuilder::new())),
+                10 => Some(ChannelBuilder::VariableSizeByteArray(
+                    arrow::array::LargeBinaryBuilder::new(),
+                )),
                 _ => continue,
             };
 
@@ -2154,10 +2160,9 @@ fn initialise_arrays(channel_group: &mut Cg4, cg_cycle_count: &u64) -> Result<()
         .filter(|(_cn_record_position, cn)| cn.should_read)
         .try_for_each(
             |(_cn_record_position, cn): (&i32, &mut Cn4)| -> Result<(), Error> {
-                cn.init_builder(*cg_cycle_count as usize)
-                    .with_context(|| {
-                        format!("Zeros initialisation of channel {} failed", cn.unique_name)
-                    })?;
+                cn.init_builder(*cg_cycle_count as usize).with_context(|| {
+                    format!("Zeros initialisation of channel {} failed", cn.unique_name)
+                })?;
                 Ok(())
             },
         )

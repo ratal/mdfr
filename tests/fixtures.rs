@@ -699,8 +699,16 @@ fn verify_synthetic_array_fixture_loads() {
     assert!(names.contains("array2d"), "missing array2d channel");
     if let Some(ChannelData::ArrayDFloat64(arr)) = mdf.get_channel_data("array2d") {
         let vals = arr.values_slice();
-        assert_eq!(vals.len(), 12, "should have 12 total values (3 cycles * 4 elements)");
-        assert_eq!(arr.shape().as_slice(), &[3usize, 2, 2], "shape should be [3, 2, 2]");
+        assert_eq!(
+            vals.len(),
+            12,
+            "should have 12 total values (3 cycles * 4 elements)"
+        );
+        assert_eq!(
+            arr.shape().as_slice(),
+            &[3usize, 2, 2],
+            "shape should be [3, 2, 2]"
+        );
         assert_eq!(arr.ndim(), 3, "ndim should be 3");
         for (i, &v) in vals.iter().enumerate() {
             assert_eq!(v, (i + 1) as f64);

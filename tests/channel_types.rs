@@ -37,7 +37,8 @@ fn master_channels() -> Result<()> {
         *v = counter * 0.03;
         counter += 1.
     });
-    let expected_master = ChannelData::Float64(Float64Builder::new_from_buffer(vect.into(), None).finish());
+    let expected_master =
+        ChannelData::Float64(Float64Builder::new_from_buffer(vect.into(), None).finish());
 
     let file_name = format!(
         "{}{}{}",
@@ -616,8 +617,7 @@ fn channel_union() -> Result<()> {
         if let Some(time_data) = mdf.get_channel_data("time") {
             assert_eq!(time_data.len(), 3, "time should have 3 samples");
             let expected_time = ChannelData::Float64(
-                Float64Builder::new_from_buffer(vec![0.0f64, 1.0f64, 2.0f64].into(), None)
-                    .finish(),
+                Float64Builder::new_from_buffer(vec![0.0f64, 1.0f64, 2.0f64].into(), None).finish(),
             );
             assert_eq!(
                 &expected_time, time_data,

@@ -171,7 +171,10 @@ impl PyChannel {
         let schema = Arc::new(arrow::datatypes::Schema::new(vec![field]));
         let batch = arrow::array::RecordBatch::try_new(schema.clone(), vec![arr])
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
-        let reader = Box::new(arrow::array::RecordBatchIterator::new(vec![Ok(batch)], schema));
+        let reader = Box::new(arrow::array::RecordBatchIterator::new(
+            vec![Ok(batch)],
+            schema,
+        ));
         crate::export::arrow_capsule::export_reader_to_pycapsule(py, reader)
     }
 
@@ -179,7 +182,9 @@ impl PyChannel {
     #[cfg(feature = "polars")]
     pub fn to_polars(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let polars = py.import("polars")?;
-        polars.call_method1("Series", (self.name.as_str(), self.clone())).map(|b| b.unbind())
+        polars
+            .call_method1("Series", (self.name.as_str(), self.clone()))
+            .map(|b| b.unbind())
     }
 }
 
@@ -425,7 +430,9 @@ impl Mdfr {
     fn get_channel_master_data(&mut self, channel_name: String) -> PyResult<Py<PyAny>> {
         let master_opt = {
             let Mdfr(mdf) = self;
-            mdf.mdf_info.get_channel_master(&channel_name).map(|s| s.to_string())
+            mdf.mdf_info
+                .get_channel_master(&channel_name)
+                .map(|s| s.to_string())
         };
         match master_opt {
             Some(master) => self.get_channel_data(master),
@@ -576,8 +583,12 @@ impl Mdfr {
         let dt_mod = py.import("datetime")?;
         let td_kw = pyo3::types::PyDict::new(py);
         td_kw.set_item(pyo3::intern!(py, "seconds"), offset_s)?;
-        let tz_delta = dt_mod.getattr(pyo3::intern!(py, "timedelta"))?.call((), Some(&td_kw))?;
-        let tz = dt_mod.getattr(pyo3::intern!(py, "timezone"))?.call1((tz_delta,))?;
+        let tz_delta = dt_mod
+            .getattr(pyo3::intern!(py, "timedelta"))?
+            .call((), Some(&td_kw))?;
+        let tz = dt_mod
+            .getattr(pyo3::intern!(py, "timezone"))?
+            .call1((tz_delta,))?;
         let dt = dt_mod
             .getattr(pyo3::intern!(py, "datetime"))?
             .getattr(pyo3::intern!(py, "fromtimestamp"))?
@@ -761,8 +772,11 @@ impl Mdfr {
         data: PyArrowType<ArrayData>,
     ) -> PyResult<()> {
         let Mdfr(mdf) = self;
-        let array = array_to_rust(data)
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("data modification failed, could not extract array: {e}")))?;
+        let array = array_to_rust(data).map_err(|e| {
+            pyo3::exceptions::PyValueError::new_err(format!(
+                "data modification failed, could not extract array: {e}"
+            ))
+        })?;
         mdf.set_channel_data(channel_name, array)?;
         Ok(())
     }
@@ -1266,14 +1280,19 @@ pyplot.show()
             set.insert(channel_name.to_string());
             let _ = mdf.load_channels_data_in_memory(set);
         }
-        let data = mdf.get_channel_converted_data(channel_name).ok_or_else(|| {
-            pyo3::exceptions::PyKeyError::new_err(format!(
-                "Failed to read data for channel '{channel_name}'"
-            ))
-        })?;
+        let data = mdf
+            .get_channel_converted_data(channel_name)
+            .ok_or_else(|| {
+                pyo3::exceptions::PyKeyError::new_err(format!(
+                    "Failed to read data for channel '{channel_name}'"
+                ))
+            })?;
         let unit = mdf.mdf_info.get_channel_unit(channel_name).ok().flatten();
         let desc = mdf.mdf_info.get_channel_desc(channel_name).ok().flatten();
-        let master_name = mdf.mdf_info.get_channel_master(channel_name).map(|s| s.to_string());
+        let master_name = mdf
+            .mdf_info
+            .get_channel_master(channel_name)
+            .map(|s| s.to_string());
         Ok(PyChannel {
             name: channel_name.to_string(),
             data,
@@ -1306,7 +1325,9 @@ pyplot.show()
     /// Iterator over channel names
     pub fn __iter__(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let keys = self.keys();
-        PyList::new(py, keys)?.call_method0("__iter__").map(|b| b.unbind())
+        PyList::new(py, keys)?
+            .call_method0("__iter__")
+            .map(|b| b.unbind())
     }
 
     /// List of all PyChannel objects
@@ -1357,9 +1378,15 @@ pyplot.show()
     ) -> PyResult<(Bound<'py, PyAny>, Bound<'py, PyAny>)> {
         let Mdfr(mdf) = self;
         let groups = mdf.get_master_channel_names_set();
-        let selected_channels: HashSet<String> = if let Some(chs) = groups.iter().find(|(m, _)| {
-            m.as_ref().map(|s| s.to_lowercase() == "time").unwrap_or(false)
-        }).map(|(_, chs)| chs) {
+        let selected_channels: HashSet<String> = if let Some(chs) = groups
+            .iter()
+            .find(|(m, _)| {
+                m.as_ref()
+                    .map(|s| s.to_lowercase() == "time")
+                    .unwrap_or(false)
+            })
+            .map(|(_, chs)| chs)
+        {
             chs.clone()
         } else if let Some((_, chs)) = groups.iter().find(|(m, _)| m.is_some()) {
             chs.clone()
@@ -1389,7 +1416,8 @@ pyplot.show()
             arrow::datatypes::Fields::from(fields),
             arrays,
             None,
-        ).map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+        )
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
 
         crate::export::arrow_capsule::export_array_to_pycapsules(py, &struct_arr.to_data())
     }
@@ -1405,9 +1433,15 @@ pyplot.show()
     ) -> PyResult<Bound<'py, PyAny>> {
         let Mdfr(mdf) = self;
         let groups = mdf.get_master_channel_names_set();
-        let selected_channels: HashSet<String> = if let Some(chs) = groups.iter().find(|(m, _)| {
-            m.as_ref().map(|s| s.to_lowercase() == "time").unwrap_or(false)
-        }).map(|(_, chs)| chs) {
+        let selected_channels: HashSet<String> = if let Some(chs) = groups
+            .iter()
+            .find(|(m, _)| {
+                m.as_ref()
+                    .map(|s| s.to_lowercase() == "time")
+                    .unwrap_or(false)
+            })
+            .map(|(_, chs)| chs)
+        {
             chs.clone()
         } else if let Some((_, chs)) = groups.iter().find(|(m, _)| m.is_some()) {
             chs.clone()
@@ -1436,7 +1470,10 @@ pyplot.show()
         let schema = Arc::new(arrow::datatypes::Schema::new(fields));
         let batch = arrow::array::RecordBatch::try_new(schema.clone(), arrays)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
-        let reader = Box::new(arrow::array::RecordBatchIterator::new(vec![Ok(batch)], schema));
+        let reader = Box::new(arrow::array::RecordBatchIterator::new(
+            vec![Ok(batch)],
+            schema,
+        ));
         crate::export::arrow_capsule::export_reader_to_pycapsule(py, reader)
     }
 }
@@ -1475,7 +1512,8 @@ pub fn write_polars(
 
     let mut batches = Vec::new();
     for batch_res in reader {
-        let batch = batch_res.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+        let batch =
+            batch_res.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
         batches.push(batch);
     }
     if batches.is_empty() {
@@ -1507,9 +1545,9 @@ pub fn write_polars(
 
     let num_cols = schema.fields().len() + 1;
     let mut mdf = Mdf {
-        mdf_info: crate::mdfinfo::MdfInfo::V4(Box::new(
-            crate::mdfinfo::mdfinfo4::MdfInfo4::new(file_name, num_cols),
-        )),
+        mdf_info: crate::mdfinfo::MdfInfo::V4(Box::new(crate::mdfinfo::mdfinfo4::MdfInfo4::new(
+            file_name, num_cols,
+        ))),
     };
 
     let has_master_in_df = schema.column_with_name(&master_name).is_some();
@@ -1525,7 +1563,8 @@ pub fn write_polars(
             true,    // master_flag = true
             Some("s".to_string()),
             None,
-        ).map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+        )
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
     } else {
         let time_vals: Vec<f64> = (0..batch.num_rows()).map(|i| i as f64).collect();
         let time_arr = Arc::new(arrow::array::Float64Array::from(time_vals));
@@ -1537,7 +1576,8 @@ pub fn write_polars(
             true,    // master_flag = true
             Some("s".to_string()),
             Some("Synthetic master time channel".to_string()),
-        ).map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+        )
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
     }
 
     for (idx, field) in schema.fields().iter().enumerate() {
@@ -1554,10 +1594,12 @@ pub fn write_polars(
             false,
             None,
             None,
-        ).map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+        )
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
     }
 
-    let written = mdf.write(file_name, compression)
+    let written = mdf
+        .write(file_name, compression)
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
     Ok(Mdfr(written))
 }
@@ -1727,10 +1769,7 @@ impl MdfLogger {
         match &mut self.state {
             PyLoggerState::Building { builder, .. } => {
                 builder
-                    .set_channel_conversion(
-                        ch,
-                        mdfr_core::logger::ConversionDef::Linear { p1, p2 },
-                    )
+                    .set_channel_conversion(ch, mdfr_core::logger::ConversionDef::Linear { p1, p2 })
                     .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
                 Ok(())
             }

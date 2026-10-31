@@ -186,10 +186,13 @@ fn string_types() -> Result<()> {
     mdf.load_all_channels_data_in_memory()?;
     if let Some(data) = mdf.get_channel_data("Time channel") {
         assert_eq!(
-            ChannelData::Float64(Float64Builder::new_from_buffer(
-                vec![0., 1., 2., 3., 4., 5., 6., 7., 8., 9.].into(),
-                None
-            ).finish()),
+            ChannelData::Float64(
+                Float64Builder::new_from_buffer(
+                    vec![0., 1., 2., 3., 4., 5., 6., 7., 8., 9.].into(),
+                    None
+                )
+                .finish()
+            ),
             data.clone()
         );
     }
@@ -282,10 +285,13 @@ fn byte_array_types() -> Result<()> {
     mdf.load_all_channels_data_in_memory()?;
     if let Some(data) = mdf.get_channel_data("Time channel") {
         assert_eq!(
-            ChannelData::Float64(Float64Builder::new_from_buffer(
-                vec![0., 1., 2., 3., 4., 5., 6., 7., 8., 9.].into(),
-                None
-            ).finish()),
+            ChannelData::Float64(
+                Float64Builder::new_from_buffer(
+                    vec![0., 1., 2., 3., 4., 5., 6., 7., 8., 9.].into(),
+                    None
+                )
+                .finish()
+            ),
             data.clone()
         );
     }

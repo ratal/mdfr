@@ -317,7 +317,10 @@ mod tests {
 
     #[cfg(feature = "embedded-io-async")]
     impl embedded_io_async::Seek for AsyncMemWriter {
-        async fn seek(&mut self, pos: embedded_io_async::SeekFrom) -> core::result::Result<u64, Self::Error> {
+        async fn seek(
+            &mut self,
+            pos: embedded_io_async::SeekFrom,
+        ) -> core::result::Result<u64, Self::Error> {
             let new_pos = match pos {
                 embedded_io_async::SeekFrom::Start(p) => p as i64,
                 embedded_io_async::SeekFrom::End(o) => self.buf.len() as i64 + o,

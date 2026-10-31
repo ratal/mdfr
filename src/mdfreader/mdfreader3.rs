@@ -87,13 +87,12 @@ fn initialise_arrays(channel_group: &mut Cg3, cg_cycle_count: &u32) -> Result<()
         .filter(|(_cn_position, cn)| cn.should_read)
         .try_for_each(
             |(_cn_position, cn): (&u32, &mut Cn3)| -> Result<(), Error> {
-                cn.init_builder(*cg_cycle_count as usize)
-                    .with_context(|| {
-                        format!(
-                            "failed intialising with zeros the channel's array named {}",
-                            cn.unique_name
-                        )
-                    })?;
+                cn.init_builder(*cg_cycle_count as usize).with_context(|| {
+                    format!(
+                        "failed intialising with zeros the channel's array named {}",
+                        cn.unique_name
+                    )
+                })?;
                 Ok(())
             },
         )

@@ -864,10 +864,7 @@ impl Mdf {
     }
     /// Creates an in-memory `Mdf` from a Polars [`DataFrame`].
     #[cfg(feature = "polars")]
-    pub fn from_polars_df(
-        df: &polars::prelude::DataFrame,
-        time_col: Option<&str>,
-    ) -> Result<Mdf> {
+    pub fn from_polars_df(df: &polars::prelude::DataFrame, time_col: Option<&str>) -> Result<Mdf> {
         crate::export::polars::from_polars_df(df, time_col)
     }
     /// Writes a Polars [`DataFrame`] directly to an MDF 4.3 file.
