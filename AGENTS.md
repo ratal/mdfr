@@ -70,13 +70,15 @@ To prevent divergence and maintainability debt:
 
 ## 5. Verification & Quality Assurance
 
-Before pushing changes or submitting pull requests:
+Before committing changes, pushing, or submitting pull requests:
 
-1. **Clippy**: Must pass with 0 warnings across all feature combinations:
+1. **Formatting**: Must pass formatting checks before commits:
+   - `cargo fmt --check` (or format in place via `cargo fmt`)
+2. **Clippy**: Must pass with 0 warnings across all feature combinations:
    - `cargo clippy --workspace --all-targets --all-features -- -D warnings`
    - `cargo clippy -p mdfr-core --no-default-features -- -D warnings`
-2. **Embedded no_std verification**:
+3. **Embedded no_std verification**:
    - `cargo check -p mdfr-core --target thumbv7em-none-eabihf --no-default-features --features alloc`
    - `cargo build -p mdfr-core --example mdfr_core_c --target thumbv7em-none-eabihf --no-default-features --features alloc`
-3. **Tests**:
+4. **Tests**:
    - `cargo test --workspace --all-features`
