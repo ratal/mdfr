@@ -298,7 +298,8 @@ fn classify_type(ty: &Type) -> syn::Result<FieldKind> {
 
 fn impl_mdf_record(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     let struct_ident = &input.ident;
-    let (group_name, struct_big_endian) = parse_struct_attributes(&input.attrs, &struct_ident.to_string())?;
+    let (group_name, struct_big_endian) =
+        parse_struct_attributes(&input.attrs, &struct_ident.to_string())?;
 
     let Data::Struct(data_struct) = &input.data else {
         return Err(syn::Error::new_spanned(
@@ -418,7 +419,9 @@ fn impl_mdf_record(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream>
         match &kind {
             FieldKind::Scalar { byte_len, .. } => record_bytes += *byte_len,
             FieldKind::ByteArray { len } => record_bytes += *len,
-            FieldKind::TypedArray { elem_byte_len, len, .. } => record_bytes += *len * *elem_byte_len,
+            FieldKind::TypedArray {
+                elem_byte_len, len, ..
+            } => record_bytes += *len * *elem_byte_len,
         }
         specs.push(FieldSpec {
             ident,
@@ -451,7 +454,11 @@ fn impl_mdf_record(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream>
                 let start = offset;
                 let end = offset + *byte_len;
                 offset = end;
-                let dt = if is_be { cn_data_type_be } else { cn_data_type_le };
+                let dt = if is_be {
+                    cn_data_type_be
+                } else {
+                    cn_data_type_le
+                };
                 let expr = if *is_bool {
                     quote!([self.#ident as u8])
                 } else if is_be {
@@ -494,7 +501,11 @@ fn impl_mdf_record(input: &DeriveInput) -> syn::Result<proc_macro2::TokenStream>
                 let start = offset;
                 let end = offset + total_bytes;
                 offset = end;
-                let dt = if is_be { elem_data_type_be } else { elem_data_type_le };
+                let dt = if is_be {
+                    elem_data_type_be
+                } else {
+                    elem_data_type_le
+                };
                 let elem_expr = if is_be {
                     quote!(elem.to_be_bytes())
                 } else {

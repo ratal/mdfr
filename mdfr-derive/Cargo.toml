@@ -1,6 +1,6 @@
 [package]
 name = "mdfr-derive"
-version = "0.8.1"
+version = "0.8.2"
 description = "Proc-macro derive for #[derive(MdfRecord)] in mdfr-core"
 authors = ["ratal <ratal@ratal.org>"]
 edition = "2024"

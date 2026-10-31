@@ -1001,7 +1001,10 @@ mod tests {
             assert!(get_channel_unit(std::ptr::null(), std::ptr::null()).is_null());
             assert!(get_channel_desc(std::ptr::null(), std::ptr::null()).is_null());
             assert!(get_channel_master(std::ptr::null(), std::ptr::null()).is_null());
-            assert_eq!(get_channel_master_type(std::ptr::null(), std::ptr::null()), 0);
+            assert_eq!(
+                get_channel_master_type(std::ptr::null(), std::ptr::null()),
+                0
+            );
             assert_eq!(get_channel_count(std::ptr::null()), 0);
             assert!(get_channel_names_set(std::ptr::null()).is_null());
             free_channel_names_set(std::ptr::null_mut(), 0);
@@ -1038,7 +1041,11 @@ mod tests {
                 cn_pos: 0,
                 rec_pos: 0,
             };
-            assert!(!get_channel_id(std::ptr::null(), std::ptr::null(), &mut ch_id));
+            assert!(!get_channel_id(
+                std::ptr::null(),
+                std::ptr::null(),
+                &mut ch_id
+            ));
             free_channel_id_master(std::ptr::null_mut());
 
             assert_eq!(get_file_history_count(std::ptr::null()), 0);
@@ -1050,8 +1057,14 @@ mod tests {
             assert_eq!(get_source_information_count(std::ptr::null()), 0);
             assert!(list_source_information(std::ptr::null()).is_null());
 
-            assert!(mdfr_logger_open(std::ptr::null_mut(), std::ptr::null(), std::ptr::null_mut()).is_null());
-            assert_eq!(mdfr_logger_rotate_path(std::ptr::null_mut(), std::ptr::null()), -3);
+            assert!(
+                mdfr_logger_open(std::ptr::null_mut(), std::ptr::null(), std::ptr::null_mut())
+                    .is_null()
+            );
+            assert_eq!(
+                mdfr_logger_rotate_path(std::ptr::null_mut(), std::ptr::null()),
+                -3
+            );
             assert_eq!(mdfr_finalize_file_in_place(std::ptr::null()), -3);
         }
     }
@@ -1071,15 +1084,27 @@ mod tests {
 
             let mut g0 = 0u16;
             let group_name = CString::new("Powertrain").unwrap();
-            assert_eq!(mdfr_logger_add_group(builder, group_name.as_ptr(), &mut g0), 0);
+            assert_eq!(
+                mdfr_logger_add_group(builder, group_name.as_ptr(), &mut g0),
+                0
+            );
 
             let mut ch_rpm = 0u32;
             let ch_name = CString::new("EngineSpeed").unwrap();
-            assert_eq!(mdfr_logger_add_channel(builder, g0, ch_name.as_ptr(), 0, 16, &mut ch_rpm), 0);
+            assert_eq!(
+                mdfr_logger_add_channel(builder, g0, ch_name.as_ptr(), 0, 16, &mut ch_rpm),
+                0
+            );
 
             let unit = CString::new("rpm").unwrap();
-            assert_eq!(mdfr_logger_set_channel_unit(builder, ch_rpm, unit.as_ptr()), 0);
-            assert_eq!(mdfr_logger_set_conversion_linear(builder, ch_rpm, 0.0, 0.25), 0);
+            assert_eq!(
+                mdfr_logger_set_channel_unit(builder, ch_rpm, unit.as_ptr()),
+                0
+            );
+            assert_eq!(
+                mdfr_logger_set_conversion_linear(builder, ch_rpm, 0.0, 0.25),
+                0
+            );
 
             let mut err = 0;
             let logger = mdfr_logger_open(builder, p1.as_ptr(), &mut err);
@@ -1206,7 +1231,10 @@ mod tests {
 
             #[cfg(feature = "parquet")]
             {
-                let pq_tmp = tempfile::Builder::new().suffix(".parquet").tempfile().unwrap();
+                let pq_tmp = tempfile::Builder::new()
+                    .suffix(".parquet")
+                    .tempfile()
+                    .unwrap();
                 let pq_path = CString::new(pq_tmp.path().to_str().unwrap()).unwrap();
                 export_to_parquet(mdf, pq_path.as_ptr(), std::ptr::null());
             }

@@ -12,8 +12,10 @@ static MDF4_EXAMPLES: LazyLock<String> = LazyLock::new(|| {
     if std::path::Path::new(&local_examples).is_dir() {
         return local_examples;
     }
-    let mdfreader_examples =
-        format!("{}mdfreader/MDF4/MDF4.3/Base_Standard/Examples/", LOCAL_FILES);
+    let mdfreader_examples = format!(
+        "{}mdfreader/MDF4/MDF4.3/Base_Standard/Examples/",
+        LOCAL_FILES
+    );
     if std::path::Path::new(&mdfreader_examples).is_dir() {
         return mdfreader_examples;
     }
@@ -207,26 +209,20 @@ fn bench_unsorted_data(c: &mut Criterion) {
     // Synthetic large file with VLSD (Variable Length Signal Data), ~30MB
     let p_vlsd = "test_files/synthetic/unsorted_vlsd_vlsc.mf4";
     if std::path::Path::new(p_vlsd).exists() {
-        group.bench_function("unsorted_vlsd_30mb", |b| {
-            b.iter(|| read_and_load(p_vlsd))
-        });
+        group.bench_function("unsorted_vlsd_30mb", |b| b.iter(|| read_and_load(p_vlsd)));
     }
 
     // Existing reference files from mdfreader tests
     let base = MDF4_EXAMPLES.as_str();
     let p_ref_vlsd = format!("{base}UnsortedData/VLSD/Vector_Unsorted_VLSD.MF4");
     if std::path::Path::new(&p_ref_vlsd).exists() {
-        group.bench_function("mdf4_vlsd_60kb", |b| {
-            b.iter(|| read_and_load(&p_ref_vlsd))
-        });
+        group.bench_function("mdf4_vlsd_60kb", |b| b.iter(|| read_and_load(&p_ref_vlsd)));
     }
 
     let p_ref_vlsc =
         format!("{base}UnsortedData/VLSC/RAC_MDF430_Unsorted_VLSC_Compact_Structure.mf4");
     if std::path::Path::new(&p_ref_vlsc).exists() {
-        group.bench_function("mdf4_vlsc_5kb", |b| {
-            b.iter(|| read_and_load(&p_ref_vlsc))
-        });
+        group.bench_function("mdf4_vlsc_5kb", |b| b.iter(|| read_and_load(&p_ref_vlsc)));
     }
 
     group.finish();
@@ -258,16 +254,12 @@ fn bench_conversion(c: &mut Criterion) {
     // Full pipeline: load + conversion
     let path_err = format!("{base}Simple/error.mf4");
     if std::path::Path::new(&path_err).exists() {
-        group.bench_function("convert_184mb", |b| {
-            b.iter(|| read_load_convert(&path_err))
-        });
+        group.bench_function("convert_184mb", |b| b.iter(|| read_load_convert(&path_err)));
     }
 
     let path_m2 = format!("{base}Simple/measure2.mf4");
     if std::path::Path::new(&path_m2).exists() {
-        group.bench_function("convert_47mb", |b| {
-            b.iter(|| read_load_convert(&path_m2))
-        });
+        group.bench_function("convert_47mb", |b| b.iter(|| read_load_convert(&path_m2)));
 
         // Conversion only (data already loaded)
         group.bench_function("convert_only_47mb", |b| {

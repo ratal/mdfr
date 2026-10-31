@@ -1,15 +1,15 @@
 //! tensor arrow array adapted to mdf4 specificities (samples of tensors)
 #[cfg(feature = "ndarray")]
 use anyhow::{Context, Error, Result};
+#[allow(unused_imports)]
+use arrow::datatypes::{
+    Float32Type, Float64Type, Int8Type, Int16Type, Int32Type, Int64Type, UInt8Type, UInt16Type,
+    UInt32Type, UInt64Type,
+};
 use arrow::{
     array::{BooleanBufferBuilder, PrimitiveArray, PrimitiveBuilder},
     buffer::{BooleanBuffer, MutableBuffer, ScalarBuffer},
     datatypes::ArrowPrimitiveType,
-};
-#[allow(unused_imports)]
-use arrow::datatypes::{
-    Float32Type, Float64Type, Int8Type, Int16Type, Int32Type, Int64Type,
-    UInt8Type, UInt16Type, UInt32Type, UInt64Type,
 };
 #[cfg(feature = "ndarray")]
 use ndarray::{Array as NdArray, IxDyn};
@@ -186,7 +186,9 @@ impl<T: ArrowPrimitiveType> TensorArrow<T> {
 
     /// returns the optional validity array as a slice
     pub fn validity_slice(&self) -> Option<&[u8]> {
-        self.null_buffer.as_ref().map(arrow::buffer::BooleanBuffer::values)
+        self.null_buffer
+            .as_ref()
+            .map(arrow::buffer::BooleanBuffer::values)
     }
 }
 
@@ -285,8 +287,7 @@ macro_rules! tensor_arrow_to_ndarray {
             /// to convert TensorArrow into ndarray
             #[allow(dead_code)]
             pub fn to_ndarray(&self) -> Result<NdArray<$rust_type, IxDyn>, Error> {
-                let vector: Vec<$rust_type> =
-                    self.values.values().iter().copied().collect();
+                let vector: Vec<$rust_type> = self.values.values().iter().copied().collect();
                 let mut shape = self.shape().clone();
                 shape.push(self.len());
                 NdArray::from_shape_vec(IxDyn(&shape), vector)

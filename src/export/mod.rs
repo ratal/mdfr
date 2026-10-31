@@ -1,4 +1,6 @@
 //! Module to export mdf files to other file formats.
+#[cfg(feature = "numpy")]
+pub mod arrow_capsule;
 pub mod csv;
 #[cfg(feature = "numpy")]
 pub mod numpy;

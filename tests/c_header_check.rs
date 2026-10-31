@@ -22,7 +22,13 @@ fn c_header_syntax_check() {
 
     // Verify mdfr.h with C compiler
     let status_c = Command::new("cc")
-        .args(["-fsyntax-only", "-Wall", "-Wextra", "-pedantic", &header_path])
+        .args([
+            "-fsyntax-only",
+            "-Wall",
+            "-Wextra",
+            "-pedantic",
+            &header_path,
+        ])
         .status()
         .expect("Failed to run cc on mdfr.h");
     assert!(status_c.success(), "cc -fsyntax-only failed on mdfr.h");
@@ -66,4 +72,3 @@ fn c_header_syntax_check() {
         assert!(status_cxx.success(), "c++ -fsyntax-only failed on mdfr.h");
     }
 }
-

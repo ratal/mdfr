@@ -99,7 +99,10 @@ mod tests {
     #[test]
     fn test_escape_xml() {
         assert_eq!(escape_xml("hello & world"), "hello &amp; world");
-        assert_eq!(escape_xml("<tag attr=\"val\">'x'</tag>"), "&lt;tag attr=&quot;val&quot;&gt;&apos;x&apos;&lt;/tag&gt;");
+        assert_eq!(
+            escape_xml("<tag attr=\"val\">'x'</tag>"),
+            "&lt;tag attr=&quot;val&quot;&gt;&apos;x&apos;&lt;/tag&gt;"
+        );
         assert_eq!(escape_xml("plain text"), "plain text");
     }
 }

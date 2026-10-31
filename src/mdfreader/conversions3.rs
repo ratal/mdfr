@@ -1,8 +1,6 @@
 //! this modules implements functions to convert arrays into physical arrays using CCBlock
 use anyhow::{Context, Error, Result};
-use arrow::array::{
-    Array, LargeStringArray, LargeStringBuilder, PrimitiveArray,
-};
+use arrow::array::{Array, LargeStringArray, LargeStringBuilder, PrimitiveArray};
 use arrow::datatypes::{ArrowPrimitiveType, Float64Type};
 use itertools::Itertools;
 use num::NumCast;
@@ -263,7 +261,10 @@ where
             (p2 - (p4 * (x - p5 - p6))) / (p3 * (x - p5 - p6) - p1)
         })
         .collect();
-    Ok(PrimitiveArray::new(converted.into(), array.nulls().cloned()))
+    Ok(PrimitiveArray::new(
+        converted.into(),
+        array.nulls().cloned(),
+    ))
 }
 
 /// Apply polynomial conversion to get physical data
@@ -363,7 +364,10 @@ where
                 (((x - p7) * p6 - p3) / p1).ln() / p2
             })
             .collect();
-        Ok(Some(PrimitiveArray::new(converted.into(), array.nulls().cloned())))
+        Ok(Some(PrimitiveArray::new(
+            converted.into(),
+            array.nulls().cloned(),
+        )))
     } else if p1 == 0.0 {
         let converted: Vec<f64> = values
             .iter()
@@ -372,7 +376,10 @@ where
                 ((p3 / (x - p7) - p6) / p4).ln() / p5
             })
             .collect();
-        Ok(Some(PrimitiveArray::new(converted.into(), array.nulls().cloned())))
+        Ok(Some(PrimitiveArray::new(
+            converted.into(),
+            array.nulls().cloned(),
+        )))
     } else {
         Ok(None)
     }
@@ -478,7 +485,10 @@ where
                 (((x - p7) * p6 - p3) / p1).exp() / p2
             })
             .collect();
-        Ok(Some(PrimitiveArray::new(converted.into(), array.nulls().cloned())))
+        Ok(Some(PrimitiveArray::new(
+            converted.into(),
+            array.nulls().cloned(),
+        )))
     } else if p1 == 0.0 {
         let converted: Vec<f64> = values
             .iter()
@@ -487,7 +497,10 @@ where
                 ((p3 / (x - p7) - p6) / p4).exp() / p5
             })
             .collect();
-        Ok(Some(PrimitiveArray::new(converted.into(), array.nulls().cloned())))
+        Ok(Some(PrimitiveArray::new(
+            converted.into(),
+            array.nulls().cloned(),
+        )))
     } else {
         Ok(None)
     }
@@ -606,7 +619,10 @@ where
                 }
             }
         });
-    Ok(PrimitiveArray::new(new_array.into(), array.nulls().cloned()))
+    Ok(PrimitiveArray::new(
+        new_array.into(),
+        array.nulls().cloned(),
+    ))
 }
 
 /// Apply algebraic conversion to get physical data
@@ -767,25 +783,25 @@ where
     let val: Vec<(&f64, &f64)> = cc_val.iter().tuples().collect();
     let values = array.values();
     let mut new_array = vec![0f64; values.len()];
-    new_array
-        .iter_mut()
-        .zip(values)
-        .for_each(|(new_array, a)| {
-            let a_f64: f64 = (*a).as_();
-            *new_array = match val
-                .binary_search_by(|&(xi, _)| xi.partial_cmp(&a_f64).expect("Could not compare values"))
-            {
-                Ok(idx) => *val[idx].1,
-                Err(0) => *val[0].1,
-                Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                Err(idx) => {
-                    let (x0, y0) = val[idx - 1];
-                    let (x1, y1) = val[idx];
-                    (y0 * (x1 - a_f64) + y1 * (a_f64 - x0)) / (x1 - x0)
-                }
-            };
-        });
-    Ok(PrimitiveArray::new(new_array.into(), array.nulls().cloned()))
+    new_array.iter_mut().zip(values).for_each(|(new_array, a)| {
+        let a_f64: f64 = (*a).as_();
+        *new_array = match val
+            .binary_search_by(|&(xi, _)| xi.partial_cmp(&a_f64).expect("Could not compare values"))
+        {
+            Ok(idx) => *val[idx].1,
+            Err(0) => *val[0].1,
+            Err(idx) if idx >= val.len() => *val[idx - 1].1,
+            Err(idx) => {
+                let (x0, y0) = val[idx - 1];
+                let (x1, y1) = val[idx];
+                (y0 * (x1 - a_f64) + y1 * (a_f64 - x0)) / (x1 - x0)
+            }
+        };
+    });
+    Ok(PrimitiveArray::new(
+        new_array.into(),
+        array.nulls().cloned(),
+    ))
 }
 
 /// Apply value to value with interpolation conversion to get physical data
@@ -880,25 +896,29 @@ where
     let val: Vec<(&f64, &f64)> = cc_val.iter().tuples().collect();
     let values = array.values();
     let mut new_array = vec![0f64; values.len()];
-    new_array
-        .iter_mut()
-        .zip(values)
-        .for_each(|(new_array, a)| {
-            let a_f64: f64 = (*a).as_();
-            *new_array = match val
-                .binary_search_by(|&(xi, _)| xi.partial_cmp(&a_f64).expect("Could not compare values"))
-            {
-                Ok(idx) => *val[idx].1,
-                Err(0) => *val[0].1,
-                Err(idx) if idx >= val.len() => *val[idx - 1].1,
-                Err(idx) => {
-                    let (x0, y0) = val[idx - 1];
-                    let (x1, y1) = val[idx];
-                    if (a_f64 - x0) > (x1 - a_f64) { *y1 } else { *y0 }
+    new_array.iter_mut().zip(values).for_each(|(new_array, a)| {
+        let a_f64: f64 = (*a).as_();
+        *new_array = match val
+            .binary_search_by(|&(xi, _)| xi.partial_cmp(&a_f64).expect("Could not compare values"))
+        {
+            Ok(idx) => *val[idx].1,
+            Err(0) => *val[0].1,
+            Err(idx) if idx >= val.len() => *val[idx - 1].1,
+            Err(idx) => {
+                let (x0, y0) = val[idx - 1];
+                let (x1, y1) = val[idx];
+                if (a_f64 - x0) > (x1 - a_f64) {
+                    *y1
+                } else {
+                    *y0
                 }
-            };
-        });
-    Ok(PrimitiveArray::new(new_array.into(), array.nulls().cloned()))
+            }
+        };
+    });
+    Ok(PrimitiveArray::new(
+        new_array.into(),
+        array.nulls().cloned(),
+    ))
 }
 
 /// Apply value to value without interpolation conversion to get physical data

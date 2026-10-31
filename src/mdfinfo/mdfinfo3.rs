@@ -1104,14 +1104,19 @@ impl Cn3 {
     /// Initializes builder for mutable record accumulation during file reading
     pub fn init_builder(&mut self, cycle_count: usize) -> Result<(), Error> {
         let data_type = convert_data_type_3to4(self.block2.cn_data_type);
-        self.builder = Some(crate::data_holder::channel_builder::ChannelBuilder::new_zeroed(
-            0,
-            data_type,
-            cycle_count,
-            self.n_bytes as usize,
-            (Vec::new(), crate::data_holder::tensor_arrow::Order::RowMajor),
-            1,
-        )?);
+        self.builder = Some(
+            crate::data_holder::channel_builder::ChannelBuilder::new_zeroed(
+                0,
+                data_type,
+                cycle_count,
+                self.n_bytes as usize,
+                (
+                    Vec::new(),
+                    crate::data_holder::tensor_arrow::Order::RowMajor,
+                ),
+                1,
+            )?,
+        );
         Ok(())
     }
     /// Returns the minimum signal value if the value range valid flag (bit 3) is set.

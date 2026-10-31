@@ -552,7 +552,7 @@ pub fn mdfwriter4(
                         let m = data.validity();
                         if !data.is_empty() && data.bit_count() > 0 {
                             // Check if this is a VLSD channel
-                            let is_vlsd = cn.block.cn_type == 1 && is_vlsd_data(&data);
+                            let is_vlsd = is_vlsd_data(&data);
 
                             if is_vlsd {
                                 // VLSD channel: write SD block, set cn_data.

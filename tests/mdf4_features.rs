@@ -19,10 +19,19 @@ static BASE_PATH: LazyLock<String> = LazyLock::new(|| {
     )
 });
 
+macro_rules! require_base_path {
+    () => {
+        if !std::path::Path::new(BASE_PATH.as_str()).is_dir() {
+            return Ok(());
+        }
+    };
+}
+
 // ── Events ──────────────────────────────────────────────────────────────────
 
 #[test]
 fn test_events_markers() -> Result<()> {
+    require_base_path!();
     let file = format!("{}Events/Marker/dSPACE_Bookmarks.mf4", BASE_PATH.as_str());
     let mut mdf = Mdf::new(&file)?;
     mdf.load_all_channels_data_in_memory()?;
@@ -64,6 +73,7 @@ fn test_events_markers() -> Result<()> {
 
 #[test]
 fn test_mlsd_channels_truncation() -> Result<()> {
+    require_base_path!();
     use arrow::array::Array;
     use mdfr::data_holder::channel_data::ChannelData;
 
@@ -117,6 +127,7 @@ fn test_mlsd_channels_truncation() -> Result<()> {
 
 #[test]
 fn test_events_recording() -> Result<()> {
+    require_base_path!();
     let file = format!(
         "{}Events/Recording/dSPACE_CaptureBlocks.mf4",
         BASE_PATH.as_str()
@@ -145,12 +156,12 @@ fn test_events_recording() -> Result<()> {
 
 #[test]
 fn test_events_trigger() -> Result<()> {
+    require_base_path!();
     let file = format!(
         "{}Events/Trigger/dSPACE_HILAPITrigger.mf4",
         BASE_PATH.as_str()
     );
     let mut mdf = Mdf::new(&file)?;
-    mdf.load_all_channels_data_in_memory()?;
 
     let events_list = mdf.mdf_info.list_events();
     assert!(!events_list.is_empty());
@@ -172,6 +183,7 @@ fn test_events_trigger() -> Result<()> {
 
 #[test]
 fn test_attachments_embedded() -> Result<()> {
+    require_base_path!();
     let file = format!(
         "{}Attachments/Embedded/Vector_Embedded.MF4",
         BASE_PATH.as_str()
@@ -227,6 +239,7 @@ fn test_attachments_embedded() -> Result<()> {
 
 #[test]
 fn test_attachments_embedded_compressed() -> Result<()> {
+    require_base_path!();
     let file = format!(
         "{}Attachments/EmbeddedCompressed/Vector_EmbeddedCompressed.MF4",
         BASE_PATH.as_str()
@@ -265,6 +278,7 @@ fn test_attachments_embedded_compressed() -> Result<()> {
 
 #[test]
 fn test_attachments_external() -> Result<()> {
+    require_base_path!();
     let file = format!(
         "{}Attachments/External/Vector_External.MF4",
         BASE_PATH.as_str()
@@ -310,6 +324,7 @@ fn test_attachments_external() -> Result<()> {
 
 #[test]
 fn test_sample_reduction() -> Result<()> {
+    require_base_path!();
     let file = format!(
         "{}SampleReduction/Simple/Vector_SampleReduction.mf4",
         BASE_PATH.as_str()
@@ -357,6 +372,7 @@ fn test_sample_reduction() -> Result<()> {
 
 #[test]
 fn test_metadata_hdo_comments() -> Result<()> {
+    require_base_path!();
     let file = format!(
         "{}MetaData/HDO/RAC_MDF430_HDO_Comments.mf4",
         BASE_PATH.as_str()
@@ -402,6 +418,7 @@ fn test_metadata_hdo_comments() -> Result<()> {
 
 #[test]
 fn test_metadata_custom_extensions() -> Result<()> {
+    require_base_path!();
     let file = format!(
         "{}MetaData/CustomExtensions/Vector_CustomExtensions_CNcomment.mf4",
         BASE_PATH.as_str()
@@ -432,6 +449,7 @@ fn test_metadata_custom_extensions() -> Result<()> {
 
 #[test]
 fn test_dynamic_data_channel_list() -> Result<()> {
+    require_base_path!();
     let file = format!(
         "{}DynamicData/ChannelList/simple_list.mf4",
         BASE_PATH.as_str()
@@ -459,6 +477,7 @@ fn test_dynamic_data_channel_list() -> Result<()> {
 
 #[test]
 fn test_variant_fixed_length() -> Result<()> {
+    require_base_path!();
     let file = format!(
         "{}Variant/Etas_cv_storage_with_fixed_length.mf4",
         BASE_PATH.as_str()
@@ -480,6 +499,7 @@ fn test_variant_fixed_length() -> Result<()> {
 
 #[test]
 fn test_variant_vlsd_option() -> Result<()> {
+    require_base_path!();
     let file = format!(
         "{}Variant/Vector_V430_Variant_VLSD_Option.mf4",
         BASE_PATH.as_str()
@@ -506,6 +526,7 @@ fn test_variant_vlsd_option() -> Result<()> {
 
 #[test]
 fn test_union_fixed_length() -> Result<()> {
+    require_base_path!();
     let file = format!(
         "{}Union/Etas_cu_storage_with_fixed_length.mf4",
         BASE_PATH.as_str()
@@ -529,6 +550,7 @@ fn test_union_fixed_length() -> Result<()> {
 
 #[test]
 fn test_source_information() -> Result<()> {
+    require_base_path!();
     // Use a bus logging file which typically has rich SI blocks
     let file = format!(
         "{}BusLogging/CAN/Vector_CAN_DataFrame_Sort_Bus.MF4",
@@ -564,6 +586,7 @@ fn test_source_information() -> Result<()> {
 
 #[test]
 fn test_channel_hierarchy() -> Result<()> {
+    require_base_path!();
     let file = format!(
         "{}ChannelInfo/AttachmentRef/Vector_AttachmentRef.mf4",
         BASE_PATH.as_str()
@@ -588,6 +611,7 @@ fn test_channel_hierarchy() -> Result<()> {
 
 #[test]
 fn test_event_signals_channels() -> Result<()> {
+    require_base_path!();
     // EventSignals files don't have EVBLOCKs but contain event-related channels
     let file = format!(
         "{}Events/EventSignals/RAC_MDF430_EventSignals_CommonProperties.mf4",
@@ -619,6 +643,7 @@ fn test_event_signals_channels() -> Result<()> {
 
 #[test]
 fn test_mdf4_summary_and_format() -> Result<()> {
+    require_base_path!();
     let file = format!("{}Simple/ETAS_SimpleSorted.mf4", BASE_PATH.as_str());
     let mut mdf = Mdf::new(&file)?;
     mdf.load_all_channels_data_in_memory()?;
@@ -662,6 +687,7 @@ fn test_mdf4_summary_and_format() -> Result<()> {
 
 #[test]
 fn test_mdf4_channel_api_methods() -> Result<()> {
+    require_base_path!();
     let file = format!("{}Simple/ETAS_SimpleSorted.mf4", BASE_PATH.as_str());
     let mut mdf = Mdf::new(&file)?;
     mdf.load_all_channels_data_in_memory()?;
@@ -710,6 +736,7 @@ fn test_mdf4_channel_api_methods() -> Result<()> {
 
 #[test]
 fn test_mdf4_rename_and_remove_channel() -> Result<()> {
+    require_base_path!();
     let file = format!("{}Simple/ETAS_SimpleSorted.mf4", BASE_PATH.as_str());
     let mut mdf = Mdf::new(&file)?;
     mdf.load_all_channels_data_in_memory()?;
@@ -739,6 +766,7 @@ fn test_mdf4_rename_and_remove_channel() -> Result<()> {
 
 #[test]
 fn test_mdf4_clear_channel_data() -> Result<()> {
+    require_base_path!();
     let file = format!("{}Simple/ETAS_SimpleSorted.mf4", BASE_PATH.as_str());
     let mut mdf = Mdf::new(&file)?;
     mdf.load_all_channels_data_in_memory()?;

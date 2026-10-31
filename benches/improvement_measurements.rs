@@ -295,7 +295,8 @@ fn bench_path1_immutable_array_lifecycle() {
         }
         let dur_polars_path1 = start_polars_path1.elapsed();
 
-        let polars_speedup = dur_polars_baseline.as_nanos() as f64 / dur_polars_path1.as_nanos().max(1) as f64;
+        let polars_speedup =
+            dur_polars_baseline.as_nanos() as f64 / dur_polars_path1.as_nanos().max(1) as f64;
         println!(
             "Polars Series Conversion (1,000,000 Float64 elements):\n  \
              • Baseline (Deep-copy into Series):        {:?} / op\n  \

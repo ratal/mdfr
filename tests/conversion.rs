@@ -13,8 +13,17 @@ static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(|| {
     )
 });
 
+macro_rules! require_base_path {
+    () => {
+        if !std::path::Path::new(BASE_PATH_MDF4.as_str()).is_dir() {
+            return Ok(());
+        }
+    };
+}
+
 #[test]
 fn linear_conversion() -> Result<()> {
+    require_base_path!();
     let list_of_paths = ["Conversion/LinearConversion/".to_string()];
 
     // Linear conversion testing
@@ -68,6 +77,7 @@ fn linear_conversion() -> Result<()> {
 
 #[test]
 fn rational_conversion() -> Result<()> {
+    require_base_path!();
     let list_of_paths = ["Conversion/RationalConversion/".to_string()];
 
     // Rational conversion
@@ -102,6 +112,7 @@ fn rational_conversion() -> Result<()> {
 
 #[test]
 fn algebraic_conversion() -> Result<()> {
+    require_base_path!();
     let list_of_paths = ["Conversion/TextConversion/".to_string()];
 
     // Text conversion (algebraic)
@@ -152,6 +163,7 @@ fn algebraic_conversion() -> Result<()> {
 
 #[test]
 fn lookup_value_to_value_interpolation() -> Result<()> {
+    require_base_path!();
     let list_of_paths = ["Conversion/LookUpConversion/".to_string()];
 
     // Lookup conversion : Value to Value Table With Interpolation
@@ -215,6 +227,7 @@ fn lookup_value_to_value_interpolation() -> Result<()> {
 
 #[test]
 fn lookup_value_to_value_no_interpolation() -> Result<()> {
+    require_base_path!();
     let list_of_paths = ["Conversion/LookUpConversion/".to_string()];
 
     // Lookup conversion : Value to Value Table Without Interpolation
@@ -250,6 +263,7 @@ fn lookup_value_to_value_no_interpolation() -> Result<()> {
 
 #[test]
 fn lookup_value_range_to_value() -> Result<()> {
+    require_base_path!();
     let list_of_paths = ["Conversion/LookUpConversion/".to_string()];
 
     // Lookup conversion : Value Range to Value
@@ -282,6 +296,7 @@ fn lookup_value_range_to_value() -> Result<()> {
 
 #[test]
 fn lookup_value_to_text() -> Result<()> {
+    require_base_path!();
     let list_of_paths = ["Conversion/LookUpConversion/".to_string()];
 
     // Lookup conversion : Value to Text
@@ -321,6 +336,7 @@ fn lookup_value_to_text() -> Result<()> {
 
 #[test]
 fn lookup_value_range_to_text() -> Result<()> {
+    require_base_path!();
     let list_of_paths = ["Conversion/LookUpConversion/".to_string()];
 
     // Lookup conversion : Value range to Text
@@ -360,6 +376,7 @@ fn lookup_value_range_to_text() -> Result<()> {
 
 #[test]
 fn status_string_table_conversion() -> Result<()> {
+    require_base_path!();
     let list_of_paths = ["Conversion/PartialConversion/".to_string()];
 
     // Lookup conversion : Value range to Text,
@@ -404,6 +421,7 @@ fn status_string_table_conversion() -> Result<()> {
 
 #[test]
 fn text_to_value_conversion() -> Result<()> {
+    require_base_path!();
     let list_of_paths = ["Conversion/StringConversion/".to_string()];
 
     // Text conversion : Text to Value
@@ -427,6 +445,7 @@ fn text_to_value_conversion() -> Result<()> {
 
 #[test]
 fn text_to_text_conversion() -> Result<()> {
+    require_base_path!();
     let list_of_paths = ["Conversion/StringConversion/".to_string()];
 
     // Text conversion : Text to Text
@@ -457,6 +476,7 @@ fn text_to_text_conversion() -> Result<()> {
 
 #[test]
 fn partial_conversion() -> Result<()> {
+    require_base_path!();
     let list_of_paths = ["Conversion/PartialConversion/".to_string()];
 
     // Partial conversion
@@ -491,6 +511,7 @@ fn partial_conversion() -> Result<()> {
 
 #[test]
 fn bitfield_conversion() -> Result<()> {
+    require_base_path!();
     let list_of_paths = ["Conversion/BitfieldConversion/".to_string()];
 
     // Bitfield conversion
@@ -618,7 +639,8 @@ mod conversions4_tests {
         builder.append_value(-5.0); // below first key → value[0] = 0
         builder.append_value(25.0); // above last key → value[n-1] = 200
 
-        let result = value_to_value_without_interpolation_primitive(&builder.finish(), &val).unwrap();
+        let result =
+            value_to_value_without_interpolation_primitive(&builder.finish(), &val).unwrap();
         let values = result.values_slice();
         assert_eq!(values.len(), 6);
         assert!((values[0] - 0.0).abs() < 1e-12); // exact → 0
@@ -643,7 +665,8 @@ mod conversions4_tests {
         builder.append_value(25.0); // above last key_min but within last upper bound → 300
 
         let result =
-            value_range_to_value_table_calculation(&builder.finish(), &val, &default, false).unwrap();
+            value_range_to_value_table_calculation(&builder.finish(), &val, &default, false)
+                .unwrap();
         let values = result.values_slice();
         assert_eq!(values.len(), 5);
         assert!((values[0] - 100.0).abs() < 1e-12);
@@ -670,7 +693,8 @@ mod conversions4_tests {
         builder.append_value(100.0); // above all ranges → default -1
 
         let result =
-            value_range_to_value_table_calculation(&builder.finish(), &val, &default, false).unwrap();
+            value_range_to_value_table_calculation(&builder.finish(), &val, &default, false)
+                .unwrap();
         let values = result.values_slice();
         assert!(
             (values[0] - (-1.0)).abs() < 1e-12,

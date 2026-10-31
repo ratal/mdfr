@@ -153,7 +153,9 @@ impl<T: ArrowPrimitiveType> ComplexArrow<T> {
 
     /// returns the optional validity array as a slice
     pub fn validity_slice(&self) -> Option<&[u8]> {
-        self.null_buffer.as_ref().map(arrow::buffer::BooleanBuffer::values)
+        self.null_buffer
+            .as_ref()
+            .map(arrow::buffer::BooleanBuffer::values)
     }
 
     /// returns the shape of the complex array (excluding the implicit trailing 2 for real/imag)

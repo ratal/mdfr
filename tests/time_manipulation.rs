@@ -410,13 +410,13 @@ fn datetimes_length_and_type() -> Result<()> {
 fn datetimes_none_for_non_time_master() -> Result<()> {
     let mut mdf = load_simple()?;
     // Find a channel whose master has type != 1 (or no master)
-    let candidate = mdf
-        .get_channel_names_set()
-        .into_iter()
-        .find(|n| match mdf.get_channel_master(n) {
-            Some(master) => mdf.get_channel_master_type(&master) != 1,
-            None => true,
-        });
+    let candidate =
+        mdf.get_channel_names_set()
+            .into_iter()
+            .find(|n| match mdf.get_channel_master(n) {
+                Some(master) => mdf.get_channel_master_type(&master) != 1,
+                None => true,
+            });
     if let Some(ch) = candidate {
         assert!(
             mdf.get_master_channel_datetimes(&ch).is_none(),

@@ -128,7 +128,8 @@ mod conversions3_tests {
         builder.append_value(-5.0); // below first → first y = 0
         builder.append_value(25.0); // above last → last y = 200
 
-        let result = value_to_value_with_interpolation_calculation(&builder.finish(), cc_val).unwrap();
+        let result =
+            value_to_value_with_interpolation_calculation(&builder.finish(), cc_val).unwrap();
         let values = result.values();
         assert_eq!(values.len(), 6);
         assert!((values[0] - 0.0).abs() < 1e-12);

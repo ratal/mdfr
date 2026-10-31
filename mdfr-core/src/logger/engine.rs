@@ -242,11 +242,7 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
                     .iter()
                     .map(|g| 1 + g.channels.iter().filter(|c| c.is_vlsd).count())
                     .sum();
-                if total_cgs > 255 {
-                    2
-                } else {
-                    1
-                }
+                if total_cgs > 255 { 2 } else { 1 }
             }
         };
 
@@ -400,7 +396,13 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
         // Patch HD's hd_dg_first (at offset 64 + 24 = 88)
         patch_i64(sink, 88, first_dg_pos, pos)?;
 
-        Ok((group_runtimes, unsorted_chain, pos, wall_ns != 0, rec_id_size))
+        Ok((
+            group_runtimes,
+            unsorted_chain,
+            pos,
+            wall_ns != 0,
+            rec_id_size,
+        ))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -956,8 +958,7 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
                     self.unsorted_buf
                         .extend_from_slice(&(vlsd.unsorted_vlsd_record_id as u16).to_le_bytes());
                 } else {
-                    self.unsorted_buf
-                        .push(vlsd.unsorted_vlsd_record_id as u8);
+                    self.unsorted_buf.push(vlsd.unsorted_vlsd_record_id as u8);
                 }
                 self.unsorted_buf.extend_from_slice(&len_u32.to_le_bytes());
                 self.unsorted_buf.extend_from_slice(data);
@@ -1635,10 +1636,34 @@ mod tests {
             group: 99,
             channel: 99,
         };
-        assert!(logger.begin_record(g0).unwrap().set_u64(bad_ch, 10).is_err());
-        assert!(logger.begin_record(g0).unwrap().set_i64(bad_ch, -10).is_err());
-        assert!(logger.begin_record(g0).unwrap().set_f64(bad_ch, 1.0).is_err());
-        assert!(logger.begin_record(g0).unwrap().set_bytes(bad_ch, b"abc").is_err());
+        assert!(
+            logger
+                .begin_record(g0)
+                .unwrap()
+                .set_u64(bad_ch, 10)
+                .is_err()
+        );
+        assert!(
+            logger
+                .begin_record(g0)
+                .unwrap()
+                .set_i64(bad_ch, -10)
+                .is_err()
+        );
+        assert!(
+            logger
+                .begin_record(g0)
+                .unwrap()
+                .set_f64(bad_ch, 1.0)
+                .is_err()
+        );
+        assert!(
+            logger
+                .begin_record(g0)
+                .unwrap()
+                .set_bytes(bad_ch, b"abc")
+                .is_err()
+        );
 
         // Push payload with invalid size (record size is 8 + 2 = 10; payload must be 2)
         assert!(logger.push_payload(g0, &[0; 5]).is_err());

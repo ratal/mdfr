@@ -1,5 +1,8 @@
 //! helpers for arrow
-use arrow::array::{Array, BinaryArray, LargeBinaryArray, LargeStringArray, StringArray};
+use arrow::array::{
+    Array, BinaryArray, BinaryViewArray, LargeBinaryArray, LargeStringArray, StringArray,
+    StringViewArray,
+};
 use arrow::datatypes::DataType;
 
 /// returns the number of bits corresponding to the array's datatype
@@ -58,6 +61,30 @@ fn bit_count(array: &dyn Array, data_type: &DataType) -> u32 {
                 .as_any()
                 .downcast_ref::<StringArray>()
                 .expect("could not downcast to utf8 array");
+            array
+                .iter()
+                .map(|s| s.unwrap_or_default().len() as u32)
+                .max()
+                .unwrap_or(0)
+                * 8
+        }
+        DataType::Utf8View => {
+            let array = array
+                .as_any()
+                .downcast_ref::<StringViewArray>()
+                .expect("could not downcast to utf8view array");
+            array
+                .iter()
+                .map(|s| s.unwrap_or_default().len() as u32)
+                .max()
+                .unwrap_or(0)
+                * 8
+        }
+        DataType::BinaryView => {
+            let array = array
+                .as_any()
+                .downcast_ref::<BinaryViewArray>()
+                .expect("could not downcast to binaryview array");
             array
                 .iter()
                 .map(|s| s.unwrap_or_default().len() as u32)
@@ -145,6 +172,28 @@ fn byte_count(array: &dyn Array, data_type: &DataType) -> u32 {
                 .max()
                 .unwrap_or(0)
         }
+        DataType::Utf8View => {
+            let array = array
+                .as_any()
+                .downcast_ref::<StringViewArray>()
+                .expect("could not downcast to utf8view array");
+            array
+                .iter()
+                .map(|s| s.unwrap_or_default().len() as u32)
+                .max()
+                .unwrap_or(0)
+        }
+        DataType::BinaryView => {
+            let array = array
+                .as_any()
+                .downcast_ref::<BinaryViewArray>()
+                .expect("could not downcast to binaryview array");
+            array
+                .iter()
+                .map(|s| s.unwrap_or_default().len() as u32)
+                .max()
+                .unwrap_or(0)
+        }
         DataType::LargeUtf8 => {
             let array = array
                 .as_any()
@@ -197,8 +246,10 @@ fn mdf_data_type(data_type: &DataType, endian: bool) -> u8 {
             DataType::Binary => 10,
             DataType::FixedSizeBinary(_) => 10,
             DataType::LargeBinary => 10,
+            DataType::BinaryView => 10,
             DataType::Utf8 => 7,
             DataType::LargeUtf8 => 7,
+            DataType::Utf8View => 7,
             DataType::List(_) => 16,
             DataType::FixedSizeList(_, _) => 16,
             DataType::LargeList(_) => 16,
@@ -230,8 +281,10 @@ fn mdf_data_type(data_type: &DataType, endian: bool) -> u8 {
             DataType::Binary => 10,
             DataType::FixedSizeBinary(_) => 10,
             DataType::LargeBinary => 10,
+            DataType::BinaryView => 10,
             DataType::Utf8 => 7,
             DataType::LargeUtf8 => 7,
+            DataType::Utf8View => 7,
             DataType::List(_) => 15,
             DataType::FixedSizeList(_, _) => 15,
             DataType::LargeList(_) => 15,
