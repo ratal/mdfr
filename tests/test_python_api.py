@@ -170,11 +170,21 @@ class TestPythonApi(unittest.TestCase):
                 assert "Driver" in pl_df.columns
                 assert pl_df["Driver"].to_list() == ["Alice", "Bob", "Charlie", "Dave", "Eve"]
 
-                # polars from_arrow
-                pl_df_from_arrow = pl.from_arrow(m)
-                assert isinstance(pl_df_from_arrow, pl.DataFrame)
-                assert "Speed" in pl_df_from_arrow.columns
-                assert len(pl_df_from_arrow) == 5
+                # polars from_arrow (DataFrame in Polars 1.x or struct Series in Polars 2.x)
+                pl_from_arrow = pl.from_arrow(m)
+                assert isinstance(pl_from_arrow, (pl.DataFrame, pl.Series))
+                if isinstance(pl_from_arrow, pl.DataFrame):
+                    assert "Speed" in pl_from_arrow.columns
+                    assert len(pl_from_arrow) == 5
+                else:
+                    assert len(pl_from_arrow) == 5
+                    assert "Speed" in pl_from_arrow.struct.fields
+
+                # polars from_arrow from PyArrow Table (constructed via capsule)
+                pl_df_from_tbl = pl.from_arrow(pa_tbl)
+                assert isinstance(pl_df_from_tbl, pl.DataFrame)
+                assert "Speed" in pl_df_from_tbl.columns
+                assert len(pl_df_from_tbl) == 5
 
                 # items and values
                 items = m.items()
