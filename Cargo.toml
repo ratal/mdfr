@@ -14,9 +14,6 @@ publish = false
 
 [features]
 default = ["numpy", "parquet", "polars", "cli"]
-# Expose pyo3's extension-module as a top-level feature so cargo test (without this flag)
-# links against libpython, enabling embedded-Python tests.  maturin auto-enables this.
-extension-module = ["pyo3/extension-module"]
 numpy = ["dep:numpy", "dep:pyo3", "arrow/pyarrow"]
 polars = ["dep:polars", "numpy"] # numpy and pyo3 are required transitive deps for polars Python interop
 parquet = ["dep:parquet"]

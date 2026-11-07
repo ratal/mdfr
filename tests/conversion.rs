@@ -1078,7 +1078,40 @@ mod conversions4_tests {
 
         if let ChannelData::Utf8(ref s) = cn.data {
             assert_eq!(s.value(0), " | BIT0_ON");
-            assert_eq!(s.value(1), "DEFAULT");
+            assert_eq!(s.value(1), " | DEFAULT");
+        } else {
+            panic!("Expected Utf8 channel data");
+        }
+    }
+
+    #[test]
+    fn test_bitfield_multi_mask_preserve_prior() {
+        use arrow::array::UInt8Builder;
+
+        let mut sharable = SharableBlocks::default();
+        let cc_ptr1 = 1000i64;
+        let cc_ptr2 = 2000i64;
+        let cc1 = Cc4Block::new_with_val(7, CcVal::Real(vec![1.0]), vec![3001, 3002]);
+        let cc2 = Cc4Block::new_with_val(7, CcVal::Real(vec![2.0]), vec![3003, 3004]);
+        sharable.cc.insert(cc_ptr1, cc1);
+        sharable.cc.insert(cc_ptr2, cc2);
+        sharable.create_tx(3001, "BIT0_ON".to_string());
+        sharable.create_tx(3002, "BIT0_DEFAULT".to_string());
+        sharable.create_tx(3003, "BIT1_ON".to_string());
+        sharable.create_tx(3004, "BIT1_DEFAULT".to_string());
+
+        let cc_val = vec![1u64, 2u64];
+        let cc_ref = vec![cc_ptr1, cc_ptr2];
+
+        // Raw value: 1 has bit 0 set (matches BIT0_ON), bit 1 not set (falls to BIT1_DEFAULT)
+        let mut builder = UInt8Builder::new();
+        builder.append_value(1);
+
+        let mut cn = make_cn4_with_data(ChannelData::UInt8(builder.finish()));
+        bitfield_text_table(&mut cn, &cc_val, &cc_ref, &sharable).unwrap();
+
+        if let ChannelData::Utf8(ref s) = cn.data {
+            assert_eq!(s.value(0), " | BIT0_ON | BIT1_DEFAULT");
         } else {
             panic!("Expected Utf8 channel data");
         }

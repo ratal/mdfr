@@ -5,6 +5,7 @@ use arrow::pyarrow::PyArrowType;
 
 use numpy::npyffi::types::NPY_ORDER;
 use numpy::{PyArrayMethods, ToPyArray};
+use pyo3::types::{PyBytes, PyList};
 use pyo3::{Bound, prelude::*};
 
 use crate::data_holder::channel_data::ChannelData;
@@ -54,7 +55,13 @@ impl<'py> IntoPyObject<'py> for ChannelData {
             ChannelData::Complex32(array) => Ok(array.values_slice().to_pyarray(py).into_any()),
             ChannelData::Complex64(array) => Ok(array.values_slice().to_pyarray(py).into_any()),
             ChannelData::VariableSizeByteArray(array) => {
-                Ok(array.values().as_slice().to_pyarray(py).into_any())
+                let list = PyList::new(
+                    py,
+                    array
+                        .iter()
+                        .map(|opt| opt.map(|bytes| PyBytes::new(py, bytes))),
+                )?;
+                Ok(list.into_any())
             }
             ChannelData::FixedSizeByteArray(array) => {
                 let out: Vec<Vec<u8>> = if array.value_length() == 0 {
@@ -70,62 +77,92 @@ impl<'py> IntoPyObject<'py> for ChannelData {
             }
             ChannelData::ArrayDInt8(array) => {
                 let flat = array.values_slice().to_pyarray(py);
+                let mut shape = Vec::with_capacity(array.shape().len() + 1);
+                shape.push(array.len());
+                shape.extend_from_slice(array.shape());
                 Ok(flat
-                    .reshape_with_order(array.shape().clone(), array.order().clone().into())?
+                    .reshape_with_order(shape, array.order().clone().into())?
                     .into_any())
             }
             ChannelData::ArrayDUInt8(array) => {
                 let flat = array.values_slice().to_pyarray(py);
+                let mut shape = Vec::with_capacity(array.shape().len() + 1);
+                shape.push(array.len());
+                shape.extend_from_slice(array.shape());
                 Ok(flat
-                    .reshape_with_order(array.shape().clone(), array.order().clone().into())?
+                    .reshape_with_order(shape, array.order().clone().into())?
                     .into_any())
             }
             ChannelData::ArrayDInt16(array) => {
                 let flat = array.values_slice().to_pyarray(py);
+                let mut shape = Vec::with_capacity(array.shape().len() + 1);
+                shape.push(array.len());
+                shape.extend_from_slice(array.shape());
                 Ok(flat
-                    .reshape_with_order(array.shape().clone(), array.order().clone().into())?
+                    .reshape_with_order(shape, array.order().clone().into())?
                     .into_any())
             }
             ChannelData::ArrayDUInt16(array) => {
                 let flat = array.values_slice().to_pyarray(py);
+                let mut shape = Vec::with_capacity(array.shape().len() + 1);
+                shape.push(array.len());
+                shape.extend_from_slice(array.shape());
                 Ok(flat
-                    .reshape_with_order(array.shape().clone(), array.order().clone().into())?
+                    .reshape_with_order(shape, array.order().clone().into())?
                     .into_any())
             }
             ChannelData::ArrayDInt32(array) => {
                 let flat = array.values_slice().to_pyarray(py);
+                let mut shape = Vec::with_capacity(array.shape().len() + 1);
+                shape.push(array.len());
+                shape.extend_from_slice(array.shape());
                 Ok(flat
-                    .reshape_with_order(array.shape().clone(), array.order().clone().into())?
+                    .reshape_with_order(shape, array.order().clone().into())?
                     .into_any())
             }
             ChannelData::ArrayDUInt32(array) => {
                 let flat = array.values_slice().to_pyarray(py);
+                let mut shape = Vec::with_capacity(array.shape().len() + 1);
+                shape.push(array.len());
+                shape.extend_from_slice(array.shape());
                 Ok(flat
-                    .reshape_with_order(array.shape().clone(), array.order().clone().into())?
+                    .reshape_with_order(shape, array.order().clone().into())?
                     .into_any())
             }
             ChannelData::ArrayDFloat32(array) => {
                 let flat = array.values_slice().to_pyarray(py);
+                let mut shape = Vec::with_capacity(array.shape().len() + 1);
+                shape.push(array.len());
+                shape.extend_from_slice(array.shape());
                 Ok(flat
-                    .reshape_with_order(array.shape().clone(), array.order().clone().into())?
+                    .reshape_with_order(shape, array.order().clone().into())?
                     .into_any())
             }
             ChannelData::ArrayDInt64(array) => {
                 let flat = array.values_slice().to_pyarray(py);
+                let mut shape = Vec::with_capacity(array.shape().len() + 1);
+                shape.push(array.len());
+                shape.extend_from_slice(array.shape());
                 Ok(flat
-                    .reshape_with_order(array.shape().clone(), array.order().clone().into())?
+                    .reshape_with_order(shape, array.order().clone().into())?
                     .into_any())
             }
             ChannelData::ArrayDUInt64(array) => {
                 let flat = array.values_slice().to_pyarray(py);
+                let mut shape = Vec::with_capacity(array.shape().len() + 1);
+                shape.push(array.len());
+                shape.extend_from_slice(array.shape());
                 Ok(flat
-                    .reshape_with_order(array.shape().clone(), array.order().clone().into())?
+                    .reshape_with_order(shape, array.order().clone().into())?
                     .into_any())
             }
             ChannelData::ArrayDFloat64(array) => {
                 let flat = array.values_slice().to_pyarray(py);
+                let mut shape = Vec::with_capacity(array.shape().len() + 1);
+                shape.push(array.len());
+                shape.extend_from_slice(array.shape());
                 Ok(flat
-                    .reshape_with_order(array.shape().clone(), array.order().clone().into())?
+                    .reshape_with_order(shape, array.order().clone().into())?
                     .into_any())
             }
             ChannelData::Utf8(array) => {

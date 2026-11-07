@@ -26,7 +26,7 @@ use crate::blocks::{
     header::{Blockheader4, Blockheader4Short},
     id::{
         IdBlock, UNFIN_CG_CYCLE_COUNTERS, UNFIN_LAST_DL_BLOCK, UNFIN_LAST_DT_LENGTH,
-        UNFIN_VLSD_CG_BYTES,
+        UNFIN_VLSC_CG_BYTES, UNFIN_VLSC_OFFSET, UNFIN_VLSD_CG_BYTES, UNFIN_VLSD_OFFSET,
     },
     si::Si4Block,
     tx::{align8, encode_md, encode_tx, escape_xml},
@@ -142,12 +142,14 @@ pub struct Logger<S: Sink, T: TimeSource> {
     blocks_since_checkpoint: usize,
     /// Sequence index incremented across `rotate()` calls.
     sequence_index: u64,
+    /// File offset of the initial FHBLOCK.
+    fh_pos: u64,
 }
 
 impl<S: Sink, T: TimeSource> Logger<S, T> {
     /// Initializes a new MDF 4.3 file on `sink` and writes all metadata blocks (`ID`, `HD`, `FH`, `DG`, `CG`, `CN`, `CC`, `SI`, `CA`, `TX`, `MD`).
     pub fn start(schema: Schema, mut sink: S, mut clock: T) -> Result<Self> {
-        let (groups, unsorted_chain, eof_pos, hd_time_valid, rec_id_size) =
+        let (groups, unsorted_chain, eof_pos, hd_time_valid, rec_id_size, fh_pos) =
             Self::write_metadata(&schema, &mut sink, &mut clock, 0)?;
         let unsorted_flush_threshold = schema
             .groups
@@ -167,6 +169,7 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
             rec_id_size,
             blocks_since_checkpoint: 0,
             sequence_index: 0,
+            fh_pos,
         })
     }
 
@@ -176,17 +179,38 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
         sink: &mut S,
         clock: &mut T,
         seq_index: u64,
-    ) -> Result<(Vec<GroupRuntime>, Option<DlChainState>, u64, bool, u8)> {
+    ) -> Result<(Vec<GroupRuntime>, Option<DlChainState>, u64, bool, u8, u64)> {
         sink.seek(SeekFrom::Start(0))?;
 
         // 1. IDBlock (64 bytes at offset 0) — unfinalized
         let mut unfin_flags = UNFIN_CG_CYCLE_COUNTERS | UNFIN_LAST_DT_LENGTH | UNFIN_LAST_DL_BLOCK;
-        if schema
-            .groups
-            .iter()
-            .any(|g| g.channels.iter().any(|c| c.is_vlsd))
-        {
-            unfin_flags |= UNFIN_VLSD_CG_BYTES;
+        match schema.layout {
+            DataLayout::Unsorted => {
+                for g in &schema.groups {
+                    for c in &g.channels {
+                        if c.is_vlsd {
+                            if c.cn_type == CnChannelType::Vlsc {
+                                unfin_flags |= UNFIN_VLSC_CG_BYTES;
+                            } else {
+                                unfin_flags |= UNFIN_VLSD_CG_BYTES;
+                            }
+                        }
+                    }
+                }
+            }
+            DataLayout::Sorted => {
+                for g in &schema.groups {
+                    for c in &g.channels {
+                        if c.is_vlsd {
+                            if c.cn_type == CnChannelType::Vlsc {
+                                unfin_flags |= UNFIN_VLSC_OFFSET;
+                            } else {
+                                unfin_flags |= UNFIN_VLSD_OFFSET;
+                            }
+                        }
+                    }
+                }
+            }
         }
         let id = IdBlock::unfinalized(unfin_flags);
         write_binrw(sink, &id)?;
@@ -366,7 +390,7 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
                             cg_record_id: vlsd_rec_id,
                             cg_cycle_count: 0,
                             cg_flags: if vlsd_state.is_vlsc {
-                                CG_F_VLSC
+                                CG_F_VLSD | CG_F_VLSC
                             } else {
                                 CG_F_VLSD
                             },
@@ -402,6 +426,7 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
             pos,
             wall_ns != 0,
             rec_id_size,
+            fh_pos,
         ))
     }
 
@@ -1033,8 +1058,7 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
     // ── Block Flushing & DL/HL Chaining ──
 
     fn flush_sorted_group(&mut self, g_idx: usize) -> Result<()> {
-        let buf = core::mem::take(&mut self.groups[g_idx].sorted_buf);
-        if buf.is_empty() {
+        if self.groups[g_idx].sorted_buf.is_empty() {
             return Ok(());
         }
         let mut chain = self.groups[g_idx]
@@ -1045,11 +1069,12 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
             &mut self.sink,
             &mut self.eof_pos,
             &mut chain,
-            &buf,
+            &self.groups[g_idx].sorted_buf,
             self.schema.compression,
             self.schema.max_blocks_per_dl,
         );
         self.groups[g_idx].sorted_chain = Some(chain);
+        self.groups[g_idx].sorted_buf.clear();
         res?;
         self.blocks_since_checkpoint += 1;
         Ok(())
@@ -1058,8 +1083,10 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
     fn flush_sorted_vlsd(&mut self, g_idx: usize) -> Result<()> {
         let n_vlsd = self.groups[g_idx].vlsd_channels.len();
         for v_idx in 0..n_vlsd {
-            let buf = core::mem::take(&mut self.groups[g_idx].vlsd_channels[v_idx].sorted_sd_buf);
-            if buf.is_empty() {
+            if self.groups[g_idx].vlsd_channels[v_idx]
+                .sorted_sd_buf
+                .is_empty()
+            {
                 continue;
             }
             let mut chain = self.groups[g_idx].vlsd_channels[v_idx]
@@ -1070,19 +1097,21 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
                 &mut self.sink,
                 &mut self.eof_pos,
                 &mut chain,
-                &buf,
+                &self.groups[g_idx].vlsd_channels[v_idx].sorted_sd_buf,
                 self.schema.compression,
                 self.schema.max_blocks_per_dl,
             );
             self.groups[g_idx].vlsd_channels[v_idx].sorted_sd_chain = Some(chain);
+            self.groups[g_idx].vlsd_channels[v_idx]
+                .sorted_sd_buf
+                .clear();
             res?;
         }
         Ok(())
     }
 
     fn flush_unsorted(&mut self) -> Result<()> {
-        let buf = core::mem::take(&mut self.unsorted_buf);
-        if buf.is_empty() {
+        if self.unsorted_buf.is_empty() {
             return Ok(());
         }
         let mut chain = self
@@ -1093,11 +1122,12 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
             &mut self.sink,
             &mut self.eof_pos,
             &mut chain,
-            &buf,
+            &self.unsorted_buf,
             self.schema.compression,
             self.schema.max_blocks_per_dl,
         );
         self.unsorted_chain = Some(chain);
+        self.unsorted_buf.clear();
         res?;
         self.blocks_since_checkpoint += 1;
         Ok(())
@@ -1111,79 +1141,126 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
         algo: CompressionAlgorithm,
         max_blocks_per_dl: usize,
     ) -> Result<()> {
+        if uncompressed.is_empty() {
+            return Ok(());
+        }
         let use_dz = algo != CompressionAlgorithm::NoCompression;
 
-        // If this is the very first block in the chain, allocate the initial HL (if compressed) and DL block
-        if chain.current_dl_pos == 0 {
-            if use_dz && !chain.hl_written {
-                let hl_pos = *eof_pos;
-                let dl_pos = hl_pos + 40;
-                sink.seek(SeekFrom::Start(hl_pos))?;
-                sink.write_all(b"##HL")?;
-                let hl = Hl4Block {
-                    reserved: [0; 4],
-                    hl_len: 40,
-                    hl_links: 1,
-                    hl_dl_first: dl_pos as i64,
-                    hl_flags: 0, // bit 0 = equal length (0 = offset table in DL)
-                    hl_zip_type: algo.zip_type(),
-                    hl_reserved: [0; 5],
-                };
-                write_binrw(sink, &hl)?;
-                *eof_pos = dl_pos;
-                patch_i64(sink, chain.owner_link_pos, hl_pos as i64, *eof_pos)?;
-                chain.hl_written = true;
-            }
-            let dl_pos = Self::allocate_empty_dl(sink, eof_pos, max_blocks_per_dl)?;
-            if !chain.hl_written {
-                patch_i64(sink, chain.owner_link_pos, dl_pos as i64, *eof_pos)?;
-            }
-            chain.current_dl_pos = dl_pos;
-        } else if chain.current_dl_blocks.len() >= max_blocks_per_dl {
-            // Current DL is full: patch it, allocate a new DL, and link `dl_dl_next`
-            Self::patch_dl_block(sink, chain, max_blocks_per_dl, *eof_pos)?;
-            let prev_dl = chain.current_dl_pos;
-            let new_dl = Self::allocate_empty_dl(sink, eof_pos, max_blocks_per_dl)?;
-            // `dl_dl_next` is at `prev_dl + 24`
-            patch_i64(sink, prev_dl + 24, new_dl as i64, *eof_pos)?;
-            chain.current_dl_pos = new_dl;
-            chain.current_dl_blocks.clear();
-            chain.current_dl_offsets.clear();
-        }
-
-        // Write the DT/SD or DZ block at `*eof_pos`
-        let block_pos = *eof_pos;
-        sink.seek(SeekFrom::Start(block_pos))?;
-
         if use_dz {
-            let comp = compress_dz_data(uncompressed, algo, chain.transpose_width)?;
-            sink.write_all(b"##DZ")?;
-            let total_len = 48 + comp.len() as u64;
-            let dz = Dz4Block {
-                reserved: [0; 4],
-                len: total_len,
-                dz_links: 0,
-                dz_org_block_type: chain.org_block_type,
-                dz_zip_type: algo.zip_type(),
-                dz_reserved: 0,
-                dz_zip_parameter: if algo.is_transposed() {
-                    chain.transpose_width as u32
-                } else {
-                    0
-                },
-                dz_org_data_length: uncompressed.len() as u64,
-                dz_data_length: comp.len() as u64,
+            const MAX_DZ_UNCOMPRESSED: usize = 4 * 1024 * 1024;
+            let step = chain.transpose_width.max(1);
+            let chunk_limit = if step <= MAX_DZ_UNCOMPRESSED {
+                (MAX_DZ_UNCOMPRESSED / step) * step
+            } else {
+                MAX_DZ_UNCOMPRESSED
             };
-            write_binrw(sink, &dz)?;
-            sink.write_all(&comp)?;
-            let aligned = align8(total_len);
-            let pad = (aligned - total_len) as usize;
-            if pad > 0 {
-                let zeros = [0u8; 8];
-                sink.write_all(&zeros[..pad])?;
+
+            let effective_zip_type = if chain.transpose_width <= 1 {
+                algo.zip_type() & !1
+            } else {
+                algo.zip_type()
+            };
+            let dz_zip_param = if algo.is_transposed() && chain.transpose_width > 1 {
+                chain.transpose_width as u32
+            } else {
+                0
+            };
+
+            let mut offset = 0;
+            while offset < uncompressed.len() {
+                let end = (offset + chunk_limit).min(uncompressed.len());
+                let chunk = &uncompressed[offset..end];
+                offset = end;
+
+                // Allocate DL if needed
+                if chain.current_dl_pos == 0 {
+                    if !chain.hl_written {
+                        let hl_pos = *eof_pos;
+                        let dl_pos = hl_pos + 40;
+                        sink.seek(SeekFrom::Start(hl_pos))?;
+                        sink.write_all(b"##HL")?;
+                        let hl = Hl4Block {
+                            reserved: [0; 4],
+                            hl_len: 40,
+                            hl_links: 1,
+                            hl_dl_first: dl_pos as i64,
+                            hl_flags: 0, // bit 0 = equal length (0 = offset table in DL)
+                            hl_zip_type: effective_zip_type,
+                            hl_reserved: [0; 5],
+                        };
+                        write_binrw(sink, &hl)?;
+                        *eof_pos = dl_pos;
+                        patch_i64(sink, chain.owner_link_pos, hl_pos as i64, *eof_pos)?;
+                        chain.hl_written = true;
+                    }
+                    let dl_pos = Self::allocate_empty_dl(sink, eof_pos, max_blocks_per_dl)?;
+                    chain.current_dl_pos = dl_pos;
+                } else if chain.current_dl_blocks.len() >= max_blocks_per_dl {
+                    // Current DL is full: patch it, allocate a new DL, and link `dl_dl_next`
+                    Self::patch_dl_block(sink, chain, max_blocks_per_dl, *eof_pos)?;
+                    let prev_dl = chain.current_dl_pos;
+                    let new_dl = Self::allocate_empty_dl(sink, eof_pos, max_blocks_per_dl)?;
+                    // `dl_dl_next` is at `prev_dl + 24`
+                    patch_i64(sink, prev_dl + 24, new_dl as i64, *eof_pos)?;
+                    chain.current_dl_pos = new_dl;
+                    chain.current_dl_blocks.clear();
+                    chain.current_dl_offsets.clear();
+                }
+
+                // Write the DZ block at `*eof_pos`
+                let block_pos = *eof_pos;
+                sink.seek(SeekFrom::Start(block_pos))?;
+
+                let comp = compress_dz_data(chunk, algo, chain.transpose_width)?;
+                sink.write_all(b"##DZ")?;
+                let total_len = 48 + comp.len() as u64;
+                let dz = Dz4Block {
+                    reserved: [0; 4],
+                    len: total_len,
+                    dz_links: 0,
+                    dz_org_block_type: chain.org_block_type,
+                    dz_zip_type: effective_zip_type,
+                    dz_reserved: 0,
+                    dz_zip_parameter: dz_zip_param,
+                    dz_org_data_length: chunk.len() as u64,
+                    dz_data_length: comp.len() as u64,
+                };
+                write_binrw(sink, &dz)?;
+                sink.write_all(&comp)?;
+                let aligned = align8(total_len);
+                let pad = (aligned - total_len) as usize;
+                if pad > 0 {
+                    let zeros = [0u8; 8];
+                    sink.write_all(&zeros[..pad])?;
+                }
+                *eof_pos = block_pos + aligned;
+
+                chain.current_dl_blocks.push(block_pos as i64);
+                chain
+                    .current_dl_offsets
+                    .push(chain.total_uncompressed_bytes);
+                chain.total_uncompressed_bytes += chunk.len() as u64;
             }
-            *eof_pos = block_pos + aligned;
         } else {
+            if chain.current_dl_pos == 0 {
+                let dl_pos = Self::allocate_empty_dl(sink, eof_pos, max_blocks_per_dl)?;
+                if !chain.hl_written {
+                    patch_i64(sink, chain.owner_link_pos, dl_pos as i64, *eof_pos)?;
+                }
+                chain.current_dl_pos = dl_pos;
+            } else if chain.current_dl_blocks.len() >= max_blocks_per_dl {
+                Self::patch_dl_block(sink, chain, max_blocks_per_dl, *eof_pos)?;
+                let prev_dl = chain.current_dl_pos;
+                let new_dl = Self::allocate_empty_dl(sink, eof_pos, max_blocks_per_dl)?;
+                patch_i64(sink, prev_dl + 24, new_dl as i64, *eof_pos)?;
+                chain.current_dl_pos = new_dl;
+                chain.current_dl_blocks.clear();
+                chain.current_dl_offsets.clear();
+            }
+
+            let block_pos = *eof_pos;
+            sink.seek(SeekFrom::Start(block_pos))?;
+
             let hdr_id = [b'#', b'#', chain.org_block_type[0], chain.org_block_type[1]];
             let total_len = 24 + uncompressed.len() as u64;
             let hdr = Blockheader4 {
@@ -1201,13 +1278,14 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
                 sink.write_all(&zeros[..pad])?;
             }
             *eof_pos = block_pos + aligned;
+
+            chain.current_dl_blocks.push(block_pos as i64);
+            chain
+                .current_dl_offsets
+                .push(chain.total_uncompressed_bytes);
+            chain.total_uncompressed_bytes += uncompressed.len() as u64;
         }
 
-        chain.current_dl_blocks.push(block_pos as i64);
-        chain
-            .current_dl_offsets
-            .push(chain.total_uncompressed_bytes);
-        chain.total_uncompressed_bytes += uncompressed.len() as u64;
         Ok(())
     }
 
@@ -1359,6 +1437,10 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
         {
             // hd_start_time_ns is at offset 64 (HD start) + 24 (hdr) + 48 (6 links) = 136
             patch_u64(&mut self.sink, 136, wall_ns, self.eof_pos)?;
+            // fh_time_ns is at fh_pos + 40
+            patch_u64(&mut self.sink, self.fh_pos + 40, wall_ns, self.eof_pos)?;
+            // fh_time_flags is at fh_pos + 52 (0 = UTC)
+            patch_u8(&mut self.sink, self.fh_pos + 52, 0, self.eof_pos)?;
             self.hd_time_valid = true;
         }
 
@@ -1391,12 +1473,13 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
             self.schema = s;
         }
         self.sequence_index += 1;
-        let (groups, unsorted_chain, eof_pos, hd_time_valid, rec_id_size) = Self::write_metadata(
-            &self.schema,
-            &mut new_sink,
-            &mut self.clock,
-            self.sequence_index,
-        )?;
+        let (groups, unsorted_chain, eof_pos, hd_time_valid, rec_id_size, fh_pos) =
+            Self::write_metadata(
+                &self.schema,
+                &mut new_sink,
+                &mut self.clock,
+                self.sequence_index,
+            )?;
         let old_sink = core::mem::replace(&mut self.sink, new_sink);
         self.groups = groups;
         self.unsorted_chain = unsorted_chain;
@@ -1405,6 +1488,7 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
         self.hd_time_valid = hd_time_valid;
         self.rec_id_size = rec_id_size;
         self.blocks_since_checkpoint = 0;
+        self.fh_pos = fh_pos;
         Ok(old_sink)
     }
 
@@ -1459,7 +1543,7 @@ impl<'a, S: Sink, T: TimeSource> RecordWriter<'a, S, T> {
 // ── Low-level helpers ──
 
 fn write_binrw<S: Sink, B: for<'a> BinWrite<Args<'a> = ()>>(sink: &mut S, block: &B) -> Result<()> {
-    let mut buf = [0u8; 256];
+    let mut buf = [0u8; 1088];
     let mut c = Cursor::new(&mut buf[..]);
     match block.write_le(&mut c) {
         Ok(()) => {
@@ -1467,12 +1551,19 @@ fn write_binrw<S: Sink, B: for<'a> BinWrite<Args<'a> = ()>>(sink: &mut S, block:
             sink.write_all(&buf[..len])
         }
         Err(_) => {
-            // Block was larger than 256 bytes (e.g. large DLBlock), fallback to dynamic heap allocation
+            // Block was larger than 1088 bytes, fallback to dynamic heap allocation
             let mut heap_c = Cursor::new(Vec::new());
             block.write_le(&mut heap_c).map_err(|_| Error::Io)?;
             sink.write_all(&heap_c.into_inner())
         }
     }
+}
+
+fn patch_u8<S: Sink>(sink: &mut S, offset: u64, val: u8, restore_pos: u64) -> Result<()> {
+    sink.seek(SeekFrom::Start(offset))?;
+    sink.write_all(&[val])?;
+    sink.seek(SeekFrom::Start(restore_pos))?;
+    Ok(())
 }
 
 fn patch_i64<S: Sink>(sink: &mut S, offset: u64, val: i64, restore_pos: u64) -> Result<()> {
@@ -1700,5 +1791,68 @@ mod tests {
         // Verify 64-bit value decoded matches val
         let raw_val = (u128::from_le_bytes(rec64) >> 3) as u64;
         assert_eq!(raw_val, val);
+    }
+
+    #[test]
+    fn test_dl_64_entry_fits_in_scratch_buffer() {
+        let dl = Dl4Block {
+            reserved: [0; 4],
+            dl_len: 1064,
+            dl_links: 65,
+            dl_dl_next: 0,
+            dl_data: vec![1234; 64],
+            dl_flags: 0,
+            dl_reserved: [0; 3],
+            dl_count: 64,
+            dl_equal_length: None,
+            dl_offset: vec![5678; 64],
+            dl_time_values: vec![],
+            dl_angle_values: vec![],
+            dl_distance_values: vec![],
+        };
+        let mut sink = VecSink::new();
+        assert!(write_binrw(&mut sink, &dl).is_ok());
+        assert_eq!(sink.as_slice().len(), 1060);
+    }
+
+    #[test]
+    fn test_late_clock_sync_patches_fh_block() {
+        let mut b = LoggerBuilder::new(DataLayout::Sorted, CompressionAlgorithm::NoCompression);
+        let g = b.add_group("G");
+        let _ch = b.add_channel(g, "C", CnDataType::UIntLE, 16).unwrap();
+        let schema = b.build().unwrap();
+
+        let sink = VecSink::new();
+        let clock = ManualClock::new(1e-3, 0);
+        let mut logger = Logger::start(schema, sink, clock).unwrap();
+
+        // fh_pos is recorded on the logger
+        let fh_pos = logger.fh_pos;
+        assert!(fh_pos > 0);
+
+        // Checkpoint performs late clock sync
+        logger.checkpoint().unwrap();
+        let slice = logger.sink.as_slice();
+
+        // fh_time_flags at fh_pos + 52 should be 0 (UTC)
+        assert_eq!(slice[(fh_pos + 52) as usize], 0);
+    }
+
+    #[test]
+    fn test_id_unfin_flags_and_companion_cg_flags() {
+        let mut b = LoggerBuilder::new(DataLayout::Unsorted, CompressionAlgorithm::NoCompression);
+        let g = b.add_group("G");
+        let _ch = b.add_vlsd_channel(g, "V", CnDataType::ByteArray).unwrap();
+        let schema = b.build().unwrap();
+
+        let sink = VecSink::new();
+        let clock = ManualClock::new(1e-3, 1);
+        let logger = Logger::start(schema, sink, clock).unwrap();
+
+        // id_unfin_flags is written in header at offset 60 (u16)
+        let slice = logger.sink.as_slice();
+        let id_unfin_flags = u16::from_le_bytes(slice[60..62].try_into().unwrap());
+        // For unsorted VLSD, bits 5 and 6 should be set
+        assert_ne!(id_unfin_flags & 0b0110_0000, 0);
     }
 }

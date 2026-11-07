@@ -331,6 +331,8 @@ pub struct Gd4Block {
     // data section
     /// Minimum version number of the MDF format the reader shall support
     pub gd_version: u16,
+    /// Reserved
+    pub gd_reserved: [u8; 6],
 }
 
 impl Display for Gd4Block {
@@ -452,5 +454,24 @@ mod tests {
             };
             assert_eq!(hl.get_zip_type_str(), name, "hl_zip_type={val}");
         }
+    }
+
+    #[test]
+    fn test_gd4_block_roundtrip_and_size() {
+        let gd = Gd4Block {
+            reserved: [0; 4],
+            gd_len: 40,
+            gd_links: 1,
+            gd_link: 0x1000,
+            gd_version: 430,
+            gd_reserved: [0; 6],
+        };
+        let mut c = Cursor::new(Vec::new());
+        gd.write_le(&mut c).unwrap();
+        let buf = c.into_inner();
+        // Total block length in file = 4 (##GD) + 36 (struct body) = 40 bytes
+        assert_eq!(4 + buf.len(), 40);
+        let back: Gd4Block = Cursor::new(buf).read_le().unwrap();
+        assert_eq!(back, gd);
     }
 }

@@ -11,26 +11,18 @@ env:
   CARGO_PROFILE_TEST_DEBUG: 0
 
 jobs:
-  test-parquet:
-    name: Tests (parquet)
+  fmt-and-clippy:
+    name: Format and Clippy
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - uses: Swatinem/rust-cache@v2
-      - name: Unzip local test fixtures
-        run: cd test_files && unzip -o test_mdf3.mdf.zip && unzip -o test_mdf4.mf4.zip
-      - name: Build
-        run: cargo build --verbose --no-default-features --features parquet
-      - name: Unit tests
-        run: cargo test --lib --verbose --no-default-features --features parquet
-      - name: Basic integration test
-        run: cargo test --test basic --verbose --no-default-features --features parquet
-      - name: Conversion unit tests
-        run: cargo test --lib --verbose --no-default-features --features parquet conversions4
-      - name: Embedded logger tests
-        run: cargo test --test embedded_logger --verbose --no-default-features --features parquet
-      - name: mdfr-core tests
-        run: cargo test -p mdfr-core --all-features --verbose
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Clippy workspace all features
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+      - name: Clippy mdfr-core no-default-features
+        run: cargo clippy -p mdfr-core --no-default-features -- -D warnings
 
   test-embedded-nostd:
     name: Check no_std embedded (Cortex-M4F)
@@ -47,14 +39,19 @@ jobs:
       - name: Build standalone C staticlib for Cortex-M
         run: cargo build -p mdfr-core --example mdfr_core_c --target thumbv7em-none-eabihf --no-default-features --features capi-arena
 
-  test-polars-rust:
-    name: Tests (polars Rust-native)
+  test-workspace:
+    name: Full Workspace Tests
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - uses: Swatinem/rust-cache@v2
-      - name: Rust-native polars tests
-        run: cargo test --test numpy_polars rust_polars --verbose --features polars
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Unzip local test fixtures
+        run: cd test_files && unzip -o test_mdf3.mdf.zip && unzip -o test_mdf4.mf4.zip
+      - name: Run workspace tests
+        run: cargo test --workspace --all-features --verbose
 
   test-polars-python:
     name: Tests (polars + numpy Python)

@@ -3,9 +3,9 @@
 use crate::mdfinfo::mdfinfo4::{CN_F_DATA_STREAM_MODE, CN_F_EVENT_SIGNAL};
 use anyhow::{Context, Error, Result, bail};
 use arrow::array::{
-    Array, ArrayData, ArrayRef, BinaryArray, BinaryViewArray, BooleanBufferBuilder,
+    Array, ArrayData, ArrayRef, BinaryArray, BinaryViewArray, BooleanArray, BooleanBufferBuilder,
     FixedSizeBinaryArray, FixedSizeListArray, Int8Array, LargeBinaryArray, LargeStringArray,
-    PrimitiveArray, StringArray, StringViewArray, UnionArray, as_primitive_array,
+    PrimitiveArray, StringArray, StringViewArray, UInt8Array, UnionArray, as_primitive_array,
 };
 use arrow::buffer::{Buffer, MutableBuffer, NullBuffer, ScalarBuffer};
 use arrow::datatypes::{
@@ -726,7 +726,16 @@ impl ChannelData {
             }
             // All 22 numeric variants (primitives, complex, ArrayD)
             _ => {
-                dispatch_numeric!(self, a => Ok(a.values_slice().iter().flat_map(|x| x.to_ne_bytes()).collect()))
+                dispatch_numeric!(self, a => {
+                    let slice = a.values_slice();
+                    let byte_slice = unsafe {
+                        core::slice::from_raw_parts(
+                            slice.as_ptr().cast::<u8>(),
+                            core::mem::size_of_val(slice),
+                        )
+                    };
+                    Ok(byte_slice.to_vec())
+                })
             }
         }
     }
@@ -1257,46 +1266,96 @@ impl ChannelData {
                 shape: vec![a.len()],
                 kind: format!("S{}", self.byte_count()),
             },
-            ChannelData::ArrayDInt8(a) => NumpyDType {
-                shape: a.shape().to_vec(),
-                kind: "i1".to_string(),
-            },
-            ChannelData::ArrayDUInt8(a) => NumpyDType {
-                shape: a.shape().to_vec(),
-                kind: "u1".to_string(),
-            },
-            ChannelData::ArrayDInt16(a) => NumpyDType {
-                shape: a.shape().to_vec(),
-                kind: "i2".to_string(),
-            },
-            ChannelData::ArrayDUInt16(a) => NumpyDType {
-                shape: a.shape().to_vec(),
-                kind: "u2".to_string(),
-            },
-            ChannelData::ArrayDInt32(a) => NumpyDType {
-                shape: a.shape().to_vec(),
-                kind: "i4".to_string(),
-            },
-            ChannelData::ArrayDUInt32(a) => NumpyDType {
-                shape: a.shape().to_vec(),
-                kind: "i4".to_string(),
-            },
-            ChannelData::ArrayDFloat32(a) => NumpyDType {
-                shape: a.shape().to_vec(),
-                kind: "f4".to_string(),
-            },
-            ChannelData::ArrayDInt64(a) => NumpyDType {
-                shape: a.shape().to_vec(),
-                kind: "i8".to_string(),
-            },
-            ChannelData::ArrayDUInt64(a) => NumpyDType {
-                shape: a.shape().to_vec(),
-                kind: "u8".to_string(),
-            },
-            ChannelData::ArrayDFloat64(a) => NumpyDType {
-                shape: a.shape().to_vec(),
-                kind: "f8".to_string(),
-            },
+            ChannelData::ArrayDInt8(a) => {
+                let mut shape = Vec::with_capacity(a.shape().len() + 1);
+                shape.push(a.len());
+                shape.extend_from_slice(a.shape());
+                NumpyDType {
+                    shape,
+                    kind: "i1".to_string(),
+                }
+            }
+            ChannelData::ArrayDUInt8(a) => {
+                let mut shape = Vec::with_capacity(a.shape().len() + 1);
+                shape.push(a.len());
+                shape.extend_from_slice(a.shape());
+                NumpyDType {
+                    shape,
+                    kind: "u1".to_string(),
+                }
+            }
+            ChannelData::ArrayDInt16(a) => {
+                let mut shape = Vec::with_capacity(a.shape().len() + 1);
+                shape.push(a.len());
+                shape.extend_from_slice(a.shape());
+                NumpyDType {
+                    shape,
+                    kind: "i2".to_string(),
+                }
+            }
+            ChannelData::ArrayDUInt16(a) => {
+                let mut shape = Vec::with_capacity(a.shape().len() + 1);
+                shape.push(a.len());
+                shape.extend_from_slice(a.shape());
+                NumpyDType {
+                    shape,
+                    kind: "u2".to_string(),
+                }
+            }
+            ChannelData::ArrayDInt32(a) => {
+                let mut shape = Vec::with_capacity(a.shape().len() + 1);
+                shape.push(a.len());
+                shape.extend_from_slice(a.shape());
+                NumpyDType {
+                    shape,
+                    kind: "i4".to_string(),
+                }
+            }
+            ChannelData::ArrayDUInt32(a) => {
+                let mut shape = Vec::with_capacity(a.shape().len() + 1);
+                shape.push(a.len());
+                shape.extend_from_slice(a.shape());
+                NumpyDType {
+                    shape,
+                    kind: "u4".to_string(),
+                }
+            }
+            ChannelData::ArrayDFloat32(a) => {
+                let mut shape = Vec::with_capacity(a.shape().len() + 1);
+                shape.push(a.len());
+                shape.extend_from_slice(a.shape());
+                NumpyDType {
+                    shape,
+                    kind: "f4".to_string(),
+                }
+            }
+            ChannelData::ArrayDInt64(a) => {
+                let mut shape = Vec::with_capacity(a.shape().len() + 1);
+                shape.push(a.len());
+                shape.extend_from_slice(a.shape());
+                NumpyDType {
+                    shape,
+                    kind: "i8".to_string(),
+                }
+            }
+            ChannelData::ArrayDUInt64(a) => {
+                let mut shape = Vec::with_capacity(a.shape().len() + 1);
+                shape.push(a.len());
+                shape.extend_from_slice(a.shape());
+                NumpyDType {
+                    shape,
+                    kind: "u8".to_string(),
+                }
+            }
+            ChannelData::ArrayDFloat64(a) => {
+                let mut shape = Vec::with_capacity(a.shape().len() + 1);
+                shape.push(a.len());
+                shape.extend_from_slice(a.shape());
+                NumpyDType {
+                    shape,
+                    kind: "f8".to_string(),
+                }
+            }
             ChannelData::Union(a) => NumpyDType {
                 shape: vec![a.len()],
                 kind: "O".to_string(),
@@ -1520,9 +1579,21 @@ pub fn data_type_init(
 /// converts a dyn Array in a ChannelData
 pub fn try_from(value: &dyn Array) -> Result<ChannelData, Error> {
     match value.data_type() {
-        DataType::Null | DataType::Boolean => {
-            let data = as_primitive_array::<UInt8Type>(value);
-            Ok(ChannelData::UInt8(data.clone()))
+        DataType::Boolean => {
+            let array = value
+                .as_any()
+                .downcast_ref::<BooleanArray>()
+                .context("could not downcast to Boolean array")?;
+            let u8_vals: Vec<Option<u8>> = array
+                .iter()
+                .map(|opt| opt.map(|b| if b { 1u8 } else { 0u8 }))
+                .collect();
+            let uint8_arr = UInt8Array::from(u8_vals);
+            Ok(ChannelData::UInt8(uint8_arr))
+        }
+        DataType::Null => {
+            let uint8_arr = UInt8Array::new_null(value.len());
+            Ok(ChannelData::UInt8(uint8_arr))
         }
         DataType::Int8 => {
             let data = as_primitive_array::<Int8Type>(value);

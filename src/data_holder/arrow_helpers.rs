@@ -32,84 +32,84 @@ fn bit_count(array: &dyn Array, data_type: &DataType) -> u32 {
         DataType::Time32(_) => 32,
         DataType::Time64(_) => 64,
         DataType::Binary => {
-            let array = array
-                .as_any()
-                .downcast_ref::<BinaryArray>()
-                .expect("could not downcast to utf8 array");
-            array
-                .iter()
-                .map(|s| s.unwrap_or_default().len() as u32)
-                .max()
-                .unwrap_or(0)
-                * 8
+            if let Some(array) = array.as_any().downcast_ref::<BinaryArray>() {
+                array
+                    .iter()
+                    .map(|s| s.unwrap_or_default().len() as u32)
+                    .max()
+                    .unwrap_or(0)
+                    * 8
+            } else {
+                0
+            }
         }
         DataType::FixedSizeBinary(size) => 8 * *size as u32,
         DataType::LargeBinary => {
-            let array = array
-                .as_any()
-                .downcast_ref::<LargeBinaryArray>()
-                .expect("could not downcast to utf8 array");
-            array
-                .iter()
-                .map(|s| s.unwrap_or_default().len() as u32)
-                .max()
-                .unwrap_or(0)
-                * 8
+            if let Some(array) = array.as_any().downcast_ref::<LargeBinaryArray>() {
+                array
+                    .iter()
+                    .map(|s| s.unwrap_or_default().len() as u32)
+                    .max()
+                    .unwrap_or(0)
+                    * 8
+            } else {
+                0
+            }
         }
         DataType::Utf8 => {
-            let array = array
-                .as_any()
-                .downcast_ref::<StringArray>()
-                .expect("could not downcast to utf8 array");
-            array
-                .iter()
-                .map(|s| s.unwrap_or_default().len() as u32)
-                .max()
-                .unwrap_or(0)
-                * 8
+            if let Some(array) = array.as_any().downcast_ref::<StringArray>() {
+                array
+                    .iter()
+                    .map(|s| s.unwrap_or_default().len() as u32)
+                    .max()
+                    .unwrap_or(0)
+                    * 8
+            } else {
+                0
+            }
         }
         DataType::Utf8View => {
-            let array = array
-                .as_any()
-                .downcast_ref::<StringViewArray>()
-                .expect("could not downcast to utf8view array");
-            array
-                .iter()
-                .map(|s| s.unwrap_or_default().len() as u32)
-                .max()
-                .unwrap_or(0)
-                * 8
+            if let Some(array) = array.as_any().downcast_ref::<StringViewArray>() {
+                array
+                    .iter()
+                    .map(|s| s.unwrap_or_default().len() as u32)
+                    .max()
+                    .unwrap_or(0)
+                    * 8
+            } else {
+                0
+            }
         }
         DataType::BinaryView => {
-            let array = array
-                .as_any()
-                .downcast_ref::<BinaryViewArray>()
-                .expect("could not downcast to binaryview array");
-            array
-                .iter()
-                .map(|s| s.unwrap_or_default().len() as u32)
-                .max()
-                .unwrap_or(0)
-                * 8
+            if let Some(array) = array.as_any().downcast_ref::<BinaryViewArray>() {
+                array
+                    .iter()
+                    .map(|s| s.unwrap_or_default().len() as u32)
+                    .max()
+                    .unwrap_or(0)
+                    * 8
+            } else {
+                0
+            }
         }
         DataType::LargeUtf8 => {
-            let array = array
-                .as_any()
-                .downcast_ref::<LargeStringArray>()
-                .expect("could not downcast to long utf8 array");
-            array
-                .iter()
-                .map(|s| s.unwrap_or_default().len() as u32)
-                .max()
-                .unwrap_or(0)
-                * 8
+            if let Some(array) = array.as_any().downcast_ref::<LargeStringArray>() {
+                array
+                    .iter()
+                    .map(|s| s.unwrap_or_default().len() as u32)
+                    .max()
+                    .unwrap_or(0)
+                    * 8
+            } else {
+                0
+            }
         }
         DataType::FixedSizeList(field, size) => match field.data_type() {
             DataType::Float32 => 32 * *size as u32,
             DataType::Float64 => 64 * *size as u32,
-            _ => panic!("unsupported type"),
+            _ => 0,
         },
-        _ => panic!("unsupported type"),
+        _ => 0,
     }
 }
 
@@ -139,78 +139,78 @@ fn byte_count(array: &dyn Array, data_type: &DataType) -> u32 {
         DataType::Time32(_) => 4,
         DataType::Time64(_) => 8,
         DataType::Binary => {
-            let array = array
-                .as_any()
-                .downcast_ref::<BinaryArray>()
-                .expect("could not downcast to utf8 array");
-            array
-                .iter()
-                .map(|s| s.unwrap_or_default().len() as u32)
-                .max()
-                .unwrap_or(0)
+            if let Some(array) = array.as_any().downcast_ref::<BinaryArray>() {
+                array
+                    .iter()
+                    .map(|s| s.unwrap_or_default().len() as u32)
+                    .max()
+                    .unwrap_or(0)
+            } else {
+                0
+            }
         }
         DataType::FixedSizeBinary(size) => *size as u32,
         DataType::LargeBinary => {
-            let array = array
-                .as_any()
-                .downcast_ref::<LargeBinaryArray>()
-                .expect("could not downcast to utf8 array");
-            array
-                .iter()
-                .map(|s| s.unwrap_or_default().len() as u32)
-                .max()
-                .unwrap_or(0)
+            if let Some(array) = array.as_any().downcast_ref::<LargeBinaryArray>() {
+                array
+                    .iter()
+                    .map(|s| s.unwrap_or_default().len() as u32)
+                    .max()
+                    .unwrap_or(0)
+            } else {
+                0
+            }
         }
         DataType::Utf8 => {
-            let array = array
-                .as_any()
-                .downcast_ref::<StringArray>()
-                .expect("could not downcast to utf8 array");
-            array
-                .iter()
-                .map(|s| s.unwrap_or_default().len() as u32)
-                .max()
-                .unwrap_or(0)
+            if let Some(array) = array.as_any().downcast_ref::<StringArray>() {
+                array
+                    .iter()
+                    .map(|s| s.unwrap_or_default().len() as u32)
+                    .max()
+                    .unwrap_or(0)
+            } else {
+                0
+            }
         }
         DataType::Utf8View => {
-            let array = array
-                .as_any()
-                .downcast_ref::<StringViewArray>()
-                .expect("could not downcast to utf8view array");
-            array
-                .iter()
-                .map(|s| s.unwrap_or_default().len() as u32)
-                .max()
-                .unwrap_or(0)
+            if let Some(array) = array.as_any().downcast_ref::<StringViewArray>() {
+                array
+                    .iter()
+                    .map(|s| s.unwrap_or_default().len() as u32)
+                    .max()
+                    .unwrap_or(0)
+            } else {
+                0
+            }
         }
         DataType::BinaryView => {
-            let array = array
-                .as_any()
-                .downcast_ref::<BinaryViewArray>()
-                .expect("could not downcast to binaryview array");
-            array
-                .iter()
-                .map(|s| s.unwrap_or_default().len() as u32)
-                .max()
-                .unwrap_or(0)
+            if let Some(array) = array.as_any().downcast_ref::<BinaryViewArray>() {
+                array
+                    .iter()
+                    .map(|s| s.unwrap_or_default().len() as u32)
+                    .max()
+                    .unwrap_or(0)
+            } else {
+                0
+            }
         }
         DataType::LargeUtf8 => {
-            let array = array
-                .as_any()
-                .downcast_ref::<LargeStringArray>()
-                .expect("could not downcast to long utf8 array");
-            array
-                .iter()
-                .map(|s| s.unwrap_or_default().len() as u32)
-                .max()
-                .unwrap_or(0)
+            if let Some(array) = array.as_any().downcast_ref::<LargeStringArray>() {
+                array
+                    .iter()
+                    .map(|s| s.unwrap_or_default().len() as u32)
+                    .max()
+                    .unwrap_or(0)
+            } else {
+                0
+            }
         }
         DataType::FixedSizeList(field, size) => match field.data_type() {
             DataType::Float32 => 4 * *size as u32,
             DataType::Float64 => 8 * *size as u32,
-            _ => panic!("unsupported type"),
+            _ => 0,
         },
-        _ => panic!("unsupported type"),
+        _ => 0,
     }
 }
 
@@ -253,7 +253,7 @@ fn mdf_data_type(data_type: &DataType, endian: bool) -> u8 {
             DataType::List(_) => 16,
             DataType::FixedSizeList(_, _) => 16,
             DataType::LargeList(_) => 16,
-            _ => panic!("unsupported type"),
+            _ => 10,
         }
     } else {
         // LE
@@ -288,7 +288,7 @@ fn mdf_data_type(data_type: &DataType, endian: bool) -> u8 {
             DataType::List(_) => 15,
             DataType::FixedSizeList(_, _) => 15,
             DataType::LargeList(_) => 15,
-            _ => panic!("unsupported type"),
+            _ => 10,
         }
     }
 }

@@ -40,6 +40,10 @@ impl From<bool> for Endianness {
 }
 
 // Channel (CN) flags - cn_flags field (u32)
+/// Bit 0: All values invalid
+pub const CN_F_ALL_VALUES_INVALID: u32 = 1 << 0;
+/// Bit 1: Invalidation bit valid
+pub const CN_F_INVALID: u32 = 1 << 1;
 /// Bit 13: Event signal - channel contains event data, cn_data points to template EVBLOCK
 pub const CN_F_EVENT_SIGNAL: u32 = 1 << 13;
 /// Bit 15: Raw sensor event channel
@@ -385,6 +389,7 @@ impl Cn4Block {
             14 => "CANopen Time",
             15 => "Complex LE",
             16 => "Complex BE",
+            17 => "String BOM",
             _ => "Unknown",
         }
     }
@@ -531,6 +536,10 @@ mod tests {
         assert_eq!(cn.get_cn_type_str(), "Fixed");
         assert_eq!(cn.get_sync_type_str(), "Time");
         assert_eq!(cn.get_data_type_str(), "Float LE");
+
+        cn.cn_data_type = 17;
+        assert_eq!(cn.get_data_type_str(), "String BOM");
+        cn.cn_data_type = 4;
 
         assert_eq!(cn.precision(), Some(3));
         assert_eq!(cn.val_range_min(), Some(-100.0));

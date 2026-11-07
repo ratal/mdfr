@@ -185,6 +185,16 @@ pub fn read_f64_at(record: &[u8], pos: usize, is_big: bool) -> f64 {
 #[inline(always)]
 pub fn read_i64_at(record: &[u8], pos: usize, n_bytes: usize, is_big: bool) -> i64 {
     match n_bytes {
+        9 => {
+            let mut buf = [0u8; 8];
+            if is_big {
+                buf.copy_from_slice(&record[pos + 1..pos + 9]);
+                i64::from_be_bytes(buf)
+            } else {
+                buf.copy_from_slice(&record[pos..pos + 8]);
+                i64::from_le_bytes(buf)
+            }
+        }
         8 => {
             let bytes: [u8; 8] = record[pos..pos + 8].try_into().unwrap();
             if is_big {
@@ -246,6 +256,16 @@ pub fn read_i64_at(record: &[u8], pos: usize, n_bytes: usize, is_big: bool) -> i
 #[inline(always)]
 pub fn read_u64_at(record: &[u8], pos: usize, n_bytes: usize, is_big: bool) -> u64 {
     match n_bytes {
+        9 => {
+            let mut buf = [0u8; 8];
+            if is_big {
+                buf.copy_from_slice(&record[pos + 1..pos + 9]);
+                u64::from_be_bytes(buf)
+            } else {
+                buf.copy_from_slice(&record[pos..pos + 8]);
+                u64::from_le_bytes(buf)
+            }
+        }
         8 => {
             let bytes: [u8; 8] = record[pos..pos + 8].try_into().unwrap();
             if is_big {
@@ -460,6 +480,22 @@ pub fn decode_i64_slice(
     is_big: bool,
 ) -> Result<(), Error> {
     match n_bytes {
+        9 => {
+            let chunks = as_exact_chunks::<9>(src, dst.len(), "Could not read 9-byte i64 array")?;
+            if is_big {
+                for (d, s) in dst.iter_mut().zip(chunks) {
+                    let mut temp = [0u8; 8];
+                    temp.copy_from_slice(&s[1..9]);
+                    *d = i64::from_be_bytes(temp);
+                }
+            } else {
+                for (d, s) in dst.iter_mut().zip(chunks) {
+                    let mut temp = [0u8; 8];
+                    temp.copy_from_slice(&s[0..8]);
+                    *d = i64::from_le_bytes(temp);
+                }
+            }
+        }
         8 => {
             let chunks = as_exact_chunks::<8>(src, dst.len(), "Could not read i64 array")?;
             if is_big {
@@ -546,6 +582,22 @@ pub fn decode_u64_slice(
     is_big: bool,
 ) -> Result<(), Error> {
     match n_bytes {
+        9 => {
+            let chunks = as_exact_chunks::<9>(src, dst.len(), "Could not read 9-byte u64 array")?;
+            if is_big {
+                for (d, s) in dst.iter_mut().zip(chunks) {
+                    let mut temp = [0u8; 8];
+                    temp.copy_from_slice(&s[1..9]);
+                    *d = u64::from_be_bytes(temp);
+                }
+            } else {
+                for (d, s) in dst.iter_mut().zip(chunks) {
+                    let mut temp = [0u8; 8];
+                    temp.copy_from_slice(&s[0..8]);
+                    *d = u64::from_le_bytes(temp);
+                }
+            }
+        }
         8 => {
             let chunks = as_exact_chunks::<8>(src, dst.len(), "Could not read u64 array")?;
             if is_big {
@@ -722,20 +774,87 @@ pub fn read_one_channel_array(
                 )?;
             }
             ChannelBuilder::Int64(a) => {
-                decode_i64_slice(
-                    &data_bytes[..cycle_count * n_bytes],
-                    &mut a.values_slice_mut()[..cycle_count],
-                    n_bytes,
-                    is_big,
-                )?;
+                let bit_offset = (cn.block.cn_bit_offset % 8) as u32;
+                let bit_count = cn.block.cn_bit_count;
+                if n_bytes == 9 && bit_count <= 64 && (bit_offset + bit_count > 64) {
+                    let chunks = as_exact_chunks::<9>(
+                        &data_bytes[..cycle_count * 9],
+                        cycle_count,
+                        "Could not read 9-byte i64 array",
+                    )?;
+                    let data = a.values_slice_mut();
+                    if is_big {
+                        for (d, s) in data.iter_mut().zip(chunks) {
+                            let mut temp = [0u8; 8];
+                            temp.copy_from_slice(&s[0..8]);
+                            let high = u64::from_be_bytes(temp);
+                            let low = s[8] as u64;
+                            let val = (high << (8 - bit_offset)) | (low >> bit_offset);
+                            let shift = 64 - bit_count;
+                            *d = ((val as i64) << shift) >> shift;
+                        }
+                    } else {
+                        for (d, s) in data.iter_mut().zip(chunks) {
+                            let mut temp = [0u8; 8];
+                            temp.copy_from_slice(&s[0..8]);
+                            let low = u64::from_le_bytes(temp);
+                            let high = s[8] as u64;
+                            let val = (low >> bit_offset) | (high << (64 - bit_offset));
+                            let shift = 64 - bit_count;
+                            *d = ((val as i64) << shift) >> shift;
+                        }
+                    }
+                } else {
+                    decode_i64_slice(
+                        &data_bytes[..cycle_count * n_bytes],
+                        &mut a.values_slice_mut()[..cycle_count],
+                        n_bytes,
+                        is_big,
+                    )?;
+                }
             }
             ChannelBuilder::UInt64(a) => {
-                decode_u64_slice(
-                    &data_bytes[..cycle_count * n_bytes],
-                    &mut a.values_slice_mut()[..cycle_count],
-                    n_bytes,
-                    is_big,
-                )?;
+                let bit_offset = (cn.block.cn_bit_offset % 8) as u32;
+                let bit_count = cn.block.cn_bit_count;
+                if n_bytes == 9 && bit_count <= 64 && (bit_offset + bit_count > 64) {
+                    let chunks = as_exact_chunks::<9>(
+                        &data_bytes[..cycle_count * 9],
+                        cycle_count,
+                        "Could not read 9-byte u64 array",
+                    )?;
+                    let data = a.values_slice_mut();
+                    let mask = if bit_count == 64 {
+                        u64::MAX
+                    } else {
+                        (1u64 << bit_count) - 1
+                    };
+                    if is_big {
+                        for (d, s) in data.iter_mut().zip(chunks) {
+                            let mut temp = [0u8; 8];
+                            temp.copy_from_slice(&s[0..8]);
+                            let high = u64::from_be_bytes(temp);
+                            let low = s[8] as u64;
+                            let val = (high << (8 - bit_offset)) | (low >> bit_offset);
+                            *d = val & mask;
+                        }
+                    } else {
+                        for (d, s) in data.iter_mut().zip(chunks) {
+                            let mut temp = [0u8; 8];
+                            temp.copy_from_slice(&s[0..8]);
+                            let low = u64::from_le_bytes(temp);
+                            let high = s[8] as u64;
+                            let val = (low >> bit_offset) | (high << (64 - bit_offset));
+                            *d = val & mask;
+                        }
+                    }
+                } else {
+                    decode_u64_slice(
+                        &data_bytes[..cycle_count * n_bytes],
+                        &mut a.values_slice_mut()[..cycle_count],
+                        n_bytes,
+                        is_big,
+                    )?;
+                }
             }
             ChannelBuilder::Float64(a) => {
                 decode_f64_slice(
@@ -945,6 +1064,54 @@ pub fn read_one_channel_array(
                 )?;
             }
             ChannelBuilder::Union(_) => {} // Union channels are constructed post-read
+        }
+        let bit_offset = cn.block.cn_bit_offset as u32;
+        let bit_count = cn.block.cn_bit_count;
+        let is_9byte_span = n_bytes == 9 && bit_count <= 64 && (bit_offset % 8 + bit_count > 64);
+        if cn.block.cn_data_type <= 3
+            && bit_count > 0
+            && (bit_offset > 0 || bit_count != cn.n_bytes * 8)
+            && !is_9byte_span
+        {
+            macro_rules! shift_slice {
+                ($array:expr, $reg_bits:expr) => {{
+                    let reg_bits: u32 = $reg_bits;
+                    if bit_offset + bit_count <= reg_bits && bit_count < reg_bits {
+                        let left_shift = reg_bits - bit_offset - bit_count;
+                        let right_shift = reg_bits - bit_count;
+                        let a = $array.values_slice_mut();
+                        if left_shift > 0 && right_shift > 0 {
+                            a.iter_mut()
+                                .for_each(|x| *x = (*x << left_shift) >> right_shift);
+                        } else if left_shift > 0 {
+                            a.iter_mut().for_each(|x| *x <<= left_shift);
+                        } else if right_shift > 0 {
+                            a.iter_mut().for_each(|x| *x >>= right_shift);
+                        }
+                    }
+                }};
+            }
+            if let Some(builder) = &mut cn.builder {
+                match builder {
+                    ChannelBuilder::Int8(array) => shift_slice!(array, 8),
+                    ChannelBuilder::UInt8(array) => shift_slice!(array, 8),
+                    ChannelBuilder::Int16(array) => shift_slice!(array, 16),
+                    ChannelBuilder::UInt16(array) => shift_slice!(array, 16),
+                    ChannelBuilder::Int32(array) => shift_slice!(array, 32),
+                    ChannelBuilder::UInt32(array) => shift_slice!(array, 32),
+                    ChannelBuilder::Int64(array) => shift_slice!(array, 64),
+                    ChannelBuilder::UInt64(array) => shift_slice!(array, 64),
+                    ChannelBuilder::ArrayDInt8(array) => shift_slice!(array, 8),
+                    ChannelBuilder::ArrayDUInt8(array) => shift_slice!(array, 8),
+                    ChannelBuilder::ArrayDInt16(array) => shift_slice!(array, 16),
+                    ChannelBuilder::ArrayDUInt16(array) => shift_slice!(array, 16),
+                    ChannelBuilder::ArrayDInt32(array) => shift_slice!(array, 32),
+                    ChannelBuilder::ArrayDUInt32(array) => shift_slice!(array, 32),
+                    ChannelBuilder::ArrayDInt64(array) => shift_slice!(array, 64),
+                    ChannelBuilder::ArrayDUInt64(array) => shift_slice!(array, 64),
+                    _ => (),
+                }
+            }
         }
         cn.data = cn.builder.take().unwrap().finish();
     }
@@ -1361,6 +1528,6 @@ pub fn read_channels_from_bytes(
 
     let lock = vlsd_channels
         .lock()
-        .expect("Could not get lock from vlsd channel arc vec");
+        .map_err(|e| anyhow::anyhow!("Could not get lock from vlsd channel arc vec: {e}"))?;
     Ok(lock.clone())
 }

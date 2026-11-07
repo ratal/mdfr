@@ -2,7 +2,9 @@ name: Create macOS aarch64 python release
 
 on:
   push:
-    branches: ["main"]
+    tags:
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
   build:

@@ -358,6 +358,14 @@ impl MdfInfo4 {
         }
         None
     }
+    /// Checks if a channel exists in the MDF file in O(1) time without allocating a HashSet.
+    pub fn contains_channel(&self, channel_name: &str) -> bool {
+        self.channel_names_set.contains_key(channel_name)
+    }
+    /// Returns total number of channels in the MDF file in O(1) time without allocating a HashSet.
+    pub fn channel_count(&self) -> usize {
+        self.channel_names_set.len()
+    }
     /// returns the set of channel names
     pub fn get_channel_names_set(&self) -> HashSet<String> {
         self.channel_names_set.keys().cloned().collect()

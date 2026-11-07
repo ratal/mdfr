@@ -706,10 +706,11 @@ fn verify_synthetic_array_fixture_loads() {
         );
         assert_eq!(
             arr.shape().as_slice(),
-            &[3usize, 2, 2],
-            "shape should be [3, 2, 2]"
+            &[2usize, 2],
+            "shape should be [2, 2]"
         );
-        assert_eq!(arr.ndim(), 3, "ndim should be 3");
+        assert_eq!(arr.len(), 3, "len should be 3");
+        assert_eq!(arr.ndim(), 2, "ndim should be 2");
         for (i, &v) in vals.iter().enumerate() {
             assert_eq!(v, (i + 1) as f64);
         }

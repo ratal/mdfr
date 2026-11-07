@@ -88,15 +88,25 @@ pub fn compress_dz_data(
     if algo == CompressionAlgorithm::NoCompression {
         return Ok(bytes.to_vec());
     }
+    let effective_algo = if algo.is_transposed() && record_width <= 1 {
+        match algo {
+            CompressionAlgorithm::DeflateTranspose => CompressionAlgorithm::Deflate,
+            CompressionAlgorithm::Lz4Transpose => CompressionAlgorithm::Lz4,
+            CompressionAlgorithm::ZstdTranspose => CompressionAlgorithm::Zstd,
+            other => other,
+        }
+    } else {
+        algo
+    };
     let transposed;
-    let input: &[u8] = if algo.is_transposed() && record_width > 1 {
+    let input: &[u8] = if effective_algo.is_transposed() && record_width > 1 {
         transposed = transpose_for_compression(bytes, record_width);
         &transposed
     } else {
         bytes
     };
 
-    match algo {
+    match effective_algo {
         CompressionAlgorithm::NoCompression => Ok(bytes.to_vec()),
         CompressionAlgorithm::Deflate | CompressionAlgorithm::DeflateTranspose => {
             compress_deflate(input)
@@ -117,7 +127,7 @@ pub fn decompress_dz_data(
     let mut data = match zip_type {
         0 | 1 => decompress_deflate(buf)?,
         2 | 3 => decompress_zstd(buf)?,
-        4 | 5 => decompress_lz4_frame(buf)?,
+        4 | 5 => decompress_lz4_frame(buf, org_data_length as usize)?,
         254 => {
             // Vendor custom compression: return empty
             Vec::new()
@@ -160,7 +170,7 @@ fn decompress_deflate(_input: &[u8]) -> Result<Vec<u8>> {
 }
 
 #[cfg(feature = "lz4")]
-pub fn decompress_lz4_frame(input: &[u8]) -> Result<Vec<u8>> {
+pub fn decompress_lz4_frame(input: &[u8], expected_uncompressed_len: usize) -> Result<Vec<u8>> {
     if input.len() < 7 {
         return Err(Error::InvalidBlock(alloc::string::String::from(
             "lz4 frame too short",
@@ -188,7 +198,12 @@ pub fn decompress_lz4_frame(input: &[u8]) -> Result<Vec<u8>> {
         )));
     }
 
-    let mut out = Vec::new();
+    let initial_cap = if expected_uncompressed_len > 0 {
+        expected_uncompressed_len.min(4 * 1024 * 1024)
+    } else {
+        0
+    };
+    let mut out = Vec::with_capacity(initial_cap);
     let mut pos = offset;
     while pos + 4 <= input.len() {
         let block_len = u32::from_le_bytes(input[pos..pos + 4].try_into().unwrap());
@@ -208,9 +223,15 @@ pub fn decompress_lz4_frame(input: &[u8]) -> Result<Vec<u8>> {
         if uncompressed {
             out.extend_from_slice(block_data);
         } else {
-            // MDF4 blocks are max 4 MB uncompressed
+            let decomp_bound = if expected_uncompressed_len > 0 {
+                expected_uncompressed_len
+                    .saturating_sub(out.len())
+                    .min(4 * 1024 * 1024)
+            } else {
+                4 * 1024 * 1024
+            };
             let decomp =
-                lz4_flex::block::decompress(block_data, 4 * 1024 * 1024).map_err(|_| {
+                lz4_flex::block::decompress(block_data, decomp_bound.max(1)).map_err(|_| {
                     Error::InvalidBlock(alloc::string::String::from("lz4 block decompress failed"))
                 })?;
             out.extend_from_slice(&decomp);
@@ -220,7 +241,7 @@ pub fn decompress_lz4_frame(input: &[u8]) -> Result<Vec<u8>> {
 }
 
 #[cfg(not(feature = "lz4"))]
-pub fn decompress_lz4_frame(_input: &[u8]) -> Result<Vec<u8>> {
+pub fn decompress_lz4_frame(_input: &[u8], _expected_uncompressed_len: usize) -> Result<Vec<u8>> {
     Err(Error::Unsupported("lz4 feature not enabled"))
 }
 
@@ -270,15 +291,21 @@ fn compress_lz4_frame(input: &[u8]) -> Result<Vec<u8>> {
     out.extend_from_slice(&HEADER);
 
     for chunk in input.chunks(MAX_BLOCK) {
-        let compressed = lz4_flex::block::compress(chunk);
-        if compressed.len() < chunk.len() {
-            let len = compressed.len() as u32;
-            out.extend_from_slice(&len.to_le_bytes());
-            out.extend_from_slice(&compressed);
-        } else {
-            let len = (chunk.len() as u32) | UNCOMPRESSED_BIT;
-            out.extend_from_slice(&len.to_le_bytes());
-            out.extend_from_slice(chunk);
+        let max_compressed_len = lz4_flex::block::get_maximum_output_size(chunk.len());
+        let start_len = out.len();
+        out.resize(start_len + 4 + max_compressed_len, 0);
+        match lz4_flex::block::compress_into(chunk, &mut out[start_len + 4..]) {
+            Ok(comp_len) if comp_len < chunk.len() => {
+                let len = comp_len as u32;
+                out[start_len..start_len + 4].copy_from_slice(&len.to_le_bytes());
+                out.truncate(start_len + 4 + comp_len);
+            }
+            _ => {
+                out.truncate(start_len);
+                let len = (chunk.len() as u32) | UNCOMPRESSED_BIT;
+                out.extend_from_slice(&len.to_le_bytes());
+                out.extend_from_slice(chunk);
+            }
         }
     }
     // EndMark (4 zero bytes)
@@ -334,5 +361,39 @@ mod tests {
         assert!(comp.len() < orig.len());
         let decomp = decompress_dz_data(5, 4, &comp, orig.len() as u64).unwrap();
         assert_eq!(decomp, orig);
+    }
+
+    #[cfg(feature = "deflate")]
+    #[test]
+    fn test_deflate_transpose_downgrade_width_le_1() {
+        let orig: Vec<u8> = (0..200u8).collect();
+        // Width 1: should downgrade to non-transposed Deflate
+        let comp_w1 = compress_dz_data(&orig, CompressionAlgorithm::DeflateTranspose, 1).unwrap();
+        let comp_none = compress_dz_data(&orig, CompressionAlgorithm::Deflate, 1).unwrap();
+        assert_eq!(comp_w1, comp_none);
+
+        // Width 0: should also downgrade
+        let comp_w0 = compress_dz_data(&orig, CompressionAlgorithm::DeflateTranspose, 0).unwrap();
+        assert_eq!(comp_w0, comp_none);
+    }
+
+    #[cfg(feature = "lz4")]
+    #[test]
+    fn test_lz4_transpose_downgrade_width_le_1() {
+        let orig: Vec<u8> = (0..500u32).flat_map(|v| v.to_le_bytes()).collect();
+        // Width 1: should downgrade to non-transposed LZ4
+        let comp_w1 = compress_dz_data(&orig, CompressionAlgorithm::Lz4Transpose, 1).unwrap();
+        let comp_none = compress_dz_data(&orig, CompressionAlgorithm::Lz4, 1).unwrap();
+        assert_eq!(comp_w1, comp_none);
+
+        // Width 0: should also downgrade
+        let comp_w0 = compress_dz_data(&orig, CompressionAlgorithm::Lz4Transpose, 0).unwrap();
+        assert_eq!(comp_w0, comp_none);
+
+        // Decompress with expected_uncompressed_len 0 and exact
+        let decomp_zero = decompress_lz4_frame(&comp_w1, 0).unwrap();
+        assert_eq!(decomp_zero, orig);
+        let decomp_exact = decompress_lz4_frame(&comp_w1, orig.len()).unwrap();
+        assert_eq!(decomp_exact, orig);
     }
 }

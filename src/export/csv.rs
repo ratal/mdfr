@@ -109,14 +109,25 @@ fn write_csv(
     channels: &[(&str, Arc<dyn arrow::array::Array>)],
 ) -> Result<()> {
     let base_path = Path::new(file_name);
-    let mut suffix = master_channel.unwrap_or_else(|| rec_id.to_string());
-    suffix.insert(0, '_');
-    let mut stem = base_path
-        .file_stem()
-        .context("no file stem in given file_name")?
-        .to_os_string();
-    stem.push(&suffix);
-    let csv_path = base_path.with_file_name(stem).with_extension("csv");
+    let master_suffix = master_channel.unwrap_or_else(|| rec_id.to_string());
+    let stem = if base_path
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|e| e.eq_ignore_ascii_case("csv"))
+        .unwrap_or(false)
+    {
+        base_path
+            .file_stem()
+            .context("no file stem in given file_name")?
+    } else {
+        base_path
+            .file_name()
+            .context("no file name in given file_name")?
+    }
+    .to_string_lossy();
+
+    let out_file_name = format!("{stem}_{master_suffix}.csv");
+    let csv_path = base_path.with_file_name(out_file_name);
 
     let file = File::create(&csv_path)
         .with_context(|| format!("failed creating CSV file {csv_path:?}"))?;

@@ -6,11 +6,13 @@ use itertools::Itertools;
 use num::NumCast;
 use num::abs;
 use num::cast::AsPrimitive;
-use std::collections::BTreeMap;
+use rustc_hash::FxHashMap;
 
 use crate::data_holder::channel_data::ChannelData;
 use crate::mdfinfo::mdfinfo3::{Cn3, Conversion, Dg3, SharableBlocks3};
-use crate::mdfreader::conversions4::{linear_calculation, rational_calculation};
+use crate::mdfreader::conversions4::{
+    SingleVarNamespace, linear_calculation, rational_calculation,
+};
 use fasteval::Evaler;
 use fasteval::{Compiler, Instruction, Slab};
 use log::warn;
@@ -599,26 +601,43 @@ fn alegbraic_conversion_calculation<T: ArrowPrimitiveType>(
 where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
+    <T as ArrowPrimitiveType>::Native: Sync,
 {
     let values = array.values();
     let mut new_array = vec![0f64; values.len()];
-    new_array
-        .iter_mut()
-        .zip(values)
-        .for_each(|(new_array, a)| {
+    if values.len() > 1024 {
+        new_array
+            .par_iter_mut()
+            .zip(values.par_iter())
+            .for_each(|(new_a, a)| {
+                let a_f64: f64 = (*a).as_();
+                let mut ns = SingleVarNamespace { val: a_f64 };
+                match compiled.eval(slab, &mut ns) {
+                    Ok(res) => *new_a = res,
+                    Err(error_message) => {
+                        *new_a = a_f64;
+                        warn!(
+                            "{error_message}\n Could not compute formulae {formulae} for channel {name} and value {a_f64}",
+                        );
+                    }
+                }
+            });
+    } else {
+        let mut ns = SingleVarNamespace { val: 0.0 };
+        new_array.iter_mut().zip(values).for_each(|(new_a, a)| {
             let a_f64: f64 = (*a).as_();
-            let mut map = BTreeMap::new();
-            map.insert("X".to_string(), a_f64);
-            match compiled.eval(slab, &mut map) {
-                Ok(res) => *new_array = res,
+            ns.val = a_f64;
+            match compiled.eval(slab, &mut ns) {
+                Ok(res) => *new_a = res,
                 Err(error_message) => {
-                    *new_array = a_f64;
+                    *new_a = a_f64;
                     warn!(
                         "{error_message}\n Could not compute formulae {formulae} for channel {name} and value {a_f64}",
                     );
                 }
             }
         });
+    }
     Ok(PrimitiveArray::new(
         new_array.into(),
         array.nulls().cloned(),
@@ -1012,6 +1031,11 @@ where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
+    let table: FxHashMap<i64, &str> = cc_val_ref
+        .iter()
+        .map(|(val, s)| (val.round() as i64, s.as_str()))
+        .collect();
+    let default_val = cc_val_ref.first().map(|x| x.1.as_str()).unwrap_or("");
     let mut new_array = LargeStringBuilder::with_capacity(array.len(), 32);
     for (i, val) in array.values().iter().enumerate() {
         if array.is_null(i) {
@@ -1019,11 +1043,11 @@ where
             continue;
         }
         let val_f64: f64 = (*val).as_();
-        let matched_key = cc_val_ref.iter().find(|&x| x.0 == val_f64);
-        if let Some(key) = matched_key {
-            new_array.append_value(key.1.clone());
+        let val_i64 = val_f64.round() as i64;
+        if let Some(&txt) = table.get(&val_i64) {
+            new_array.append_value(txt);
         } else {
-            new_array.append_value(cc_val_ref[0].1.clone());
+            new_array.append_value(default_val);
         }
     }
     Ok(new_array.finish())
@@ -1106,6 +1130,7 @@ pub fn value_to_text(cn: &mut Cn3, cc_val_ref: &[(f64, String)]) -> Result<(), E
 pub fn value_range_to_text_calculation<T: ArrowPrimitiveType>(
     array: &PrimitiveArray<T>,
     cc_val_ref: &(Vec<(f64, f64, String)>, String),
+    inclusive_upper: bool,
 ) -> Result<LargeStringArray, Error>
 where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
@@ -1118,15 +1143,22 @@ where
             continue;
         }
         let a: f64 = (*val).as_();
-        let matched_key = cc_val_ref
-            .0
-            .iter()
-            .enumerate()
-            .find(|&x| (x.1.0 <= a) && (a < x.1.1));
-        if let Some(key) = matched_key {
-            new_array.append_value(key.1.2.clone());
+        let idx = cc_val_ref.0.partition_point(|x| x.0 <= a);
+        let matched = if idx > 0 {
+            let candidate = &cc_val_ref.0[idx - 1];
+            let in_range = if inclusive_upper {
+                a <= candidate.1
+            } else {
+                a < candidate.1 || (candidate.0 == candidate.1 && a == candidate.0)
+            };
+            if in_range { Some(candidate) } else { None }
         } else {
-            new_array.append_value(cc_val_ref.1.clone());
+            None
+        };
+        if let Some(key) = matched {
+            new_array.append_value(&key.2);
+        } else {
+            new_array.append_value(&cc_val_ref.1);
         }
     }
     Ok(new_array.finish())
@@ -1140,61 +1172,61 @@ pub fn value_range_to_text(
     match &mut cn.data {
         ChannelData::Int8(a) => {
             cn.data = ChannelData::Utf8(
-                value_range_to_text_calculation(a, cc_val_ref)
+                value_range_to_text_calculation(a, cc_val_ref, true)
                     .context("value range to text conversion of i8 channel")?,
             );
         }
         ChannelData::UInt8(a) => {
             cn.data = ChannelData::Utf8(
-                value_range_to_text_calculation(a, cc_val_ref)
+                value_range_to_text_calculation(a, cc_val_ref, true)
                     .context("value range to text conversion of u8 channel")?,
             );
         }
         ChannelData::Int16(a) => {
             cn.data = ChannelData::Utf8(
-                value_range_to_text_calculation(a, cc_val_ref)
+                value_range_to_text_calculation(a, cc_val_ref, true)
                     .context("value range to text conversion of i16 channel")?,
             );
         }
         ChannelData::UInt16(a) => {
             cn.data = ChannelData::Utf8(
-                value_range_to_text_calculation(a, cc_val_ref)
+                value_range_to_text_calculation(a, cc_val_ref, true)
                     .context("value range to text conversion of u16 channel")?,
             );
         }
         ChannelData::Int32(a) => {
             cn.data = ChannelData::Utf8(
-                value_range_to_text_calculation(a, cc_val_ref)
+                value_range_to_text_calculation(a, cc_val_ref, true)
                     .context("value range to text conversion of i32 channel")?,
             );
         }
         ChannelData::UInt32(a) => {
             cn.data = ChannelData::Utf8(
-                value_range_to_text_calculation(a, cc_val_ref)
+                value_range_to_text_calculation(a, cc_val_ref, true)
                     .context("value range to text conversion of u32 channel")?,
             );
         }
         ChannelData::Float32(a) => {
             cn.data = ChannelData::Utf8(
-                value_range_to_text_calculation(a, cc_val_ref)
+                value_range_to_text_calculation(a, cc_val_ref, false)
                     .context("value range to text conversion of f32 channel")?,
             );
         }
         ChannelData::Int64(a) => {
             cn.data = ChannelData::Utf8(
-                value_range_to_text_calculation(a, cc_val_ref)
+                value_range_to_text_calculation(a, cc_val_ref, true)
                     .context("value range to text conversion of i64 channel")?,
             );
         }
         ChannelData::UInt64(a) => {
             cn.data = ChannelData::Utf8(
-                value_range_to_text_calculation(a, cc_val_ref)
+                value_range_to_text_calculation(a, cc_val_ref, true)
                     .context("value range to text conversion of u64 channel")?,
             );
         }
         ChannelData::Float64(a) => {
             cn.data = ChannelData::Utf8(
-                value_range_to_text_calculation(a, cc_val_ref)
+                value_range_to_text_calculation(a, cc_val_ref, false)
                     .context("value range to text conversion of f64 channel")?,
             );
         }

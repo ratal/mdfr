@@ -11,7 +11,11 @@ use crate::blocks::data_block::{Dl4Block, Dz4Block, Hl4Block};
 use crate::blocks::dg_block::Dg4Block;
 use crate::blocks::hd_block::Hd4;
 use crate::blocks::header::{Blockheader4, Blockheader4Short};
-use crate::blocks::id_block::{FINALIZED_ID, IdBlock, UNFINALIZED_ID};
+use crate::blocks::id_block::{
+    FINALIZED_ID, IdBlock, UNFIN_LAST_DL_BLOCK, UNFIN_VLSC_OFFSET, UNFIN_VLSD_OFFSET,
+    UNFINALIZED_ID,
+};
+use crate::blocks::tx_block::align8;
 use crate::error::{Error, Result};
 use crate::io::{SeekFrom, Sink, VecSink};
 
@@ -74,6 +78,7 @@ fn sum_chain_payload_bytes<S: ReadWriteSeek>(
     data_pos: u64,
     file_len: u64,
     rec_align: u64,
+    unfin_flags: u16,
 ) -> Result<u64> {
     if data_pos == 0 || data_pos + 24 > file_len {
         return Ok(0);
@@ -82,7 +87,7 @@ fn sum_chain_payload_bytes<S: ReadWriteSeek>(
     let hdr: Blockheader4 = Cursor::new(hdr_bytes).read_le()?;
 
     match &hdr.hdr_id {
-        b"##DT" | b"##SD" | b"##DV" | b"##RD" => {
+        b"##DT" | b"##SD" | b"##VD" | b"##DV" | b"##RD" => {
             let max_avail = file_len.saturating_sub(data_pos);
             let mut blk_len = hdr.hdr_len;
             if blk_len > max_avail {
@@ -98,22 +103,164 @@ fn sum_chain_payload_bytes<S: ReadWriteSeek>(
             Ok(blk_len.saturating_sub(24))
         }
         b"##DZ" => {
+            if data_pos + 48 > file_len {
+                return Ok(0);
+            }
             let dz_bytes = read_at::<S, 44>(sink, data_pos + 4)?;
             let dz: Dz4Block = Cursor::new(dz_bytes).read_le()?;
             Ok(dz.dz_org_data_length)
         }
         b"##HL" => {
-            let hl_bytes = read_at::<S, 16>(sink, data_pos + 24)?;
+            if data_pos + 40 > file_len {
+                return Ok(0);
+            }
+            let hl_bytes = read_at::<S, 36>(sink, data_pos + 4)?;
             let hl: Hl4Block = Cursor::new(hl_bytes).read_le()?;
             if hl.hl_dl_first <= 0 {
                 Ok(0)
             } else {
-                sum_dl_chain(sink, hl.hl_dl_first as u64, file_len, rec_align)
+                sum_dl_chain(
+                    sink,
+                    hl.hl_dl_first as u64,
+                    file_len,
+                    rec_align,
+                    unfin_flags,
+                )
             }
         }
-        b"##DL" => sum_dl_chain(sink, data_pos, file_len, rec_align),
+        b"##DL" => sum_dl_chain(sink, data_pos, file_len, rec_align, unfin_flags),
         _ => Ok(0),
     }
+}
+
+fn recover_dl_block<S: ReadWriteSeek>(
+    sink: &mut S,
+    dl_pos: u64,
+    file_len: u64,
+    rec_align: u64,
+    unfin_flags: u16,
+) -> Result<Dl4Block> {
+    let hdr_bytes = read_at::<S, 24>(sink, dl_pos)?;
+    let hdr: Blockheader4 = Cursor::new(hdr_bytes).read_le()?;
+    if &hdr.hdr_id != b"##DL" || hdr.hdr_len < 40 || dl_pos + hdr.hdr_len > file_len {
+        return Err(Error::InvalidBlock(alloc::string::String::from(
+            "invalid DL block",
+        )));
+    }
+    sink.seek(SeekFrom::Start(dl_pos + 4))?;
+    let mut dl_buf = alloc::vec![0u8; (hdr.hdr_len as usize).saturating_sub(4)];
+    sink.read_exact(&mut dl_buf)?;
+    let mut dl: Dl4Block = Cursor::new(dl_buf).read_le()?;
+
+    let mut dl_modified = false;
+
+    // Feature 4: forward-scan recovery for unpatched DLBLOCK slot
+    if dl.dl_count == 0 && dl_pos + 1064 < file_len {
+        let mut scan_pos = dl_pos + 1064;
+        let mut cum_offset = 0u64;
+        while scan_pos + 24 <= file_len && dl.dl_data.len() < 64 {
+            let child_hdr_bytes = read_at::<S, 24>(sink, scan_pos)?;
+            let child_hdr: Blockheader4 = Cursor::new(child_hdr_bytes).read_le()?;
+            match &child_hdr.hdr_id {
+                b"##DT" | b"##SD" | b"##VD" | b"##DV" | b"##RD" => {
+                    let max_avail = file_len.saturating_sub(scan_pos);
+                    let mut blk_len = child_hdr.hdr_len;
+                    if blk_len > max_avail || blk_len < 24 {
+                        let payload = max_avail.saturating_sub(24);
+                        let aligned_payload = if rec_align > 1 {
+                            (payload / rec_align) * rec_align
+                        } else {
+                            payload
+                        };
+                        blk_len = 24 + aligned_payload;
+                        write_u64_at(sink, scan_pos + 8, blk_len)?;
+                    }
+                    let uncompressed_len = blk_len.saturating_sub(24);
+                    dl.dl_data.push(scan_pos as i64);
+                    dl.dl_offset.push(cum_offset);
+                    cum_offset += uncompressed_len;
+                    scan_pos += align8(blk_len);
+                }
+                b"##DZ" => {
+                    if scan_pos + 48 > file_len {
+                        break;
+                    }
+                    let dz_bytes = read_at::<S, 44>(sink, scan_pos + 4)?;
+                    let dz: Dz4Block = Cursor::new(dz_bytes).read_le()?;
+                    let blk_len = 48 + dz.dz_data_length;
+                    if scan_pos + blk_len > file_len {
+                        break;
+                    }
+                    dl.dl_data.push(scan_pos as i64);
+                    dl.dl_offset.push(cum_offset);
+                    cum_offset += dz.dz_org_data_length;
+                    scan_pos += align8(blk_len);
+                }
+                _ => break,
+            }
+        }
+        if !dl.dl_data.is_empty() {
+            dl.dl_count = dl.dl_data.len() as u32;
+            dl.dl_links = 1 + dl.dl_count as u64;
+            dl.dl_len = 24 + 8 + (dl.dl_count as u64) * 8 + 8 + (dl.dl_count as u64) * 8;
+            dl.dl_flags = 0;
+            dl_modified = true;
+        }
+    }
+
+    // Feature 3: reconstruct and patch dl_offset entries
+    if dl.dl_count > 0 && (dl.dl_flags & 1) == 0 {
+        let needs_offset_check =
+            (unfin_flags & (UNFIN_LAST_DL_BLOCK | UNFIN_VLSD_OFFSET | UNFIN_VLSC_OFFSET)) != 0
+                || dl.dl_offset.len() != dl.dl_count as usize
+                || (dl.dl_count > 1 && dl.dl_offset.iter().all(|&o| o == 0));
+
+        if needs_offset_check {
+            let mut cum = 0u64;
+            let mut expected_offsets = alloc::vec::Vec::with_capacity(dl.dl_data.len());
+            for &child in &dl.dl_data {
+                expected_offsets.push(cum);
+                if child > 0 && (child as u64) + 24 <= file_len {
+                    let child_pos = child as u64;
+                    let ch_bytes = read_at::<S, 24>(sink, child_pos)?;
+                    let ch_hdr: Blockheader4 = Cursor::new(ch_bytes).read_le()?;
+                    match &ch_hdr.hdr_id {
+                        b"##DZ" => {
+                            if child_pos + 48 <= file_len {
+                                let dz_bytes = read_at::<S, 44>(sink, child_pos + 4)?;
+                                if let Ok(dz) = Cursor::new(dz_bytes).read_le::<Dz4Block>() {
+                                    cum += dz.dz_org_data_length;
+                                }
+                            }
+                        }
+                        b"##DT" | b"##SD" | b"##VD" | b"##DV" | b"##RD" => {
+                            let avail = file_len.saturating_sub(child_pos);
+                            let blk_len = ch_hdr.hdr_len.min(avail);
+                            cum += blk_len.saturating_sub(24);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            if dl.dl_offset != expected_offsets {
+                dl.dl_offset = expected_offsets;
+                dl.dl_count = dl.dl_data.len() as u32;
+                dl.dl_len = 24 + 8 + (dl.dl_count as u64) * 8 + 8 + (dl.dl_count as u64) * 8;
+                dl.dl_links = 1 + dl.dl_count as u64;
+                dl_modified = true;
+            }
+        }
+    }
+
+    if dl_modified {
+        sink.seek(SeekFrom::Start(dl_pos))?;
+        sink.write_all(b"##DL")?;
+        let mut dl_out = Cursor::new(alloc::vec::Vec::with_capacity(1064));
+        dl.write_le(&mut dl_out)?;
+        sink.write_all(&dl_out.into_inner())?;
+    }
+
+    Ok(dl)
 }
 
 fn sum_dl_chain<S: ReadWriteSeek>(
@@ -121,24 +268,21 @@ fn sum_dl_chain<S: ReadWriteSeek>(
     first_dl_pos: u64,
     file_len: u64,
     rec_align: u64,
+    unfin_flags: u16,
 ) -> Result<u64> {
     let mut total = 0u64;
     let mut dl_pos = first_dl_pos;
     let mut guard = 0usize;
     while dl_pos > 0 && dl_pos + 24 <= file_len && guard < 65536 {
         guard += 1;
-        let hdr_bytes = read_at::<S, 24>(sink, dl_pos)?;
-        let hdr: Blockheader4 = Cursor::new(hdr_bytes).read_le()?;
-        if &hdr.hdr_id != b"##DL" || hdr.hdr_len < 40 || dl_pos + hdr.hdr_len > file_len {
-            break;
-        }
-        sink.seek(SeekFrom::Start(dl_pos + 4))?;
-        let mut dl_buf = alloc::vec![0u8; (hdr.hdr_len as usize).saturating_sub(4)];
-        sink.read_exact(&mut dl_buf)?;
-        let dl: Dl4Block = Cursor::new(dl_buf).read_le()?;
+        let dl = match recover_dl_block(sink, dl_pos, file_len, rec_align, unfin_flags) {
+            Ok(dl) => dl,
+            Err(_) => break,
+        };
         for &child in &dl.dl_data {
             if child > 0 {
-                total += sum_chain_payload_bytes(sink, child as u64, file_len, rec_align)?;
+                total +=
+                    sum_chain_payload_bytes(sink, child as u64, file_len, rec_align, unfin_flags)?;
             }
         }
         dl_pos = if dl.dl_dl_next > 0 {
@@ -156,6 +300,8 @@ struct CgRecEntry {
     is_vlsd: bool,
     cycle_offset: u64,
     cycle_count: u64,
+    cg_pos: u64,
+    vlsd_bytes: u64,
 }
 
 fn scan_unsorted_data_block<S: ReadWriteSeek>(
@@ -172,7 +318,7 @@ fn scan_unsorted_data_block<S: ReadWriteSeek>(
     let hdr: Blockheader4 = Cursor::new(hdr_bytes).read_le()?;
 
     let bytes = match &hdr.hdr_id {
-        b"##DT" | b"##SD" => {
+        b"##DT" | b"##SD" | b"##VD" => {
             let max_avail = file_len.saturating_sub(blk_pos);
             let len = if hdr.hdr_len >= 24 && (hdr.hdr_len - 24) <= max_avail {
                 (hdr.hdr_len - 24) as usize
@@ -188,7 +334,7 @@ fn scan_unsorted_data_block<S: ReadWriteSeek>(
             if blk_pos + 48 > file_len {
                 return Ok(());
             }
-            let dz_bytes = read_at::<S, 48>(sink, blk_pos)?;
+            let dz_bytes = read_at::<S, 44>(sink, blk_pos + 4)?;
             let dz: Dz4Block = Cursor::new(dz_bytes).read_le()?;
             let avail = file_len.saturating_sub(blk_pos + 48);
             if dz.dz_data_length > avail {
@@ -232,6 +378,7 @@ fn scan_unsorted_data_block<S: ReadWriteSeek>(
                 break;
             }
             entry.cycle_count += 1;
+            entry.vlsd_bytes += vlen as u64;
             pos += rec_id_size + 4 + vlen;
         } else {
             let full_len = rec_id_size + entry.rec_len as usize;
@@ -251,6 +398,7 @@ fn scan_unsorted_chain<S: ReadWriteSeek>(
     file_len: u64,
     rec_id_size: usize,
     cg_entries: &mut [CgRecEntry],
+    unfin_flags: u16,
 ) -> Result<()> {
     if data_pos == 0 || data_pos + 24 > file_len {
         return Ok(());
@@ -259,11 +407,14 @@ fn scan_unsorted_chain<S: ReadWriteSeek>(
     let hdr: Blockheader4 = Cursor::new(hdr_bytes).read_le()?;
 
     match &hdr.hdr_id {
-        b"##DT" | b"##SD" | b"##DZ" => {
+        b"##DT" | b"##SD" | b"##VD" | b"##DZ" => {
             scan_unsorted_data_block(sink, data_pos, file_len, rec_id_size, cg_entries)?;
         }
         b"##HL" => {
-            let hl_bytes = read_at::<S, 40>(sink, data_pos)?;
+            if data_pos + 40 > file_len {
+                return Ok(());
+            }
+            let hl_bytes = read_at::<S, 36>(sink, data_pos + 4)?;
             let hl: Hl4Block = Cursor::new(hl_bytes).read_le()?;
             if hl.hl_dl_first > 0 {
                 scan_unsorted_chain(
@@ -272,21 +423,19 @@ fn scan_unsorted_chain<S: ReadWriteSeek>(
                     file_len,
                     rec_id_size,
                     cg_entries,
+                    unfin_flags,
                 )?;
             }
         }
         b"##DL" => {
             let mut dl_pos = data_pos;
             let mut guard = 0usize;
-            while dl_pos > 0 && dl_pos + 32 <= file_len && guard < 65536 {
+            while dl_pos > 0 && dl_pos + 24 <= file_len && guard < 65536 {
                 guard += 1;
-                let dl_bytes = read_at::<S, 24>(sink, dl_pos)?;
-                let dl_hdr: Blockheader4 = Cursor::new(dl_bytes).read_le()?;
-                let dl_len = dl_hdr.hdr_len as usize;
-                sink.seek(SeekFrom::Start(dl_pos + 4))?;
-                let mut body = alloc::vec![0u8; dl_len.saturating_sub(4)];
-                sink.read_exact(&mut body)?;
-                let dl: Dl4Block = Cursor::new(body).read_le()?;
+                let dl = match recover_dl_block(sink, dl_pos, file_len, 1, unfin_flags) {
+                    Ok(dl) => dl,
+                    Err(_) => break,
+                };
                 for &ptr in &dl.dl_data {
                     if ptr > 0 && (ptr as u64) + 24 <= file_len {
                         let _ = scan_unsorted_data_block(
@@ -322,6 +471,7 @@ pub fn recover_in_place<S: ReadWriteSeek>(sink: &mut S) -> Result<usize> {
     if id.id_file_id != UNFINALIZED_ID {
         return Ok(0);
     }
+    let unfin_flags = id.id_unfin_flags;
 
     let hd_bytes = read_at::<S, 104>(sink, 64)?;
     let hd: Hd4 = Cursor::new(hd_bytes).read_le()?;
@@ -357,6 +507,8 @@ pub fn recover_in_place<S: ReadWriteSeek>(sink: &mut S) -> Result<usize> {
                     is_vlsd,
                     cycle_offset,
                     cycle_count: 0,
+                    cg_pos: cg_pos as u64,
+                    vlsd_bytes: 0,
                 });
                 cg_pos = cg.cg_cg_next;
             }
@@ -367,11 +519,19 @@ pub fn recover_in_place<S: ReadWriteSeek>(sink: &mut S) -> Result<usize> {
                 file_len,
                 dg.dg_rec_id_size as usize,
                 &mut cg_entries,
+                unfin_flags,
             );
 
             for entry in cg_entries {
                 if read_u64_at(sink, entry.cycle_offset)? != entry.cycle_count {
                     write_u64_at(sink, entry.cycle_offset, entry.cycle_count)?;
+                }
+                if entry.is_vlsd {
+                    let low = (entry.vlsd_bytes & 0xFFFF_FFFF) as u32;
+                    let high = (entry.vlsd_bytes >> 32) as u32;
+                    sink.seek(SeekFrom::Start(entry.cg_pos + 96))?;
+                    sink.write_all(&low.to_le_bytes())?;
+                    sink.write_all(&high.to_le_bytes())?;
                 }
                 patched_cgs += 1;
             }
@@ -403,8 +563,17 @@ pub fn recover_in_place<S: ReadWriteSeek>(sink: &mut S) -> Result<usize> {
                     let mut cn_buf = alloc::vec![0u8; cn_body_len];
                     sink.read_exact(&mut cn_buf)?;
                     let cn: Cn4Block = Cursor::new(cn_buf).read_le()?;
-                    if cn.cn_type == 1 && cn.cn_data > 0 && dg.dg_rec_id_size == 0 {
-                        let _ = sum_chain_payload_bytes(sink, cn.cn_data as u64, file_len, 1)?;
+                    if (cn.cn_type == 1 || cn.cn_type == 7)
+                        && cn.cn_data > 0
+                        && dg.dg_rec_id_size == 0
+                    {
+                        let _ = sum_chain_payload_bytes(
+                            sink,
+                            cn.cn_data as u64,
+                            file_len,
+                            1,
+                            unfin_flags,
+                        )?;
                     }
                     cn_pos = cn.cn_cn_next;
                 }
@@ -412,8 +581,13 @@ pub fn recover_in_place<S: ReadWriteSeek>(sink: &mut S) -> Result<usize> {
                 if dg.dg_rec_id_size == 0 && !is_vlsd_cg {
                     let rec_len = (cg.cg_data_bytes as u64) + (cg.cg_inval_bytes as u64);
                     if rec_len > 0 && dg.dg_data > 0 {
-                        let total_bytes =
-                            sum_chain_payload_bytes(sink, dg.dg_data as u64, file_len, rec_len)?;
+                        let total_bytes = sum_chain_payload_bytes(
+                            sink,
+                            dg.dg_data as u64,
+                            file_len,
+                            rec_len,
+                            unfin_flags,
+                        )?;
                         let cycles = total_bytes / rec_len;
                         let cycle_offset = (cg_pos as u64) + 16 + 8 + cg.cg_links * 8 + 8;
                         if read_u64_at(sink, cycle_offset)? != cycles {
@@ -518,5 +692,117 @@ mod tests {
         let patched = recover_in_place(&mut sink).unwrap();
         assert_eq!(patched, 2);
         assert_eq!(&sink.as_slice()[0..8], b"MDF     ");
+    }
+
+    #[test]
+    fn test_recover_vlsd_unsorted_records() {
+        let mut b = LoggerBuilder::new(DataLayout::Unsorted, CompressionAlgorithm::NoCompression);
+        let g = b.add_group("G");
+        let ch_vlsd = b.add_vlsd_channel(g, "V", CnDataType::ByteArray).unwrap();
+        let schema = b.build().unwrap();
+
+        let mut sink = VecSink::default();
+        let mut logger = Logger::start(schema, sink, ManualClock::new(0.01, 1)).unwrap();
+        for i in 0..5 {
+            let data = alloc::format!("payload_{i}");
+            logger
+                .begin_record(g)
+                .unwrap()
+                .set_bytes(ch_vlsd, data.as_bytes())
+                .unwrap()
+                .commit()
+                .unwrap();
+        }
+        logger.checkpoint().unwrap();
+        sink = logger.into_sink_unfinalized();
+        assert_eq!(&sink.as_slice()[0..8], b"UnFinMF ");
+
+        let patched = recover_in_place(&mut sink).unwrap();
+        assert!(patched > 0);
+        assert_eq!(&sink.as_slice()[0..8], b"MDF     ");
+    }
+
+    #[test]
+    fn test_recover_unpatched_dl_block_forward_scan() {
+        let mut sink = VecSink::new();
+        // IDBLOCK
+        let id = IdBlock {
+            id_unfin_flags: UNFIN_LAST_DL_BLOCK,
+            ..Default::default()
+        };
+        let mut id_bytes = alloc::vec![];
+        id.write_le(&mut Cursor::new(&mut id_bytes)).unwrap();
+        sink.write_all(&id_bytes).unwrap();
+
+        let dl_pos = sink.as_slice().len() as u64;
+        // Write unpatched DLBLOCK: dl_count = 0, dl_len = 40, dl_links = 1
+        sink.write_all(b"##DL").unwrap();
+        let dl = Dl4Block {
+            reserved: [0; 4],
+            dl_len: 40,
+            dl_links: 1,
+            dl_dl_next: 0,
+            dl_data: alloc::vec![],
+            dl_flags: 0,
+            dl_reserved: [0; 3],
+            dl_count: 0,
+            dl_equal_length: None,
+            dl_offset: alloc::vec![],
+            dl_time_values: alloc::vec![],
+            dl_angle_values: alloc::vec![],
+            dl_distance_values: alloc::vec![],
+        };
+        let mut dl_bytes = alloc::vec![];
+        dl.write_le(&mut Cursor::new(&mut dl_bytes)).unwrap();
+        sink.write_all(&dl_bytes).unwrap();
+
+        // Pad to dl_pos + 1064
+        let current_len = sink.as_slice().len() as u64;
+        let padding = (dl_pos + 1064).saturating_sub(current_len);
+        sink.write_all(&alloc::vec![0u8; padding as usize]).unwrap();
+
+        // Write two DT blocks after dl_pos + 1064
+        // First DT: 24 bytes header + 16 bytes payload = 40 bytes
+        let dt1_pos = sink.as_slice().len() as u64;
+        let dt1_hdr = Blockheader4 {
+            hdr_id: *b"##DT",
+            hdr_gap: [0; 4],
+            hdr_len: 40,
+            hdr_links: 0,
+        };
+        let mut dt1_hdr_bytes = alloc::vec![];
+        dt1_hdr
+            .write_le(&mut Cursor::new(&mut dt1_hdr_bytes))
+            .unwrap();
+        sink.write_all(&dt1_hdr_bytes).unwrap();
+        sink.write_all(&[0xAA; 16]).unwrap();
+
+        // Second DT: 24 bytes header + 32 bytes payload = 56 bytes
+        let dt2_pos = sink.as_slice().len() as u64;
+        let dt2_hdr = Blockheader4 {
+            hdr_id: *b"##DT",
+            hdr_gap: [0; 4],
+            hdr_len: 56,
+            hdr_links: 0,
+        };
+        let mut dt2_hdr_bytes = alloc::vec![];
+        dt2_hdr
+            .write_le(&mut Cursor::new(&mut dt2_hdr_bytes))
+            .unwrap();
+        sink.write_all(&dt2_hdr_bytes).unwrap();
+        sink.write_all(&[0xBB; 32]).unwrap();
+
+        let file_len = sink.as_slice().len() as u64;
+
+        // Run recover_dl_block
+        let recovered_dl =
+            recover_dl_block(&mut sink, dl_pos, file_len, 1, UNFIN_LAST_DL_BLOCK).unwrap();
+        assert_eq!(recovered_dl.dl_count, 2);
+        assert_eq!(recovered_dl.dl_data.len(), 2);
+        assert_eq!(recovered_dl.dl_data[0], dt1_pos as i64);
+        assert_eq!(recovered_dl.dl_data[1], dt2_pos as i64);
+        assert_eq!(recovered_dl.dl_offset.len(), 2);
+        assert_eq!(recovered_dl.dl_offset[0], 0);
+        assert_eq!(recovered_dl.dl_offset[1], 16);
     }
 }
