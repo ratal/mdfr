@@ -31,10 +31,14 @@ use pyo3::types::{PyDict, PyString};
 fn ensure_python_path(py: Python<'_>) -> PyResult<()> {
     let sys = py.import("sys")?;
     let sys_path = sys.getattr("path")?;
-    let venv_site =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(".venv/lib/python3.13/site-packages");
-    if venv_site.exists() {
-        sys_path.call_method1("insert", (0, venv_site.to_str().unwrap()))?;
+    let venv_lib = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(".venv/lib");
+    if let Ok(entries) = std::fs::read_dir(&venv_lib) {
+        for entry in entries.flatten() {
+            let site = entry.path().join("site-packages");
+            if site.exists() {
+                sys_path.call_method1("insert", (0, site.to_str().unwrap()))?;
+            }
+        }
     }
     Ok(())
 }
@@ -96,6 +100,17 @@ fn test_feature33_numpy_mask_polarity_strictly_true_for_invalid() -> anyhow::Res
     )?;
 
     Python::initialize();
+    let has_numpy = Python::attach(|py| {
+        let _ = ensure_python_path(py);
+        py.import("numpy.ma").is_ok()
+    });
+    if !has_numpy {
+        eprintln!(
+            "Skipping test_feature33_numpy_mask_polarity_strictly_true_for_invalid: numpy.ma not available in Python"
+        );
+        return Ok(());
+    }
+
     Python::attach(|py| -> PyResult<()> {
         ensure_python_path(py)?;
         let mdfr_cls = py.get_type::<Mdfr>();
@@ -308,6 +323,17 @@ fn test_feature33_add_channel_dict_string_kwargs() -> anyhow::Result<()> {
     )?;
 
     Python::initialize();
+    let has_pyarrow = Python::attach(|py| {
+        let _ = ensure_python_path(py);
+        py.import("pyarrow").is_ok()
+    });
+    if !has_pyarrow {
+        eprintln!(
+            "Skipping test_feature33_add_channel_dict_string_kwargs: pyarrow not available in Python"
+        );
+        return Ok(());
+    }
+
     Python::attach(|py| -> PyResult<()> {
         ensure_python_path(py)?;
         let mdfr_cls = py.get_type::<Mdfr>();

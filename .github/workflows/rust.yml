@@ -48,6 +48,8 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
+      - name: Install Python test dependencies
+        run: pip install numpy pyarrow
       - name: Unzip local test fixtures
         run: cd test_files && unzip -o test_mdf3.mdf.zip && unzip -o test_mdf4.mf4.zip
       - name: Run workspace tests
