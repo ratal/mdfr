@@ -23,8 +23,13 @@ macro_rules! tensor_to_list {
         let row_len = vals.len().checked_div(n).unwrap_or(0);
         let mut bldr =
             ListPrimitiveChunkedBuilder::<$polars_type>::new($name.into(), n, vals.len(), $dtype);
-        for row in vals.chunks_exact(row_len) {
-            bldr.append_slice(row);
+        let nulls = $ta.nulls();
+        for (i, row) in vals.chunks_exact(row_len).enumerate() {
+            if nulls.map(|nb| !nb.value(i)).unwrap_or(false) {
+                bldr.append_null();
+            } else {
+                bldr.append_slice(row);
+            }
         }
         bldr.finish().into_series()
     }};
@@ -37,8 +42,13 @@ macro_rules! complex_to_list {
         let n = $cx.len();
         let mut bldr =
             ListPrimitiveChunkedBuilder::<$polars_type>::new($name.into(), n, vals.len(), $dtype);
-        for pair in vals.chunks_exact(2) {
-            bldr.append_slice(pair);
+        let nulls = $cx.nulls();
+        for (i, pair) in vals.chunks_exact(2).enumerate() {
+            if nulls.map(|nb| !nb.value(i)).unwrap_or(false) {
+                bldr.append_null();
+            } else {
+                bldr.append_slice(pair);
+            }
         }
         bldr.finish().into_series()
     }};
@@ -46,8 +56,19 @@ macro_rules! complex_to_list {
 
 /// Converts an iterator of `Option<&[u8]>` items into a polars Binary `Series`.
 fn bytes_iter_to_series<'a>(name: &str, iter: impl Iterator<Item = Option<&'a [u8]>>) -> Series {
-    let v: Vec<Vec<u8>> = iter.map(|x| x.unwrap_or(&[]).to_vec()).collect();
+    let v: Vec<Option<&'a [u8]>> = iter.collect();
     Series::new(name.into(), v)
+}
+
+macro_rules! primitive_to_series {
+    ($name:expr, $b:expr) => {
+        if $b.null_count() > 0 {
+            let v: Vec<Option<_>> = $b.iter().collect();
+            Series::new($name.into(), v)
+        } else {
+            Series::new($name.into(), $b.values().as_ref())
+        }
+    };
 }
 
 /// Converts a [`ChannelData`] value into a Polars [`Series`].
@@ -66,16 +87,16 @@ pub fn channel_data_to_series(name: &str, data: &ChannelData) -> PolarsResult<Se
     use ChannelData::*;
     Ok(match data {
         // ── scalar numerics ──────────────────────────────────────────────────
-        Int8(b) => Series::new(name.into(), b.values().as_ref()),
-        UInt8(b) => Series::new(name.into(), b.values().as_ref()),
-        Int16(b) => Series::new(name.into(), b.values().as_ref()),
-        UInt16(b) => Series::new(name.into(), b.values().as_ref()),
-        Int32(b) => Series::new(name.into(), b.values().as_ref()),
-        UInt32(b) => Series::new(name.into(), b.values().as_ref()),
-        Float32(b) => Series::new(name.into(), b.values().as_ref()),
-        Int64(b) => Series::new(name.into(), b.values().as_ref()),
-        UInt64(b) => Series::new(name.into(), b.values().as_ref()),
-        Float64(b) => Series::new(name.into(), b.values().as_ref()),
+        Int8(b) => primitive_to_series!(name, b),
+        UInt8(b) => primitive_to_series!(name, b),
+        Int16(b) => primitive_to_series!(name, b),
+        UInt16(b) => primitive_to_series!(name, b),
+        Int32(b) => primitive_to_series!(name, b),
+        UInt32(b) => primitive_to_series!(name, b),
+        Float32(b) => primitive_to_series!(name, b),
+        Int64(b) => primitive_to_series!(name, b),
+        UInt64(b) => primitive_to_series!(name, b),
+        Float64(b) => primitive_to_series!(name, b),
 
         // ── strings ──────────────────────────────────────────────────────────
         Utf8(b) => {

@@ -354,6 +354,16 @@ impl LoggerBuilder {
                 "invalid bit channel '{name}': byte_offset={byte_offset} bit_offset={bit_offset} bit_count={bit_count}"
             )));
         }
+        if (bit_offset != 0 || !bit_count.is_multiple_of(8))
+            && !matches!(
+                data_type,
+                CnDataType::UIntLE | CnDataType::UIntBE | CnDataType::IntLE | CnDataType::IntBE
+            )
+        {
+            return Err(Error::InvalidSchema(format!(
+                "non-byte-aligned bit channel '{name}' (bit_offset={bit_offset}, bit_count={bit_count}) requires integer data type, got {data_type:?}"
+            )));
+        }
         if byte_offset < 8 {
             return Err(Error::InvalidSchema(format!(
                 "bit channel '{name}' overlaps master time channel (bytes 0..8)"
@@ -787,6 +797,18 @@ mod tests {
         assert!(
             builder
                 .add_bit_channel(g, "bad_bit2", CnDataType::UIntLE, 4, 0, 1)
+                .is_err()
+        );
+        // non-integer type with non-byte-aligned bit count should fail
+        assert!(
+            builder
+                .add_bit_channel(g, "bad_float_bit", CnDataType::FloatLE, 10, 0, 7)
+                .is_err()
+        );
+        // non-integer type with non-zero bit offset should fail
+        assert!(
+            builder
+                .add_bit_channel(g, "bad_str_bit", CnDataType::StringUtf8, 10, 2, 8)
                 .is_err()
         );
         // empty dims array should fail

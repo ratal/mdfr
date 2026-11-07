@@ -92,7 +92,7 @@ mod numpy_tests {
         // 4 samples × 3 elements each = 12 f64 values, shape [4, 3]
         let vals: Vec<f64> = (1..=12).map(|x| x as f64).collect();
         let buf = MutableBuffer::from_iter(vals.iter().copied());
-        let ta = TensorArrow::<Float64Type>::new_from_buffer(buf, vec![4, 3], Order::RowMajor);
+        let ta = TensorArrow::<Float64Type>::new_from_buffer(buf, vec![3], Order::RowMajor);
         let cd = ChannelData::ArrayDFloat64(ta);
         Python::attach(|py| {
             let obj = cd.into_pyobject(py).unwrap();

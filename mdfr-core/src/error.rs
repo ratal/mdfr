@@ -14,6 +14,21 @@ pub enum Error {
     /// Schema is inconsistent (overlapping channels, unknown group, ...).
     #[error("invalid schema: {0}")]
     InvalidSchema(String),
+    /// Invalid channel or group handle.
+    #[error("invalid handle: {0}")]
+    InvalidHandle(String),
+    /// Feature or data type not supported.
+    #[error("unsupported: {0}")]
+    Unsupported(&'static str),
+    /// Compression or decompression failure.
+    #[error("compression error: {0}")]
+    Compression(String),
+    /// SPSC ring buffer is full.
+    #[error("ring buffer full")]
+    RingFull,
+    /// Logger is already closed.
+    #[error("logger already closed")]
+    AlreadyClosed,
     /// Record length does not match the group record size.
     #[error("record size mismatch: expected {expected}, got {got}")]
     RecordSize {
@@ -22,9 +37,6 @@ pub enum Error {
         /// Provided size in bytes.
         got: usize,
     },
-    /// Feature or data type not supported.
-    #[error("unsupported: {0}")]
-    Unsupported(&'static str),
 }
 
 /// Result alias for the core.
@@ -43,8 +55,12 @@ impl Error {
             Error::Io => -1,
             Error::InvalidBlock(_) => -2,
             Error::InvalidSchema(_) => -3,
-            Error::RecordSize { .. } => -4,
+            Error::InvalidHandle(_) => -4,
             Error::Unsupported(_) => -5,
+            Error::Compression(_) => -6,
+            Error::RingFull => -7,
+            Error::AlreadyClosed => -8,
+            Error::RecordSize { .. } => -9,
         }
     }
 }
@@ -67,19 +83,36 @@ mod tests {
         assert_eq!(err_schema.code(), -3);
         assert_eq!(alloc::format!("{err_schema}"), "invalid schema: dup name");
 
-        let err_size = Error::RecordSize {
-            expected: 16,
-            got: 8,
-        };
-        assert_eq!(err_size.code(), -4);
-        assert_eq!(
-            alloc::format!("{err_size}"),
-            "record size mismatch: expected 16, got 8"
-        );
+        let err_handle = Error::InvalidHandle("handle 99".into());
+        assert_eq!(err_handle.code(), -4);
+        assert_eq!(alloc::format!("{err_handle}"), "invalid handle: handle 99");
 
         let err_unsupported = Error::Unsupported("lzma");
         assert_eq!(err_unsupported.code(), -5);
         assert_eq!(alloc::format!("{err_unsupported}"), "unsupported: lzma");
+
+        let err_comp = Error::Compression("corrupted".into());
+        assert_eq!(err_comp.code(), -6);
+        assert_eq!(alloc::format!("{err_comp}"), "compression error: corrupted");
+
+        assert_eq!(Error::RingFull.code(), -7);
+        assert_eq!(alloc::format!("{}", Error::RingFull), "ring buffer full");
+
+        assert_eq!(Error::AlreadyClosed.code(), -8);
+        assert_eq!(
+            alloc::format!("{}", Error::AlreadyClosed),
+            "logger already closed"
+        );
+
+        let err_size = Error::RecordSize {
+            expected: 16,
+            got: 8,
+        };
+        assert_eq!(err_size.code(), -9);
+        assert_eq!(
+            alloc::format!("{err_size}"),
+            "record size mismatch: expected 16, got 8"
+        );
 
         let binrw_err = binrw::Error::Custom {
             pos: 10,

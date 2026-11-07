@@ -1050,7 +1050,7 @@ mod tests {
             let bad_data = [0u8; 5];
             assert_eq!(
                 mdfr_logger_push_raw(logger, g_raw, bad_data.as_ptr(), bad_data.len()),
-                -4
+                -9
             );
 
             assert_eq!(mdfr_logger_close(logger), 0);

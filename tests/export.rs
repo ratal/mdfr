@@ -308,3 +308,56 @@ fn export_all_to_csv() -> Result<()> {
     assert!(count >= 1);
     Ok(())
 }
+
+#[cfg(all(feature = "parquet", feature = "polars"))]
+#[test]
+fn export_dotted_master_to_parquet() -> Result<()> {
+    let tmp_dir = tempfile::tempdir()?;
+    let writing_parquet_file = tmp_dir.path().join("dotted_export");
+    let writing_parquet_str = writing_parquet_file.to_str().unwrap();
+
+    let df = polars::df!(
+        "Time.Channel" => &[0.0f64, 0.1, 0.2],
+        "Vehicle.Speed" => &[10.0f64, 20.0, 30.0]
+    )?;
+    let mdf = Mdf::from_polars_df(&df, Some("Time.Channel"))?;
+    mdf.export_to_parquet(writing_parquet_str, None)?;
+
+    let expected_file = tmp_dir.path().join("dotted_export_Time.Channel.parquet");
+    assert!(
+        expected_file.exists(),
+        "Expected parquet file {:?} to exist, but was not found",
+        expected_file
+    );
+    assert!(
+        expected_file.metadata()?.len() > 0,
+        "Exported parquet file must not be empty"
+    );
+    Ok(())
+}
+
+#[cfg(feature = "polars")]
+#[test]
+fn export_dotted_master_to_csv() -> Result<()> {
+    let tmp_dir = tempfile::tempdir()?;
+    let writing_csv_file = tmp_dir.path().join("dotted_export");
+    let writing_csv_str = writing_csv_file.to_str().unwrap();
+
+    let df = polars::df!(
+        "Time.Channel" => &[0.0f64, 0.1, 0.2],
+        "Vehicle.Speed" => &[10.0f64, 20.0, 30.0]
+    )?;
+    let mdf = Mdf::from_polars_df(&df, Some("Time.Channel"))?;
+    mdf.export_to_csv(writing_csv_str)?;
+
+    let expected_file = tmp_dir.path().join("dotted_export_Time.Channel.csv");
+    assert!(
+        expected_file.exists(),
+        "Expected CSV file {:?} to exist, but was not found",
+        expected_file
+    );
+    let contents = std::fs::read_to_string(&expected_file)?;
+    assert!(contents.contains("Time.Channel"));
+    assert!(contents.contains("Vehicle.Speed"));
+    Ok(())
+}

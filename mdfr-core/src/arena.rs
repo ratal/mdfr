@@ -169,7 +169,7 @@ impl StaticArena {
     /// # Safety
     /// `ptr` must have been returned by [`StaticArena::alloc_layout`].
     pub unsafe fn dealloc_layout(&self, ptr: *mut u8, _layout: Layout) {
-        if ptr.is_null() {
+        if ptr.is_null() || _layout.size() == 0 {
             return;
         }
         self.with_lock(|inner| unsafe {
@@ -255,6 +255,26 @@ mod tests {
             let p_big = arena.alloc_layout(l_big);
             assert!(!p_big.is_null());
             arena.dealloc_layout(p_big, l_big);
+        }
+    }
+
+    #[test]
+    fn test_arena_zero_size_and_null_dealloc() {
+        let arena = StaticArena::new();
+        unsafe {
+            // Null deallocations with various alignments
+            arena.dealloc_layout(ptr::null_mut(), Layout::from_size_align(0, 1).unwrap());
+            arena.dealloc_layout(ptr::null_mut(), Layout::from_size_align(0, 8).unwrap());
+            arena.dealloc_layout(ptr::null_mut(), Layout::from_size_align(64, 8).unwrap());
+            arena.dealloc_layout(ptr::null_mut(), Layout::from_size_align(128, 16).unwrap());
+
+            // Zero-sized allocations with various alignments
+            for align in [1, 2, 4, 8, 16] {
+                let layout = Layout::from_size_align(0, align).unwrap();
+                let p = arena.alloc_layout(layout);
+                assert!(!p.is_null());
+                arena.dealloc_layout(p, layout);
+            }
         }
     }
 }

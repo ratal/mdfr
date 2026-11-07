@@ -6,7 +6,6 @@ use encoding_rs::WINDOWS_1252;
 use half::f16;
 use rayon::prelude::*;
 use std::collections::HashMap;
-use std::io::Cursor;
 
 use crate::data_holder::channel_builder::ChannelBuilder;
 
@@ -203,32 +202,64 @@ pub fn read_channels_from_bytes(
                     if cn.endian.is_big() {
                         if n_bytes == 8 {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                                value = &record[pos_byte_beg..pos_byte_beg + 8];
                                 data[i + previous_index] = i64::from_be_bytes(
                                     value.try_into().context("Could not read be i64")?,
                                 );
                             }
+                        } else if n_bytes == 7 {
+                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                let slice = &record[pos_byte_beg..pos_byte_beg + 7];
+                                let sign = if slice[0] & 0x80 != 0 { 0xFF } else { 0x00 };
+                                let mut buf = [sign; 8];
+                                buf[1..8].copy_from_slice(slice);
+                                data[i + previous_index] = i64::from_be_bytes(buf);
+                            }
                         } else if n_bytes == 6 {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                                value = &record[pos_byte_beg..pos_byte_beg + 6];
                                 data[i + previous_index] = value
                                     .read_i48::<BigEndian>()
                                     .context("Could not read be i48")?;
                             }
+                        } else if n_bytes == 5 {
+                            for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                                let slice = &record[pos_byte_beg..pos_byte_beg + 5];
+                                let sign = if slice[0] & 0x80 != 0 { 0xFF } else { 0x00 };
+                                let mut buf = [sign; 8];
+                                buf[3..8].copy_from_slice(slice);
+                                data[i + previous_index] = i64::from_be_bytes(buf);
+                            }
                         }
                     } else if n_bytes == 8 {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                            value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                            value = &record[pos_byte_beg..pos_byte_beg + 8];
                             data[i + previous_index] = i64::from_le_bytes(
                                 value.try_into().context("Could not read le i64")?,
                             );
                         }
+                    } else if n_bytes == 7 {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            let slice = &record[pos_byte_beg..pos_byte_beg + 7];
+                            let sign = if slice[6] & 0x80 != 0 { 0xFF } else { 0x00 };
+                            let mut buf = [sign; 8];
+                            buf[0..7].copy_from_slice(slice);
+                            data[i + previous_index] = i64::from_le_bytes(buf);
+                        }
                     } else if n_bytes == 6 {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                            value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                            value = &record[pos_byte_beg..pos_byte_beg + 6];
                             data[i + previous_index] = value
                                 .read_i48::<LittleEndian>()
                                 .context("Could not read le i48")?;
+                        }
+                    } else if n_bytes == 5 {
+                        for (i, record) in data_chunk.chunks(record_length).enumerate() {
+                            let slice = &record[pos_byte_beg..pos_byte_beg + 5];
+                            let sign = if slice[4] & 0x80 != 0 { 0xFF } else { 0x00 };
+                            let mut buf = [sign; 8];
+                            buf[0..5].copy_from_slice(slice);
+                            data[i + previous_index] = i64::from_le_bytes(buf);
                         }
                     }
                 }
@@ -237,63 +268,56 @@ pub fn read_channels_from_bytes(
                     if cn.endian.is_big() {
                         if n_bytes == 8 {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                                value = &record[pos_byte_beg..pos_byte_beg + 8];
                                 data[i + previous_index] = u64::from_be_bytes(
                                     value.try_into().context("Could not read be u64")?,
                                 );
                             }
                         } else if n_bytes == 7 {
-                            let mut buf = [0u8; std::mem::size_of::<u64>()];
+                            let mut buf = [0u8; 8];
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                buf[0..7].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + 7]);
+                                buf[1..8].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + 7]);
                                 data[i + previous_index] = u64::from_be_bytes(buf);
                             }
                         } else if n_bytes == 6 {
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                                value = &record[pos_byte_beg..pos_byte_beg + 6];
                                 data[i + previous_index] = value
                                     .read_u48::<BigEndian>()
                                     .context("Could not read be u48")?;
                             }
-                        } else {
-                            let mut buf = [0u8; 6];
+                        } else if n_bytes == 5 {
+                            let mut buf = [0u8; 8];
                             for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                                buf[0..5]
-                                    .copy_from_slice(&record[pos_byte_beg..pos_byte_beg + n_bytes]);
-                                data[i + previous_index] = Cursor::new(buf)
-                                    .read_u48::<BigEndian>()
-                                    .context("Could not read be u48 from 5 bytes")?;
+                                buf[3..8].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + 5]);
+                                data[i + previous_index] = u64::from_be_bytes(buf);
                             }
                         }
                     } else if n_bytes == 8 {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                            value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                            value = &record[pos_byte_beg..pos_byte_beg + 8];
                             data[i + previous_index] = u64::from_le_bytes(
                                 value.try_into().context("Could not read le u64")?,
                             );
                         }
                     } else if n_bytes == 7 {
-                        // little endian
-                        let mut buf = [0u8; std::mem::size_of::<u64>()];
+                        let mut buf = [0u8; 8];
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             buf[0..7].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + 7]);
                             data[i + previous_index] = u64::from_le_bytes(buf);
                         }
                     } else if n_bytes == 6 {
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
-                            value = &record[pos_byte_beg..pos_byte_beg + n_bytes];
+                            value = &record[pos_byte_beg..pos_byte_beg + 6];
                             data[i + previous_index] = value
                                 .read_u48::<LittleEndian>()
                                 .context("Could not read le u48")?;
                         }
-                    } else {
-                        // n_bytes = 5
-                        let mut buf = [0u8; 6];
+                    } else if n_bytes == 5 {
+                        let mut buf = [0u8; 8];
                         for (i, record) in data_chunk.chunks(record_length).enumerate() {
                             buf[0..5].copy_from_slice(&record[pos_byte_beg..pos_byte_beg + 5]);
-                            data[i + previous_index] = Cursor::new(buf)
-                                .read_u48::<LittleEndian>()
-                                .context("Could not read le u48 from 5 bytes")?;
+                            data[i + previous_index] = u64::from_le_bytes(buf);
                         }
                     }
                 }

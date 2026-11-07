@@ -151,7 +151,7 @@ pub(super) fn parse_composition(
             // ca_dim_size already encodes the full array shape — keep it unchanged.
             if matches!(&ca.block, Compo::CA(_)) {
                 let mut combined = shape.0.clone();
-                combined.extend_from_slice(&s.0[1..]);
+                combined.extend_from_slice(&s.0);
                 shape = (combined, shape.1);
                 array_size *= inner_array_size;
             }
@@ -321,31 +321,13 @@ pub(super) fn parse_composition(
         position = pos;
         n_cn += n_cns;
         cns = cnss;
-        let cn_composition: Option<Box<Composition>>;
         let cn_struct: Cn4 = if let Some(cn) = cns.get(&first_rec_pos) {
             cn.clone()
         } else {
             Cn4::default()
         };
-        let shape: (Vec<usize>, Order);
-        if cn_struct.block.cn_composition != 0 {
-            let (cn, pos, _array_size, s, n_cns, cnss) = parse_composition(
-                rdr,
-                cn_struct.block.cn_composition,
-                position,
-                sharable,
-                record_layout,
-                cg_cycle_count,
-            )?;
-            shape = s;
-            position = pos;
-            n_cn += n_cns;
-            cns.extend(cnss);
-            cn_composition = Some(Box::new(cn));
-        } else {
-            cn_composition = None;
-            shape = (vec![1], Order::RowMajor);
-        }
+        let shape = cn_struct.shape.clone();
+        let cn_composition = cn_struct.composition.clone().map(Box::new);
         Ok((
             Composition {
                 block: Compo::CN(Box::new(cn_struct)),

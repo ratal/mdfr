@@ -1,4 +1,5 @@
 //! This module provides python interface using pyo3s
+#![allow(clippy::clone_on_copy)]
 use std::collections::HashSet;
 use std::fmt::Write;
 use std::sync::Arc;
@@ -17,6 +18,7 @@ use crate::export::numpy::array_to_rust;
 #[cfg(feature = "polars")]
 use crate::export::polars::rust_arrow_to_py_series;
 use crate::mdfinfo::mdfinfo4::CompressionAlgorithm;
+use numpy::ToPyArray;
 use pyo3::exceptions::PyUnicodeDecodeError;
 use pyo3::ffi::c_str;
 use pyo3::prelude::*;
@@ -94,16 +96,12 @@ impl PyChannel {
             .context("error converting ChannelData into python numpy object")?;
         let mut py_array: Py<PyAny> = py_obj.into();
         if let Some(m) = self.data.validity() {
-            let mask: Py<PyAny> = m
-                .iter()
-                .collect::<Vec<bool>>()
-                .into_pyobject(py)
-                .context("error converting validity into python object")?
-                .into();
+            let mask_vec: Vec<bool> = m.iter().map(|valid| !valid).collect();
+            let np_mask = mask_vec.to_pyarray(py);
             let np_ma = py.import("numpy.ma").context("could not import numpy.ma")?;
             let kwargs = pyo3::types::PyDict::new(py);
             kwargs
-                .set_item(pyo3::intern!(py, "mask"), mask)
+                .set_item(pyo3::intern!(py, "mask"), np_mask)
                 .context("cannot set python mask")?;
             py_array = np_ma
                 .getattr(pyo3::intern!(py, "array"))
@@ -188,6 +186,47 @@ impl PyChannel {
     }
 }
 
+/// Compression algorithm exposed to Python bindings.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[pyclass(eq, eq_int, name = "CompressionAlgorithm", from_py_object)]
+pub enum PyCompressionAlgorithm {
+    NoCompression = 255,
+    Deflate = 0,
+    DeflateTranspose = 1,
+    Zstd = 2,
+    ZstdTranspose = 3,
+    Lz4 = 4,
+    Lz4Transpose = 5,
+}
+
+impl From<PyCompressionAlgorithm> for CompressionAlgorithm {
+    fn from(c: PyCompressionAlgorithm) -> Self {
+        match c {
+            PyCompressionAlgorithm::NoCompression => Self::NoCompression,
+            PyCompressionAlgorithm::Deflate => Self::Deflate,
+            PyCompressionAlgorithm::DeflateTranspose => Self::DeflateTranspose,
+            PyCompressionAlgorithm::Zstd => Self::Zstd,
+            PyCompressionAlgorithm::ZstdTranspose => Self::ZstdTranspose,
+            PyCompressionAlgorithm::Lz4 => Self::Lz4,
+            PyCompressionAlgorithm::Lz4Transpose => Self::Lz4Transpose,
+        }
+    }
+}
+
+impl From<CompressionAlgorithm> for PyCompressionAlgorithm {
+    fn from(c: CompressionAlgorithm) -> Self {
+        match c {
+            CompressionAlgorithm::NoCompression => Self::NoCompression,
+            CompressionAlgorithm::Deflate => Self::Deflate,
+            CompressionAlgorithm::DeflateTranspose => Self::DeflateTranspose,
+            CompressionAlgorithm::Zstd => Self::Zstd,
+            CompressionAlgorithm::ZstdTranspose => Self::ZstdTranspose,
+            CompressionAlgorithm::Lz4 => Self::Lz4,
+            CompressionAlgorithm::Lz4Transpose => Self::Lz4Transpose,
+        }
+    }
+}
+
 /// This function is used to create a python dictionary from a MdfInfo object
 #[pyclass]
 pub struct Mdfr(Mdf);
@@ -195,7 +234,7 @@ pub struct Mdfr(Mdf);
 pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<Mdfr>()?;
     m.add_class::<PyChannel>()?;
-    m.add_class::<CompressionAlgorithm>()?;
+    m.add_class::<PyCompressionAlgorithm>()?;
     m.add_class::<MdfLogger>()?;
     m.add_function(wrap_pyfunction!(finalize_file_in_place, m)?)?;
     m.add_function(wrap_pyfunction!(write_polars, m)?)?;
@@ -284,16 +323,12 @@ impl Mdfr {
                     .context("error converting ChannelData into python object")?
                     .into();
                 if let Some(m) = data.clone().validity() {
-                    let mask: Py<PyAny> = m
-                        .iter()
-                        .collect::<Vec<bool>>()
-                        .into_pyobject(py)
-                        .context("error converting validity into python object")?
-                        .into();
+                    let mask_vec: Vec<bool> = m.iter().map(|valid| !valid).collect();
+                    let np_mask = mask_vec.to_pyarray(py);
                     let np_ma = py.import("numpy.ma").context("could not import numpy.ma")?;
                     let kwargs = pyo3::types::PyDict::new(py);
                     kwargs
-                        .set_item(pyo3::intern!(py, "mask"), mask)
+                        .set_item(pyo3::intern!(py, "mask"), np_mask)
                         .context("cannot set python mask")?;
                     py_array = np_ma
                         .getattr(pyo3::intern!(py, "array"))
@@ -726,9 +761,15 @@ impl Mdfr {
         Ok(())
     }
     /// writes file
-    pub fn write(&mut self, file_name: &str, compression: CompressionAlgorithm) -> PyResult<Mdfr> {
+    #[pyo3(signature = (file_name, compression=None))]
+    pub fn write(
+        &mut self,
+        file_name: &str,
+        compression: Option<PyCompressionAlgorithm>,
+    ) -> PyResult<Mdfr> {
         let Mdfr(mdf) = self;
-        Ok(Mdfr(mdf.write(file_name, compression)?))
+        let comp = compression.unwrap_or(PyCompressionAlgorithm::NoCompression);
+        Ok(Mdfr(mdf.write(file_name, comp.into())?))
     }
     /// converts MDF version 3.x to 4.2 in memory
     pub fn convert3to4(&mut self, file_name: &str) -> PyResult<()> {
@@ -738,31 +779,59 @@ impl Mdfr {
         Ok(())
     }
     /// Adds a new channel in memory (no file modification)
-    /// Master must be a dict with keys name, type and flag
-    /// Data  has to be a PyArrow
+    #[pyo3(signature = (channel_name, data, master=None, master_channel=None, master_type=None, master_flag=None, unit=None, description=None))]
+    #[allow(clippy::too_many_arguments)]
     pub fn add_channel(
         &mut self,
         channel_name: String,
         data: PyArrowType<ArrayData>,
-        master: MasterSignature,
+        master: Option<&Bound<'_, PyAny>>,
+        master_channel: Option<String>,
+        master_type: Option<u8>,
+        master_flag: Option<bool>,
         unit: Option<String>,
         description: Option<String>,
     ) -> PyResult<()> {
+        let mut res_channel = master_channel;
+        let mut res_type = master_type;
+        let mut res_flag = master_flag.unwrap_or(false);
+
+        if let Some(m) = master {
+            if let Ok(dict) = m.cast::<pyo3::types::PyDict>() {
+                if let Ok(Some(n)) = dict.get_item("name") {
+                    res_channel = n.extract().ok();
+                }
+                if let Ok(Some(t)) = dict.get_item("type") {
+                    res_type = t.extract().ok();
+                }
+                if let Ok(Some(f)) = dict.get_item("flag") {
+                    res_flag = f.extract().unwrap_or(false);
+                }
+            } else if let Ok(s) = m.extract::<String>() {
+                res_channel = Some(s);
+            } else if let Ok(sig) = m.extract::<MasterSignature>() {
+                if sig.master_channel.is_some() {
+                    res_channel = sig.master_channel;
+                }
+                if sig.master_type.is_some() {
+                    res_type = sig.master_type;
+                }
+                res_flag = sig.master_flag;
+            }
+        }
+
         let Mdfr(mdf) = self;
-        pyo3::Python::attach(|_| -> Result<(), PyErr> {
-            let array = array_to_rust(data)
-                .context("data modification failed, could not extract numpy array")?;
-            mdf.add_channel(
-                channel_name,
-                array,
-                master.master_channel,
-                master.master_type,
-                master.master_flag,
-                unit,
-                description,
-            )?;
-            Ok(())
-        })?;
+        let array = array_to_rust(data)
+            .context("data modification failed, could not extract numpy array")?;
+        mdf.add_channel(
+            channel_name,
+            array,
+            res_channel,
+            res_type,
+            res_flag,
+            unit,
+            description,
+        )?;
         Ok(())
     }
     /// defines channel's data in memory from PyArrow
@@ -1270,7 +1339,7 @@ pyplot.show()
     /// Dictionary indexing: mdf["ChannelName"] -> PyChannel
     pub fn __getitem__(&mut self, channel_name: &str) -> PyResult<PyChannel> {
         let Mdfr(mdf) = self;
-        if !mdf.get_channel_names_set().contains(channel_name) {
+        if !mdf.contains_channel(channel_name) {
             return Err(pyo3::exceptions::PyKeyError::new_err(format!(
                 "Channel '{channel_name}' not found in MDF file"
             )));
@@ -1305,13 +1374,25 @@ pyplot.show()
     /// Membership check: "ChannelName" in mdf
     pub fn __contains__(&self, channel_name: &str) -> bool {
         let Mdfr(mdf) = self;
-        mdf.get_channel_names_set().contains(channel_name)
+        mdf.contains_channel(channel_name)
     }
 
     /// Total number of channels in the MDF file
     pub fn __len__(&self) -> usize {
         let Mdfr(mdf) = self;
-        mdf.get_channel_names_set().len()
+        mdf.channel_count()
+    }
+
+    /// Checks if a channel exists in the MDF file in O(1) time without allocating a HashSet.
+    pub fn contains_channel(&self, channel_name: &str) -> bool {
+        let Mdfr(mdf) = self;
+        mdf.contains_channel(channel_name)
+    }
+
+    /// Returns total number of channels in the MDF file in O(1) time without allocating a HashSet.
+    pub fn channel_count(&self) -> usize {
+        let Mdfr(mdf) = self;
+        mdf.channel_count()
     }
 
     /// List of all channel names in the MDF file
@@ -1489,13 +1570,13 @@ fn finalize_file_in_place(file_name: &str) -> PyResult<usize> {
 /// Directly writes a Polars DataFrame, PyArrow Table, or any object implementing
 /// the Arrow PyCapsule stream interface to an MDF 4.3 file.
 #[pyfunction]
-#[pyo3(signature = (df, file_name, time_col=None, compression=CompressionAlgorithm::NoCompression))]
+#[pyo3(signature = (df, file_name, time_col=None, compression=PyCompressionAlgorithm::NoCompression))]
 pub fn write_polars(
     _py: Python<'_>,
     df: &Bound<'_, PyAny>,
     file_name: &str,
     time_col: Option<&str>,
-    compression: CompressionAlgorithm,
+    compression: PyCompressionAlgorithm,
 ) -> PyResult<Mdfr> {
     let stream_capsule = if let Ok(stream) = df.call_method0("__arrow_c_stream__") {
         stream
@@ -1599,7 +1680,7 @@ pub fn write_polars(
     }
 
     let written = mdf
-        .write(file_name, compression)
+        .write(file_name, compression.into())
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
     Ok(Mdfr(written))
 }
@@ -1624,8 +1705,8 @@ pub struct MdfLogger {
 #[pymethods]
 impl MdfLogger {
     #[new]
-    #[pyo3(signature = (file_name, layout="sorted", compression=CompressionAlgorithm::NoCompression))]
-    fn new(file_name: &str, layout: &str, compression: CompressionAlgorithm) -> PyResult<Self> {
+    #[pyo3(signature = (file_name, layout="sorted", compression=PyCompressionAlgorithm::NoCompression))]
+    fn new(file_name: &str, layout: &str, compression: PyCompressionAlgorithm) -> PyResult<Self> {
         let dl = if layout.eq_ignore_ascii_case("unsorted") {
             mdfr_core::logger::DataLayout::Unsorted
         } else {

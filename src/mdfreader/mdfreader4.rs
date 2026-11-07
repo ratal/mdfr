@@ -245,8 +245,15 @@ fn read_data(
                 // sorted data group
                 for channel_group in dg.cg.values_mut() {
                     let (dl_blocks, pos) = parser_dl4(rdr, position)?;
+                    let rec_pos = channel_group
+                        .cn
+                        .iter()
+                        .find(|(_, cn)| cn.block.cn_type == 1)
+                        .map(|(pos, _)| *pos)
+                        .or_else(|| channel_group.cn.keys().next().copied())
+                        .unwrap_or(0);
                     let (pos, vlsd) =
-                        parser_dl4_sorted(rdr, dl_blocks, pos, channel_group, decoder, &0i32)
+                        parser_dl4_sorted(rdr, dl_blocks, pos, channel_group, decoder, &rec_pos)
                             .context("failed parsing DL4 sorted")?;
                     position = pos;
                     vlsd_channels = vlsd;
@@ -2458,7 +2465,10 @@ fn store_decoded_values_in_channel(
         cn.init_builder(values.len())?;
     }
     let mut str_buf = String::new();
-    let builder = cn.builder.as_mut().expect("builder should be initialized");
+    let builder = cn
+        .builder
+        .as_mut()
+        .ok_or_else(|| anyhow::anyhow!("builder should be initialized"))?;
     for value_bytes in values {
         match builder {
             ChannelBuilder::Int8(b) if !value_bytes.is_empty() => {

@@ -4,7 +4,6 @@
 //! (CN template, CG template, DG template) and array types (plain, lookup, axis).
 use anyhow::{Context, Error, Result};
 use byteorder::{LittleEndian, ReadBytesExt};
-use std::collections::VecDeque;
 use std::io::Cursor;
 
 use super::block_header_impl::Blockheader4Short;
@@ -19,7 +18,7 @@ pub use mdfr_core::blocks::ca::{Ca4Block, Ca4BlockMembers};
 pub(super) fn parse_ca_block(
     ca_block: &mut Cursor<Vec<u8>>,
     block_header: Blockheader4Short,
-    cg_cycle_count: u64,
+    _cg_cycle_count: u64,
 ) -> Result<CaBlockParseResult, Error> {
     // reads links count
     let ca_links: u64 =
@@ -44,13 +43,11 @@ pub(super) fn parse_ca_block(
             pnd *= x;
         }
     }
-    let mut shape_dim: VecDeque<usize> = VecDeque::from(shape_dim_usize);
-    shape_dim.push_front(cg_cycle_count as usize);
 
     let shape: (Vec<usize>, Order) = if (ca_members.ca_flags >> 6 & 1) != 0 {
-        (shape_dim.into(), Order::ColumnMajor)
+        (shape_dim_usize, Order::ColumnMajor)
     } else {
-        (shape_dim.into(), Order::RowMajor)
+        (shape_dim_usize, Order::RowMajor)
     };
 
     let mut val = vec![0.0f64; snd];

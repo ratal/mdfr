@@ -553,6 +553,20 @@ impl MdfInfo {
             MdfInfo::V3(m) => m.hd_block.hd_time_offset.unwrap_or(0),
         }
     }
+    /// Checks if a channel exists in the MDF file in O(1) time without allocating a HashSet.
+    pub fn contains_channel(&self, channel_name: &str) -> bool {
+        match self {
+            MdfInfo::V3(mdfinfo3) => mdfinfo3.contains_channel(channel_name),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.contains_channel(channel_name),
+        }
+    }
+    /// Returns total number of channels in the MDF file in O(1) time without allocating a HashSet.
+    pub fn channel_count(&self) -> usize {
+        match self {
+            MdfInfo::V3(mdfinfo3) => mdfinfo3.channel_count(),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.channel_count(),
+        }
+    }
     /// returns a set of all channel names contained in file
     pub fn get_channel_names_set(&self) -> HashSet<String> {
         let channel_list: HashSet<String> = match self {
@@ -701,6 +715,7 @@ impl MdfInfo {
                     unit,
                     description,
                 )?;
+                *self = MdfInfo::V4(Box::new(mdf4));
             }
             MdfInfo::V4(mdfinfo4) => {
                 mdfinfo4.add_channel(
@@ -719,9 +734,12 @@ impl MdfInfo {
     /// Require file name parameter but no file written
     pub fn convert3to4(&mut self, file_name: &str) -> Result<MdfInfo, Error> {
         match self {
-            MdfInfo::V3(mdfinfo3) => Ok(MdfInfo::V4(Box::new(
-                convert3to4(mdfinfo3, file_name).context("failed converting mdf version 3 to 4")?,
-            ))),
+            MdfInfo::V3(mdfinfo3) => {
+                let mdf4 = convert3to4(mdfinfo3, file_name)
+                    .context("failed converting mdf version 3 to 4")?;
+                *self = MdfInfo::V4(Box::new(mdf4.clone()));
+                Ok(MdfInfo::V4(Box::new(mdf4)))
+            }
             MdfInfo::V4(_) => bail!("file is already a mdf version 4.x"),
         }
     }
@@ -738,6 +756,7 @@ impl MdfInfo {
                 let mut mdf4 = convert3to4(mdfinfo3, &file_name.to_string_lossy())?;
                 mdf4.set_channel_data(channel_name, data)
                     .context("failed setting channel data")?;
+                *self = MdfInfo::V4(Box::new(mdf4));
             }
             MdfInfo::V4(mdfinfo4) => mdfinfo4
                 .set_channel_data(channel_name, data)
@@ -759,6 +778,7 @@ impl MdfInfo {
                     "failed converting mdf3 into mdf4 when setting new channel master type",
                 )?;
                 mdf4.set_channel_master_type(master_name, master_type);
+                *self = MdfInfo::V4(Box::new(mdf4));
             }
             MdfInfo::V4(mdfinfo4) => mdfinfo4.set_channel_master_type(master_name, master_type),
         }

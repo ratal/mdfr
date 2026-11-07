@@ -38,6 +38,56 @@ fn read_block_id(rdr: &mut SymBufReader<&File>, addr: i64) -> Result<[u8; 4]> {
     Ok(id)
 }
 
+/// Forward-scans a reserved 1064-byte `DLBLOCK` slot starting at `dl_pos + 1064`
+/// for valid data blocks (`##DT`, `##SD`, `##VD`, `##DV`, `##RD`, `##DZ`) up to `file_size`.
+fn scan_forward_dl_children(
+    rdr: &mut SymBufReader<&File>,
+    dl_pos: u64,
+    file_size: u64,
+) -> Result<Vec<(i64, u64)>> {
+    let mut children = Vec::new();
+    let mut scan_pos = dl_pos + 1064;
+    while scan_pos + 24 <= file_size && children.len() < 64 {
+        let Ok(id) = read_block_id(rdr, scan_pos as i64) else {
+            break;
+        };
+        match &id {
+            b"##DT" | b"##SD" | b"##VD" | b"##DV" | b"##RD" => {
+                let Ok(dt) = binrw::BinReaderExt::read_le::<Dt4Block>(rdr) else {
+                    break;
+                };
+                let max_avail = file_size.saturating_sub(scan_pos);
+                let blk_len = if dt.len >= 24 && dt.len <= max_avail {
+                    dt.len
+                } else {
+                    max_avail
+                };
+                let uncompressed = blk_len.saturating_sub(24);
+                children.push((scan_pos as i64, uncompressed));
+                let aligned_len = (blk_len + 7) & !7;
+                scan_pos += aligned_len;
+            }
+            b"##DZ" => {
+                if scan_pos + 48 > file_size {
+                    break;
+                }
+                let Ok(dz) = binrw::BinReaderExt::read_le::<Dz4Block>(rdr) else {
+                    break;
+                };
+                let blk_len = 48 + dz.dz_data_length;
+                if scan_pos + blk_len > file_size {
+                    break;
+                }
+                children.push((scan_pos as i64, dz.dz_org_data_length));
+                let aligned_len = (blk_len + 7) & !7;
+                scan_pos += aligned_len;
+            }
+            _ => break,
+        }
+    }
+    Ok(children)
+}
+
 /// Walks a `DLBLOCK` chain starting at `dl_addr` (whose blocks may be `##DT`, `##SD`, or `##DZ`)
 /// and returns `(total_preceding_uncompressed_bytes, last_block_uncompressed_bytes)`.
 fn walk_dl_chain(
@@ -57,8 +107,17 @@ fn walk_dl_chain(
         if &id != b"##DL" {
             break;
         }
-        let dl: Dl4Block =
+        let mut dl: Dl4Block =
             binrw::BinReaderExt::read_le(rdr).context("finalize: could not parse DL block")?;
+
+        // Forward-scan recovery for unpatched DLBLOCK slot
+        if dl.dl_data.iter().all(|&p| p <= 0) && (current_dl_addr as u64) + 1064 < file_size {
+            let recovered = scan_forward_dl_children(rdr, current_dl_addr as u64, file_size)?;
+            if !recovered.is_empty() {
+                dl.dl_data = recovered.iter().map(|&(ptr, _)| ptr).collect();
+                dl.dl_count = dl.dl_data.len() as u32;
+            }
+        }
 
         let is_final_dl = dl.dl_dl_next <= 0;
         let last_idx = if is_final_dl {
@@ -115,9 +174,9 @@ fn read_data_block_uncompressed_len(
     }
     let id = read_block_id(rdr, ptr)?;
     match &id {
-        b"##DT" | b"##SD" | b"##DV" => {
+        b"##DT" | b"##SD" | b"##VD" | b"##DV" | b"##RD" => {
             let dt: Dt4Block = binrw::BinReaderExt::read_le(rdr)
-                .context("finalize: could not parse DT/SD block")?;
+                .context("finalize: could not parse DT/SD/VD/DV/RD block")?;
             let available = file_size.saturating_sub(ptr as u64 + 24);
             if dt.len >= 24 && (dt.len - 24) <= available {
                 Ok(dt.len - 24)
@@ -158,7 +217,7 @@ where
     }
     let id = read_block_id(rdr, dg_data)?;
     match &id {
-        b"##DT" => {
+        b"##DT" | b"##SD" | b"##VD" | b"##DV" | b"##RD" => {
             let dt: Dt4Block = binrw::BinReaderExt::read_le(rdr)?;
             let avail = file_size.saturating_sub(dg_data as u64 + 24);
             let n = if dt.len >= 24 && (dt.len - 24) <= avail {
@@ -173,6 +232,24 @@ where
                 rdr.read_exact(&mut buf[..to_read])?;
                 remaining -= to_read;
                 visitor(&buf[..to_read]);
+            }
+        }
+        b"##DZ" => {
+            if (dg_data as u64) + 48 <= file_size {
+                let dz: Dz4Block = binrw::BinReaderExt::read_le(rdr)?;
+                let avail = file_size.saturating_sub(dg_data as u64 + 48);
+                if dz.dz_data_length <= avail {
+                    let mut comp = vec![0u8; dz.dz_data_length as usize];
+                    rdr.read_exact(&mut comp)?;
+                    if let Ok(decomp) = super::data_impl::decompress_data(
+                        dz.dz_zip_type,
+                        dz.dz_zip_parameter,
+                        comp,
+                        dz.dz_org_data_length,
+                    ) {
+                        visitor(&decomp);
+                    }
+                }
             }
         }
         b"##DL" => {
@@ -207,7 +284,14 @@ where
         if &id != b"##DL" {
             break;
         }
-        let dl: Dl4Block = binrw::BinReaderExt::read_le(rdr)?;
+        let mut dl: Dl4Block = binrw::BinReaderExt::read_le(rdr)?;
+        if dl.dl_data.iter().all(|&p| p <= 0) && (dl_addr as u64) + 1064 < file_size {
+            let recovered = scan_forward_dl_children(rdr, dl_addr as u64, file_size)?;
+            if !recovered.is_empty() {
+                dl.dl_data = recovered.iter().map(|&(ptr, _)| ptr).collect();
+                dl.dl_count = dl.dl_data.len() as u32;
+            }
+        }
 
         for &ptr in &dl.dl_data {
             if ptr <= 0 || (ptr as u64) + 24 > file_size {
@@ -215,7 +299,7 @@ where
             }
             let bid = read_block_id(rdr, ptr)?;
             match &bid {
-                b"##DT" | b"##SD" => {
+                b"##DT" | b"##SD" | b"##VD" | b"##DV" | b"##RD" => {
                     let dt: Dt4Block = binrw::BinReaderExt::read_le(rdr)?;
                     let avail = file_size.saturating_sub(ptr as u64 + 24);
                     let n = if dt.len >= 24 && (dt.len - 24) <= avail {
@@ -368,7 +452,7 @@ pub fn fix_cycle_counts(
         let id = read_block_id(rdr, dg_data)?;
 
         let total_data_bytes: u64 = match &id {
-            b"##DT" | b"##SD" | b"##DV" => {
+            b"##DT" | b"##SD" | b"##VD" | b"##DV" | b"##RD" => {
                 let dt: Dt4Block = binrw::BinReaderExt::read_le(rdr)
                     .context("finalize: could not parse DT block header")?;
 
@@ -380,6 +464,7 @@ pub fn fix_cycle_counts(
                     if available > 0 { available as u64 } else { 0 }
                 }
             }
+            b"##DZ" => read_data_block_uncompressed_len(rdr, dg_data, file_size)?,
             b"##DL" => {
                 let (preceding, last_available) = walk_dl_chain(rdr, dg_data, file_size)
                     .context("finalize: DL chain walk failed")?;
@@ -428,6 +513,133 @@ pub fn fix_cycle_counts(
     Ok(n_fixed)
 }
 
+fn patch_dl_chain_in_file(f: &mut File, dl_or_hl_addr: i64, file_size: u64) -> Result<()> {
+    f.seek(SeekFrom::Start(dl_or_hl_addr as u64))?;
+    let mut id = [0u8; 4];
+    f.read_exact(&mut id)?;
+    let dl_addr = match &id {
+        b"##HL" => {
+            let hl: Hl4Block = binrw::BinReaderExt::read_le(f)?;
+            hl.hl_dl_first
+        }
+        b"##DL" => dl_or_hl_addr,
+        _ => return Ok(()),
+    };
+
+    let mut current_dl = dl_addr;
+    for _ in 0..65536u32 {
+        if current_dl <= 0 || (current_dl as u64) + 24 > file_size {
+            break;
+        }
+        f.seek(SeekFrom::Start(current_dl as u64))?;
+        let mut bid = [0u8; 4];
+        f.read_exact(&mut bid)?;
+        if &bid != b"##DL" {
+            break;
+        }
+        let mut dl: Dl4Block = binrw::BinReaderExt::read_le(f)?;
+
+        let mut modified = false;
+        if dl.dl_count == 0 && (current_dl as u64) + 1064 < file_size {
+            let mut scan_pos = (current_dl as u64) + 1064;
+            let mut cum = 0u64;
+            while scan_pos + 24 <= file_size && dl.dl_data.len() < 64 {
+                f.seek(SeekFrom::Start(scan_pos))?;
+                let mut cid = [0u8; 4];
+                f.read_exact(&mut cid)?;
+                match &cid {
+                    b"##DT" | b"##SD" | b"##VD" | b"##DV" | b"##RD" => {
+                        let dt: Dt4Block = binrw::BinReaderExt::read_le(f)?;
+                        let max_avail = file_size.saturating_sub(scan_pos);
+                        let blk_len = if dt.len >= 24 && dt.len <= max_avail {
+                            dt.len
+                        } else {
+                            max_avail
+                        };
+                        let uncompressed = blk_len.saturating_sub(24);
+                        dl.dl_data.push(scan_pos as i64);
+                        dl.dl_offset.push(cum);
+                        cum += uncompressed;
+                        let aligned = (blk_len + 7) & !7;
+                        scan_pos += aligned;
+                    }
+                    b"##DZ" => {
+                        if scan_pos + 48 > file_size {
+                            break;
+                        }
+                        let dz: Dz4Block = binrw::BinReaderExt::read_le(f)?;
+                        let blk_len = 48 + dz.dz_data_length;
+                        if scan_pos + blk_len > file_size {
+                            break;
+                        }
+                        dl.dl_data.push(scan_pos as i64);
+                        dl.dl_offset.push(cum);
+                        cum += dz.dz_org_data_length;
+                        let aligned = (blk_len + 7) & !7;
+                        scan_pos += aligned;
+                    }
+                    _ => break,
+                }
+            }
+            if !dl.dl_data.is_empty() {
+                dl.dl_count = dl.dl_data.len() as u32;
+                dl.dl_links = 1 + dl.dl_count as u64;
+                dl.dl_len = 24 + 8 + (dl.dl_count as u64) * 8 + 8 + (dl.dl_count as u64) * 8;
+                dl.dl_flags = 0;
+                modified = true;
+            }
+        }
+
+        if dl.dl_count > 0
+            && (dl.dl_flags & 1) == 0
+            && (dl.dl_offset.len() != dl.dl_count as usize
+                || (dl.dl_count > 1 && dl.dl_offset.iter().all(|&o| o == 0)))
+        {
+            let mut cum = 0u64;
+            dl.dl_offset.clear();
+            for &child in &dl.dl_data {
+                dl.dl_offset.push(cum);
+                if child > 0 && (child as u64) + 24 <= file_size {
+                    f.seek(SeekFrom::Start(child as u64))?;
+                    let mut cid = [0u8; 4];
+                    f.read_exact(&mut cid)?;
+                    match &cid {
+                        b"##DZ" => {
+                            if (child as u64) + 48 <= file_size
+                                && let Ok(dz) = binrw::BinReaderExt::read_le::<Dz4Block>(f)
+                            {
+                                cum += dz.dz_org_data_length;
+                            }
+                        }
+                        b"##DT" | b"##SD" | b"##VD" | b"##DV" | b"##RD" => {
+                            if let Ok(dt) = binrw::BinReaderExt::read_le::<Dt4Block>(f) {
+                                let avail = file_size.saturating_sub(child as u64);
+                                let blk_len = dt.len.min(avail);
+                                cum += blk_len.saturating_sub(24);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            modified = true;
+        }
+
+        if modified {
+            f.seek(SeekFrom::Start((current_dl as u64) + 4))?;
+            let mut bytes = Vec::new();
+            binrw::BinWrite::write_le(&dl, &mut binrw::io::Cursor::new(&mut bytes))?;
+            f.write_all(&bytes)?;
+        }
+
+        if dl.dl_dl_next <= 0 {
+            break;
+        }
+        current_dl = dl.dl_dl_next;
+    }
+    Ok(())
+}
+
 /// Recovers and finalizes an unfinalized MDF 4.x file **in place** on disk (no file copy).
 ///
 /// Parses the metadata, runs [`fix_cycle_counts`] to compute exact cycle and VLSD/VLSC byte
@@ -447,6 +659,17 @@ pub fn finalize_file_in_place(file_name: &str) -> Result<usize> {
         .write(true)
         .open(file_name)
         .with_context(|| format!("finalize_file_in_place: cannot open {file_name}"))?;
+
+    let file_size = f.metadata()?.len();
+
+    // 2a. Patch unpatched DL blocks and DL offsets on disk if present
+    for dg in info4.dg.values() {
+        let dg_data = dg.block.dg_data;
+        if dg_data <= 0 || (dg_data as u64) + 24 > file_size {
+            continue;
+        }
+        patch_dl_chain_in_file(&mut f, dg_data, file_size)?;
+    }
 
     let mut patched = 0usize;
     for dg in info4.dg.values() {

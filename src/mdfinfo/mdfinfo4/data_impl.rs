@@ -8,49 +8,7 @@ use anyhow::{Context, Result, bail};
 use std::fs::File;
 use std::io::{BufReader, Read, Seek};
 
-#[cfg(feature = "numpy")]
-use pyo3::prelude::*;
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-#[cfg_attr(feature = "numpy", pyclass(eq, eq_int, from_py_object))]
-pub enum CompressionAlgorithm {
-    #[default]
-    NoCompression = 255,
-    Deflate = 0,
-    DeflateTranspose = 1,
-    Zstd = 2,
-    ZstdTranspose = 3,
-    Lz4 = 4,
-    Lz4Transpose = 5,
-}
-
-impl From<CompressionAlgorithm> for mdfr_core::compress::CompressionAlgorithm {
-    fn from(c: CompressionAlgorithm) -> Self {
-        match c {
-            CompressionAlgorithm::NoCompression => Self::NoCompression,
-            CompressionAlgorithm::Deflate => Self::Deflate,
-            CompressionAlgorithm::DeflateTranspose => Self::DeflateTranspose,
-            CompressionAlgorithm::Zstd => Self::Zstd,
-            CompressionAlgorithm::ZstdTranspose => Self::ZstdTranspose,
-            CompressionAlgorithm::Lz4 => Self::Lz4,
-            CompressionAlgorithm::Lz4Transpose => Self::Lz4Transpose,
-        }
-    }
-}
-
-impl From<mdfr_core::compress::CompressionAlgorithm> for CompressionAlgorithm {
-    fn from(c: mdfr_core::compress::CompressionAlgorithm) -> Self {
-        match c {
-            mdfr_core::compress::CompressionAlgorithm::NoCompression => Self::NoCompression,
-            mdfr_core::compress::CompressionAlgorithm::Deflate => Self::Deflate,
-            mdfr_core::compress::CompressionAlgorithm::DeflateTranspose => Self::DeflateTranspose,
-            mdfr_core::compress::CompressionAlgorithm::Zstd => Self::Zstd,
-            mdfr_core::compress::CompressionAlgorithm::ZstdTranspose => Self::ZstdTranspose,
-            mdfr_core::compress::CompressionAlgorithm::Lz4 => Self::Lz4,
-            mdfr_core::compress::CompressionAlgorithm::Lz4Transpose => Self::Lz4Transpose,
-        }
-    }
-}
+pub use mdfr_core::compress::CompressionAlgorithm;
 
 pub use mdfr_core::blocks::data::{Dl4Block, Dt4Block, Dz4Block, Gd4Block, Hl4Block, Ld4Block};
 

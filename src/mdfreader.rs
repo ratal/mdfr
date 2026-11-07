@@ -207,6 +207,14 @@ impl Mdf {
     pub fn get_sample_reduction_blocks(&self) -> Option<Vec<(i64, u64, Vec<Sr4Block>)>> {
         self.mdf_info.get_sample_reduction_blocks()
     }
+    /// Checks if a channel exists in the MDF file in O(1) time without allocating a HashSet.
+    pub fn contains_channel(&self, channel_name: &str) -> bool {
+        self.mdf_info.contains_channel(channel_name)
+    }
+    /// Returns total number of channels in the MDF file in O(1) time without allocating a HashSet.
+    pub fn channel_count(&self) -> usize {
+        self.mdf_info.channel_count()
+    }
     /// returns channel's unit string
     pub fn get_channel_unit(&self, channel_name: &str) -> Result<Option<String>> {
         self.mdf_info.get_channel_unit(channel_name)
@@ -474,6 +482,16 @@ impl Mdf {
         &mut self,
         channel_names: HashSet<String>,
     ) -> Result<(), Error> {
+        // If all requested channels already have in-memory data, skip file IO
+        let all_loaded = channel_names.iter().all(|name| {
+            self.mdf_info
+                .get_channel_data(name)
+                .is_some_and(|d| !d.is_empty())
+        });
+        if all_loaded {
+            return Ok(());
+        }
+
         let f: File = OpenOptions::new()
             .read(true)
             .write(false)
@@ -554,6 +572,15 @@ impl Mdf {
         channel_set.insert(master_name.to_string());
         self.mdf_info
             .slice_channels(&channel_set, start_idx, stop_idx)
+    }
+    /// Slices all channels in the channel group associated with `master_name` to [`start_s`, `stop_s`].
+    pub fn cut_channel_group(
+        &mut self,
+        master_name: &str,
+        start_s: f64,
+        stop_s: f64,
+    ) -> Result<()> {
+        self.cut(master_name, start_s, stop_s)
     }
     /// resamples all channels in the master's group to a uniform `raster_s` second grid.
     /// `master_name` must be a Time master (sync_type == 1) with Float64 data.

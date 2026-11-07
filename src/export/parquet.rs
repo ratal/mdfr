@@ -219,15 +219,25 @@ fn create_parquet_writer(
     rec_id: u64,
 ) -> Result<ArrowWriter<BufWriter<File>>, Error> {
     let base_path = Path::new(file);
-    let mut master_channel_name = master_channel.unwrap_or_else(|| rec_id.to_string());
-    master_channel_name.insert(0, '_');
-    let mut file_name = base_path
-        .file_name()
-        .context("no given file name")?
-        .to_os_string();
-    file_name.push(master_channel_name);
-    let mut buf_path = base_path.with_file_name(file_name.as_os_str());
-    buf_path.set_extension("parquet");
+    let master_channel_name = master_channel.unwrap_or_else(|| rec_id.to_string());
+    let stem = if base_path
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|e| e.eq_ignore_ascii_case("parquet"))
+        .unwrap_or(false)
+    {
+        base_path
+            .file_stem()
+            .context("no file stem in given file")?
+    } else {
+        base_path
+            .file_name()
+            .context("no file name in given file")?
+    }
+    .to_string_lossy();
+
+    let file_name = format!("{stem}_{master_channel_name}.parquet");
+    let buf_path = base_path.with_file_name(&file_name);
     let file = std::io::BufWriter::new(
         std::fs::File::create(&buf_path)
             .with_context(|| format!("Failed to create file {buf_path:?}"))?,
@@ -238,9 +248,7 @@ fn create_parquet_writer(
         .set_encoding(Encoding::PLAIN)
         .set_key_value_metadata(Some(vec![KeyValue::new(
             "file_name".to_string(),
-            file_name
-                .into_string()
-                .expect("file name contains invalid Unicode data"),
+            file_name,
         )]))
         .build();
 

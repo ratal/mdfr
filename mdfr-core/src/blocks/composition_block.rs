@@ -127,7 +127,7 @@ pub struct Cv4Block {
     /// reserved
     pub cv_reserved: [u8; 4],
     /// list of discriminator values for the options
-    #[br(if(cv_option_count > 1), little, count = cv_option_count)]
+    #[br(if(cv_option_count > 0), little, count = cv_option_count)]
     pub cv_option_val: Vec<u64>,
 }
 
@@ -147,7 +147,7 @@ pub struct Cu4Block {
     /// # of links
     pub cu_n_links: u64,
     /// list of member channel
-    #[br(if(cu_n_links > 1), little, count = cu_n_links)]
+    #[br(if(cu_n_links > 0), little, count = cu_n_links)]
     pub cu_cn_member: Vec<i64>,
     /// number of member channels
     pub cu_member_count: u32,
@@ -197,5 +197,39 @@ mod tests {
             ..Default::default()
         };
         assert!(format!("{cu}").contains("5 members"));
+    }
+
+    #[test]
+    fn test_cv_cu_single_link_and_option_roundtrip() {
+        use binrw::{BinReaderExt, BinWrite, io::Cursor};
+
+        let cv = Cv4Block {
+            cv_n_links: 2,
+            cv_cn_discriminator: 100,
+            cv_cn_option: vec![200],
+            cv_option_count: 1,
+            cv_reserved: [0; 4],
+            cv_option_val: vec![42],
+        };
+        let mut buf = Vec::new();
+        cv.write_le(&mut Cursor::new(&mut buf)).unwrap();
+        let parsed: Cv4Block = Cursor::new(&buf).read_le().unwrap();
+        assert_eq!(parsed.cv_cn_discriminator, 100);
+        assert_eq!(parsed.cv_cn_option, vec![200]);
+        assert_eq!(parsed.cv_option_count, 1);
+        assert_eq!(parsed.cv_option_val, vec![42]);
+
+        let cu = Cu4Block {
+            cu_n_links: 1,
+            cu_cn_member: vec![300],
+            cu_member_count: 1,
+            cu_reserved: [0; 4],
+        };
+        let mut cu_buf = Vec::new();
+        cu.write_le(&mut Cursor::new(&mut cu_buf)).unwrap();
+        let parsed_cu: Cu4Block = Cursor::new(&cu_buf).read_le().unwrap();
+        assert_eq!(parsed_cu.cu_n_links, 1);
+        assert_eq!(parsed_cu.cu_cn_member, vec![300]);
+        assert_eq!(parsed_cu.cu_member_count, 1);
     }
 }

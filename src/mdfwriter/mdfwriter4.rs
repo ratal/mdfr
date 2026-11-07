@@ -25,9 +25,10 @@ use crate::{
     mdfinfo::{
         MdfInfo,
         mdfinfo4::{
-            At4Block, BlockType, Blockheader4, Ca4Block, Cg4, Cg4Block, Ch4Block, Cn4, Cn4Block,
-            Compo, Composition, Dg4, Dg4Block, Dz4Block, Endianness, Ev4Block, FhBlock, Ld4Block,
-            MdfInfo4, MetaData, MetaDataBlockType, Si4Block, default_short_header, new_fh_block,
+            At4Block, BlockType, Blockheader4, CN_F_INVALID, Ca4Block, Cg4, Cg4Block, Ch4Block,
+            Cn4, Cn4Block, Compo, Composition, Dg4, Dg4Block, Dz4Block, Endianness, Ev4Block,
+            FhBlock, Ld4Block, MdfInfo4, MetaData, MetaDataBlockType, Si4Block,
+            default_short_header, new_fh_block,
         },
     },
     mdfreader::Mdf,
@@ -59,6 +60,23 @@ pub fn mdfwriter4(
     let n_channels = mdf.mdf_info.get_channel_names_set().len();
     let mut new_info = MdfInfo4::new(file_name, n_channels);
     let mut pointer: i64 = 168; // after HD block
+
+    let hd_comment_block = if info.hd_block.hd_md_comment != 0 {
+        if let Some(md) = info.sharable.md_tx.get(&info.hd_block.hd_md_comment) {
+            let hd_comment_md = md.clone();
+            new_info.hd_block.hd_md_comment = pointer;
+            pointer += hd_comment_md.block.hdr_len as i64;
+            new_info
+                .sharable
+                .md_tx
+                .insert(new_info.hd_block.hd_md_comment, hd_comment_md.clone());
+            Some(hd_comment_md)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
 
     // Copy existing FH blocks from source and add a new one for mdfr
     // FH blocks are stored as a linked list
@@ -346,36 +364,64 @@ pub fn mdfwriter4(
     let mut last_dg_pointer: i64 = pointer;
     new_info.hd_block.hd_dg_first = pointer;
 
+    // Track new CG block positions for written master channels
+    let mut master_cg_map: HashMap<String, i64> = HashMap::new();
+
     // builds meta data blocks for the new file
     for dg in info.dg.values() {
         for cg in dg.cg.values() {
             let mut cg_cg_master: i64 = 0;
 
-            // find master channel and start to write blocks for it
-            if let Some(master_channel_name) = &cg.master_channel_name
-                && let Some((
-                    _master_name,
-                    _dg_master_position,
-                    (_cg_master_block_position, _record_id),
-                    (_cn_master_block_position, cn_master_record_position),
-                )) = info.get_channel_id(master_channel_name)
-                && let Some(cn_master) = cg.cn.get(cn_master_record_position)
-                && let Some(data) = mdf.get_channel_data(&cn_master.unique_name)
-            {
-                // Writing master channel
-                cg_cg_master = pointer + 64; // after DGBlock
-                last_dg_pointer = pointer;
-                pointer = create_blocks(
-                    &mut new_info,
-                    &info,
-                    pointer,
-                    cg,
-                    cn_master,
-                    data,
-                    &cg_cg_master,
-                    true,
-                    &si_position_map,
-                )?;
+            if let Some(master_channel_name) = &cg.master_channel_name {
+                if let Some(&master_pos) = master_cg_map.get(master_channel_name) {
+                    // Master channel was already written; reuse its CG block pointer
+                    cg_cg_master = master_pos;
+                } else if cg.channel_names.contains(master_channel_name) {
+                    // This CG contains the master channel; locate it by unique_name in cg.cn
+                    if let Some(cn_master) = cg
+                        .cn
+                        .values()
+                        .find(|cn| &cn.unique_name == master_channel_name)
+                        && let Some(data) = mdf.get_channel_data(&cn_master.unique_name)
+                    {
+                        cg_cg_master = pointer + 64; // after DGBlock
+                        master_cg_map.insert(master_channel_name.clone(), cg_cg_master);
+                        last_dg_pointer = pointer;
+                        pointer = create_blocks(
+                            &mut new_info,
+                            &info,
+                            pointer,
+                            cg,
+                            cn_master,
+                            data,
+                            &cg_cg_master,
+                            true,
+                            &si_position_map,
+                        )?;
+                    }
+                } else if let Some((_, dg_master_pos, (_, master_rec_id), (_, master_rec_pos))) =
+                    info.get_channel_id(master_channel_name)
+                    && let Some(master_dg) = info.dg.get(dg_master_pos)
+                    && let Some(master_cg) = master_dg.cg.get(master_rec_id)
+                    && let Some(cn_master) = master_cg.cn.get(master_rec_pos)
+                    && let Some(data) = mdf.get_channel_data(&cn_master.unique_name)
+                {
+                    // Remote master channel not yet written; resolve from its owning DG/CG
+                    cg_cg_master = pointer + 64; // after DGBlock
+                    master_cg_map.insert(master_channel_name.clone(), cg_cg_master);
+                    last_dg_pointer = pointer;
+                    pointer = create_blocks(
+                        &mut new_info,
+                        &info,
+                        pointer,
+                        master_cg,
+                        cn_master,
+                        data,
+                        &cg_cg_master,
+                        true,
+                        &si_position_map,
+                    )?;
+                }
             }
 
             // create the other non master channel blocks
@@ -383,6 +429,7 @@ pub fn mdfwriter4(
                 // not master channel
                 if cn.block.cn_type != 2
                     && cn.block.cn_type != 3
+                    && Some(&cn.unique_name) != cg.master_channel_name.as_ref()
                     && let Some(data) = mdf.get_channel_data(&cn.unique_name)
                 {
                     last_dg_pointer = pointer;
@@ -512,7 +559,7 @@ pub fn mdfwriter4(
     }
 
     // thread writing the channels data first as block size can be unknown due to compression
-    let (tx, rx) = bounded::<Vec<u8>>(n_channels);
+    let (tx, rx) = bounded::<(u64, Vec<u8>)>(n_channels);
     let fname = Arc::new(Mutex::new(file_name.to_string()));
     let sfname = Arc::clone(&fname);
     let writer_handle = thread::spawn(move || -> Result<(), Error> {
@@ -522,15 +569,15 @@ pub fn mdfwriter4(
             .read(true)
             .write(true)
             .create(true)
-            .truncate(false)
+            .truncate(true)
             .open(&*file)
             .context("Cannot create the file")?;
         let mut writer = BufWriter::new(&f);
 
-        writer
-            .seek(SeekFrom::Start(pointer as u64))
-            .context("Could not reach position to write data blocks")?;
-        for buffer in rx {
+        for (pos, buffer) in rx {
+            writer
+                .seek(SeekFrom::Start(pos))
+                .context("Could not reach position to write data blocks")?;
             writer
                 .write_all(&buffer)
                 .context("Could not write data blocks buffer")?;
@@ -569,14 +616,18 @@ pub fn mdfwriter4(
                                             .context("failed creating sd block")?
                                     };
 
-                                let data_pointer = Arc::clone(&data_pointer);
-                                let mut locked_data_pointer = data_pointer.lock();
-                                cn.block.cn_data = *locked_data_pointer;
-                                *locked_data_pointer += offset;
+                                let block_pos = {
+                                    let data_pointer = Arc::clone(&data_pointer);
+                                    let mut locked_data_pointer = data_pointer.lock();
+                                    let pos = *locked_data_pointer;
+                                    *locked_data_pointer += offset;
+                                    pos
+                                };
+                                cn.block.cn_data = block_pos;
                                 let buffer =
                                     write_sd_block(cn.block.cn_data, data_block, offset as usize)?;
-                                tx.send(buffer).context("Channel disconnected")?;
-                                drop(locked_data_pointer);
+                                tx.send((cn.block.cn_data as u64, buffer))
+                                    .context("Channel disconnected")?;
                             } else {
                                 // Regular channel: write DV/DZ block
                                 let mut offset: i64 = 0;
@@ -612,10 +663,14 @@ pub fn mdfwriter4(
                                     }
                                 }
 
-                                let data_pointer = Arc::clone(&data_pointer);
-                                let mut locked_data_pointer = data_pointer.lock();
-                                dg.block.dg_data = *locked_data_pointer;
-                                *locked_data_pointer += offset;
+                                let block_pos = {
+                                    let data_pointer = Arc::clone(&data_pointer);
+                                    let mut locked_data_pointer = data_pointer.lock();
+                                    let pos = *locked_data_pointer;
+                                    *locked_data_pointer += offset;
+                                    pos
+                                };
+                                dg.block.dg_data = block_pos;
                                 let buffer = write_data_blocks(
                                     dg.block.dg_data,
                                     ld_block,
@@ -623,8 +678,8 @@ pub fn mdfwriter4(
                                     invalid_block,
                                     offset as usize,
                                 )?;
-                                tx.send(buffer).context("Channel disconnected")?;
-                                drop(locked_data_pointer);
+                                tx.send((dg.block.dg_data as u64, buffer))
+                                    .context("Channel disconnected")?;
                             }
                         }
                     }
@@ -657,6 +712,9 @@ pub fn mdfwriter4(
     buffer
         .write_le(&new_info.hd_block)
         .context("Could not write HDBlock")?;
+    if let Some(hd_comment) = &hd_comment_block {
+        hd_comment.write(&mut buffer)?;
+    }
     // Writes FHBlocks (file history chain)
     for (fh, fh_comment) in &fh_blocks {
         buffer.write_le(fh).context("Could not write FHBlock")?;
@@ -1158,7 +1216,7 @@ fn compress_bytes(
     algo: CompressionAlgorithm,
     width: usize,
 ) -> Result<Vec<u8>, Error> {
-    mdfr_core::compress::compress_dz_data(bytes, algo.into(), width)
+    mdfr_core::compress::compress_dz_data(bytes, algo, width)
         .map_err(|e| anyhow::anyhow!("DZ compression failed: {e}"))
 }
 
@@ -1169,8 +1227,10 @@ enum DataBlock {
     DvDi(Blockheader4),
 }
 
+const MAX_DZ_UNCOMPRESSED: u64 = 4 * 1024 * 1024;
+
 /// Creates a zlib-compressed DZBLOCK wrapping DV data (spec Table 57).
-/// Falls back to uncompressed DV if compression increases size.
+/// Falls back to uncompressed DV if compression increases size or exceeds 4 MiB limit.
 fn create_dz_dv(
     data: &ChannelData,
     offset: &mut i64,
@@ -1190,7 +1250,9 @@ fn create_dz_dv(
     let byte_aligned: usize;
     let length = data.len();
     dz_block.dz_org_data_length = (length * data.byte_count() as usize) as u64;
-    if dz_block.dz_org_data_length < dz_block.dz_data_length {
+    if dz_block.dz_org_data_length < dz_block.dz_data_length
+        || dz_block.dz_org_data_length > MAX_DZ_UNCOMPRESSED
+    {
         (dv_dz_block, byte_aligned, data_bytes) = create_dv(data, offset)?;
     } else {
         byte_aligned = ((8 - (dz_block.dz_data_length % 8)) % 8) as usize;
@@ -1211,7 +1273,7 @@ fn create_di(mask: &NullBuffer, offset: &mut i64) -> Result<Option<(DataBlock, V
     dv_invalid_block.hdr_len += mask_length as u64;
     let byte_aligned = (8 - (mask_length % 8)) % 8;
     let invalid_data: Vec<u8> = [
-        mask.iter().map(|v| v as u8).collect::<Vec<u8>>(),
+        mask.iter().map(|v| (!v) as u8).collect::<Vec<u8>>(),
         vec![0; byte_aligned],
     ]
     .concat();
@@ -1220,7 +1282,7 @@ fn create_di(mask: &NullBuffer, offset: &mut i64) -> Result<Option<(DataBlock, V
 }
 
 /// Creates a zlib-compressed DZBLOCK wrapping DI invalidation data.
-/// Falls back to uncompressed DI if compression increases size.
+/// Falls back to uncompressed DI if compression increases size or exceeds 4 MiB limit.
 fn create_dz_di(
     mask: &NullBuffer,
     offset: &mut i64,
@@ -1232,11 +1294,13 @@ fn create_dz_di(
         dz_org_data_length: mask.len() as u64,
         ..Default::default()
     };
-    let mask_bytes: Vec<u8> = mask.iter().map(|v| v as u8).collect();
+    let mask_bytes: Vec<u8> = mask.iter().map(|v| (!v) as u8).collect();
     let mut data_bytes = compress_bytes(&mask_bytes, algo, 1)?;
     dz_invalid_block.dz_data_length = data_bytes.len() as u64;
-    if dz_invalid_block.dz_org_data_length < dz_invalid_block.dz_data_length {
-        Ok(create_di(mask, offset)?)
+    if dz_invalid_block.dz_org_data_length < dz_invalid_block.dz_data_length
+        || dz_invalid_block.dz_org_data_length > MAX_DZ_UNCOMPRESSED
+    {
+        create_di(mask, offset)
     } else {
         dz_invalid_block.len = dz_invalid_block.dz_data_length + 48;
         let byte_aligned = (8 - (dz_invalid_block.dz_data_length as usize % 8)) % 8;
@@ -1300,6 +1364,7 @@ fn create_blocks(
         if data.validity().is_some() {
             // One byte for invalid data as only one channel per CG
             cg_block.cg_inval_bytes = 1;
+            cn_block.cn_flags |= CN_F_INVALID;
         }
         pointer += cg_block_header.hdr_len as i64;
         cg_block.cg_cn_first = pointer;
@@ -1341,31 +1406,25 @@ fn create_blocks(
             .insert(tx_name_position, tx_name_block);
 
         // channel unit
-        if let Some(unit) = info.sharable.md_tx.get(&cn.block.cn_md_unit)
-            && let Some(unit_str) = unit.get_tx_bytes()
-        {
-            let mut tx_unit_block = MetaData::new(MetaDataBlockType::TX, BlockType::CN);
-            tx_unit_block.set_data_buffer(unit_str);
+        if let Some(unit) = info.sharable.md_tx.get(&cn.block.cn_md_unit) {
+            let unit_block = unit.clone();
             cn_block.cn_md_unit = pointer;
-            pointer += tx_unit_block.block.hdr_len as i64;
+            pointer += unit_block.block.hdr_len as i64;
             new_info
                 .sharable
                 .md_tx
-                .insert(cn_block.cn_md_unit, tx_unit_block);
+                .insert(cn_block.cn_md_unit, unit_block);
         }
 
         // channel comment
-        if let Some(comment) = info.sharable.md_tx.get(&cn.block.cn_md_comment)
-            && let Some(comment_str) = comment.get_tx_bytes()
-        {
-            let mut tx_comment_block = MetaData::new(MetaDataBlockType::TX, BlockType::CN);
-            tx_comment_block.set_data_buffer(comment_str);
+        if let Some(comment) = info.sharable.md_tx.get(&cn.block.cn_md_comment) {
+            let comment_block = comment.clone();
             cn_block.cn_md_comment = pointer;
-            pointer += tx_comment_block.block.hdr_len as i64;
+            pointer += comment_block.block.hdr_len as i64;
             new_info
                 .sharable
                 .md_tx
-                .insert(cn_block.cn_md_comment, tx_comment_block);
+                .insert(cn_block.cn_md_comment, comment_block);
         }
 
         // Source information - map old SI position to new position
@@ -1377,17 +1436,22 @@ fn create_blocks(
         }
 
         // Channel array
-        let data_ndim = data.ndim();
+        let is_array_channel = matches!(
+            cn.data,
+            ChannelData::ArrayDInt8(_)
+                | ChannelData::ArrayDUInt8(_)
+                | ChannelData::ArrayDInt16(_)
+                | ChannelData::ArrayDUInt16(_)
+                | ChannelData::ArrayDInt32(_)
+                | ChannelData::ArrayDUInt32(_)
+                | ChannelData::ArrayDFloat32(_)
+                | ChannelData::ArrayDInt64(_)
+                | ChannelData::ArrayDUInt64(_)
+                | ChannelData::ArrayDFloat64(_)
+        );
         let mut composition: Option<Composition> = None;
-        if data_ndim > 1 {
-            let data_dim_size: Vec<u64> = cn
-                .data
-                .shape()
-                .0
-                .iter()
-                .skip(1)
-                .map(|x| *x as u64)
-                .collect();
+        if is_array_channel {
+            let data_dim_size: Vec<u64> = cn.data.shape().0.iter().map(|x| *x as u64).collect();
 
             // Preserve source CA block if available, else create default
             let mut ca_block = if let Some(ref source_compo) = cn.composition
@@ -1403,8 +1467,8 @@ fn create_blocks(
             cg_block.cg_data_bytes = cn.list_size as u32 * byte_count;
             cn_block.cn_composition = pointer;
 
-            // Override dims from actual data shape (data_ndim includes sample count, ca_ndim does not)
-            ca_block.ca_ndim = (data_ndim - 1) as u16;
+            // Set dims from actual data shape
+            ca_block.ca_ndim = data_dim_size.len() as u16;
             ca_block.ca_dim_size = data_dim_size;
             // Recalculate after dim changes
             ca_block.ca_len = ca_block.calculate_block_len();
@@ -1615,8 +1679,10 @@ fn create_dz_sd(
     let dz_sd_block: DataBlock;
     let byte_aligned: usize;
 
-    if dz_block.dz_org_data_length < dz_block.dz_data_length {
-        // Compression not beneficial, use uncompressed
+    if dz_block.dz_org_data_length < dz_block.dz_data_length
+        || dz_block.dz_org_data_length > MAX_DZ_UNCOMPRESSED
+    {
+        // Compression not beneficial or exceeds 4 MiB DZ limit, use uncompressed
         (dz_sd_block, byte_aligned, data_bytes) = create_sd(data, offset)?;
     } else {
         byte_aligned = (8 - dz_block.dz_data_length % 8) as usize % 8;

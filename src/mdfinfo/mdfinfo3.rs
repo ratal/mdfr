@@ -169,6 +169,14 @@ impl MdfInfo3 {
         }
         None
     }
+    /// Checks if a channel exists in the MDF file in O(1) time without allocating a HashSet.
+    pub fn contains_channel(&self, channel_name: &str) -> bool {
+        self.channel_names_set.contains_key(channel_name)
+    }
+    /// Returns total number of channels in the MDF file in O(1) time without allocating a HashSet.
+    pub fn channel_count(&self) -> usize {
+        self.channel_names_set.len()
+    }
     /// returns the set of channel names
     pub fn get_channel_names_set(&self) -> HashSet<String> {
         self.channel_names_set.keys().cloned().collect()
@@ -808,7 +816,7 @@ pub struct Dg3Block {
     /// number of channel groups
     dg_n_cg: u16,
     /// number of record ids
-    dg_n_record_ids: u16,
+    pub dg_n_record_ids: u16,
     // reserved: u32, // reserved
 }
 
@@ -873,7 +881,7 @@ pub fn parse_dg3(
             block_position: target,
             cg,
         };
-        dg.insert(dg_struct.block.dg_data, dg_struct);
+        dg.insert(target, dg_struct);
         position = pos;
         let mut chain = BlockChain::new("DG");
         chain.visit(target as i64);
@@ -901,7 +909,7 @@ pub fn parse_dg3(
                 block_position: block_start,
                 cg,
             };
-            dg.insert(dg_struct.block.dg_data, dg_struct);
+            dg.insert(block_start, dg_struct);
             position = pos;
         }
     }
@@ -1274,8 +1282,10 @@ fn parse_cn3_block(
     let block2: Cn3Block2 = binrw::BinReaderExt::read_le(&mut block)
         .context("Could not read buffer into Cn3Block2 struct")?;
     let pos_byte_beg = block2.cn_bit_offset / 8 + record_id_size;
-    let mut n_bytes = block2.cn_bit_count / 8u16;
-    if !block2.cn_bit_count.is_multiple_of(8) {
+    let bit_offset_in_byte = block2.cn_bit_offset % 8;
+    let total_bits = (bit_offset_in_byte + block2.cn_bit_count) as u32;
+    let mut n_bytes = (total_bits / 8) as u16;
+    if !total_bits.is_multiple_of(8) {
         n_bytes += 1;
     }
 
@@ -1517,7 +1527,7 @@ fn can_open_date(pos_byte_beg: u16, cn_bit_offset: u16) -> (Cn3, Cn3, Cn3, Cn3, 
         unique_name: String::from("year"),
         comment: String::new(),
         description: String::from("Years"),
-        pos_byte_beg: pos_byte_beg + 7,
+        pos_byte_beg: pos_byte_beg + 6,
         n_bytes: 1,
         data: ChannelData::UInt8(UInt8Array::from(Vec::<u8>::new())),
         builder: None,

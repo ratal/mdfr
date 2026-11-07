@@ -57,6 +57,9 @@ impl SpscRing {
     ///
     /// Safe to call from a single producer while a single consumer calls [`SpscRing::drain_into`].
     pub fn try_push(&self, group: GroupHandle, ticks: u64, record_bytes: &[u8]) -> bool {
+        if record_bytes.len() > u16::MAX as usize || group.0 == 0xFFFF {
+            return false;
+        }
         let frame_len = 12 + record_bytes.len();
         if frame_len + 4 >= self.capacity {
             return false;
@@ -117,6 +120,7 @@ impl SpscRing {
         while tail != head {
             if self.capacity - tail < 2 {
                 tail = 0;
+                self.tail.store(tail, Ordering::Release);
                 continue;
             }
             let mut g_raw_bytes = [0u8; 2];
@@ -126,12 +130,14 @@ impl SpscRing {
             let g_raw = u16::from_le_bytes(g_raw_bytes);
             if g_raw == 0xFFFF {
                 tail = 0;
+                self.tail.store(tail, Ordering::Release);
                 if tail == head {
                     break;
                 }
             }
             if self.capacity - tail < 12 {
                 tail = 0;
+                self.tail.store(tail, Ordering::Release);
                 continue;
             }
             let mut frame_hdr = [0u8; 12];
@@ -140,10 +146,17 @@ impl SpscRing {
             }
             let group = u16::from_le_bytes([frame_hdr[0], frame_hdr[1]]);
             let len = u16::from_le_bytes([frame_hdr[2], frame_hdr[3]]) as usize;
-            let ticks = u64::from_le_bytes(frame_hdr[4..12].try_into().unwrap());
+            if self.capacity - tail < 12 + len {
+                tail = 0;
+                self.tail.store(tail, Ordering::Release);
+                continue;
+            }
+            let ticks = u64::from_le_bytes(frame_hdr[4..12].try_into().unwrap_or([0u8; 8]));
             let payload = unsafe { core::slice::from_raw_parts(ptr.add(tail + 12), len) };
-            logger.push_raw_at(GroupHandle(group), ticks, payload)?;
+            let push_res = logger.push_raw_at(GroupHandle(group), ticks, payload);
             tail += 12 + len;
+            self.tail.store(tail, Ordering::Release);
+            push_res?;
             count += 1;
         }
 
@@ -192,5 +205,19 @@ mod tests {
         ring.drain_into(&mut logger).unwrap();
         let (sink, _) = logger.close().unwrap();
         assert!(&sink.data[0..8] == b"MDF     ");
+    }
+
+    #[test]
+    fn test_spsc_invalid_handle_and_oversized() {
+        let ring = SpscRing::with_capacity(512);
+        // Invalid handle 0xFFFF must be rejected
+        assert!(!ring.try_push(GroupHandle(0xFFFF), 100, &[1, 2, 3, 4]));
+
+        // Oversized record (> u16::MAX) must be rejected
+        let huge_record = alloc::vec![0u8; (u16::MAX as usize) + 1];
+        assert!(!ring.try_push(GroupHandle(1), 100, &huge_record));
+
+        // Valid push must succeed
+        assert!(ring.try_push(GroupHandle(1), 100, &[1, 2, 3, 4]));
     }
 }

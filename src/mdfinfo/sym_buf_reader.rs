@@ -217,11 +217,9 @@ impl<R: Read + Seek> SymBufReader<R> {
         if self.pos >= self.cap {
             debug_assert!(self.pos == self.cap);
 
-            let stream_position = self.stream_position()? as i64;
-
             if !self.last_seek_backward {
-                // Forward sequential read: read from stream_position without rewinding
-                self.reader.seek(SeekFrom::Start(stream_position as u64))?;
+                // Forward sequential read: reader is ALREADY at stream position.
+                // Do NOT call self.stream_position()? or self.reader.seek(...)!
                 let mut total_read = 0;
                 while total_read < self.buf.len() {
                     let n = self.reader.read(&mut self.buf[total_read..])?;
@@ -235,6 +233,7 @@ impl<R: Read + Seek> SymBufReader<R> {
                 return Ok(self.buffer());
             }
 
+            let stream_position = self.stream_position()? as i64;
             let middle_of_buffer = (DEFAULT_BUF_SIZE as i64) / 2;
             // checks if close to stream start
             if let Some(remaining) = stream_position.checked_sub(middle_of_buffer)
@@ -251,6 +250,7 @@ impl<R: Read + Seek> SymBufReader<R> {
                 }
                 self.cap = total_read;
                 self.pos = (stream_position as usize).min(self.cap);
+                self.last_seek_backward = false; // Reset direction after refill
                 return Ok(self.buffer());
             }
 
@@ -268,6 +268,7 @@ impl<R: Read + Seek> SymBufReader<R> {
                     }
                     self.cap = total_read;
                     self.pos = (middle_of_buffer as usize).min(self.cap);
+                    self.last_seek_backward = false; // Reset direction after refill
                 }
                 Err(e) => return Err(e),
             }

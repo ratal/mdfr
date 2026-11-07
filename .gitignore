@@ -33,3 +33,4 @@ test_files/mdfreader/
 *.profraw
 __pycache__/
 *.pyc
+.agents/

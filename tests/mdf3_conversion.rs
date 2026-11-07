@@ -201,7 +201,8 @@ mod conversions3_tests {
         builder.append_value(25.0); // in [20, 30) → "high"
         builder.append_value(35.0); // out of range → "unknown"
 
-        let result = value_range_to_text_calculation(&builder.finish(), &cc_val_ref).unwrap();
+        let result =
+            value_range_to_text_calculation(&builder.finish(), &cc_val_ref, false).unwrap();
         assert_eq!(result.value(0), "low");
         assert_eq!(result.value(1), "medium");
         assert_eq!(result.value(2), "high");

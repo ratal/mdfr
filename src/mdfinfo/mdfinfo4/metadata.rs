@@ -590,13 +590,13 @@ impl MetaData {
     /// Returns a new MetaData struct
     pub fn new(block_type: MetaDataBlockType, parent_block_type: BlockType) -> Self {
         let header = match block_type {
-            MetaDataBlockType::MdBlock => Blockheader4 {
+            MetaDataBlockType::MdBlock | MetaDataBlockType::MdParsed => Blockheader4 {
                 hdr_id: [35, 35, 77, 68], // '##MD'
                 hdr_gap: [0u8; 4],
                 hdr_len: 24,
                 hdr_links: 0,
             },
-            MetaDataBlockType::TX | MetaDataBlockType::MdParsed => Blockheader4 {
+            MetaDataBlockType::TX => Blockheader4 {
                 hdr_id: [35, 35, 84, 88], // '##TX'
                 hdr_gap: [0u8; 4],
                 hdr_len: 24,
@@ -627,7 +627,6 @@ impl MetaData {
                 BlockType::DG => self.parse_dg_comment()?,
             };
         }
-        self.raw_data.clear();
         Ok(())
     }
     /// Returns the text from TX Block or TX's tag text from MD Block
@@ -671,6 +670,7 @@ impl MetaData {
         }
     }
     /// Returns the bytes of the text from TX Block or TX's tag text from MD Block
+    #[allow(dead_code)]
     pub fn get_tx_bytes(&self) -> Option<&[u8]> {
         if self.raw_data.is_empty() {
             None

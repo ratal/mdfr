@@ -23,5 +23,6 @@ pub mod mdfr;
 
 pub mod mdfreader;
 pub mod mdfwriter;
+pub use mdfr_core::compress::CompressionAlgorithm;
 pub use mdfr_core::logger;
 pub use mdfr_core::{Error as CoreError, SeekFrom, Sink, TimeSource, VecSink};

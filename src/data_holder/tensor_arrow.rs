@@ -288,8 +288,8 @@ macro_rules! tensor_arrow_to_ndarray {
             #[allow(dead_code)]
             pub fn to_ndarray(&self) -> Result<NdArray<$rust_type, IxDyn>, Error> {
                 let vector: Vec<$rust_type> = self.values.values().iter().copied().collect();
-                let mut shape = self.shape().clone();
-                shape.push(self.len());
+                let mut shape = vec![self.len()];
+                shape.extend(self.shape().iter());
                 NdArray::from_shape_vec(IxDyn(&shape), vector)
                     .context("Failed reshaping tensor arrow into ndarray")
             }

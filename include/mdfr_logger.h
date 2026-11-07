@@ -174,6 +174,7 @@ int32_t mdfr_heap_init(uint8_t *buf, size_t len);
 const char *mdfr_error_str(int32_t err);
 
 /* POSIX / std convenience helpers (available when linked with libmdfr) */
+#if !defined(MDFR_NO_STD)
 MdfrLoggerHandle *mdfr_logger_open(
     MdfrBuilderHandle *builder,
     const char *path,
@@ -181,6 +182,7 @@ MdfrLoggerHandle *mdfr_logger_open(
 );
 int32_t mdfr_logger_rotate_path(MdfrLoggerHandle *logger, const char *new_path);
 int32_t mdfr_finalize_file_in_place(const char *file_name);
+#endif
 
 #ifdef __cplusplus
 }
