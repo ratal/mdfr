@@ -461,15 +461,15 @@ mod polars_tests {
     use pyo3::prelude::*;
     use std::sync::Arc;
 
-    fn pyarrow_available() -> bool {
-        Python::attach(|py| py.import("pyarrow").is_ok())
+    fn polars_pyarrow_available() -> bool {
+        Python::attach(|py| py.import("pyarrow").is_ok() && py.import("polars").is_ok())
     }
 
     #[test]
     fn polars_series_name_and_length() {
         Python::initialize();
-        if !pyarrow_available() {
-            eprintln!("SKIP: pyarrow not installed — run `pip install pyarrow`");
+        if !polars_pyarrow_available() {
+            eprintln!("SKIP: polars or pyarrow not installed — run `pip install polars pyarrow`");
             return;
         }
         let arr: Arc<dyn arrow::array::Array> =
@@ -488,8 +488,8 @@ mod polars_tests {
     #[test]
     fn polars_series_values_match() {
         Python::initialize();
-        if !pyarrow_available() {
-            eprintln!("SKIP: pyarrow not installed — run `pip install pyarrow`");
+        if !polars_pyarrow_available() {
+            eprintln!("SKIP: polars or pyarrow not installed — run `pip install polars pyarrow`");
             return;
         }
         let arr: Arc<dyn arrow::array::Array> = Arc::new(Int64Array::from(vec![1_i64, 2, 3, 4]));

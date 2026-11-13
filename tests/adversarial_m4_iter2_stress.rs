@@ -48,6 +48,21 @@ unsafe impl GlobalAlloc for TrackingAllocator {
 #[global_allocator]
 static GLOBAL: TrackingAllocator = TrackingAllocator;
 
+fn ensure_python_path(py: Python<'_>) -> PyResult<()> {
+    let sys = py.import("sys")?;
+    let sys_path = sys.getattr("path")?;
+    let venv_lib = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(".venv/lib");
+    if let Ok(entries) = std::fs::read_dir(&venv_lib) {
+        for entry in entries.flatten() {
+            let site = entry.path().join("site-packages");
+            if site.exists() {
+                sys_path.call_method1("insert", (0, site.to_str().unwrap()))?;
+            }
+        }
+    }
+    Ok(())
+}
+
 // ============================================================================
 // Challenge 1: Writer Re-saving Multi-DG / Sorted MDF4 Files
 // ============================================================================
@@ -207,14 +222,7 @@ fn test_stress_writer_resaving_preserves_channel_count_and_data() -> anyhow::Res
 
     // Python-side write() and resave()
     Python::attach(|py| -> PyResult<()> {
-        // Ensure .venv site-packages is in sys.path if present
-        let sys = py.import("sys")?;
-        let sys_path = sys.getattr("path")?;
-        let venv_site = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join(".venv/lib/python3.13/site-packages");
-        if venv_site.exists() {
-            sys_path.call_method1("insert", (0, venv_site.to_str().unwrap()))?;
-        }
+        ensure_python_path(py)?;
 
         let mdfr_cls = py.get_type::<Mdfr>();
         let py_obj = mdfr_cls.call1((path_4ch_2.to_str().unwrap(),))?;
@@ -275,15 +283,19 @@ fn test_stress_mask_polarity_comprehensive() -> anyhow::Result<()> {
     )?;
 
     Python::initialize();
+    let has_numpy = Python::attach(|py| {
+        let _ = ensure_python_path(py);
+        py.import("numpy.ma").is_ok()
+    });
+    if !has_numpy {
+        eprintln!(
+            "Skipping test_stress_mask_polarity_comprehensive: numpy.ma not available in Python"
+        );
+        return Ok(());
+    }
+
     Python::attach(|py| -> PyResult<()> {
-        // Ensure .venv site-packages is in sys.path if present
-        let sys = py.import("sys")?;
-        let sys_path = sys.getattr("path")?;
-        let venv_site = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join(".venv/lib/python3.13/site-packages");
-        if venv_site.exists() {
-            sys_path.call_method1("insert", (0, venv_site.to_str().unwrap()))?;
-        }
+        ensure_python_path(py)?;
 
         let mdfr_cls = py.get_type::<Mdfr>();
         let mdfr_obj = mdfr_cls.call1((path.to_str().unwrap(),))?;
@@ -476,15 +488,19 @@ fn test_stress_add_channel_dict_and_kwargs_edge_cases() -> anyhow::Result<()> {
     )?;
 
     Python::initialize();
+    let has_pyarrow = Python::attach(|py| {
+        let _ = ensure_python_path(py);
+        py.import("pyarrow").is_ok()
+    });
+    if !has_pyarrow {
+        eprintln!(
+            "Skipping test_stress_add_channel_dict_and_kwargs_edge_cases: pyarrow not available in Python"
+        );
+        return Ok(());
+    }
+
     Python::attach(|py| -> PyResult<()> {
-        // Ensure .venv site-packages is in sys.path if present
-        let sys = py.import("sys")?;
-        let sys_path = sys.getattr("path")?;
-        let venv_site = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join(".venv/lib/python3.13/site-packages");
-        if venv_site.exists() {
-            sys_path.call_method1("insert", (0, venv_site.to_str().unwrap()))?;
-        }
+        ensure_python_path(py)?;
 
         let mdfr_cls = py.get_type::<Mdfr>();
         let mdfr_obj = mdfr_cls.call1((base_file.to_str().unwrap(),))?;

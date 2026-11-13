@@ -71,12 +71,15 @@ class TestPythonApi(unittest.TestCase):
             # Parquet export
             with tempfile.NamedTemporaryFile(suffix=".parquet", delete=False) as pq_tmp:
                 pq_path = pq_tmp.name
+            expected_pq = pq_path.replace(".parquet", "_time.parquet")
             try:
                 reader.export_to_parquet(pq_path, compression="snappy")
-                assert os.path.getsize(pq_path) > 0
+                assert os.path.exists(expected_pq) and os.path.getsize(expected_pq) > 0
             finally:
                 if os.path.exists(pq_path):
                     os.remove(pq_path)
+                if os.path.exists(expected_pq):
+                    os.remove(expected_pq)
 
             # Finalize file in place on p2
             recovered = mdfr.finalize_file_in_place(p2)
