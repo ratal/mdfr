@@ -23,26 +23,41 @@ pub(super) fn read_cc(
 ) -> Result<i64> {
     let cc_block: Cc4Block = binrw::BinReaderExt::read_le(&mut block)
         .context("Could nto read buffer into Cc4Block struct")?;
+    // Insert before recursing to guard against cyclic cc_ref / cc_cc_inverse chains.
+    sharable.cc.insert(*target, cc_block.clone());
+
     position = read_meta_data(rdr, sharable, cc_block.cc_md_unit, position, BlockType::CC)?;
     position = read_meta_data(rdr, sharable, cc_block.cc_tx_name, position, BlockType::CC)?;
+    position = read_meta_data(
+        rdr,
+        sharable,
+        cc_block.cc_md_comment,
+        position,
+        BlockType::CC,
+    )?;
+
+    if cc_block.cc_cc_inverse > 0 && !sharable.cc.contains_key(&cc_block.cc_cc_inverse) {
+        let (inv_block, inv_hdr, pos) = parse_block_short(rdr, cc_block.cc_cc_inverse, position)?;
+        position = pos;
+        if b"##CC" == &inv_hdr.hdr_id {
+            position = read_cc(rdr, &cc_block.cc_cc_inverse, position, inv_block, sharable)?;
+        }
+    }
 
     for pointer in &cc_block.cc_ref {
         if !sharable.cc.contains_key(pointer)
             && !sharable.md_tx.contains_key(pointer)
-            && *pointer != 0
+            && *pointer > 0
         {
-            let (ref_block, header, _pos) = parse_block_short(rdr, *pointer, position)?;
-            position = pointer + header.hdr_len as i64;
-            if "##TX".as_bytes() == header.hdr_id {
-                // TX Block
-                position = read_meta_data(rdr, sharable, *pointer, position, BlockType::CC)?
-            } else {
-                // CC Block
+            let (ref_block, header, pos) = parse_block_short(rdr, *pointer, position)?;
+            position = pos;
+            if b"##TX" == &header.hdr_id || b"##MD" == &header.hdr_id {
+                position = read_meta_data(rdr, sharable, *pointer, position, BlockType::CC)?;
+            } else if b"##CC" == &header.hdr_id {
                 position = read_cc(rdr, pointer, position, ref_block, sharable)?;
             }
         }
     }
-    sharable.cc.insert(*target, cc_block);
     Ok(position)
 }
 

@@ -182,7 +182,7 @@ pub unsafe extern "C" fn get_channel_master_type(
 pub unsafe extern "C" fn get_channel_count(mdf: *const Mdf) -> usize {
     unsafe {
         if let Some(mdf) = mdf.as_ref() {
-            mdf.get_channel_names_set().len()
+            mdf.channel_count()
         } else {
             0
         }
@@ -203,7 +203,10 @@ pub unsafe extern "C" fn get_channel_names_set(mdf: *const Mdf) -> *const *mut c
             s.sort();
             let cstring_vec = s
                 .iter()
-                .filter_map(|e| CString::new(e.as_str()).ok())
+                .map(|e| {
+                    CString::new(e.as_str())
+                        .unwrap_or_else(|_| CString::new(e.replace('\0', "")).unwrap_or_default())
+                })
                 .map(std::ffi::CString::into_raw)
                 .collect::<Vec<*mut c_char>>();
             let boxed = cstring_vec.into_boxed_slice();
@@ -615,7 +618,7 @@ pub struct ChannelIdC {
     pub cg_pos: i64,
     pub rec_id: u64,
     pub cn_pos: i64,
-    pub rec_pos: i32,
+    pub rec_pos: i64,
 }
 
 /// Fills `out` with the channel id for `channel_name`.
@@ -819,17 +822,22 @@ pub unsafe extern "C" fn list_source_information(mdf: *const Mdf) -> *const c_ch
 
 pub use mdfr_core::capi::*;
 
+struct StdLoggerCtx {
+    file: std::fs::File,
+    epoch: std::time::Instant,
+}
+
 extern "C" fn std_file_sink_write(ctx: *mut core::ffi::c_void, buf: *const u8, len: usize) -> i32 {
     if ctx.is_null() || (buf.is_null() && len > 0) {
         return -3;
     }
-    let file = unsafe { &mut *(ctx as *mut std::fs::File) };
+    let logger_ctx = unsafe { &mut *(ctx as *mut StdLoggerCtx) };
     let slice = if len == 0 {
         &[][..]
     } else {
         unsafe { std::slice::from_raw_parts(buf, len) }
     };
-    match std::io::Write::write_all(file, slice) {
+    match std::io::Write::write_all(&mut logger_ctx.file, slice) {
         Ok(()) => 0,
         Err(_) => -1,
     }
@@ -839,8 +847,8 @@ extern "C" fn std_file_sink_seek(ctx: *mut core::ffi::c_void, pos: u64) -> i32 {
     if ctx.is_null() {
         return -3;
     }
-    let file = unsafe { &mut *(ctx as *mut std::fs::File) };
-    match std::io::Seek::seek(file, std::io::SeekFrom::Start(pos)) {
+    let logger_ctx = unsafe { &mut *(ctx as *mut StdLoggerCtx) };
+    match std::io::Seek::seek(&mut logger_ctx.file, std::io::SeekFrom::Start(pos)) {
         Ok(_) => 0,
         Err(_) => -1,
     }
@@ -850,8 +858,8 @@ extern "C" fn std_file_sink_flush(ctx: *mut core::ffi::c_void) -> i32 {
     if ctx.is_null() {
         return -3;
     }
-    let file = unsafe { &mut *(ctx as *mut std::fs::File) };
-    match std::io::Write::flush(file) {
+    let logger_ctx = unsafe { &mut *(ctx as *mut StdLoggerCtx) };
+    match std::io::Write::flush(&mut logger_ctx.file) {
         Ok(()) => 0,
         Err(_) => -1,
     }
@@ -860,18 +868,20 @@ extern "C" fn std_file_sink_flush(ctx: *mut core::ffi::c_void) -> i32 {
 extern "C" fn std_file_sink_close(ctx: *mut core::ffi::c_void) -> i32 {
     if !ctx.is_null() {
         unsafe {
-            let mut f = Box::from_raw(ctx as *mut std::fs::File);
-            let _ = std::io::Write::flush(&mut *f);
-            drop(f);
+            let mut logger_ctx = Box::from_raw(ctx as *mut StdLoggerCtx);
+            let _ = std::io::Write::flush(&mut logger_ctx.file);
+            drop(logger_ctx);
         }
     }
     0
 }
 
-extern "C" fn std_clock_now_ticks(_ctx: *mut core::ffi::c_void) -> u64 {
-    static EPOCH: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
-    let start = EPOCH.get_or_init(std::time::Instant::now);
-    start.elapsed().as_micros() as u64
+extern "C" fn std_clock_now_ticks(ctx: *mut core::ffi::c_void) -> u64 {
+    if ctx.is_null() {
+        return 0;
+    }
+    let logger_ctx = unsafe { &*(ctx as *const StdLoggerCtx) };
+    logger_ctx.epoch.elapsed().as_micros() as u64
 }
 
 extern "C" fn std_clock_wall_ns(_ctx: *mut core::ffi::c_void, out_ns: *mut u64) -> i32 {
@@ -896,7 +906,10 @@ fn make_file_sink_vtable(path_str: &str) -> Result<MdfrSinkVtable, i32> {
         .truncate(true)
         .open(path_str)
         .map_err(|_| -1i32)?;
-    let ctx = Box::into_raw(Box::new(f)) as *mut core::ffi::c_void;
+    let ctx = Box::into_raw(Box::new(StdLoggerCtx {
+        file: f,
+        epoch: std::time::Instant::now(),
+    })) as *mut core::ffi::c_void;
     Ok(MdfrSinkVtable {
         ctx,
         write: Some(std_file_sink_write),
@@ -944,7 +957,7 @@ pub unsafe extern "C" fn mdfr_logger_open(
         }
     };
     let clock = MdfrClockVtable {
-        ctx: std::ptr::null_mut(),
+        ctx: sink.ctx,
         now_ticks: Some(std_clock_now_ticks),
         tick_ns: 1_000,
         wall_clock_ns: Some(std_clock_wall_ns),

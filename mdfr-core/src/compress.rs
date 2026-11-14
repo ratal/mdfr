@@ -185,6 +185,7 @@ pub fn decompress_lz4_frame(input: &[u8], expected_uncompressed_len: usize) -> R
     let flg = input[4];
     let has_content_size = (flg & (1 << 3)) != 0;
     let has_dict_id = (flg & 1) != 0;
+    let has_block_checksum = (flg & (1 << 4)) != 0;
     let mut offset = 7;
     if has_content_size {
         offset += 8;
@@ -235,6 +236,14 @@ pub fn decompress_lz4_frame(input: &[u8], expected_uncompressed_len: usize) -> R
                     Error::InvalidBlock(alloc::string::String::from("lz4 block decompress failed"))
                 })?;
             out.extend_from_slice(&decomp);
+        }
+        if has_block_checksum {
+            if pos + 4 > input.len() {
+                return Err(Error::InvalidBlock(alloc::string::String::from(
+                    "lz4 block checksum truncated",
+                )));
+            }
+            pos += 4;
         }
     }
     Ok(out)

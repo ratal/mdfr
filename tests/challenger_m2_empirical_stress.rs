@@ -346,23 +346,16 @@ fn test_spsc_atomic_tail_update_during_drain_error() {
         other => panic!("Expected RecordSize error, got {other:?}"),
     }
 
-    // Second drain attempt: atomic tail cursor MUST have skipped bad record 3,
-    // and process records 4 and 5 cleanly without re-failing!
+    // Second drain attempt: atomic tail cursor MUST have committed valid records 0..=2
+    // and stopped at record 3 so transient/failing records are not dropped or re-drained!
     let res2 = ring.drain_into(&mut logger);
-    assert!(
-        res2.is_ok(),
-        "Second drain must succeed after skipping bad record"
-    );
-    assert_eq!(
-        res2.unwrap(),
-        2,
-        "Must have drained exactly remaining 2 records"
-    );
-
-    // Third drain attempt: ring must now be completely empty
-    let res3 = ring.drain_into(&mut logger);
-    assert!(res3.is_ok());
-    assert_eq!(res3.unwrap(), 0, "Ring must be empty on third drain");
+    match res2 {
+        Err(Error::RecordSize { expected, got }) => {
+            assert_eq!(expected, 16);
+            assert_eq!(got, 20);
+        }
+        other => panic!("Expected RecordSize error on retry at record 3, got {other:?}"),
+    }
 }
 
 // ============================================================================
@@ -463,10 +456,10 @@ fn test_conversions4_value_range_to_value_table_panic_hardening() {
     };
 
     // 1. Empty cc_val returns Err gracefully
-    assert!(value_range_to_value_table(&mut cn, vec![]).is_err());
+    assert!(value_range_to_value_table(&mut cn, &[]).is_err());
 
     // 2. Single element (default only) does not panic
-    assert!(value_range_to_value_table(&mut cn, vec![100.0]).is_ok());
+    assert!(value_range_to_value_table(&mut cn, &[100.0]).is_ok());
 
     // 3. Incomplete elements (2, 4, 5) do not panic
     for count in [2, 4, 5] {
@@ -477,7 +470,7 @@ fn test_conversions4_value_range_to_value_table_panic_hardening() {
             ..Default::default()
         };
         let vals: Vec<f64> = vec![1.0; count];
-        assert!(value_range_to_value_table(&mut c, vals).is_ok());
+        assert!(value_range_to_value_table(&mut c, &vals).is_ok());
     }
 
     // 4. Pathological float values (NaN, Inf) do not panic
@@ -488,5 +481,5 @@ fn test_conversions4_value_range_to_value_table_panic_hardening() {
         ..Default::default()
     };
     let path_vals = vec![f64::NAN, f64::INFINITY, 42.0, 0.0];
-    assert!(value_range_to_value_table(&mut c, path_vals).is_ok());
+    assert!(value_range_to_value_table(&mut c, &path_vals).is_ok());
 }

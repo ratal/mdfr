@@ -586,6 +586,9 @@ impl Mdf {
     /// `master_name` must be a Time master (sync_type == 1) with Float64 data.
     /// Float32/64 channels are linearly interpolated; all others use previous-value hold.
     pub fn resample_group(&mut self, master_name: &str, raster_s: f64) -> Result<()> {
+        if !raster_s.is_finite() || raster_s <= 0.0 {
+            bail!("resample_group: raster_s must be positive and finite");
+        }
         if self.mdf_info.get_channel_master_type(master_name) != 1 {
             bail!("resample_group: '{master_name}' is not a Time master channel");
         }

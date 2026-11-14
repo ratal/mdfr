@@ -56,7 +56,7 @@ pub fn export_to_hdf5(mdf: &Mdf, file_name: &str, compression: Option<&str>) -> 
             }
         }
     }
-    Ok(())
+    file.close().context("failed closing hdf5 file")
 }
 
 /// writes a dataframe or channel group defined by a given channel into a hdf5 file
@@ -112,7 +112,7 @@ pub fn mdf4_cg_to_hdf5(
         .with_context(|| format!("failed creating group {:?}", master_channel))?;
     cg.cn
         .par_iter()
-        .try_for_each(|(_rec_pos, cn): (&i32, &Cn4)| -> Result<(), Error> {
+        .try_for_each(|(_rec_pos, cn): (&i64, &Cn4)| -> Result<(), Error> {
             if !cn.data.is_empty() {
                 mdf4_cn_to_hdf5(mdfinfo4, cn, compression, &group)
                     .context("failed writing dataset")?;
@@ -329,7 +329,31 @@ fn convert_channel_data_into_h5dataset(
     cdata: &ChannelData,
     name: &str,
 ) -> Result<H5Dataset, Error> {
-    let ndim = &cdata.shape().0;
+    let mut full_shape = Vec::with_capacity(cdata.shape().0.len() + 1);
+    if matches!(
+        cdata,
+        ChannelData::ArrayDInt8(_)
+            | ChannelData::ArrayDUInt8(_)
+            | ChannelData::ArrayDInt16(_)
+            | ChannelData::ArrayDUInt16(_)
+            | ChannelData::ArrayDInt32(_)
+            | ChannelData::ArrayDUInt32(_)
+            | ChannelData::ArrayDFloat32(_)
+            | ChannelData::ArrayDInt64(_)
+            | ChannelData::ArrayDUInt64(_)
+            | ChannelData::ArrayDFloat64(_)
+    ) {
+        full_shape.push(cdata.len());
+        full_shape.extend_from_slice(&cdata.shape().0);
+    } else if matches!(cdata, ChannelData::Complex32(_) | ChannelData::Complex64(_)) {
+        full_shape.push(cdata.len());
+        if cdata.shape().0.as_slice() != [1] {
+            full_shape.extend_from_slice(&cdata.shape().0);
+        }
+    } else {
+        full_shape.extend_from_slice(&cdata.shape().0);
+    }
+    let ndim = &full_shape;
     match cdata {
         ChannelData::Int8(data) => Ok(create_dataset::<i8, Int8Type>(
             group,

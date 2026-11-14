@@ -16,6 +16,7 @@ use super::block_header_impl::{SharableBlocks, parse_block_short};
 use super::ca_impl::{Ca4Block, parse_ca_block};
 use super::cn_impl::{Cn4, CnType, RecordLayout, parse_cn4};
 use crate::data_holder::tensor_arrow::Order;
+use crate::mdfinfo::block_chain::BlockChain;
 use crate::mdfinfo::sym_buf_reader::SymBufReader;
 
 pub use mdfr_core::blocks::composition_block::*;
@@ -99,7 +100,7 @@ fn parse_and_rekey_channels(
         *position = pos;
         n_cn += n_cns;
         for (_rec_pos, cn_struct) in cnss {
-            let unique_key = -(cn_struct.block_position as i32);
+            let unique_key = -cn_struct.block_position;
             cns.insert(unique_key, cn_struct);
         }
     }
@@ -111,11 +112,35 @@ fn parse_and_rekey_channels(
 pub(super) fn parse_composition(
     rdr: &mut SymBufReader<&File>,
     target: i64,
-    mut position: i64,
+    position: i64,
     sharable: &mut SharableBlocks,
     record_layout: RecordLayout,
     cg_cycle_count: u64,
 ) -> Result<CompositionParseResult> {
+    let mut chain = BlockChain::new("Composition");
+    parse_composition_inner(
+        rdr,
+        target,
+        position,
+        sharable,
+        record_layout,
+        cg_cycle_count,
+        &mut chain,
+    )
+}
+
+fn parse_composition_inner(
+    rdr: &mut SymBufReader<&File>,
+    target: i64,
+    mut position: i64,
+    sharable: &mut SharableBlocks,
+    record_layout: RecordLayout,
+    cg_cycle_count: u64,
+    chain: &mut BlockChain,
+) -> Result<CompositionParseResult> {
+    if target <= 0 || !chain.visit(target) {
+        bail!("Cyclic or invalid composition block pointer 0x{target:x}");
+    }
     let (mut block, block_header_short, pos) = parse_block_short(rdr, target, position)
         .context("Failed parsing composition header block")?;
     position = pos;
@@ -131,13 +156,14 @@ pub(super) fn parse_composition(
         position = pos;
         let ca_composition: Option<Box<Composition>>;
         if block.ca_composition != 0 {
-            let (ca, pos, inner_array_size, s, n_cns, cnss) = parse_composition(
+            let (ca, pos, inner_array_size, s, n_cns, cnss) = parse_composition_inner(
                 rdr,
                 block.ca_composition,
                 position,
                 sharable,
                 record_layout,
                 cg_cycle_count,
+                chain,
             )
             .context("Failed parsing composition block from CA block")?;
             // If the inner composition is another CA block (array of arrays), combine
@@ -183,13 +209,14 @@ pub(super) fn parse_composition(
         let ds_composition: Option<Box<Composition>>;
         let mut shape = (Vec::<usize>::new(), Order::RowMajor);
         if ds_pointer != 0 {
-            let (ds, pos, _array_size, s, n_cns, cnss) = parse_composition(
+            let (ds, pos, _array_size, s, n_cns, cnss) = parse_composition_inner(
                 rdr,
                 ds_pointer,
                 position,
                 sharable,
                 record_layout,
                 cg_cycle_count,
+                chain,
             )
             .context("Failed parsing composition block from DS Block")?;
             shape = s;
@@ -222,13 +249,14 @@ pub(super) fn parse_composition(
         // Note: cl_cn_size points to the size channel (parsed elsewhere in the CG)
         // Parse the composition (element type)
         if cl_block.cl_composition != 0 {
-            let (ds, pos, _array_size, s, n_cns, cnss) = parse_composition(
+            let (ds, pos, _array_size, s, n_cns, cnss) = parse_composition_inner(
                 rdr,
                 cl_block.cl_composition,
                 position,
                 sharable,
                 record_layout,
                 cg_cycle_count,
+                chain,
             )
             .context("Failed parsing composition block from CL Block")?;
             shape = s;

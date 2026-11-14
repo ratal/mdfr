@@ -128,10 +128,50 @@ impl Display for Cn4 {
 }
 
 /// hashmap's key is bit position in record, value Cn4
-pub type CnType = FxHashMap<i32, Cn4>;
+pub type CnType = FxHashMap<i64, Cn4>;
 
 /// record layout type : record_id_size: u8, cg_data_bytes: u32, cg_inval_bytes: u32
 pub(crate) type RecordLayout = (u8, u32, u32);
+
+/// Inserts a parsed `Cn4` (expanding CANopen Date/Time if needed) into `cn` and returns `(rec_pos, added_extra_cns)`.
+fn insert_cn4_into_map(cn: &mut CnType, cn_struct: Cn4, record_id_size: u8) -> (i64, usize) {
+    let mut rec_pos = (cn_struct.block.cn_byte_offset as i64 + record_id_size as i64) * 8
+        + cn_struct.block.cn_bit_offset as i64;
+    if cn_struct.block.cn_data_type == 13 {
+        let (date_ms, min, hour, day, month, year) = can_open_date(
+            cn_struct.block_position,
+            cn_struct.pos_byte_beg,
+            cn_struct.block.cn_byte_offset,
+        );
+        cn.insert(rec_pos, date_ms);
+        cn.insert(rec_pos + 16, min);
+        cn.insert(rec_pos + 24, hour);
+        cn.insert(rec_pos + 32, day);
+        cn.insert(rec_pos + 40, month);
+        cn.insert(rec_pos + 48, year);
+        (rec_pos, 5)
+    } else if cn_struct.block.cn_data_type == 14 {
+        let (ms, days) = can_open_time(
+            cn_struct.block_position,
+            cn_struct.pos_byte_beg,
+            cn_struct.block.cn_byte_offset,
+        );
+        cn.insert(rec_pos, ms);
+        cn.insert(rec_pos + 32, days);
+        (rec_pos, 1)
+    } else {
+        if cn_struct.block.cn_type == 3 || cn_struct.block.cn_type == 6 {
+            rec_pos = -1;
+            while cn.contains_key(&rec_pos) {
+                rec_pos -= 1;
+            }
+        } else if (cn_struct.block.cn_flags & CN_F_DATA_STREAM_MODE) != 0 {
+            rec_pos = -cn_struct.block_position;
+        }
+        cn.insert(rec_pos, cn_struct);
+        (rec_pos, 0)
+    }
+}
 
 /// creates recursively in the channel group the CN blocks and all its other linked blocks (CC, MD, TX, CA, etc.)
 pub(super) fn parse_cn4(
@@ -141,12 +181,12 @@ pub(super) fn parse_cn4(
     sharable: &mut SharableBlocks,
     record_layout: RecordLayout,
     cg_cycle_count: u64,
-) -> Result<(CnType, i64, usize, i32)> {
+) -> Result<(CnType, i64, usize, i64)> {
     let mut cn: CnType = FxHashMap::default();
     let mut n_cn: usize = 0;
-    let mut first_rec_pos: i32 = 0;
+    let mut first_rec_pos: i64 = 0;
     let (record_id_size, _cg_data_bytes, _cg_inval_bytes) = record_layout;
-    if target != 0 {
+    if target > 0 {
         let (cn_struct, pos, n_cns, cns) = parse_cn4_block(
             rdr,
             target,
@@ -158,48 +198,14 @@ pub(super) fn parse_cn4(
         position = pos;
         n_cn += n_cns;
         cn.extend(cns);
-        first_rec_pos = (cn_struct.block.cn_byte_offset as i32 + record_id_size as i32) * 8
-            + cn_struct.block.cn_bit_offset as i32;
         let mut next_pointer = cn_struct.block.cn_cn_next;
-        if cn_struct.block.cn_data_type == 13 {
-            // CANopen date
-            let (date_ms, min, hour, day, month, year) = can_open_date(
-                cn_struct.block_position,
-                cn_struct.pos_byte_beg,
-                cn_struct.block.cn_byte_offset,
-            );
-            cn.insert(first_rec_pos, date_ms);
-            cn.insert(first_rec_pos + 16, min);
-            cn.insert(first_rec_pos + 24, hour);
-            cn.insert(first_rec_pos + 32, day);
-            cn.insert(first_rec_pos + 40, month);
-            cn.insert(first_rec_pos + 48, year);
-        } else if cn_struct.block.cn_data_type == 14 {
-            // CANopen time
-            let (ms, days) = can_open_time(
-                cn_struct.block_position,
-                cn_struct.pos_byte_beg,
-                cn_struct.block.cn_byte_offset,
-            );
-            cn.insert(first_rec_pos, ms);
-            cn.insert(first_rec_pos + 32, days);
-        } else {
-            if cn_struct.block.cn_type == 3 || cn_struct.block.cn_type == 6 {
-                // virtual channel, position in record negative
-                first_rec_pos = -1;
-                while cn.contains_key(&first_rec_pos) {
-                    first_rec_pos -= 1;
-                }
-            } else if (cn_struct.block.cn_flags & CN_F_DATA_STREAM_MODE) != 0 {
-                // data stream mode channel: use negative block_position as key to avoid collisions
-                first_rec_pos = -(cn_struct.block_position as i32);
-            }
-            cn.insert(first_rec_pos, cn_struct);
-        }
+        let (pos0, extra0) = insert_cn4_into_map(&mut cn, cn_struct, record_id_size);
+        first_rec_pos = pos0;
+        n_cn += extra0;
 
         let mut chain = BlockChain::new("CN");
         chain.visit(target);
-        while next_pointer != 0 {
+        while next_pointer > 0 {
             if !chain.visit(next_pointer) {
                 break;
             }
@@ -214,44 +220,9 @@ pub(super) fn parse_cn4(
             position = pos;
             n_cn += n_cns;
             cn.extend(cns);
-            let mut rec_pos = (cn_struct.block.cn_byte_offset as i32 + record_id_size as i32) * 8
-                + cn_struct.block.cn_bit_offset as i32;
             next_pointer = cn_struct.block.cn_cn_next;
-            if cn_struct.block.cn_data_type == 13 {
-                // CANopen date
-                let (date_ms, min, hour, day, month, year) = can_open_date(
-                    cn_struct.block_position,
-                    cn_struct.pos_byte_beg,
-                    cn_struct.block.cn_byte_offset,
-                );
-                cn.insert(rec_pos, date_ms);
-                cn.insert(rec_pos + 16, min);
-                cn.insert(rec_pos + 24, hour);
-                cn.insert(rec_pos + 32, day);
-                cn.insert(rec_pos + 40, month);
-                cn.insert(rec_pos + 48, year);
-            } else if cn_struct.block.cn_data_type == 14 {
-                // CANopen time
-                let (ms, days) = can_open_time(
-                    cn_struct.block_position,
-                    cn_struct.pos_byte_beg,
-                    cn_struct.block.cn_byte_offset,
-                );
-                cn.insert(rec_pos, ms);
-                cn.insert(rec_pos + 32, days);
-            } else {
-                if cn_struct.block.cn_type == 3 || cn_struct.block.cn_type == 6 {
-                    // virtual channel, position in record negative
-                    rec_pos = -1;
-                    while cn.contains_key(&rec_pos) {
-                        rec_pos -= 1;
-                    }
-                } else if (cn_struct.block.cn_flags & CN_F_DATA_STREAM_MODE) != 0 {
-                    // data stream mode channel: use negative block_position as key to avoid collisions
-                    rec_pos = -(cn_struct.block_position as i32);
-                }
-                cn.insert(rec_pos, cn_struct);
-            }
+            let (_, extra) = insert_cn4_into_map(&mut cn, cn_struct, record_id_size);
+            n_cn += extra;
         }
     }
     Ok((cn, position, n_cn, first_rec_pos))
@@ -362,7 +333,7 @@ fn can_open_date(
     let block = Cn4Block {
         cn_links: 8,
         cn_byte_offset: cn_byte_offset + 5,
-        cn_bit_count: 4,
+        cn_bit_count: 6,
         ..Default::default()
     };
     let month = Cn4 {
@@ -675,15 +646,20 @@ pub(super) fn parse_cn4_block(
 
     let pos_byte_beg = block.cn_byte_offset + record_id_size as u32;
     let n_bytes = calc_n_bytes_not_aligned(block.cn_bit_count + (block.cn_bit_offset as u32));
-    let invalid_mask: Option<(Option<BooleanBufferBuilder>, usize, u8)> = if cg_inval_bytes != 0 {
-        let invalid_byte_position = (block.cn_inval_bit_pos >> 3) as usize;
-        let invalid_byte_mask = 1 << (block.cn_inval_bit_pos & 0x07);
-        let mut buffer = BooleanBufferBuilder::new(cg_cycle_count as usize);
-        buffer.advance(cg_cycle_count as usize);
-        Some((Some(buffer), invalid_byte_position, invalid_byte_mask))
-    } else {
-        None
-    };
+    let invalid_mask: Option<(Option<BooleanBufferBuilder>, usize, u8)> =
+        if (block.cn_flags & CN_F_ALL_VALUES_INVALID) != 0 {
+            let mut buffer = BooleanBufferBuilder::new(cg_cycle_count as usize);
+            buffer.append_n(cg_cycle_count as usize, false);
+            Some((Some(buffer), 0, 0))
+        } else if cg_inval_bytes != 0 && (block.cn_flags & CN_F_INVALID) != 0 {
+            let invalid_byte_position = (block.cn_inval_bit_pos >> 3) as usize;
+            let invalid_byte_mask = 1 << (block.cn_inval_bit_pos & 0x07);
+            let mut buffer = BooleanBufferBuilder::new(cg_cycle_count as usize);
+            buffer.append_n(cg_cycle_count as usize, true);
+            Some((Some(buffer), invalid_byte_position, invalid_byte_mask))
+        } else {
+            None
+        };
 
     // Reads TX name
     position = read_meta_data(rdr, sharable, block.cn_tx_name, position, BlockType::CN)?;
@@ -718,13 +694,20 @@ pub(super) fn parse_cn4_block(
 
     //Reads SI
     let si_pointer = block.cn_si_source;
-    if (si_pointer != 0) && !sharable.si.contains_key(&si_pointer) {
+    if (si_pointer > 0) && !sharable.si.contains_key(&si_pointer) {
         let (mut si_block, _header, pos) = parse_block_short(rdr, si_pointer, position)?;
         position = pos;
         let si_block: Si4Block = binrw::BinReaderExt::read_le(&mut si_block)
             .context("Could into read buffer into Si4Block struct")?;
         position = read_meta_data(rdr, sharable, si_block.si_tx_name, position, BlockType::SI)?;
         position = read_meta_data(rdr, sharable, si_block.si_tx_path, position, BlockType::SI)?;
+        position = read_meta_data(
+            rdr,
+            sharable,
+            si_block.si_md_comment,
+            position,
+            BlockType::SI,
+        )?;
         sharable.si.insert(si_pointer, si_block);
     }
 
@@ -794,9 +777,16 @@ pub(super) fn parse_cn4_block(
     // For event signal channels, cn_data points to a template EVBLOCK that describes
     // the structure of event data stored in this channel
     let event_template: Option<Ev4Block> =
-        if (block.cn_flags & CN_F_EVENT_SIGNAL) != 0 && block.cn_data != 0 {
+        if (block.cn_flags & CN_F_EVENT_SIGNAL) != 0 && block.cn_data > 0 {
             let (ev_block, pos) = parse_ev4_block(rdr, block.cn_data, position)?;
-            position = pos;
+            position = read_meta_data(rdr, sharable, ev_block.ev_tx_name, pos, BlockType::EV)?;
+            position = read_meta_data(
+                rdr,
+                sharable,
+                ev_block.ev_md_comment,
+                position,
+                BlockType::EV,
+            )?;
             Some(ev_block)
         } else {
             None

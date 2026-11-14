@@ -26,7 +26,7 @@ use crate::blocks::{
     header::{Blockheader4, Blockheader4Short},
     id::{
         IdBlock, UNFIN_CG_CYCLE_COUNTERS, UNFIN_LAST_DL_BLOCK, UNFIN_LAST_DT_LENGTH,
-        UNFIN_VLSC_CG_BYTES, UNFIN_VLSC_OFFSET, UNFIN_VLSD_CG_BYTES, UNFIN_VLSD_OFFSET,
+        UNFIN_VLSC_CG_BYTES, UNFIN_VLSD_CG_BYTES,
     },
     si::Si4Block,
     tx::{align8, encode_md, encode_tx, escape_xml},
@@ -81,6 +81,8 @@ impl DlChainState {
 struct VlsdChannelState {
     /// Channel index within its group.
     channel_idx: usize,
+    /// Byte offset of the 64-bit VLSD offset slot inside the group's fixed-length record.
+    record_byte_offset: usize,
     /// True if this channel is an MDF 4.3 `VLSC` (`cn_type = 7`, `VDBLOCK` without 4B length prefix).
     is_vlsc: bool,
     /// For `VLSC` channels: byte offset in the group's fixed record of the companion 32-bit size channel.
@@ -89,6 +91,8 @@ struct VlsdChannelState {
     /// In unsorted mode: companion VLSD/VLSC `CGBLOCK` record ID + total payload bytes + file offset of `CGBLOCK`.
     sorted_sd_chain: Option<DlChainState>,
     sorted_sd_buf: Vec<u8>,
+    /// Staged VLSD/VLSC payload for the current in-progress record (flushed on `commit_staged_record`).
+    staged_vlsd: Option<Vec<u8>>,
     /// Total bytes accumulated in `SDBLOCK`/`VDBLOCK` (sorted) or VLSD CG values (unsorted, excluding 4-byte length prefixes).
     total_vlsd_bytes: u64,
     /// Unsorted mode: record ID of the companion VLSD `CGBLOCK` (`group_idx + 1 + vlsd_ordinal`).
@@ -199,17 +203,8 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
                 }
             }
             DataLayout::Sorted => {
-                for g in &schema.groups {
-                    for c in &g.channels {
-                        if c.is_vlsd {
-                            if c.cn_type == CnChannelType::Vlsc {
-                                unfin_flags |= UNFIN_VLSC_OFFSET;
-                            } else {
-                                unfin_flags |= UNFIN_VLSD_OFFSET;
-                            }
-                        }
-                    }
-                }
+                // In Sorted mode, exact SDBLOCK/VDBLOCK offsets are written directly into each
+                // fixed-length record, so no VLSD/VLSC offset unfinalized flags are needed.
             }
         }
         let id = IdBlock::unfinalized(unfin_flags);
@@ -635,10 +630,12 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
                     .map(|idx| g_def.channels[idx as usize].byte_offset as usize);
                 vlsd_channels.push(VlsdChannelState {
                     channel_idx: c_idx,
+                    record_byte_offset: c_def.byte_offset as usize,
                     is_vlsc,
                     vlsc_size_byte_offset,
                     sorted_sd_chain: Some(DlChainState::new(cn_data_link_pos, org_type, 1)),
                     sorted_sd_buf: Vec::new(),
+                    staged_vlsd: None,
                     total_vlsd_bytes: 0,
                     unsorted_vlsd_record_id: 0,
                     unsorted_vlsd_cg_pos: 0,
@@ -852,11 +849,31 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
                 got: record_bytes.len(),
             });
         }
-        g.staging_record.copy_from_slice(record_bytes);
-        if overwrite_time {
-            g.staging_record[0..8].copy_from_slice(&ticks.to_le_bytes());
+        match self.schema.layout {
+            DataLayout::Sorted => {
+                let start = g.sorted_buf.len();
+                g.sorted_buf.extend_from_slice(record_bytes);
+                if overwrite_time && record_bytes.len() >= 8 {
+                    g.sorted_buf[start..start + 8].copy_from_slice(&ticks.to_le_bytes());
+                }
+                g.cycle_count += 1;
+            }
+            DataLayout::Unsorted => {
+                if self.rec_id_size == 2 {
+                    self.unsorted_buf
+                        .extend_from_slice(&(g.record_id as u16).to_le_bytes());
+                } else {
+                    self.unsorted_buf.push(g.record_id as u8);
+                }
+                let start = self.unsorted_buf.len();
+                self.unsorted_buf.extend_from_slice(record_bytes);
+                if overwrite_time && record_bytes.len() >= 8 {
+                    self.unsorted_buf[start..start + 8].copy_from_slice(&ticks.to_le_bytes());
+                }
+                g.cycle_count += 1;
+            }
         }
-        self.commit_staged_record(group)
+        self.finish_record_commit(g_idx)
     }
 
     /// Begins assembling a record for `group` using the dynamic channel-handle setter API.
@@ -878,6 +895,9 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
             .ok_or_else(|| Error::InvalidSchema(format!("unknown group {}", group.0)))?;
         g.staging_record.fill(0);
         g.staging_record[0..8].copy_from_slice(&ticks.to_le_bytes());
+        for v in &mut g.vlsd_channels {
+            v.staged_vlsd = None;
+        }
         Ok(RecordWriter {
             logger: self,
             group,
@@ -946,51 +966,21 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
             return Ok(());
         }
 
-        // VLSD channel: record the current cumulative byte offset into the staging record,
-        // then append `[u32_le(len)] + data` to the sorted SD buffer or unsorted stream.
-        let layout = self.schema.layout;
+        if data.len() > u32::MAX as usize {
+            return Err(Error::InvalidSchema(
+                "VLSD payload exceeds u32::MAX bytes".into(),
+            ));
+        }
+
+        // Stage the VLSD payload; offsets and buffer writes are committed atomically in `commit_staged_record`
+        // so repeated calls or aborted `begin_record` calls never leak orphan VLSD records.
         let g = &mut self.groups[ch.group as usize];
         let vlsd = g
             .vlsd_channels
             .iter_mut()
             .find(|v| v.channel_idx == ch.channel as usize)
             .ok_or_else(|| Error::InvalidSchema("VLSD state not found".into()))?;
-
-        let offset_val = vlsd.total_vlsd_bytes;
-        g.staging_record[byte_off..byte_off + 8].copy_from_slice(&offset_val.to_le_bytes());
-
-        let len_u32 = data.len() as u32;
-        if let Some(size_off) = vlsd.vlsc_size_byte_offset {
-            g.staging_record[size_off..size_off + 4].copy_from_slice(&len_u32.to_le_bytes());
-        }
-        match layout {
-            DataLayout::Sorted => {
-                if vlsd.is_vlsc {
-                    // VDBLOCK (MDF 4.3 VLSC) stores raw variable-length bytes without a 4-byte length prefix
-                    vlsd.sorted_sd_buf.extend_from_slice(data);
-                    vlsd.total_vlsd_bytes += data.len() as u64;
-                } else {
-                    // SDBLOCK (VLSD) prefixes each value with its 4-byte LE length
-                    vlsd.sorted_sd_buf.extend_from_slice(&len_u32.to_le_bytes());
-                    vlsd.sorted_sd_buf.extend_from_slice(data);
-                    vlsd.total_vlsd_bytes += 4 + data.len() as u64;
-                }
-            }
-            DataLayout::Unsorted => {
-                // In unsorted mode, emit a VLSD/VLSC CG record (`[rec_id: u8|u16][len: u32][data]`) into `unsorted_buf`
-                // before the main record is committed (per MDF4 spec §6.14.2).
-                if self.rec_id_size == 2 {
-                    self.unsorted_buf
-                        .extend_from_slice(&(vlsd.unsorted_vlsd_record_id as u16).to_le_bytes());
-                } else {
-                    self.unsorted_buf.push(vlsd.unsorted_vlsd_record_id as u8);
-                }
-                self.unsorted_buf.extend_from_slice(&len_u32.to_le_bytes());
-                self.unsorted_buf.extend_from_slice(data);
-                vlsd.total_vlsd_bytes += data.len() as u64;
-                vlsd.unsorted_vlsd_cycles += 1;
-            }
-        }
+        vlsd.staged_vlsd = Some(data.to_vec());
         Ok(())
     }
 
@@ -1001,13 +991,74 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
         if g_idx >= self.groups.len() {
             return Err(Error::InvalidSchema(format!("unknown group {}", group.0)));
         }
-        let threshold = self.schema.groups[g_idx].flush_threshold_bytes;
+        let layout = self.schema.layout;
+        let rec_id_size = self.rec_id_size;
+        let g = &mut self.groups[g_idx];
 
-        match self.schema.layout {
+        for vlsd in &mut g.vlsd_channels {
+            let Some(data) = vlsd.staged_vlsd.take() else {
+                continue;
+            };
+            let offset_val = vlsd.total_vlsd_bytes;
+            let byte_off = vlsd.record_byte_offset;
+            g.staging_record[byte_off..byte_off + 8].copy_from_slice(&offset_val.to_le_bytes());
+
+            let len_u32 = data.len() as u32;
+            if let Some(size_off) = vlsd.vlsc_size_byte_offset {
+                g.staging_record[size_off..size_off + 4].copy_from_slice(&len_u32.to_le_bytes());
+            }
+            match layout {
+                DataLayout::Sorted => {
+                    if vlsd.is_vlsc {
+                        vlsd.sorted_sd_buf.extend_from_slice(&data);
+                        vlsd.total_vlsd_bytes += data.len() as u64;
+                    } else {
+                        vlsd.sorted_sd_buf.extend_from_slice(&len_u32.to_le_bytes());
+                        vlsd.sorted_sd_buf.extend_from_slice(&data);
+                        vlsd.total_vlsd_bytes += 4 + data.len() as u64;
+                    }
+                }
+                DataLayout::Unsorted => {
+                    if rec_id_size == 2 {
+                        self.unsorted_buf.extend_from_slice(
+                            &(vlsd.unsorted_vlsd_record_id as u16).to_le_bytes(),
+                        );
+                    } else {
+                        self.unsorted_buf.push(vlsd.unsorted_vlsd_record_id as u8);
+                    }
+                    self.unsorted_buf.extend_from_slice(&len_u32.to_le_bytes());
+                    self.unsorted_buf.extend_from_slice(&data);
+                    vlsd.total_vlsd_bytes += data.len() as u64;
+                    vlsd.unsorted_vlsd_cycles += 1;
+                }
+            }
+        }
+
+        match layout {
             DataLayout::Sorted => {
-                let g = &mut self.groups[g_idx];
                 g.sorted_buf.extend_from_slice(&g.staging_record);
                 g.cycle_count += 1;
+            }
+            DataLayout::Unsorted => {
+                if rec_id_size == 2 {
+                    self.unsorted_buf
+                        .extend_from_slice(&(g.record_id as u16).to_le_bytes());
+                } else {
+                    self.unsorted_buf.push(g.record_id as u8);
+                }
+                self.unsorted_buf.extend_from_slice(&g.staging_record);
+                g.cycle_count += 1;
+            }
+        }
+
+        self.finish_record_commit(g_idx)
+    }
+
+    fn finish_record_commit(&mut self, g_idx: usize) -> Result<()> {
+        let threshold = self.schema.groups[g_idx].flush_threshold_bytes;
+        match self.schema.layout {
+            DataLayout::Sorted => {
+                let g = &self.groups[g_idx];
                 let need_record_flush = g.sorted_buf.len() >= threshold;
                 let need_vlsd_flush = g
                     .vlsd_channels
@@ -1021,15 +1072,6 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
                 }
             }
             DataLayout::Unsorted => {
-                let g = &mut self.groups[g_idx];
-                if self.rec_id_size == 2 {
-                    self.unsorted_buf
-                        .extend_from_slice(&(g.record_id as u16).to_le_bytes());
-                } else {
-                    self.unsorted_buf.push(g.record_id as u8);
-                }
-                self.unsorted_buf.extend_from_slice(&g.staging_record);
-                g.cycle_count += 1;
                 if self.unsorted_buf.len() >= self.unsorted_flush_threshold {
                     self.flush_unsorted()?;
                 }
@@ -1296,15 +1338,7 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
         // Reserved size: 24 (hdr) + 8 (dl_dl_next) + max_blocks*8 (dl_data) + 8 (flags/reserved/count) + max_blocks*8 (dl_offset)
         let reserved_len = 24 + 8 + (max_blocks as u64) * 8 + 8 + (max_blocks as u64) * 8;
         sink.seek(SeekFrom::Start(dl_pos))?;
-        let zeros = [0u8; 128];
-        let mut remaining = reserved_len as usize;
-        while remaining > 0 {
-            let chunk = remaining.min(zeros.len());
-            sink.write_all(&zeros[..chunk])?;
-            remaining -= chunk;
-        }
-        // Write valid empty DL header so even before first patch the block ID is `##DL`
-        sink.seek(SeekFrom::Start(dl_pos))?;
+        // Write valid empty DL header first, then zero-pad the remainder in a single forward pass.
         sink.write_all(b"##DL")?;
         let dl = Dl4Block {
             reserved: [0; 4],
@@ -1322,8 +1356,14 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
             dl_distance_values: Vec::new(),
         };
         write_binrw(sink, &dl)?;
+        let zeros = [0u8; 128];
+        let mut remaining = (reserved_len as usize).saturating_sub(40);
+        while remaining > 0 {
+            let chunk = remaining.min(zeros.len());
+            sink.write_all(&zeros[..chunk])?;
+            remaining -= chunk;
+        }
         *eof_pos = dl_pos + reserved_len;
-        sink.seek(SeekFrom::Start(*eof_pos))?;
         Ok(dl_pos)
     }
 
@@ -1589,19 +1629,27 @@ fn write_bits(
     val: u64,
     is_big_endian: bool,
 ) {
+    if bit_count == 0 || bit_count > 64 {
+        return;
+    }
     if bit_offset == 0 && bit_count.is_multiple_of(8) {
         let n_bytes = (bit_count / 8) as usize;
-        if is_big_endian {
-            let be = val.to_be_bytes();
-            record[byte_offset..byte_offset + n_bytes].copy_from_slice(&be[8 - n_bytes..]);
-        } else {
-            let le = val.to_le_bytes();
-            record[byte_offset..byte_offset + n_bytes].copy_from_slice(&le[..n_bytes]);
+        if n_bytes <= 8 && byte_offset + n_bytes <= record.len() {
+            if is_big_endian {
+                let be = val.to_be_bytes();
+                record[byte_offset..byte_offset + n_bytes].copy_from_slice(&be[8 - n_bytes..]);
+            } else {
+                let le = val.to_le_bytes();
+                record[byte_offset..byte_offset + n_bytes].copy_from_slice(&le[..n_bytes]);
+            }
         }
         return;
     }
     // Bit-packed little-endian or big-endian field fitting inside up to 16 contiguous bytes
     let n_bytes = ((bit_offset as u32 + bit_count).div_ceil(8) as usize).min(16);
+    if byte_offset + n_bytes > record.len() {
+        return;
+    }
     let mask: u128 = if bit_count >= 128 {
         u128::MAX
     } else {

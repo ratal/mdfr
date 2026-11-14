@@ -17,8 +17,8 @@ use crate::mdfinfo::mdfinfo4::{
 /// Groups channel metadata and reverse lookup maps for O(1) channel resolution.
 struct ChannelIndex<'a> {
     channels: &'a CnType,
-    pos_to_rec: HashMap<i64, i32>,
-    name_to_rec: HashMap<&'a str, i32>,
+    pos_to_rec: HashMap<i64, i64>,
+    name_to_rec: HashMap<&'a str, i64>,
 }
 
 impl<'a> ChannelIndex<'a> {
@@ -278,6 +278,62 @@ pub fn decode_single_channel_value(
     }
 
     // Read fixed-length value
+    if cn.block.cn_alignment == 255 {
+        let total_bit_offset = aligned_offset
+            + (cn.block.cn_byte_offset as usize) * 8
+            + (cn.block.cn_bit_offset as usize);
+        let intra_byte_bit_offset = total_bit_offset % 8;
+        let bit_count_usize = bit_count as usize;
+        if (intra_byte_bit_offset != 0 || !bit_count_usize.is_multiple_of(8))
+            && bit_count_usize <= 64
+        {
+            let start_byte = total_bit_offset / 8;
+            let end_byte = (total_bit_offset + bit_count_usize).div_ceil(8);
+            if end_byte > data.len() {
+                bail!("Buffer underrun reading bit-packed data stream channel");
+            }
+            let mut raw: u128 = 0;
+            for (idx, &b) in data[start_byte..end_byte].iter().enumerate() {
+                raw |= (b as u128) << (idx * 8);
+            }
+            let mask = if bit_count_usize == 64 {
+                u64::MAX as u128
+            } else {
+                (1u128 << bit_count_usize) - 1
+            };
+            let val = ((raw >> intra_byte_bit_offset) & mask) as u64;
+            let mut out = if cn.endian.is_big() {
+                val.to_be_bytes()[8 - byte_count..8].to_vec()
+            } else {
+                val.to_le_bytes()[..byte_count].to_vec()
+            };
+            // Sign-extend if signed integer type and bit_count < byte_count * 8
+            if (cn.block.cn_data_type == 2 || cn.block.cn_data_type == 3)
+                && bit_count_usize > 0
+                && bit_count_usize < byte_count * 8
+            {
+                let shift = 64 - bit_count_usize;
+                let signed = ((val as i64) << shift) >> shift;
+                out = if cn.endian.is_big() {
+                    signed.to_be_bytes()[8 - byte_count..8].to_vec()
+                } else {
+                    signed.to_le_bytes()[..byte_count].to_vec()
+                };
+            }
+            stream_state.bit_position = total_bit_offset + bit_count_usize;
+            return Ok((out, byte_count));
+        }
+        let value_bytes = read_primitive_value(
+            data,
+            final_byte_offset,
+            bit_count,
+            cn.block.cn_data_type,
+            cn.endian.is_big(),
+        )?;
+        stream_state.bit_position = total_bit_offset + bit_count_usize;
+        return Ok((value_bytes, byte_count));
+    }
+
     let value_bytes = read_primitive_value(
         data,
         final_byte_offset,
@@ -481,8 +537,8 @@ pub fn decode_datastream_blob(
     cg_channels: &CnType,
     record_offsets: &[u64],
     record_sizes: &[u64],
-) -> Result<HashMap<i32, Vec<Vec<u8>>>> {
-    let mut result: HashMap<i32, Vec<Vec<u8>>> = HashMap::new();
+) -> Result<HashMap<i64, Vec<Vec<u8>>>> {
+    let mut result: HashMap<i64, Vec<Vec<u8>>> = HashMap::new();
     let record_count = record_offsets.len();
 
     let index = ChannelIndex::new(cg_channels);
@@ -544,7 +600,7 @@ fn decode_composition_record(
     index: &ChannelIndex,
     stream_state: &mut StreamState,
     record_idx: usize,
-    result: &mut HashMap<i32, Vec<Vec<u8>>>,
+    result: &mut HashMap<i64, Vec<Vec<u8>>>,
 ) -> Result<()> {
     match &composition.block {
         Compo::CN(cn) => {

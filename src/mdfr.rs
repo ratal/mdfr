@@ -385,8 +385,8 @@ impl Mdfr {
         let Mdfr(mdf) = self;
         pyo3::Python::attach(|py| {
             let mut py_serie = Ok(Python::None(py));
-            if let Some(array) = mdf.get_channel_data(channel_name) {
-                py_serie = rust_arrow_to_py_series(array.as_ref(), channel_name);
+            if let Some(array) = mdf.get_channel_converted_data(channel_name) {
+                py_serie = rust_arrow_to_py_series(array.as_arrow(), channel_name);
             };
             py_serie
         })
@@ -400,11 +400,11 @@ impl Mdfr {
             let channel_list = mdf.mdf_info.get_channel_names_cg_set(&channel_name);
             let series_dict = PyDict::new(py);
             for channel in channel_list {
-                if let Some(channel_data) = mdf.get_channel_data(&channel) {
+                if let Some(channel_data) = mdf.get_channel_converted_data(&channel) {
                     series_dict
                         .set_item(
                             channel.clone(),
-                            rust_arrow_to_py_series(channel_data.as_ref(), &channel)
+                            rust_arrow_to_py_series(channel_data.as_arrow(), &channel)
                                 .context("Could not convert to python series")?,
                         )
                         .context("could not store the serie in dict")?;
@@ -774,8 +774,7 @@ impl Mdfr {
     /// converts MDF version 3.x to 4.2 in memory
     pub fn convert3to4(&mut self, file_name: &str) -> PyResult<()> {
         let Mdfr(mdf) = self;
-        let converted = mdf.mdf_info.convert3to4(file_name)?;
-        mdf.mdf_info = converted;
+        mdf.mdf_info.convert3to4(file_name)?;
         Ok(())
     }
     /// Adds a new channel in memory (no file modification)
@@ -880,8 +879,20 @@ impl Mdfr {
         let Mdfr(mdf) = self;
         Ok(mdf.mdf_info.list_attachments())
     }
+    /// cuts a single channel group to [start_s, stop_s] relative to `master_name`
+    pub fn cut_channel_group(
+        &mut self,
+        master_name: &str,
+        start_s: f64,
+        stop_s: f64,
+    ) -> PyResult<()> {
+        let Mdfr(mdf) = self;
+        mdf.cut_channel_group(master_name, start_s, stop_s)?;
+        Ok(())
+    }
     /// export to Parquet files
     #[cfg(feature = "parquet")]
+    #[pyo3(signature = (file_name, compression=None))]
     pub fn export_to_parquet(&self, file_name: &str, compression: Option<&str>) -> PyResult<()> {
         let Mdfr(mdf) = self;
         mdf.export_to_parquet(file_name, compression)?;
@@ -889,6 +900,7 @@ impl Mdfr {
     }
     /// export dataframe to Parquet files
     #[cfg(feature = "parquet")]
+    #[pyo3(signature = (channel_name, file_name, compression=None))]
     pub fn export_dataframe_to_parquet(
         &self,
         channel_name: String,
@@ -913,13 +925,15 @@ impl Mdfr {
     }
     /// export to hdf5 files
     #[cfg(feature = "hdf5")]
+    #[pyo3(signature = (file_name, compression=None))]
     pub fn export_to_hdf5(&self, file_name: &str, compression: Option<&str>) -> PyResult<()> {
         let Mdfr(mdf) = self;
         mdf.export_to_hdf5(file_name, compression)?;
         Ok(())
     }
-    /// export dataframe to Parquet files
+    /// export dataframe to hdf5 files
     #[cfg(feature = "hdf5")]
+    #[pyo3(signature = (channel_name, file_name, compression=None))]
     pub fn export_dataframe_to_hdf5(
         &self,
         channel_name: String,
@@ -1344,18 +1358,20 @@ pyplot.show()
                 "Channel '{channel_name}' not found in MDF file"
             )));
         }
-        if mdf.get_channel_converted_data(channel_name).is_none() {
-            let mut set = HashSet::new();
-            set.insert(channel_name.to_string());
-            let _ = mdf.load_channels_data_in_memory(set);
-        }
-        let data = mdf
-            .get_channel_converted_data(channel_name)
-            .ok_or_else(|| {
-                pyo3::exceptions::PyKeyError::new_err(format!(
-                    "Failed to read data for channel '{channel_name}'"
-                ))
-            })?;
+        let data = match mdf.get_channel_converted_data(channel_name) {
+            Some(d) => d,
+            None => {
+                let mut set = HashSet::new();
+                set.insert(channel_name.to_string());
+                let _ = mdf.load_channels_data_in_memory(set);
+                mdf.get_channel_converted_data(channel_name)
+                    .ok_or_else(|| {
+                        pyo3::exceptions::PyKeyError::new_err(format!(
+                            "Failed to read data for channel '{channel_name}'"
+                        ))
+                    })?
+            }
+        };
         let unit = mdf.mdf_info.get_channel_unit(channel_name).ok().flatten();
         let desc = mdf.mdf_info.get_channel_desc(channel_name).ok().flatten();
         let master_name = mdf

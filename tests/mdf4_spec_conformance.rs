@@ -896,11 +896,11 @@ fn test_bitfield_rounding_edge_cases() -> Result<()> {
     mdfr::mdfreader::conversions4::bitfield_text_table(&mut cn, &cc_val, &cc_ref, &sharable)?;
 
     if let ChannelData::Utf8(ref s) = cn.data {
-        assert_eq!(s.value(0), " | VAL_NEG_1");
-        assert_eq!(s.value(1), " | VAL_0");
-        assert_eq!(s.value(2), " | VAL_1");
-        assert_eq!(s.value(3), " | VAL_1");
-        assert_eq!(s.value(4), " | VAL_2");
+        assert_eq!(s.value(0), "VAL_NEG_1");
+        assert_eq!(s.value(1), "VAL_0");
+        assert_eq!(s.value(2), "VAL_1");
+        assert_eq!(s.value(3), "VAL_1");
+        assert_eq!(s.value(4), "VAL_2");
     } else {
         panic!("Expected Utf8 channel data");
     }
@@ -1235,6 +1235,7 @@ fn test_mdf4_spec_fig45_le_and_fig46_be_bit_offset_mask() -> Result<()> {
     let mut dg = Dg4 {
         block: Dg4Block::default(),
         cg: Default::default(),
+        recovered_dl_data: Default::default(),
     };
     dg.cg.insert(
         0,

@@ -1,7 +1,7 @@
 //! Dedicated static-arena allocator for embedded C / MCU targets (Option A).
 //!
 //! Isolates all `mdfr-core` heap allocations into a fixed static byte buffer (either the
-//! built-in 64 KiB `.bss` arena or a caller-provided static buffer registered via [`init_arena`]),
+//! built-in 128 KiB `.bss` arena or a caller-provided static buffer registered via [`init_arena`]),
 //! completely avoiding C `malloc`/`free` fragmentation and reentrancy issues.
 use core::alloc::{GlobalAlloc, Layout};
 use core::cell::UnsafeCell;
@@ -10,7 +10,7 @@ use core::sync::atomic::{AtomicBool, Ordering};
 
 const HEADER_SIZE: usize = 16; // size (usize) + next_free (usize), padded to 16 bytes for 8/16-byte alignment
 const MIN_BLOCK_SIZE: usize = 32;
-const DEFAULT_ARENA_BYTES: usize = 64 * 1024;
+const DEFAULT_ARENA_BYTES: usize = 128 * 1024;
 
 #[repr(C, align(16))]
 struct AlignedDefaultArena([u8; DEFAULT_ARENA_BYTES]);
@@ -26,6 +26,7 @@ struct FreeBlock {
 
 struct ArenaInner {
     initialized: bool,
+    active_allocations: usize,
     free_head: *mut FreeBlock,
     base: *mut u8,
     total_size: usize,
@@ -51,6 +52,7 @@ impl StaticArena {
             lock: AtomicBool::new(false),
             inner: UnsafeCell::new(ArenaInner {
                 initialized: false,
+                active_allocations: 0,
                 free_head: ptr::null_mut(),
                 base: ptr::null_mut(),
                 total_size: 0,
@@ -73,12 +75,18 @@ impl StaticArena {
     }
 
     /// Initializes the arena with a caller-supplied static buffer `[buf..buf+len)`.
-    /// Must be called before any allocation if overriding the default 64 KiB arena.
+    /// Must be called before any allocation if overriding the default 128 KiB arena.
+    /// Returns `false` if the arena already has active allocations or the buffer is invalid.
     ///
     /// # Safety
     /// `buf` must point to a valid, mutable static memory region of at least `len` bytes.
     pub unsafe fn init_custom(&self, buf: *mut u8, len: usize) -> bool {
-        self.with_lock(|inner| unsafe { Self::init_locked(inner, buf, len) })
+        self.with_lock(|inner| unsafe {
+            if inner.initialized && inner.active_allocations > 0 {
+                return false;
+            }
+            Self::init_locked(inner, buf, len)
+        })
     }
 
     unsafe fn init_locked(inner: &mut ArenaInner, buf: *mut u8, len: usize) -> bool {
@@ -119,12 +127,23 @@ impl StaticArena {
             return NonNull::<u8>::dangling().as_ptr();
         }
         let align = layout.align().max(16);
-        // For alignments > 16, over-allocate slightly or align payload
-        if align > 16 {
-            return ptr::null_mut();
-        }
-        let payload_size = (layout.size() + 15) & !15;
-        let needed = (HEADER_SIZE + payload_size).max(MIN_BLOCK_SIZE);
+        let needed = if align > 16 {
+            let Some(sum) = HEADER_SIZE
+                .checked_add(align)
+                .and_then(|s| s.checked_add(layout.size()))
+            else {
+                return ptr::null_mut();
+            };
+            let Some(aligned_sum) = sum.checked_add(15) else {
+                return ptr::null_mut();
+            };
+            (aligned_sum & !15).max(MIN_BLOCK_SIZE)
+        } else {
+            let Some(payload_size) = layout.size().checked_add(15).map(|s| s & !15) else {
+                return ptr::null_mut();
+            };
+            (HEADER_SIZE + payload_size).max(MIN_BLOCK_SIZE)
+        };
 
         self.with_lock(|inner| unsafe {
             Self::ensure_initialized(inner);
@@ -155,6 +174,17 @@ impl StaticArena {
                         (*curr).size_and_flags = blk_size | 1;
                     }
                     (*curr).next_free = ptr::null_mut();
+                    inner.active_allocations += 1;
+
+                    if align > 16 {
+                        let min_payload =
+                            (curr as usize) + HEADER_SIZE + core::mem::size_of::<usize>();
+                        let aligned_addr = (min_payload + align - 1) & !(align - 1);
+                        let back_offset = aligned_addr - (curr as usize);
+                        let payload_ptr = aligned_addr as *mut u8;
+                        *(payload_ptr as *mut usize).sub(1) = back_offset;
+                        return payload_ptr;
+                    }
                     return (curr as *mut u8).add(HEADER_SIZE);
                 }
                 prev = curr;
@@ -168,12 +198,18 @@ impl StaticArena {
     ///
     /// # Safety
     /// `ptr` must have been returned by [`StaticArena::alloc_layout`].
-    pub unsafe fn dealloc_layout(&self, ptr: *mut u8, _layout: Layout) {
-        if ptr.is_null() || _layout.size() == 0 {
+    pub unsafe fn dealloc_layout(&self, ptr: *mut u8, layout: Layout) {
+        if ptr.is_null() || layout.size() == 0 {
             return;
         }
         self.with_lock(|inner| unsafe {
-            let blk = ptr.sub(HEADER_SIZE) as *mut FreeBlock;
+            let blk = if layout.align() > 16 {
+                let back_offset = *(ptr as *const usize).sub(1);
+                ptr.sub(back_offset) as *mut FreeBlock
+            } else {
+                ptr.sub(HEADER_SIZE) as *mut FreeBlock
+            };
+            inner.active_allocations = inner.active_allocations.saturating_sub(1);
             let blk_size = (*blk).size_and_flags & !1usize;
             (*blk).size_and_flags = blk_size;
 
@@ -275,6 +311,27 @@ mod tests {
                 assert!(!p.is_null());
                 arena.dealloc_layout(p, layout);
             }
+        }
+    }
+
+    #[test]
+    fn test_arena_overaligned_and_reinit_guard() {
+        let mut backing = [0u64; 1024]; // 8 KiB
+        let mut backing2 = [0u64; 1024];
+        let arena = StaticArena::new();
+        unsafe {
+            assert!(arena.init_custom(backing.as_mut_ptr() as *mut u8, 8192));
+            let l64 = Layout::from_size_align(128, 64).unwrap();
+            let p = arena.alloc_layout(l64);
+            assert!(!p.is_null());
+            assert_eq!((p as usize) % 64, 0);
+
+            // Re-init must be rejected while an allocation is active
+            assert!(!arena.init_custom(backing2.as_mut_ptr() as *mut u8, 8192));
+
+            arena.dealloc_layout(p, l64);
+            // Once all allocations are freed, re-init succeeds
+            assert!(arena.init_custom(backing2.as_mut_ptr() as *mut u8, 8192));
         }
     }
 }

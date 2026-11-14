@@ -891,7 +891,7 @@ mod conversions4_tests {
         let mut builder = Float64Builder::new();
         builder.append_value(1.5); // interpolated: 15.0
         let mut cn = make_cn4_with_data(ChannelData::Float64(builder.finish()));
-        value_to_value_with_interpolation(&mut cn, cc_val).unwrap();
+        value_to_value_with_interpolation(&mut cn, &cc_val).unwrap();
         if let ChannelData::Float64(ref b) = cn.data {
             let vals = b.values_slice();
             assert!((vals[0] - 15.0).abs() < 1e-9);
@@ -908,7 +908,7 @@ mod conversions4_tests {
         let mut builder = UInt8Builder::new();
         builder.append_value(5); // 50
         let mut cn = make_cn4_with_data(ChannelData::UInt8(builder.finish()));
-        value_to_value_with_interpolation(&mut cn, cc_val).unwrap();
+        value_to_value_with_interpolation(&mut cn, &cc_val).unwrap();
         if let ChannelData::Float64(ref b) = cn.data {
             let vals = b.values_slice();
             assert!((vals[0] - 50.0).abs() < 1e-9);
@@ -928,7 +928,7 @@ mod conversions4_tests {
         let tensor =
             TensorArrow::<UInt8Type>::new_from_primitive(builder, None, vec![1], Order::RowMajor);
         let mut cn = make_cn4_with_data(ChannelData::ArrayDUInt8(tensor));
-        value_to_value_with_interpolation(&mut cn, cc_val).unwrap();
+        value_to_value_with_interpolation(&mut cn, &cc_val).unwrap();
         assert!(matches!(cn.data, ChannelData::ArrayDFloat64(_)));
     }
 
@@ -939,7 +939,7 @@ mod conversions4_tests {
         let mut builder = Int64Builder::new();
         builder.append_value(5);
         let mut cn = make_cn4_with_data(ChannelData::Int64(builder.finish()));
-        let result = value_to_value_with_interpolation(&mut cn, vec![0.0, 0.0, 10.0, 100.0]);
+        let result = value_to_value_with_interpolation(&mut cn, &[0.0, 0.0, 10.0, 100.0]);
         assert!(result.is_ok());
     }
 
@@ -951,7 +951,7 @@ mod conversions4_tests {
         let mut builder = Float64Builder::new();
         builder.append_value(1.0); // exact match → 100.0
         let mut cn = make_cn4_with_data(ChannelData::Float64(builder.finish()));
-        value_to_value_without_interpolation(&mut cn, cc_val).unwrap();
+        value_to_value_without_interpolation(&mut cn, &cc_val).unwrap();
         if let ChannelData::Float64(ref b) = cn.data {
             let vals = b.values_slice();
             assert!((vals[0] - 100.0).abs() < 1e-12);
@@ -967,7 +967,7 @@ mod conversions4_tests {
         let mut builder = UInt8Builder::new();
         builder.append_value(2); // exact match → 20.0
         let mut cn = make_cn4_with_data(ChannelData::UInt8(builder.finish()));
-        value_to_value_without_interpolation(&mut cn, cc_val).unwrap();
+        value_to_value_without_interpolation(&mut cn, &cc_val).unwrap();
         if let ChannelData::Float64(ref b) = cn.data {
             let vals = b.values_slice();
             assert!((vals[0] - 20.0).abs() < 1e-12);
@@ -986,7 +986,7 @@ mod conversions4_tests {
         let mut builder = Float64Builder::new();
         builder.append_value(1.5); // in [1.0, 2.0] → 100.0
         let mut cn = make_cn4_with_data(ChannelData::Float64(builder.finish()));
-        value_range_to_value_table(&mut cn, cc_val).unwrap();
+        value_range_to_value_table(&mut cn, &cc_val).unwrap();
         if let ChannelData::Float64(ref b) = cn.data {
             let vals = b.values_slice();
             assert!((vals[0] - 100.0).abs() < 1e-12);
@@ -1003,7 +1003,7 @@ mod conversions4_tests {
         let mut builder = UInt8Builder::new();
         builder.append_value(5); // in [0, 10]
         let mut cn = make_cn4_with_data(ChannelData::UInt8(builder.finish()));
-        value_range_to_value_table(&mut cn, cc_val).unwrap();
+        value_range_to_value_table(&mut cn, &cc_val).unwrap();
         if let ChannelData::Float64(ref b) = cn.data {
             let vals = b.values_slice();
             assert!((vals[0] - 42.0).abs() < 1e-12);
@@ -1023,7 +1023,7 @@ mod conversions4_tests {
             TensorArrow::<Int8Type>::new_from_primitive(builder, None, vec![1], Order::RowMajor);
         let mut cn = make_cn4_with_data(ChannelData::ArrayDInt8(tensor));
         // ArrayDInt8 falls through to warn path
-        let result = value_range_to_value_table(&mut cn, vec![0.0, 10.0, 42.0]);
+        let result = value_range_to_value_table(&mut cn, &[0.0, 10.0, 42.0]);
         assert!(result.is_ok());
     }
 
@@ -1077,8 +1077,8 @@ mod conversions4_tests {
         bitfield_text_table(&mut cn, &cc_val, &cc_ref, &sharable).unwrap();
 
         if let ChannelData::Utf8(ref s) = cn.data {
-            assert_eq!(s.value(0), " | BIT0_ON");
-            assert_eq!(s.value(1), " | DEFAULT");
+            assert_eq!(s.value(0), "BIT0_ON");
+            assert_eq!(s.value(1), "DEFAULT");
         } else {
             panic!("Expected Utf8 channel data");
         }
@@ -1111,7 +1111,7 @@ mod conversions4_tests {
         bitfield_text_table(&mut cn, &cc_val, &cc_ref, &sharable).unwrap();
 
         if let ChannelData::Utf8(ref s) = cn.data {
-            assert_eq!(s.value(0), " | BIT0_ON | BIT1_DEFAULT");
+            assert_eq!(s.value(0), "BIT0_ON | BIT1_DEFAULT");
         } else {
             panic!("Expected Utf8 channel data");
         }

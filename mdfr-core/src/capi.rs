@@ -382,6 +382,7 @@ pub unsafe extern "C" fn mdfr_logger_add_bus_preset(
         2 => BusPreset::lin(&mut b.0, name_str),
         3 => BusPreset::ethernet(&mut b.0, name_str),
         4 => BusPreset::flexray(&mut b.0, name_str),
+        5 => BusPreset::can_fd_vlsd(&mut b.0, name_str).map(|h| h.group),
         _ => return -5,
     };
     match res {

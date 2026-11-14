@@ -294,6 +294,22 @@ impl LoggerBuilder {
         Ok(self)
     }
 
+    /// Sets the `CG_F_*` flags and path separator character for a channel group.
+    pub fn set_group_flags(
+        &mut self,
+        group: GroupHandle,
+        flags: u16,
+        path_separator: u16,
+    ) -> Result<&mut Self> {
+        let g = self
+            .groups
+            .get_mut(group.0 as usize)
+            .ok_or_else(|| Error::InvalidSchema(format!("unknown group {}", group.0)))?;
+        g.flags = flags;
+        g.path_separator = path_separator;
+        Ok(self)
+    }
+
     /// Appends a byte-aligned scalar channel to `group`, automatically advancing the group's record byte length.
     pub fn add_channel(
         &mut self,
@@ -302,18 +318,35 @@ impl LoggerBuilder {
         data_type: CnDataType,
         bit_count: u32,
     ) -> Result<ChannelHandle> {
-        let g = self
-            .groups
-            .get_mut(group.0 as usize)
-            .ok_or_else(|| Error::InvalidSchema(format!("unknown group {}", group.0)))?;
         if bit_count == 0 {
             return Err(Error::InvalidSchema(format!(
                 "channel '{name}' has bit_count=0"
             )));
         }
+        match data_type {
+            CnDataType::UIntLE | CnDataType::UIntBE | CnDataType::IntLE | CnDataType::IntBE
+                if bit_count > 64 =>
+            {
+                return Err(Error::InvalidSchema(format!(
+                    "integer channel '{name}' has bit_count={bit_count} > 64"
+                )));
+            }
+            CnDataType::FloatLE | CnDataType::FloatBE if !matches!(bit_count, 16 | 32 | 64) => {
+                return Err(Error::InvalidSchema(format!(
+                    "float channel '{name}' has invalid bit_count={bit_count} (expected 16, 32, or 64)"
+                )));
+            }
+            _ => {}
+        }
+        let g = self
+            .groups
+            .get_mut(group.0 as usize)
+            .ok_or_else(|| Error::InvalidSchema(format!("unknown group {}", group.0)))?;
         let byte_offset = g.record_data_bytes;
         let n_bytes = bit_count.div_ceil(8);
-        g.record_data_bytes = byte_offset + n_bytes;
+        g.record_data_bytes = byte_offset.checked_add(n_bytes).ok_or_else(|| {
+            Error::InvalidSchema(format!("record_data_bytes overflow adding '{name}'"))
+        })?;
         let ch_idx = g.channels.len() as u16;
         g.channels.push(ChannelDef {
             name: name.to_string(),
@@ -373,7 +406,11 @@ impl LoggerBuilder {
             .groups
             .get_mut(group.0 as usize)
             .ok_or_else(|| Error::InvalidSchema(format!("unknown group {}", group.0)))?;
-        let end_byte = byte_offset + (bit_offset as u32 + bit_count).div_ceil(8);
+        let end_byte = byte_offset
+            .checked_add((bit_offset as u32 + bit_count).div_ceil(8))
+            .ok_or_else(|| {
+                Error::InvalidSchema(format!("record_data_bytes overflow adding '{name}'"))
+            })?;
         if end_byte > g.record_data_bytes {
             g.record_data_bytes = end_byte;
         }
@@ -425,10 +462,22 @@ impl LoggerBuilder {
             .get_mut(group.0 as usize)
             .ok_or_else(|| Error::InvalidSchema(format!("unknown group {}", group.0)))?;
         let elem_bytes = elem_bit_count / 8;
-        let total_elems: u64 = dims.iter().product();
-        let total_bytes = elem_bytes as u64 * total_elems;
+        let total_elems: u64 = dims
+            .iter()
+            .try_fold(1u64, |acc, &d| acc.checked_mul(d))
+            .ok_or_else(|| {
+                Error::InvalidSchema(format!("array element count overflow adding '{name}'"))
+            })?;
+        let total_bytes = (elem_bytes as u64)
+            .checked_mul(total_elems)
+            .and_then(|b| u32::try_from(b).ok())
+            .ok_or_else(|| {
+                Error::InvalidSchema(format!("array byte size overflow adding '{name}'"))
+            })?;
         let byte_offset = g.record_data_bytes;
-        g.record_data_bytes = byte_offset + total_bytes as u32;
+        g.record_data_bytes = byte_offset.checked_add(total_bytes).ok_or_else(|| {
+            Error::InvalidSchema(format!("record_data_bytes overflow adding '{name}'"))
+        })?;
         let ch_idx = g.channels.len() as u16;
         g.channels.push(ChannelDef {
             name: name.to_string(),

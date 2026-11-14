@@ -401,7 +401,7 @@ fn test_stress_o1_queries_50000_channels() {
     for i in 0..n_channels {
         info4.channel_names_set.insert(
             format!("Channel_Signal_Prefix_{:06}", i),
-            (Some("TimeMaster".to_string()), 0, (0, 0), (0, i as i32)),
+            (Some("TimeMaster".to_string()), 0, (0, 0), (0, i as i64)),
         );
     }
 

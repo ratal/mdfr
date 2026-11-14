@@ -47,7 +47,7 @@ use std::fmt;
 use std::sync::Arc;
 
 /// ChannelId : (Option<master_channelname>, dg_pos, (cg_pos, rec_id), (cn_pos, rec_pos))
-pub(crate) type ChannelId = (Option<String>, i64, (i64, u64), (i64, i32));
+pub(crate) type ChannelId = (Option<String>, i64, (i64, u64), (i64, i64));
 pub(crate) type ChannelNamesSet = HashMap<String, ChannelId>;
 
 use arrow::array::Array;
@@ -187,6 +187,11 @@ impl MdfInfo4 {
             && let Some(cn) = cg.cn.get(rec_pos)
         {
             unit = self.sharable.get_tx(cn.block.cn_md_unit)?;
+            if unit.is_none()
+                && let Some(cc) = self.sharable.cc.get(&cn.block.cn_cc_conversion)
+            {
+                unit = self.sharable.get_tx(cc.cc_md_unit)?;
+            }
         }
         Ok(unit)
     }
@@ -618,7 +623,7 @@ impl MdfInfo4 {
             && let Some(dg) = self.dg.get_mut(&dg_pos)
             && let Some(cg) = dg.cg.get_mut(&rec_id)
         {
-            let rec_pos = cg.cn.len() as i32;
+            let rec_pos = cg.cn.len() as i64;
             cg.cn.insert(rec_pos, cn);
             cg.channel_names.insert(channel_name.to_string());
             self.channel_names_set.insert(
@@ -657,6 +662,7 @@ impl MdfInfo4 {
         let mut dg = Dg4 {
             block: dg_block,
             cg: FxHashMap::default(),
+            recovered_dl_data: FxHashMap::default(),
         };
         dg.cg.insert(0, cg);
         self.dg.insert(dg_pos, dg);
@@ -957,6 +963,20 @@ impl MdfInfo4 {
     }
     /// Helper to format a hierarchy level recursively
     fn format_hierarchy_level(&self, output: &mut String, position: i64, depth: usize) {
+        let mut visited = HashSet::new();
+        self.format_hierarchy_level_inner(output, position, depth, &mut visited);
+    }
+
+    fn format_hierarchy_level_inner(
+        &self,
+        output: &mut String,
+        position: i64,
+        depth: usize,
+        visited: &mut HashSet<i64>,
+    ) {
+        if !visited.insert(position) {
+            return;
+        }
         if let Some(block) = self.ch.get(&position) {
             let indent = "  ".repeat(depth);
             let name = self
@@ -989,12 +1009,12 @@ impl MdfInfo4 {
 
             // Traverse children first
             if block.ch_ch_first > 0 {
-                self.format_hierarchy_level(output, block.ch_ch_first, depth + 1);
+                self.format_hierarchy_level_inner(output, block.ch_ch_first, depth + 1, visited);
             }
 
             // Then traverse siblings at same level
             if block.ch_ch_next > 0 {
-                self.format_hierarchy_level(output, block.ch_ch_next, depth);
+                self.format_hierarchy_level_inner(output, block.ch_ch_next, depth, visited);
             }
         }
     }
@@ -1082,15 +1102,10 @@ impl MdfInfo4 {
     }
 }
 
-/// creates random negative position
+/// Creates a deterministic, collision-free negative synthetic position.
 pub fn position_generator() -> i64 {
-    // hopefully never 2 times the same position
-    let mut position = rand::random::<i64>();
-    if position > 0 {
-        // make sure position is negative to avoid interference with existing positions in file
-        position = -position;
-    }
-    position
+    static NEXT_SYNTHETIC_POS: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(-1);
+    NEXT_SYNTHETIC_POS.fetch_sub(1, std::sync::atomic::Ordering::Relaxed)
 }
 
 /// MdfInfo4 display implementation
@@ -1120,9 +1135,11 @@ pub fn build_channel_db(
     // creating channel list for whole file and making channel names unique
     dg.iter_mut().for_each(|(dg_position, dg)| {
         dg.cg.iter_mut().for_each(|(record_id, cg)| {
-            let gn = cg.get_cg_name(sharable);
-            let gs = cg.get_cg_source_name(sharable);
-            let gp = cg.get_cg_source_path(sharable);
+            let cg_tx_acq_name = cg.block.cg_tx_acq_name;
+            let cg_si_acq_source = cg.block.cg_si_acq_source;
+            let mut gn: Option<Option<String>> = None;
+            let mut gs: Option<Option<String>> = None;
+            let mut gp: Option<Option<String>> = None;
             cg.cn.iter_mut().for_each(|(cn_record_position, cn)| {
                 if channel_list.contains_key(&cn.unique_name) {
                     let mut changed: bool = false;
@@ -1138,17 +1155,31 @@ pub fn build_channel_db(
                         cn.unique_name.push_str(&cp);
                         changed = true;
                     }
-                    if let Ok(Some(name)) = &gn {
+                    let name_opt =
+                        gn.get_or_insert_with(|| sharable.get_tx(cg_tx_acq_name).ok().flatten());
+                    if let Some(name) = name_opt {
                         cn.unique_name.push_str(space_char);
                         cn.unique_name.push_str(name);
                         changed = true;
                     }
-                    if let Ok(Some(source)) = &gs {
+                    let src_opt = gs.get_or_insert_with(|| {
+                        sharable
+                            .si
+                            .get(&cg_si_acq_source)
+                            .and_then(|s| s.get_si_source_name(sharable).ok().flatten())
+                    });
+                    if let Some(source) = src_opt {
                         cn.unique_name.push_str(space_char);
                         cn.unique_name.push_str(source);
                         changed = true;
                     }
-                    if let Ok(Some(path)) = &gp {
+                    let path_opt = gp.get_or_insert_with(|| {
+                        sharable
+                            .si
+                            .get(&cg_si_acq_source)
+                            .and_then(|s| s.get_si_path_name(sharable).ok().flatten())
+                    });
+                    if let Some(path) = path_opt {
                         cn.unique_name.push_str(space_char);
                         cn.unique_name.push_str(path);
                         changed = true;
@@ -1169,8 +1200,11 @@ pub fn build_channel_db(
                         (cn.block_position, *cn_record_position),
                     ),
                 );
-                if cn.block.cn_type == 2 || cn.block.cn_type == 3 {
-                    // Master channel
+                if (cn.block.cn_type == 2 || cn.block.cn_type == 3)
+                    && (!master_channel_list.contains_key(&cg.block_position)
+                        || cn.block.cn_sync_type == 1)
+                {
+                    // Prioritize Time master (cn_sync_type == 1) over secondary Angle/Distance masters
                     master_channel_list.insert(cg.block_position, cn.unique_name.clone());
                 }
             });

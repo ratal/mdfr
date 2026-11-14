@@ -110,7 +110,7 @@ pub fn mdf4_cg_to_parquet(
     let mut fields = SchemaBuilder::with_capacity(cg.channel_names.len());
     cg.cn
         .iter()
-        .try_for_each(|(_rec_pos, cn): (&i32, &Cn4)| -> Result<(), Error> {
+        .try_for_each(|(_rec_pos, cn): (&i64, &Cn4)| -> Result<(), Error> {
             if !cn.data.is_empty() {
                 fields.push(mdf4_field(mdfinfo4, cn));
                 columns.push(cn.data.finish_cloned());

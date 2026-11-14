@@ -350,6 +350,9 @@ where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
+    if cc_val.len() < 7 {
+        return Ok(None);
+    }
     let p1 = cc_val[0];
     let p2 = cc_val[1];
     let p3 = cc_val[2];
@@ -363,7 +366,7 @@ where
             .iter()
             .map(|v| {
                 let x: f64 = (*v).as_();
-                (((x - p7) * p6 - p3) / p1).ln() / p2
+                (((x - p7) * p6 - p3) / p1).exp() / p2
             })
             .collect();
         Ok(Some(PrimitiveArray::new(
@@ -375,7 +378,7 @@ where
             .iter()
             .map(|v| {
                 let x: f64 = (*v).as_();
-                ((p3 / (x - p7) - p6) / p4).ln() / p5
+                ((p3 / (x - p7) - p6) / p4).exp() / p5
             })
             .collect();
         Ok(Some(PrimitiveArray::new(
@@ -414,6 +417,13 @@ pub fn exponential_conversion(cn: &mut Cn3, cc_val: &[f64]) -> Result<(), Error>
         ChannelData::UInt16(a) => {
             if let Some(new_array) = exponential_calculation(a, cc_val)
                 .context("failed exponential conversion of u16 channel")?
+            {
+                cn.data = ChannelData::Float64(new_array)
+            };
+        }
+        ChannelData::Int32(a) => {
+            if let Some(new_array) = exponential_calculation(a, cc_val)
+                .context("failed exponential conversion of i32 channel")?
             {
                 cn.data = ChannelData::Float64(new_array)
             };
@@ -471,6 +481,9 @@ where
     <T as ArrowPrimitiveType>::Native: AsPrimitive<f64>,
     T::Native: NumCast,
 {
+    if cc_val.len() < 7 {
+        return Ok(None);
+    }
     let p1 = cc_val[0];
     let p2 = cc_val[1];
     let p3 = cc_val[2];
@@ -484,7 +497,7 @@ where
             .iter()
             .map(|v| {
                 let x: f64 = (*v).as_();
-                (((x - p7) * p6 - p3) / p1).exp() / p2
+                (((x - p7) * p6 - p3) / p1).ln() / p2
             })
             .collect();
         Ok(Some(PrimitiveArray::new(
@@ -496,7 +509,7 @@ where
             .iter()
             .map(|v| {
                 let x: f64 = (*v).as_();
-                ((p3 / (x - p7) - p6) / p4).exp() / p5
+                ((p3 / (x - p7) - p6) / p4).ln() / p5
             })
             .collect();
         Ok(Some(PrimitiveArray::new(
@@ -801,12 +814,19 @@ where
 {
     let val: Vec<(&f64, &f64)> = cc_val.iter().tuples().collect();
     let values = array.values();
+    if val.is_empty() {
+        let converted: Vec<f64> = values.iter().map(|v| (*v).as_()).collect();
+        return Ok(PrimitiveArray::new(
+            converted.into(),
+            array.nulls().cloned(),
+        ));
+    }
     let mut new_array = vec![0f64; values.len()];
     new_array.iter_mut().zip(values).for_each(|(new_array, a)| {
         let a_f64: f64 = (*a).as_();
-        *new_array = match val
-            .binary_search_by(|&(xi, _)| xi.partial_cmp(&a_f64).expect("Could not compare values"))
-        {
+        *new_array = match val.binary_search_by(|&(xi, _)| {
+            xi.partial_cmp(&a_f64).unwrap_or(std::cmp::Ordering::Equal)
+        }) {
             Ok(idx) => *val[idx].1,
             Err(0) => *val[0].1,
             Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -914,12 +934,19 @@ where
 {
     let val: Vec<(&f64, &f64)> = cc_val.iter().tuples().collect();
     let values = array.values();
+    if val.is_empty() {
+        let converted: Vec<f64> = values.iter().map(|v| (*v).as_()).collect();
+        return Ok(PrimitiveArray::new(
+            converted.into(),
+            array.nulls().cloned(),
+        ));
+    }
     let mut new_array = vec![0f64; values.len()];
     new_array.iter_mut().zip(values).for_each(|(new_array, a)| {
         let a_f64: f64 = (*a).as_();
-        *new_array = match val
-            .binary_search_by(|&(xi, _)| xi.partial_cmp(&a_f64).expect("Could not compare values"))
-        {
+        *new_array = match val.binary_search_by(|&(xi, _)| {
+            xi.partial_cmp(&a_f64).unwrap_or(std::cmp::Ordering::Equal)
+        }) {
             Ok(idx) => *val[idx].1,
             Err(0) => *val[0].1,
             Err(idx) if idx >= val.len() => *val[idx - 1].1,
@@ -1035,7 +1062,7 @@ where
         .iter()
         .map(|(val, s)| (val.round() as i64, s.as_str()))
         .collect();
-    let default_val = cc_val_ref.first().map(|x| x.1.as_str()).unwrap_or("");
+    let default_val = "";
     let mut new_array = LargeStringBuilder::with_capacity(array.len(), 32);
     for (i, val) in array.values().iter().enumerate() {
         if array.is_null(i) {

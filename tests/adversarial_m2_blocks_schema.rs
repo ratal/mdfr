@@ -714,7 +714,7 @@ fn test_value_range_to_value_table_panic_hardening() {
     let mut cn = make_cn4_with_data(ChannelData::Int32(builder.finish()));
 
     // 1. Completely empty cc_val must return Err gracefully, no panic
-    let res_empty = value_range_to_value_table(&mut cn, vec![]);
+    let res_empty = value_range_to_value_table(&mut cn, &[]);
     assert!(
         res_empty.is_err(),
         "value_range_to_value_table with empty vec must return Err"
@@ -723,7 +723,7 @@ fn test_value_range_to_value_table_panic_hardening() {
     assert!(msg_empty.contains("empty cc_val"));
 
     // 2. Only 1 element (default value, 0 ranges) must NOT panic and return default value for all
-    let res_one = value_range_to_value_table(&mut cn, vec![999.0]);
+    let res_one = value_range_to_value_table(&mut cn, &[999.0]);
     assert!(
         res_one.is_ok(),
         "Single-element cc_val (default only) must succeed without panic"
@@ -740,7 +740,7 @@ fn test_value_range_to_value_table_panic_hardening() {
     let mut cn2 = make_cn4_with_data(ChannelData::Int32(
         Int32Builder::new().finish(), // 0 elements
     ));
-    let res_two = value_range_to_value_table(&mut cn2, vec![1.0, 42.0]);
+    let res_two = value_range_to_value_table(&mut cn2, &[1.0, 42.0]);
     assert!(
         res_two.is_ok(),
         "2-element cc_val must succeed without panic"
@@ -752,8 +752,7 @@ fn test_value_range_to_value_table_panic_hardening() {
     builder3.append_value(10); // boundary [0, 10] -> 100.0 (integer is inclusive)
     builder3.append_value(15); // outside -> -1.0
     let mut cn3 = make_cn4_with_data(ChannelData::Int32(builder3.finish()));
-    let res_valid =
-        value_range_to_value_table(&mut cn3, vec![0.0, 10.0, 100.0, -1.0 /* default */]);
+    let res_valid = value_range_to_value_table(&mut cn3, &[0.0, 10.0, 100.0, -1.0 /* default */]);
     assert!(res_valid.is_ok());
     if let ChannelData::Float64(ref arr) = cn3.data {
         assert_eq!(arr.value(0), 100.0);
@@ -775,7 +774,7 @@ fn test_value_range_to_value_table_panic_hardening() {
         b.append_value(0);
         b.append_value(10);
         let mut cn_path = make_cn4_with_data(ChannelData::Int32(b.finish()));
-        let res = value_range_to_value_table(&mut cn_path, cc_val);
+        let res = value_range_to_value_table(&mut cn_path, &cc_val);
         assert!(
             res.is_ok(),
             "Pathological float case {case_idx} must not panic"

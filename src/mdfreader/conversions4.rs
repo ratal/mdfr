@@ -10,7 +10,6 @@ use num::{NumCast, ToPrimitive};
 
 use rustc_hash::FxHashMap;
 use std::cmp::Ordering;
-use std::collections::BTreeMap;
 
 use crate::data_holder::channel_data::ChannelData;
 use crate::data_holder::tensor_arrow::TensorArrow;
@@ -53,17 +52,18 @@ pub fn convert_channel(cn: &mut Cn4, sharable: &SharableBlocks) -> Result<(), Er
                 }
             }
             4 => match &conv.cc_val {
-                CcVal::Real(cc_val) => value_to_value_with_interpolation(cn, cc_val.clone())
-                    .with_context(|| {
+                CcVal::Real(cc_val) => {
+                    value_to_value_with_interpolation(cn, cc_val).with_context(|| {
                         format!(
                             "value to value conversion with interpolation failed for {}",
                             cn.unique_name
                         )
-                    })?,
+                    })?
+                }
                 CcVal::Uint(_) => (),
             },
             5 => match &conv.cc_val {
-                CcVal::Real(cc_val) => value_to_value_without_interpolation(cn, cc_val.clone())
+                CcVal::Real(cc_val) => value_to_value_without_interpolation(cn, cc_val)
                     .with_context(|| {
                         format!(
                             "value to value conversion without interpolation failed for {}",
@@ -73,13 +73,14 @@ pub fn convert_channel(cn: &mut Cn4, sharable: &SharableBlocks) -> Result<(), Er
                 CcVal::Uint(_) => (),
             },
             6 => match &conv.cc_val {
-                CcVal::Real(cc_val) => value_range_to_value_table(cn, cc_val.clone())
-                    .with_context(|| {
+                CcVal::Real(cc_val) => {
+                    value_range_to_value_table(cn, cc_val).with_context(|| {
                         format!(
                             "value range to value table conversion failed for {}",
                             cn.unique_name
                         )
-                    })?,
+                    })?
+                }
                 CcVal::Uint(_) => (),
             },
             7 => match &conv.cc_val {
@@ -139,7 +140,7 @@ pub fn convert_all_channels(dg: &mut Dg4, sharable: &SharableBlocks) -> Result<(
         .par_iter_mut()
         .try_for_each(|(_, channel_group)| -> Result<(), Error> {
             channel_group.cn.par_iter_mut().try_for_each(
-                |(_rec_pos, cn): (&i32, &mut Cn4)| -> Result<(), Error> {
+                |(_rec_pos, cn): (&i64, &mut Cn4)| -> Result<(), Error> {
                     convert_channel(cn, sharable)
                 },
             )?;
@@ -634,6 +635,13 @@ where
     T::Native: NumCast,
 {
     let values = array.values();
+    if val.is_empty() {
+        let converted: Vec<f64> = values.iter().map(|v| (*v).as_()).collect();
+        return Ok(PrimitiveArray::new(
+            converted.into(),
+            array.nulls().cloned(),
+        ));
+    }
     let mut new_array = vec![0f64; values.len()];
     new_array.iter_mut().zip(values).for_each(|(new_a, v)| {
         let a: f64 = (*v).as_();
@@ -656,7 +664,7 @@ where
 }
 
 /// Apply value to value with interpolation conversion to get physical data
-pub fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: Vec<f64>) -> Result<(), Error> {
+pub fn value_to_value_with_interpolation(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
     let val: Vec<(&f64, &f64)> = cc_val.iter().tuples().collect();
     apply_conversion_f64!(
         cn,
@@ -680,6 +688,13 @@ where
     T::Native: NumCast,
 {
     let values = array.values();
+    if val.is_empty() {
+        let converted: Vec<f64> = values.iter().map(|v| (*v).as_()).collect();
+        return Ok(PrimitiveArray::new(
+            converted.into(),
+            array.nulls().cloned(),
+        ));
+    }
     let mut new_array = vec![0f64; values.len()];
     new_array.iter_mut().zip(values).for_each(|(new_a, v)| {
         let a: f64 = (*v).as_();
@@ -708,7 +723,7 @@ where
 }
 
 /// Apply value to value without interpolation conversion to get physical data
-pub fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: Vec<f64>) -> Result<(), Error> {
+pub fn value_to_value_without_interpolation(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
     let val: Vec<(&f64, &f64)> = cc_val.iter().tuples().collect();
     apply_conversion_f64!(
         cn,
@@ -734,6 +749,13 @@ where
     T::Native: NumCast,
 {
     let values = array.values();
+    if val.is_empty() {
+        let converted = vec![*default_value; values.len()];
+        return Ok(PrimitiveArray::new(
+            converted.into(),
+            array.nulls().cloned(),
+        ));
+    }
     let mut new_array = vec![0f64; values.len()];
     new_array.iter_mut().zip(values).for_each(|(new_a, v)| {
         let a: f64 = (*v).as_();
@@ -769,7 +791,7 @@ where
 }
 
 /// Apply value range to value table without interpolation conversion to get physical data
-pub fn value_range_to_value_table(cn: &mut Cn4, cc_val: Vec<f64>) -> Result<(), Error> {
+pub fn value_range_to_value_table(cn: &mut Cn4, cc_val: &[f64]) -> Result<(), Error> {
     let mut val: Vec<(f64, f64, f64)> = Vec::new();
     for (a, b, c) in cc_val.iter().tuples::<(_, _, _)>() {
         val.push((*a, *b, *c));
@@ -906,7 +928,7 @@ where
         if let Some(tosc) = table_int.get(&a_i64) {
             match tosc {
                 TextOrScaleConversion::Txt(txt) => {
-                    new_array.append_value(txt.clone());
+                    new_array.append_value(txt.as_str());
                 }
                 TextOrScaleConversion::Scale(conv) => {
                     new_array.append_value(conv.eval_to_txt(a_f64));
@@ -918,7 +940,7 @@ where
         } else {
             match &def {
                 DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                    new_array.append_value(txt.clone());
+                    new_array.append_value(txt.as_str());
                 }
                 DefaultTextOrScaleConversion::DefaultScale(conv) => {
                     new_array.append_value(conv.eval_to_txt(a_f64));
@@ -973,7 +995,7 @@ fn value_to_text_calculation_f32(
         if let Some(tosc) = table_float.get(&ref_val) {
             match tosc {
                 TextOrScaleConversion::Txt(txt) => {
-                    new_array.append_value(txt.clone());
+                    new_array.append_value(txt.as_str());
                 }
                 TextOrScaleConversion::Scale(conv) => {
                     new_array.append_value(conv.eval_to_txt(val.to_f64().unwrap_or_default()));
@@ -985,7 +1007,7 @@ fn value_to_text_calculation_f32(
         } else {
             match &def {
                 DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                    new_array.append_value(txt.clone());
+                    new_array.append_value(txt.as_str());
                 }
                 DefaultTextOrScaleConversion::DefaultScale(conv) => {
                     new_array.append_value(conv.eval_to_txt(val.to_f64().unwrap_or_default()));
@@ -1109,7 +1131,7 @@ fn value_to_text(
                 if let Some(tosc) = table_float.get(&ref_val) {
                     match tosc {
                         TextOrScaleConversion::Txt(txt) => {
-                            new_array.append_value(txt.clone());
+                            new_array.append_value(txt.as_str());
                         }
                         TextOrScaleConversion::Scale(conv) => {
                             new_array.append_value(conv.eval_to_txt(*val));
@@ -1121,7 +1143,7 @@ fn value_to_text(
                 } else {
                     match &def {
                         DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                            new_array.append_value(txt.clone());
+                            new_array.append_value(txt.as_str());
                         }
                         DefaultTextOrScaleConversion::DefaultScale(conv) => {
                             new_array.append_value(conv.eval_to_txt(*val));
@@ -1213,9 +1235,8 @@ impl ConversionFunction {
                 ((a_2 * p1 + a * p2 + p3) / (a_2 * p4 + a * p5 + p6)).to_string()
             }
             ConversionFunction::Algebraic(compiled, slab) => {
-                let mut map: BTreeMap<String, f64> = BTreeMap::new();
-                map.insert("X".to_string(), a);
-                let result = compiled.eval(slab, &mut map);
+                let mut ns = SingleVarNamespace { val: a };
+                let result = compiled.eval(slab, &mut ns);
                 match result {
                     Ok(res) => res.to_string(),
                     Err(e) => {
@@ -1313,7 +1334,7 @@ where
         if let Some(key_idx) = matched_key {
             match &txt[key_idx] {
                 TextOrScaleConversion::Txt(txt) => {
-                    new_array.append_value(txt.clone());
+                    new_array.append_value(txt.as_str());
                 }
                 TextOrScaleConversion::Scale(conv) => {
                     new_array.append_value(conv.eval_to_txt(a));
@@ -1325,7 +1346,7 @@ where
         } else {
             match &def {
                 DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                    new_array.append_value(txt.clone());
+                    new_array.append_value(txt.as_str());
                 }
                 DefaultTextOrScaleConversion::DefaultScale(conv) => {
                     new_array.append_value(conv.eval_to_txt(a));
@@ -1495,7 +1516,7 @@ fn text_to_text_calculation(
             } else {
                 new_array.append_value(s);
             }
-        } else if let Some(tx) = default.clone() {
+        } else if let Some(tx) = default.as_deref() {
             new_array.append_value(tx);
         } else {
             new_array.append_value(s);
@@ -1531,6 +1552,18 @@ enum ValueOrValueRangeToText {
 }
 
 /// Generic function calculating text to value
+#[inline]
+fn append_bitfield_part(out: &mut String, name: Option<&String>, part: &str) {
+    if !out.is_empty() {
+        out.push_str(" | ");
+    }
+    if let Some(n) = name {
+        out.push_str(n);
+        out.push_str(" = ");
+    }
+    out.push_str(part);
+}
+
 #[inline]
 fn bitfield_text_table_calculation<T: ArrowPrimitiveType>(
     array: &PrimitiveArray<T>,
@@ -1670,67 +1703,45 @@ where
         let mut new_a = String::new();
         for (ind, val) in cc_val.iter().enumerate() {
             if let Some(entry) = table.get(ind) {
+                let ref_val = a_i64 & (*val as i64);
+                let masked_f64 = ref_val as f64;
                 match entry {
                     (ValueOrValueRangeToText::ValueToText(table_int, def), name) => {
-                        let ref_val = a_i64 & (*val as i64);
                         if let Some(tosc) = table_int.get(&ref_val) {
                             match tosc {
                                 TextOrScaleConversion::Txt(txt) => {
-                                    if let Some(n) = name {
-                                        new_a = format!("{} | {} = {}", new_a, n, txt);
-                                    } else {
-                                        new_a = format!("{} | {}", new_a, txt);
-                                    }
+                                    append_bitfield_part(&mut new_a, name.as_ref(), txt);
                                 }
                                 TextOrScaleConversion::Scale(conv) => {
-                                    if let Some(n) = name {
-                                        new_a = format!(
-                                            "{} | {} = {}",
-                                            new_a,
-                                            n,
-                                            conv.eval_to_txt(a_f64)
-                                        );
-                                    } else {
-                                        new_a = format!("{} | {}", new_a, conv.eval_to_txt(a_f64));
-                                    }
+                                    append_bitfield_part(
+                                        &mut new_a,
+                                        name.as_ref(),
+                                        &conv.eval_to_txt(masked_f64),
+                                    );
                                 }
-                                _ => {
-                                    new_a = format!("{} | {}", new_a, "nothing");
-                                }
+                                TextOrScaleConversion::Nil => {}
                             }
                         } else {
                             match &def {
                                 DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                                    if let Some(n) = name {
-                                        new_a = format!("{} | {} = {}", new_a, n, txt);
-                                    } else {
-                                        new_a = format!("{} | {}", new_a, txt);
-                                    }
+                                    append_bitfield_part(&mut new_a, name.as_ref(), txt);
                                 }
                                 DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                                    if let Some(n) = name {
-                                        new_a = format!(
-                                            "{} | {} = {}",
-                                            new_a,
-                                            n,
-                                            conv.eval_to_txt(a_f64)
-                                        );
-                                    } else {
-                                        new_a = format!("{} | {}", new_a, conv.eval_to_txt(a_f64));
-                                    }
+                                    append_bitfield_part(
+                                        &mut new_a,
+                                        name.as_ref(),
+                                        &conv.eval_to_txt(masked_f64),
+                                    );
                                 }
-                                _ => {
-                                    new_a = format!("{} | {}", new_a, "nothing");
-                                }
+                                DefaultTextOrScaleConversion::Nil => {}
                             }
                         }
                     }
                     (ValueOrValueRangeToText::ValueRangeToText(txt, def, keys), name) => {
-                        let masked_val = (a_i64 & (*val as i64)) as f64;
-                        let idx = keys.partition_point(|k| k.min <= masked_val);
+                        let idx = keys.partition_point(|k| k.min <= masked_f64);
                         let matched_key = if idx > 0 {
                             let candidate = &keys[idx - 1];
-                            if masked_val <= candidate.max {
+                            if masked_f64 <= candidate.max {
                                 Some(idx - 1)
                             } else {
                                 None
@@ -1742,61 +1753,38 @@ where
                             if let Some(conv_item) = txt.get(key_idx) {
                                 match conv_item {
                                     TextOrScaleConversion::Txt(txt) => {
-                                        if let Some(n) = name {
-                                            new_a = format!("{} | {} = {}", new_a, n, txt);
-                                        } else {
-                                            new_a = format!("{} | {}", new_a, txt);
-                                        }
+                                        append_bitfield_part(&mut new_a, name.as_ref(), txt);
                                     }
                                     TextOrScaleConversion::Scale(conv) => {
-                                        if let Some(n) = name {
-                                            new_a = format!(
-                                                "{} | {} = {}",
-                                                new_a,
-                                                n,
-                                                conv.eval_to_txt(a_f64)
-                                            );
-                                        } else {
-                                            new_a =
-                                                format!("{} | {}", new_a, conv.eval_to_txt(a_f64));
-                                        }
+                                        append_bitfield_part(
+                                            &mut new_a,
+                                            name.as_ref(),
+                                            &conv.eval_to_txt(masked_f64),
+                                        );
                                     }
-                                    _ => {
-                                        new_a = format!("{} | {}", new_a, "nothing");
-                                    }
+                                    TextOrScaleConversion::Nil => {}
                                 }
                             }
                         } else {
                             match &def {
                                 DefaultTextOrScaleConversion::DefaultTxt(txt) => {
-                                    if let Some(n) = name {
-                                        new_a = format!("{} | {} = {}", new_a, n, txt);
-                                    } else {
-                                        new_a = format!("{} | {}", new_a, txt);
-                                    }
+                                    append_bitfield_part(&mut new_a, name.as_ref(), txt);
                                 }
                                 DefaultTextOrScaleConversion::DefaultScale(conv) => {
-                                    if let Some(n) = name {
-                                        new_a = format!(
-                                            "{} | {} = {}",
-                                            new_a,
-                                            n,
-                                            conv.eval_to_txt(a_f64)
-                                        );
-                                    } else {
-                                        new_a = format!("{} | {}", new_a, conv.eval_to_txt(a_f64));
-                                    }
+                                    append_bitfield_part(
+                                        &mut new_a,
+                                        name.as_ref(),
+                                        &conv.eval_to_txt(masked_f64),
+                                    );
                                 }
-                                _ => {
-                                    new_a = format!("{} | {}", new_a, "nothing");
-                                }
+                                DefaultTextOrScaleConversion::Nil => {}
                             }
                         }
                     }
                 }
             }
         }
-        new_array.append_value(new_a);
+        new_array.append_value(&new_a);
     });
     Ok(new_array.finish())
 }

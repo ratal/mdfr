@@ -643,16 +643,24 @@ impl MetaData {
                     .context("failed getting data string to extract TX tag")?;
                 match roxmltree::Document::parse(xml_str) {
                     Ok(md) => {
-                        for node in md.root().descendants() {
-                            if node.is_element()
-                                && node.tag_name().name() == "TX"
+                        let mut unit_fallback: Option<String> = None;
+                        for node in md.root().descendants().filter(roxmltree::Node::is_element) {
+                            let tag = node.tag_name().name();
+                            if tag == "TX"
                                 && let Some(text) = node.text()
                                 && !text.is_empty()
                             {
                                 return Ok(Some(text.to_string()));
                             }
+                            if tag == "unit"
+                                && unit_fallback.is_none()
+                                && let Some(text) = node.text()
+                                && !text.is_empty()
+                            {
+                                unit_fallback = Some(text.to_string());
+                            }
                         }
-                        Ok(None)
+                        Ok(unit_fallback)
                     }
                     Err(e) => {
                         log::warn!("Error parsing comment : \n{xml_str}\n{e}");
@@ -680,7 +688,16 @@ impl MetaData {
     }
     /// allocate bytes to raw_data field, adjusting header length
     pub fn set_data_buffer(&mut self, data: &[u8]) {
-        self.raw_data = [data, vec![0u8; 8 - data.len() % 8].as_slice()].concat();
+        let mut raw = Vec::with_capacity(data.len() + 8);
+        raw.extend_from_slice(data);
+        if !raw.ends_with(&[0]) {
+            raw.push(0);
+        }
+        let rem = raw.len() % 8;
+        if rem != 0 {
+            raw.resize(raw.len() + (8 - rem), 0);
+        }
+        self.raw_data = raw;
         self.block.hdr_len = self.raw_data.len() as u64 + 24;
     }
     /// Zero-allocation helper: borrow trimmed XML str from raw_data

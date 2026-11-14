@@ -519,13 +519,13 @@ fn test_9byte_bitfield_u64_and_i64_decoding() -> Result<()> {
     // 3. decode_u64_slice 9-byte fallback verification
     let mut dst = [0u64; 1];
     let sample = [0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99];
-    decode_u64_slice(&sample, &mut dst, 9, false)?;
+    decode_u64_slice(&sample, &mut dst, 9, false, 0, 64)?;
     assert_eq!(
         dst[0],
         u64::from_le_bytes([0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88])
     );
 
-    decode_u64_slice(&sample, &mut dst, 9, true)?;
+    decode_u64_slice(&sample, &mut dst, 9, true, 0, 64)?;
     assert_eq!(
         dst[0],
         u64::from_be_bytes([0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99])

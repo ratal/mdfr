@@ -667,17 +667,17 @@ impl ChannelData {
         match self {
             ChannelData::Utf8(a) => {
                 let nbytes = self.byte_count() as usize;
-                Ok(a.iter()
-                    .flat_map(|x| {
-                        let str_bytes = x.unwrap_or("").as_bytes();
-                        let n_str_bytes = str_bytes.len();
-                        if nbytes > n_str_bytes {
-                            [str_bytes, &vec![0u8; nbytes - n_str_bytes]].concat()
-                        } else {
-                            str_bytes.to_vec()
-                        }
-                    })
-                    .collect())
+                let mut result = Vec::with_capacity(a.len() * nbytes);
+                for x in a.iter() {
+                    let str_bytes = x.unwrap_or("").as_bytes();
+                    if nbytes > str_bytes.len() {
+                        result.extend_from_slice(str_bytes);
+                        result.resize(result.len() + (nbytes - str_bytes.len()), 0);
+                    } else {
+                        result.extend_from_slice(&str_bytes[..nbytes]);
+                    }
+                }
+                Ok(result)
             }
             ChannelData::VariableSizeByteArray(a) => Ok(a.values().as_slice().to_vec()),
             ChannelData::FixedSizeByteArray(a) => Ok(a.values().as_slice().to_vec()),
@@ -1713,7 +1713,7 @@ pub fn try_from(value: &dyn Array) -> Result<ChannelData, Error> {
                         let values = as_primitive_array::<Float32Type>(&inner_arr);
                         Ok(ChannelData::Complex32(ComplexArrow {
                             values: values.clone(),
-                            shape: vec![array.len(), 2],
+                            shape: vec![1],
                             order: Order::RowMajor,
                             null_buffer: array.nulls().map(|n| n.inner().clone()),
                             len: array.len(),
@@ -1724,7 +1724,7 @@ pub fn try_from(value: &dyn Array) -> Result<ChannelData, Error> {
                         let values = as_primitive_array::<Float64Type>(&inner_arr);
                         Ok(ChannelData::Complex64(ComplexArrow {
                             values: values.clone(),
-                            shape: vec![array.len(), 2],
+                            shape: vec![1],
                             order: Order::RowMajor,
                             null_buffer: array.nulls().map(|n| n.inner().clone()),
                             len: array.len(),

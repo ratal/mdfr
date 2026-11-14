@@ -27,22 +27,25 @@ pub(super) fn parse_ca_block(
     ca_block.set_position(8 + ca_links * 8); // change buffer position after links section
     let ca_members: Ca4BlockMembers = binrw::BinReaderExt::read_le(ca_block)
         .context("Could not read buffer into CaBlockMembers struct")?;
-    let mut snd: usize;
-    let mut pnd: usize;
-    // converts  ca_dim_size from u64 to usize
-    let shape_dim_usize: Vec<usize> = ca_members.ca_dim_size.iter().map(|&d| d as usize).collect();
-    if shape_dim_usize.len() == 1 {
-        snd = shape_dim_usize[0];
-        pnd = shape_dim_usize[0];
+    // converts ca_dim_size from u64 to usize with overflow checks
+    let shape_dim_usize: Vec<usize> = ca_members
+        .ca_dim_size
+        .iter()
+        .map(|&d| usize::try_from(d).context("CA dimension size exceeds usize"))
+        .collect::<Result<Vec<_>, _>>()?;
+    let (snd, pnd) = if shape_dim_usize.len() == 1 {
+        (shape_dim_usize[0], shape_dim_usize[0])
     } else {
-        snd = 0;
-        pnd = 1;
-        let sizes = shape_dim_usize.clone();
-        for x in sizes.into_iter() {
-            snd += x;
-            pnd *= x;
+        let mut s = 0usize;
+        let mut p = 1usize;
+        for &x in &shape_dim_usize {
+            s = s.checked_add(x).context("CA sum of dimensions overflow")?;
+            p = p
+                .checked_mul(x)
+                .context("CA product of dimensions overflow")?;
         }
-    }
+        (s, p)
+    };
 
     let shape: (Vec<usize>, Order) = if (ca_members.ca_flags >> 6 & 1) != 0 {
         (shape_dim_usize, Order::ColumnMajor)
@@ -50,8 +53,13 @@ pub(super) fn parse_ca_block(
         (shape_dim_usize, Order::RowMajor)
     };
 
-    let mut val = vec![0.0f64; snd];
+    let max_bytes = block_header.hdr_len as usize;
     let ca_axis_value: Option<Vec<f64>> = if (ca_members.ca_flags & 0b100000) > 0 {
+        anyhow::ensure!(
+            snd.checked_mul(8).is_some_and(|b| b <= max_bytes),
+            "ca_axis_value size ({snd} * 8) exceeds CA block length ({max_bytes})"
+        );
+        let mut val = vec![0.0f64; snd];
         ca_block
             .read_f64_into::<LittleEndian>(&mut val)
             .context("Could not read ca_axis_value")?;
@@ -60,8 +68,12 @@ pub(super) fn parse_ca_block(
         None
     };
 
-    let mut val = vec![0u64; pnd];
     let ca_cycle_count: Option<Vec<u64>> = if ca_members.ca_storage >= 1 {
+        anyhow::ensure!(
+            pnd.checked_mul(8).is_some_and(|b| b <= max_bytes),
+            "ca_cycle_count size ({pnd} * 8) exceeds CA block length ({max_bytes})"
+        );
+        let mut val = vec![0u64; pnd];
         ca_block
             .read_u64_into::<LittleEndian>(&mut val)
             .context("Could not read ca_cycle_count")?;
@@ -77,8 +89,12 @@ pub(super) fn parse_ca_block(
         .read_i64::<LittleEndian>()
         .context("Could not read ca_composition")?;
 
-    let mut val = vec![0i64; pnd];
     let ca_data: Option<Vec<i64>> = if ca_members.ca_storage == 2 {
+        anyhow::ensure!(
+            pnd.checked_mul(8).is_some_and(|b| b <= max_bytes),
+            "ca_data size ({pnd} * 8) exceeds CA block length ({max_bytes})"
+        );
+        let mut val = vec![0i64; pnd];
         ca_block
             .read_i64_into::<LittleEndian>(&mut val)
             .context("Could not read ca_data")?;

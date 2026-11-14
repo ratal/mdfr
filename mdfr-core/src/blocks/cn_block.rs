@@ -116,6 +116,8 @@ pub enum CnSyncType {
     Distance = 3,
     /// 4: Index synchronisation (zero-based sample index)
     Index = 4,
+    /// 5: Frequency synchronisation (Hz, MDF 4.3)
+    Frequency = 5,
 }
 
 impl TryFrom<u8> for CnSyncType {
@@ -127,6 +129,7 @@ impl TryFrom<u8> for CnSyncType {
             2 => Ok(Self::Angle),
             3 => Ok(Self::Distance),
             4 => Ok(Self::Index),
+            5 => Ok(Self::Frequency),
             other => Err(other),
         }
     }
@@ -230,7 +233,7 @@ pub struct Cn4Block {
     pub cn_data: i64,
     /// Pointer to TXBLOCK/MDBLOCK with designation for physical unit of signal data (after conversion) or (only for channel data types "MIME sample" and "MIME stream") to MIME context-type text. (can be NIL). The unit can be used if no conversion rule is specified or to overwrite the unit specified for the conversion rule (e.g. if a conversion rule is shared between channels). If the link is NIL, then the unit from the conversion rule must be used. If the content is an empty string, no unit should be displayed. If an MDBLOCK is used, in addition the A-HDO unit definition can be stored, see Table 38. Note: for (virtual) master and synchronization channels the A-HDO definition should be omitted to avoid redundancy. Here the unit is already specified by cn_sync_type of the channel. In case of channel data types "MIME sample" and "MIME stream", the text of the unit must be the content-type text of a MIME type which specifies the content of the values of the channel (either fixed length in record or variable length in SDBLOCK). The MIME content-type string must be written in lowercase, and it must apply to the same rules as defined for at_tx_mimetype in 4.11 The Attachment Block ATBLOCK.
     pub cn_md_unit: i64,
-    /// Pointer to TXBLOCK/MDBLOCK with designation for physical unit of signal data (after conversion) or (only for channel data types "MIME sample" and "MIME stream") to MIME context-type text. (can be NIL). The unit can be used if no conversion rule is specified or to overwrite the unit specified for the conversion rule (e.g. if a conversion rule is shared between channels). If the link is NIL, then the unit from the conversion rule must be used. If the content is an empty string, no unit should be displayed. If an MDBLOCK is used, in addition the A-HDO unit definition can be stored, see Table 38. Note: for (virtual) master and synchronization channels the A-HDO definition should be omitted to avoid redundancy. Here the unit is already specified by cn_sync_type of the channel. In case of channel data types "MIME sample" and "MIME stream", the text of the unit must be the content-type text of a MIME type which specifies the content of the values of the channel (either fixed length in record or variable length in SDBLOCK). The MIME content-type string must be written in lowercase, and it must apply to the same rules as defined for at_tx_mimetype in 4.11 The Attachment Block ATBLOCK.
+    /// Pointer to TXBLOCK/MDBLOCK with comment and additional information about the channel (can be NIL).
     pub cn_md_comment: i64,
     #[br(if(cn_links > 8), little, count = cn_links - 8)]
     pub links: Vec<i64>,

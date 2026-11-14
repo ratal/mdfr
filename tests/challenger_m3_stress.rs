@@ -99,7 +99,7 @@ fn test_float_upper_bound_exclusivity_mdf4_value_table() {
         f64_builder.append_value(*v);
     }
     let mut cn_f64 = make_cn4(ChannelData::Float64(f64_builder.finish()));
-    value_range_to_value_table(&mut cn_f64, cc_val.clone()).unwrap();
+    value_range_to_value_table(&mut cn_f64, &cc_val).unwrap();
 
     if let ChannelData::Float64(ref out) = cn_f64.data {
         let actual = out.values_slice();
@@ -121,7 +121,7 @@ fn test_float_upper_bound_exclusivity_mdf4_value_table() {
         f32_builder.append_value(*v as f32);
     }
     let mut cn_f32 = make_cn4(ChannelData::Float32(f32_builder.finish()));
-    value_range_to_value_table(&mut cn_f32, cc_val.clone()).unwrap();
+    value_range_to_value_table(&mut cn_f32, &cc_val).unwrap();
 
     if let ChannelData::Float64(ref out) = cn_f32.data {
         let actual = out.values_slice();
@@ -156,7 +156,7 @@ fn test_float_upper_bound_exclusivity_mdf4_value_table() {
     u32_builder.append_value(25); // EXACT UPPER of Range 1 -> MUST stay in Range 1 (200)!
     u32_builder.append_value(26); // above -> 999
     let mut cn_u32 = make_cn4(ChannelData::UInt32(u32_builder.finish()));
-    value_range_to_value_table(&mut cn_u32, cc_val_gap.clone()).unwrap();
+    value_range_to_value_table(&mut cn_u32, &cc_val_gap).unwrap();
 
     if let ChannelData::Float64(ref out) = cn_u32.data {
         let actual = out.values_slice();
@@ -174,7 +174,7 @@ fn test_float_upper_bound_exclusivity_mdf4_value_table() {
     f64_gap.append_value(25.0); // UPPER of Range 1 -> MUST be exclusive -> 999.0!
     f64_gap.append_value(26.0);
     let mut cn_f64_gap = make_cn4(ChannelData::Float64(f64_gap.finish()));
-    value_range_to_value_table(&mut cn_f64_gap, cc_val_gap).unwrap();
+    value_range_to_value_table(&mut cn_f64_gap, &cc_val_gap).unwrap();
 
     if let ChannelData::Float64(ref out) = cn_f64_gap.data {
         let actual = out.values_slice();
@@ -424,27 +424,27 @@ fn test_bitfield_multi_mask_non_matching_later_masks() {
     if let ChannelData::Utf8(ref s) = cn.data {
         assert_eq!(
             s.value(0),
-            " | POWER_ON | VALVE_CLOSED | PUMP_IDLE | ALARM_CLEAR",
+            "POWER_ON | VALVE_CLOSED | PUMP_IDLE | ALARM_CLEAR",
             "Earlier match POWER_ON must not be overwritten by later non-matching masks"
         );
         assert_eq!(
             s.value(1),
-            " | POWER_ON | VALVE_CLOSED | PUMP_RUNNING | ALARM_CLEAR",
+            "POWER_ON | VALVE_CLOSED | PUMP_RUNNING | ALARM_CLEAR",
             "Matches on masks 0 and 2 must both be present and not overwritten"
         );
         assert_eq!(
             s.value(2),
-            " | POWER_STANDBY | VALVE_OPEN | PUMP_IDLE | ALARM_ACTIVE",
+            "POWER_STANDBY | VALVE_OPEN | PUMP_IDLE | ALARM_ACTIVE",
             "Matches on masks 1 and 3 must both be present"
         );
         assert_eq!(
             s.value(3),
-            " | POWER_ON | VALVE_OPEN | PUMP_RUNNING | ALARM_ACTIVE",
+            "POWER_ON | VALVE_OPEN | PUMP_RUNNING | ALARM_ACTIVE",
             "All masks matching"
         );
         assert_eq!(
             s.value(4),
-            " | POWER_STANDBY | VALVE_CLOSED | PUMP_IDLE | ALARM_CLEAR",
+            "POWER_STANDBY | VALVE_CLOSED | PUMP_IDLE | ALARM_CLEAR",
             "All masks defaulting"
         );
     } else {
@@ -506,11 +506,11 @@ fn test_bitfield_named_masks_and_mixed_types() {
     if let ChannelData::Utf8(ref s) = cn.data {
         assert_eq!(
             s.value(0),
-            " | Engine = ON | SpeedMode = FAST | nothing",
-            "Named bitfield formatting with type 8 range and nothing fallback"
+            "Engine = ON | SpeedMode = FAST",
+            "Named bitfield formatting with type 8 range and Nil fallback omitted"
         );
-        assert_eq!(s.value(1), " | Engine = OFF | SpeedMode = SLOW | nothing");
-        assert_eq!(s.value(2), " | Engine = ON | SpeedMode = SLOW | WARN_FLAG");
+        assert_eq!(s.value(1), "Engine = OFF | SpeedMode = SLOW");
+        assert_eq!(s.value(2), "Engine = ON | SpeedMode = SLOW | WARN_FLAG");
     } else {
         panic!("Expected Utf8 channel data");
     }
@@ -603,7 +603,7 @@ fn test_large_range_table_partition_point_stress_and_performance() {
     let mut cn = make_cn4(ChannelData::Float64(builder.finish()));
 
     let start = std::time::Instant::now();
-    value_range_to_value_table(&mut cn, cc_val.clone()).unwrap();
+    value_range_to_value_table(&mut cn, &cc_val).unwrap();
     let elapsed = start.elapsed();
 
     // Verify sub-second speed: 200,000 queries over 10,000 ranges
@@ -652,7 +652,7 @@ fn test_large_range_table_partition_point_stress_and_performance() {
     let mut cn_int = make_cn4(ChannelData::Int64(ibuilder.finish()));
 
     let start_int = std::time::Instant::now();
-    value_range_to_value_table(&mut cn_int, cc_val).unwrap();
+    value_range_to_value_table(&mut cn_int, &cc_val).unwrap();
     let elapsed_int = start_int.elapsed();
 
     assert!(
