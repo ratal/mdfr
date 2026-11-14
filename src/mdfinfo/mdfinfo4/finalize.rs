@@ -55,6 +55,19 @@ pub fn fix_cycle_counts(
                     cg.block.cg_cycle_count
                 );
                 cg.block.cg_cycle_count = cycles;
+                if (cg.block.cg_flags
+                    & (mdfr_core::blocks::cg::CG_F_VLSD | mdfr_core::blocks::cg::CG_F_VLSC))
+                    == 0
+                {
+                    let inval_bytes = cg.block.cg_inval_bytes;
+                    for cn in cg.cn.values_mut() {
+                        cn.invalid_mask = super::cn_impl::build_invalid_mask(
+                            &cn.block,
+                            inval_bytes,
+                            cycles as usize,
+                        );
+                    }
+                }
                 changed = true;
             }
             if let Some(&total_vlsd) = vlsd_by_cg.get(&cg_pos) {

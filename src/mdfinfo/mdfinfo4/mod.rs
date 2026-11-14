@@ -281,7 +281,15 @@ impl MdfInfo4 {
             && let Some(cg) = dg.cg.get(rec_id)
             && let Some(cn) = cg.cn.get(rec_pos)
         {
-            return cn.block.precision();
+            if let Some(prec) = cn.block.precision() {
+                return Some(prec);
+            }
+            if cn.block.cn_cc_conversion != 0
+                && let Some(cc) = self.sharable.cc.get(&cn.block.cn_cc_conversion)
+                && (cc.cc_flags & 1) != 0
+            {
+                return Some(cc.cc_precision);
+            }
         }
         None
     }
@@ -696,23 +704,24 @@ impl MdfInfo4 {
             cn.unique_name = new_name.to_string();
             cg.channel_names.remove(channel_name);
             cg.channel_names.insert(new_name.to_string());
-            if let Some(master_name) = &master
-                && master_name == channel_name
-            {
+            let is_master = master.as_deref() == Some(channel_name);
+            if is_master {
                 cg.master_channel_name = Some(new_name.to_string());
                 cg.channel_names.iter().for_each(|channel| {
                     if let Some(val) = self.channel_names_set.get_mut(channel) {
                         val.0 = Some(new_name.to_string());
-                        val.1 = dg_pos;
-                        val.2 = (cg_pos, rec_id);
-                        val.3 = (cn_pos, rec_pos);
                     }
                 });
             }
 
+            let updated_master = if is_master {
+                Some(new_name.to_string())
+            } else {
+                master
+            };
             self.channel_names_set.insert(
                 new_name.to_string(),
-                (master, dg_pos, (cg_pos, rec_id), (cn_pos, rec_pos)),
+                (updated_master, dg_pos, (cg_pos, rec_id), (cn_pos, rec_pos)),
             );
         }
     }
@@ -1099,6 +1108,223 @@ impl MdfInfo4 {
             }
         }
         output
+    }
+    /// Resolves physical axis vectors for a `CABLOCK` array channel across all dimensions.
+    ///
+    /// Applies `ca_cc_axis_conversion` (overruling any `cn_cc_conversion` on `ca_axis` channels).
+    pub fn get_channel_ca_axes(&self, channel_name: &str) -> Result<Option<Vec<Vec<f64>>>> {
+        let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.channel_names_set.get(channel_name)
+        else {
+            return Ok(None);
+        };
+        let Some(cn) = self
+            .dg
+            .get(dg_pos)
+            .and_then(|dg| dg.cg.get(rec_id))
+            .and_then(|cg| cg.cn.get(rec_pos))
+        else {
+            return Ok(None);
+        };
+        let Some(ref compo) = cn.composition else {
+            return Ok(None);
+        };
+        let Compo::CA(ref ca) = compo.block else {
+            return Ok(None);
+        };
+
+        let ndim = ca.ca_ndim as usize;
+        let has_axis = (ca.ca_flags & (1 << 4)) != 0;
+        let is_fixed_axis = (ca.ca_flags & (1 << 5)) != 0;
+        let mut axes = Vec::with_capacity(ndim);
+
+        for d in 0..ndim {
+            if is_fixed_axis {
+                let axis = crate::mdfreader::conversions4::extract_ca_fixed_axis(
+                    ca,
+                    d,
+                    &self.sharable,
+                )
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "CABLOCK fixed axis {d} missing or malformed for channel {channel_name}"
+                    )
+                })?;
+                axes.push(axis);
+            } else if has_axis {
+                let base = d * 3;
+                let links = ca.ca_axis.as_ref().and_then(|ax| ax.get(base..base + 3));
+                let Some([ax_dg, ax_cg, ax_cn]) = links.map(|s| [s[0], s[1], s[2]]) else {
+                    let dim_len = ca.ca_dim_size.get(d).copied().unwrap_or(0) as usize;
+                    axes.push((0..dim_len).map(|i| i as f64).collect());
+                    continue;
+                };
+                if ax_dg == 0 || ax_cg == 0 || ax_cn == 0 {
+                    let dim_len = ca.ca_dim_size.get(d).copied().unwrap_or(0) as usize;
+                    axes.push((0..dim_len).map(|i| i as f64).collect());
+                    continue;
+                }
+                let axis_cn = self
+                    .dg
+                    .get(&ax_dg)
+                    .and_then(|dg| dg.cg.values().find(|cg| cg.block_position == ax_cg))
+                    .and_then(|cg| cg.cn.values().find(|c| c.block_position == ax_cn))
+                    .ok_or_else(|| {
+                        anyhow::anyhow!(
+                            "CA axis {d} channel ({ax_dg}, {ax_cg}, {ax_cn}) not found for {channel_name}"
+                        )
+                    })?;
+                let ca_cc_ptr = ca
+                    .ca_cc_axis_conversion
+                    .as_ref()
+                    .and_then(|v| v.get(d).copied())
+                    .unwrap_or(0);
+                let raw_vals = axis_cn.data.to_f64_vec().ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "CA axis {d} channel '{}' data not loaded or non-numeric",
+                        axis_cn.unique_name
+                    )
+                })?;
+                if axis_cn.is_converted {
+                    if axis_cn.block.cn_cc_conversion == ca_cc_ptr {
+                        axes.push(raw_vals);
+                    } else {
+                        anyhow::bail!(
+                            "CA axis {d} channel '{}' was already converted with its own CCBLOCK, \
+                             overruling ca_cc_axis_conversion; read CA axes before convert_channel",
+                            axis_cn.unique_name
+                        );
+                    }
+                } else {
+                    axes.push(crate::mdfreader::conversions4::convert_ca_axis_values(
+                        ca,
+                        d,
+                        &raw_vals,
+                        &self.sharable,
+                    ));
+                }
+            } else {
+                let dim_len = ca.ca_dim_size.get(d).copied().unwrap_or(0) as usize;
+                axes.push((0..dim_len).map(|i| i as f64).collect());
+            }
+        }
+        Ok(Some(axes))
+    }
+
+    /// Evaluates a `CABLOCK` lookup table channel (`ca_type == 2`) at `sample_idx` for `coordinates`.
+    pub fn eval_ca_lookup(
+        &self,
+        channel_name: &str,
+        sample_idx: usize,
+        coordinates: &[f64],
+    ) -> Result<Option<f64>> {
+        let Some(axes) = self.get_channel_ca_axes(channel_name)? else {
+            return Ok(None);
+        };
+        let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.channel_names_set.get(channel_name)
+        else {
+            return Ok(None);
+        };
+        let Some(cn) = self
+            .dg
+            .get(dg_pos)
+            .and_then(|dg| dg.cg.get(rec_id))
+            .and_then(|cg| cg.cn.get(rec_pos))
+        else {
+            return Ok(None);
+        };
+        let Some(Compo::CA(ca)) = cn.composition.as_ref().map(|c| &c.block) else {
+            return Ok(None);
+        };
+        let row_major = (ca.ca_flags & (1 << 6)) == 0;
+        let phys_data = if cn.is_converted {
+            cn.data.clone()
+        } else {
+            self.get_channel_converted_data(channel_name)
+                .ok_or_else(|| anyhow::anyhow!("Channel {channel_name} data not loaded"))?
+        };
+        let all_vals = phys_data
+            .to_f64_vec()
+            .ok_or_else(|| anyhow::anyhow!("Channel {channel_name} table data is not numeric"))?;
+        let elem_per_sample: usize = axes.iter().map(|a| a.len()).product();
+        let start = sample_idx * elem_per_sample;
+        let end = start + elem_per_sample;
+        let slice = all_vals.get(start..end).ok_or_else(|| {
+            anyhow::anyhow!(
+                "Sample index {sample_idx} out of range for CA lookup channel {channel_name}"
+            )
+        })?;
+        let val =
+            crate::mdfreader::conversions4::eval_ca_lookup(&axes, slice, coordinates, row_major)?;
+        Ok(Some(val))
+    }
+
+    /// Evaluates a 1D `ClassificationResult` (`ca_type == 4`) channel at `sample_idx` for `value`.
+    pub fn eval_ca_classification(
+        &self,
+        channel_name: &str,
+        sample_idx: usize,
+        value: f64,
+    ) -> Result<Option<f64>> {
+        let Some(axes) = self.get_channel_ca_axes(channel_name)? else {
+            return Ok(None);
+        };
+        let Some(boundaries) = axes.first() else {
+            return Ok(None);
+        };
+        let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
+            self.channel_names_set.get(channel_name)
+        else {
+            return Ok(None);
+        };
+        let Some(cn) = self
+            .dg
+            .get(dg_pos)
+            .and_then(|dg| dg.cg.get(rec_id))
+            .and_then(|cg| cg.cn.get(rec_pos))
+        else {
+            return Ok(None);
+        };
+        let Some(Compo::CA(ca)) = cn.composition.as_ref().map(|c| &c.block) else {
+            return Ok(None);
+        };
+        // Bit 7 (CA_F_LEFT_OPEN) may sit on the referenced IntervalAxis CA block or on `ca`.
+        let mut left_open = (ca.ca_flags & (1 << 7)) != 0;
+        if let Some([ax_dg, ax_cg, ax_cn]) = ca
+            .ca_axis
+            .as_ref()
+            .and_then(|ax| ax.get(0..3))
+            .map(|s| [s[0], s[1], s[2]])
+            && let Some(axis_cn) = self
+                .dg
+                .get(&ax_dg)
+                .and_then(|dg| dg.cg.values().find(|cg| cg.block_position == ax_cg))
+                .and_then(|cg| cg.cn.values().find(|c| c.block_position == ax_cn))
+            && let Some(Compo::CA(ax_ca)) = axis_cn.composition.as_ref().map(|c| &c.block)
+        {
+            left_open = (ax_ca.ca_flags & (1 << 7)) != 0;
+        }
+        let phys_data = if cn.is_converted {
+            cn.data.clone()
+        } else {
+            self.get_channel_converted_data(channel_name)
+                .ok_or_else(|| anyhow::anyhow!("Channel {channel_name} data not loaded"))?
+        };
+        let all_vals = phys_data
+            .to_f64_vec()
+            .ok_or_else(|| anyhow::anyhow!("Channel {channel_name} data is not numeric"))?;
+        let n_bins = ca.ca_dim_size.first().copied().unwrap_or(0) as usize;
+        let start = sample_idx * n_bins;
+        let end = start + n_bins;
+        let slice = all_vals.get(start..end).ok_or_else(|| {
+            anyhow::anyhow!(
+                "Sample index {sample_idx} out of range for CA classification channel {channel_name}"
+            )
+        })?;
+        Ok(crate::mdfreader::conversions4::eval_ca_classification(
+            boundaries, slice, value, left_open,
+        ))
     }
 }
 

@@ -421,6 +421,39 @@ impl Mdf {
             MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_converted_data(channel_name),
         }
     }
+    /// Resolves physical axis vectors for a `CABLOCK` array channel across all dimensions.
+    pub fn get_channel_ca_axes(&self, channel_name: &str) -> Result<Option<Vec<Vec<f64>>>> {
+        match &self.mdf_info {
+            MdfInfo::V3(_) => Ok(None),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.get_channel_ca_axes(channel_name),
+        }
+    }
+    /// Evaluates a `CABLOCK` lookup table channel (`ca_type == 2`) at `sample_idx` for `coordinates`.
+    pub fn eval_ca_lookup(
+        &self,
+        channel_name: &str,
+        sample_idx: usize,
+        coordinates: &[f64],
+    ) -> Result<Option<f64>> {
+        match &self.mdf_info {
+            MdfInfo::V3(_) => Ok(None),
+            MdfInfo::V4(mdfinfo4) => mdfinfo4.eval_ca_lookup(channel_name, sample_idx, coordinates),
+        }
+    }
+    /// Evaluates a 1D `ClassificationResult` (`ca_type == 4`) channel at `sample_idx` for `value`.
+    pub fn eval_ca_classification(
+        &self,
+        channel_name: &str,
+        sample_idx: usize,
+        value: f64,
+    ) -> Result<Option<f64>> {
+        match &self.mdf_info {
+            MdfInfo::V3(_) => Ok(None),
+            MdfInfo::V4(mdfinfo4) => {
+                mdfinfo4.eval_ca_classification(channel_name, sample_idx, value)
+            }
+        }
+    }
     /// defines channel's data in memory
     pub fn set_channel_data(&mut self, channel_name: &str, data: Arc<dyn Array>) -> Result<()> {
         self.mdf_info.set_channel_data(channel_name, data)

@@ -1095,6 +1095,25 @@ pub fn read_channels_from_bytes(
     previous_index: usize,
     record_with_invalid_data: bool,
 ) -> Result<Vec<(u8, i64)>, Error> {
+    read_channels_from_bytes_with_inval(
+        data_chunk,
+        channels,
+        record_length,
+        previous_index,
+        record_with_invalid_data,
+        0,
+    )
+}
+
+/// Copies record bytes into each channel array and extracts invalidation bits from the tail `cg_inval_bytes`.
+pub fn read_channels_from_bytes_with_inval(
+    data_chunk: &[u8],
+    channels: &mut CnType,
+    record_length: usize,
+    previous_index: usize,
+    record_with_invalid_data: bool,
+    cg_inval_bytes: usize,
+) -> Result<Vec<(u8, i64)>, Error> {
     if record_length == 0 || data_chunk.is_empty() {
         return Ok(Vec::new());
     }
@@ -1559,15 +1578,23 @@ pub fn read_channels_from_bytes(
             }
             // Other channel types : virtual channels cn_type 3 & 6 are handled at initialisation
             if record_with_invalid_data {
+                let inval_start = if cg_inval_bytes > 0 {
+                    record_length.saturating_sub(cg_inval_bytes)
+                } else {
+                    0
+                };
                 // invalidation bits to store in bitmap.
                 if let Some((Some(mask), invalid_byte_position, invalid_byte_mask)) =
                     &mut cn.invalid_mask
                 {
-                    for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
-                        mask.set_bit(
-                            i + previous_index,
-                            (*invalid_byte_mask & record[*invalid_byte_position]) == 0,
-                        );
+                    let byte_pos = inval_start + *invalid_byte_position;
+                    if byte_pos < record_length {
+                        for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
+                            mask.set_bit(
+                                i + previous_index,
+                                (*invalid_byte_mask & record[byte_pos]) == 0,
+                            );
+                        }
                     }
                 };
             }

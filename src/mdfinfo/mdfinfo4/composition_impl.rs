@@ -14,6 +14,7 @@ use std::fs::File;
 
 use super::block_header_impl::{SharableBlocks, parse_block_short};
 use super::ca_impl::{Ca4Block, parse_ca_block};
+use super::cc_impl::read_cc;
 use super::cn_impl::{Cn4, CnType, RecordLayout, parse_cn4};
 use crate::data_holder::tensor_arrow::Order;
 use crate::mdfinfo::block_chain::BlockChain;
@@ -154,6 +155,17 @@ fn parse_composition_inner(
             parse_ca_block(&mut block, block_header_short, cg_cycle_count)
                 .context("Failed parsing CA block")?;
         position = pos;
+        for &cc_ptr in block.ca_cc_axis_conversion.iter().flatten() {
+            if cc_ptr > 0 && !sharable.cc.contains_key(&cc_ptr) {
+                let (cc_block_cur, cc_hdr, next_pos) = parse_block_short(rdr, cc_ptr, position)
+                    .context("Failed parsing CA axis CCBLOCK header")?;
+                position = next_pos;
+                if &cc_hdr.hdr_id == b"##CC" {
+                    position = read_cc(rdr, &cc_ptr, position, cc_block_cur, sharable)
+                        .context("Failed parsing CA axis CCBLOCK body")?;
+                }
+            }
+        }
         let ca_composition: Option<Box<Composition>>;
         if block.ca_composition != 0 {
             let (ca, pos, inner_array_size, s, n_cns, cnss) = parse_composition_inner(

@@ -39,7 +39,7 @@ use arrow::buffer::NullBuffer;
 use binrw::BinWriterExt;
 use crossbeam_channel::bounded;
 use parking_lot::Mutex;
-use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::fs::File;
 
 enum SourceInfo<'a> {
@@ -189,7 +189,10 @@ pub fn mdfwriter4(
     if !info.at.is_empty() {
         new_info.hd_block.hd_at_first = pointer;
 
-        for (orig_pos, (at, embedded_data)) in &info.at {
+        let mut sorted_at: Vec<_> = info.at.iter().collect();
+        sorted_at.sort_by_key(|(pos, _)| *pos);
+
+        for (orig_pos, (at, embedded_data)) in sorted_at {
             let at_block_position = pointer;
             at_position_map.insert(*orig_pos, at_block_position);
 
@@ -265,15 +268,14 @@ pub fn mdfwriter4(
             last.1.at_at_next = 0;
         }
 
-        // Copy attachments to new_info
+        // Copy attachments to new_info keyed by new AT block position
         for (orig_pos, at, embedded_data, _, _, _) in &at_blocks {
-            new_info.at.insert(*orig_pos, (*at, embedded_data.clone()));
+            let new_pos = at_position_map.get(orig_pos).copied().unwrap_or(*orig_pos);
+            new_info.at.insert(new_pos, (*at, embedded_data.clone()));
         }
     }
 
-    // Copy SI blocks from source file
-    // SI blocks are shared - multiple channels can reference the same SI block
-    // We need to create a mapping from old positions to new positions
+    // Copy SI blocks from source file (sorted deterministically by source position)
     type SiBlockEntry = (
         i64,
         Si4Block,
@@ -284,7 +286,9 @@ pub fn mdfwriter4(
     let mut si_blocks: Vec<SiBlockEntry> = Vec::new();
     let mut si_position_map: HashMap<i64, i64> = HashMap::new();
 
-    for (orig_pos, si) in &info.sharable.si {
+    let mut sorted_si: Vec<_> = info.sharable.si.iter().collect();
+    sorted_si.sort_by_key(|(pos, _)| *pos);
+    for (orig_pos, si) in sorted_si {
         let new_si_position = pointer;
         si_position_map.insert(*orig_pos, new_si_position);
 
@@ -330,9 +334,13 @@ pub fn mdfwriter4(
     // Track new CG block positions for written master channels
     let mut master_cg_map: HashMap<String, i64> = HashMap::new();
 
-    // builds meta data blocks for the new file
-    for dg in info.dg.values() {
-        for cg in dg.cg.values() {
+    // builds meta data blocks for the new file (sorted deterministically by block_position)
+    let mut sorted_dgs: Vec<_> = info.dg.iter().collect();
+    sorted_dgs.sort_by_key(|(pos, _)| **pos);
+    for (_, dg) in sorted_dgs {
+        let mut sorted_cgs: Vec<_> = dg.cg.values().collect();
+        sorted_cgs.sort_by_key(|cg| cg.block_position);
+        for cg in sorted_cgs {
             let mut cg_cg_master: i64 = 0;
 
             if let Some(master_channel_name) = &cg.master_channel_name {
@@ -385,8 +393,10 @@ pub fn mdfwriter4(
                 }
             }
 
-            // create the other non master channel blocks
-            for cn in cg.cn.values() {
+            // create the other non master channel blocks (sorted deterministically)
+            let mut sorted_cns: Vec<_> = cg.cn.values().collect();
+            sorted_cns.sort_by_key(|cn| cn.block_position);
+            for cn in sorted_cns {
                 // not master channel
                 if cn.block.cn_type != 2
                     && cn.block.cn_type != 3
@@ -521,13 +531,18 @@ pub fn mdfwriter4(
     // Copy events from the source file (after AT and DG/CG/CN so all scope/attachment links can be remapped)
     // Events are stored as a linked list starting from hd_ev_first
     let mut ev_blocks: Vec<(i64, Ev4Block, Option<MetaData>, Option<MetaData>)> = Vec::new();
+    let mut ev_position_map: HashMap<i64, i64> = HashMap::new();
     if !info.ev.is_empty() {
         new_info.hd_block.hd_ev_first = pointer;
 
-        for (orig_pos, ev) in &info.ev {
-            let ev_block_position = pointer;
+        let mut sorted_ev: Vec<_> = info.ev.iter().collect();
+        sorted_ev.sort_by_key(|(pos, _)| *pos);
 
-            // Create copies of TX/MD blocks for event name and comment
+        // Pass 1: Assign deterministic EV positions and collect metadata
+        for (orig_pos, ev) in &sorted_ev {
+            let ev_block_position = pointer;
+            ev_position_map.insert(**orig_pos, ev_block_position);
+
             let ev_name_md: Option<MetaData> = if ev.ev_tx_name != 0 {
                 info.sharable.md_tx.get(&ev.ev_tx_name).cloned()
             } else {
@@ -540,15 +555,10 @@ pub fn mdfwriter4(
                 None
             };
 
-            // Calculate block size: 16 (short header) + 8 (link count) + 8*links + data members
-            // Links: ev_ev_next, ev_ev_parent, ev_ev_range, ev_tx_name, ev_md_comment + scope/attachment links
             let n_links = 5 + ev.ev_scope_count as u64 + ev.ev_attachment_count as u64;
-            let block_size: i64 = 16 + 8 + (n_links * 8) as i64 + 32; // 32 bytes for data members
+            let block_size: i64 = 16 + 8 + (n_links * 8) as i64 + 32;
 
-            // Create a modified event block with updated pointers
-            let mut new_ev = ev.clone();
-
-            // Set name pointer (will be right after the event block)
+            let mut new_ev = (*ev).clone();
             let mut current_offset = block_size;
             if let Some(md) = &ev_name_md {
                 new_ev.ev_tx_name = pointer + current_offset;
@@ -557,7 +567,6 @@ pub fn mdfwriter4(
                 new_ev.ev_tx_name = 0;
             }
 
-            // Set comment pointer
             if let Some(md) = &ev_comment_md {
                 new_ev.ev_md_comment = pointer + current_offset;
                 current_offset += align8(md.block.hdr_len as i64);
@@ -565,11 +574,38 @@ pub fn mdfwriter4(
                 new_ev.ev_md_comment = 0;
             }
 
-            // Clear parent and range links for simplicity (would need mapping for full support)
-            new_ev.ev_ev_parent = 0;
-            new_ev.ev_ev_range = 0;
+            pointer += current_offset;
+            ev_blocks.push((**orig_pos, new_ev, ev_name_md, ev_comment_md));
+        }
 
-            // Remap ev_scope links (first ev_scope_count items) and ev_at_reference links (next ev_attachment_count items)
+        // Pass 2: Remap parent, range, next, scope, and attachment links
+        let n_ev = ev_blocks.len();
+        for idx in 0..n_ev {
+            let next_pos = if idx + 1 < n_ev {
+                let next_orig = ev_blocks[idx + 1].0;
+                ev_position_map.get(&next_orig).copied().unwrap_or(0)
+            } else {
+                0
+            };
+            let new_ev = &mut ev_blocks[idx].1;
+            new_ev.ev_ev_next = next_pos;
+            new_ev.ev_ev_parent = if new_ev.ev_ev_parent > 0 {
+                ev_position_map
+                    .get(&new_ev.ev_ev_parent)
+                    .copied()
+                    .unwrap_or(0)
+            } else {
+                0
+            };
+            new_ev.ev_ev_range = if new_ev.ev_ev_range > 0 {
+                ev_position_map
+                    .get(&new_ev.ev_ev_range)
+                    .copied()
+                    .unwrap_or(0)
+            } else {
+                0
+            };
+
             let scope_end = (new_ev.ev_scope_count as usize).min(new_ev.links.len());
             for link in &mut new_ev.links[..scope_end] {
                 *link = cn_position_map
@@ -583,26 +619,12 @@ pub fn mdfwriter4(
             for link in &mut new_ev.links[scope_end..att_end] {
                 *link = at_position_map.get(link).copied().unwrap_or(0);
             }
-
-            // Update the previous event's next pointer
-            if let Some(last) = ev_blocks.last_mut() {
-                last.1.ev_ev_next = ev_block_position;
-            }
-
-            // Advance pointer for this event block and its metadata
-            pointer += current_offset;
-
-            ev_blocks.push((*orig_pos, new_ev, ev_name_md, ev_comment_md));
         }
 
-        // Last event's next pointer should be 0
-        if let Some(last) = ev_blocks.last_mut() {
-            last.1.ev_ev_next = 0;
-        }
-
-        // Copy events to new_info
+        // Store events in new_info keyed by new EV block position
         for (orig_pos, ev, _, _) in &ev_blocks {
-            new_info.ev.insert(*orig_pos, ev.clone());
+            let new_pos = ev_position_map.get(orig_pos).copied().unwrap_or(*orig_pos);
+            new_info.ev.insert(new_pos, ev.clone());
         }
     }
 
@@ -635,159 +657,242 @@ pub fn mdfwriter4(
         Ok(())
     });
 
-    let data_pointer = Arc::new(Mutex::new(pointer));
-    new_info
-        .dg
-        .par_iter_mut()
-        .try_for_each(|(_dg_block_position, dg)| -> Result<(), Error> {
-            for cg in dg.cg.values_mut() {
-                for cn in cg.cn.values_mut() {
-                    let src_data = info.get_channel_id(&cn.unique_name).and_then(
-                        |(_, dg_pos, (_, cg_id), (_, cn_pos))| {
-                            info.dg
-                                .get(dg_pos)
-                                .and_then(|d| d.cg.get(cg_id))
-                                .and_then(|c| c.cn.get(cn_pos))
-                                .map(|c| &c.data)
-                        },
+    enum PreparedChannelData {
+        Vlsd {
+            dg_pos: i64,
+            cg_id: u64,
+            cn_pos: i64,
+            sd_offset: i64,
+            sd_buffer: Vec<u8>,
+            dv_offset: i64,
+            ld_block: Option<Ld4Block>,
+            dv_block: (DataBlock, usize, Vec<u8>),
+            invalid_block: Option<(DataBlock, Vec<u8>)>,
+            has_inval: bool,
+        },
+        Regular {
+            dg_pos: i64,
+            cg_id: u64,
+            offset: i64,
+            ld_block: Option<Ld4Block>,
+            data_block: (DataBlock, usize, Vec<u8>),
+            invalid_block: Option<(DataBlock, Vec<u8>)>,
+            has_inval: bool,
+        },
+    }
+
+    let info_ref = &*info;
+    let mut work_items: Vec<(i64, u64, i64, &ChannelData)> = Vec::new();
+    for (&dg_pos, dg) in &new_info.dg {
+        for (&cg_id, cg) in &dg.cg {
+            for (&cn_pos, cn) in &cg.cn {
+                if let Some(src_data) = info_ref.get_channel_id(&cn.unique_name).and_then(
+                    |(_, src_dg_pos, (_, src_cg_id), (_, src_cn_pos))| {
+                        info_ref
+                            .dg
+                            .get(src_dg_pos)
+                            .and_then(|d| d.cg.get(src_cg_id))
+                            .and_then(|c| c.cn.get(src_cn_pos))
+                            .map(|c| &c.data)
+                    },
+                ) && !src_data.is_empty()
+                    && src_data.bit_count() > 0
+                {
+                    work_items.push((dg_pos, cg_id, cn_pos, src_data));
+                }
+            }
+        }
+    }
+    work_items.sort_unstable_by_key(|&(dg_pos, cg_id, cn_pos, _)| (dg_pos, cg_id, cn_pos));
+
+    let prepared_blocks: Vec<PreparedChannelData> = work_items
+        .into_par_iter()
+        .map(
+            |(dg_pos, cg_id, cn_pos, data)| -> Result<PreparedChannelData, Error> {
+                let m = data.validity();
+                let is_vlsd = is_vlsd_data(data);
+
+                if is_vlsd {
+                    // Standard sorted VLSD:
+                    // 1. Write SDBLOCK (or DZ of SD) at cn.block.cn_data
+                    // 2. Write 64-bit offsets DV/DZ (+ DI/DZ + LD if validity mask) at dg.block.dg_data
+                    let mut sd_offset: i64 = 0;
+                    let (sd_block, sd_offsets) =
+                        if compression != CompressionAlgorithm::NoCompression {
+                            create_dz_sd(data, &mut sd_offset, compression)
+                                .context("failed creating dz or sd block")?
+                        } else {
+                            create_sd(data, &mut sd_offset).context("failed creating sd block")?
+                        };
+                    let sd_buffer = write_sd_block(0, sd_block, sd_offset as usize)?;
+
+                    let offset_data = ChannelData::UInt64(arrow::array::UInt64Array::new(
+                        sd_offsets.into(),
+                        m.clone(),
+                    ));
+                    let mut dv_offset: i64 = 0;
+                    let mut ld_block: Option<Ld4Block> = None;
+                    if compression != CompressionAlgorithm::NoCompression || m.is_some() {
+                        ld_block = create_ld(&m, &mut dv_offset);
+                    }
+                    let dv_block = if compression != CompressionAlgorithm::NoCompression {
+                        create_dz_dv(&offset_data, &mut dv_offset, compression)
+                            .context("failed creating dz or dv block for VLSD offsets")?
+                    } else {
+                        create_dv(&offset_data, &mut dv_offset)
+                            .context("failed creating dv block for VLSD offsets")?
+                    };
+                    let mut invalid_block: Option<(DataBlock, Vec<u8>)> = None;
+                    let has_inval = m.is_some();
+                    if let Some(mask) = m {
+                        if let Some(ref mut ld) = ld_block {
+                            ld.ld_links.push(dv_offset);
+                        }
+                        if compression != CompressionAlgorithm::NoCompression {
+                            invalid_block = create_dz_di(&mask, &mut dv_offset, compression)
+                                .context("failed creating dz or di block")?;
+                        } else {
+                            invalid_block = create_di(&mask, &mut dv_offset)
+                                .context("failed creating di block")?;
+                        }
+                    }
+                    finalize_ld_zip_info(
+                        &mut ld_block,
+                        zip_info_for_data_block(&dv_block.0),
+                        invalid_block
+                            .as_ref()
+                            .map(|(b, _)| zip_info_for_data_block(b))
+                            .unwrap_or(255),
                     );
-                    if let Some(data) = src_data {
-                        let m = data.validity();
-                        if !data.is_empty() && data.bit_count() > 0 {
-                            // Check if this is a VLSD channel
-                            let is_vlsd = is_vlsd_data(data);
+                    Ok(PreparedChannelData::Vlsd {
+                        dg_pos,
+                        cg_id,
+                        cn_pos,
+                        sd_offset,
+                        sd_buffer,
+                        dv_offset,
+                        ld_block,
+                        dv_block,
+                        invalid_block,
+                        has_inval,
+                    })
+                } else {
+                    // Regular channel: write DV/DZ block
+                    let mut offset: i64 = 0;
+                    let mut ld_block: Option<Ld4Block> = None;
+                    if compression != CompressionAlgorithm::NoCompression || m.is_some() {
+                        ld_block = create_ld(&m, &mut offset);
+                    }
 
-                            if is_vlsd {
-                                // Standard sorted VLSD:
-                                // 1. Write SDBLOCK (or DZ of SD) at cn.block.cn_data
-                                // 2. Write 64-bit offsets DV/DZ (+ DI/DZ + LD if validity mask) at dg.block.dg_data
-                                let mut sd_offset: i64 = 0;
-                                let (sd_block, sd_offsets) =
-                                    if compression != CompressionAlgorithm::NoCompression {
-                                        create_dz_sd(data, &mut sd_offset, compression)
-                                            .context("failed creating dz or sd block")?
-                                    } else {
-                                        create_sd(data, &mut sd_offset)
-                                            .context("failed creating sd block")?
-                                    };
-                                let sd_buffer = write_sd_block(0, sd_block, sd_offset as usize)?;
+                    let data_block = if compression != CompressionAlgorithm::NoCompression {
+                        create_dz_dv(data, &mut offset, compression)
+                            .context("failed creating dz or dv block")?
+                    } else {
+                        create_dv(data, &mut offset).context("failed creating dv block")?
+                    };
 
-                                let offset_data = ChannelData::UInt64(
-                                    arrow::array::UInt64Array::new(sd_offsets.into(), m.clone()),
-                                );
-                                let mut dv_offset: i64 = 0;
-                                let mut ld_block: Option<Ld4Block> = None;
-                                if compression != CompressionAlgorithm::NoCompression || m.is_some()
-                                {
-                                    ld_block = create_ld(&m, &mut dv_offset);
-                                }
-                                let dv_block = if compression != CompressionAlgorithm::NoCompression
-                                {
-                                    create_dz_dv(&offset_data, &mut dv_offset, compression)
-                                        .context(
-                                            "failed creating dz or dv block for VLSD offsets",
-                                        )?
-                                } else {
-                                    create_dv(&offset_data, &mut dv_offset)
-                                        .context("failed creating dv block for VLSD offsets")?
-                                };
-                                let mut invalid_block: Option<(DataBlock, Vec<u8>)> = None;
-                                if let Some(mask) = m {
-                                    cg.block.cg_inval_bytes = 1;
-                                    if let Some(ref mut ld) = ld_block {
-                                        ld.ld_links.push(dv_offset);
-                                    }
-                                    if compression != CompressionAlgorithm::NoCompression {
-                                        invalid_block =
-                                            create_dz_di(&mask, &mut dv_offset, compression)
-                                                .context("failed creating dz or di block")?;
-                                    } else {
-                                        invalid_block = create_di(&mask, &mut dv_offset)
-                                            .context("failed creating di block")?;
-                                    }
-                                }
+                    let mut invalid_block: Option<(DataBlock, Vec<u8>)> = None;
+                    let has_inval = m.is_some();
+                    if let Some(mask) = m {
+                        if let Some(ref mut ld) = ld_block {
+                            ld.ld_links.push(offset);
+                        }
+                        if compression != CompressionAlgorithm::NoCompression {
+                            invalid_block = create_dz_di(&mask, &mut offset, compression)
+                                .context("failed creating dz or di block")?;
+                        } else {
+                            invalid_block = create_di(&mask, &mut offset)
+                                .context("failed creating di block")?;
+                        }
+                    }
+                    finalize_ld_zip_info(
+                        &mut ld_block,
+                        zip_info_for_data_block(&data_block.0),
+                        invalid_block
+                            .as_ref()
+                            .map(|(b, _)| zip_info_for_data_block(b))
+                            .unwrap_or(255),
+                    );
+                    Ok(PreparedChannelData::Regular {
+                        dg_pos,
+                        cg_id,
+                        offset,
+                        ld_block,
+                        data_block,
+                        invalid_block,
+                        has_inval,
+                    })
+                }
+            },
+        )
+        .collect::<Result<Vec<_>, Error>>()?;
 
-                                let (sd_pos, dv_pos) = {
-                                    let data_pointer = Arc::clone(&data_pointer);
-                                    let mut locked_data_pointer = data_pointer.lock();
-                                    let sd_pos = *locked_data_pointer;
-                                    *locked_data_pointer += sd_offset;
-                                    let dv_pos = *locked_data_pointer;
-                                    *locked_data_pointer += dv_offset;
-                                    let dv_buffer = write_data_blocks(
-                                        dv_pos,
-                                        ld_block,
-                                        dv_block,
-                                        invalid_block,
-                                        dv_offset as usize,
-                                    )?;
-                                    tx.send((sd_pos as u64, sd_buffer))
-                                        .context("Channel disconnected")?;
-                                    tx.send((dv_pos as u64, dv_buffer))
-                                        .context("Channel disconnected")?;
-                                    (sd_pos, dv_pos)
-                                };
-                                cn.block.cn_data = sd_pos;
-                                dg.block.dg_data = dv_pos;
-                            } else {
-                                // Regular channel: write DV/DZ block
-                                let mut offset: i64 = 0;
-                                let mut ld_block: Option<Ld4Block> = None;
-                                if compression != CompressionAlgorithm::NoCompression || m.is_some()
-                                {
-                                    ld_block = create_ld(&m, &mut offset);
-                                }
-
-                                let data_block =
-                                    if compression != CompressionAlgorithm::NoCompression {
-                                        create_dz_dv(data, &mut offset, compression)
-                                            .context("failed creating dz or dv block")?
-                                    } else {
-                                        create_dv(data, &mut offset)
-                                            .context("failed creating dv block")?
-                                    };
-
-                                // invalid mask existing
-                                let mut invalid_block: Option<(DataBlock, Vec<u8>)> = None;
-                                if let Some(mask) = m {
-                                    cg.block.cg_inval_bytes = 1; // one byte (u8) for invalid mask
-                                    if let Some(ref mut ld) = ld_block {
-                                        ld.ld_links.push(offset);
-                                    }
-                                    if compression != CompressionAlgorithm::NoCompression {
-                                        invalid_block =
-                                            create_dz_di(&mask, &mut offset, compression)
-                                                .context("failed creating dz or di block")?;
-                                    } else {
-                                        invalid_block = create_di(&mask, &mut offset)
-                                            .context("failed creating di block")?;
-                                    }
-                                }
-
-                                let block_pos = {
-                                    let data_pointer = Arc::clone(&data_pointer);
-                                    let mut locked_data_pointer = data_pointer.lock();
-                                    let pos = *locked_data_pointer;
-                                    *locked_data_pointer += offset;
-                                    let buffer = write_data_blocks(
-                                        pos,
-                                        ld_block,
-                                        data_block,
-                                        invalid_block,
-                                        offset as usize,
-                                    )?;
-                                    tx.send((pos as u64, buffer))
-                                        .context("Channel disconnected")?;
-                                    pos
-                                };
-                                dg.block.dg_data = block_pos;
-                            }
+    let mut data_pointer = pointer;
+    for prepared in prepared_blocks {
+        match prepared {
+            PreparedChannelData::Vlsd {
+                dg_pos,
+                cg_id,
+                cn_pos,
+                sd_offset,
+                sd_buffer,
+                dv_offset,
+                ld_block,
+                dv_block,
+                invalid_block,
+                has_inval,
+            } => {
+                let sd_pos = data_pointer;
+                data_pointer += sd_offset;
+                let dv_pos = data_pointer;
+                data_pointer += dv_offset;
+                let dv_buffer = write_data_blocks(
+                    dv_pos,
+                    ld_block,
+                    dv_block,
+                    invalid_block,
+                    dv_offset as usize,
+                )?;
+                tx.send((sd_pos as u64, sd_buffer))
+                    .context("Channel disconnected")?;
+                tx.send((dv_pos as u64, dv_buffer))
+                    .context("Channel disconnected")?;
+                if let Some(dg) = new_info.dg.get_mut(&dg_pos) {
+                    dg.block.dg_data = dv_pos;
+                    if let Some(cg) = dg.cg.get_mut(&cg_id) {
+                        if has_inval {
+                            cg.block.cg_inval_bytes = 1;
+                        }
+                        if let Some(cn) = cg.cn.get_mut(&cn_pos) {
+                            cn.block.cn_data = sd_pos;
                         }
                     }
                 }
             }
-            Ok(())
-        })?;
+            PreparedChannelData::Regular {
+                dg_pos,
+                cg_id,
+                offset,
+                ld_block,
+                data_block,
+                invalid_block,
+                has_inval,
+            } => {
+                let pos = data_pointer;
+                data_pointer += offset;
+                let buffer =
+                    write_data_blocks(pos, ld_block, data_block, invalid_block, offset as usize)?;
+                tx.send((pos as u64, buffer))
+                    .context("Channel disconnected")?;
+                if let Some(dg) = new_info.dg.get_mut(&dg_pos) {
+                    dg.block.dg_data = pos;
+                    if has_inval && let Some(cg) = dg.cg.get_mut(&cg_id) {
+                        cg.block.cg_inval_bytes = 1;
+                    }
+                }
+            }
+        }
+    }
     drop(tx);
     writer_handle
         .join()
@@ -936,6 +1041,60 @@ pub fn mdfwriter4(
         }
     }
 
+    // Writes DG+CG+CN blocks in deterministic block_position order (matches Phase 1 pointer order before CH/EV)
+    let mut sorted_new_dgs: Vec<_> = new_info.dg.iter().collect();
+    sorted_new_dgs.sort_by_key(|(pos, _)| **pos);
+    for (_, dg) in sorted_new_dgs {
+        buffer
+            .write_le(&dg.block)
+            .context("Could not write DGBlock")?;
+        let mut sorted_cgs: Vec<_> = dg.cg.values().collect();
+        sorted_cgs.sort_by_key(|cg| cg.block_position);
+        for cg in sorted_cgs {
+            buffer
+                .write_le(&cg.header)
+                .context("Could not write CGBlock header")?;
+            buffer
+                .write_le(&cg.block)
+                .context("Could not write CGBlock")?;
+            let mut sorted_cns: Vec<_> = cg.cn.values().collect();
+            sorted_cns.sort_by_key(|cn| cn.block_position);
+            for cn in sorted_cns {
+                buffer
+                    .write_le(&cn.header)
+                    .context("Could not write CNBlock header")?;
+                buffer
+                    .write_le(&cn.block)
+                    .context("Could not write CNBlock")?;
+                // TX Block channel name
+                if let Some(tx_name_metadata) = new_info.sharable.md_tx.get(&cn.block.cn_tx_name) {
+                    tx_name_metadata
+                        .write(&mut buffer)
+                        .context("Failed writing tx name")?;
+                    pad_to_8(&mut buffer)?;
+                }
+                if let Some(tx_unit_metadata) = new_info.sharable.md_tx.get(&cn.block.cn_md_unit) {
+                    tx_unit_metadata
+                        .write(&mut buffer)
+                        .context("Failed writing tx unit")?;
+                    pad_to_8(&mut buffer)?;
+                }
+                if let Some(tx_comment_metadata) =
+                    new_info.sharable.md_tx.get(&cn.block.cn_md_comment)
+                {
+                    tx_comment_metadata
+                        .write(&mut buffer)
+                        .context("Failed writing tx comment")?;
+                    pad_to_8(&mut buffer)?;
+                }
+                // channel composition
+                if let Some(compo) = &cn.composition {
+                    write_composition(&mut buffer, compo)?;
+                }
+            }
+        }
+    }
+
     // Writes CHBLOCKs (channel hierarchy)
     for (_orig_pos, ch, ch_name_md, ch_comment_md) in &ch_blocks {
         // Write CH block short header
@@ -998,54 +1157,6 @@ pub fn mdfwriter4(
                 .write(&mut buffer)
                 .context("Failed writing event comment")?;
             pad_to_8(&mut buffer)?;
-        }
-    }
-
-    // Writes DG+CG+CN blocks
-    for dg in new_info.dg.values() {
-        buffer
-            .write_le(&dg.block)
-            .context("Could not write CGBlock")?;
-        for cg in dg.cg.values() {
-            buffer
-                .write_le(&cg.header)
-                .context("Could not write CGBlock header")?;
-            buffer
-                .write_le(&cg.block)
-                .context("Could not write CGBlock")?;
-            for cn in cg.cn.values() {
-                buffer
-                    .write_le(&cn.header)
-                    .context("Could not write CNBlock header")?;
-                buffer
-                    .write_le(&cn.block)
-                    .context("Could not write CNBlock")?;
-                // TX Block channel name
-                if let Some(tx_name_metadata) = new_info.sharable.md_tx.get(&cn.block.cn_tx_name) {
-                    tx_name_metadata
-                        .write(&mut buffer)
-                        .context("Failed writing tx name")?;
-                    pad_to_8(&mut buffer)?;
-                }
-                if let Some(tx_unit_metadata) = new_info.sharable.md_tx.get(&cn.block.cn_md_unit) {
-                    tx_unit_metadata
-                        .write(&mut buffer)
-                        .context("Failed writing tx unit")?;
-                    pad_to_8(&mut buffer)?;
-                }
-                if let Some(tx_comment_metadata) =
-                    new_info.sharable.md_tx.get(&cn.block.cn_md_comment)
-                {
-                    tx_comment_metadata
-                        .write(&mut buffer)
-                        .context("Failed writing tx comment")?;
-                    pad_to_8(&mut buffer)?;
-                }
-                // channel composition
-                if let Some(compo) = &cn.composition {
-                    write_composition(&mut buffer, compo)?;
-                }
-            }
         }
     }
     writer
@@ -1295,21 +1406,60 @@ fn write_sd_block(
 fn create_ld(m: &Option<NullBuffer>, offset: &mut i64) -> Option<Ld4Block> {
     let mut ld_block = Ld4Block {
         ld_count: 1,
+        ld_flags: 1u8 << 7, // Zip info valid flag (mandatory in MDF 4.3.0)
+        ld_zip_info: 255,
+        ld_zip_info_inval: 255,
         ..Default::default()
     };
     ld_block.ld_sample_offset.push(0);
     if m.is_some() {
         ld_block.ld_n_links = (ld_block.ld_count * 2 + 1) as u64;
-        ld_block.ld_flags = 0;
         ld_block.ld_flags_ext = 1u8 << 7;
     } else {
         ld_block.ld_n_links = (ld_block.ld_count + 1) as u64;
-        ld_block.ld_flags = 0;
     }
     ld_block.ld_len = 40 + (ld_block.ld_n_links * 8);
     *offset = ld_block.ld_len as i64;
     ld_block.ld_links.push(*offset);
     Some(ld_block)
+}
+
+/// Returns MDF 4.3-conformant `(dz_zip_type, dz_zip_parameter)` matching `compress_dz_data`:
+/// transposed variants require `width > 1`; otherwise downgrades to non-transposed with `0`.
+fn effective_dz_params(algo: CompressionAlgorithm, width: u32) -> (u8, u32) {
+    match algo {
+        CompressionAlgorithm::DeflateTranspose
+        | CompressionAlgorithm::ZstdTranspose
+        | CompressionAlgorithm::Lz4Transpose => {
+            if width <= 1 {
+                let downgraded = match algo {
+                    CompressionAlgorithm::DeflateTranspose => CompressionAlgorithm::Deflate,
+                    CompressionAlgorithm::ZstdTranspose => CompressionAlgorithm::Zstd,
+                    CompressionAlgorithm::Lz4Transpose => CompressionAlgorithm::Lz4,
+                    _ => algo,
+                };
+                (downgraded as u8, 0)
+            } else {
+                (algo as u8, width)
+            }
+        }
+        _ => (algo as u8, 0),
+    }
+}
+
+fn zip_info_for_data_block(block: &DataBlock) -> u8 {
+    match block {
+        DataBlock::DZ(dz) => dz.dz_zip_type,
+        DataBlock::DvDi(_) => 255,
+    }
+}
+
+fn finalize_ld_zip_info(ld: &mut Option<Ld4Block>, data_zip: u8, inval_zip: u8) {
+    if let Some(ld) = ld {
+        ld.ld_flags |= 1u8 << 7;
+        ld.ld_zip_info = data_zip;
+        ld.ld_zip_info_inval = inval_zip;
+    }
 }
 
 /// Creates an uncompressed DVBLOCK (data values, spec Table 55 with ##DV ID).
@@ -1355,15 +1505,17 @@ fn create_dz_dv(
     offset: &mut i64,
     algo: CompressionAlgorithm,
 ) -> Result<(DataBlock, usize, Vec<u8>), Error> {
+    let width = data.byte_count();
+    let (dz_zip_type, dz_zip_parameter) = effective_dz_params(algo, width);
     let mut dz_block = Dz4Block {
-        dz_zip_type: algo as u8,
-        dz_zip_parameter: data.byte_count(),
+        dz_zip_type,
+        dz_zip_parameter,
         ..Default::default()
     };
     let bytes = data
         .to_bytes()
         .context("failed converting array data into bytes for dz or dv block")?;
-    let mut data_bytes = compress_bytes(&bytes, algo, data.byte_count() as usize)?;
+    let mut data_bytes = compress_bytes(&bytes, algo, width as usize)?;
     dz_block.dz_data_length = data_bytes.len() as u64;
     let dv_dz_block: DataBlock;
     let byte_aligned: usize;
@@ -1407,9 +1559,10 @@ fn create_dz_di(
     offset: &mut i64,
     algo: CompressionAlgorithm,
 ) -> Result<Option<(DataBlock, Vec<u8>)>, Error> {
+    let (dz_zip_type, dz_zip_parameter) = effective_dz_params(algo, 1);
     let mut dz_invalid_block = Dz4Block {
-        dz_zip_type: algo as u8,
-        dz_zip_parameter: 1,
+        dz_zip_type,
+        dz_zip_parameter,
         dz_org_data_length: mask.len() as u64,
         ..Default::default()
     };
@@ -1810,15 +1963,17 @@ fn create_dz_sd(
     offset: &mut i64,
     algo: CompressionAlgorithm,
 ) -> Result<SdBlockResult, Error> {
+    let width = data.byte_count();
+    let (dz_zip_type, dz_zip_parameter) = effective_dz_params(algo, width);
     let mut dz_block = Dz4Block {
-        dz_zip_type: algo as u8,
-        dz_zip_parameter: data.byte_count(),
+        dz_zip_type,
+        dz_zip_parameter,
         ..Default::default()
     };
     let (bytes, offsets) = to_sd_bytes(data).context("failed converting data to SD format")?;
     dz_block.dz_org_data_length = bytes.len() as u64;
 
-    let data_bytes = compress_bytes(&bytes, algo, data.byte_count() as usize)?;
+    let data_bytes = compress_bytes(&bytes, algo, width as usize)?;
     dz_block.dz_data_length = data_bytes.len() as u64;
 
     if dz_block.dz_org_data_length < dz_block.dz_data_length

@@ -12,6 +12,8 @@ use core::fmt::{self, Display};
 #[bw(little)]
 #[repr(C)]
 pub struct Sr4Block {
+    /// Number of links (must be 2: sr_sr_next, sr_data)
+    pub sr_links: u64,
     /// Pointer to next sample reduction block (SRBLOCK) (can be NIL)
     pub sr_sr_next: i64,
     /// Pointer to reduction data block (RD-/RV-/DZBLOCK or DL-/LD-/HLBLOCK)
@@ -31,6 +33,7 @@ pub struct Sr4Block {
 impl Default for Sr4Block {
     fn default() -> Self {
         Sr4Block {
+            sr_links: 2,
             sr_sr_next: 0,
             sr_data: 0,
             sr_cycle_count: 0,

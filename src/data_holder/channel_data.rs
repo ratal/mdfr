@@ -559,6 +559,51 @@ impl ChannelData {
             _ => None,
         }
     }
+    /// Extracts numeric channel (scalar or N-D array) values as a flat `Vec<f64>`.
+    /// Returns `None` for non-numeric types (strings, byte arrays, unions, complex).
+    pub fn to_f64_vec(&self) -> Option<Vec<f64>> {
+        match self {
+            ChannelData::Int8(a) => Some(a.values_slice().iter().map(|&v| v as f64).collect()),
+            ChannelData::UInt8(a) => Some(a.values_slice().iter().map(|&v| v as f64).collect()),
+            ChannelData::Int16(a) => Some(a.values_slice().iter().map(|&v| v as f64).collect()),
+            ChannelData::UInt16(a) => Some(a.values_slice().iter().map(|&v| v as f64).collect()),
+            ChannelData::Int32(a) => Some(a.values_slice().iter().map(|&v| v as f64).collect()),
+            ChannelData::UInt32(a) => Some(a.values_slice().iter().map(|&v| v as f64).collect()),
+            ChannelData::Float32(a) => Some(a.values_slice().iter().map(|&v| v as f64).collect()),
+            ChannelData::Int64(a) => Some(a.values_slice().iter().map(|&v| v as f64).collect()),
+            ChannelData::UInt64(a) => Some(a.values_slice().iter().map(|&v| v as f64).collect()),
+            ChannelData::Float64(a) => Some(a.values_slice().to_vec()),
+            ChannelData::ArrayDInt8(a) => {
+                Some(a.values_slice().iter().map(|&v| v as f64).collect())
+            }
+            ChannelData::ArrayDUInt8(a) => {
+                Some(a.values_slice().iter().map(|&v| v as f64).collect())
+            }
+            ChannelData::ArrayDInt16(a) => {
+                Some(a.values_slice().iter().map(|&v| v as f64).collect())
+            }
+            ChannelData::ArrayDUInt16(a) => {
+                Some(a.values_slice().iter().map(|&v| v as f64).collect())
+            }
+            ChannelData::ArrayDInt32(a) => {
+                Some(a.values_slice().iter().map(|&v| v as f64).collect())
+            }
+            ChannelData::ArrayDUInt32(a) => {
+                Some(a.values_slice().iter().map(|&v| v as f64).collect())
+            }
+            ChannelData::ArrayDFloat32(a) => {
+                Some(a.values_slice().iter().map(|&v| v as f64).collect())
+            }
+            ChannelData::ArrayDInt64(a) => {
+                Some(a.values_slice().iter().map(|&v| v as f64).collect())
+            }
+            ChannelData::ArrayDUInt64(a) => {
+                Some(a.values_slice().iter().map(|&v| v as f64).collect())
+            }
+            ChannelData::ArrayDFloat64(a) => Some(a.values_slice().to_vec()),
+            _ => None,
+        }
+    }
     /// Returns a borrowed slice of u64 values if the data is already UInt64.
     /// Zero-copy alternative to to_u64_vec() for the common case.
     pub fn as_u64_slice(&self) -> Option<&[u64]> {
@@ -1708,6 +1753,23 @@ pub fn try_from(value: &dyn Array) -> Result<ChannelData, Error> {
                 .context("could not downcast to fixed size list array, used for complex")?;
             if *size == 2 {
                 match array.value_type() {
+                    DataType::Float16 => {
+                        let inner_arr = array.values();
+                        let values = as_primitive_array::<Float16Type>(&inner_arr);
+                        let f32_vals: Vec<f32> = values
+                            .iter()
+                            .map(|v| v.map(half::f16::to_f32).unwrap_or(0.0))
+                            .collect();
+                        let converted =
+                            PrimitiveArray::new(f32_vals.into(), values.nulls().cloned());
+                        Ok(ChannelData::Complex32(ComplexArrow {
+                            values: converted,
+                            shape: vec![1],
+                            order: Order::RowMajor,
+                            null_buffer: array.nulls().map(|n| n.inner().clone()),
+                            len: array.len(),
+                        }))
+                    }
                     DataType::Float32 => {
                         let inner_arr = array.values();
                         let values = as_primitive_array::<Float32Type>(&inner_arr);

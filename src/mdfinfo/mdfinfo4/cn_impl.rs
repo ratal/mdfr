@@ -16,7 +16,7 @@ use super::block_header_impl::{
     Blockheader4Short, SharableBlocks, default_short_header, parse_block_short, read_meta_data,
 };
 use super::cc_impl::read_cc;
-use super::composition_impl::{Composition, parse_composition};
+use super::composition_impl::{Compo, Composition, parse_composition};
 use super::ev_impl::{Ev4Block, parse_ev4_block};
 use super::metadata::BlockType;
 use super::si_impl::{Si4Block, Si4BlockExt};
@@ -139,6 +139,7 @@ fn insert_cn4_into_map(cn: &mut CnType, cn_struct: Cn4, record_id_size: u8) -> (
         + cn_struct.block.cn_bit_offset as i64;
     if cn_struct.block.cn_data_type == 13 {
         let (date_ms, min, hour, day, month, year) = can_open_date(
+            &cn_struct.unique_name,
             cn_struct.block_position,
             cn_struct.pos_byte_beg,
             cn_struct.block.cn_byte_offset,
@@ -152,6 +153,7 @@ fn insert_cn4_into_map(cn: &mut CnType, cn_struct: Cn4, record_id_size: u8) -> (
         (rec_pos, 5)
     } else if cn_struct.block.cn_data_type == 14 {
         let (ms, days) = can_open_time(
+            &cn_struct.unique_name,
             cn_struct.block_position,
             cn_struct.pos_byte_beg,
             cn_struct.block.cn_byte_offset,
@@ -170,6 +172,33 @@ fn insert_cn4_into_map(cn: &mut CnType, cn_struct: Cn4, record_id_size: u8) -> (
         }
         cn.insert(rec_pos, cn_struct);
         (rec_pos, 0)
+    }
+}
+
+/// Inserts a parsed `Cn4` (or its flattened `Compo::CN` structure members without overwriting the first member).
+fn merge_parsed_cn4(
+    cn: &mut CnType,
+    cn_struct: Cn4,
+    cns: CnType,
+    n_cns: usize,
+    record_id_size: u8,
+) -> (usize, i64) {
+    let is_cn_structure = !cns.is_empty()
+        && matches!(&cn_struct.composition, Some(c) if matches!(&c.block, Compo::CN(_)));
+    let expected_pos = (cn_struct.block.cn_byte_offset as i64 + record_id_size as i64) * 8
+        + cn_struct.block.cn_bit_offset as i64;
+    let first_child_pos = cns.keys().next().copied();
+    cn.extend(cns);
+    if is_cn_structure {
+        let first_pos = if cn.contains_key(&expected_pos) {
+            expected_pos
+        } else {
+            first_child_pos.unwrap_or(expected_pos)
+        };
+        (n_cns.saturating_sub(1), first_pos)
+    } else {
+        let (pos, extra) = insert_cn4_into_map(cn, cn_struct, record_id_size);
+        (n_cns + extra, pos)
     }
 }
 
@@ -196,12 +225,10 @@ pub(super) fn parse_cn4(
             cg_cycle_count,
         )?;
         position = pos;
-        n_cn += n_cns;
-        cn.extend(cns);
         let mut next_pointer = cn_struct.block.cn_cn_next;
-        let (pos0, extra0) = insert_cn4_into_map(&mut cn, cn_struct, record_id_size);
+        let (added, pos0) = merge_parsed_cn4(&mut cn, cn_struct, cns, n_cns, record_id_size);
         first_rec_pos = pos0;
-        n_cn += extra0;
+        n_cn += added;
 
         let mut chain = BlockChain::new("CN");
         chain.visit(target);
@@ -218,18 +245,25 @@ pub(super) fn parse_cn4(
                 cg_cycle_count,
             )?;
             position = pos;
-            n_cn += n_cns;
-            cn.extend(cns);
             next_pointer = cn_struct.block.cn_cn_next;
-            let (_, extra) = insert_cn4_into_map(&mut cn, cn_struct, record_id_size);
-            n_cn += extra;
+            let (added, _) = merge_parsed_cn4(&mut cn, cn_struct, cns, n_cns, record_id_size);
+            n_cn += added;
         }
     }
     Ok((cn, position, n_cn, first_rec_pos))
 }
 
+fn prefixed_subchannel_name(parent: &str, suffix: &str) -> String {
+    if parent.is_empty() {
+        String::from(suffix)
+    } else {
+        format!("{parent}_{suffix}")
+    }
+}
+
 /// returns created CANopenDate channels
 fn can_open_date(
+    parent_name: &str,
     block_position: i64,
     pos_byte_beg: u32,
     cn_byte_offset: u32,
@@ -243,7 +277,7 @@ fn can_open_date(
     let date_ms = Cn4 {
         header: default_short_header(BlockType::CN),
         block,
-        unique_name: String::from("ms"),
+        unique_name: prefixed_subchannel_name(parent_name, "ms"),
         block_position,
         pos_byte_beg,
         n_bytes: 2,
@@ -267,7 +301,7 @@ fn can_open_date(
     let min = Cn4 {
         header: default_short_header(BlockType::CN),
         block,
-        unique_name: String::from("min"),
+        unique_name: prefixed_subchannel_name(parent_name, "min"),
         block_position,
         pos_byte_beg: pos_byte_beg + 2,
         n_bytes: 1,
@@ -291,7 +325,7 @@ fn can_open_date(
     let hour = Cn4 {
         header: default_short_header(BlockType::CN),
         block,
-        unique_name: String::from("hour"),
+        unique_name: prefixed_subchannel_name(parent_name, "hour"),
         block_position,
         pos_byte_beg: pos_byte_beg + 3,
         n_bytes: 1,
@@ -315,7 +349,7 @@ fn can_open_date(
     let day = Cn4 {
         header: default_short_header(BlockType::CN),
         block,
-        unique_name: String::from("day"),
+        unique_name: prefixed_subchannel_name(parent_name, "day"),
         block_position,
         pos_byte_beg: pos_byte_beg + 4,
         n_bytes: 1,
@@ -339,7 +373,7 @@ fn can_open_date(
     let month = Cn4 {
         header: default_short_header(BlockType::CN),
         block,
-        unique_name: String::from("month"),
+        unique_name: prefixed_subchannel_name(parent_name, "month"),
         block_position,
         pos_byte_beg: pos_byte_beg + 5,
         n_bytes: 1,
@@ -363,7 +397,7 @@ fn can_open_date(
     let year = Cn4 {
         header: default_short_header(BlockType::CN),
         block,
-        unique_name: String::from("year"),
+        unique_name: prefixed_subchannel_name(parent_name, "year"),
         block_position,
         pos_byte_beg: pos_byte_beg + 6,
         n_bytes: 1,
@@ -382,7 +416,12 @@ fn can_open_date(
 }
 
 /// returns created CANopenTime channels
-fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) -> (Cn4, Cn4) {
+fn can_open_time(
+    parent_name: &str,
+    block_position: i64,
+    pos_byte_beg: u32,
+    cn_byte_offset: u32,
+) -> (Cn4, Cn4) {
     let block = Cn4Block {
         cn_links: 8,
         cn_byte_offset,
@@ -392,7 +431,7 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
     let ms: Cn4 = Cn4 {
         header: default_short_header(BlockType::CN),
         block,
-        unique_name: String::from("ms"),
+        unique_name: prefixed_subchannel_name(parent_name, "ms"),
         block_position,
         pos_byte_beg,
         n_bytes: 4,
@@ -416,7 +455,7 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
     let days: Cn4 = Cn4 {
         header: default_short_header(BlockType::CN),
         block,
-        unique_name: String::from("day"),
+        unique_name: prefixed_subchannel_name(parent_name, "day"),
         block_position,
         pos_byte_beg: pos_byte_beg + 4,
         n_bytes: 2,
@@ -432,6 +471,27 @@ fn can_open_time(block_position: i64, pos_byte_beg: u32, cn_byte_offset: u32) ->
         should_read: false,
     };
     (ms, days)
+}
+
+/// Builds the invalidation validity bitmap mask for a channel given `cg_inval_bytes` and `cycles`.
+pub(super) fn build_invalid_mask(
+    block: &Cn4Block,
+    cg_inval_bytes: u32,
+    cycles: usize,
+) -> Option<(Option<BooleanBufferBuilder>, usize, u8)> {
+    if (block.cn_flags & CN_F_ALL_VALUES_INVALID) != 0 {
+        let mut buffer = BooleanBufferBuilder::new(cycles);
+        buffer.append_n(cycles, false);
+        Some((Some(buffer), 0, 0))
+    } else if cg_inval_bytes != 0 && (block.cn_flags & CN_F_INVALID) != 0 {
+        let invalid_byte_position = (block.cn_inval_bit_pos >> 3) as usize;
+        let invalid_byte_mask = 1 << (block.cn_inval_bit_pos & 0x07);
+        let mut buffer = BooleanBufferBuilder::new(cycles);
+        buffer.append_n(cycles, true);
+        Some((Some(buffer), invalid_byte_position, invalid_byte_mask))
+    } else {
+        None
+    }
 }
 
 /// Simple calculation to convert bit count into equivalent bytes count
@@ -647,19 +707,7 @@ pub(super) fn parse_cn4_block(
     let pos_byte_beg = block.cn_byte_offset + record_id_size as u32;
     let n_bytes = calc_n_bytes_not_aligned(block.cn_bit_count + (block.cn_bit_offset as u32));
     let invalid_mask: Option<(Option<BooleanBufferBuilder>, usize, u8)> =
-        if (block.cn_flags & CN_F_ALL_VALUES_INVALID) != 0 {
-            let mut buffer = BooleanBufferBuilder::new(cg_cycle_count as usize);
-            buffer.append_n(cg_cycle_count as usize, false);
-            Some((Some(buffer), 0, 0))
-        } else if cg_inval_bytes != 0 && (block.cn_flags & CN_F_INVALID) != 0 {
-            let invalid_byte_position = (block.cn_inval_bit_pos >> 3) as usize;
-            let invalid_byte_mask = 1 << (block.cn_inval_bit_pos & 0x07);
-            let mut buffer = BooleanBufferBuilder::new(cg_cycle_count as usize);
-            buffer.append_n(cg_cycle_count as usize, true);
-            Some((Some(buffer), invalid_byte_position, invalid_byte_mask))
-        } else {
-            None
-        };
+        build_invalid_mask(&block, cg_inval_bytes, cg_cycle_count as usize);
 
     // Reads TX name
     position = read_meta_data(rdr, sharable, block.cn_tx_name, position, BlockType::CN)?;

@@ -95,6 +95,8 @@ struct VlsdChannelState {
     staged_vlsd: Option<Vec<u8>>,
     /// Total bytes accumulated in `SDBLOCK`/`VDBLOCK` (sorted) or VLSD CG values (unsorted, excluding 4-byte length prefixes).
     total_vlsd_bytes: u64,
+    /// Unsorted mode: cumulative VLSD record offset including 4-byte length prefixes (per Table 17 Bit 6).
+    unsorted_vlsd_offset: u64,
     /// Unsorted mode: record ID of the companion VLSD `CGBLOCK` (`group_idx + 1 + vlsd_ordinal`).
     unsorted_vlsd_record_id: u64,
     /// Unsorted mode: file offset of the companion VLSD `CGBLOCK` (so we can patch `cg_cycle_count`, `cg_data_bytes`, `cg_inval_bytes`).
@@ -385,7 +387,7 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
                             cg_record_id: vlsd_rec_id,
                             cg_cycle_count: 0,
                             cg_flags: if vlsd_state.is_vlsc {
-                                CG_F_VLSD | CG_F_VLSC
+                                CG_F_VLSC
                             } else {
                                 CG_F_VLSD
                             },
@@ -637,6 +639,7 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
                     sorted_sd_buf: Vec::new(),
                     staged_vlsd: None,
                     total_vlsd_bytes: 0,
+                    unsorted_vlsd_offset: 0,
                     unsorted_vlsd_record_id: 0,
                     unsorted_vlsd_cg_pos: 0,
                     unsorted_vlsd_cycles: 0,
@@ -999,7 +1002,16 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
             let Some(data) = vlsd.staged_vlsd.take() else {
                 continue;
             };
-            let offset_val = vlsd.total_vlsd_bytes;
+            let offset_val = match layout {
+                DataLayout::Sorted => vlsd.total_vlsd_bytes,
+                DataLayout::Unsorted => {
+                    if vlsd.is_vlsc {
+                        vlsd.total_vlsd_bytes
+                    } else {
+                        vlsd.unsorted_vlsd_offset
+                    }
+                }
+            };
             let byte_off = vlsd.record_byte_offset;
             g.staging_record[byte_off..byte_off + 8].copy_from_slice(&offset_val.to_le_bytes());
 
@@ -1029,6 +1041,9 @@ impl<S: Sink, T: TimeSource> Logger<S, T> {
                     self.unsorted_buf.extend_from_slice(&len_u32.to_le_bytes());
                     self.unsorted_buf.extend_from_slice(&data);
                     vlsd.total_vlsd_bytes += data.len() as u64;
+                    if !vlsd.is_vlsc {
+                        vlsd.unsorted_vlsd_offset += 4 + data.len() as u64;
+                    }
                     vlsd.unsorted_vlsd_cycles += 1;
                 }
             }

@@ -1273,3 +1273,1121 @@ fn test_mdf4_spec_fig45_le_and_fig46_be_bit_offset_mask() -> Result<()> {
     }
     Ok(())
 }
+
+fn open_mdf_from_bytes(bytes: &[u8]) -> Result<(NamedTempFile, Mdf)> {
+    let mut tmp = NamedTempFile::new()?;
+    tmp.write_all(bytes)?;
+    tmp.flush()?;
+    let mdf = Mdf::new(tmp.path().to_str().unwrap())?;
+    Ok((tmp, mdf))
+}
+
+#[test]
+fn test_sr4_block_links_and_64_byte_layout() -> Result<()> {
+    use binrw::BinWrite;
+    use mdfr::mdfinfo::MdfInfo;
+    use mdfr::mdfinfo::mdfinfo4::Sr4Block;
+
+    let sr_def = Sr4Block::default();
+    assert_eq!(sr_def.sr_links, 2);
+    let mut raw_body = std::io::Cursor::new(Vec::new());
+    sr_def.write_le(&mut raw_body)?;
+    assert_eq!(raw_body.into_inner().len(), 48); // 16B header + 48B body = 64B block
+
+    // Build an MDF4 file containing ID + HD + DG + CG + 64-byte ##SR
+    let mut buf = Vec::new();
+    write_id_block(&mut buf);
+    let hd_pos = buf.len() as i64;
+    write_hd4(&mut buf, 0);
+    let dg_pos = buf.len() as i64;
+    write_dg4(&mut buf, 0, 0);
+    let cg_pos = buf.len() as i64;
+    write_cg4(&mut buf, 0, 0);
+    let sr_pos = buf.len() as i64;
+    buf.extend_from_slice(b"##SR");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 64);
+    push_u64(&mut buf, 2); // sr_links
+    push_i64(&mut buf, 0); // sr_sr_next
+    push_i64(&mut buf, 0); // sr_data
+    push_u64(&mut buf, 42); // sr_cycle_count
+    push_f64(&mut buf, 0.25); // sr_interval
+    push_u8(&mut buf, 1); // sr_sync_type = time
+    push_u8(&mut buf, 0); // sr_flags
+    push_zeros(&mut buf, 6);
+
+    buf[(hd_pos + 24) as usize..(hd_pos + 32) as usize].copy_from_slice(&dg_pos.to_le_bytes());
+    buf[(dg_pos + 32) as usize..(dg_pos + 40) as usize].copy_from_slice(&cg_pos.to_le_bytes());
+    buf[(cg_pos + 56) as usize..(cg_pos + 64) as usize].copy_from_slice(&sr_pos.to_le_bytes());
+
+    let (_tmp, mdf) = open_mdf_from_bytes(&buf)?;
+    let MdfInfo::V4(info) = &mdf.mdf_info else {
+        panic!("expected MDF4");
+    };
+    let cg = &info.dg[&dg_pos].cg[&0];
+    assert_eq!(cg.sr.len(), 1);
+    assert_eq!(cg.sr[0].sr_links, 2);
+    assert_eq!(cg.sr[0].sr_cycle_count, 42);
+    assert!((cg.sr[0].sr_interval - 0.25).abs() < 1e-12);
+    assert_eq!(cg.sr[0].sr_sync_type, 1);
+    Ok(())
+}
+
+#[test]
+fn test_structure_composition_preserves_member_channel() -> Result<()> {
+    // MDF4-002: parent structure CN with Compo::CN must not overwrite flattened child M1 at offset 0.
+    let mut buf = Vec::new();
+    write_id_block(&mut buf);
+    let hd_pos = buf.len() as i64;
+    write_hd4(&mut buf, 0);
+    let dg_pos = buf.len() as i64;
+    write_dg4(&mut buf, 0, 0);
+    let cg_pos = buf.len() as i64;
+    write_cg4_with_data_bytes(&mut buf, 0, 2, 2); // 2 cycles x 2 bytes (u16)
+
+    let parent_cn_pos = buf.len() as i64;
+    write_cn4(&mut buf, 0, 0, 16, 0, 0, 0, 0);
+    let parent_tx_pos = buf.len() as i64;
+    write_tx(&mut buf, "StructParent");
+
+    let member_cn_pos = buf.len() as i64;
+    write_cn4(&mut buf, 0, 0, 16, 0, 0, 0, 0);
+    let member_tx_pos = buf.len() as i64;
+    write_tx(&mut buf, "StructLeaf");
+
+    let dt_pos = buf.len() as i64;
+    buf.extend_from_slice(b"##DT");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 28);
+    push_u64(&mut buf, 0);
+    push_u16(&mut buf, 111);
+    push_u16(&mut buf, 222);
+
+    buf[(hd_pos + 24) as usize..(hd_pos + 32) as usize].copy_from_slice(&dg_pos.to_le_bytes());
+    buf[(dg_pos + 32) as usize..(dg_pos + 40) as usize].copy_from_slice(&cg_pos.to_le_bytes());
+    buf[(dg_pos + 40) as usize..(dg_pos + 48) as usize].copy_from_slice(&dt_pos.to_le_bytes());
+    buf[(cg_pos + 32) as usize..(cg_pos + 40) as usize]
+        .copy_from_slice(&parent_cn_pos.to_le_bytes());
+
+    // Parent CN: cn_composition -> member_cn_pos, cn_tx_name -> parent_tx_pos
+    buf[(parent_cn_pos + 32) as usize..(parent_cn_pos + 40) as usize]
+        .copy_from_slice(&member_cn_pos.to_le_bytes());
+    buf[(parent_cn_pos + 40) as usize..(parent_cn_pos + 48) as usize]
+        .copy_from_slice(&parent_tx_pos.to_le_bytes());
+    // Member CN: cn_tx_name -> member_tx_pos
+    buf[(member_cn_pos + 40) as usize..(member_cn_pos + 48) as usize]
+        .copy_from_slice(&member_tx_pos.to_le_bytes());
+
+    let (_tmp, mut mdf) = open_mdf_from_bytes(&buf)?;
+    mdf.load_all_channels_data_in_memory()?;
+    assert!(mdf.get_channel_data("StructParent").is_none());
+    let ChannelData::UInt16(arr) = mdf
+        .get_channel_data("StructLeaf")
+        .expect("StructLeaf should remain accessible")
+    else {
+        panic!("expected UInt16 for StructLeaf");
+    };
+    assert_eq!(arr.values_slice(), &[111, 222]);
+    Ok(())
+}
+
+#[test]
+fn test_canopen_date_and_time_prefixed_subchannels() -> Result<()> {
+    // MDF4-018: CANopenDate (11, 7B) and CANopenTime (12, 6B) create prefixed synthetic sub-channels.
+    let mut buf = Vec::new();
+    write_id_block(&mut buf);
+    let hd_pos = buf.len() as i64;
+    write_hd4(&mut buf, 0);
+    let dg_pos = buf.len() as i64;
+    write_dg4(&mut buf, 0, 0);
+    let cg_pos = buf.len() as i64;
+    write_cg4_with_data_bytes(&mut buf, 0, 1, 13);
+
+    let cn_date_pos = buf.len() as i64;
+    write_cn4_with_offset(&mut buf, 0, 13, 0, 0, 56, 0, 0, 0, 0);
+    let tx_date_pos = buf.len() as i64;
+    write_tx(&mut buf, "EvtDate");
+
+    let cn_time_pos = buf.len() as i64;
+    write_cn4_with_offset(&mut buf, 0, 14, 0, 7, 48, 0, 0, 0, 0);
+    let tx_time_pos = buf.len() as i64;
+    write_tx(&mut buf, "EvtTime");
+
+    // 7 bytes CANopenDate (ms=1500, min=25, hour=14, day=7, month=11, year=26)
+    // + 6 bytes CANopenTime (ms=60000, days=500)
+    let dt_pos = buf.len() as i64;
+    buf.extend_from_slice(b"##DT");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 24 + 13);
+    push_u64(&mut buf, 0);
+    push_u16(&mut buf, 1500); // ms
+    push_u8(&mut buf, 25); // min
+    push_u8(&mut buf, 14); // hour
+    push_u8(&mut buf, 7); // day + dow=0
+    push_u8(&mut buf, 11); // month
+    push_u8(&mut buf, 26); // year
+    push_u32(&mut buf, 60_000); // CANopenTime ms
+    push_u16(&mut buf, 500); // CANopenTime days
+
+    buf[(hd_pos + 24) as usize..(hd_pos + 32) as usize].copy_from_slice(&dg_pos.to_le_bytes());
+    buf[(dg_pos + 32) as usize..(dg_pos + 40) as usize].copy_from_slice(&cg_pos.to_le_bytes());
+    buf[(dg_pos + 40) as usize..(dg_pos + 48) as usize].copy_from_slice(&dt_pos.to_le_bytes());
+    buf[(cg_pos + 32) as usize..(cg_pos + 40) as usize].copy_from_slice(&cn_date_pos.to_le_bytes());
+
+    buf[(cn_date_pos + 24) as usize..(cn_date_pos + 32) as usize]
+        .copy_from_slice(&cn_time_pos.to_le_bytes());
+    buf[(cn_date_pos + 40) as usize..(cn_date_pos + 48) as usize]
+        .copy_from_slice(&tx_date_pos.to_le_bytes());
+    buf[(cn_time_pos + 40) as usize..(cn_time_pos + 48) as usize]
+        .copy_from_slice(&tx_time_pos.to_le_bytes());
+
+    let (_tmp, mut mdf) = open_mdf_from_bytes(&buf)?;
+    mdf.load_all_channels_data_in_memory()?;
+
+    let ChannelData::UInt16(ms) = mdf.get_channel_data("EvtDate_ms").unwrap() else {
+        panic!("expected EvtDate_ms UInt16");
+    };
+    assert_eq!(ms.values_slice(), &[1500]);
+    let ChannelData::UInt8(min) = mdf.get_channel_data("EvtDate_min").unwrap() else {
+        panic!("expected EvtDate_min UInt8");
+    };
+    assert_eq!(min.values_slice(), &[25]);
+    let ChannelData::UInt8(hour) = mdf.get_channel_data("EvtDate_hour").unwrap() else {
+        panic!("expected EvtDate_hour UInt8");
+    };
+    assert_eq!(hour.values_slice(), &[14]);
+    let ChannelData::UInt8(day) = mdf.get_channel_data("EvtDate_day").unwrap() else {
+        panic!("expected EvtDate_day UInt8");
+    };
+    assert_eq!(day.values_slice(), &[7]);
+    let ChannelData::UInt8(month) = mdf.get_channel_data("EvtDate_month").unwrap() else {
+        panic!("expected EvtDate_month UInt8");
+    };
+    assert_eq!(month.values_slice(), &[11]);
+    let ChannelData::UInt8(year) = mdf.get_channel_data("EvtDate_year").unwrap() else {
+        panic!("expected EvtDate_year UInt8");
+    };
+    assert_eq!(year.values_slice(), &[26]);
+
+    let ChannelData::UInt32(tms) = mdf.get_channel_data("EvtTime_ms").unwrap() else {
+        panic!("expected EvtTime_ms UInt32");
+    };
+    assert_eq!(tms.values_slice(), &[60_000]);
+    let ChannelData::UInt16(tdays) = mdf.get_channel_data("EvtTime_day").unwrap() else {
+        panic!("expected EvtTime_day UInt16");
+    };
+    assert_eq!(tdays.values_slice(), &[500]);
+    Ok(())
+}
+
+#[test]
+fn test_half_float_and_complex_half_float_decode() -> Result<()> {
+    // Gap 5: cn_data_type = 4 (Float LE, 16-bit f16) and 15 (Complex LE, 32-bit 2xf16).
+    let mut buf = Vec::new();
+    write_id_block(&mut buf);
+    let hd_pos = buf.len() as i64;
+    write_hd4(&mut buf, 0);
+    let dg_pos = buf.len() as i64;
+    write_dg4(&mut buf, 0, 0);
+    let cg_pos = buf.len() as i64;
+    write_cg4_with_data_bytes(&mut buf, 0, 2, 6); // 2B f16 + 4B complex f16 per cycle
+
+    let cn_f16_pos = buf.len() as i64;
+    write_cn4_with_offset(&mut buf, 0, 4, 0, 0, 16, 0, 0, 0, 0);
+    let tx_f16_pos = buf.len() as i64;
+    write_tx(&mut buf, "HalfFloat");
+
+    let cn_cf16_pos = buf.len() as i64;
+    write_cn4_with_offset(&mut buf, 0, 15, 0, 2, 32, 0, 0, 0, 0);
+    let tx_cf16_pos = buf.len() as i64;
+    write_tx(&mut buf, "ComplexHalf");
+
+    // f16: 1.0 = 0x3C00, -2.5 = 0xC100; complex f16: (1.5=0x3E00, -0.5=0xB800), (2.0=0x4000, 4.0=0x4400)
+    let dt_pos = buf.len() as i64;
+    buf.extend_from_slice(b"##DT");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 24 + 12);
+    push_u64(&mut buf, 0);
+    push_u16(&mut buf, 0x3C00);
+    push_u16(&mut buf, 0x3E00);
+    push_u16(&mut buf, 0xB800);
+    push_u16(&mut buf, 0xC100);
+    push_u16(&mut buf, 0x4000);
+    push_u16(&mut buf, 0x4400);
+
+    buf[(hd_pos + 24) as usize..(hd_pos + 32) as usize].copy_from_slice(&dg_pos.to_le_bytes());
+    buf[(dg_pos + 32) as usize..(dg_pos + 40) as usize].copy_from_slice(&cg_pos.to_le_bytes());
+    buf[(dg_pos + 40) as usize..(dg_pos + 48) as usize].copy_from_slice(&dt_pos.to_le_bytes());
+    buf[(cg_pos + 32) as usize..(cg_pos + 40) as usize].copy_from_slice(&cn_f16_pos.to_le_bytes());
+    buf[(cn_f16_pos + 24) as usize..(cn_f16_pos + 32) as usize]
+        .copy_from_slice(&cn_cf16_pos.to_le_bytes());
+    buf[(cn_f16_pos + 40) as usize..(cn_f16_pos + 48) as usize]
+        .copy_from_slice(&tx_f16_pos.to_le_bytes());
+    buf[(cn_cf16_pos + 40) as usize..(cn_cf16_pos + 48) as usize]
+        .copy_from_slice(&tx_cf16_pos.to_le_bytes());
+
+    let (_tmp, mut mdf) = open_mdf_from_bytes(&buf)?;
+    mdf.load_all_channels_data_in_memory()?;
+
+    let ChannelData::Float32(hf) = mdf.get_channel_data("HalfFloat").unwrap() else {
+        panic!("expected Float32 for decoded f16");
+    };
+    assert_eq!(hf.values_slice(), &[1.0f32, -2.5f32]);
+
+    let ChannelData::Complex32(cf) = mdf.get_channel_data("ComplexHalf").unwrap() else {
+        panic!("expected Complex32 for decoded Complex f16");
+    };
+    let vals = cf.values_slice();
+    assert_eq!(vals.len(), 4);
+    assert_eq!(vals, &[1.5f32, -0.5f32, 2.0f32, 4.0f32]);
+    Ok(())
+}
+
+#[test]
+fn test_dl_zero_pointer_and_gd4_36_byte_offset() -> Result<()> {
+    // MDF4-005 (GD4_STRUCT_SIZE == 36) & MDF4-013 (skip NIL pointers in dl_data).
+    let mut buf = Vec::new();
+    write_id_block(&mut buf);
+    let hd_pos = buf.len() as i64;
+    write_hd4(&mut buf, 0);
+    let dg_pos = buf.len() as i64;
+    write_dg4(&mut buf, 0, 0);
+    let cg_pos = buf.len() as i64;
+    write_cg4_with_data_bytes(&mut buf, 0, 2, 4);
+    let cn_pos = buf.len() as i64;
+    write_cn4(&mut buf, 0, 0, 32, 0, 0, 0, 0);
+    let tx_pos = buf.len() as i64;
+    write_tx(&mut buf, "GuardedVal");
+
+    let dt_pos = buf.len() as i64;
+    buf.extend_from_slice(b"##DT");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 32);
+    push_u64(&mut buf, 0);
+    push_u32(&mut buf, 100);
+    push_u32(&mut buf, 200);
+
+    // ##DL with 3 data links: [0, dt_pos, 0]
+    let dl_pos = buf.len() as i64;
+    buf.extend_from_slice(b"##DL");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 16 + 40 + 16); // header(16) + 5*8(links: dl_len_only? wait: block header 24 + 4*8 + 16)
+    buf.truncate(dl_pos as usize + 8);
+    push_u64(&mut buf, 24 + 4 * 8 + 8 + 4 + 3 * 8); // dl_len = 92 wait: fixed fields + offset list
+    // Write standard unfixed ##DL (dl_flags=0): 16(hdr)+8(links=4)+4*8(links)+1(flags)+3(res)+4(count)+3*8(offsets) = 88B
+    buf.truncate(dl_pos as usize);
+    buf.extend_from_slice(b"##DL");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 88);
+    push_u64(&mut buf, 4); // dl_next + 3 data slots
+    push_i64(&mut buf, 0); // dl_dl_next
+    push_i64(&mut buf, 0); // dl_data[0] = NIL
+    push_i64(&mut buf, dt_pos); // dl_data[1]
+    push_i64(&mut buf, 0); // dl_data[2] = NIL
+    push_u8(&mut buf, 0); // dl_flags (variable offsets)
+    push_zeros(&mut buf, 3);
+    push_u32(&mut buf, 3); // dl_count
+    push_u64(&mut buf, 0);
+    push_u64(&mut buf, 0);
+    push_u64(&mut buf, 8);
+
+    // ##GD (40 bytes): links=1 -> dl_pos, gd_version=430
+    let gd_pos = buf.len() as i64;
+    buf.extend_from_slice(b"##GD");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 40);
+    push_u64(&mut buf, 1);
+    push_i64(&mut buf, dl_pos);
+    push_u16(&mut buf, 430);
+    push_zeros(&mut buf, 6);
+
+    buf[(hd_pos + 24) as usize..(hd_pos + 32) as usize].copy_from_slice(&dg_pos.to_le_bytes());
+    buf[(dg_pos + 32) as usize..(dg_pos + 40) as usize].copy_from_slice(&cg_pos.to_le_bytes());
+    buf[(dg_pos + 40) as usize..(dg_pos + 48) as usize].copy_from_slice(&gd_pos.to_le_bytes());
+    buf[(cg_pos + 32) as usize..(cg_pos + 40) as usize].copy_from_slice(&cn_pos.to_le_bytes());
+    buf[(cn_pos + 40) as usize..(cn_pos + 48) as usize].copy_from_slice(&tx_pos.to_le_bytes());
+
+    let (_tmp, mut mdf) = open_mdf_from_bytes(&buf)?;
+    mdf.load_all_channels_data_in_memory()?;
+    let ChannelData::UInt32(arr) = mdf.get_channel_data("GuardedVal").unwrap() else {
+        panic!("expected UInt32 for GuardedVal");
+    };
+    assert_eq!(arr.values_slice(), &[100, 200]);
+    Ok(())
+}
+
+#[test]
+fn test_unfinalized_cycle_count_rebuilds_invalid_mask() -> Result<()> {
+    // MDF4-007: unfinalized CG (cg_cycle_count=0 initially) gets finalized in memory and rebuilds cn.invalid_mask.
+    use mdfr::mdfinfo::MdfInfo;
+
+    let mut buf = Vec::new();
+    write_id_block(&mut buf);
+    // Mark unfinalized cycle count flag (bit 0) at offset 60 in IDBLOCK
+    buf[60..62].copy_from_slice(&1u16.to_le_bytes());
+
+    let hd_pos = buf.len() as i64;
+    write_hd4(&mut buf, 0);
+    let dg_pos = buf.len() as i64;
+    write_dg4(&mut buf, 0, 0);
+    let cg_pos = buf.len() as i64;
+    buf.extend_from_slice(b"##CG");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 104);
+    push_u64(&mut buf, 6);
+    push_i64(&mut buf, 0);
+    push_i64(&mut buf, 0); // cn_first
+    push_i64(&mut buf, 0);
+    push_i64(&mut buf, 0);
+    push_i64(&mut buf, 0);
+    push_i64(&mut buf, 0);
+    push_u64(&mut buf, 0);
+    push_u64(&mut buf, 0); // cg_cycle_count = 0 (unfinalized!)
+    push_u16(&mut buf, 0);
+    push_u16(&mut buf, 0);
+    push_zeros(&mut buf, 4);
+    push_u32(&mut buf, 4); // cg_data_bytes
+    push_u32(&mut buf, 1); // cg_inval_bytes
+
+    let cn_pos = buf.len() as i64;
+    write_cn4(&mut buf, 0, 0, 32, 0, 0, 0, 0);
+    // Set CN_F_INVALID (bit 1 = 2) at offset +100 (cn_flags) in CNBLOCK
+    buf[(cn_pos + 100) as usize..(cn_pos + 104) as usize].copy_from_slice(&2u32.to_le_bytes());
+    let tx_pos = buf.len() as i64;
+    write_tx(&mut buf, "InvalSig");
+
+    // 2 cycles x (4 data bytes + 1 inval byte) = 10 bytes: cycle 0 valid (inval=0), cycle 1 invalid (inval=1)
+    let dt_pos = buf.len() as i64;
+    buf.extend_from_slice(b"##DT");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 34);
+    push_u64(&mut buf, 0);
+    push_u32(&mut buf, 10);
+    push_u8(&mut buf, 0);
+    push_u32(&mut buf, 20);
+    push_u8(&mut buf, 1);
+
+    buf[(hd_pos + 24) as usize..(hd_pos + 32) as usize].copy_from_slice(&dg_pos.to_le_bytes());
+    buf[(dg_pos + 32) as usize..(dg_pos + 40) as usize].copy_from_slice(&cg_pos.to_le_bytes());
+    buf[(dg_pos + 40) as usize..(dg_pos + 48) as usize].copy_from_slice(&dt_pos.to_le_bytes());
+    buf[(cg_pos + 32) as usize..(cg_pos + 40) as usize].copy_from_slice(&cn_pos.to_le_bytes());
+    buf[(cn_pos + 40) as usize..(cn_pos + 48) as usize].copy_from_slice(&tx_pos.to_le_bytes());
+
+    let (_tmp, mut mdf) = open_mdf_from_bytes(&buf)?;
+    if let MdfInfo::V4(info) = &mdf.mdf_info {
+        let cn = &info.dg[&dg_pos].cg[&0].cn[&0];
+        assert!(
+            matches!(cn.invalid_mask, Some((Some(_), 0, 1))),
+            "expected rebuilt BooleanBufferBuilder before loading data, got {:?}",
+            cn.invalid_mask.as_ref().map(|(_, b, m)| (*b, *m))
+        );
+    }
+    mdf.load_all_channels_data_in_memory()?;
+    {
+        use arrow::array::Array;
+        let ChannelData::UInt32(arr) = mdf.get_channel_data("InvalSig").unwrap() else {
+            panic!("expected UInt32 InvalSig");
+        };
+        assert_eq!(arr.len(), 2);
+        assert!(!arr.is_null(0));
+        assert!(arr.is_null(1));
+    }
+    Ok(())
+}
+
+#[test]
+fn test_rename_channel_preserves_master_and_positions() -> Result<()> {
+    // MDF4-008: rename_channel updates channel and master names without clobbering DG/CG/CN positions.
+    let mut buf = Vec::new();
+    write_id_block(&mut buf);
+    let hd_pos = buf.len() as i64;
+    write_hd4(&mut buf, 0);
+    let dg_pos = buf.len() as i64;
+    write_dg4(&mut buf, 0, 0);
+    let cg_pos = buf.len() as i64;
+    write_cg4_with_data_bytes(&mut buf, 0, 2, 16);
+
+    let cn_master_pos = buf.len() as i64;
+    write_cn4_with_offset(&mut buf, 2, 4, 0, 0, 64, 0, 0, 0, 0);
+    let tx_master_pos = buf.len() as i64;
+    write_tx(&mut buf, "TimeOld");
+
+    let cn_sig_pos = buf.len() as i64;
+    write_cn4_with_offset(&mut buf, 0, 4, 0, 8, 64, 0, 0, 0, 0);
+    let tx_sig_pos = buf.len() as i64;
+    write_tx(&mut buf, "SigOld");
+
+    let dt_pos = buf.len() as i64;
+    buf.extend_from_slice(b"##DT");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 24 + 32);
+    push_u64(&mut buf, 0);
+    push_f64(&mut buf, 0.0);
+    push_f64(&mut buf, 1.5);
+    push_f64(&mut buf, 1.0);
+    push_f64(&mut buf, 2.5);
+
+    buf[(hd_pos + 24) as usize..(hd_pos + 32) as usize].copy_from_slice(&dg_pos.to_le_bytes());
+    buf[(dg_pos + 32) as usize..(dg_pos + 40) as usize].copy_from_slice(&cg_pos.to_le_bytes());
+    buf[(dg_pos + 40) as usize..(dg_pos + 48) as usize].copy_from_slice(&dt_pos.to_le_bytes());
+    buf[(cg_pos + 32) as usize..(cg_pos + 40) as usize]
+        .copy_from_slice(&cn_master_pos.to_le_bytes());
+    buf[(cn_master_pos + 24) as usize..(cn_master_pos + 32) as usize]
+        .copy_from_slice(&cn_sig_pos.to_le_bytes());
+    buf[(cn_master_pos + 40) as usize..(cn_master_pos + 48) as usize]
+        .copy_from_slice(&tx_master_pos.to_le_bytes());
+    buf[(cn_sig_pos + 40) as usize..(cn_sig_pos + 48) as usize]
+        .copy_from_slice(&tx_sig_pos.to_le_bytes());
+
+    let (_tmp, mut mdf) = open_mdf_from_bytes(&buf)?;
+    mdf.rename_channel("SigOld", "SigNew");
+    mdf.rename_channel("TimeOld", "TimeNew");
+    mdf.load_all_channels_data_in_memory()?;
+
+    assert_eq!(
+        mdf.get_channel_master("SigNew"),
+        Some("TimeNew".to_string())
+    );
+    assert!(mdf.get_channel_data("SigOld").is_none());
+    let ChannelData::Float64(sig) = mdf.get_channel_data("SigNew").unwrap() else {
+        panic!("expected Float64 SigNew");
+    };
+    assert_eq!(sig.values_slice(), &[1.5, 2.5]);
+    Ok(())
+}
+
+#[test]
+fn test_logger_vlsc_flag_and_unsorted_vlsd_offsets() -> Result<()> {
+    // MDF4-009: companion VLSC cg_flags must only set CG_F_VLSC (not CG_F_VLSD),
+    // and unsorted VLSD offsets increment by 4 + payload_len.
+    use mdfr::mdfinfo::MdfInfo;
+    use mdfr_core::blocks::cg_block::{CG_F_VLSC, CG_F_VLSD};
+    use mdfr_core::blocks::cn::CnDataType;
+    use mdfr_core::compress::CompressionAlgorithm;
+    use mdfr_core::logger::{DataLayout, Logger, LoggerBuilder};
+    use mdfr_core::time::ManualClock;
+
+    let tmp = NamedTempFile::new()?;
+    let file = std::fs::File::create(tmp.path())?;
+    let mut b = LoggerBuilder::new(DataLayout::Unsorted, CompressionAlgorithm::NoCompression);
+    let g = b.add_group("Mixed");
+    let vlsd = b.add_vlsd_channel(g, "DynStr", CnDataType::StringUtf8)?;
+    let vlsc = b.add_vlsc_channel(g, "DynBytes", CnDataType::ByteArray)?;
+    let schema = b.build()?;
+    let mut logger = Logger::start(schema, file, ManualClock::new(0.001, 0))?;
+
+    logger
+        .begin_record(g)?
+        .set_bytes(vlsd, b"hi")? // 2B -> next offset 4+2 = 6
+        .set_bytes(vlsc, b"ab")?
+        .commit()?;
+
+    logger
+        .begin_record(g)?
+        .set_bytes(vlsd, b"world")?
+        .set_bytes(vlsc, b"cde")?
+        .commit()?;
+    logger.close()?;
+
+    let mut mdf = Mdf::new(tmp.path().to_str().unwrap())?;
+    mdf.load_all_channels_data_in_memory()?;
+    let MdfInfo::V4(info) = &mdf.mdf_info else {
+        panic!("expected MDF4");
+    };
+    let mut found_vlsc_cg = false;
+    for dg in info.dg.values() {
+        for cg in dg.cg.values() {
+            if (cg.block.cg_flags & CG_F_VLSC) != 0 {
+                found_vlsc_cg = true;
+                assert_eq!(cg.block.cg_flags & CG_F_VLSD, 0);
+            }
+        }
+    }
+    assert!(found_vlsc_cg);
+    Ok(())
+}
+
+#[test]
+fn test_conversions_nil_precision_bit63_text_to_text_and_cc_precision() -> Result<()> {
+    // MDF4-010 (NIL->null + exact float keys), MDF4-011 (bit 63 u64 mask), MDF4-012 (cc_precision), MDF4-017 (TextToText even/empty).
+    use arrow::array::Array;
+    let mut buf = Vec::new();
+    write_id_block(&mut buf);
+    let hd_pos = buf.len() as i64;
+    write_hd4(&mut buf, 0);
+    let dg_pos = buf.len() as i64;
+    write_dg4(&mut buf, 0, 0);
+    let cg_pos = buf.len() as i64;
+    write_cg4_with_data_bytes(&mut buf, 0, 2, 24); // 8B u64 bitfield + 8B f64 lookup + 8B string_id/u32... wait: 4+8+8+4 = 24B
+
+    // Ch0: u64 bitfield (bit 63) at offset 0
+    let cn_bf_pos = buf.len() as i64;
+    write_cn4_with_offset(&mut buf, 0, 0, 0, 0, 64, 0, 0, 0, 0);
+    let tx_bf_name = buf.len() as i64;
+    write_tx(&mut buf, "Bit63");
+    let tx_bit63_lbl = buf.len() as i64;
+    write_tx(&mut buf, "TopBit");
+
+    // BitfieldTextTable CC (type 11) per Table 38: cc_ref[0] -> sub ValueToText CC (cc_type 7)
+    let cc_bf_sub_pos = buf.len() as i64;
+    buf.extend_from_slice(b"##CC");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 48 + 6 * 8 + 8); // 4 base + 2 refs (match, default=NIL) + 1 key
+    push_u64(&mut buf, 6);
+    push_i64(&mut buf, 0);
+    push_i64(&mut buf, 0);
+    push_i64(&mut buf, 0);
+    push_i64(&mut buf, 0);
+    push_i64(&mut buf, tx_bit63_lbl); // masked == (1<<63) -> "TopBit"
+    push_i64(&mut buf, 0); // default -> ""
+    push_u8(&mut buf, 7); // ValueToText
+    push_u8(&mut buf, 0xff);
+    push_u16(&mut buf, 0);
+    push_u16(&mut buf, 2); // ref_count
+    push_u16(&mut buf, 1); // val_count
+    push_f64(&mut buf, 0.0);
+    push_f64(&mut buf, 0.0);
+    push_f64(&mut buf, (1u64 << 63) as f64);
+
+    // BitfieldTextTable CC (type 11): 1 mask = (1<<63), len = 48 + 5*8 + 1*8 = 96
+    let cc_bf_pos = buf.len() as i64;
+    buf.extend_from_slice(b"##CC");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 96);
+    push_u64(&mut buf, 5); // 4 base links + 1 ref
+    push_i64(&mut buf, 0);
+    push_i64(&mut buf, 0);
+    push_i64(&mut buf, 0);
+    push_i64(&mut buf, 0);
+    push_i64(&mut buf, cc_bf_sub_pos); // cc_ref[0] -> sub ValueToText CC
+    push_u8(&mut buf, 11); // BitfieldTextTable (cc_type = 11)
+    push_u8(&mut buf, 3); // cc_precision
+    push_u16(&mut buf, 1); // cc_flags: precision valid
+    push_u16(&mut buf, 1); // ref_count
+    push_u16(&mut buf, 1); // val_count
+    push_f64(&mut buf, 0.0);
+    push_f64(&mut buf, 0.0);
+    push_u64(&mut buf, 1u64 << 63); // cc_val[0] as u64 mask
+
+    // Ch1: u32 ValueToText with NIL default and NIL ref[0] -> produces Arrow nulls, plus cc_precision=4
+    let cn_v2t_pos = buf.len() as i64;
+    write_cn4_with_offset(&mut buf, 0, 0, 0, 8, 32, 0, 0, 0, 0);
+    let tx_v2t_name = buf.len() as i64;
+    write_tx(&mut buf, "V2TNil");
+    let tx_v2t_one = buf.len() as i64;
+    write_tx(&mut buf, "One");
+
+    let cc_v2t_pos = buf.len() as i64;
+    buf.extend_from_slice(b"##CC");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 120); // 48 + 7*8 + 2*8
+    push_u64(&mut buf, 7); // 4 base + 3 refs (key0, key1, default=NIL)
+    push_i64(&mut buf, 0);
+    push_i64(&mut buf, 0);
+    push_i64(&mut buf, 0);
+    push_i64(&mut buf, 0);
+    push_i64(&mut buf, tx_v2t_one); // val 1 -> "One"
+    push_i64(&mut buf, 0); // val 2 -> NIL -> null
+    push_i64(&mut buf, 0); // default -> NIL -> null
+    push_u8(&mut buf, 7); // ValueToText
+    push_u8(&mut buf, 4); // cc_precision
+    push_u16(&mut buf, 1); // cc_flags: precision valid
+    push_u16(&mut buf, 3); // ref_count
+    push_u16(&mut buf, 2); // val_count
+    push_f64(&mut buf, 0.0);
+    push_f64(&mut buf, 0.0);
+    push_f64(&mut buf, 1.0);
+    push_f64(&mut buf, 2.0);
+
+    // Ch2: f64 close-key ValueToValue (1.00000001 vs 1.00000002) at offset 12
+    let cn_fval_pos = buf.len() as i64;
+    write_cn4_with_offset(&mut buf, 0, 4, 0, 12, 64, 0, 0, 0, 0);
+    let tx_fval_name = buf.len() as i64;
+    write_tx(&mut buf, "FineLookup");
+
+    let cc_fval_pos = buf.len() as i64;
+    buf.extend_from_slice(b"##CC");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 112); // 48 + 4*8 + 4*8
+    push_u64(&mut buf, 4);
+    push_i64(&mut buf, 0);
+    push_i64(&mut buf, 0);
+    push_i64(&mut buf, 0);
+    push_i64(&mut buf, 0);
+    push_u8(&mut buf, 5); // ValueToValue (non-interpolated)
+    push_u8(&mut buf, 0xff);
+    push_u16(&mut buf, 0);
+    push_u16(&mut buf, 0);
+    push_u16(&mut buf, 4);
+    push_f64(&mut buf, 0.0);
+    push_f64(&mut buf, 0.0);
+    push_f64(&mut buf, 1.00000001);
+    push_f64(&mut buf, 100.0);
+    push_f64(&mut buf, 1.00000002);
+    push_f64(&mut buf, 200.0);
+
+    // Ch3: fixed UTF-8 string 4B with TextToText even cc_ref (2 links, no default -> input passthrough) at offset 20
+    let cn_t2t_pos = buf.len() as i64;
+    write_cn4_with_offset(&mut buf, 0, 7, 0, 20, 32, 0, 0, 0, 0);
+    let tx_t2t_name = buf.len() as i64;
+    write_tx(&mut buf, "T2TEven");
+    let tx_src = buf.len() as i64;
+    write_tx(&mut buf, "AA");
+    let tx_dst = buf.len() as i64;
+    write_tx(&mut buf, "MappedAA");
+
+    let cc_t2t_pos = buf.len() as i64;
+    buf.extend_from_slice(b"##CC");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 96); // 48 + 6*8 + 0*8
+    push_u64(&mut buf, 6);
+    push_i64(&mut buf, 0);
+    push_i64(&mut buf, 0);
+    push_i64(&mut buf, 0);
+    push_i64(&mut buf, 0);
+    push_i64(&mut buf, tx_src);
+    push_i64(&mut buf, tx_dst);
+    push_u8(&mut buf, 10); // TextToText
+    push_u8(&mut buf, 0xff);
+    push_u16(&mut buf, 0);
+    push_u16(&mut buf, 2);
+    push_u16(&mut buf, 0);
+    push_f64(&mut buf, 0.0);
+    push_f64(&mut buf, 0.0);
+
+    // 2 cycles x 24 bytes
+    let dt_pos = buf.len() as i64;
+    buf.extend_from_slice(b"##DT");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 24 + 48);
+    push_u64(&mut buf, 0);
+    // Cycle 0
+    push_u64(&mut buf, 1u64 << 63);
+    push_u32(&mut buf, 1);
+    push_f64(&mut buf, 1.00000001);
+    buf.extend_from_slice(b"AA\0\0");
+    // Cycle 1
+    push_u64(&mut buf, 0);
+    push_u32(&mut buf, 99); // unmapped -> NIL default -> null
+    push_f64(&mut buf, 1.00000002);
+    buf.extend_from_slice(b"ZZ\0\0"); // unmatched -> even cc_ref -> null
+
+    buf[(hd_pos + 24) as usize..(hd_pos + 32) as usize].copy_from_slice(&dg_pos.to_le_bytes());
+    buf[(dg_pos + 32) as usize..(dg_pos + 40) as usize].copy_from_slice(&cg_pos.to_le_bytes());
+    buf[(dg_pos + 40) as usize..(dg_pos + 48) as usize].copy_from_slice(&dt_pos.to_le_bytes());
+    buf[(cg_pos + 32) as usize..(cg_pos + 40) as usize].copy_from_slice(&cn_bf_pos.to_le_bytes());
+
+    for (cn, next, tx, cc) in [
+        (cn_bf_pos, cn_v2t_pos, tx_bf_name, cc_bf_pos),
+        (cn_v2t_pos, cn_fval_pos, tx_v2t_name, cc_v2t_pos),
+        (cn_fval_pos, cn_t2t_pos, tx_fval_name, cc_fval_pos),
+        (cn_t2t_pos, 0, tx_t2t_name, cc_t2t_pos),
+    ] {
+        buf[(cn + 24) as usize..(cn + 32) as usize].copy_from_slice(&next.to_le_bytes());
+        buf[(cn + 40) as usize..(cn + 48) as usize].copy_from_slice(&tx.to_le_bytes());
+        buf[(cn + 56) as usize..(cn + 64) as usize].copy_from_slice(&cc.to_le_bytes());
+    }
+
+    let (_tmp, mut mdf) = open_mdf_from_bytes(&buf)?;
+    assert_eq!(mdf.get_channel_precision("V2TNil"), Some(4)); // MDF4-012 fallback from CCBLOCK
+
+    mdf.load_all_channels_data_in_memory()?;
+
+    let ChannelData::Utf8(bf) = mdf.get_channel_converted_data("Bit63").unwrap() else {
+        panic!("expected Utf8 Bit63");
+    };
+    assert_eq!(bf.value(0), "TopBit");
+    assert_eq!(bf.value(1), "");
+
+    let ChannelData::Utf8(v2t) = mdf.get_channel_converted_data("V2TNil").unwrap() else {
+        panic!("expected Utf8 V2TNil");
+    };
+    assert!(!v2t.is_null(0));
+    assert_eq!(v2t.value(0), "One");
+    assert!(v2t.is_null(1));
+
+    let ChannelData::Float64(fv) = mdf.get_channel_converted_data("FineLookup").unwrap() else {
+        panic!("expected Float64 FineLookup");
+    };
+    assert_eq!(fv.values_slice(), &[100.0, 200.0]);
+
+    let ChannelData::Utf8(t2t) = mdf.get_channel_converted_data("T2TEven").unwrap() else {
+        panic!("expected Utf8 T2TEven");
+    };
+    assert!(!t2t.is_null(0));
+    assert_eq!(t2t.value(0), "MappedAA");
+    assert!(!t2t.is_null(1));
+    assert_eq!(t2t.value(1), "ZZ");
+    Ok(())
+}
+
+#[test]
+fn test_writer_deterministic_ld_zip_info_dz_param_and_ev_remapping() -> Result<()> {
+    // MDF4-003, MDF4-004, MDF4-014
+    use mdfr::mdfinfo::MdfInfo;
+    use mdfr::mdfinfo::mdfinfo4::Ev4Block;
+    use mdfr_core::blocks::cn::CnDataType;
+    use mdfr_core::compress::CompressionAlgorithm;
+    use mdfr_core::logger::{DataLayout, Logger, LoggerBuilder};
+    use mdfr_core::time::ManualClock;
+
+    let src_tmp = NamedTempFile::new()?;
+    {
+        let file = std::fs::File::create(src_tmp.path())?;
+        let mut b = LoggerBuilder::new(DataLayout::Sorted, CompressionAlgorithm::NoCompression);
+        let g = b.add_group("G");
+        let ch = b.add_channel(g, "ByteSig", CnDataType::UIntLE, 8)?;
+        let schema = b.build()?;
+        let mut logger = Logger::start(schema, file, ManualClock::new(0.001, 0))?;
+        for v in 0u64..512 {
+            logger.begin_record(g)?.set_u64(ch, v % 4)?.commit()?;
+        }
+        logger.close()?;
+    }
+
+    let mut mdf = Mdf::new(src_tmp.path().to_str().unwrap())?;
+    mdf.load_all_channels_data_in_memory()?;
+    if let MdfInfo::V4(info) = &mut mdf.mdf_info {
+        info.ev.insert(
+            10,
+            Ev4Block {
+                ev_ev_parent: 0,
+                ev_ev_range: 0,
+                ev_sync_base_value: 111,
+                ..Default::default()
+            },
+        );
+        info.ev.insert(
+            20,
+            Ev4Block {
+                ev_ev_parent: 10,
+                ev_ev_range: 10,
+                ev_sync_base_value: 222,
+                ..Default::default()
+            },
+        );
+    }
+
+    let out1 = NamedTempFile::new()?;
+    let out2 = NamedTempFile::new()?;
+    mdf.write(
+        out1.path().to_str().unwrap(),
+        CompressionAlgorithm::DeflateTranspose,
+    )?;
+    mdf.write(
+        out2.path().to_str().unwrap(),
+        CompressionAlgorithm::DeflateTranspose,
+    )?;
+
+    let bytes1 = std::fs::read(out1.path())?;
+    let bytes2 = std::fs::read(out2.path())?;
+    assert_eq!(bytes1.len(), bytes2.len());
+    // Apart from wall-clock timestamps inserted at write time (HD start_time_ns + new FH fh_time_ns),
+    // the entire serialized file layout is deterministic.
+    let diff_positions: Vec<usize> = bytes1
+        .iter()
+        .zip(bytes2.iter())
+        .enumerate()
+        .filter_map(|(i, (a, b))| (a != b).then_some(i))
+        .collect();
+    let second_fh = bytes1.windows(4).rposition(|w| w == b"##FH").unwrap();
+    let non_ts_diffs: Vec<usize> = diff_positions
+        .into_iter()
+        .filter(|&p| !(136..144).contains(&p) && !(second_fh + 40..second_fh + 48).contains(&p))
+        .collect();
+    assert!(
+        non_ts_diffs.is_empty(),
+        "unexpected non-timestamp diffs at byte offsets: {non_ts_diffs:?}"
+    );
+
+    // Check 1-byte ByteSig DZ block downgraded DeflateTranspose (1) -> Deflate (0) with zip_param = 0,
+    // and check 8-byte master time DZ block kept DeflateTranspose (1) with zip_param = 8.
+    let dz_params: Vec<(u8, u32)> = bytes1
+        .windows(32)
+        .filter(|w| &w[0..4] == b"##DZ")
+        .map(|w| (w[26], u32::from_le_bytes(w[28..32].try_into().unwrap())))
+        .collect();
+    assert!(
+        dz_params.contains(&(0, 0)),
+        "expected downgraded 1-byte DZ (0, 0), got {dz_params:?}"
+    );
+    assert!(
+        dz_params.contains(&(1, 8)),
+        "expected 8-byte transposed DZ (1, 8), got {dz_params:?}"
+    );
+
+    // Check LD blocks set ld_flags bit 7 (128) for valid ld_zip_info
+    let ld_flags_list: Vec<u8> = bytes1
+        .windows(48)
+        .filter(|w| &w[0..4] == b"##LD")
+        .map(|w| w[40])
+        .collect();
+    assert!(!ld_flags_list.is_empty());
+    assert!(ld_flags_list.iter().all(|&f| (f & (1 << 7)) != 0));
+
+    // Check EV parent/range remapped on reload
+    let mut reloaded = Mdf::new(out1.path().to_str().unwrap())?;
+    reloaded.load_all_channels_data_in_memory()?;
+    let MdfInfo::V4(rinfo) = &reloaded.mdf_info else {
+        panic!("expected MDF4");
+    };
+    let parent_pos = rinfo
+        .ev
+        .iter()
+        .find(|(_, ev)| ev.ev_sync_base_value == 111)
+        .map(|(p, _)| *p)
+        .expect("ParentEv present");
+    let child_ev = rinfo
+        .ev
+        .values()
+        .find(|ev| ev.ev_sync_base_value == 222)
+        .expect("ChildEv present");
+    assert_eq!(child_ev.ev_ev_parent, parent_pos);
+    assert_eq!(child_ev.ev_ev_range, parent_pos);
+    Ok(())
+}
+
+#[test]
+fn test_datastream_decoder_small_alignment_and_subbyte_offset() -> Result<()> {
+    // MDF4-016: calculate_aligned_offset handles current_byte_pos < alignment_offset & intra-byte cn_bit_offset.
+    use mdfr::mdfinfo::mdfinfo4::{Cn4, Cn4Block, CnType, Compo, Composition, Ds4Block};
+    use mdfr::mdfreader::datastream_decoder::{calculate_aligned_offset, decode_datastream_blob};
+
+    assert_eq!(calculate_aligned_offset(16, 4, 8), 4); // current_byte_pos=2 < alignment_offset=4 -> aligns up to byte 4
+
+    // ds_cn_alignment_start points to block_position 200 (UInt8 [2]); ds_cn_composition points to 100.
+    let ds_block = Ds4Block {
+        ds_links: 2,
+        links: vec![100, 200],
+        ..Default::default()
+    };
+    let member_cn = Cn4 {
+        block_position: 100,
+        block: Cn4Block {
+            cn_data_type: 0,
+            cn_byte_offset: 2,
+            cn_bit_offset: 2,
+            cn_bit_count: 4,
+            cn_alignment: 0, // 1-byte align
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    let align_cn = Cn4 {
+        block_position: 200,
+        block: Cn4Block {
+            cn_data_type: 0,
+            cn_bit_count: 8,
+            ..Default::default()
+        },
+        data: ChannelData::UInt8(arrow::array::UInt8Array::from(vec![2])),
+        ..Default::default()
+    };
+    let mut cn_map = CnType::default();
+    cn_map.insert(0, member_cn.clone());
+    cn_map.insert(1, align_cn);
+    let comp = Composition {
+        block: Compo::CN(Box::new(member_cn)),
+        compo: None,
+    };
+    let blob = [0xAAu8, 0xBB, 0b0011_1100];
+    let decoded = decode_datastream_blob(&blob, &ds_block, &comp, &cn_map, &[0], &[3])?;
+    assert_eq!(decoded[&0][0], vec![15]);
+    Ok(())
+}
+
+#[test]
+fn test_ca_axis_conversion_lookup_and_classification() -> Result<()> {
+    // Gap 6: ca_cc_axis_conversion overrules axis cn_cc_conversion, 2D LookUp interpolation,
+    // and IntervalAxis/ClassificationResult left-open vs left-closed interval bounds.
+    let mut buf = Vec::new();
+    write_id_block(&mut buf);
+    let hd_pos = buf.len() as i64;
+    write_hd4(&mut buf, 0);
+    let dg_pos = buf.len() as i64;
+    write_dg4(&mut buf, 0, 0);
+    // 1 cycle:
+    // offset 0..4: AxisX u16[2] ([1, 3])
+    // offset 4..36: Map2D f64[4] ([10.0, 20.0, 30.0, 50.0]) (2x2 row-major)
+    // offset 36..76: IntAxis f64[5] ([0.0, 10.0, 20.0, 30.0, 40.0])
+    // offset 76..92: ClassCounts u32[4] ([100, 200, 300, 400])
+    let cg_pos = buf.len() as i64;
+    write_cg4_with_data_bytes(&mut buf, 0, 1, 92);
+
+    // AxisX CN (type 0, u16, 16-bit) with own cn_cc_conversion (*10), overruled by Map2D's ca_cc_axis_conversion[0] (*2 -> [2, 6])
+    let cn_ax_x = buf.len() as i64;
+    write_cn4_with_offset(&mut buf, 0, 0, 0, 0, 16, 0, 0, 0, 0);
+    let tx_ax_x = buf.len() as i64;
+    write_tx(&mut buf, "AxisX");
+    let cc_times_10 = buf.len() as i64;
+    write_cc_linear(&mut buf, 10.0, 0.0);
+    let cc_times_2 = buf.len() as i64;
+    write_cc_linear(&mut buf, 2.0, 0.0);
+
+    // AxisX CABLOCK: ca_type=1 (ScalingAxis), ca_ndim=1, dim=[2], simple array [2]
+    let ca_ax_x = buf.len() as i64;
+    buf.extend_from_slice(b"##CA");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 56);
+    push_u64(&mut buf, 1); // ca_links = 1 (ca_composition=0)
+    push_i64(&mut buf, 0); // ca_composition
+    push_u8(&mut buf, 1); // ca_type = ScalingAxis
+    push_u8(&mut buf, 0); // ca_storage = CN template
+    push_u16(&mut buf, 1); // ca_ndim = 1
+    push_u32(&mut buf, 0); // ca_flags = 0
+    push_u32(&mut buf, 2); // ca_byte_offset_base
+    push_u32(&mut buf, 0);
+    push_u64(&mut buf, 2); // ca_dim_size[0] = 2
+
+    // Map2D LookUp CN (ca_type = 2, 2x2 f64) at byte_offset = 4
+    let cn_map = buf.len() as i64;
+    write_cn4_with_offset(&mut buf, 0, 4, 0, 4, 64, 0, 0, 0, 0);
+    let tx_map = buf.len() as i64;
+    write_tx(&mut buf, "Map2D");
+    // Map2D CABLOCK: has axis flag (bit 4 = 16): ca_links = 1 + 2 (ca_cc_axis_conversion) + 6 (ca_axis) = 9 links
+    // len = 24 + 9*8 + 16 + 2*8 = 128 bytes
+    let ca_map = buf.len() as i64;
+    buf.extend_from_slice(b"##CA");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 128);
+    push_u64(&mut buf, 9);
+    push_i64(&mut buf, 0); // ca_composition
+    push_i64(&mut buf, cc_times_2); // ca_cc_axis_conversion[0] (overrules AxisX's *10)
+    push_i64(&mut buf, 0); // ca_cc_axis_conversion[1] (NIL -> 1:1)
+    push_i64(&mut buf, dg_pos);
+    push_i64(&mut buf, cg_pos);
+    push_i64(&mut buf, cn_ax_x);
+    push_i64(&mut buf, 0); // axis 1 NIL -> [0.0, 1.0]
+    push_i64(&mut buf, 0);
+    push_i64(&mut buf, 0);
+    push_u8(&mut buf, 2); // ca_type = LookUp
+    push_u8(&mut buf, 0); // ca_storage = CN template
+    push_u16(&mut buf, 2); // ca_ndim = 2
+    push_u32(&mut buf, 1 << 4); // ca_flags: axis flag (row-major)
+    push_u32(&mut buf, 8); // ca_byte_offset_base
+    push_u32(&mut buf, 0);
+    push_u64(&mut buf, 2); // dim 0 = 2
+    push_u64(&mut buf, 2); // dim 1 = 2
+
+    // IntAxis CN (ca_type = 3 IntervalAxis, f64[5]) at byte_offset = 36 with left-open bit 7
+    let cn_int = buf.len() as i64;
+    write_cn4_with_offset(&mut buf, 0, 4, 0, 36, 64, 0, 0, 0, 0);
+    let tx_int = buf.len() as i64;
+    write_tx(&mut buf, "IntAxis");
+    let ca_int = buf.len() as i64;
+    buf.extend_from_slice(b"##CA");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 56);
+    push_u64(&mut buf, 1);
+    push_i64(&mut buf, 0);
+    push_u8(&mut buf, 3); // IntervalAxis
+    push_u8(&mut buf, 0);
+    push_u16(&mut buf, 1);
+    push_u32(&mut buf, 1 << 7); // CA_F_LEFT_OPEN
+    push_u32(&mut buf, 8);
+    push_u32(&mut buf, 0);
+    push_u64(&mut buf, 5);
+
+    // ClassificationResult CN (ca_type = 4, 1x4 u32) at byte_offset = 76 referencing IntAxis
+    let cn_cls = buf.len() as i64;
+    write_cn4_with_offset(&mut buf, 0, 0, 0, 76, 32, 0, 0, 0, 0);
+    let tx_cls = buf.len() as i64;
+    write_tx(&mut buf, "ClsHist");
+    // axis flag (bit 4 = 16): links = 1 + 1 (cc_axis_conv) + 3 (ca_axis) = 5 -> len = 24 + 5*8 + 16 + 8 = 88
+    let ca_cls = buf.len() as i64;
+    buf.extend_from_slice(b"##CA");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 88);
+    push_u64(&mut buf, 5);
+    push_i64(&mut buf, 0);
+    push_i64(&mut buf, 0); // ca_cc_axis_conversion[0] = 0 (1:1)
+    push_i64(&mut buf, dg_pos);
+    push_i64(&mut buf, cg_pos);
+    push_i64(&mut buf, cn_int);
+    push_u8(&mut buf, 4); // ca_type = ClassificationResult
+    push_u8(&mut buf, 0);
+    push_u16(&mut buf, 1); // ca_ndim = 1
+    push_u32(&mut buf, 1 << 4); // axis flag
+    push_u32(&mut buf, 4);
+    push_u32(&mut buf, 0);
+    push_u64(&mut buf, 4); // 4 bins
+
+    // Data record (92 bytes)
+    let dt_pos = buf.len() as i64;
+    buf.extend_from_slice(b"##DT");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 24 + 92);
+    push_u64(&mut buf, 0);
+    push_u16(&mut buf, 1); // AxisX[0] * 2 = 2.0
+    push_u16(&mut buf, 3); // AxisX[1] * 2 = 6.0
+    push_f64(&mut buf, 10.0); // Map2D[0,0]
+    push_f64(&mut buf, 20.0); // Map2D[0,1]
+    push_f64(&mut buf, 30.0); // Map2D[1,0]
+    push_f64(&mut buf, 50.0); // Map2D[1,1]
+    for &b in &[0.0f64, 10.0, 20.0, 30.0, 40.0] {
+        push_f64(&mut buf, b);
+    }
+    for c in [100u32, 200, 300, 400] {
+        push_u32(&mut buf, c);
+    }
+
+    buf[(hd_pos + 24) as usize..(hd_pos + 32) as usize].copy_from_slice(&dg_pos.to_le_bytes());
+    buf[(dg_pos + 32) as usize..(dg_pos + 40) as usize].copy_from_slice(&cg_pos.to_le_bytes());
+    buf[(dg_pos + 40) as usize..(dg_pos + 48) as usize].copy_from_slice(&dt_pos.to_le_bytes());
+    buf[(cg_pos + 32) as usize..(cg_pos + 40) as usize].copy_from_slice(&cn_ax_x.to_le_bytes());
+
+    buf[(cn_ax_x + 24) as usize..(cn_ax_x + 32) as usize].copy_from_slice(&cn_map.to_le_bytes());
+    buf[(cn_ax_x + 32) as usize..(cn_ax_x + 40) as usize].copy_from_slice(&ca_ax_x.to_le_bytes());
+    buf[(cn_ax_x + 40) as usize..(cn_ax_x + 48) as usize].copy_from_slice(&tx_ax_x.to_le_bytes());
+    buf[(cn_ax_x + 56) as usize..(cn_ax_x + 64) as usize]
+        .copy_from_slice(&cc_times_10.to_le_bytes());
+
+    buf[(cn_map + 24) as usize..(cn_map + 32) as usize].copy_from_slice(&cn_int.to_le_bytes());
+    buf[(cn_map + 32) as usize..(cn_map + 40) as usize].copy_from_slice(&ca_map.to_le_bytes());
+    buf[(cn_map + 40) as usize..(cn_map + 48) as usize].copy_from_slice(&tx_map.to_le_bytes());
+
+    buf[(cn_int + 24) as usize..(cn_int + 32) as usize].copy_from_slice(&cn_cls.to_le_bytes());
+    buf[(cn_int + 32) as usize..(cn_int + 40) as usize].copy_from_slice(&ca_int.to_le_bytes());
+    buf[(cn_int + 40) as usize..(cn_int + 48) as usize].copy_from_slice(&tx_int.to_le_bytes());
+
+    buf[(cn_cls + 32) as usize..(cn_cls + 40) as usize].copy_from_slice(&ca_cls.to_le_bytes());
+    buf[(cn_cls + 40) as usize..(cn_cls + 48) as usize].copy_from_slice(&tx_cls.to_le_bytes());
+
+    let (_tmp, mut mdf) = open_mdf_from_bytes(&buf)?;
+    mdf.load_all_channels_data_in_memory()?;
+
+    let axes = mdf.get_channel_ca_axes("Map2D")?.expect("axes present");
+    // AxisX raw [1, 3] converted with ca_cc_axis_conversion (*2 -> [2, 6]), NOT *10 ([10, 30])
+    assert_eq!(axes, vec![vec![2.0, 6.0], vec![0.0, 1.0]]);
+    // Midpoint (x=4.0, y=0.5): avg of [10, 20, 30, 50] = 27.5
+    let interp = mdf.eval_ca_lookup("Map2D", 0, &[4.0, 0.5])?.unwrap();
+    assert!((interp - 27.5).abs() < 1e-12);
+    // Asymmetric point (x=4.0, y=0.25): 0.5*(0.75*10+0.25*20) + 0.5*(0.75*30+0.25*50) = 0.5*12.5 + 0.5*35.0 = 23.75
+    let interp2 = mdf.eval_ca_lookup("Map2D", 0, &[4.0, 0.25])?.unwrap();
+    assert!((interp2 - 23.75).abs() < 1e-12);
+
+    // Column-major lookup sanity check directly via eval_ca_lookup
+    let col_major_val = mdfr::mdfreader::conversions4::eval_ca_lookup(
+        &axes,
+        &[10.0, 30.0, 20.0, 50.0],
+        &[4.0, 0.25],
+        false,
+    )?;
+    assert!((col_major_val - 23.75).abs() < 1e-12);
+
+    // Left-open (CA_F_LEFT_OPEN) classification on file: (0,10], (10,20], (20,30], (30,40]
+    assert_eq!(mdf.eval_ca_classification("ClsHist", 0, 0.0)?, None);
+    assert_eq!(mdf.eval_ca_classification("ClsHist", 0, 10.0)?, Some(100.0));
+    assert_eq!(mdf.eval_ca_classification("ClsHist", 0, 20.0)?, Some(200.0));
+    // Left-closed direct check: [0, 10), [10, 20)
+    assert_eq!(
+        mdfr::mdfreader::conversions4::eval_ca_classification(
+            &[0.0, 10.0, 20.0],
+            &[100.0, 200.0],
+            10.0,
+            false
+        ),
+        Some(200.0)
+    );
+    Ok(())
+}

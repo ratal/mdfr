@@ -7,8 +7,8 @@ use crate::mdfinfo::mdfinfo4::{
     parse_dz, parser_dl4_block, parser_ld4_block, read_dz_raw,
 };
 use crate::mdfinfo::mdfinfo4::{Ca4Block, Cg4, Cn4, Compo, Composition, Dg4, Ds4Block};
-use crate::mdfreader::data_read4::read_channels_from_bytes;
 use crate::mdfreader::data_read4::read_one_channel_array;
+use crate::mdfreader::data_read4::{read_channels_from_bytes, read_channels_from_bytes_with_inval};
 use crate::mdfreader::datastream_decoder;
 use anyhow::{Context, Error, Result, bail};
 use encoding_rs::{Decoder, GB18030, UTF_8, UTF_16BE, UTF_16LE, WINDOWS_1252};
@@ -327,7 +327,7 @@ fn read_data(
 
             // Gd4Block struct size (without id): 4 + 8 + 8 + 8 + 2 = 30 bytes
             // After reading: reader at position + 4 (id) + 30 (struct) = position + 34
-            const GD4_STRUCT_SIZE: i64 = 30;
+            const GD4_STRUCT_SIZE: i64 = 36;
             let current_pos = position + 4 + GD4_STRUCT_SIZE;
 
             // Check if we support the required MDF version (430 for MDF 4.3.0)
@@ -445,6 +445,9 @@ fn read_vlsd_from_dl_blocks(
     let mut previous_index: usize = 0;
     for dl in dl_blocks {
         for data_pointer in dl.dl_data {
+            if data_pointer == 0 {
+                continue;
+            }
             rdr.seek_relative(data_pointer - position)
                 .context("Could not reach VLSD sub-block from DL")?;
             let mut id = [0u8; 4];
@@ -935,6 +938,9 @@ fn read_independent_channel_data(
         let mut raw_entries: Vec<RawCompBlock> = Vec::new();
         for dl in &dl_blocks {
             for &data_ptr in &dl.dl_data {
+                if data_ptr == 0 {
+                    continue;
+                }
                 rdr.seek_relative(data_ptr - position)?;
                 let mut blk_id = [0u8; 4];
                 rdr.read_exact(&mut blk_id)?;
@@ -972,6 +978,9 @@ fn read_independent_channel_data(
         let mut raw_entries: Vec<RawCompBlock> = Vec::new();
         for dl in &dl_blocks {
             for &data_ptr in &dl.dl_data {
+                if data_ptr == 0 {
+                    continue;
+                }
                 rdr.seek_relative(data_ptr - position)?;
                 let mut blk_id = [0u8; 4];
                 rdr.read_exact(&mut blk_id)?;
@@ -1070,6 +1079,9 @@ fn read_dg_template_array(
             let mut raw_entries: Vec<RawCompBlock> = Vec::new();
             for dl in &dl_blocks {
                 for &data_ptr in &dl.dl_data {
+                    if data_ptr == 0 {
+                        continue;
+                    }
                     rdr.seek_relative(data_ptr - position)?;
                     let mut blk_id = [0u8; 4];
                     rdr.read_exact(&mut blk_id)?;
@@ -1485,6 +1497,9 @@ fn parser_dl4_sorted(
     let mut raw_entries: Vec<(bool, RawCompBlock)> = Vec::with_capacity(total_entries); // (is_sd, block)
     for dl in &dl_blocks {
         for &data_pointer in &dl.dl_data {
+            if data_pointer == 0 {
+                continue;
+            }
             rdr.seek_relative(data_pointer - position)
                 .context("Could not reach DV or DZ block position from DL4")?;
             let mut id = [0u8; 4];
@@ -1560,12 +1575,18 @@ fn parser_dl4_sorted(
             let n_record_chunk = block_length.checked_div(record_length).unwrap_or(0);
             if previous_index < cg_cycle_count && n_record_chunk > 0 {
                 let records_to_read = n_record_chunk.min(cg_cycle_count - previous_index);
-                vlsd_channels = read_channels_from_bytes(
+                let inval_bytes = if (channel_group.block.cg_flags & (CG_F_VLSD | CG_F_VLSC)) == 0 {
+                    channel_group.block.cg_inval_bytes as usize
+                } else {
+                    0
+                };
+                vlsd_channels = read_channels_from_bytes_with_inval(
                     &block_data[..record_length * records_to_read],
                     &mut channel_group.cn,
                     record_length,
                     previous_index,
-                    true,
+                    inval_bytes > 0,
+                    inval_bytes,
                 )
                 .context("could not read channels from bytes")?;
                 previous_index += n_record_chunk;
@@ -1583,12 +1604,18 @@ fn parser_dl4_sorted(
                 continue;
             }
             let records_to_read = n_record_chunk.min(cg_cycle_count - previous_index);
-            vlsd_channels = read_channels_from_bytes(
+            let inval_bytes = if (channel_group.block.cg_flags & (CG_F_VLSD | CG_F_VLSC)) == 0 {
+                channel_group.block.cg_inval_bytes as usize
+            } else {
+                0
+            };
+            vlsd_channels = read_channels_from_bytes_with_inval(
                 &data[..record_length * records_to_read],
                 &mut channel_group.cn,
                 record_length,
                 previous_index,
-                true,
+                inval_bytes > 0,
+                inval_bytes,
             )
             .context("could not read channels from bytes")?;
             let remaining = block_length % record_length;
@@ -1615,6 +1642,9 @@ fn parser_dl4_unsorted(
     let mut raw_entries: Vec<RawCompBlock> = Vec::new();
     for dl in &dl_blocks {
         for &data_pointer in &dl.dl_data {
+            if data_pointer == 0 {
+                continue;
+            }
             rdr.seek_relative(data_pointer - position)
                 .context("Could not reach DT or DZ position from DL")?;
             let mut id = [0u8; 4];
@@ -1696,15 +1726,21 @@ fn read_all_channels_sorted(
     // Allocate buffer once and reuse across chunks
     let max_chunk_size = chunks.iter().map(|c| c.1).max().unwrap_or(0);
     let mut data_chunk = vec![0u8; max_chunk_size];
+    let inval_bytes = if (channel_group.block.cg_flags & (CG_F_VLSD | CG_F_VLSC)) == 0 {
+        channel_group.block.cg_inval_bytes as usize
+    } else {
+        0
+    };
     for (n_record_chunk, chunk_size) in chunks {
         rdr.read_exact(&mut data_chunk[..chunk_size])
             .context("Could not read data chunk")?;
-        vlsd_channels = read_channels_from_bytes(
+        vlsd_channels = read_channels_from_bytes_with_inval(
             &data_chunk[..chunk_size],
             &mut channel_group.cn,
             channel_group.record_length as usize,
             previous_index,
-            true,
+            inval_bytes > 0,
+            inval_bytes,
         )
         .context("could not read channels from bytes")?;
         previous_index += n_record_chunk;
@@ -1727,12 +1763,18 @@ fn read_all_channels_sorted_from_bytes(
         .checked_div(record_length)
         .unwrap_or(0)
         .min(cg_cycle_count);
-    let vlsd_channels: Vec<(u8, i64)> = read_channels_from_bytes(
+    let inval_bytes = if (channel_group.block.cg_flags & (CG_F_VLSD | CG_F_VLSC)) == 0 {
+        channel_group.block.cg_inval_bytes as usize
+    } else {
+        0
+    };
+    let vlsd_channels: Vec<(u8, i64)> = read_channels_from_bytes_with_inval(
         &data[..n_records * record_length],
         &mut channel_group.cn,
         record_length,
         0,
-        true,
+        inval_bytes > 0,
+        inval_bytes,
     )
     .context("failed initilising arrays")?;
     Ok(vlsd_channels)
@@ -2061,12 +2103,18 @@ fn read_all_channels_unsorted_from_bytes(
         {
             let record_length = channel_group.record_length as usize;
             let n_records = record_data.len().checked_div(record_length).unwrap_or(0);
-            read_channels_from_bytes(
+            let inval_bytes = if (channel_group.block.cg_flags & (CG_F_VLSD | CG_F_VLSC)) == 0 {
+                channel_group.block.cg_inval_bytes as usize
+            } else {
+                0
+            };
+            read_channels_from_bytes_with_inval(
                 record_data,
                 &mut channel_group.cn,
                 record_length,
                 *index,
-                true,
+                inval_bytes > 0,
+                inval_bytes,
             )
             .context("failed reading channels from bytes after reading unsorted data")?;
             *index += n_records; // advance write position for next DL block
@@ -2567,6 +2615,15 @@ fn store_decoded_values_in_channel(
                 };
                 b.values_slice_mut()[i] = val;
             }
+            ChannelBuilder::Float32(b) if value_bytes.len() == 2 => {
+                let bytes: [u8; 2] = value_bytes[..2].try_into()?;
+                let val = if is_big {
+                    half::f16::from_be_bytes(bytes).to_f32()
+                } else {
+                    half::f16::from_le_bytes(bytes).to_f32()
+                };
+                b.values_slice_mut()[i] = val;
+            }
             ChannelBuilder::Int64(b) => {
                 b.values_slice_mut()[i] = decode_i64_var_bytes(&value_bytes, is_big);
             }
@@ -2580,6 +2637,54 @@ fn store_decoded_values_in_channel(
                     f64::from_le_bytes(value_bytes[..8].try_into()?)
                 };
                 b.values_slice_mut()[i] = val;
+            }
+            ChannelBuilder::Complex32(b) if value_bytes.len() >= 8 => {
+                let (re, im) = if is_big {
+                    (
+                        f32::from_be_bytes(value_bytes[..4].try_into()?),
+                        f32::from_be_bytes(value_bytes[4..8].try_into()?),
+                    )
+                } else {
+                    (
+                        f32::from_le_bytes(value_bytes[..4].try_into()?),
+                        f32::from_le_bytes(value_bytes[4..8].try_into()?),
+                    )
+                };
+                let slice = b.values_slice_mut();
+                slice[i * 2] = re;
+                slice[i * 2 + 1] = im;
+            }
+            ChannelBuilder::Complex32(b) if value_bytes.len() == 4 => {
+                let (re, im) = if is_big {
+                    (
+                        half::f16::from_be_bytes(value_bytes[..2].try_into()?).to_f32(),
+                        half::f16::from_be_bytes(value_bytes[2..4].try_into()?).to_f32(),
+                    )
+                } else {
+                    (
+                        half::f16::from_le_bytes(value_bytes[..2].try_into()?).to_f32(),
+                        half::f16::from_le_bytes(value_bytes[2..4].try_into()?).to_f32(),
+                    )
+                };
+                let slice = b.values_slice_mut();
+                slice[i * 2] = re;
+                slice[i * 2 + 1] = im;
+            }
+            ChannelBuilder::Complex64(b) if value_bytes.len() >= 16 => {
+                let (re, im) = if is_big {
+                    (
+                        f64::from_be_bytes(value_bytes[..8].try_into()?),
+                        f64::from_be_bytes(value_bytes[8..16].try_into()?),
+                    )
+                } else {
+                    (
+                        f64::from_le_bytes(value_bytes[..8].try_into()?),
+                        f64::from_le_bytes(value_bytes[8..16].try_into()?),
+                    )
+                };
+                let slice = b.values_slice_mut();
+                slice[i * 2] = re;
+                slice[i * 2 + 1] = im;
             }
             ChannelBuilder::Utf8(b) => {
                 b.append_value(decode_string_bytes(

@@ -44,6 +44,8 @@ impl From<bool> for Endianness {
 pub const CN_F_ALL_VALUES_INVALID: u32 = 1 << 0;
 /// Bit 1: Invalidation bit valid
 pub const CN_F_INVALID: u32 = 1 << 1;
+/// Bit 12: Default X axis flag
+pub const CN_F_DEFAULT_X: u32 = 1 << 12;
 /// Bit 13: Event signal - channel contains event data, cn_data points to template EVBLOCK
 pub const CN_F_EVENT_SIGNAL: u32 = 1 << 13;
 /// Bit 15: Raw sensor event channel
@@ -317,8 +319,14 @@ impl Cn4Block {
     /// This link points to a channel containing the size information for variable length signal data.
     /// Only valid for MDF 4.3+ VLSC channels.
     pub fn cn_cn_size(&self) -> Option<i64> {
-        if self.cn_type == 7 && !self.links.is_empty() {
-            Some(self.links[0]) // First additional link (9th link) is cn_cn_size
+        if self.cn_type == 7 {
+            let idx = self.cn_attachment_count as usize
+                + if (self.cn_flags & CN_F_DEFAULT_X) != 0 {
+                    3
+                } else {
+                    0
+                };
+            self.links.get(idx).copied()
         } else {
             None
         }
@@ -505,6 +513,41 @@ mod tests {
         assert_eq!(16 + buf.len(), 168);
         let back: Cn4Block = Cursor::new(buf).read_le().unwrap();
         assert_eq!(back.cn_cn_size(), Some(0x99));
+    }
+
+    #[test]
+    fn cn_cn_size_skips_attachments_and_default_x() {
+        // 2 attachments + default X (3 links) + cn_cn_size (1 link) = 6 extra links
+        let cn = Cn4Block {
+            cn_links: 14,
+            links: vec![10, 11, 20, 21, 22, 0xABC],
+            cn_type: 7,
+            cn_attachment_count: 2,
+            cn_flags: CN_F_DEFAULT_X,
+            ..Default::default()
+        };
+        assert_eq!(cn.cn_cn_size(), Some(0xABC));
+
+        // Only default X (3 links) + cn_cn_size
+        let cn_def_x = Cn4Block {
+            cn_links: 12,
+            links: vec![20, 21, 22, 0xDEF],
+            cn_type: 7,
+            cn_attachment_count: 0,
+            cn_flags: CN_F_DEFAULT_X,
+            ..Default::default()
+        };
+        assert_eq!(cn_def_x.cn_cn_size(), Some(0xDEF));
+
+        // Missing link when links vec is shorter than expected offset
+        let cn_short = Cn4Block {
+            cn_links: 9,
+            links: vec![0x99],
+            cn_type: 7,
+            cn_attachment_count: 1,
+            ..Default::default()
+        };
+        assert_eq!(cn_short.cn_cn_size(), None);
     }
 
     #[test]
