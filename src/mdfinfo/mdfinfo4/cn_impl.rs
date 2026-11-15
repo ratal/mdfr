@@ -658,7 +658,7 @@ impl Cn4 {
     }
 
     /// Returns true if this channel is a synchronization channel.
-    /// Sync channels reference an ATBLOCK (attachment) rather than containing raw data.
+    /// Sync channels store synchronization values in the record and reference an ATBLOCK (attachment) via cn_data.
     pub fn is_sync(&self) -> bool {
         self.block.cn_type == 4
     }

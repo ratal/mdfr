@@ -697,6 +697,7 @@ pub fn read_one_channel_array(
 ) -> Result<(), Error> {
     if cn.block.cn_type == 0
         || cn.block.cn_type == 2
+        || cn.block.cn_type == 4
         || cn.block.cn_type == 5
         || cn.block.cn_type == 7
     {
@@ -706,6 +707,7 @@ pub fn read_one_channel_array(
         // cn_type == 5 : Maximum length data channel, removing no valid bytes done by another size channel pointed by cn_data
         // cn_type == 0 : fixed length data channel
         // cn_type == 2 : master channel
+        // cn_type == 4 : synchronization channel (sync value stored in record, cn_data points to ATBLOCK)
         // cn_type == 7 : VLSC channel (stores offsets into VD block)
         let n_bytes = cn.n_bytes as usize;
         let list_size = cn.list_size;
@@ -1138,6 +1140,7 @@ pub fn read_channels_from_bytes_with_inval(
             }
             if cn.block.cn_type == 0
                 || cn.block.cn_type == 2
+                || cn.block.cn_type == 4
                 || cn.block.cn_type == 5
                 || (cn.block.cn_type == 7
                     && matches!(

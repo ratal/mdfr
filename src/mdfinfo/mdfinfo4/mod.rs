@@ -247,7 +247,7 @@ impl MdfInfo4 {
         None
     }
     /// Returns true if the channel is a synchronization channel.
-    /// Sync channels reference an ATBLOCK (attachment) rather than containing raw data.
+    /// Sync channels store synchronization values in the record and reference an ATBLOCK (attachment) via cn_data.
     pub fn is_sync_channel(&self, channel_name: &str) -> bool {
         if let Some((_master, dg_pos, (_cg_pos, rec_id), (_cn_pos, rec_pos))) =
             self.get_channel_id(channel_name)

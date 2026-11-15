@@ -2391,3 +2391,158 @@ fn test_ca_axis_conversion_lookup_and_classification() -> Result<()> {
     );
     Ok(())
 }
+
+#[test]
+fn test_synchronization_channel_cn_type_4() -> Result<()> {
+    // MDF4 spec §6.6: synchronization channel (cn_type = 4) stores sync values in the record
+    // and links cn_data to an ATBLOCK in the global hd_at_first attachment list.
+    let mut buf = Vec::new();
+    write_id_block(&mut buf);
+    let hd_pos = buf.len() as i64;
+    write_hd4(&mut buf, 0);
+
+    // External AVI ATBLOCK (96 bytes)
+    let tx_at_file = buf.len() as i64;
+    write_tx(&mut buf, "video.avi");
+    let tx_at_mime = buf.len() as i64;
+    write_tx(&mut buf, "video/x-msvideo");
+    let at_pos = buf.len() as i64;
+    buf.extend_from_slice(b"##AT");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 96);
+    push_u64(&mut buf, 4);
+    push_i64(&mut buf, 0); // at_at_next
+    push_i64(&mut buf, tx_at_file); // at_tx_filename
+    push_i64(&mut buf, tx_at_mime); // at_tx_mimetype
+    push_i64(&mut buf, 0); // at_md_comment
+    push_u16(&mut buf, 0); // at_flags = 0 (external)
+    push_u16(&mut buf, 0); // at_creator_index
+    push_u8(&mut buf, 0); // at_zip_type
+    push_u8(&mut buf, 0); // at_path_syntax
+    push_zeros(&mut buf, 2); // at_reserved
+    push_zeros(&mut buf, 16); // at_md5_checksum
+    push_u64(&mut buf, 0); // at_original_size
+    push_u64(&mut buf, 0); // at_embedded_size
+
+    // DG0: sorted DT block with 2 channels: time (cn_type=2, <f8) and video_signal (cn_type=4, <f8)
+    let dg0_pos = buf.len() as i64;
+    write_dg4(&mut buf, 0, 0);
+    let cg0_pos = buf.len() as i64;
+    write_cg4_with_data_bytes(&mut buf, 0, 5, 16);
+
+    let tx_time = buf.len() as i64;
+    write_tx(&mut buf, "time");
+    let cn_time_pos = buf.len() as i64;
+    write_cn4_with_offset(&mut buf, 2, 4, 0, 0, 64, tx_time, 0, 0, 0);
+    // Set cn_sync_type = 1 (Time) at offset 73 of CN block (24 + 64 + 1? No: 24 + 8*8 = 88 -> cn_type at +88, cn_sync_type at +89)
+    buf[(cn_time_pos + 89) as usize] = 1;
+
+    let tx_video = buf.len() as i64;
+    write_tx(&mut buf, "video_signal");
+    let cn_video_pos = buf.len() as i64;
+    write_cn4_with_offset(&mut buf, 4, 4, 0, 8, 64, tx_video, 0, at_pos, 0);
+    buf[(cn_video_pos + 89) as usize] = 1; // cn_sync_type = 1 (Time)
+
+    let dt0_pos = buf.len() as i64;
+    let records = [
+        (9167037.0_f64, 0.0_f64),
+        (9167038.0_f64, 0.1307268_f64),
+        (14466255.0_f64, 0.1307268_f64),
+        (139054816.0_f64, 0.19609020000000002_f64),
+        (206070512.0_f64, 0.2614536_f64),
+    ];
+    buf.extend_from_slice(b"##DT");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 24 + (records.len() * 16) as u64);
+    push_u64(&mut buf, 0);
+    for &(t, v) in &records {
+        push_f64(&mut buf, t);
+        push_f64(&mut buf, v);
+    }
+
+    // DG1: single-channel LD+DV with cn_type = 4 + linear conversion (exercises read_one_channel_array)
+    let dg1_pos = buf.len() as i64;
+    write_dg4(&mut buf, 0, 0);
+    let cg1_pos = buf.len() as i64;
+    write_cg4_with_data_bytes(&mut buf, 0, 3, 4);
+    let tx_frame = buf.len() as i64;
+    write_tx(&mut buf, "frame_sync");
+    let cc_frame = buf.len() as i64;
+    write_cc_linear(&mut buf, 0.5, 1.0); // phys = 1.0 + 0.5 * raw
+    let cn_frame_pos = buf.len() as i64;
+    write_cn4_with_offset(&mut buf, 4, 0, 0, 0, 32, tx_frame, cc_frame, at_pos, 0);
+    buf[(cn_frame_pos + 89) as usize] = 4; // cn_sync_type = 4 (Index)
+
+    let dv1_pos = buf.len() as i64;
+    buf.extend_from_slice(b"##DV");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 24 + 12);
+    push_u64(&mut buf, 0);
+    push_u32(&mut buf, 2);
+    push_u32(&mut buf, 4);
+    push_u32(&mut buf, 6);
+
+    let ld1_pos = buf.len() as i64;
+    buf.extend_from_slice(b"##LD");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 56);
+    push_u64(&mut buf, 2); // ld_links: next + dv1
+    push_i64(&mut buf, 0);
+    push_i64(&mut buf, dv1_pos);
+    push_u32(&mut buf, 0); // ld_flags..ld_flags_ext
+    push_u32(&mut buf, 1); // ld_count
+    push_u64(&mut buf, 0); // ld_sample_offset[0]
+
+    // Patch links
+    buf[(hd_pos + 24) as usize..(hd_pos + 32) as usize].copy_from_slice(&dg0_pos.to_le_bytes());
+    buf[(hd_pos + 48) as usize..(hd_pos + 56) as usize].copy_from_slice(&at_pos.to_le_bytes());
+
+    buf[(dg0_pos + 24) as usize..(dg0_pos + 32) as usize].copy_from_slice(&dg1_pos.to_le_bytes());
+    buf[(dg0_pos + 32) as usize..(dg0_pos + 40) as usize].copy_from_slice(&cg0_pos.to_le_bytes());
+    buf[(dg0_pos + 40) as usize..(dg0_pos + 48) as usize].copy_from_slice(&dt0_pos.to_le_bytes());
+    buf[(cg0_pos + 32) as usize..(cg0_pos + 40) as usize]
+        .copy_from_slice(&cn_time_pos.to_le_bytes());
+    buf[(cn_time_pos + 24) as usize..(cn_time_pos + 32) as usize]
+        .copy_from_slice(&cn_video_pos.to_le_bytes());
+
+    buf[(dg1_pos + 32) as usize..(dg1_pos + 40) as usize].copy_from_slice(&cg1_pos.to_le_bytes());
+    buf[(dg1_pos + 40) as usize..(dg1_pos + 48) as usize].copy_from_slice(&ld1_pos.to_le_bytes());
+    buf[(cg1_pos + 32) as usize..(cg1_pos + 40) as usize]
+        .copy_from_slice(&cn_frame_pos.to_le_bytes());
+
+    let (_tmp, mut mdf) = open_mdf_from_bytes(&buf)?;
+    mdf.load_all_channels_data_in_memory()?;
+
+    assert!(mdf.is_sync_channel("video_signal"));
+    assert!(mdf.is_sync_channel("frame_sync"));
+    assert!(!mdf.is_sync_channel("time"));
+
+    let video = mdf.get_channel_data("video_signal").expect("video_signal");
+    let ChannelData::Float64(video_arr) = video else {
+        panic!("expected Float64 for video_signal, got {:?}", video);
+    };
+    let expected_video: Vec<f64> = records.iter().map(|&(_, v)| v).collect();
+    assert_eq!(video_arr.values(), expected_video.as_slice());
+
+    let time = mdf.get_channel_data("time").expect("time");
+    let ChannelData::Float64(time_arr) = time else {
+        panic!("expected Float64 for time, got {:?}", time);
+    };
+    let expected_time: Vec<f64> = records.iter().map(|&(t, _)| t).collect();
+    assert_eq!(time_arr.values(), expected_time.as_slice());
+
+    let frame = mdf.get_channel_data("frame_sync").expect("frame_sync");
+    let ChannelData::Float64(frame_arr) = frame else {
+        panic!(
+            "expected Float64 after conversion for frame_sync, got {:?}",
+            frame
+        );
+    };
+    assert_eq!(frame_arr.values(), &[2.0, 3.0, 4.0]);
+
+    let at = mdf
+        .get_attachment_block(at_pos)
+        .expect("ATBLOCK should be registered at at_pos");
+    assert_eq!(at.at_tx_filename, tx_at_file);
+    Ok(())
+}

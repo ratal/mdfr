@@ -526,7 +526,7 @@ impl Mdfr {
         })
     }
     /// Returns true if the channel is a synchronization channel.
-    /// Sync channels reference an ATBLOCK (attachment) rather than containing raw data.
+    /// Sync channels store synchronization values in the record and reference an ATBLOCK (attachment) via cn_data.
     pub fn is_sync_channel(&self, channel_name: String) -> PyResult<bool> {
         let Mdfr(mdf) = self;
         Ok(mdf.mdf_info.is_sync_channel(&channel_name))

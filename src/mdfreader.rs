@@ -247,7 +247,7 @@ impl Mdf {
         self.mdf_info.get_event_signal_info(channel_name)
     }
     /// Returns true if the channel is a synchronization channel.
-    /// Sync channels reference an ATBLOCK (attachment) rather than containing raw data.
+    /// Sync channels store synchronization values in the record and reference an ATBLOCK (attachment) via cn_data.
     pub fn is_sync_channel(&self, channel_name: &str) -> bool {
         self.mdf_info.is_sync_channel(channel_name)
     }
