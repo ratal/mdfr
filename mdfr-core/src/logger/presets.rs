@@ -3,7 +3,7 @@
 //! Creates ASAM-compliant channel groups with `SIBLOCK` (`si_type = 2` Bus) and
 //! frame channels (`ID`, `DLC`, `DataLength`, `DataBytes`, `Dir`) that can be populated
 //! via the dynamic record builder or `push_raw`.
-use crate::blocks::cg::CG_F_EVENT_SIGNAL_GROUP;
+use crate::blocks::cg::{CG_F_BUSEVENT, CG_F_PLAIN_BUS_EVENT};
 use crate::blocks::cn::CnDataType;
 use crate::error::Result;
 
@@ -64,6 +64,7 @@ impl BusPreset {
             si_flags: 0,
         };
         builder.set_group_source(group, src)?;
+        builder.set_group_flags(group, CG_F_BUSEVENT | CG_F_PLAIN_BUS_EVENT, b'.' as u16)?;
         let bus_channel =
             builder.add_channel(group, "CAN_DataFrame.BusChannel", CnDataType::UIntLE, 8)?;
         let can_id = builder.add_channel(group, "CAN_DataFrame.ID", CnDataType::UIntLE, 32)?;
@@ -81,7 +82,6 @@ impl BusPreset {
                 max_payload * 8,
             )?
         };
-        let _ = CG_F_EVENT_SIGNAL_GROUP;
         Ok(CanGroupHandles {
             group,
             bus_channel,
@@ -107,6 +107,7 @@ impl BusPreset {
                 si_flags: 0,
             },
         )?;
+        builder.set_group_flags(group, CG_F_BUSEVENT | CG_F_PLAIN_BUS_EVENT, b'.' as u16)?;
         builder.add_channel(group, "LIN_Frame.ID", CnDataType::UIntLE, 8)?;
         builder.add_channel(group, "LIN_Frame.DLC", CnDataType::UIntLE, 8)?;
         builder.add_channel(group, "LIN_Frame.DataLength", CnDataType::UIntLE, 8)?;
@@ -129,6 +130,7 @@ impl BusPreset {
                 si_flags: 0,
             },
         )?;
+        builder.set_group_flags(group, CG_F_BUSEVENT | CG_F_PLAIN_BUS_EVENT, b'.' as u16)?;
         builder.add_channel(group, "ETH_Frame.Source", CnDataType::ByteArray, 48)?;
         builder.add_channel(group, "ETH_Frame.Destination", CnDataType::ByteArray, 48)?;
         builder.add_channel(group, "ETH_Frame.EtherType", CnDataType::UIntBE, 16)?;
@@ -152,6 +154,7 @@ impl BusPreset {
                 si_flags: 0,
             },
         )?;
+        builder.set_group_flags(group, CG_F_BUSEVENT | CG_F_PLAIN_BUS_EVENT, b'.' as u16)?;
         builder.add_channel(group, "FLX_Frame.ID", CnDataType::UIntLE, 16)?;
         builder.add_channel(group, "FLX_Frame.Cycle", CnDataType::UIntLE, 8)?;
         builder.add_channel(group, "FLX_Frame.Channel", CnDataType::UIntLE, 8)?;

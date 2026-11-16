@@ -22,7 +22,7 @@ pub mod mdfinfo3;
 
 /// Map from channel name to its position tuple: (master_name, dg_pos, cg_pos, rec_id, cn_pos, rec_pos).
 /// MDF3 files always have rec_pos = 0.
-pub type ChannelsDb = HashMap<String, (Option<String>, i64, i64, u64, i64, i32)>;
+pub type ChannelsDb = HashMap<String, (Option<String>, i64, i64, u64, i64, i64)>;
 pub mod mdfinfo4;
 pub mod sym_buf_reader;
 
@@ -214,11 +214,7 @@ impl MdfInfo {
             // If the file was not properly finalized, fix cycle counts in memory before
             // data reading begins. This corrects cg_cycle_count so the reader knows how
             // many records to expect from the truncated data blocks.
-            if is_unfinalized
-                && (id_unfin_flags
-                    & (UNFIN_CG_CYCLE_COUNTERS | UNFIN_LAST_DT_LENGTH | UNFIN_LAST_DL_BLOCK))
-                    != 0
-            {
+            if is_unfinalized || id_unfin_flags != 0 {
                 match fix_cycle_counts(&mut dg, &mut rdr) {
                     Ok(n) => info!("finalize: corrected cycle counts for {n} channel groups"),
                     Err(e) => warn!("finalize: could not fix cycle counts: {e:#}"),
@@ -516,7 +512,7 @@ impl MdfInfo {
                             *cg as i64,
                             *rec_id as u64,
                             *cn as i64,
-                            0i32,
+                            0i64,
                         ),
                     )
                 })
@@ -732,13 +728,13 @@ impl MdfInfo {
     }
     /// Convert mdf verion 3.x to 4.2
     /// Require file name parameter but no file written
-    pub fn convert3to4(&mut self, file_name: &str) -> Result<MdfInfo, Error> {
+    pub fn convert3to4(&mut self, file_name: &str) -> Result<(), Error> {
         match self {
             MdfInfo::V3(mdfinfo3) => {
                 let mdf4 = convert3to4(mdfinfo3, file_name)
                     .context("failed converting mdf version 3 to 4")?;
-                *self = MdfInfo::V4(Box::new(mdf4.clone()));
-                Ok(MdfInfo::V4(Box::new(mdf4)))
+                *self = MdfInfo::V4(Box::new(mdf4));
+                Ok(())
             }
             MdfInfo::V4(_) => bail!("file is already a mdf version 4.x"),
         }

@@ -230,11 +230,12 @@ fn write_ch4(buf: &mut Vec<u8>, ch_next: i64, ch_first: i64) {
     push_zeros(buf, 3);
 }
 
-/// SRBLOCK, 56 bytes. `len` overrides the declared block length.
+/// SRBLOCK, 64 bytes (2 links). `len` overrides the declared block length.
 fn write_sr4(buf: &mut Vec<u8>, sr_next: i64, len: u64) {
     buf.extend_from_slice(b"##SR");
     push_zeros(buf, 4);
     push_u64(buf, len);
+    push_u64(buf, 2); // sr_links
     push_i64(buf, sr_next);
     push_i64(buf, 0); // sr_data
     push_u64(buf, 0); // sr_cycle_count
@@ -434,7 +435,7 @@ fn self_referencing_mdf4_chains() -> Vec<(&'static str, Vec<u8>)> {
     );
     write_dg4(&mut buf, 0, B0 + 64);
     write_cg4(&mut buf, 0, 0, B0 + 64 + 104);
-    write_sr4(&mut buf, B0 + 64 + 104, 56);
+    write_sr4(&mut buf, B0 + 64 + 104, 64);
     out.push(("sr_self_cycle.mf4", buf));
 
     out

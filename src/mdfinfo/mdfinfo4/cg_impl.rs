@@ -68,13 +68,20 @@ fn parse_cg4_block(
 
     // Reads SI Acq name
     let si_pointer = cg.cg_si_acq_source;
-    if (si_pointer != 0) && !sharable.si.contains_key(&si_pointer) {
+    if (si_pointer > 0) && !sharable.si.contains_key(&si_pointer) {
         let (mut si_block, _header, pos) = parse_block_short(rdr, si_pointer, position)?;
         position = pos;
         let si_block: Si4Block = binrw::BinReaderExt::read_le(&mut si_block)
             .context("Could not read buffer into Si4block struct")?;
         position = read_meta_data(rdr, sharable, si_block.si_tx_name, position, BlockType::SI)?;
         position = read_meta_data(rdr, sharable, si_block.si_tx_path, position, BlockType::SI)?;
+        position = read_meta_data(
+            rdr,
+            sharable,
+            si_block.si_md_comment,
+            position,
+            BlockType::SI,
+        )?;
         sharable.si.insert(si_pointer, si_block);
     }
 
@@ -166,7 +173,7 @@ pub struct Cg4 {
     /// record length including recordId and invalid bytes
     pub record_length: u32,
     /// pointing to another cg,cn
-    pub vlsd_cg: Option<(u64, i32)>,
+    pub vlsd_cg: Option<(u64, i64)>,
     /// invalid byte array, optional
     pub invalid_bytes: Option<Vec<u8>>,
     /// Sample reduction blocks linked from cg_sr_first
@@ -251,37 +258,49 @@ impl Cg4 {
             self.cn
                 .par_iter_mut()
                 .filter(|(_rec_pos, cn)| !cn.data.is_empty())
-                .try_for_each(|(_rec_pos, cn): (&i32, &mut Cn4)| -> Result<(), Error> {
-                    if let Some((Some(mask), invalid_byte_position, invalid_byte_mask)) =
+                .try_for_each(|(_rec_pos, cn): (&i64, &mut Cn4)| -> Result<(), Error> {
+                    if let Some((validity, invalid_byte_position, invalid_byte_mask)) =
                         &mut cn.invalid_mask
                     {
-                        // mask is already initialised to all valid values.
-                        invalid_bytes.chunks(cg_inval_bytes).enumerate().for_each(
-                            |(index, record)| {
-                                // arrow considers bit set as valid while mdf spec considers bit set as invalid
-                                mask.set_bit(
-                                    index,
-                                    (record[*invalid_byte_position] & *invalid_byte_mask) == 0,
-                                );
-                            },
-                        );
-                        cn.data.set_validity(mask).with_context(|| {
-                            format!(
-                                "failed applying invalid bits for channel {}",
-                                cn.unique_name
-                            )
-                        })?;
+                        if let Some(mask) = validity {
+                            if *invalid_byte_mask != 0 && cg_inval_bytes > 0 {
+                                let mask_len = mask.len();
+                                // mask is already initialised to all valid values.
+                                invalid_bytes
+                                    .chunks(cg_inval_bytes)
+                                    .take(mask_len)
+                                    .enumerate()
+                                    .for_each(|(index, record)| {
+                                        // arrow considers bit set as valid while mdf spec considers bit set as invalid
+                                        if *invalid_byte_position < record.len() {
+                                            mask.set_bit(
+                                                index,
+                                                (record[*invalid_byte_position]
+                                                    & *invalid_byte_mask)
+                                                    == 0,
+                                            );
+                                        }
+                                    });
+                            }
+                            cn.data.set_validity(mask).with_context(|| {
+                                format!(
+                                    "failed applying invalid bits for channel {}",
+                                    cn.unique_name
+                                )
+                            })?;
+                        }
+                        *validity = None;
                     }
                     Ok(())
                 })?;
             self.invalid_bytes = None; // Clears out invalid bytes channel
-        } else if cg_inval_bytes > 0 {
+        } else {
             // invalidity already stored in mask for each channel by read_channels_from_bytes()
-            // to set validity in arrow array
+            // (or CN_F_ALL_VALUES_INVALID), apply validity to arrow array
             self.cn
                 .par_iter_mut()
                 .filter(|(_rec_pos, cn)| !cn.data.is_empty())
-                .try_for_each(|(_rec_pos, cn): (&i32, &mut Cn4)| -> Result<(), Error> {
+                .try_for_each(|(_rec_pos, cn): (&i64, &mut Cn4)| -> Result<(), Error> {
                     if let Some((validity, _invalid_byte_position, _invalid_byte_mask)) =
                         &mut cn.invalid_mask
                     {
@@ -310,7 +329,7 @@ impl Cg4 {
     /// After processing, the parent channel (with CV composition) contains the merged data.
     pub fn process_channel_variants(&mut self) -> Result<(), Error> {
         // Find channels with CV composition and collect info
-        let cv_channels: Vec<(i32, i64, Vec<i64>, Vec<u64>)> = self
+        let cv_channels: Vec<(i64, i64, Vec<i64>, Vec<u64>)> = self
             .cn
             .iter()
             .filter_map(|(rec_pos, cn)| {
@@ -480,7 +499,7 @@ impl Cg4 {
     /// - The size channel gives the actual valid byte length for each record.
     /// - Bytes beyond this size for each sample are invalid and truncated.
     pub fn process_mlsd_channels(&mut self) -> Result<(), Error> {
-        let mlsd_channels: Vec<(i32, i64)> = self
+        let mlsd_channels: Vec<(i64, i64)> = self
             .cn
             .iter()
             .filter(|(_rec_pos, cn)| cn.block.cn_type == 5 && cn.block.cn_data != 0)
@@ -555,7 +574,7 @@ impl Cg4 {
     /// simultaneously valid, just interpreted differently.
     pub fn process_channel_unions(&mut self) -> Result<(), Error> {
         // Find channels with CU composition and collect info
-        let cu_channels: Vec<(i32, Vec<i64>)> = self
+        let cu_channels: Vec<(i64, Vec<i64>)> = self
             .cn
             .iter()
             .filter_map(|(rec_pos, cn)| {

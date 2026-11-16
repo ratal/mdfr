@@ -24,6 +24,15 @@ pub fn read_channels_from_bytes(
             let mut value: &[u8]; // value of channel at record
             let pos_byte_beg = cn.pos_byte_beg as usize;
             let n_bytes = cn.n_bytes as usize;
+            if pos_byte_beg.saturating_add(n_bytes) > record_length {
+                bail!(
+                    "Channel '{}' field ({}..{}) exceeds record length {}",
+                    cn.unique_name,
+                    pos_byte_beg,
+                    pos_byte_beg.saturating_add(n_bytes),
+                    record_length
+                );
+            }
             let builder = match &mut cn.builder {
                 Some(b) => b,
                 None => return Ok(()),

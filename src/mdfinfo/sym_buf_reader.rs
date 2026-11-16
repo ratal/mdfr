@@ -171,14 +171,14 @@ where
 
 impl<R: Read + Seek> SymBufReader<R> {
     /// Returns the total length of the underlying stream without changing the
-    /// logical read position. Result is cached after the first call.
+    /// logical read position or discarding the internal buffer. Result is cached after the first call.
     pub fn file_size(&mut self) -> Result<u64> {
         if let Some(size) = self.file_size_cache {
             return Ok(size);
         }
-        let logical_pos = self.stream_position()?;
-        let size = self.seek(SeekFrom::End(0))?;
-        self.seek(SeekFrom::Start(logical_pos))?;
+        let underlying_pos = self.reader.stream_position()?;
+        let size = self.reader.seek(SeekFrom::End(0))?;
+        self.reader.seek(SeekFrom::Start(underlying_pos))?;
         self.file_size_cache = Some(size);
         Ok(size)
     }

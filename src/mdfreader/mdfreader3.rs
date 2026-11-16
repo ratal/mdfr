@@ -105,14 +105,15 @@ fn initialise_arrays(channel_group: &mut Cg3, cg_cycle_count: &u32) -> Result<()
 fn generate_chunks(channel_group: &Cg3) -> Vec<(usize, usize)> {
     let record_length = channel_group.record_length as usize;
     let cg_cycle_count = channel_group.block.cg_cycle_count as usize;
-    let n_chunks = (record_length * cg_cycle_count) / CHUNK_SIZE_READING_3 + 1; // number of chunks
-    let chunk_length = (record_length * cg_cycle_count) / n_chunks; // chunks length
-    let n_record_chunk = chunk_length / record_length; // number of records in chunk
-    let chunck = (n_record_chunk, record_length * n_record_chunk);
-    let mut chunks = vec![chunck; n_chunks];
-    let n_record_chunk = cg_cycle_count - n_record_chunk * n_chunks;
-    if n_record_chunk > 0 {
-        chunks.push((n_record_chunk, record_length * n_record_chunk))
+    if record_length == 0 || cg_cycle_count == 0 {
+        return Vec::new();
+    }
+    let n_record_chunk = (CHUNK_SIZE_READING_3 / record_length).max(1);
+    let n_chunks = cg_cycle_count / n_record_chunk;
+    let mut chunks = vec![(n_record_chunk, record_length * n_record_chunk); n_chunks];
+    let remainder = cg_cycle_count % n_record_chunk;
+    if remainder > 0 {
+        chunks.push((remainder, record_length * remainder));
     }
     chunks
 }

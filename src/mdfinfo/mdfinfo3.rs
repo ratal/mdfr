@@ -1281,7 +1281,9 @@ fn parse_cn3_block(
         .context("Could not read channel description")?;
     let block2: Cn3Block2 = binrw::BinReaderExt::read_le(&mut block)
         .context("Could not read buffer into Cn3Block2 struct")?;
-    let pos_byte_beg = block2.cn_bit_offset / 8 + record_id_size;
+    let pos_byte_beg = (block2.cn_byte_offset as u32
+        + (block2.cn_bit_offset / 8) as u32
+        + record_id_size as u32) as u16;
     let bit_offset_in_byte = block2.cn_bit_offset % 8;
     let total_bits = (bit_offset_in_byte + block2.cn_bit_count) as u32;
     let mut n_bytes = (total_bits / 8) as u16;
@@ -1316,30 +1318,34 @@ fn parse_cn3_block(
     }
 
     // Reads CC block
-    if !sharable.cc.contains_key(&block1.cn_cc_conversion) {
-        let (pos, cc_block) =
-            parse_cc3_block(rdr, block1.cn_cc_conversion, position, sharable, encoding)?;
-        position = pos;
-        if cc_block.cc_type == 132 {
-            // CANopen date
-            let (date_ms, min, hour, day, month, year) =
-                can_open_date(pos_byte_beg, block2.cn_bit_offset);
-            cn.insert(block1.cn_cc_conversion + 1, date_ms);
-            cn.insert(block1.cn_cc_conversion + 2, min);
-            cn.insert(block1.cn_cc_conversion + 3, hour);
-            cn.insert(block1.cn_cc_conversion + 4, day);
-            cn.insert(block1.cn_cc_conversion + 5, month);
-            cn.insert(block1.cn_cc_conversion + 6, year);
-        } else if cc_block.cc_type == 133 {
-            // CANopen time
-            let (ms, days) = can_open_time(pos_byte_beg, block2.cn_bit_offset);
-            cn.insert(block1.cn_cc_conversion + 1, ms);
-            cn.insert(block1.cn_cc_conversion + 2 + 32, days);
+    if block1.cn_cc_conversion != 0 {
+        if !sharable.cc.contains_key(&block1.cn_cc_conversion) {
+            let (pos, _) =
+                parse_cc3_block(rdr, block1.cn_cc_conversion, position, sharable, encoding)?;
+            position = pos;
+        }
+        if let Some((cc_block, _)) = sharable.cc.get(&block1.cn_cc_conversion) {
+            if cc_block.cc_type == 132 {
+                // CANopen date
+                let (date_ms, min, hour, day, month, year) =
+                    can_open_date(pos_byte_beg, block2.cn_bit_offset);
+                cn.insert(target + 1, date_ms);
+                cn.insert(target + 2, min);
+                cn.insert(target + 3, hour);
+                cn.insert(target + 4, day);
+                cn.insert(target + 5, month);
+                cn.insert(target + 6, year);
+            } else if cc_block.cc_type == 133 {
+                // CANopen time
+                let (ms, days) = can_open_time(pos_byte_beg, block2.cn_bit_offset);
+                cn.insert(target + 1, ms);
+                cn.insert(target + 2 + 32, days);
+            }
         }
     }
 
     // Reads CE block
-    if !sharable.ce.contains_key(&block1.cn_ce_source) {
+    if block1.cn_ce_source != 0 && !sharable.ce.contains_key(&block1.cn_ce_source) {
         position = parse_ce(rdr, block1.cn_ce_source, position, sharable, encoding)?;
     }
 
@@ -1755,10 +1761,9 @@ pub fn parse_cc3_block(
             conversion = Conversion::TextTable(pairs);
         }
         12 => {
-            let mut pairs_pointer: Vec<(f64, f64, u32)> =
-                Vec::with_capacity(cc_block.cc_size as usize - 1);
-            let mut pairs_string: Vec<(f64, f64, String)> =
-                Vec::with_capacity(cc_block.cc_size as usize - 1);
+            let n_pairs = (cc_block.cc_size as usize).saturating_sub(1);
+            let mut pairs_pointer: Vec<(f64, f64, u32)> = Vec::with_capacity(n_pairs);
+            let mut pairs_string: Vec<(f64, f64, String)> = Vec::with_capacity(n_pairs);
             let mut low_range;
             let mut high_range;
             let mut text_pointer;
@@ -1769,7 +1774,7 @@ pub fn parse_cc3_block(
                 .read_u32::<LittleEndian>()
                 .context("Could not read text range table conversion default text parameters")?;
             position += 20;
-            for _index in 0..(cc_block.cc_size as usize - 1) {
+            for _index in 0..n_pairs {
                 low_range = rdr
                     .read_f64::<LittleEndian>()
                     .context("Could not read text range table conversion low value parameters")?;
@@ -1980,7 +1985,7 @@ pub fn build_channel_db3(
                         }
                     }
                     // No souce name to make channel unique
-                    if !changed {
+                    if !changed || channel_list.contains_key(&cn.unique_name) {
                         // extend name with channel block position, unique
                         cn.unique_name.push_str(space_char);
                         cn.unique_name.push_str(&cn_position.to_string());

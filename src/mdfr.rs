@@ -41,6 +41,44 @@ pub struct PyChannel {
     pub(crate) master_name: Option<String>,
 }
 
+/// Wraps `py_array` in a `numpy.ma.MaskedArray` when `validity` is present, broadcasting
+/// 1D per-sample masks across trailing array dimensions when `ndim > 1`.
+fn apply_validity_mask(
+    py: Python<'_>,
+    py_array: Py<PyAny>,
+    validity: Option<arrow::buffer::NullBuffer>,
+) -> PyResult<Py<PyAny>> {
+    let Some(m) = validity else {
+        return Ok(py_array);
+    };
+    let mask_vec: Vec<bool> = m.iter().map(|valid| !valid).collect();
+    let mut np_mask = mask_vec.to_pyarray(py).into_any();
+    let arr_bound = py_array.bind(py);
+    let ndim: usize = arr_bound
+        .getattr(pyo3::intern!(py, "ndim"))
+        .and_then(|v| v.extract())
+        .unwrap_or(1);
+    if ndim > 1 {
+        let shape_obj = arr_bound.getattr(pyo3::intern!(py, "shape"))?;
+        let mut expanded_shape = vec![mask_vec.len()];
+        expanded_shape.resize(ndim, 1);
+        let reshaped = np_mask.call_method1(pyo3::intern!(py, "reshape"), (expanded_shape,))?;
+        let np = py.import("numpy").context("could not import numpy")?;
+        np_mask = np.call_method1(pyo3::intern!(py, "broadcast_to"), (reshaped, shape_obj))?;
+    }
+    let np_ma = py.import("numpy.ma").context("could not import numpy.ma")?;
+    let kwargs = pyo3::types::PyDict::new(py);
+    kwargs
+        .set_item(pyo3::intern!(py, "mask"), np_mask)
+        .context("cannot set python mask")?;
+    Ok(np_ma
+        .getattr(pyo3::intern!(py, "array"))
+        .context("could not get numpy.ma.array")?
+        .call((&py_array,), Some(&kwargs))
+        .context("masked array creation failed")?
+        .unbind())
+}
+
 #[pymethods]
 impl PyChannel {
     /// Channel name
@@ -94,23 +132,7 @@ impl PyChannel {
             .clone()
             .into_pyobject(py)
             .context("error converting ChannelData into python numpy object")?;
-        let mut py_array: Py<PyAny> = py_obj.into();
-        if let Some(m) = self.data.validity() {
-            let mask_vec: Vec<bool> = m.iter().map(|valid| !valid).collect();
-            let np_mask = mask_vec.to_pyarray(py);
-            let np_ma = py.import("numpy.ma").context("could not import numpy.ma")?;
-            let kwargs = pyo3::types::PyDict::new(py);
-            kwargs
-                .set_item(pyo3::intern!(py, "mask"), np_mask)
-                .context("cannot set python mask")?;
-            py_array = np_ma
-                .getattr(pyo3::intern!(py, "array"))
-                .context("could not get numpy.ma.array")?
-                .call((&py_array,), Some(&kwargs))
-                .context("masked array creation failed")?
-                .unbind();
-        }
-        Ok(py_array)
+        apply_validity_mask(py, py_obj.into(), self.data.validity())
     }
 
     /// NumPy array protocol: np.asarray(channel)
@@ -314,32 +336,17 @@ impl Mdfr {
         let Mdfr(mdf) = self;
         // default py_array value is python None
         let data = pyo3::Python::attach(|py| -> PyResult<Py<PyAny>> {
-            let mut py_array: Py<PyAny>;
             let dt = mdf.get_channel_converted_data(&channel_name);
-            if let Some(data) = dt {
-                py_array = data
+            let py_array = if let Some(data) = dt {
+                let raw_array: Py<PyAny> = data
                     .clone()
                     .into_pyobject(py)
                     .context("error converting ChannelData into python object")?
                     .into();
-                if let Some(m) = data.clone().validity() {
-                    let mask_vec: Vec<bool> = m.iter().map(|valid| !valid).collect();
-                    let np_mask = mask_vec.to_pyarray(py);
-                    let np_ma = py.import("numpy.ma").context("could not import numpy.ma")?;
-                    let kwargs = pyo3::types::PyDict::new(py);
-                    kwargs
-                        .set_item(pyo3::intern!(py, "mask"), np_mask)
-                        .context("cannot set python mask")?;
-                    py_array = np_ma
-                        .getattr(pyo3::intern!(py, "array"))
-                        .context("could not get numpy.ma.array")?
-                        .call((&py_array,), Some(&kwargs))
-                        .context("masked array creation failed")?
-                        .unbind();
-                }
+                apply_validity_mask(py, raw_array, data.validity())?
             } else {
-                py_array = Python::None(py);
-            }
+                Python::None(py)
+            };
             Ok(py_array)
         })?;
         Ok(data)
@@ -385,8 +392,8 @@ impl Mdfr {
         let Mdfr(mdf) = self;
         pyo3::Python::attach(|py| {
             let mut py_serie = Ok(Python::None(py));
-            if let Some(array) = mdf.get_channel_data(channel_name) {
-                py_serie = rust_arrow_to_py_series(array.as_ref(), channel_name);
+            if let Some(array) = mdf.get_channel_converted_data(channel_name) {
+                py_serie = rust_arrow_to_py_series(array.as_arrow(), channel_name);
             };
             py_serie
         })
@@ -400,11 +407,11 @@ impl Mdfr {
             let channel_list = mdf.mdf_info.get_channel_names_cg_set(&channel_name);
             let series_dict = PyDict::new(py);
             for channel in channel_list {
-                if let Some(channel_data) = mdf.get_channel_data(&channel) {
+                if let Some(channel_data) = mdf.get_channel_converted_data(&channel) {
                     series_dict
                         .set_item(
                             channel.clone(),
-                            rust_arrow_to_py_series(channel_data.as_ref(), &channel)
+                            rust_arrow_to_py_series(channel_data.as_arrow(), &channel)
                                 .context("Could not convert to python series")?,
                         )
                         .context("could not store the serie in dict")?;
@@ -526,7 +533,7 @@ impl Mdfr {
         })
     }
     /// Returns true if the channel is a synchronization channel.
-    /// Sync channels reference an ATBLOCK (attachment) rather than containing raw data.
+    /// Sync channels store synchronization values in the record and reference an ATBLOCK (attachment) via cn_data.
     pub fn is_sync_channel(&self, channel_name: String) -> PyResult<bool> {
         let Mdfr(mdf) = self;
         Ok(mdf.mdf_info.is_sync_channel(&channel_name))
@@ -774,8 +781,7 @@ impl Mdfr {
     /// converts MDF version 3.x to 4.2 in memory
     pub fn convert3to4(&mut self, file_name: &str) -> PyResult<()> {
         let Mdfr(mdf) = self;
-        let converted = mdf.mdf_info.convert3to4(file_name)?;
-        mdf.mdf_info = converted;
+        mdf.mdf_info.convert3to4(file_name)?;
         Ok(())
     }
     /// Adds a new channel in memory (no file modification)
@@ -880,8 +886,20 @@ impl Mdfr {
         let Mdfr(mdf) = self;
         Ok(mdf.mdf_info.list_attachments())
     }
+    /// cuts a single channel group to [start_s, stop_s] relative to `master_name`
+    pub fn cut_channel_group(
+        &mut self,
+        master_name: &str,
+        start_s: f64,
+        stop_s: f64,
+    ) -> PyResult<()> {
+        let Mdfr(mdf) = self;
+        mdf.cut_channel_group(master_name, start_s, stop_s)?;
+        Ok(())
+    }
     /// export to Parquet files
     #[cfg(feature = "parquet")]
+    #[pyo3(signature = (file_name, compression=None))]
     pub fn export_to_parquet(&self, file_name: &str, compression: Option<&str>) -> PyResult<()> {
         let Mdfr(mdf) = self;
         mdf.export_to_parquet(file_name, compression)?;
@@ -889,6 +907,7 @@ impl Mdfr {
     }
     /// export dataframe to Parquet files
     #[cfg(feature = "parquet")]
+    #[pyo3(signature = (channel_name, file_name, compression=None))]
     pub fn export_dataframe_to_parquet(
         &self,
         channel_name: String,
@@ -913,13 +932,15 @@ impl Mdfr {
     }
     /// export to hdf5 files
     #[cfg(feature = "hdf5")]
+    #[pyo3(signature = (file_name, compression=None))]
     pub fn export_to_hdf5(&self, file_name: &str, compression: Option<&str>) -> PyResult<()> {
         let Mdfr(mdf) = self;
         mdf.export_to_hdf5(file_name, compression)?;
         Ok(())
     }
-    /// export dataframe to Parquet files
+    /// export dataframe to hdf5 files
     #[cfg(feature = "hdf5")]
+    #[pyo3(signature = (channel_name, file_name, compression=None))]
     pub fn export_dataframe_to_hdf5(
         &self,
         channel_name: String,
@@ -1344,18 +1365,20 @@ pyplot.show()
                 "Channel '{channel_name}' not found in MDF file"
             )));
         }
-        if mdf.get_channel_converted_data(channel_name).is_none() {
-            let mut set = HashSet::new();
-            set.insert(channel_name.to_string());
-            let _ = mdf.load_channels_data_in_memory(set);
-        }
-        let data = mdf
-            .get_channel_converted_data(channel_name)
-            .ok_or_else(|| {
-                pyo3::exceptions::PyKeyError::new_err(format!(
-                    "Failed to read data for channel '{channel_name}'"
-                ))
-            })?;
+        let data = match mdf.get_channel_converted_data(channel_name) {
+            Some(d) => d,
+            None => {
+                let mut set = HashSet::new();
+                set.insert(channel_name.to_string());
+                let _ = mdf.load_channels_data_in_memory(set);
+                mdf.get_channel_converted_data(channel_name)
+                    .ok_or_else(|| {
+                        pyo3::exceptions::PyKeyError::new_err(format!(
+                            "Failed to read data for channel '{channel_name}'"
+                        ))
+                    })?
+            }
+        };
         let unit = mdf.mdf_info.get_channel_unit(channel_name).ok().flatten();
         let desc = mdf.mdf_info.get_channel_desc(channel_name).ok().flatten();
         let master_name = mdf

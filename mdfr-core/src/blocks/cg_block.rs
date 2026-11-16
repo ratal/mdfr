@@ -10,14 +10,18 @@ use core::fmt::{self, Display};
 // Channel Group (CG) flags - cg_flags field (u16)
 /// Bit 0: VLSD channel group (Variable Length Signal Data)
 pub const CG_F_VLSD: u16 = 1 << 0;
+/// Bit 1: Bus event channel group (contains bus event signals)
+pub const CG_F_BUSEVENT: u16 = 1 << 1;
+/// Bit 2: Plain bus event channel group
+pub const CG_F_PLAIN_BUS_EVENT: u16 = 1 << 2;
+/// Bit 3: Remote master — the master channel resides in a different channel group
+pub const CG_F_REMOTE_MASTER: u16 = 1 << 3;
 /// Bit 4: Event signal group - channel group contains event signals
 pub const CG_F_EVENT_SIGNAL_GROUP: u16 = 1 << 4;
 /// Bit 5: VLSC channel group (contains VLSC channels, MDF 4.3)
 pub const CG_F_VLSC: u16 = 1 << 5;
 /// Bit 6: Raw sensor event channel group
 pub const CG_F_RAW_SENSOR_EVENT: u16 = 1 << 6;
-/// Bit 3: Remote master — the master channel resides in a different channel group
-pub const CG_F_REMOTE_MASTER: u16 = 1 << 3;
 /// Bit 7: Protocol event channel group
 pub const CG_F_PROTOCOL_EVENT: u16 = 1 << 7;
 /// Cg4 Channel Group block struct

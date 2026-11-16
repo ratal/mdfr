@@ -22,7 +22,6 @@ use mdfr_core::blocks::id_block::{
 };
 use mdfr_core::compress::{CompressionAlgorithm, compress_dz_data};
 use mdfr_core::io::{SeekFrom, Sink, VecSink};
-use mdfr_core::logger::recover::ReadWriteSeek;
 use mdfr_core::logger::{DataLayout, Logger, LoggerBuilder, recover_in_place};
 use mdfr_core::time::ManualClock;
 
@@ -345,14 +344,14 @@ fn test_adversarial_unfinalized_dl_chain_mixed_chunk_lengths() -> Result<()> {
     // Offset 3: 320 + 160 = 480
     sink.seek(SeekFrom::Start(dl_pos + 4))?;
     let mut recovered_dl_buf = vec![0u8; (dl.dl_len - 4) as usize];
-    sink.read_exact(&mut recovered_dl_buf)?;
+    mdfr_core::logger::recover::ReadSeek::read_exact(&mut sink, &mut recovered_dl_buf)?;
     let recovered_dl: Dl4Block = Cursor::new(recovered_dl_buf).read_le()?;
     assert_eq!(recovered_dl.dl_offset, vec![0, 80, 320, 480]);
 
     // Verify CG cycle count: 800 bytes / 8 bytes per record = 100 cycles
     sink.seek(SeekFrom::Start(232 + 16 + 8 + 6 * 8 + 8))?;
     let mut cycles_buf = [0u8; 8];
-    sink.read_exact(&mut cycles_buf)?;
+    mdfr_core::logger::recover::ReadSeek::read_exact(&mut sink, &mut cycles_buf)?;
     let cycles = u64::from_le_bytes(cycles_buf);
     assert_eq!(cycles, 100, "CG cycle count must be 100 cycles");
 
@@ -485,7 +484,7 @@ fn test_adversarial_dl_zero_entries_forward_scan_with_interleaved_vd_dz_dt() -> 
     // Verify forward-scan restored DL block
     sink.seek(SeekFrom::Start(dl_pos + 4))?;
     let mut rec_dl_buf = vec![0u8; 1060];
-    sink.read_exact(&mut rec_dl_buf)?;
+    mdfr_core::logger::recover::ReadSeek::read_exact(&mut sink, &mut rec_dl_buf)?;
     let rec_dl: Dl4Block = Cursor::new(rec_dl_buf).read_le()?;
 
     assert_eq!(rec_dl.dl_count, 4);
@@ -503,7 +502,7 @@ fn test_adversarial_dl_zero_entries_forward_scan_with_interleaved_vd_dz_dt() -> 
     // Verify CG cycle count: 124 / 4 = 31 cycles
     sink.seek(SeekFrom::Start(232 + 16 + 8 + 6 * 8 + 8))?;
     let mut cycles_buf = [0u8; 8];
-    sink.read_exact(&mut cycles_buf)?;
+    mdfr_core::logger::recover::ReadSeek::read_exact(&mut sink, &mut cycles_buf)?;
     let cycles = u64::from_le_bytes(cycles_buf);
     assert_eq!(cycles, 31, "CG cycle count must be 31");
 
@@ -592,7 +591,7 @@ fn test_adversarial_forward_scan_64_chunk_limit() -> Result<()> {
     // Verify DL block was capped at 64 without panic
     sink.seek(SeekFrom::Start(dl_pos + 4))?;
     let mut rec_dl_buf = vec![0u8; 1060];
-    sink.read_exact(&mut rec_dl_buf)?;
+    mdfr_core::logger::recover::ReadSeek::read_exact(&mut sink, &mut rec_dl_buf)?;
     let rec_dl: Dl4Block = Cursor::new(rec_dl_buf).read_le()?;
     assert_eq!(rec_dl.dl_count, 64, "Must cap at 64 entries in single DL");
     assert_eq!(rec_dl.dl_data.len(), 64);
@@ -779,23 +778,23 @@ fn test_adversarial_vlsc_and_vlsd_with_vd_block_in_unsorted_stream() -> Result<(
     // Check CG1: 2 cycles
     sink.seek(SeekFrom::Start(cg1_pos + 16 + 8 + 6 * 8 + 8))?;
     let mut cycles_buf = [0u8; 8];
-    sink.read_exact(&mut cycles_buf)?;
+    mdfr_core::logger::recover::ReadSeek::read_exact(&mut sink, &mut cycles_buf)?;
     assert_eq!(u64::from_le_bytes(cycles_buf), 2);
 
     // Check CG2 (VLSC): 2 cycles, total vlsd_bytes = 12 + 8 = 20
     sink.seek(SeekFrom::Start(cg2_pos + 16 + 8 + 6 * 8 + 8))?;
-    sink.read_exact(&mut cycles_buf)?;
+    mdfr_core::logger::recover::ReadSeek::read_exact(&mut sink, &mut cycles_buf)?;
     assert_eq!(u64::from_le_bytes(cycles_buf), 2);
 
     // Verify lower 32 bits at cg2_pos + 96 (cg_data_bytes) and upper at cg2_pos + 100 (cg_inval_bytes)
     sink.seek(SeekFrom::Start(cg2_pos + 96))?;
     let mut low_buf = [0u8; 4];
-    sink.read_exact(&mut low_buf)?;
+    mdfr_core::logger::recover::ReadSeek::read_exact(&mut sink, &mut low_buf)?;
     assert_eq!(u32::from_le_bytes(low_buf), 20);
 
     sink.seek(SeekFrom::Start(cg2_pos + 100))?;
     let mut high_buf = [0u8; 4];
-    sink.read_exact(&mut high_buf)?;
+    mdfr_core::logger::recover::ReadSeek::read_exact(&mut sink, &mut high_buf)?;
     assert_eq!(u32::from_le_bytes(high_buf), 0);
 
     Ok(())
@@ -954,7 +953,7 @@ fn test_adversarial_forward_scan_garbage_at_slot_boundary() -> Result<()> {
     // DL should remain dl_count = 0
     sink.seek(SeekFrom::Start(dl_pos + 4))?;
     let mut rec_dl_buf = vec![0u8; 36];
-    sink.read_exact(&mut rec_dl_buf)?;
+    mdfr_core::logger::recover::ReadSeek::read_exact(&mut sink, &mut rec_dl_buf)?;
     let rec_dl: Dl4Block = Cursor::new(rec_dl_buf).read_le()?;
     assert_eq!(rec_dl.dl_count, 0);
 

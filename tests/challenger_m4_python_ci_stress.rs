@@ -194,7 +194,7 @@ fn test_feature33_zero_allocation_10000_channel_lookups() {
     for i in 0..n_channels {
         info4.channel_names_set.insert(
             format!("Channel_Signal_{:05}", i),
-            (Some("MasterTime".to_string()), 0, (0, 0), (0, i as i32)),
+            (Some("MasterTime".to_string()), 0, (0, 0), (0, i as i64)),
         );
     }
 

@@ -153,10 +153,9 @@ impl SpscRing {
             }
             let ticks = u64::from_le_bytes(frame_hdr[4..12].try_into().unwrap_or([0u8; 8]));
             let payload = unsafe { core::slice::from_raw_parts(ptr.add(tail + 12), len) };
-            let push_res = logger.push_raw_at(GroupHandle(group), ticks, payload);
+            logger.push_raw_at(GroupHandle(group), ticks, payload)?;
             tail += 12 + len;
             self.tail.store(tail, Ordering::Release);
-            push_res?;
             count += 1;
         }
 

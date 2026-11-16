@@ -177,13 +177,13 @@ mod conversions3_tests {
         builder.append_value(1); // matches 1.0 → "one"
         builder.append_value(2); // matches 2.0 → "two"
         builder.append_value(3); // matches 3.0 → "three"
-        builder.append_value(99); // no match → defaults to first entry ("one")
+        builder.append_value(99); // no match → empty string ""
 
         let result = value_to_text_calculation(&builder.finish(), &cc_val_ref).unwrap();
         assert_eq!(result.value(0), "one");
         assert_eq!(result.value(1), "two");
         assert_eq!(result.value(2), "three");
-        assert_eq!(result.value(3), "one");
+        assert_eq!(result.value(3), "");
     }
 
     #[test]

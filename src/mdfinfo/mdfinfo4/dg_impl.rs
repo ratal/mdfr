@@ -42,12 +42,14 @@ fn parse_dg4_block(
 
 /// Parsed DG wrapper: the DGBLOCK and its linked CGBLOCKs (keyed by record ID)
 #[derive(Debug, Clone)]
-#[repr(C)]
 pub struct Dg4 {
     /// DG Block
     pub block: Dg4Block,
     /// CG Block
     pub cg: FxHashMap<u64, Cg4>,
+    /// Forward-scanned `dl_data` block pointers for unpatched `DLBLOCK`s (`dl_count == 0` on disk)
+    /// when an unfinalized file is opened read-only.
+    pub recovered_dl_data: FxHashMap<i64, Vec<i64>>,
 }
 
 impl Display for Dg4 {
@@ -88,7 +90,11 @@ pub fn parse_dg4(
         n_cg += num_cg;
         n_cn += num_cn;
         identify_vlsd_cg(&mut cg);
-        let dg_struct = Dg4 { block, cg };
+        let dg_struct = Dg4 {
+            block,
+            cg,
+            recovered_dl_data: FxHashMap::default(),
+        };
         dg.insert(target, dg_struct);
         position = pos;
         let mut chain = BlockChain::new("DG");
@@ -111,7 +117,11 @@ pub fn parse_dg4(
             n_cg += num_cg;
             n_cn += num_cn;
             identify_vlsd_cg(&mut cg);
-            let dg_struct = Dg4 { block, cg };
+            let dg_struct = Dg4 {
+                block,
+                cg,
+                recovered_dl_data: FxHashMap::default(),
+            };
             dg.insert(block_start, dg_struct);
             position = pos;
         }
@@ -129,7 +139,7 @@ fn identify_vlsd_cg(cg: &mut FxHashMap<u64, Cg4>) {
         }
     }
     if !vlsd.is_empty() {
-        let mut vlsd_matching: FxHashMap<u64, (u64, i32)> = FxHashMap::default();
+        let mut vlsd_matching: FxHashMap<u64, (u64, i64)> = FxHashMap::default();
         for (target_rec_id, channel_group) in cg.iter() {
             for (target_rec_pos, cn) in &channel_group.cn {
                 if let Some(vlsd_rec_id) = vlsd.get(&cn.block.cn_data) {
@@ -177,6 +187,7 @@ mod tests {
         let dg = Dg4 {
             block: Dg4Block::default(),
             cg: FxHashMap::default(),
+            recovered_dl_data: FxHashMap::default(),
         };
         let display = format!("{dg}");
         assert!(display.contains("0 channel groups"));
@@ -222,6 +233,7 @@ mod tests {
         let dg = Dg4 {
             block: Dg4Block::default(),
             cg: cg_map,
+            recovered_dl_data: FxHashMap::default(),
         };
         let display = format!("{dg}");
         assert!(display.contains("2 channel groups"));

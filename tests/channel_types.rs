@@ -396,6 +396,26 @@ fn synchronization_channels() -> Result<()> {
     );
     let mut mdf = Mdf::new(&file_name)?;
     mdf.load_all_channels_data_in_memory()?;
+
+    assert!(mdf.is_sync_channel("video_signal"));
+    let data = mdf
+        .get_channel_data("video_signal")
+        .expect("video_signal channel should exist");
+    let ChannelData::Float64(arr) = data else {
+        panic!("expected Float64 for video_signal, got {:?}", data);
+    };
+    let expected_first_5 = [0.0, 0.1307268, 0.1307268, 0.19609020000000002, 0.2614536];
+    assert_eq!(arr.len(), 105);
+    for (i, (&got, &exp)) in arr.values()[..5].iter().zip(&expected_first_5).enumerate() {
+        assert!(
+            (got - exp).abs() < 1e-12,
+            "video_signal[{i}] mismatch: got {got}, expected {exp}"
+        );
+    }
+    let at_blocks = mdf
+        .get_attachment_blocks()
+        .expect("Vector_SyncStreamChannel.mf4 should have ATBlock");
+    assert!(!at_blocks.is_empty());
     Ok(())
 }
 

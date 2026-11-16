@@ -44,6 +44,8 @@ impl From<bool> for Endianness {
 pub const CN_F_ALL_VALUES_INVALID: u32 = 1 << 0;
 /// Bit 1: Invalidation bit valid
 pub const CN_F_INVALID: u32 = 1 << 1;
+/// Bit 12: Default X axis flag
+pub const CN_F_DEFAULT_X: u32 = 1 << 12;
 /// Bit 13: Event signal - channel contains event data, cn_data points to template EVBLOCK
 pub const CN_F_EVENT_SIGNAL: u32 = 1 << 13;
 /// Bit 15: Raw sensor event channel
@@ -116,6 +118,8 @@ pub enum CnSyncType {
     Distance = 3,
     /// 4: Index synchronisation (zero-based sample index)
     Index = 4,
+    /// 5: Frequency synchronisation (Hz, MDF 4.3)
+    Frequency = 5,
 }
 
 impl TryFrom<u8> for CnSyncType {
@@ -127,6 +131,7 @@ impl TryFrom<u8> for CnSyncType {
             2 => Ok(Self::Angle),
             3 => Ok(Self::Distance),
             4 => Ok(Self::Index),
+            5 => Ok(Self::Frequency),
             other => Err(other),
         }
     }
@@ -230,7 +235,7 @@ pub struct Cn4Block {
     pub cn_data: i64,
     /// Pointer to TXBLOCK/MDBLOCK with designation for physical unit of signal data (after conversion) or (only for channel data types "MIME sample" and "MIME stream") to MIME context-type text. (can be NIL). The unit can be used if no conversion rule is specified or to overwrite the unit specified for the conversion rule (e.g. if a conversion rule is shared between channels). If the link is NIL, then the unit from the conversion rule must be used. If the content is an empty string, no unit should be displayed. If an MDBLOCK is used, in addition the A-HDO unit definition can be stored, see Table 38. Note: for (virtual) master and synchronization channels the A-HDO definition should be omitted to avoid redundancy. Here the unit is already specified by cn_sync_type of the channel. In case of channel data types "MIME sample" and "MIME stream", the text of the unit must be the content-type text of a MIME type which specifies the content of the values of the channel (either fixed length in record or variable length in SDBLOCK). The MIME content-type string must be written in lowercase, and it must apply to the same rules as defined for at_tx_mimetype in 4.11 The Attachment Block ATBLOCK.
     pub cn_md_unit: i64,
-    /// Pointer to TXBLOCK/MDBLOCK with designation for physical unit of signal data (after conversion) or (only for channel data types "MIME sample" and "MIME stream") to MIME context-type text. (can be NIL). The unit can be used if no conversion rule is specified or to overwrite the unit specified for the conversion rule (e.g. if a conversion rule is shared between channels). If the link is NIL, then the unit from the conversion rule must be used. If the content is an empty string, no unit should be displayed. If an MDBLOCK is used, in addition the A-HDO unit definition can be stored, see Table 38. Note: for (virtual) master and synchronization channels the A-HDO definition should be omitted to avoid redundancy. Here the unit is already specified by cn_sync_type of the channel. In case of channel data types "MIME sample" and "MIME stream", the text of the unit must be the content-type text of a MIME type which specifies the content of the values of the channel (either fixed length in record or variable length in SDBLOCK). The MIME content-type string must be written in lowercase, and it must apply to the same rules as defined for at_tx_mimetype in 4.11 The Attachment Block ATBLOCK.
+    /// Pointer to TXBLOCK/MDBLOCK with comment and additional information about the channel (can be NIL).
     pub cn_md_comment: i64,
     #[br(if(cn_links > 8), little, count = cn_links - 8)]
     pub links: Vec<i64>,
@@ -314,8 +319,14 @@ impl Cn4Block {
     /// This link points to a channel containing the size information for variable length signal data.
     /// Only valid for MDF 4.3+ VLSC channels.
     pub fn cn_cn_size(&self) -> Option<i64> {
-        if self.cn_type == 7 && !self.links.is_empty() {
-            Some(self.links[0]) // First additional link (9th link) is cn_cn_size
+        if self.cn_type == 7 {
+            let idx = self.cn_attachment_count as usize
+                + if (self.cn_flags & CN_F_DEFAULT_X) != 0 {
+                    3
+                } else {
+                    0
+                };
+            self.links.get(idx).copied()
         } else {
             None
         }
@@ -502,6 +513,41 @@ mod tests {
         assert_eq!(16 + buf.len(), 168);
         let back: Cn4Block = Cursor::new(buf).read_le().unwrap();
         assert_eq!(back.cn_cn_size(), Some(0x99));
+    }
+
+    #[test]
+    fn cn_cn_size_skips_attachments_and_default_x() {
+        // 2 attachments + default X (3 links) + cn_cn_size (1 link) = 6 extra links
+        let cn = Cn4Block {
+            cn_links: 14,
+            links: vec![10, 11, 20, 21, 22, 0xABC],
+            cn_type: 7,
+            cn_attachment_count: 2,
+            cn_flags: CN_F_DEFAULT_X,
+            ..Default::default()
+        };
+        assert_eq!(cn.cn_cn_size(), Some(0xABC));
+
+        // Only default X (3 links) + cn_cn_size
+        let cn_def_x = Cn4Block {
+            cn_links: 12,
+            links: vec![20, 21, 22, 0xDEF],
+            cn_type: 7,
+            cn_attachment_count: 0,
+            cn_flags: CN_F_DEFAULT_X,
+            ..Default::default()
+        };
+        assert_eq!(cn_def_x.cn_cn_size(), Some(0xDEF));
+
+        // Missing link when links vec is shorter than expected offset
+        let cn_short = Cn4Block {
+            cn_links: 9,
+            links: vec![0x99],
+            cn_type: 7,
+            cn_attachment_count: 1,
+            ..Default::default()
+        };
+        assert_eq!(cn_short.cn_cn_size(), None);
     }
 
     #[test]

@@ -29,7 +29,7 @@ fn parser_at4_block(
     rdr.read_exact(&mut buf)
         .context("Could not read At4 Block buffer")?;
     let mut block = Cursor::new(buf);
-    let block: At4Block = binrw::BinReaderExt::read_le(&mut block)
+    let mut block: At4Block = binrw::BinReaderExt::read_le(&mut block)
         .context("Could not parse At4 Block buffer into At4Block struct")?;
     position = target + 96;
 
@@ -47,14 +47,22 @@ fn parser_at4_block(
         rdr.read_exact(&mut embedded_data)
             .context("Could not parse At4Block embedded attachement")?;
 
+        let orig_embedded_size = block.at_embedded_size as i64;
         let zip_type = block.at_zip_type;
         if (block.at_flags & 0b10) > 0 {
             let compressed = embedded_data.clone();
-            embedded_data = decompress_data(zip_type, 0, embedded_data, block.at_original_size)
-                .unwrap_or_else(|_| {
+            match decompress_data(zip_type, 0, embedded_data, block.at_original_size) {
+                Ok(decompressed) => {
+                    embedded_data = decompressed;
+                    block.at_flags &= !0b10;
+                    block.at_embedded_size = embedded_data.len() as u64;
+                    block.at_len = 96 + block.at_embedded_size;
+                }
+                Err(_) => {
                     warn!("Failed to decompress attachment data, storing raw data");
-                    compressed
-                });
+                    embedded_data = compressed;
+                }
+            }
         }
 
         // MD5 Checksum verification
@@ -70,7 +78,7 @@ fn parser_at4_block(
             }
         }
 
-        position += block.at_embedded_size as i64;
+        position += orig_embedded_size;
         Some(embedded_data)
     } else {
         None

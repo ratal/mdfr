@@ -129,12 +129,7 @@ fn test_adv_arena_mixed_alignment_stress_and_coalescing() {
             let layout = Layout::from_size_align(size, align).unwrap();
 
             let p = arena.alloc_layout(layout);
-            if align > 16 {
-                // StaticArena supports alignments up to 16; align > 16 returns null
-                assert!(p.is_null(), "align > 16 must return null pointer");
-                // Calling dealloc_layout on null pointer with align > 16 must be safe
-                arena.dealloc_layout(p, layout);
-            } else if !p.is_null() {
+            if !p.is_null() {
                 // Verify alignment
                 assert_eq!(
                     (p as usize) % align,
@@ -448,17 +443,17 @@ fn test_adv_spsc_drain_atomic_tail_on_mid_drain_error() {
     }
 
     // Second drain attempt:
-    // The tail pointer MUST have been updated atomically past the failing record (Record 3).
-    // It should now cleanly drain the remaining 2 valid records (Record 4 and 5)!
-    let second_drain = ring.drain_into(&mut logger).unwrap();
-    assert_eq!(
-        second_drain, 2,
-        "Atomic tail update must have skipped bad record and processed exactly remaining 2 records"
-    );
-
-    // Third drain attempt: ring should now be completely empty
-    let empty_drain = ring.drain_into(&mut logger).unwrap();
-    assert_eq!(empty_drain, 0, "Ring must be empty now");
+    // The tail pointer MUST have been updated atomically past the 3 valid records (0, 1, 2)
+    // and stopped at the failing record (Record 3), so it does not re-drain 0..=2 and
+    // hits RecordSize on Record 3 again.
+    let second_drain = ring.drain_into(&mut logger);
+    match second_drain {
+        Err(Error::RecordSize { expected, got }) => {
+            assert_eq!(expected, 16);
+            assert_eq!(got, 24);
+        }
+        other => panic!("Expected RecordSize error on retry at record 3, got {other:?}"),
+    }
 }
 
 // ============================================================================

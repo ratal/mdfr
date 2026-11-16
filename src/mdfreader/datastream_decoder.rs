@@ -17,8 +17,8 @@ use crate::mdfinfo::mdfinfo4::{
 /// Groups channel metadata and reverse lookup maps for O(1) channel resolution.
 struct ChannelIndex<'a> {
     channels: &'a CnType,
-    pos_to_rec: HashMap<i64, i32>,
-    name_to_rec: HashMap<&'a str, i32>,
+    pos_to_rec: HashMap<i64, i64>,
+    name_to_rec: HashMap<&'a str, i64>,
 }
 
 impl<'a> ChannelIndex<'a> {
@@ -122,23 +122,14 @@ pub fn calculate_aligned_offset(
     // Calculate alignment value: AV = 2^cn_alignment
     let alignment_value = 1usize << cn_alignment;
 
-    // Find smallest offset >= current_byte_pos where (offset - A) mod AV == 0
-    // This means offset = A + k*AV for some k, and offset >= current_byte_pos
-
-    // Calculate relative position from alignment offset
-    if current_byte_pos <= alignment_offset {
-        // Already at or before alignment offset, align to alignment_offset
-        return alignment_offset;
-    }
-
-    let relative_pos = current_byte_pos - alignment_offset;
-    let remainder = relative_pos % alignment_value;
+    // Find smallest offset >= current_byte_pos where (offset - A) mod AV == 0.
+    // Use Euclidean remainder so current_byte_pos < alignment_offset aligns cleanly too.
+    let remainder = (current_byte_pos as isize - alignment_offset as isize)
+        .rem_euclid(alignment_value as isize) as usize;
 
     if remainder == 0 {
-        // Already aligned
         current_byte_pos
     } else {
-        // Need to advance to next aligned position
         current_byte_pos + (alignment_value - remainder)
     }
 }
@@ -274,20 +265,85 @@ pub fn decode_single_channel_value(
 
         // For VLSC (cn_type == 7) with flat storage: size from size channel
         // This case should be handled by the caller who knows the size
-        bail!("VLSC with cn_bit_count == 0 requires size channel value");
+        if cn.block.cn_type == 7 {
+            bail!("VLSC with cn_bit_count == 0 requires size channel value");
+        }
+
+        // Composite container channel (e.g. structure/union parent) consumes no scalar bytes
+        if cn.composition.is_some() {
+            return Ok((Vec::new(), 0));
+        }
+
+        return Ok((Vec::new(), 0));
     }
 
     // Read fixed-length value
+    let total_bit_offset = if cn.block.cn_alignment == 255 {
+        aligned_offset + (cn.block.cn_byte_offset as usize) * 8 + (cn.block.cn_bit_offset as usize)
+    } else {
+        final_byte_offset * 8 + (cn.block.cn_bit_offset as usize)
+    };
+    let intra_byte_bit_offset = total_bit_offset % 8;
+    let bit_count_usize = bit_count as usize;
+
+    if (intra_byte_bit_offset != 0 || !bit_count_usize.is_multiple_of(8)) && bit_count_usize <= 64 {
+        let start_byte = total_bit_offset / 8;
+        let end_byte = (total_bit_offset + bit_count_usize).div_ceil(8);
+        if end_byte > data.len() {
+            bail!("Buffer underrun reading bit-packed data stream channel");
+        }
+        let mut raw: u128 = 0;
+        for (idx, &b) in data[start_byte..end_byte].iter().enumerate() {
+            raw |= (b as u128) << (idx * 8);
+        }
+        let mask = if bit_count_usize == 64 {
+            u64::MAX as u128
+        } else {
+            (1u128 << bit_count_usize) - 1
+        };
+        let val = ((raw >> intra_byte_bit_offset) & mask) as u64;
+        let mut out = if cn.endian.is_big() {
+            val.to_be_bytes()[8 - byte_count..8].to_vec()
+        } else {
+            val.to_le_bytes()[..byte_count].to_vec()
+        };
+        // Sign-extend if signed integer type and bit_count < byte_count * 8
+        if (cn.block.cn_data_type == 2 || cn.block.cn_data_type == 3)
+            && bit_count_usize > 0
+            && bit_count_usize < byte_count * 8
+        {
+            let shift = 64 - bit_count_usize;
+            let signed = ((val as i64) << shift) >> shift;
+            out = if cn.endian.is_big() {
+                signed.to_be_bytes()[8 - byte_count..8].to_vec()
+            } else {
+                signed.to_le_bytes()[..byte_count].to_vec()
+            };
+        }
+        stream_state.bit_position = total_bit_offset + bit_count_usize;
+        return Ok((out, byte_count));
+    }
+
+    let read_byte_offset = if cn.block.cn_alignment == 255 {
+        total_bit_offset / 8
+    } else {
+        final_byte_offset
+    };
+
     let value_bytes = read_primitive_value(
         data,
-        final_byte_offset,
+        read_byte_offset,
         bit_count,
         cn.block.cn_data_type,
         cn.endian.is_big(),
     )?;
 
     // Update stream position
-    stream_state.bit_position = (final_byte_offset + byte_count) * 8;
+    stream_state.bit_position = if cn.block.cn_alignment == 255 {
+        total_bit_offset + bit_count_usize
+    } else {
+        (final_byte_offset + byte_count) * 8
+    };
 
     Ok((value_bytes, byte_count))
 }
@@ -481,28 +537,21 @@ pub fn decode_datastream_blob(
     cg_channels: &CnType,
     record_offsets: &[u64],
     record_sizes: &[u64],
-) -> Result<HashMap<i32, Vec<Vec<u8>>>> {
-    let mut result: HashMap<i32, Vec<Vec<u8>>> = HashMap::new();
+) -> Result<HashMap<i64, Vec<Vec<u8>>>> {
+    let mut result: HashMap<i64, Vec<Vec<u8>>> = HashMap::new();
     let record_count = record_offsets.len();
 
     let index = ChannelIndex::new(cg_channels);
 
-    // Get initial alignment start from ds_cn_alignment_start (if specified)
-    let alignment_start = if ds_block.ds_cn_alignment_start() != 0 {
-        if let Some(&rec) = index.pos_to_rec.get(&ds_block.ds_cn_alignment_start()) {
-            if let Some(align_cn) = index.channels.get(&rec) {
-                extract_channel_values_as_u64(align_cn)
-                    .ok()
-                    .and_then(|v| v.first().copied())
-                    .unwrap_or(0) as usize
-            } else {
-                0
-            }
-        } else {
-            0
-        }
+    // Get per-record (or constant) alignment starts from ds_cn_alignment_start (if specified)
+    let alignment_starts = if ds_block.ds_cn_alignment_start() != 0 {
+        index
+            .pos_to_rec
+            .get(&ds_block.ds_cn_alignment_start())
+            .and_then(|rec| index.channels.get(rec))
+            .and_then(|align_cn| extract_channel_values_as_u64(align_cn).ok())
     } else {
-        0
+        None
     };
 
     // Process each record
@@ -521,6 +570,10 @@ pub fn decode_datastream_blob(
         }
 
         let record_data = &data[record_offset..record_offset + record_size];
+        let alignment_start = alignment_starts
+            .as_ref()
+            .and_then(|v| v.get(record_idx).copied().or_else(|| v.first().copied()))
+            .unwrap_or(0) as usize;
         let mut stream_state = StreamState::with_alignment_start(alignment_start);
 
         // Decode the composition for this record
@@ -544,7 +597,7 @@ fn decode_composition_record(
     index: &ChannelIndex,
     stream_state: &mut StreamState,
     record_idx: usize,
-    result: &mut HashMap<i32, Vec<Vec<u8>>>,
+    result: &mut HashMap<i64, Vec<Vec<u8>>>,
 ) -> Result<()> {
     match &composition.block {
         Compo::CN(cn) => {
