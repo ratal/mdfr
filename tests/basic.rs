@@ -10,12 +10,7 @@ use std::io;
 use std::path::Path;
 use std::sync::LazyLock;
 
-static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(|| {
-    format!(
-        "{}MDF4/MDF4.3/Base_Standard/Examples/",
-        common::mdfreader_tests_path()
-    )
-});
+static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(common::base_path_mdf4);
 
 fn parse_info_folder(folder: &String) -> Result<()> {
     let path = Path::new(folder);
@@ -161,7 +156,7 @@ fn parse_all_folders4() -> io::Result<()> {
 
 #[test]
 fn parse_all_folders3() -> io::Result<()> {
-    let base_path = format!("{}mdf3/", common::mdfreader_tests_path());
+    let base_path = common::base_path_mdf3();
     if !Path::new(&base_path).is_dir() {
         return Ok(());
     }

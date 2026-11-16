@@ -10,12 +10,7 @@ use mdfr::mdfreader::Mdf;
 use std::path::Path;
 use std::sync::LazyLock;
 
-static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(|| {
-    format!(
-        "{}MDF4/MDF4.3/Base_Standard/Examples/",
-        common::mdfreader_tests_path()
-    )
-});
+static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(common::base_path_mdf4);
 
 macro_rules! require_base_path {
     () => {
@@ -430,8 +425,8 @@ fn channel_list() -> Result<()> {
     // - x.a: first member (Int32) [0, 1000000000]
     // - x.b: second member (Float64) [0.0, 2.121995791e-314]
     let file_name = format!(
-        "{}MDF4/MDF4.3/Base_Standard/Examples/DynamicData/ChannelList/simple_list.mf4",
-        common::mdfreader_tests_path()
+        "{}DynamicData/ChannelList/simple_list.mf4",
+        BASE_PATH_MDF4.as_str()
     );
     let mut mdf = Mdf::new(&file_name)?;
     mdf.load_all_channels_data_in_memory()?;
@@ -510,8 +505,8 @@ fn channel_variant() -> Result<()> {
     // - discriminator: variant selector (3 samples) [0, 1, 2]
     // - variant: merged variant data based on discriminator value
     let file_name = format!(
-        "{}MDF4/MDF4.3/Base_Standard/Examples/Variant/Etas_cv_storage_with_fixed_length.mf4",
-        common::mdfreader_tests_path()
+        "{}Variant/Etas_cv_storage_with_fixed_length.mf4",
+        BASE_PATH_MDF4.as_str()
     );
     let mut mdf = Mdf::new(&file_name)?;
     mdf.load_all_channels_data_in_memory()?;
@@ -596,8 +591,8 @@ fn data_stream_block() -> Result<()> {
     // Note: DS blocks are implicitly tested via ChannelList (simple_list.mf4)
     // where the "x" channel uses DSBLOCK for data stream mode
     let file_name = format!(
-        "{}MDF4/MDF4.3/Base_Standard/Examples/DynamicData/ChannelList/simple_list.mf4",
-        common::mdfreader_tests_path()
+        "{}DynamicData/ChannelList/simple_list.mf4",
+        BASE_PATH_MDF4.as_str()
     );
     let mut mdf = Mdf::new(&file_name)?;
     mdf.load_all_channels_data_in_memory()?;
@@ -616,8 +611,8 @@ fn channel_union() -> Result<()> {
     // - time: master channel (3 samples) [0.0, 1.0, 2.0]
     // - union: union data storing different member types in same space
     let file_name = format!(
-        "{}MDF4/MDF4.3/Base_Standard/Examples/Union/Etas_cu_storage_with_fixed_length.mf4",
-        common::mdfreader_tests_path()
+        "{}Union/Etas_cu_storage_with_fixed_length.mf4",
+        BASE_PATH_MDF4.as_str()
     );
     if Path::new(&file_name).exists() {
         let mut mdf = Mdf::new(&file_name)?;

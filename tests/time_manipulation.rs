@@ -8,12 +8,7 @@ use mdfr::mdfreader::Mdf;
 use std::collections::HashSet;
 use std::sync::LazyLock;
 
-static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(|| {
-    format!(
-        "{}MDF4/MDF4.3/Base_Standard/Examples/",
-        common::mdfreader_tests_path()
-    )
-});
+static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(common::base_path_mdf4);
 
 fn get_simple_file() -> String {
     let file = format!(

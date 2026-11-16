@@ -5,12 +5,8 @@ use mdfr::data_holder::channel_data::{AsValuesSlice, ChannelData};
 use mdfr::mdfreader::Mdf;
 use std::sync::LazyLock;
 
-static BASE: LazyLock<String> = LazyLock::new(|| {
-    format!(
-        "{}MDF4/MDF4.3/Base_Standard/Examples/DataTypes/CANopenTypes/",
-        common::mdfreader_tests_path()
-    )
-});
+static BASE: LazyLock<String> =
+    LazyLock::new(|| format!("{}DataTypes/CANopenTypes/", common::base_path_mdf4()));
 
 #[test]
 fn canopen_date() -> Result<()> {

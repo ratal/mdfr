@@ -10,12 +10,8 @@ use mdfr::mdfinfo::mdfinfo4::CompressionAlgorithm;
 use mdfr::mdfreader::Mdf;
 use std::sync::LazyLock;
 
-static BASE_PATH_ARRAYS: LazyLock<String> = LazyLock::new(|| {
-    format!(
-        "{}MDF4/MDF4.3/Base_Standard/Examples/Arrays/",
-        common::mdfreader_tests_path()
-    )
-});
+static BASE_PATH_ARRAYS: LazyLock<String> =
+    LazyLock::new(|| format!("{}Arrays/", common::base_path_mdf4()));
 
 /// Checks whether a `ChannelData` value is one of the ArrayD variants.
 fn is_array_channel(data: &ChannelData) -> bool {

@@ -15,15 +15,9 @@ type SiInfo = (u8, u8, u8, Option<String>, Option<String>);
 /// AT block metadata: (filename, mimetype, flags, original_size, embedded_data)
 type AtInfo = (Option<String>, Option<String>, u16, u64, Option<Vec<u8>>);
 
-static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(|| {
-    format!(
-        "{}MDF4/MDF4.3/Base_Standard/Examples/",
-        common::mdfreader_tests_path()
-    )
-});
+static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(common::base_path_mdf4);
 
-static BASE_PATH_MDF3: LazyLock<String> =
-    LazyLock::new(|| format!("{}mdf3/", common::mdfreader_tests_path()));
+static BASE_PATH_MDF3: LazyLock<String> = LazyLock::new(common::base_path_mdf3);
 
 #[test]
 fn writing_mdf4() -> Result<()> {
@@ -770,8 +764,8 @@ fn writing_mdf4_composition_ds_cl() -> Result<()> {
     let writing_mdf_file = tmp_file.path().to_str().unwrap().to_string();
     let file = format!(
         "{}{}",
-        common::mdfreader_tests_path(),
-        "MDF4/MDF4.3/Base_Standard/Examples/DynamicData/ChannelList/simple_list.mf4"
+        BASE_PATH_MDF4.as_str(),
+        "DynamicData/ChannelList/simple_list.mf4"
     );
     if !Path::new(&file).exists() {
         return Ok(());
@@ -831,8 +825,8 @@ fn writing_mdf4_composition_cv() -> Result<()> {
     let writing_mdf_file = tmp_file.path().to_str().unwrap().to_string();
     let file = format!(
         "{}{}",
-        common::mdfreader_tests_path(),
-        "MDF4/MDF4.3/Base_Standard/Examples/Variant/Etas_cv_storage_with_fixed_length.mf4"
+        BASE_PATH_MDF4.as_str(),
+        "Variant/Etas_cv_storage_with_fixed_length.mf4"
     );
     if !Path::new(&file).exists() {
         return Ok(());
@@ -908,8 +902,8 @@ fn writing_mdf4_composition_cu() -> Result<()> {
     let writing_mdf_file = tmp_file.path().to_str().unwrap().to_string();
     let file = format!(
         "{}{}",
-        common::mdfreader_tests_path(),
-        "MDF4/MDF4.3/Base_Standard/Examples/Union/Etas_cu_storage_with_fixed_length.mf4"
+        BASE_PATH_MDF4.as_str(),
+        "Union/Etas_cu_storage_with_fixed_length.mf4"
     );
     if !Path::new(&file).exists() {
         return Ok(());

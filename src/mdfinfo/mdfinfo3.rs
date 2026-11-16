@@ -1268,10 +1268,20 @@ fn parse_cn3_block(
 ) -> Result<(Cn3, i64)> {
     rdr.seek_relative(target as i64 - position)
         .context("Could not reach position of CN Block")?; // change buffer position
+    let mut hdr = [0u8; 4];
+    rdr.read_exact(&mut hdr)
+        .context("Could not read Cn3 block header")?;
+    let cn_len = u16::from_le_bytes([hdr[2], hdr[3]]) as usize;
     let mut buf = vec![0u8; 228];
-    rdr.read_exact(&mut buf)
+    buf[..4].copy_from_slice(&hdr);
+    let to_read = cn_len.saturating_sub(4).min(224);
+    rdr.read_exact(&mut buf[4..4 + to_read])
         .context("Could not read Cn3 block buffer")?;
-    position = target as i64 + 228;
+    if cn_len > 228 {
+        rdr.seek_relative((cn_len - 228) as i64)
+            .context("Could not skip trailing Cn3 block bytes")?;
+    }
+    position = target as i64 + cn_len.max(4) as i64;
     let mut block = Cursor::new(buf);
     let block1: Cn3Block1 = binrw::BinReaderExt::read_le(&mut block)
         .context("Could not read buffer into Cn3Block1 structure")?;

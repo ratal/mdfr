@@ -6,12 +6,7 @@ use mdfr::data_holder::channel_data::ChannelData;
 use mdfr::mdfreader::Mdf;
 use std::sync::LazyLock;
 
-static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(|| {
-    format!(
-        "{}MDF4/MDF4.3/Base_Standard/Examples/",
-        common::mdfreader_tests_path()
-    )
-});
+static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(common::base_path_mdf4);
 
 macro_rules! require_base_path {
     () => {

@@ -325,10 +325,9 @@ fn read_data(
             let block: Gd4Block = binrw::BinReaderExt::read_le(rdr)
                 .context("could not read into Gd4Block structure")?;
 
-            // Gd4Block struct size (without id): 4 + 8 + 8 + 8 + 2 = 30 bytes
-            // After reading: reader at position + 4 (id) + 30 (struct) = position + 34
-            const GD4_STRUCT_SIZE: i64 = 36;
-            let current_pos = position + 4 + GD4_STRUCT_SIZE;
+            // Gd4Block struct size (without id): 30 bytes up to gd_version, plus 6 bytes of gd_reserved when gd_len >= 40.
+            let struct_size: i64 = if block.gd_len >= 40 { 36 } else { 30 };
+            let current_pos = position + 4 + struct_size;
 
             // Check if we support the required MDF version (430 for MDF 4.3.0)
             if block.gd_version > 430 {
@@ -336,7 +335,7 @@ fn read_data(
                     "GDBLOCK requires MDF version {} which is not supported (max 430). Skipping guarded data.",
                     block.gd_version
                 );
-                position += block.gd_len as i64;
+                position = current_pos;
             } else {
                 // Follow the guarded link to the actual data block
                 rdr.seek_relative(block.gd_link - current_pos)

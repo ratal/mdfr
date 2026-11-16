@@ -9,12 +9,7 @@ use pyo3::types::{PyAnyMethods, PyDict};
 use std::path::Path;
 use std::sync::LazyLock;
 
-static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(|| {
-    format!(
-        "{}MDF4/MDF4.3/Base_Standard/Examples/",
-        common::mdfreader_tests_path()
-    )
-});
+static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(common::base_path_mdf4);
 
 fn is_asammdf_and_reference_available(subpath: &str) -> Option<String> {
     let full_path = format!("{}{subpath}", *BASE_PATH_MDF4);

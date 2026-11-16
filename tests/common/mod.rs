@@ -26,6 +26,15 @@ pub fn base_path_mdf4() -> String {
     )
 }
 
+/// Returns the base directory containing the MDF3 test files.
+#[allow(dead_code)]
+pub fn base_path_mdf3() -> String {
+    if std::path::Path::new("test_files/Examples/mdf3").is_dir() {
+        return "test_files/Examples/mdf3/".to_string();
+    }
+    format!("{}mdf3/", mdfreader_tests_path())
+}
+
 /// Relative path to mdfr's own test_files directory (relative to workspace root).
 #[allow(dead_code)]
 pub const TEST_FILES: &str = "test_files/";

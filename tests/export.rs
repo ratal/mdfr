@@ -4,15 +4,9 @@ use anyhow::Result;
 use mdfr::mdfreader::Mdf;
 use std::sync::LazyLock;
 
-static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(|| {
-    format!(
-        "{}MDF4/MDF4.3/Base_Standard/Examples/",
-        common::mdfreader_tests_path()
-    )
-});
+static BASE_PATH_MDF4: LazyLock<String> = LazyLock::new(common::base_path_mdf4);
 
-static BASE_PATH_MDF3: LazyLock<String> =
-    LazyLock::new(|| format!("{}mdf3/", common::mdfreader_tests_path()));
+static BASE_PATH_MDF3: LazyLock<String> = LazyLock::new(common::base_path_mdf3);
 
 #[cfg(feature = "parquet")]
 #[test]

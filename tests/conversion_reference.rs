@@ -6,12 +6,8 @@ use mdfr::data_holder::channel_data::{AsValuesSlice, ChannelData};
 use mdfr::mdfreader::Mdf;
 use std::sync::LazyLock;
 
-static BASE: LazyLock<String> = LazyLock::new(|| {
-    format!(
-        "{}MDF4/MDF4.3/Base_Standard/Examples/Conversion/",
-        common::mdfreader_tests_path()
-    )
-});
+static BASE: LazyLock<String> =
+    LazyLock::new(|| format!("{}Conversion/", common::base_path_mdf4()));
 
 #[test]
 fn test_reference_linear_conversion() -> Result<()> {
