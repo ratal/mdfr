@@ -28,11 +28,17 @@ thiserror = { version = "2", default-features = false }
 log = { version = "0.4", default-features = false }
 chrono = { version = "0.4", default-features = false, features = ["alloc"] }
 transpose = "0.2.3"
-miniz_oxide = { version = "0.9.1", default-features = false, features = ["with-alloc"], optional = true }
-lz4_flex = { version = "0.14.0", default-features = false, features = ["alloc", "safe-encode", "safe-decode"], optional = true }
+miniz_oxide = { version = "0.9.1", default-features = false, features = [
+    "with-alloc",
+], optional = true }
+lz4_flex = { version = "0.14.0", default-features = false, features = [
+    "alloc",
+    "safe-encode",
+    "safe-decode",
+], optional = true }
 zstd = { version = "0.14.3", optional = true }
 mdfr-derive = { path = "../mdfr-derive", version = "0.8.4", optional = true }
-defmt = { version = "=1.1.1", features = ["alloc"], optional = true }
+defmt = { version = "=1.2.0", features = ["alloc"], optional = true }
 embedded-io = { version = "0.7.1", default-features = false, optional = true }
 embedded-io-async = { version = "0.7.0", default-features = false, optional = true }
 
