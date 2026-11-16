@@ -41,6 +41,44 @@ pub struct PyChannel {
     pub(crate) master_name: Option<String>,
 }
 
+/// Wraps `py_array` in a `numpy.ma.MaskedArray` when `validity` is present, broadcasting
+/// 1D per-sample masks across trailing array dimensions when `ndim > 1`.
+fn apply_validity_mask(
+    py: Python<'_>,
+    py_array: Py<PyAny>,
+    validity: Option<arrow::buffer::NullBuffer>,
+) -> PyResult<Py<PyAny>> {
+    let Some(m) = validity else {
+        return Ok(py_array);
+    };
+    let mask_vec: Vec<bool> = m.iter().map(|valid| !valid).collect();
+    let mut np_mask = mask_vec.to_pyarray(py).into_any();
+    let arr_bound = py_array.bind(py);
+    let ndim: usize = arr_bound
+        .getattr(pyo3::intern!(py, "ndim"))
+        .and_then(|v| v.extract())
+        .unwrap_or(1);
+    if ndim > 1 {
+        let shape_obj = arr_bound.getattr(pyo3::intern!(py, "shape"))?;
+        let mut expanded_shape = vec![mask_vec.len()];
+        expanded_shape.resize(ndim, 1);
+        let reshaped = np_mask.call_method1(pyo3::intern!(py, "reshape"), (expanded_shape,))?;
+        let np = py.import("numpy").context("could not import numpy")?;
+        np_mask = np.call_method1(pyo3::intern!(py, "broadcast_to"), (reshaped, shape_obj))?;
+    }
+    let np_ma = py.import("numpy.ma").context("could not import numpy.ma")?;
+    let kwargs = pyo3::types::PyDict::new(py);
+    kwargs
+        .set_item(pyo3::intern!(py, "mask"), np_mask)
+        .context("cannot set python mask")?;
+    Ok(np_ma
+        .getattr(pyo3::intern!(py, "array"))
+        .context("could not get numpy.ma.array")?
+        .call((&py_array,), Some(&kwargs))
+        .context("masked array creation failed")?
+        .unbind())
+}
+
 #[pymethods]
 impl PyChannel {
     /// Channel name
@@ -94,23 +132,7 @@ impl PyChannel {
             .clone()
             .into_pyobject(py)
             .context("error converting ChannelData into python numpy object")?;
-        let mut py_array: Py<PyAny> = py_obj.into();
-        if let Some(m) = self.data.validity() {
-            let mask_vec: Vec<bool> = m.iter().map(|valid| !valid).collect();
-            let np_mask = mask_vec.to_pyarray(py);
-            let np_ma = py.import("numpy.ma").context("could not import numpy.ma")?;
-            let kwargs = pyo3::types::PyDict::new(py);
-            kwargs
-                .set_item(pyo3::intern!(py, "mask"), np_mask)
-                .context("cannot set python mask")?;
-            py_array = np_ma
-                .getattr(pyo3::intern!(py, "array"))
-                .context("could not get numpy.ma.array")?
-                .call((&py_array,), Some(&kwargs))
-                .context("masked array creation failed")?
-                .unbind();
-        }
-        Ok(py_array)
+        apply_validity_mask(py, py_obj.into(), self.data.validity())
     }
 
     /// NumPy array protocol: np.asarray(channel)
@@ -314,32 +336,17 @@ impl Mdfr {
         let Mdfr(mdf) = self;
         // default py_array value is python None
         let data = pyo3::Python::attach(|py| -> PyResult<Py<PyAny>> {
-            let mut py_array: Py<PyAny>;
             let dt = mdf.get_channel_converted_data(&channel_name);
-            if let Some(data) = dt {
-                py_array = data
+            let py_array = if let Some(data) = dt {
+                let raw_array: Py<PyAny> = data
                     .clone()
                     .into_pyobject(py)
                     .context("error converting ChannelData into python object")?
                     .into();
-                if let Some(m) = data.clone().validity() {
-                    let mask_vec: Vec<bool> = m.iter().map(|valid| !valid).collect();
-                    let np_mask = mask_vec.to_pyarray(py);
-                    let np_ma = py.import("numpy.ma").context("could not import numpy.ma")?;
-                    let kwargs = pyo3::types::PyDict::new(py);
-                    kwargs
-                        .set_item(pyo3::intern!(py, "mask"), np_mask)
-                        .context("cannot set python mask")?;
-                    py_array = np_ma
-                        .getattr(pyo3::intern!(py, "array"))
-                        .context("could not get numpy.ma.array")?
-                        .call((&py_array,), Some(&kwargs))
-                        .context("masked array creation failed")?
-                        .unbind();
-                }
+                apply_validity_mask(py, raw_array, data.validity())?
             } else {
-                py_array = Python::None(py);
-            }
+                Python::None(py)
+            };
             Ok(py_array)
         })?;
         Ok(data)

@@ -878,6 +878,15 @@ fn read_independent_channel_data(
             })
             .collect::<Result<_>>()?;
 
+        let chunk_sample_counts: Vec<usize> = if cn.n_bytes > 0 {
+            decompressed
+                .iter()
+                .map(|b| b.len() / (cn.n_bytes as usize * cn.list_size.max(1)))
+                .collect()
+        } else {
+            vec![0; decompressed.len()]
+        };
+
         if decompressed.len() == 1 {
             read_one_channel_array(&decompressed[0], cn, cycle_count)?;
         } else {
@@ -901,23 +910,37 @@ fn read_independent_channel_data(
                         .context("failed decompressing DI DZ block in independent LD"),
                 })
                 .collect::<Result<_>>()?;
-            let mut inval_bytes = Vec::new();
-            for b in decomp_inval.into_iter().flatten() {
-                inval_bytes.extend(b);
-            }
-            if !inval_bytes.is_empty()
-                && let Some((Some(mask), _invalid_byte_pos, _invalid_bit_mask)) =
-                    &mut cn.invalid_mask
-            {
-                for index in 0..cycle_count {
-                    let byte_idx = index / 8;
-                    let bit_idx = index % 8;
-                    if byte_idx < inval_bytes.len() {
-                        let is_invalid = (inval_bytes[byte_idx] & (1 << bit_idx)) != 0;
-                        mask.set_bit(index, !is_invalid);
+            if let Some((validity, _invalid_byte_pos, invalid_byte_mask)) = &mut cn.invalid_mask {
+                if let Some(mask) = validity {
+                    // invalid_byte_mask == 0 means CN_F_ALL_VALUES_INVALID (pre-filled false); keep as-is.
+                    if *invalid_byte_mask != 0 {
+                        let mut sample_offset = 0usize;
+                        for (chunk_idx, opt_inval) in decomp_inval.into_iter().enumerate() {
+                            let chunk_samples = chunk_sample_counts
+                                .get(chunk_idx)
+                                .copied()
+                                .unwrap_or(cycle_count.saturating_sub(sample_offset));
+                            if let Some(inval_bytes) = opt_inval {
+                                for local_idx in 0..chunk_samples {
+                                    let sample_idx = sample_offset + local_idx;
+                                    if sample_idx >= mask.len() {
+                                        break;
+                                    }
+                                    let byte_idx = local_idx / 8;
+                                    let bit_idx = local_idx % 8;
+                                    if byte_idx < inval_bytes.len() {
+                                        let is_invalid =
+                                            (inval_bytes[byte_idx] & (1 << bit_idx)) != 0;
+                                        mask.set_bit(sample_idx, !is_invalid);
+                                    }
+                                }
+                            }
+                            sample_offset = sample_offset.saturating_add(chunk_samples);
+                        }
                     }
+                    cn.data.set_validity(mask)?;
                 }
-                cn.data.set_validity(mask)?;
+                *validity = None;
             }
         }
     } else if id == *b"##DV" || id == *b"##DT" {
@@ -1403,7 +1426,7 @@ fn read_dv_di(
                         false,
                     )
                     .context("failed reading channels from dv di blocks")?;
-                    previous_index += n_record_chunk;
+                    previous_index += records_to_read;
                 }
                 let remaining = block_length % record_length;
                 if remaining > 0 {
@@ -1432,7 +1455,7 @@ fn read_dv_di(
                 } else {
                     data.clear();
                 }
-                previous_index += n_record_chunk;
+                previous_index += records_to_read;
             }
         }
     }
@@ -1589,7 +1612,7 @@ fn parser_dl4_sorted(
                     inval_bytes,
                 )
                 .context("could not read channels from bytes")?;
-                previous_index += n_record_chunk;
+                previous_index += records_to_read;
             }
             let remaining = block_length % record_length;
             if remaining > 0 {
@@ -1625,7 +1648,7 @@ fn parser_dl4_sorted(
             } else {
                 data.clear();
             }
-            previous_index += n_record_chunk;
+            previous_index += records_to_read;
         }
     }
     Ok((position, vlsd_channels))

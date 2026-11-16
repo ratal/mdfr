@@ -1107,6 +1107,37 @@ pub fn read_channels_from_bytes(
     )
 }
 
+/// Extracts per-record invalidation bits from the trailing `cg_inval_bytes` of each record.
+fn extract_record_invalid_bits(
+    cn: &mut Cn4,
+    data_chunk: &[u8],
+    record_length: usize,
+    previous_index: usize,
+    record_with_invalid_data: bool,
+    cg_inval_bytes: usize,
+) {
+    if !record_with_invalid_data || cg_inval_bytes == 0 {
+        return;
+    }
+    let inval_start = record_length.saturating_sub(cg_inval_bytes);
+    if let Some((Some(mask), invalid_byte_position, invalid_byte_mask)) = &mut cn.invalid_mask {
+        // invalid_byte_mask == 0 signals CN_F_ALL_VALUES_INVALID (pre-filled false); keep as-is.
+        if *invalid_byte_mask == 0 {
+            return;
+        }
+        let byte_pos = inval_start + *invalid_byte_position;
+        let mask_len = mask.len();
+        if byte_pos < record_length {
+            for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
+                let sample_idx = i + previous_index;
+                if sample_idx < mask_len {
+                    mask.set_bit(sample_idx, (*invalid_byte_mask & record[byte_pos]) == 0);
+                }
+            }
+        }
+    }
+}
+
 /// Copies record bytes into each channel array and extracts invalidation bits from the tail `cg_inval_bytes`.
 pub fn read_channels_from_bytes_with_inval(
     data_chunk: &[u8],
@@ -1136,6 +1167,16 @@ pub fn read_channels_from_bytes_with_inval(
                 && let Compo::CA(ca) = &compo.block
                 && (ca.ca_storage == 1 || ca.ca_storage == 2)
             {
+                if ca.ca_storage == 1 {
+                    extract_record_invalid_bits(
+                        cn,
+                        data_chunk,
+                        record_length,
+                        previous_index,
+                        record_with_invalid_data,
+                        cg_inval_bytes,
+                    );
+                }
                 return Ok(());
             }
             if cn.block.cn_type == 0
@@ -1175,6 +1216,14 @@ pub fn read_channels_from_bytes_with_inval(
                         .lock()
                         .unwrap_or_else(std::sync::PoisonError::into_inner);
                     vlsd_channel.push((cn.block.cn_type, *rec_pos));
+                    extract_record_invalid_bits(
+                        cn,
+                        data_chunk,
+                        record_length,
+                        previous_index,
+                        record_with_invalid_data,
+                        cg_inval_bytes,
+                    );
                     return Ok(());
                 }
                 let builder = match &mut cn.builder {
@@ -1580,27 +1629,14 @@ pub fn read_channels_from_bytes_with_inval(
                 }
             }
             // Other channel types : virtual channels cn_type 3 & 6 are handled at initialisation
-            if record_with_invalid_data {
-                let inval_start = if cg_inval_bytes > 0 {
-                    record_length.saturating_sub(cg_inval_bytes)
-                } else {
-                    0
-                };
-                // invalidation bits to store in bitmap.
-                if let Some((Some(mask), invalid_byte_position, invalid_byte_mask)) =
-                    &mut cn.invalid_mask
-                {
-                    let byte_pos = inval_start + *invalid_byte_position;
-                    if byte_pos < record_length {
-                        for (i, record) in data_chunk.chunks_exact(record_length).enumerate() {
-                            mask.set_bit(
-                                i + previous_index,
-                                (*invalid_byte_mask & record[byte_pos]) == 0,
-                            );
-                        }
-                    }
-                };
-            }
+            extract_record_invalid_bits(
+                cn,
+                data_chunk,
+                record_length,
+                previous_index,
+                record_with_invalid_data,
+                cg_inval_bytes,
+            );
             Ok(())
         })
         .with_context(|| {

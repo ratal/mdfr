@@ -259,30 +259,37 @@ impl Cg4 {
                 .par_iter_mut()
                 .filter(|(_rec_pos, cn)| !cn.data.is_empty())
                 .try_for_each(|(_rec_pos, cn): (&i64, &mut Cn4)| -> Result<(), Error> {
-                    if let Some((Some(mask), invalid_byte_position, invalid_byte_mask)) =
+                    if let Some((validity, invalid_byte_position, invalid_byte_mask)) =
                         &mut cn.invalid_mask
                     {
-                        if *invalid_byte_mask != 0 && cg_inval_bytes > 0 {
-                            // mask is already initialised to all valid values.
-                            invalid_bytes.chunks(cg_inval_bytes).enumerate().for_each(
-                                |(index, record)| {
-                                    // arrow considers bit set as valid while mdf spec considers bit set as invalid
-                                    if *invalid_byte_position < record.len() {
-                                        mask.set_bit(
-                                            index,
-                                            (record[*invalid_byte_position] & *invalid_byte_mask)
-                                                == 0,
-                                        );
-                                    }
-                                },
-                            );
+                        if let Some(mask) = validity {
+                            if *invalid_byte_mask != 0 && cg_inval_bytes > 0 {
+                                let mask_len = mask.len();
+                                // mask is already initialised to all valid values.
+                                invalid_bytes
+                                    .chunks(cg_inval_bytes)
+                                    .take(mask_len)
+                                    .enumerate()
+                                    .for_each(|(index, record)| {
+                                        // arrow considers bit set as valid while mdf spec considers bit set as invalid
+                                        if *invalid_byte_position < record.len() {
+                                            mask.set_bit(
+                                                index,
+                                                (record[*invalid_byte_position]
+                                                    & *invalid_byte_mask)
+                                                    == 0,
+                                            );
+                                        }
+                                    });
+                            }
+                            cn.data.set_validity(mask).with_context(|| {
+                                format!(
+                                    "failed applying invalid bits for channel {}",
+                                    cn.unique_name
+                                )
+                            })?;
                         }
-                        cn.data.set_validity(mask).with_context(|| {
-                            format!(
-                                "failed applying invalid bits for channel {}",
-                                cn.unique_name
-                            )
-                        })?;
+                        *validity = None;
                     }
                     Ok(())
                 })?;

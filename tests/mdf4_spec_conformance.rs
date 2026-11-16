@@ -2546,3 +2546,354 @@ fn test_synchronization_channel_cn_type_4() -> Result<()> {
     assert_eq!(at.at_tx_filename, tx_at_file);
     Ok(())
 }
+
+#[test]
+fn test_invalidation_multi_byte_dl_and_cn_flags() -> Result<()> {
+    // Covers multi-byte invalidation offsets across split ##DL chunks, cn_flags=0 (invalid bit unused),
+    // and cn_flags=3 (CN_F_ALL_VALUES_INVALID | CN_F_INVALID).
+    let mut buf = Vec::new();
+    write_id_block(&mut buf);
+    let hd_pos = buf.len() as i64;
+    write_hd4(&mut buf, 0);
+    let dg_pos = buf.len() as i64;
+    write_dg4(&mut buf, 0, 0);
+
+    const DATA_B: usize = 32; // 4 x f64
+    const INV_B: usize = 20; // bits 0..159
+    const REC_LEN: usize = DATA_B + INV_B;
+    const CYCLES: usize = 5;
+
+    let cg_pos = buf.len() as i64;
+    write_cg4_with_data_bytes(&mut buf, 0, CYCLES as u64, DATA_B as u32);
+    // Patch cg_inval_bytes at cg_pos + 100
+    buf[(cg_pos + 100) as usize..(cg_pos + 104) as usize]
+        .copy_from_slice(&(INV_B as u32).to_le_bytes());
+
+    let mut make_cn = |name: &str, byte_off: u32, flags: u32, inval_bit_pos: u32| -> i64 {
+        let tx_pos = buf.len() as i64;
+        write_tx(&mut buf, name);
+        let cn_pos = buf.len() as i64;
+        write_cn4_with_offset(&mut buf, 0, 4, 0, byte_off, 64, tx_pos, 0, 0, 0);
+        // cn_flags at +100, cn_inval_bit_pos at +104 in CNBLOCK
+        buf[(cn_pos + 100) as usize..(cn_pos + 104) as usize].copy_from_slice(&flags.to_le_bytes());
+        buf[(cn_pos + 104) as usize..(cn_pos + 108) as usize]
+            .copy_from_slice(&inval_bit_pos.to_le_bytes());
+        cn_pos
+    };
+
+    // ch_disabled: cn_flags=0, bit=0 (even if byte 0 bit 0 is set in file, must NOT mask)
+    let cn0 = make_cn("ch_disabled", 0, 0, 0);
+    // ch_all_invalid: cn_flags=3 (CN_F_ALL_VALUES_INVALID | CN_F_INVALID), bit=0 (all masked even when bit=0)
+    let cn1 = make_cn("ch_all_invalid", 8, 3, 0);
+    // ch_bit10: cn_flags=2, bit=10 -> inv byte 1, mask 1<<2 = 4
+    let cn2 = make_cn("ch_bit10", 16, 2, 10);
+    // ch_bit129: cn_flags=2, bit=129 -> inv byte 16, mask 1<<1 = 2
+    let cn3 = make_cn("ch_bit129", 24, 2, 129);
+
+    buf[(cn0 + 24) as usize..(cn0 + 32) as usize].copy_from_slice(&cn1.to_le_bytes());
+    buf[(cn1 + 24) as usize..(cn1 + 32) as usize].copy_from_slice(&cn2.to_le_bytes());
+    buf[(cn2 + 24) as usize..(cn2 + 32) as usize].copy_from_slice(&cn3.to_le_bytes());
+
+    // Build 5 x 52 = 260 raw record bytes with crafted invalidation bytes
+    let mut raw_records = Vec::with_capacity(CYCLES * REC_LEN);
+    for r in 0..CYCLES {
+        for c in 0..4 {
+            push_f64(&mut raw_records, (r * 10 + c) as f64);
+        }
+        let mut inv = [0u8; INV_B];
+        // Set bit 0 on all rows to verify cn_flags=0 ignores it;
+        // set bit 10 (byte 1, bit 2) on rows 0 and 3;
+        // set bit 129 (byte 16, bit 1) on rows 1, 2, and 4.
+        inv[0] = 0x01;
+        if r == 0 || r == 3 {
+            inv[1] |= 1 << 2; // bit 10
+        }
+        if r == 1 || r == 2 || r == 4 {
+            inv[16] |= 1 << 1; // bit 129
+        }
+        raw_records.extend_from_slice(&inv);
+    }
+
+    // Split across 3 unaligned ##DT blocks inside ##DL to test remainder-record reassembly
+    let split1 = 111;
+    let split2 = 191;
+    let chunks = [
+        &raw_records[..split1],
+        &raw_records[split1..split2],
+        &raw_records[split2..],
+    ];
+    let mut dt_ptrs = Vec::new();
+    for chunk in &chunks {
+        let pos = buf.len() as i64;
+        buf.extend_from_slice(b"##DT");
+        push_zeros(&mut buf, 4);
+        push_u64(&mut buf, 24 + chunk.len() as u64);
+        push_u64(&mut buf, 0);
+        buf.extend_from_slice(chunk);
+        dt_ptrs.push(pos);
+    }
+
+    let dl_pos = buf.len() as i64;
+    buf.extend_from_slice(b"##DL");
+    push_zeros(&mut buf, 4);
+    let dl_links = 1 + dt_ptrs.len() as u64;
+    let dl_len = 24 + dl_links * 8 + 8 + dt_ptrs.len() as u64 * 8;
+    push_u64(&mut buf, dl_len);
+    push_u64(&mut buf, dl_links);
+    push_i64(&mut buf, 0); // dl_dl_next
+    for &p in &dt_ptrs {
+        push_i64(&mut buf, p);
+    }
+    push_u8(&mut buf, 0); // dl_flags
+    push_zeros(&mut buf, 3);
+    push_u32(&mut buf, dt_ptrs.len() as u32);
+    let mut off = 0u64;
+    for chunk in &chunks {
+        push_u64(&mut buf, off);
+        off += chunk.len() as u64;
+    }
+
+    buf[(hd_pos + 24) as usize..(hd_pos + 32) as usize].copy_from_slice(&dg_pos.to_le_bytes());
+    buf[(dg_pos + 32) as usize..(dg_pos + 40) as usize].copy_from_slice(&cg_pos.to_le_bytes());
+    buf[(dg_pos + 40) as usize..(dg_pos + 48) as usize].copy_from_slice(&dl_pos.to_le_bytes());
+    buf[(cg_pos + 32) as usize..(cg_pos + 40) as usize].copy_from_slice(&cn0.to_le_bytes());
+
+    let (tmp, mut mdf) = open_mdf_from_bytes(&buf)?;
+    mdf.load_all_channels_data_in_memory()?;
+
+    let d0 = mdf.get_channel_data("ch_disabled").unwrap();
+    assert!(
+        d0.validity().is_none(),
+        "cn_flags=0 channel must have no validity mask"
+    );
+
+    let d1 = mdf.get_channel_data("ch_all_invalid").unwrap();
+    let v1 = d1
+        .validity()
+        .expect("cn_flags=3 channel must have validity mask");
+    assert_eq!(v1.null_count(), CYCLES, "all samples must be invalid");
+
+    let d2 = mdf.get_channel_data("ch_bit10").unwrap();
+    let v2 = d2.validity().expect("ch_bit10 must have validity mask");
+    assert_eq!(
+        (0..CYCLES).map(|i| v2.is_valid(i)).collect::<Vec<_>>(),
+        vec![false, true, true, false, true]
+    );
+
+    let d3 = mdf.get_channel_data("ch_bit129").unwrap();
+    let v3 = d3.validity().expect("ch_bit129 must have validity mask");
+    assert_eq!(
+        (0..CYCLES).map(|i| v3.is_valid(i)).collect::<Vec<_>>(),
+        vec![true, false, false, true, false]
+    );
+
+    #[cfg(feature = "numpy")]
+    {
+        use pyo3::prelude::*;
+        Python::initialize();
+        Python::attach(|py| -> Result<()> {
+            let np_ma = py.import("numpy.ma")?;
+            let mdfr_cls = py.get_type::<mdfr::mdfr::Mdfr>();
+            let py_mdf = mdfr_cls.call1((tmp.path().to_str().unwrap(),))?;
+            py_mdf.call_method0("load_all_channels_data_in_memory")?;
+
+            let arr0 = py_mdf.call_method1("get_channel_data", ("ch_disabled",))?;
+            let masked0: usize = np_ma.call_method1("count_masked", (&arr0,))?.extract()?;
+            assert_eq!(masked0, 0);
+
+            let arr1 = py_mdf.call_method1("get_channel_data", ("ch_all_invalid",))?;
+            let masked1: usize = np_ma.call_method1("count_masked", (&arr1,))?.extract()?;
+            assert_eq!(masked1, CYCLES);
+
+            let arr2 = py_mdf.call_method1("get_channel_data", ("ch_bit10",))?;
+            let masked2: usize = np_ma.call_method1("count_masked", (&arr2,))?.extract()?;
+            assert_eq!(masked2, 2);
+
+            let arr3 = py_mdf.call_method1("get_channel_data", ("ch_bit129",))?;
+            let masked3: usize = np_ma.call_method1("count_masked", (&arr3,))?.extract()?;
+            assert_eq!(masked3, 3);
+            Ok(())
+        })?;
+    }
+    Ok(())
+}
+
+#[test]
+fn test_invalidation_hl_transposed_dz_and_ld_lazy_load() -> Result<()> {
+    // 1) ##HL -> ##DL -> transposed Deflate ##DZ with multi-byte invalidation (inv_B=7, bit=18).
+    // 2) ##LD -> ##DV + ##DI lazy single-channel loading must preserve masks across loads.
+    use mdfr_core::compress::{CompressionAlgorithm, compress_dz_data};
+
+    let mut buf = Vec::new();
+    write_id_block(&mut buf);
+    let hd_pos = buf.len() as i64;
+    write_hd4(&mut buf, 0);
+
+    // --- DG0: ##HL -> ##DL -> ##DZ (transposed Deflate) ---
+    let dg0_pos = buf.len() as i64;
+    write_dg4(&mut buf, 0, 0);
+
+    const CYCLES0: usize = 64;
+    const DATA_B0: usize = 16; // 2 x f64
+    const INV_B0: usize = 7;
+    const REC_LEN0: usize = DATA_B0 + INV_B0; // 23 bytes
+
+    let cg0_pos = buf.len() as i64;
+    write_cg4_with_data_bytes(&mut buf, 0, CYCLES0 as u64, DATA_B0 as u32);
+    buf[(cg0_pos + 100) as usize..(cg0_pos + 104) as usize]
+        .copy_from_slice(&(INV_B0 as u32).to_le_bytes());
+
+    let tx_ts = buf.len() as i64;
+    write_tx(&mut buf, "time0");
+    let cn_ts = buf.len() as i64;
+    write_cn4_with_offset(&mut buf, 2, 4, 0, 0, 64, tx_ts, 0, 0, 0);
+
+    let tx_sig = buf.len() as i64;
+    write_tx(&mut buf, "flex_sig");
+    let cn_sig = buf.len() as i64;
+    write_cn4_with_offset(&mut buf, 0, 4, 0, 8, 64, tx_sig, 0, 0, 0);
+    buf[(cn_sig + 100) as usize..(cn_sig + 104) as usize].copy_from_slice(&2u32.to_le_bytes()); // CN_F_INVALID
+    buf[(cn_sig + 104) as usize..(cn_sig + 108) as usize].copy_from_slice(&18u32.to_le_bytes()); // bit 18 -> byte 2 bit 2
+
+    let mut raw0 = Vec::with_capacity(CYCLES0 * REC_LEN0);
+    for r in 0..CYCLES0 {
+        push_f64(&mut raw0, r as f64 * 0.01);
+        push_f64(&mut raw0, r as f64 * 1.5);
+        let mut inv = [0u8; INV_B0];
+        if r == 5 || r == 31 || r == 60 {
+            inv[2] |= 1 << 2; // bit 18
+        }
+        raw0.extend_from_slice(&inv);
+    }
+    let compressed0 = compress_dz_data(&raw0, CompressionAlgorithm::DeflateTranspose, REC_LEN0)?;
+    let dz0_pos = buf.len() as i64;
+    buf.extend_from_slice(b"##DZ");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 48 + compressed0.len() as u64);
+    push_u64(&mut buf, 0);
+    buf.extend_from_slice(b"DT");
+    push_u8(&mut buf, 1); // DeflateTranspose
+    push_u8(&mut buf, 0);
+    push_u32(&mut buf, REC_LEN0 as u32);
+    push_u64(&mut buf, raw0.len() as u64);
+    push_u64(&mut buf, compressed0.len() as u64);
+    buf.extend_from_slice(&compressed0);
+
+    let dl0_pos = buf.len() as i64;
+    buf.extend_from_slice(b"##DL");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 56);
+    push_u64(&mut buf, 2);
+    push_i64(&mut buf, 0);
+    push_i64(&mut buf, dz0_pos);
+    push_u32(&mut buf, 0);
+    push_u32(&mut buf, 1);
+    push_u64(&mut buf, 0);
+
+    let hl0_pos = buf.len() as i64;
+    buf.extend_from_slice(b"##HL");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 40);
+    push_u64(&mut buf, 1);
+    push_i64(&mut buf, dl0_pos);
+    push_u16(&mut buf, 0); // hl_flags
+    push_u8(&mut buf, 1); // DeflateTranspose
+    push_zeros(&mut buf, 5);
+
+    // --- DG1: ##LD with DV + DI (testing lazy channel loading) ---
+    let dg1_pos = buf.len() as i64;
+    write_dg4(&mut buf, 0, 0);
+    const CYCLES1: usize = 4;
+    const INV_B1: usize = 2;
+
+    let cg1_pos = buf.len() as i64;
+    write_cg4_with_data_bytes(&mut buf, 0, CYCLES1 as u64, 16);
+    buf[(cg1_pos + 100) as usize..(cg1_pos + 104) as usize]
+        .copy_from_slice(&(INV_B1 as u32).to_le_bytes());
+
+    let tx_a = buf.len() as i64;
+    write_tx(&mut buf, "ld_a");
+    let cn_a = buf.len() as i64;
+    write_cn4_with_offset(&mut buf, 0, 4, 0, 0, 64, tx_a, 0, 0, 0);
+    buf[(cn_a + 100) as usize..(cn_a + 104) as usize].copy_from_slice(&2u32.to_le_bytes());
+    buf[(cn_a + 104) as usize..(cn_a + 108) as usize].copy_from_slice(&9u32.to_le_bytes()); // byte 1 bit 1
+
+    let tx_b = buf.len() as i64;
+    write_tx(&mut buf, "ld_b");
+    let cn_b = buf.len() as i64;
+    write_cn4_with_offset(&mut buf, 0, 4, 0, 8, 64, tx_b, 0, 0, 0);
+    buf[(cn_b + 100) as usize..(cn_b + 104) as usize].copy_from_slice(&2u32.to_le_bytes());
+    buf[(cn_b + 104) as usize..(cn_b + 108) as usize].copy_from_slice(&12u32.to_le_bytes()); // byte 1 bit 4
+
+    let dv1_pos = buf.len() as i64;
+    buf.extend_from_slice(b"##DV");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 24 + (CYCLES1 * 16) as u64);
+    push_u64(&mut buf, 0);
+    for r in 0..CYCLES1 {
+        push_f64(&mut buf, r as f64);
+        push_f64(&mut buf, r as f64 + 10.0);
+    }
+
+    let di1_pos = buf.len() as i64;
+    buf.extend_from_slice(b"##DI");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 24 + (CYCLES1 * INV_B1) as u64);
+    push_u64(&mut buf, 0);
+    // Row 1 invalid for ld_a (bit 9 = byte 1 bit 1), Row 2 invalid for ld_b (bit 12 = byte 1 bit 4)
+    buf.extend_from_slice(&[0, 0, 0, 1 << 1, 0, 1 << 4, 0, 0]);
+
+    let ld1_pos = buf.len() as i64;
+    buf.extend_from_slice(b"##LD");
+    push_zeros(&mut buf, 4);
+    push_u64(&mut buf, 64);
+    push_u64(&mut buf, 3); // ld_next, dv1, di1
+    push_i64(&mut buf, 0);
+    push_i64(&mut buf, dv1_pos);
+    push_i64(&mut buf, di1_pos);
+    push_u32(&mut buf, 1 << 31); // ld_flags bit 31 = invalidation data present
+    push_u32(&mut buf, 1); // ld_count = 1
+    push_u64(&mut buf, 0);
+
+    // Patch links
+    buf[(hd_pos + 24) as usize..(hd_pos + 32) as usize].copy_from_slice(&dg0_pos.to_le_bytes());
+    buf[(dg0_pos + 24) as usize..(dg0_pos + 32) as usize].copy_from_slice(&dg1_pos.to_le_bytes());
+    buf[(dg0_pos + 32) as usize..(dg0_pos + 40) as usize].copy_from_slice(&cg0_pos.to_le_bytes());
+    buf[(dg0_pos + 40) as usize..(dg0_pos + 48) as usize].copy_from_slice(&hl0_pos.to_le_bytes());
+    buf[(cg0_pos + 32) as usize..(cg0_pos + 40) as usize].copy_from_slice(&cn_ts.to_le_bytes());
+    buf[(cn_ts + 24) as usize..(cn_ts + 32) as usize].copy_from_slice(&cn_sig.to_le_bytes());
+
+    buf[(dg1_pos + 32) as usize..(dg1_pos + 40) as usize].copy_from_slice(&cg1_pos.to_le_bytes());
+    buf[(dg1_pos + 40) as usize..(dg1_pos + 48) as usize].copy_from_slice(&ld1_pos.to_le_bytes());
+    buf[(cg1_pos + 32) as usize..(cg1_pos + 40) as usize].copy_from_slice(&cn_a.to_le_bytes());
+    buf[(cn_a + 24) as usize..(cn_a + 32) as usize].copy_from_slice(&cn_b.to_le_bytes());
+
+    let (_tmp, mut mdf) = open_mdf_from_bytes(&buf)?;
+    // Lazy-load flex_sig and ld_a first, then ld_b separately
+    mdf.load_channels_data_in_memory(["flex_sig", "ld_a"].into_iter().map(String::from).collect())?;
+    mdf.load_channels_data_in_memory(["ld_b"].into_iter().map(String::from).collect())?;
+
+    let sig = mdf.get_channel_data("flex_sig").unwrap();
+    let v_sig = sig.validity().expect("flex_sig validity");
+    assert_eq!(v_sig.null_count(), 3);
+    assert!(!v_sig.is_valid(5));
+    assert!(!v_sig.is_valid(31));
+    assert!(!v_sig.is_valid(60));
+    assert!(v_sig.is_valid(0) && v_sig.is_valid(6));
+
+    let da = mdf.get_channel_data("ld_a").unwrap();
+    let va = da.validity().expect("ld_a validity must survive lazy load");
+    assert_eq!(
+        (0..CYCLES1).map(|i| va.is_valid(i)).collect::<Vec<_>>(),
+        vec![true, false, true, true]
+    );
+
+    let db = mdf.get_channel_data("ld_b").unwrap();
+    let vb = db.validity().expect("ld_b validity");
+    assert_eq!(
+        (0..CYCLES1).map(|i| vb.is_valid(i)).collect::<Vec<_>>(),
+        vec![true, true, false, true]
+    );
+
+    Ok(())
+}
