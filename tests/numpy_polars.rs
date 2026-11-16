@@ -104,6 +104,92 @@ mod numpy_tests {
     }
 
     #[test]
+    fn numpy_arrayd_column_major_per_sample() {
+        init();
+        // 2D: 2 samples of shape [3, 4] stored column-major per sample:
+        // sample s, element [i, j] = s * 100 + i * 10 + j
+        let mut raw_2d = Vec::with_capacity(2 * 3 * 4);
+        let mut expected_2d = Vec::with_capacity(2);
+        for s in 0..2 {
+            let mut sample = vec![vec![0.0_f64; 4]; 3];
+            for j in 0..4 {
+                for (i, row) in sample.iter_mut().enumerate() {
+                    let v = (s * 100 + i * 10 + j) as f64;
+                    raw_2d.push(v);
+                    row[j] = v;
+                }
+            }
+            expected_2d.push(sample);
+        }
+        let buf_2d = MutableBuffer::from_iter(raw_2d);
+        let ta_2d =
+            TensorArrow::<Float64Type>::new_from_buffer(buf_2d, vec![3, 4], Order::ColumnMajor);
+        let cd_2d = ChannelData::ArrayDFloat64(ta_2d);
+
+        // 3D: 2 samples of shape [2, 3, 4] stored column-major per sample:
+        // sample s, element [i, j, k] = s * 1000 + i * 100 + j * 10 + k
+        let mut raw_3d = Vec::with_capacity(2 * 2 * 3 * 4);
+        let mut expected_3d = Vec::with_capacity(2);
+        for s in 0..2 {
+            let mut sample = vec![vec![vec![0.0_f64; 4]; 3]; 2];
+            for k in 0..4 {
+                for j in 0..3 {
+                    for (i, plane) in sample.iter_mut().enumerate() {
+                        let v = (s * 1000 + i * 100 + j * 10 + k) as f64;
+                        raw_3d.push(v);
+                        plane[j][k] = v;
+                    }
+                }
+            }
+            expected_3d.push(sample);
+        }
+        let buf_3d = MutableBuffer::from_iter(raw_3d);
+        let ta_3d =
+            TensorArrow::<Float64Type>::new_from_buffer(buf_3d, vec![2, 3, 4], Order::ColumnMajor);
+        let cd_3d = ChannelData::ArrayDFloat64(ta_3d);
+
+        // 1D ColumnMajor: 2 samples × 3 elements — must not transpose across samples
+        let buf_1d = MutableBuffer::from_iter([1.0_f64, 2.0, 3.0, 4.0, 5.0, 6.0]);
+        let ta_1d =
+            TensorArrow::<Float64Type>::new_from_buffer(buf_1d, vec![3], Order::ColumnMajor);
+        let cd_1d = ChannelData::ArrayDFloat64(ta_1d);
+
+        // Empty 2D ColumnMajor: 0 samples × [3, 4]
+        let ta_empty = TensorArrow::<Float64Type>::new_from_buffer(
+            MutableBuffer::new(0),
+            vec![3, 4],
+            Order::ColumnMajor,
+        );
+        let cd_empty = ChannelData::ArrayDFloat64(ta_empty);
+
+        Python::attach(|py| {
+            let obj_2d = cd_2d.into_pyobject(py).unwrap();
+            let shape_2d: Vec<usize> = obj_2d.getattr("shape").unwrap().extract().unwrap();
+            assert_eq!(shape_2d, vec![2, 3, 4]);
+            let vals_2d: Vec<Vec<Vec<f64>>> =
+                obj_2d.call_method0("tolist").unwrap().extract().unwrap();
+            assert_eq!(vals_2d, expected_2d);
+
+            let obj_3d = cd_3d.into_pyobject(py).unwrap();
+            let shape_3d: Vec<usize> = obj_3d.getattr("shape").unwrap().extract().unwrap();
+            assert_eq!(shape_3d, vec![2, 2, 3, 4]);
+            let vals_3d: Vec<Vec<Vec<Vec<f64>>>> =
+                obj_3d.call_method0("tolist").unwrap().extract().unwrap();
+            assert_eq!(vals_3d, expected_3d);
+
+            let obj_1d = cd_1d.into_pyobject(py).unwrap();
+            let shape_1d: Vec<usize> = obj_1d.getattr("shape").unwrap().extract().unwrap();
+            assert_eq!(shape_1d, vec![2, 3]);
+            let vals_1d: Vec<Vec<f64>> = obj_1d.call_method0("tolist").unwrap().extract().unwrap();
+            assert_eq!(vals_1d, vec![vec![1.0, 2.0, 3.0], vec![4.0, 5.0, 6.0]]);
+
+            let obj_empty = cd_empty.into_pyobject(py).unwrap();
+            let shape_empty: Vec<usize> = obj_empty.getattr("shape").unwrap().extract().unwrap();
+            assert_eq!(shape_empty, vec![0, 3, 4]);
+        });
+    }
+
+    #[test]
     fn numpy_utf8_converts_to_list() {
         init();
         let mut b = LargeStringBuilder::new();

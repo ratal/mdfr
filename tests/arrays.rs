@@ -71,12 +71,86 @@ fn array_simple_vector() -> Result<()> {
 
 #[test]
 fn array_simple_dspace() -> Result<()> {
-    let Some(mdf) = load_array_file("Simple/dSPACE_MeasurementArrays.mf4")? else {
+    #[allow(unused_mut)]
+    let Some(mut mdf) = load_array_file("Simple/dSPACE_MeasurementArrays.mf4")? else {
         return Ok(());
     };
 
     let names = mdf.get_channel_names_set();
     assert!(!names.is_empty(), "No channels found in dSPACE array file");
+
+    #[cfg(feature = "numpy")]
+    {
+        use pyo3::prelude::*;
+        Python::initialize();
+        Python::attach(|py| -> Result<()> {
+            let two_dim = mdf
+                .get_channel_data("Signal_TwoDim")
+                .expect("Signal_TwoDim missing")
+                .clone()
+                .into_pyobject(py)?;
+            let two_dim_shape: Vec<usize> = two_dim.getattr("shape")?.extract()?;
+            assert_eq!(two_dim_shape, vec![5, 3, 4]);
+            let two_dim_vals: Vec<Vec<Vec<f64>>> = two_dim.call_method0("tolist")?.extract()?;
+            assert_eq!(
+                two_dim_vals[0],
+                vec![
+                    vec![0.0, 0.01, 0.02, 0.03],
+                    vec![0.1, 0.11, 0.12, 0.13],
+                    vec![0.2, 0.21, 0.22, 0.23],
+                ]
+            );
+            assert_eq!(
+                two_dim_vals[1],
+                vec![
+                    vec![0.001, 0.011, 0.021, 0.031],
+                    vec![0.101, 0.111, 0.121, 0.131],
+                    vec![0.201, 0.211, 0.221, 0.231],
+                ]
+            );
+
+            let matrix_dim = mdf
+                .get_channel_data("Signal_MatrixDim")
+                .expect("Signal_MatrixDim missing")
+                .clone()
+                .into_pyobject(py)?;
+            let matrix_dim_shape: Vec<usize> = matrix_dim.getattr("shape")?.extract()?;
+            assert_eq!(matrix_dim_shape, vec![5, 2, 3, 4]);
+            let matrix_dim_vals: Vec<Vec<Vec<Vec<f64>>>> =
+                matrix_dim.call_method0("tolist")?.extract()?;
+            assert_eq!(
+                matrix_dim_vals[0],
+                vec![
+                    vec![
+                        vec![0.0, 0.01, 0.02, 0.03],
+                        vec![0.1, 0.11, 0.12, 0.13],
+                        vec![0.2, 0.21, 0.22, 0.23],
+                    ],
+                    vec![
+                        vec![1.0, 1.01, 1.02, 1.03],
+                        vec![1.1, 1.11, 1.12, 1.13],
+                        vec![1.2, 1.21, 1.22, 1.23],
+                    ],
+                ]
+            );
+            assert_eq!(
+                matrix_dim_vals[1],
+                vec![
+                    vec![
+                        vec![0.001, 0.011, 0.021, 0.031],
+                        vec![0.101, 0.111, 0.121, 0.131],
+                        vec![0.201, 0.211, 0.221, 0.231],
+                    ],
+                    vec![
+                        vec![1.001, 1.011, 1.021, 1.031],
+                        vec![1.101, 1.111, 1.121, 1.131],
+                        vec![1.201, 1.211, 1.221, 1.231],
+                    ],
+                ]
+            );
+            Ok(())
+        })?;
+    }
 
     Ok(())
 }
