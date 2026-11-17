@@ -5,12 +5,11 @@
 use crate::data_holder::channel_data::{ChannelData, data_type_init};
 use crate::data_holder::tensor_arrow::Order;
 use crate::mdfinfo::block_chain::BlockChain;
-use crate::mdfinfo::sym_buf_reader::SymBufReader;
+use crate::mdfinfo::sym_buf_reader::SliceCursor;
 use anyhow::{Context, Error, Result};
 use arrow::array::{BooleanBufferBuilder, UInt8Array, UInt16Array, UInt32Array};
 use rustc_hash::FxHashMap;
 use std::fmt::{self, Display};
-use std::fs::File;
 
 use super::block_header_impl::{
     Blockheader4Short, SharableBlocks, default_short_header, parse_block_short, read_meta_data,
@@ -204,7 +203,7 @@ fn merge_parsed_cn4(
 
 /// creates recursively in the channel group the CN blocks and all its other linked blocks (CC, MD, TX, CA, etc.)
 pub(super) fn parse_cn4(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     target: i64,
     mut position: i64,
     sharable: &mut SharableBlocks,
@@ -689,7 +688,7 @@ impl Cn4 {
 
 /// Channel block parser
 pub(super) fn parse_cn4_block(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     target: i64,
     mut position: i64,
     sharable: &mut SharableBlocks,

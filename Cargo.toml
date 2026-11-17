@@ -22,6 +22,7 @@ hdf5 = ["dep:rust-hdf5"]
 ndarray = ["dep:ndarray"]
 
 [dependencies]
+memmap2 = "0.9.10" # for safe zero-copy memory-mapped file reading
 mdfr-core = { path = "mdfr-core", version = "0.8.4", features = ["std", "capi", "zstd", "derive"] }
 clap = { version = "4.6.7", optional = true } # for input arguments (cli feature)
 anyhow = { version = "1.0.104", features = ["backtrace"] } # error handling

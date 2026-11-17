@@ -7,6 +7,7 @@ use crate::mdfinfo::mdfinfo4::{
     parse_dz, parser_dl4_block, parser_ld4_block, read_dz_raw,
 };
 use crate::mdfinfo::mdfinfo4::{Ca4Block, Cg4, Cn4, Compo, Composition, Dg4, Ds4Block};
+use crate::mdfinfo::sym_buf_reader::SliceCursor;
 use crate::mdfreader::data_read4::read_one_channel_array;
 use crate::mdfreader::data_read4::{read_channels_from_bytes, read_channels_from_bytes_with_inval};
 use crate::mdfreader::datastream_decoder;
@@ -14,9 +15,9 @@ use anyhow::{Context, Error, Result, bail};
 use encoding_rs::{Decoder, GB18030, UTF_8, UTF_16BE, UTF_16LE, WINDOWS_1252};
 use log::warn;
 use rayon::prelude::*;
+use std::borrow::Cow;
 use std::collections::HashSet;
-use std::fs::File;
-use std::io::{BufReader, Read};
+use std::io::Read;
 use std::str;
 use unicode_bom::Bom;
 
@@ -30,8 +31,8 @@ pub const CHUNK_SIZE_READING_4: usize = 4_194_304; // can be tuned according to 
 /// Reads the file data based on headers information contained in info parameter
 /// Hashset of channel names parameter allows to filter which channels to read
 pub fn mdfreader4<'a>(
-    rdr: &'a mut BufReader<&File>,
-    mdf: &'a mut Mdf,
+    rdr: &mut SliceCursor<'a>,
+    mdf: &mut Mdf,
     channel_names: &HashSet<String>,
 ) -> Result<(), Error> {
     match &mut mdf.mdf_info {
@@ -120,15 +121,15 @@ pub fn mdfreader4<'a>(
                                 if "##SD".as_bytes() == id {
                                     let block_header: Dt4Block = binrw::BinReaderExt::read_le(rdr)
                                         .context("Could not read SD block struct")?;
-                                    let mut data = vec![0u8; block_header.len as usize - 24];
-                                    rdr.read_exact(&mut data)
+                                    let data = rdr
+                                        .read_slice(block_header.len as usize - 24)
                                         .context("could not read SD data buffer")?;
                                     position += block_header.len as i64;
-                                    read_vlsd_from_bytes(&mut data, cn, 0, &mut decoder)?;
+                                    read_vlsd_from_slice(data, cn, 0, &mut decoder)?;
                                 } else if "##DZ".as_bytes() == id {
-                                    let (mut data, block_header) = parse_dz(rdr)?;
+                                    let (data, block_header) = parse_dz(rdr)?;
                                     position += block_header.len as i64;
-                                    read_vlsd_from_bytes(&mut data, cn, 0, &mut decoder)?;
+                                    read_vlsd_from_slice(&data, cn, 0, &mut decoder)?;
                                 }
                                 if let Some(b) = cn.builder.take() {
                                     cn.data = b.finish();
@@ -167,8 +168,8 @@ pub fn mdfreader4<'a>(
 
 /// Reads all kind of data layout : simple DT or DV, sorted or unsorted, Data List,
 /// compressed data blocks DZ or Sample DATA
-fn read_data(
-    rdr: &mut BufReader<&File>,
+fn read_data<'a>(
+    rdr: &mut SliceCursor<'a>,
     id: [u8; 4],
     dg: &mut Dg4,
     mut position: i64,
@@ -205,7 +206,7 @@ fn read_data(
         }
         [35, 35, 68, 90] => {
             // ##DZ
-            let (mut data, block_header) = parse_dz(rdr)?;
+            let (data, block_header) = parse_dz(rdr)?;
             // compressed data
             if sorted {
                 // sorted data group
@@ -225,7 +226,7 @@ fn read_data(
                 // initialise record counter
                 let mut unsorted_state = UnsortedState::new(dg);
                 unsorted_state
-                    .process_chunk(&mut data, dg, decoder)
+                    .process_slice(&data, dg, decoder)
                     .context("failed reading all channels sorted from bytes")?;
                 position += block_header.len as i64;
             }
@@ -357,26 +358,85 @@ fn read_data(
     Ok(position)
 }
 
+/// Collects raw (plain slice or compressed DZ) entries from a chain of `Dl4Block`s.
+fn collect_dl_raw_entries<'a>(
+    rdr: &mut SliceCursor<'a>,
+    dl_blocks: &[Dl4Block],
+    mut position: i64,
+) -> Result<(Vec<RawCompBlock<'a>>, i64)> {
+    let total: usize = dl_blocks.iter().map(|dl| dl.dl_data.len()).sum();
+    let mut raw_entries: Vec<RawCompBlock<'a>> = Vec::with_capacity(total);
+    for dl in dl_blocks {
+        for &data_ptr in &dl.dl_data {
+            if data_ptr == 0 {
+                continue;
+            }
+            rdr.seek_relative(data_ptr - position)?;
+            let mut blk_id = [0u8; 4];
+            rdr.read_exact(&mut blk_id)?;
+            if blk_id == *b"##DZ" {
+                let (h, b) = read_dz_raw(rdr)?;
+                position = data_ptr + h.len as i64;
+                raw_entries.push(RawCompBlock::Dz(h, b));
+            } else {
+                let h: Dt4Block = binrw::BinReaderExt::read_le(rdr)?;
+                let b = rdr.read_slice((h.len - 24) as usize)?;
+                position = data_ptr + h.len as i64;
+                raw_entries.push(RawCompBlock::Plain(b));
+            }
+        }
+    }
+    Ok((raw_entries, position))
+}
+
+/// Decompresses collected `RawCompBlock` entries in parallel, borrowing plain slices zero-copy.
+fn decompress_raw_blocks<'a>(
+    raw_entries: Vec<RawCompBlock<'a>>,
+    err_ctx: &'static str,
+) -> Result<Vec<Cow<'a, [u8]>>> {
+    raw_entries
+        .into_par_iter()
+        .map(|raw| match raw {
+            RawCompBlock::Plain(d) => Ok(Cow::Borrowed(d)),
+            RawCompBlock::Dz(h, b) => h.decompress(b).map(Cow::Owned).context(err_ctx),
+        })
+        .collect()
+}
+
+/// Concatenates decompressed `Cow` chunks into a single `Cow<[u8]>`, avoiding any copy when
+/// there is only a single plain chunk.
+fn concat_cow_chunks<'a>(chunks: Vec<Cow<'a, [u8]>>) -> Cow<'a, [u8]> {
+    if chunks.len() == 1 {
+        return chunks.into_iter().next().unwrap();
+    }
+    let total: usize = chunks.iter().map(|b| b.len()).sum();
+    let mut all = Vec::with_capacity(total);
+    for b in chunks {
+        all.extend_from_slice(&b);
+    }
+    Cow::Owned(all)
+}
+
 /// Reads and concatenates data from any data block type (##DT, ##SD, ##VD, ##RD, ##RV, ##DZ, ##DL, ##HL).
-/// The block id must already have been read. Returns concatenated raw bytes and updated position.
-fn read_all_blocks_to_bytes(
-    rdr: &mut BufReader<&File>,
+/// The block id must already have been read. Returns borrowed/owned raw bytes and updated position.
+fn read_all_blocks_to_bytes<'a>(
+    rdr: &mut SliceCursor<'a>,
     id: [u8; 4],
     mut position: i64,
-) -> Result<Option<(Vec<u8>, i64)>> {
+) -> Result<Option<(Cow<'a, [u8]>, i64)>> {
     // ##DT, ##SD, ##VD are regular data blocks; ##RD, ##RV are reduction data blocks (same format)
     if id == *b"##DT" || id == *b"##SD" || id == *b"##VD" || id == *b"##RD" || id == *b"##RV" {
         let block_header: Dt4Block =
             binrw::BinReaderExt::read_le(rdr).context("Could not read data block header")?;
-        let mut buf = vec![0u8; block_header.len as usize - 24];
-        rdr.read_exact(&mut buf)
+        let slice = rdr
+            .read_slice(block_header.len as usize - 24)
             .context("could not read data block buffer")?;
         position += block_header.len as i64;
-        Ok(Some((buf, position)))
+        Ok(Some((Cow::Borrowed(slice), position)))
     } else if id == *b"##DZ" {
         let (buf, block_header) = parse_dz(rdr)?;
         position += block_header.len as i64;
-        Ok(Some((buf, position)))
+        Ok(Some((Cow::Owned(buf), position)))
     } else if id == *b"##HL" || id == *b"##DL" {
         let current_pos = if id == *b"##HL" {
             let (pos, _id) = read_hl(rdr, position)?;
@@ -384,32 +444,10 @@ fn read_all_blocks_to_bytes(
         } else {
             position
         };
-        let (dl_blocks, mut pos) = parser_dl4(rdr, current_pos)?;
-        let mut combined_data = Vec::with_capacity(CHUNK_SIZE_READING_4 * 2);
-        for dl in dl_blocks {
-            for data_ptr in dl.dl_data {
-                if data_ptr == 0 {
-                    continue;
-                }
-                rdr.seek_relative(data_ptr - pos)?;
-                pos = data_ptr;
-                let mut inner_id = [0u8; 4];
-                rdr.read_exact(&mut inner_id)?;
-                if inner_id == *b"##DZ" {
-                    let (buf, header) = parse_dz(rdr)?;
-                    pos += header.len as i64;
-                    combined_data.extend(buf);
-                } else {
-                    // ##DT, ##SD, ##VD or any other raw data block
-                    let header: Dt4Block = binrw::BinReaderExt::read_le(rdr)?;
-                    let mut buf = vec![0u8; header.len as usize - 24];
-                    rdr.read_exact(&mut buf)?;
-                    pos += header.len as i64;
-                    combined_data.extend(buf);
-                }
-            }
-        }
-        Ok(Some((combined_data, pos)))
+        let (dl_blocks, pos) = parser_dl4(rdr, current_pos)?;
+        let (raw_entries, pos) = collect_dl_raw_entries(rdr, &dl_blocks, pos)?;
+        let chunks = decompress_raw_blocks(raw_entries, "failed decompressing DZ block in DL")?;
+        Ok(Some((concat_cow_chunks(chunks), pos)))
     } else {
         Ok(None)
     }
@@ -418,7 +456,7 @@ fn read_all_blocks_to_bytes(
 /// Header List block reader
 /// This HL Block references Data List Blocks that are listing DZ Blocks
 /// It is existing to add complementary information about compression in DZ
-fn read_hl(rdr: &mut BufReader<&File>, mut position: i64) -> Result<(i64, [u8; 4])> {
+fn read_hl(rdr: &mut SliceCursor<'_>, mut position: i64) -> Result<(i64, [u8; 4])> {
     // compressed data in datal list
     let block: Hl4Block = binrw::BinReaderExt::read_le(rdr).context("could not read HL block")?;
     position += block.hl_len as i64;
@@ -435,7 +473,7 @@ fn read_hl(rdr: &mut BufReader<&File>, mut position: i64) -> Result<(i64, [u8; 4
 /// Reads VLSD data from a chain of DL sub-blocks (##SD or ##DZ) without reinitialising arrays.
 /// Used by read_sd to process DL-chained VLSD data for a single channel.
 fn read_vlsd_from_dl_blocks(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     dl_blocks: Vec<Dl4Block>,
     mut position: i64,
     cn: &mut Cn4,
@@ -452,21 +490,22 @@ fn read_vlsd_from_dl_blocks(
             let mut id = [0u8; 4];
             rdr.read_exact(&mut id)
                 .context("could not read VLSD sub-block id")?;
-            let mut data = if id == *b"##DZ" {
+            if id == *b"##DZ" {
                 let (dt, block_header) = parse_dz(rdr)?;
                 position = data_pointer + block_header.len as i64;
-                dt
+                let (idx, _) = read_vlsd_from_slice(&dt, cn, previous_index, decoder)?;
+                previous_index = idx;
             } else {
                 // ##SD block (same header layout as Dt4Block)
                 let block_header: Dt4Block = binrw::BinReaderExt::read_le(rdr)
                     .context("Could not read VLSD sub-block header")?;
-                let mut buf = vec![0u8; (block_header.len - 24) as usize];
-                rdr.read_exact(&mut buf)
+                let slice = rdr
+                    .read_slice((block_header.len - 24) as usize)
                     .context("Could not read VLSD sub-block data")?;
                 position = data_pointer + block_header.len as i64;
-                buf
-            };
-            previous_index = read_vlsd_from_bytes(&mut data, cn, previous_index, decoder)?;
+                let (idx, _) = read_vlsd_from_slice(slice, cn, previous_index, decoder)?;
+                previous_index = idx;
+            }
         }
     }
     Ok(position)
@@ -474,7 +513,7 @@ fn read_vlsd_from_dl_blocks(
 
 /// Reads Signal Data Block containing VLSD channel, pointed by cn_data
 fn read_sd(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     dg: &mut Dg4,
     vlsd_channels: &[(u8, i64)],
     mut position: i64,
@@ -497,15 +536,15 @@ fn read_sd(
                     // SD (Signal Data) block - each value prefixed with u32 length
                     let block_header: Dt4Block = binrw::BinReaderExt::read_le(rdr)
                         .context("Could not read SD block struct")?;
-                    let mut data = vec![0u8; block_header.len as usize - 24];
-                    rdr.read_exact(&mut data)
+                    let data = rdr
+                        .read_slice(block_header.len as usize - 24)
                         .context("could not read SD data buffer")?;
                     position += block_header.len as i64;
-                    read_vlsd_from_bytes(&mut data, cn, 0, decoder)?;
+                    read_vlsd_from_slice(data, cn, 0, decoder)?;
                 } else if "##DZ".as_bytes() == id {
-                    let (mut data, block_header) = parse_dz(rdr)?;
+                    let (data, block_header) = parse_dz(rdr)?;
                     position += block_header.len as i64;
-                    read_vlsd_from_bytes(&mut data, cn, 0, decoder)?;
+                    read_vlsd_from_slice(&data, cn, 0, decoder)?;
                 } else if "##HL".as_bytes() == id {
                     let (pos, _id) = read_hl(rdr, position)?;
                     position = pos;
@@ -536,7 +575,7 @@ fn read_sd(
 /// - sizes are in the cn_cn_size channel cn.data (read as UInt8/16/32/64)
 /// - VD block (pointed by cn.block.cn_data) contains raw data without length prefixes
 fn read_vd(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     channel_group: &mut Cg4,
     vlsc_channels: &[(u8, i64)],
     mut position: i64,
@@ -595,7 +634,7 @@ fn read_vd(
         rdr.read_exact(&mut id)
             .context("could not read VD block id")?;
 
-        let data: Vec<u8> = match read_all_blocks_to_bytes(rdr, id, position)? {
+        let data: Cow<'_, [u8]> = match read_all_blocks_to_bytes(rdr, id, position)? {
             Some((buf, pos)) => {
                 position = pos;
                 buf
@@ -624,18 +663,17 @@ fn read_vd(
     Ok(position)
 }
 
-/// Reads Variable Length Signal Data from bytes of a SD Block
-/// It shall contain data of only one VLSD channel
-/// Each reacord is starting from its length headed by a u32
-fn read_vlsd_from_bytes(
-    data: &mut Vec<u8>,
+/// Reads Variable Length Signal Data from a slice of an SD block.
+/// Returns `(new_index, bytes_consumed)`.
+fn read_vlsd_from_slice(
+    data: &[u8],
     cn: &mut Cn4,
     previous_index: usize,
     decoder: &mut Dec,
-) -> Result<usize> {
+) -> Result<(usize, usize)> {
     let mut position: usize = 0;
     let data_length = data.len();
-    let mut remaining: usize = data_length - position;
+    let mut remaining: usize = data_length;
     let mut nrecord: usize = 0;
     let mut str_buf = String::new();
     if cn.builder.is_none() {
@@ -645,12 +683,7 @@ fn read_vlsd_from_bytes(
     match builder {
         ChannelBuilder::Utf8(array) => {
             let cn_data_type = cn.block.cn_data_type;
-            while remaining > 0 {
-                if remaining < 4 {
-                    data.copy_within(position.., 0);
-                    data.truncate(remaining);
-                    break;
-                }
+            while remaining >= 4 {
                 let len = &data[position..position + std::mem::size_of::<u32>()];
                 let length: usize =
                     u32::from_le_bytes(len.try_into().context("Could not read length")?) as usize;
@@ -679,25 +712,12 @@ fn read_vlsd_from_bytes(
                     remaining = data_length - position;
                     nrecord += 1;
                 } else {
-                    remaining = data_length - position;
-                    // copies tail part at beginnning of vect
-                    data.copy_within(position.., 0);
-                    // clears the last part
-                    data.truncate(remaining);
                     break;
                 }
-            }
-            if remaining == 0 {
-                data.clear()
             }
         }
         ChannelBuilder::VariableSizeByteArray(array) => {
-            while remaining > 0 {
-                if remaining < 4 {
-                    data.copy_within(position.., 0);
-                    data.truncate(remaining);
-                    break;
-                }
+            while remaining >= 4 {
                 let len = &data[position..position + std::mem::size_of::<u32>()];
                 let length: usize =
                     u32::from_le_bytes(len.try_into().context("Could not read length")?) as usize;
@@ -709,21 +729,33 @@ fn read_vlsd_from_bytes(
                     remaining = data_length - position;
                     nrecord += 1;
                 } else {
-                    remaining = data_length - position;
-                    // copies tail part at beginnning of vect
-                    data.copy_within(position.., 0);
-                    // clears the last part
-                    data.truncate(remaining);
                     break;
                 }
-            }
-            if remaining == 0 {
-                data.clear()
             }
         }
         _ => {}
     }
-    Ok(nrecord + previous_index)
+    Ok((nrecord + previous_index, position))
+}
+
+/// Reads Variable Length Signal Data from bytes of a SD Block, compacting any incomplete tail.
+/// It shall contain data of only one VLSD channel.
+/// Each record is starting from its length headed by a u32.
+fn read_vlsd_from_bytes(
+    data: &mut Vec<u8>,
+    cn: &mut Cn4,
+    previous_index: usize,
+    decoder: &mut Dec,
+) -> Result<usize> {
+    let (new_index, consumed) = read_vlsd_from_slice(data, cn, previous_index, decoder)?;
+    let remaining = data.len().saturating_sub(consumed);
+    if remaining > 0 {
+        data.copy_within(consumed.., 0);
+        data.truncate(remaining);
+    } else {
+        data.clear();
+    }
+    Ok(new_index)
 }
 
 /// Reads Variable Length Signal data with Size Channel from bytes of a VD Block
@@ -787,8 +819,8 @@ fn read_vlsc_from_bytes(
 
 /// Reads independent column-oriented data linked directly from CNBLOCK (`cn_data`).
 /// Supports LD4, DV4/DT4, DZ4, DL4, and HL4 blocks per MDF 4.3.0 §5.4 & §6.6.2.
-fn read_independent_channel_data(
-    rdr: &mut BufReader<&File>,
+fn read_independent_channel_data<'a>(
+    rdr: &mut SliceCursor<'a>,
     cn: &mut Cn4,
     cycle_count: usize,
     mut position: i64,
@@ -824,8 +856,8 @@ fn read_independent_channel_data(
             ld_blocks.push(blk);
         }
 
-        let mut raw_data: Vec<RawCompBlock> = Vec::new();
-        let mut raw_invalid: Vec<Option<RawCompBlock>> = Vec::new();
+        let mut raw_data: Vec<RawCompBlock<'a>> = Vec::new();
+        let mut raw_invalid: Vec<Option<RawCompBlock<'a>>> = Vec::new();
         for ld in &ld_blocks {
             for &data_ptr in &ld.ld_data() {
                 rdr.seek_relative(data_ptr - position)
@@ -838,8 +870,7 @@ fn read_independent_channel_data(
                     raw_data.push(RawCompBlock::Dz(hdr, buf));
                 } else {
                     let hdr: Dt4Block = binrw::BinReaderExt::read_le(rdr)?;
-                    let mut buf = vec![0u8; (hdr.len - 24) as usize];
-                    rdr.read_exact(&mut buf)?;
+                    let buf = rdr.read_slice((hdr.len - 24) as usize)?;
                     position = data_ptr + hdr.len as i64;
                     raw_data.push(RawCompBlock::Plain(buf));
                 }
@@ -859,23 +890,17 @@ fn read_independent_channel_data(
                     raw_invalid.push(Some(RawCompBlock::Dz(hdr, buf)));
                 } else {
                     let hdr: Dt4Block = binrw::BinReaderExt::read_le(rdr)?;
-                    let mut buf = vec![0u8; (hdr.len - 24) as usize];
-                    rdr.read_exact(&mut buf)?;
+                    let buf = rdr.read_slice((hdr.len - 24) as usize)?;
                     position = inval_ptr + hdr.len as i64;
                     raw_invalid.push(Some(RawCompBlock::Plain(buf)));
                 }
             }
         }
 
-        let decompressed: Vec<Vec<u8>> = raw_data
-            .into_par_iter()
-            .map(|raw| match raw {
-                RawCompBlock::Plain(d) => Ok(d),
-                RawCompBlock::Dz(hdr, buf) => hdr
-                    .decompress(buf)
-                    .context("failed decompressing DV DZ block in independent LD"),
-            })
-            .collect::<Result<_>>()?;
+        let decompressed = decompress_raw_blocks(
+            raw_data,
+            "failed decompressing DV DZ block in independent LD",
+        )?;
 
         let chunk_sample_counts: Vec<usize> = if cn.n_bytes > 0 {
             decompressed
@@ -886,26 +911,18 @@ fn read_independent_channel_data(
             vec![0; decompressed.len()]
         };
 
-        if decompressed.len() == 1 {
-            read_one_channel_array(&decompressed[0], cn, cycle_count)?;
-        } else {
-            let total_len: usize = decompressed.iter().map(|b| b.len()).sum();
-            let mut all = Vec::with_capacity(total_len);
-            for b in decompressed {
-                all.extend(b);
-            }
-            read_one_channel_array(&all, cn, cycle_count)?;
-        }
+        let all = concat_cow_chunks(decompressed);
+        read_one_channel_array(&all, cn, cycle_count)?;
 
         if !raw_invalid.is_empty() && raw_invalid.iter().any(|r| r.is_some()) {
-            let decomp_inval: Vec<Option<Vec<u8>>> = raw_invalid
+            let decomp_inval: Vec<Option<Cow<'a, [u8]>>> = raw_invalid
                 .into_par_iter()
                 .map(|r| match r {
                     None => Ok(None),
-                    Some(RawCompBlock::Plain(d)) => Ok(Some(d)),
+                    Some(RawCompBlock::Plain(d)) => Ok(Some(Cow::Borrowed(d))),
                     Some(RawCompBlock::Dz(h, b)) => h
                         .decompress(b)
-                        .map(Some)
+                        .map(|v| Some(Cow::Owned(v)))
                         .context("failed decompressing DI DZ block in independent LD"),
                 })
                 .collect::<Result<_>>()?;
@@ -945,92 +962,28 @@ fn read_independent_channel_data(
     } else if id == *b"##DV" || id == *b"##DT" {
         let hdr: Dt4Block = binrw::BinReaderExt::read_le(rdr)
             .context("Could not read independent DV/DT block header")?;
-        let mut buf = vec![0u8; (hdr.len - 24) as usize];
-        rdr.read_exact(&mut buf)
+        let slice = rdr
+            .read_slice((hdr.len - 24) as usize)
             .context("Could not read independent DV/DT block data")?;
         position = cn_data + hdr.len as i64;
-        read_one_channel_array(&buf, cn, cycle_count)?;
+        read_one_channel_array(slice, cn, cycle_count)?;
     } else if id == *b"##DZ" {
         let (dt, hdr) = parse_dz(rdr)?;
         position = cn_data + hdr.len as i64;
         read_one_channel_array(&dt, cn, cycle_count)?;
-    } else if id == *b"##DL" {
+    } else if id == *b"##DL" || id == *b"##HL" {
+        if id == *b"##HL" {
+            let (pos, _id) = read_hl(rdr, position)?;
+            position = pos;
+        }
         let (dl_blocks, pos) = parser_dl4(rdr, position)?;
+        let (raw_entries, pos) = collect_dl_raw_entries(rdr, &dl_blocks, pos)?;
         position = pos;
-        let mut raw_entries: Vec<RawCompBlock> = Vec::new();
-        for dl in &dl_blocks {
-            for &data_ptr in &dl.dl_data {
-                if data_ptr == 0 {
-                    continue;
-                }
-                rdr.seek_relative(data_ptr - position)?;
-                let mut blk_id = [0u8; 4];
-                rdr.read_exact(&mut blk_id)?;
-                if blk_id == *b"##DZ" {
-                    let (h, b) = read_dz_raw(rdr)?;
-                    position = data_ptr + h.len as i64;
-                    raw_entries.push(RawCompBlock::Dz(h, b));
-                } else {
-                    let h: Dt4Block = binrw::BinReaderExt::read_le(rdr)?;
-                    let mut b = vec![0u8; (h.len - 24) as usize];
-                    rdr.read_exact(&mut b)?;
-                    position = data_ptr + h.len as i64;
-                    raw_entries.push(RawCompBlock::Plain(b));
-                }
-            }
-        }
-        let decompressed: Vec<Vec<u8>> = raw_entries
-            .into_par_iter()
-            .map(|raw| match raw {
-                RawCompBlock::Plain(d) => Ok(d),
-                RawCompBlock::Dz(h, b) => h.decompress(b),
-            })
-            .collect::<Result<_>>()?;
-        let total_len: usize = decompressed.iter().map(|b| b.len()).sum();
-        let mut all = Vec::with_capacity(total_len);
-        for b in decompressed {
-            all.extend(b);
-        }
-        read_one_channel_array(&all, cn, cycle_count)?;
-    } else if id == *b"##HL" {
-        let (pos, _id) = read_hl(rdr, position)?;
-        position = pos;
-        let (dl_blocks, pos) = parser_dl4(rdr, position)?;
-        position = pos;
-        let mut raw_entries: Vec<RawCompBlock> = Vec::new();
-        for dl in &dl_blocks {
-            for &data_ptr in &dl.dl_data {
-                if data_ptr == 0 {
-                    continue;
-                }
-                rdr.seek_relative(data_ptr - position)?;
-                let mut blk_id = [0u8; 4];
-                rdr.read_exact(&mut blk_id)?;
-                if blk_id == *b"##DZ" {
-                    let (h, b) = read_dz_raw(rdr)?;
-                    position = data_ptr + h.len as i64;
-                    raw_entries.push(RawCompBlock::Dz(h, b));
-                } else {
-                    let h: Dt4Block = binrw::BinReaderExt::read_le(rdr)?;
-                    let mut b = vec![0u8; (h.len - 24) as usize];
-                    rdr.read_exact(&mut b)?;
-                    position = data_ptr + h.len as i64;
-                    raw_entries.push(RawCompBlock::Plain(b));
-                }
-            }
-        }
-        let decompressed: Vec<Vec<u8>> = raw_entries
-            .into_par_iter()
-            .map(|raw| match raw {
-                RawCompBlock::Plain(d) => Ok(d),
-                RawCompBlock::Dz(h, b) => h.decompress(b),
-            })
-            .collect::<Result<_>>()?;
-        let total_len: usize = decompressed.iter().map(|b| b.len()).sum();
-        let mut all = Vec::with_capacity(total_len);
-        for b in decompressed {
-            all.extend(b);
-        }
+        let decompressed = decompress_raw_blocks(
+            raw_entries,
+            "failed decompressing DZ block in independent DL/HL",
+        )?;
+        let all = concat_cow_chunks(decompressed);
         read_one_channel_array(&all, cn, cycle_count)?;
     } else {
         position += 4;
@@ -1040,8 +993,8 @@ fn read_independent_channel_data(
 
 /// Reads array channel stored as DG template (ca_storage == 2).
 /// Each element k has its data block pointed by ca_data[k].
-fn read_dg_template_array(
-    rdr: &mut BufReader<&File>,
+fn read_dg_template_array<'a>(
+    rdr: &mut SliceCursor<'a>,
     cn: &mut Cn4,
     ca: &Ca4Block,
     cycle_count: usize,
@@ -1060,11 +1013,11 @@ fn read_dg_template_array(
         return Ok(position);
     }
 
-    let mut element_data: Vec<Vec<u8>> = Vec::with_capacity(m);
+    let mut element_data: Vec<Cow<'a, [u8]>> = Vec::with_capacity(m);
     for (k, &ptr) in ca_data_links.iter().enumerate() {
         if ptr == 0 {
             // No data recorded for this element
-            element_data.push(vec![0u8; cycle_count * elem_size]);
+            element_data.push(Cow::Owned(vec![0u8; cycle_count * elem_size]));
             continue;
         }
         rdr.seek_relative(ptr - position)
@@ -1084,58 +1037,26 @@ fn read_dg_template_array(
         if id == *b"##DZ" {
             let (dt, hdr) = parse_dz(rdr)?;
             position = ptr + hdr.len as i64;
-            element_data.push(dt);
+            element_data.push(Cow::Owned(dt));
         } else if id == *b"##DT" || id == *b"##DV" {
             let hdr: Dt4Block = binrw::BinReaderExt::read_le(rdr)?;
-            let mut buf = vec![0u8; (hdr.len - 24) as usize];
-            rdr.read_exact(&mut buf)?;
+            let slice = rdr.read_slice((hdr.len - 24) as usize)?;
             position = ptr + hdr.len as i64;
-            element_data.push(buf);
+            element_data.push(Cow::Borrowed(slice));
         } else if id == *b"##DL" || id == *b"##HL" {
             if id == *b"##HL" {
                 let (pos, _) = read_hl(rdr, position)?;
                 position = pos;
             }
             let (dl_blocks, pos) = parser_dl4(rdr, position)?;
+            let (raw_entries, pos) = collect_dl_raw_entries(rdr, &dl_blocks, pos)?;
             position = pos;
-            let mut raw_entries: Vec<RawCompBlock> = Vec::new();
-            for dl in &dl_blocks {
-                for &data_ptr in &dl.dl_data {
-                    if data_ptr == 0 {
-                        continue;
-                    }
-                    rdr.seek_relative(data_ptr - position)?;
-                    let mut blk_id = [0u8; 4];
-                    rdr.read_exact(&mut blk_id)?;
-                    if blk_id == *b"##DZ" {
-                        let (h, b) = read_dz_raw(rdr)?;
-                        position = data_ptr + h.len as i64;
-                        raw_entries.push(RawCompBlock::Dz(h, b));
-                    } else {
-                        let h: Dt4Block = binrw::BinReaderExt::read_le(rdr)?;
-                        let mut b = vec![0u8; (h.len - 24) as usize];
-                        rdr.read_exact(&mut b)?;
-                        position = data_ptr + h.len as i64;
-                        raw_entries.push(RawCompBlock::Plain(b));
-                    }
-                }
-            }
-            let decomp: Vec<Vec<u8>> = raw_entries
-                .into_par_iter()
-                .map(|raw| match raw {
-                    RawCompBlock::Plain(d) => Ok(d),
-                    RawCompBlock::Dz(h, b) => h.decompress(b),
-                })
-                .collect::<Result<_>>()?;
-            let total: usize = decomp.iter().map(|b| b.len()).sum();
-            let mut all = Vec::with_capacity(total);
-            for b in decomp {
-                all.extend(b);
-            }
-            element_data.push(all);
+            let decomp =
+                decompress_raw_blocks(raw_entries, "failed decompressing DZ block in CA template")?;
+            element_data.push(concat_cow_chunks(decomp));
         } else {
             // Unknown or unsupported block type
-            element_data.push(vec![0u8; elem_cycle_count * elem_size]);
+            element_data.push(Cow::Owned(vec![0u8; elem_cycle_count * elem_size]));
         }
     }
 
@@ -1159,7 +1080,7 @@ fn read_dg_template_array(
 
 /// Reads all DL Blocks and returns a vect of them
 fn parser_ld4(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     mut position: i64,
     channel_group: &mut Cg4,
 ) -> Result<i64> {
@@ -1208,11 +1129,11 @@ fn parser_ld4(
         } else {
             let block_header: Dt4Block =
                 binrw::BinReaderExt::read_le(rdr).context("Could not read DV block header")?;
-            let mut buf = vec![0u8; block_header.len as usize - 24];
-            rdr.read_exact(&mut buf)
+            let slice = rdr
+                .read_slice(block_header.len as usize - 24)
                 .context("Could not read Dt4 block")?;
             for cn in channel_group.cn.values_mut() {
-                read_one_channel_array(&buf, cn, channel_group.block.cg_cycle_count as usize)
+                read_one_channel_array(slice, cn, channel_group.block.cg_cycle_count as usize)
                     .context("failed reading one channel array")?;
             }
             position = ld_data + block_header.len as i64;
@@ -1241,10 +1162,10 @@ fn parser_ld4(
                 } else {
                     let block_header: Dt4Block = binrw::BinReaderExt::read_le(rdr)
                         .context("Could not read into DZ or DI block header")?;
-                    let mut buf = vec![0u8; (block_header.len - 24) as usize];
-                    rdr.read_exact(&mut buf)
+                    let slice = rdr
+                        .read_slice((block_header.len - 24) as usize)
                         .context("Could not read data block")?;
-                    channel_group.invalid_bytes = Some(buf);
+                    channel_group.invalid_bytes = Some(slice.to_vec());
                     position = ld_invalid_data + block_header.len as i64;
                 }
             }
@@ -1258,10 +1179,10 @@ fn parser_ld4(
 
 /// reads DV and DI block containing several channels.
 ///
-/// Three-phase approach: (1) sequential I/O, (2) parallel decompression,
+/// Three-phase approach: (1) zero-copy slice / raw DZ collection, (2) parallel decompression,
 /// (3) sequential record assembly — mirrors `parser_dl4_sorted`.
-fn read_dv_di(
-    rdr: &mut BufReader<&File>,
+fn read_dv_di<'a>(
+    rdr: &mut SliceCursor<'a>,
     mut position: i64,
     channel_group: &mut Cg4,
     ld_blocks: Vec<Ld4Block>,
@@ -1283,11 +1204,11 @@ fn read_dv_di(
         channel_group.invalid_bytes = Some(vec![0u8; cg_inval_bytes * cg_cycle_count]);
     }
 
-    // Phase 1: Sequential I/O — collect all raw data and invalid blocks
+    // Phase 1: Zero-copy slice collection of all raw data and invalid blocks
     let total_data_blocks: usize = ld_blocks.iter().map(|ld| ld.ld_data().len()).sum();
     let total_invalid_blocks: usize = ld_blocks.iter().map(|ld| ld.ld_invalid_data().len()).sum();
-    let mut raw_data: Vec<RawCompBlock> = Vec::with_capacity(total_data_blocks);
-    let mut raw_invalid: Vec<Option<RawCompBlock>> = Vec::with_capacity(total_invalid_blocks);
+    let mut raw_data: Vec<RawCompBlock<'a>> = Vec::with_capacity(total_data_blocks);
+    let mut raw_invalid: Vec<Option<RawCompBlock<'a>>> = Vec::with_capacity(total_invalid_blocks);
     for ld in &ld_blocks {
         for &data_pointer in &ld.ld_data() {
             rdr.seek_relative(data_pointer - position)
@@ -1302,10 +1223,11 @@ fn read_dv_di(
             } else {
                 let block_header: Dt4Block = binrw::BinReaderExt::read_le(rdr)
                     .context("Could not read DV block structure")?;
-                let mut buf = vec![0u8; (block_header.len - 24) as usize];
-                rdr.read_exact(&mut buf).context("Could not read DV data")?;
+                let slice = rdr
+                    .read_slice((block_header.len - 24) as usize)
+                    .context("Could not read DV data")?;
                 position = data_pointer + block_header.len as i64;
-                raw_data.push(RawCompBlock::Plain(buf));
+                raw_data.push(RawCompBlock::Plain(slice));
             }
         }
         for &data_pointer in &ld.ld_invalid_data() {
@@ -1326,36 +1248,26 @@ fn read_dv_di(
             } else {
                 let block_header: Dt4Block = binrw::BinReaderExt::read_le(rdr)
                     .context("Could not read invalid block header")?;
-                let mut buf = vec![0u8; (block_header.len - 24) as usize];
-                rdr.read_exact(&mut buf)
+                let slice = rdr
+                    .read_slice((block_header.len - 24) as usize)
                     .context("Could not read invalid data")?;
                 position = data_pointer + block_header.len as i64;
-                raw_invalid.push(Some(RawCompBlock::Plain(buf)));
+                raw_invalid.push(Some(RawCompBlock::Plain(slice)));
             }
         }
     }
 
     // Phase 2: Parallel decompression
-    let decompressed_data: Vec<Vec<u8>> = raw_data
+    let decompressed_data = decompress_raw_blocks(raw_data, "failed decompressing DV DZ block")?;
+    let decompressed_invalid: Vec<Option<Cow<'a, [u8]>>> = raw_invalid
         .into_par_iter()
-        .map(|raw| -> Result<Vec<u8>> {
-            match raw {
-                RawCompBlock::Plain(d) => Ok(d),
-                RawCompBlock::Dz(header, buf) => header
-                    .decompress(buf)
-                    .context("failed decompressing DV DZ block"),
-            }
-        })
-        .collect::<Result<_>>()?;
-    let decompressed_invalid: Vec<Option<Vec<u8>>> = raw_invalid
-        .into_par_iter()
-        .map(|opt_raw| -> Result<Option<Vec<u8>>> {
+        .map(|opt_raw| -> Result<Option<Cow<'a, [u8]>>> {
             match opt_raw {
                 None => Ok(None),
-                Some(RawCompBlock::Plain(d)) => Ok(Some(d)),
+                Some(RawCompBlock::Plain(d)) => Ok(Some(Cow::Borrowed(d))),
                 Some(RawCompBlock::Dz(header, buf)) => header
                     .decompress(buf)
-                    .map(Some)
+                    .map(|v| Some(Cow::Owned(v)))
                     .context("failed decompressing DI DZ block"),
             }
         })
@@ -1390,18 +1302,9 @@ fn read_dv_di(
     // Phase 3: Record assembly
     if channel_group.cn.len() == 1 {
         let cn = channel_group.cn.values_mut().next().unwrap();
-        if decompressed_data.len() == 1 {
-            read_one_channel_array(&decompressed_data[0], cn, cg_cycle_count)
-                .context("failed reading one channel array in read_dv_di")?;
-        } else {
-            let total_bytes: usize = decompressed_data.iter().map(|b| b.len()).sum();
-            let mut contiguous = Vec::with_capacity(total_bytes);
-            for b in decompressed_data {
-                contiguous.extend(b);
-            }
-            read_one_channel_array(&contiguous, cn, cg_cycle_count)
-                .context("failed reading one channel array in read_dv_di")?;
-        }
+        let contiguous = concat_cow_chunks(decompressed_data);
+        read_one_channel_array(&contiguous, cn, cg_cycle_count)
+            .context("failed reading one channel array in read_dv_di")?;
     } else {
         // Sequential record assembly — use actual decompressed length (matches original
         // parse_dz which updated dz_org_data_length = data.len() after decompression).
@@ -1432,7 +1335,7 @@ fn read_dv_di(
                     data.extend_from_slice(&block_data[record_length * n_record_chunk..]);
                 }
             } else {
-                data.extend(block_data);
+                data.extend_from_slice(&block_data);
                 let block_length = data.len();
                 let n_record_chunk = block_length.checked_div(record_length).unwrap_or(0);
                 if n_record_chunk == 0 {
@@ -1463,7 +1366,7 @@ fn read_dv_di(
 }
 
 /// Reads all DL Blocks and returns a vect of them
-fn parser_dl4(rdr: &mut BufReader<&File>, mut position: i64) -> Result<(Vec<Dl4Block>, i64)> {
+fn parser_dl4(rdr: &mut SliceCursor<'_>, mut position: i64) -> Result<(Vec<Dl4Block>, i64)> {
     let mut dl_blocks: Vec<Dl4Block> = Vec::new();
     let mut chain = BlockChain::new("DL");
     chain.visit(position);
@@ -1489,18 +1392,19 @@ fn parser_dl4(rdr: &mut BufReader<&File>, mut position: i64) -> Result<(Vec<Dl4B
     Ok((dl_blocks, position))
 }
 
-/// Raw (possibly compressed) DZ or plain DT block collected during sequential I/O.
-enum RawCompBlock {
-    Plain(Vec<u8>),
-    Dz(Dz4Block, Vec<u8>),
+/// Raw (possibly compressed) DZ or plain DT slice borrowed from mapped file.
+enum RawCompBlock<'a> {
+    Plain(&'a [u8]),
+    Dz(Dz4Block, &'a [u8]),
 }
 
 /// Reads all sorted data blocks pointed by DL4 Blocks.
 ///
-/// Three-phase approach: (1) sequential I/O collects raw bytes, (2) Rayon
-/// decompresses all DZ blocks in parallel, (3) sequential record assembly.
-fn parser_dl4_sorted(
-    rdr: &mut BufReader<&File>,
+/// Three-phase approach: (1) zero-copy slice / DZ raw collection, (2) Rayon
+/// decompresses all DZ blocks in parallel (plain blocks are borrowed zero-copy),
+/// (3) sequential record assembly.
+fn parser_dl4_sorted<'a>(
+    rdr: &mut SliceCursor<'a>,
     dl_blocks: Vec<Dl4Block>,
     mut position: i64,
     channel_group: &mut Cg4,
@@ -1514,9 +1418,9 @@ fn parser_dl4_sorted(
     let record_length = channel_group.record_length as usize;
     let mut vlsd_channels: Vec<(u8, i64)> = Vec::new();
 
-    // Phase 1: Sequential I/O — collect raw blocks
+    // Phase 1: Zero-copy slice collection
     let total_entries: usize = dl_blocks.iter().map(|dl| dl.dl_data.len()).sum();
-    let mut raw_entries: Vec<(bool, RawCompBlock)> = Vec::with_capacity(total_entries); // (is_sd, block)
+    let mut raw_entries: Vec<(bool, RawCompBlock<'a>)> = Vec::with_capacity(total_entries); // (is_sd, block)
     for dl in &dl_blocks {
         for &data_pointer in &dl.dl_data {
             if data_pointer == 0 {
@@ -1538,11 +1442,7 @@ fn parser_dl4_sorted(
                 // Guard against unfinalized files where the last DT block's len field
                 // was never updated (len == 0 or garbage). Clamp to available file bytes.
                 let data_len = if block_header.len >= 24 {
-                    let file_size = rdr
-                        .get_ref()
-                        .metadata()
-                        .map(|m| m.len())
-                        .unwrap_or(u64::MAX);
+                    let file_size = rdr.file_size().unwrap_or(u64::MAX);
                     let claimed = block_header.len - 24;
                     let available = (file_size as i64).saturating_sub(data_pointer + 24);
                     if available > 0 {
@@ -1558,38 +1458,51 @@ fn parser_dl4_sorted(
                     );
                     0
                 };
-                let mut buf = vec![0u8; data_len];
-                rdr.read_exact(&mut buf)
+                let slice = rdr
+                    .read_slice(data_len)
                     .context("Could not read DT block data")?;
                 position = data_pointer + 24 + data_len as i64;
                 let is_sd = &id[2..4] == b"SD";
-                raw_entries.push((is_sd, RawCompBlock::Plain(buf)));
+                raw_entries.push((is_sd, RawCompBlock::Plain(slice)));
             }
         }
     }
 
-    // Phase 2: Parallel decompression
-    let decompressed: Vec<(bool, Vec<u8>)> = raw_entries
+    // Phase 2: Parallel decompression (plain blocks remain zero-copy Cow::Borrowed)
+    let decompressed: Vec<(bool, Cow<'a, [u8]>)> = raw_entries
         .into_par_iter()
-        .map(|(is_sd, raw)| -> Result<(bool, Vec<u8>)> {
+        .map(|(is_sd, raw)| -> Result<(bool, Cow<'a, [u8]>)> {
             let data = match raw {
-                RawCompBlock::Plain(d) => d,
-                RawCompBlock::Dz(header, buf) => header
-                    .decompress(buf)
-                    .context("failed decompressing DZ block in DL4 sorted")?,
+                RawCompBlock::Plain(d) => Cow::Borrowed(d),
+                RawCompBlock::Dz(header, buf) => Cow::Owned(
+                    header
+                        .decompress(buf)
+                        .context("failed decompressing DZ block in DL4 sorted")?,
+                ),
             };
             Ok((is_sd, data))
         })
         .collect::<Result<_>>()?;
 
-    // Phase 3: Sequential record assembly (same logic as original, avoiding copy when aligned)
+    // Phase 3: Sequential record assembly (zero-copy when aligned)
     let mut data: Vec<u8> = Vec::new();
     let mut previous_index: usize = 0;
     for (is_sd, block_data) in decompressed {
         if is_sd {
-            data.extend(block_data);
-            if let Some(cn) = channel_group.cn.get_mut(rec_pos) {
-                previous_index = read_vlsd_from_bytes(&mut data, cn, previous_index, decoder)?;
+            if data.is_empty() {
+                if let Some(cn) = channel_group.cn.get_mut(rec_pos) {
+                    let (idx, consumed) =
+                        read_vlsd_from_slice(&block_data, cn, previous_index, decoder)?;
+                    previous_index = idx;
+                    if consumed < block_data.len() {
+                        data.extend_from_slice(&block_data[consumed..]);
+                    }
+                }
+            } else {
+                data.extend_from_slice(&block_data);
+                if let Some(cn) = channel_group.cn.get_mut(rec_pos) {
+                    previous_index = read_vlsd_from_bytes(&mut data, cn, previous_index, decoder)?;
+                }
             }
         } else if data.is_empty() {
             // Fast path when no partial record tail exists from the previous block
@@ -1618,7 +1531,7 @@ fn parser_dl4_sorted(
                 data.extend_from_slice(&block_data[record_length * n_record_chunk..]);
             }
         } else {
-            data.extend(block_data);
+            data.extend_from_slice(&block_data);
             // Use data.len() so a partial-record tail from the previous block is included.
             let block_length = data.len();
             let n_record_chunk = block_length.checked_div(record_length).unwrap_or(0);
@@ -1654,14 +1567,14 @@ fn parser_dl4_sorted(
 }
 
 /// Reads all unsorted data blocks pointed by DL4 Blocks
-fn parser_dl4_unsorted(
-    rdr: &mut BufReader<&File>,
+fn parser_dl4_unsorted<'a>(
+    rdr: &mut SliceCursor<'a>,
     dg: &mut Dg4,
     dl_blocks: Vec<Dl4Block>,
     mut position: i64,
 ) -> Result<i64> {
-    // Phase 1: Sequential I/O — collect raw blocks
-    let mut raw_entries: Vec<RawCompBlock> = Vec::new();
+    // Phase 1: Zero-copy slice / raw DZ collection
+    let mut raw_entries: Vec<RawCompBlock<'a>> = Vec::new();
     for dl in &dl_blocks {
         for &data_pointer in &dl.dl_data {
             if data_pointer == 0 {
@@ -1679,30 +1592,21 @@ fn parser_dl4_unsorted(
             } else {
                 let block_header: Dt4Block =
                     binrw::BinReaderExt::read_le(rdr).context("Could not read DT block header")?;
-                let mut buf = vec![0u8; (block_header.len - 24) as usize];
-                rdr.read_exact(&mut buf)
+                let slice = rdr
+                    .read_slice((block_header.len - 24) as usize)
                     .context("Could not read DT block data")?;
                 position = data_pointer + block_header.len as i64;
-                raw_entries.push(RawCompBlock::Plain(buf));
+                raw_entries.push(RawCompBlock::Plain(slice));
             }
         }
     }
 
     // Phase 2: Parallel decompression
-    let decompressed: Vec<Vec<u8>> = raw_entries
-        .into_par_iter()
-        .map(|raw| -> Result<Vec<u8>> {
-            match raw {
-                RawCompBlock::Plain(d) => Ok(d),
-                RawCompBlock::Dz(header, buf) => header
-                    .decompress(buf)
-                    .context("failed decompressing DZ block in DL4 unsorted"),
-            }
-        })
-        .collect::<Result<_>>()?;
+    let decompressed =
+        decompress_raw_blocks(raw_entries, "failed decompressing DZ block in DL4 unsorted")?;
 
     // Phase 3: Sequential record dispatch
-    let mut data: Vec<u8> = Vec::with_capacity(CHUNK_SIZE_READING_4 * 2);
+    let mut data: Vec<u8> = Vec::new();
     let mut decoder: Dec = Dec {
         windows_1252: WINDOWS_1252.new_decoder(),
         utf_16_be: UTF_16BE.new_decoder(),
@@ -1710,8 +1614,15 @@ fn parser_dl4_unsorted(
     };
     let mut unsorted_state = UnsortedState::new(dg);
     for block_data in decompressed {
-        data.extend(block_data);
-        unsorted_state.process_chunk(&mut data, dg, &mut decoder)?;
+        if data.is_empty() {
+            let consumed = unsorted_state.process_slice(&block_data, dg, &mut decoder)?;
+            if consumed < block_data.len() {
+                data.extend_from_slice(&block_data[consumed..]);
+            }
+        } else {
+            data.extend_from_slice(&block_data);
+            unsorted_state.process_chunk(&mut data, dg, &mut decoder)?;
+        }
     }
     Ok(position)
 }
@@ -1735,29 +1646,27 @@ fn generate_chunks(channel_group: &Cg4) -> Vec<(usize, usize)> {
 
 /// Reads all channels from given channel group having sorted data blocks
 fn read_all_channels_sorted(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     channel_group: &mut Cg4,
 ) -> Result<Vec<(u8, i64)>> {
     let chunks = generate_chunks(channel_group);
     // initialises the arrays
     initialise_arrays(channel_group, &channel_group.block.cg_cycle_count.clone())
         .context("failed initialising arrays")?;
-    // read by chunks and store in channel array
+    // read by chunks directly from mapped slice and store in channel array
     let mut previous_index: usize = 0;
     let mut vlsd_channels: Vec<(u8, i64)> = Vec::new();
-    // Allocate buffer once and reuse across chunks
-    let max_chunk_size = chunks.iter().map(|c| c.1).max().unwrap_or(0);
-    let mut data_chunk = vec![0u8; max_chunk_size];
     let inval_bytes = if (channel_group.block.cg_flags & (CG_F_VLSD | CG_F_VLSC)) == 0 {
         channel_group.block.cg_inval_bytes as usize
     } else {
         0
     };
     for (n_record_chunk, chunk_size) in chunks {
-        rdr.read_exact(&mut data_chunk[..chunk_size])
+        let data_chunk = rdr
+            .read_slice(chunk_size)
             .context("Could not read data chunk")?;
         vlsd_channels = read_channels_from_bytes_with_inval(
-            &data_chunk[..chunk_size],
+            data_chunk,
             &mut channel_group.cn,
             channel_group.record_length as usize,
             previous_index,
@@ -1802,38 +1711,26 @@ fn read_all_channels_sorted_from_bytes(
     Ok(vlsd_channels)
 }
 
-/// Reads unsorted data block chunk by chunk
+/// Reads unsorted data block directly from mapped slice
 fn read_all_channels_unsorted(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     dg: &mut Dg4,
     block_length: i64,
 ) -> Result<()> {
-    let data_block_length = block_length as usize;
-    let mut position: usize = 24;
+    let payload_len = (block_length as usize).saturating_sub(24);
+    if payload_len == 0 {
+        return Ok(());
+    }
+    let data = rdr
+        .read_slice(payload_len)
+        .context("Could not read data chunk")?;
     let mut unsorted_state = UnsortedState::new(dg);
     let mut decoder: Dec = Dec {
         windows_1252: WINDOWS_1252.new_decoder(),
         utf_16_be: UTF_16BE.new_decoder(),
         utf_16_le: UTF_16LE.new_decoder(),
     };
-
-    // reads the sorted data block into chunks
-    let mut data: Vec<u8> = Vec::with_capacity(CHUNK_SIZE_READING_4 * 2);
-    let mut data_chunk = vec![0u8; CHUNK_SIZE_READING_4];
-    while position < data_block_length {
-        let chunk_size = if (data_block_length - position) > CHUNK_SIZE_READING_4 {
-            position += CHUNK_SIZE_READING_4;
-            CHUNK_SIZE_READING_4
-        } else {
-            let remaining = data_block_length - position;
-            position += remaining;
-            remaining
-        };
-        rdr.read_exact(&mut data_chunk[..chunk_size])
-            .context("Could not read data chunk")?;
-        data.extend_from_slice(&data_chunk[..chunk_size]);
-        unsorted_state.process_chunk(&mut data, dg, &mut decoder)?;
-    }
+    unsorted_state.process_slice(data, dg, &mut decoder)?;
     Ok(())
 }
 
@@ -1929,24 +1826,43 @@ impl UnsortedState {
         Self { buffers, lookup }
     }
 
+    fn process_slice(
+        &mut self,
+        data: &[u8],
+        dg: &mut Dg4,
+        decoder: &mut Dec,
+    ) -> Result<usize, Error> {
+        read_all_channels_unsorted_from_slice(data, dg, &mut self.buffers, &self.lookup, decoder)
+    }
+
     fn process_chunk(
         &mut self,
         data: &mut Vec<u8>,
         dg: &mut Dg4,
         decoder: &mut Dec,
     ) -> Result<(), Error> {
-        read_all_channels_unsorted_from_bytes(data, dg, &mut self.buffers, &self.lookup, decoder)
+        let position = read_all_channels_unsorted_from_slice(
+            data,
+            dg,
+            &mut self.buffers,
+            &self.lookup,
+            decoder,
+        )?;
+        let remaining_len = data.len() - position;
+        data.copy_within(position.., 0);
+        data.truncate(remaining_len);
+        Ok(())
     }
 }
 
 /// read record by record from unsorted data block into sorted data block, then copy data into channel arrays
-fn read_all_channels_unsorted_from_bytes(
-    data: &mut Vec<u8>,
+fn read_all_channels_unsorted_from_slice(
+    data: &[u8],
     dg: &mut Dg4,
     record_buffers: &mut [Option<(usize, Vec<u8>)>],
     cg_lookup: &[Option<CgLookupEntry>],
     decoder: &mut Dec,
-) -> Result<(), Error> {
+) -> Result<usize, Error> {
     let mut position: usize = 0;
     let data_length = data.len();
     let dg_rec_id_size = dg.block.dg_rec_id_size as usize;
@@ -2113,11 +2029,6 @@ fn read_all_channels_unsorted_from_bytes(
         remaining = data_length - position;
     }
 
-    // removes consumed records from data and leaves remaining that could not be processed.
-    let remaining_len = data.len() - position;
-    data.copy_within(position.., 0);
-    data.truncate(remaining_len);
-
     // From sorted data block, copies data in channels arrays
     for (rec_id, buffer) in record_buffers.iter_mut().enumerate() {
         if let Some((index, record_data)) = buffer
@@ -2185,7 +2096,7 @@ fn read_all_channels_unsorted_from_bytes(
             }
         }
     }
-    Ok(())
+    Ok(position)
 }
 
 /// decoder for String SBC and UTF16 Le & Be
@@ -2375,7 +2286,7 @@ pub fn apply_bit_mask_offset(dg: &mut Dg4) -> Result<(), Error> {
 
 /// Helper to process dynamic channels (VLSD, VLSC, DS)
 fn process_dynamic_channels(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     dg: &mut Dg4,
     vlsd_channels: &[(u8, i64)],
     mut position: i64,
@@ -2413,7 +2324,7 @@ fn process_dynamic_channels(
 /// Reads data from Data Storage (DSBLOCK) pointed to by Data Stream channels (cn_type = 8)
 /// or Dynamic Arrays (ca_storage = 5).
 fn read_ds(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     channel_group: &mut Cg4,
     vlsd_channels: &[(u8, i64)],
     mut position: i64,
@@ -2449,7 +2360,7 @@ fn read_ds(
                 rdr.read_exact(&mut id)
                     .context("could not read DS data block id")?;
 
-                let mut data: Vec<u8> = match read_all_blocks_to_bytes(rdr, id, position)? {
+                let data: Cow<'_, [u8]> = match read_all_blocks_to_bytes(rdr, id, position)? {
                     Some((buf, pos)) => {
                         position = pos;
                         buf
@@ -2518,7 +2429,7 @@ fn read_ds(
                 } else {
                     // Fallback: read as length-prefixed samples for dynamic data
                     if let Some(cn) = channel_group.cn.get_mut(rec_pos) {
-                        read_vlsd_from_bytes(&mut data, cn, 0, decoder)?;
+                        read_vlsd_from_slice(&data, cn, 0, decoder)?;
                     }
                 }
             }

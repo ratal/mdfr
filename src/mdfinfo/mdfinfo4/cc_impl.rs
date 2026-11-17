@@ -4,21 +4,20 @@
 //! Supports 12 conversion types (Table 31): identity, linear, rational, polynomial,
 //! tabular (value-to-value, value-to-text), algebraic formula, and more.
 use anyhow::{Context, Result};
-use std::fs::File;
 use std::io::Cursor;
 
 use super::block_header_impl::{SharableBlocks, parse_block_short, read_meta_data};
 use super::metadata::BlockType;
-use crate::mdfinfo::sym_buf_reader::SymBufReader;
+use crate::mdfinfo::sym_buf_reader::SliceCursor;
 
 pub use mdfr_core::blocks::cc::{Cc4Block, CcVal};
 
 /// reads and parses CC block and its linked metadata
 pub(super) fn read_cc(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     target: &i64,
     mut position: i64,
-    mut block: Cursor<Vec<u8>>,
+    mut block: Cursor<&[u8]>,
     sharable: &mut SharableBlocks,
 ) -> Result<i64> {
     let cc_block: Cc4Block = binrw::BinReaderExt::read_le(&mut block)

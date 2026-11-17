@@ -4,13 +4,12 @@
 //! an optional MD comment. FHBLOCKs form a linked list from `hd_fh_first`.
 use anyhow::{Context, Result};
 use chrono::Local;
-use std::fs::File;
-use std::io::{Cursor, Read};
+use std::io::Cursor;
 
 use super::block_header_impl::{SharableBlocks, read_meta_data};
 use super::metadata::BlockType;
 use crate::mdfinfo::block_chain::BlockChain;
-use crate::mdfinfo::sym_buf_reader::SymBufReader;
+use crate::mdfinfo::sym_buf_reader::SliceCursor;
 
 pub use mdfr_core::blocks::fh::FhBlock;
 
@@ -25,17 +24,13 @@ pub fn new_fh_block() -> FhBlock {
 }
 
 /// Parses a single FHBLOCK from the file at the given target position.
-fn parse_fh_block(
-    rdr: &mut SymBufReader<&File>,
-    target: i64,
-    position: i64,
-) -> Result<(FhBlock, i64)> {
+fn parse_fh_block(rdr: &mut SliceCursor<'_>, target: i64, position: i64) -> Result<(FhBlock, i64)> {
     rdr.seek_relative(target - position)
         .context("Could not reach FH Block position")?; // change buffer position
-    let mut buf = [0u8; 56];
-    rdr.read_exact(&mut buf)
+    let slice = rdr
+        .read_slice(56)
         .context("Could not read FH block buffer")?;
-    let mut block = Cursor::new(buf);
+    let mut block = Cursor::new(slice);
     let fh: FhBlock = binrw::BinReaderExt::read_le(&mut block)
         .with_context(|| format!("Error parsing fh block into FhBlock struct \n{block:?}"))?; // reads the fh block
     Ok((fh, target + 56))
@@ -46,7 +41,7 @@ pub type Fh = Vec<FhBlock>;
 /// Parses the FHBLOCK linked list starting from `target`, including MD comments.
 /// Returns a Vec of all FHBLOCKs in the chain.
 pub fn parse_fh(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     sharable: &mut SharableBlocks,
     target: i64,
     mut position: i64,

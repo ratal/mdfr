@@ -5,8 +5,9 @@
 //! HLBLOCK is a header list for DZBLOCK chains, LDBLOCK is a list for sorted data,
 //! and GDBLOCK guards MDF 4.3 features in unsorted data.
 use anyhow::{Context, Result, bail};
-use std::fs::File;
-use std::io::{BufReader, Read, Seek};
+use std::io::Seek;
+
+use crate::mdfinfo::sym_buf_reader::SliceCursor;
 
 pub use mdfr_core::compress::CompressionAlgorithm;
 
@@ -15,7 +16,7 @@ pub use mdfr_core::blocks::data::{Dl4Block, Dt4Block, Dz4Block, Gd4Block, Hl4Blo
 /// parses Data List block
 /// pointing to DT, SD, RD or DZ blocks
 pub fn parser_dl4_block(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     target: i64,
     mut position: i64,
 ) -> Result<(Dl4Block, i64)> {
@@ -31,20 +32,16 @@ pub fn parser_dl4_block(
 pub fn decompress_data(
     zip_type: u8,
     zip_parameter: u32,
-    buf: Vec<u8>,
+    buf: &[u8],
     org_data_length: u64,
 ) -> Result<Vec<u8>> {
-    mdfr_core::compress::decompress_dz_data(zip_type, zip_parameter, &buf, org_data_length)
+    mdfr_core::compress::decompress_dz_data(zip_type, zip_parameter, buf, org_data_length)
         .map_err(|e| anyhow::anyhow!("DZ decompression failed: {e}"))
 }
 
 /// Number of bytes left between the current position and the end of the file.
-fn bytes_left(rdr: &mut BufReader<&File>) -> Result<u64> {
-    let file_size = rdr
-        .get_ref()
-        .metadata()
-        .context("Could not read file metadata")?
-        .len();
+fn bytes_left(rdr: &mut SliceCursor<'_>) -> Result<u64> {
+    let file_size = rdr.file_size()?;
     let position = rdr
         .stream_position()
         .context("Could not get stream position")?;
@@ -52,7 +49,7 @@ fn bytes_left(rdr: &mut BufReader<&File>) -> Result<u64> {
 }
 
 /// Checks a length field read from a DZ block against the bytes still in the file.
-fn validate_dz_data_length(block: &Dz4Block, rdr: &mut BufReader<&File>) -> Result<()> {
+fn validate_dz_data_length(block: &Dz4Block, rdr: &mut SliceCursor<'_>) -> Result<()> {
     let available = bytes_left(rdr)?;
     if block.dz_data_length > available {
         bail!(
@@ -64,43 +61,44 @@ fn validate_dz_data_length(block: &Dz4Block, rdr: &mut BufReader<&File>) -> Resu
 }
 
 /// parses DZBlock
-pub fn parse_dz(rdr: &mut BufReader<&File>) -> Result<(Vec<u8>, Dz4Block)> {
+pub fn parse_dz(rdr: &mut SliceCursor<'_>) -> Result<(Vec<u8>, Dz4Block)> {
     let mut block: Dz4Block =
         binrw::BinReaderExt::read_le(rdr).context("Could not read into Dz4Block struct")?;
     validate_dz_data_length(&block, rdr)?;
-    let mut buf = vec![0u8; block.dz_data_length as usize];
-    rdr.read_exact(&mut buf).context("Could not read Dz data")?;
-    // decompress data
+    let slice = rdr
+        .read_slice(block.dz_data_length as usize)
+        .context("Could not read Dz data")?;
+    // decompress data directly from mapped slice
     let data = decompress_data(
         block.dz_zip_type,
         block.dz_zip_parameter,
-        buf,
+        slice,
         block.dz_org_data_length,
     )?;
     block.dz_org_data_length = data.len() as u64;
     Ok((data, block))
 }
 
-/// Reads a DZBlock header and raw compressed bytes without decompressing.
+/// Reads a DZBlock header and borrows raw compressed bytes without copying or decompressing.
 /// Use `Dz4Block::decompress` in a parallel step to decompress independently.
-pub fn read_dz_raw(rdr: &mut BufReader<&File>) -> Result<(Dz4Block, Vec<u8>)> {
+pub fn read_dz_raw<'a>(rdr: &mut SliceCursor<'a>) -> Result<(Dz4Block, &'a [u8])> {
     let block: Dz4Block =
         binrw::BinReaderExt::read_le(rdr).context("Could not read into Dz4Block struct")?;
     validate_dz_data_length(&block, rdr)?;
-    let mut buf = vec![0u8; block.dz_data_length as usize];
-    rdr.read_exact(&mut buf)
+    let slice = rdr
+        .read_slice(block.dz_data_length as usize)
         .context("Could not read Dz raw data")?;
-    Ok((block, buf))
+    Ok((block, slice))
 }
 
 /// Extension on [`Dz4Block`] for decompression.
 pub trait Dz4BlockExt {
     /// Decompresses `buf` using this block's zip algorithm and parameters.
-    fn decompress(self, buf: Vec<u8>) -> Result<Vec<u8>>;
+    fn decompress(self, buf: &[u8]) -> Result<Vec<u8>>;
 }
 
 impl Dz4BlockExt for Dz4Block {
-    fn decompress(self, buf: Vec<u8>) -> Result<Vec<u8>> {
+    fn decompress(self, buf: &[u8]) -> Result<Vec<u8>> {
         decompress_data(
             self.dz_zip_type,
             self.dz_zip_parameter,
@@ -114,7 +112,7 @@ impl Dz4BlockExt for Dz4Block {
 /// equivalent ot DLBlock but unsorted data is not allowed
 /// pointing to DV/DI and RV/RI blocks
 pub fn parser_ld4_block(
-    rdr: &mut BufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     target: i64,
     mut position: i64,
 ) -> Result<(Ld4Block, i64)> {
@@ -143,7 +141,7 @@ mod tests {
             (mdfr_core::compress::CompressionAlgorithm::Lz4Transpose, 5u8),
         ] {
             let comp = mdfr_core::compress::compress_dz_data(&orig, algo, 4).unwrap();
-            let decomp = decompress_data(zip_type, 4, comp, orig.len() as u64).unwrap();
+            let decomp = decompress_data(zip_type, 4, &comp, orig.len() as u64).unwrap();
             assert_eq!(decomp, orig, "failed for {algo:?}");
         }
     }

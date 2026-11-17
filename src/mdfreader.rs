@@ -9,8 +9,6 @@ pub mod mdfreader4;
 use rustc_hash::FxHashMap;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
-use std::fs::{File, OpenOptions};
-use std::io::BufReader;
 use std::sync::Arc;
 
 use anyhow::{Context, Error, Result, bail};
@@ -25,6 +23,7 @@ use crate::data_holder::channel_data::{interp_channel, try_from};
 use crate::mdfinfo::mdfinfo4::{
     At4Block, Ch4Block, CompressionAlgorithm, Ev4Block, EventRecord, FhBlock, Si4Block, Sr4Block,
 };
+use crate::mdfinfo::sym_buf_reader::{MappedFile, SliceCursor};
 use crate::mdfinfo::{ChannelsDb, MdfInfo};
 use crate::mdfreader::mdfreader3::mdfreader3;
 use crate::mdfreader::mdfreader4::mdfreader4;
@@ -86,6 +85,13 @@ impl Mdf {
     pub fn new(file_name: &str) -> Result<Mdf> {
         let mdf = Mdf {
             mdf_info: MdfInfo::new(file_name)?,
+        };
+        Ok(mdf)
+    }
+    /// parses Mdf metadata from an in-memory byte slice without loading channel data
+    pub fn from_bytes(bytes: &[u8]) -> Result<Mdf> {
+        let mdf = Mdf {
+            mdf_info: MdfInfo::from_bytes(bytes)?,
         };
         Ok(mdf)
     }
@@ -510,7 +516,14 @@ impl Mdf {
             .context("failed loading channels data from file to memory")?;
         Ok(())
     }
-    /// load a set of channels data in memory
+    /// load all channels data in memory from an in-memory byte slice
+    pub fn load_all_channels_data_from_bytes(&mut self, bytes: &[u8]) -> Result<(), Error> {
+        let channel_names = self.get_channel_names_set();
+        self.load_channels_data_from_bytes(bytes, channel_names)
+            .context("failed loading channels data from bytes to memory")?;
+        Ok(())
+    }
+    /// load a set of channels data in memory using a memory-mapped file
     pub fn load_channels_data_in_memory(
         &mut self,
         channel_names: HashSet<String>,
@@ -525,13 +538,30 @@ impl Mdf {
             return Ok(());
         }
 
-        let f: File = OpenOptions::new()
-            .read(true)
-            .write(false)
-            .open(self.get_file_name())
-            .with_context(|| format!("Cannot find the file {}", self.get_file_name()))?;
-        let mut rdr = BufReader::new(&f);
-        info!("Opened file {}", self.get_file_name());
+        let file_name = self.get_file_name();
+        let mapped = MappedFile::open(&file_name)
+            .with_context(|| format!("Cannot find the file {file_name}"))?;
+        info!("Opened file {file_name}");
+
+        self.load_channels_data_from_bytes(&mapped, channel_names)
+    }
+    /// load a set of channels data in memory from a byte slice
+    pub fn load_channels_data_from_bytes(
+        &mut self,
+        bytes: &[u8],
+        channel_names: HashSet<String>,
+    ) -> Result<(), Error> {
+        // If all requested channels already have in-memory data, skip decoding
+        let all_loaded = channel_names.iter().all(|name| {
+            self.mdf_info
+                .get_channel_data(name)
+                .is_some_and(|d| !d.is_empty())
+        });
+        if all_loaded {
+            return Ok(());
+        }
+
+        let mut rdr = SliceCursor::new(bytes);
 
         match &mut self.mdf_info {
             MdfInfo::V3(_mdfinfo3) => {

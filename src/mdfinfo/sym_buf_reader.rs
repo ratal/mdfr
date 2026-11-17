@@ -1,10 +1,168 @@
 //! buffered reader taken from std but with filling buffer starting position
-//!  at the middle of buffer to optimise forward and especially backward reading
+//! at the middle of buffer to optimise forward and especially backward reading,
+//! plus zero-copy `MappedFile` and `SliceCursor` for memory-mapped file access.
+use std::fs::File;
 use std::io::{Error, ErrorKind, Read, Result, Seek, SeekFrom};
+use std::ops::Deref;
 use std::{cmp, io};
+
+/// Memory-mapped read-only file with automatic heap-buffer fallback for
+/// empty or non-mappable files (e.g., virtual filesystems, FIFOs).
+pub enum MappedFile {
+    Mmap(memmap2::Mmap),
+    Bytes(Vec<u8>),
+}
+
+impl MappedFile {
+    /// Opens `path` read-only and maps it into memory, falling back to reading
+    /// into a `Vec<u8>` if the file is empty or cannot be memory-mapped.
+    pub fn open(path: &str) -> Result<Self> {
+        let mut file = File::open(path)?;
+        let len = file.metadata()?.len();
+        if len == 0 {
+            return Ok(Self::Bytes(Vec::new()));
+        }
+        // SAFETY: The mapping is read-only and transient (dropped as soon as metadata
+        // parsing or data loading finishes); all outputs are copied into owned buffers.
+        match unsafe { memmap2::MmapOptions::new().map(&file) } {
+            Ok(mmap) => Ok(Self::Mmap(mmap)),
+            Err(_) => {
+                let mut bytes = Vec::with_capacity(usize::try_from(len).unwrap_or(0));
+                file.read_to_end(&mut bytes)?;
+                Ok(Self::Bytes(bytes))
+            }
+        }
+    }
+}
+
+impl Deref for MappedFile {
+    type Target = [u8];
+
+    #[inline(always)]
+    fn deref(&self) -> &[u8] {
+        match self {
+            Self::Mmap(m) => m.as_ref(),
+            Self::Bytes(v) => v.as_slice(),
+        }
+    }
+}
+
+/// Zero-copy cursor over an in-memory or memory-mapped byte slice (`&'a [u8]`).
+///
+/// Implements [`Read`] and [`Seek`] for compatibility with `binrw` and `byteorder`,
+/// while also exposing [`read_slice`](Self::read_slice) and [`as_slice`](Self::as_slice)
+/// to borrow sub-slices directly without copying.
+pub struct SliceCursor<'a> {
+    data: &'a [u8],
+    pos: usize,
+}
+
+impl<'a> SliceCursor<'a> {
+    /// Creates a new cursor positioned at byte 0 of `data`.
+    #[inline]
+    pub fn new(data: &'a [u8]) -> Self {
+        Self { data, pos: 0 }
+    }
+
+    /// Returns the entire underlying byte slice.
+    #[inline(always)]
+    pub fn as_slice(&self) -> &'a [u8] {
+        self.data
+    }
+
+    /// Returns the total byte length of the underlying slice.
+    #[inline(always)]
+    pub fn file_size(&self) -> Result<u64> {
+        Ok(self.data.len() as u64)
+    }
+
+    /// Seeks relative to the current position without syscalls.
+    #[inline(always)]
+    pub fn seek_relative(&mut self, offset: i64) -> Result<()> {
+        let new_pos = (self.pos as i128) + (offset as i128);
+        if new_pos < 0 || new_pos > usize::MAX as i128 {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "invalid seek to a negative or overflowing position",
+            ));
+        }
+        self.pos = new_pos as usize;
+        Ok(())
+    }
+
+    /// Borrows `len` bytes starting at the current position and advances the cursor.
+    ///
+    /// Returns `UnexpectedEof` if fewer than `len` bytes remain or `pos + len` overflows.
+    #[inline(always)]
+    pub fn read_slice(&mut self, len: usize) -> Result<&'a [u8]> {
+        let end = self
+            .pos
+            .checked_add(len)
+            .ok_or_else(|| Error::new(ErrorKind::UnexpectedEof, "slice read length overflow"))?;
+        let slice = self
+            .data
+            .get(self.pos..end)
+            .ok_or_else(|| Error::new(ErrorKind::UnexpectedEof, "failed to fill whole buffer"))?;
+        self.pos = end;
+        Ok(slice)
+    }
+}
+
+impl Read for SliceCursor<'_> {
+    #[inline]
+    fn read(&mut self, buf: &mut [u8]) -> Result<usize> {
+        let available = self.data.len().saturating_sub(self.pos);
+        let n = buf.len().min(available);
+        if n > 0 {
+            buf[..n].copy_from_slice(&self.data[self.pos..self.pos + n]);
+            self.pos += n;
+        }
+        Ok(n)
+    }
+
+    #[inline]
+    fn read_exact(&mut self, buf: &mut [u8]) -> Result<()> {
+        let slice = self.read_slice(buf.len())?;
+        buf.copy_from_slice(slice);
+        Ok(())
+    }
+
+    #[inline]
+    fn read_to_end(&mut self, buf: &mut Vec<u8>) -> Result<usize> {
+        let rem = self.data.get(self.pos..).unwrap_or(&[]);
+        buf.extend_from_slice(rem);
+        self.pos = self.data.len();
+        Ok(rem.len())
+    }
+}
+
+impl Seek for SliceCursor<'_> {
+    #[inline]
+    fn seek(&mut self, pos: SeekFrom) -> Result<u64> {
+        let new_pos: i128 = match pos {
+            SeekFrom::Start(n) => n as i128,
+            SeekFrom::End(n) => (self.data.len() as i128) + (n as i128),
+            SeekFrom::Current(n) => (self.pos as i128) + (n as i128),
+        };
+        if new_pos < 0 || new_pos > usize::MAX as i128 {
+            return Err(Error::new(
+                ErrorKind::InvalidInput,
+                "invalid seek to a negative or overflowing position",
+            ));
+        }
+        self.pos = new_pos as usize;
+        Ok(self.pos as u64)
+    }
+
+    #[inline]
+    fn stream_position(&mut self) -> Result<u64> {
+        Ok(self.pos as u64)
+    }
+}
 
 /// reader buffer size, by default same as Rust BufReader
 pub const DEFAULT_BUF_SIZE: usize = 8192;
+#[allow(dead_code)]
 pub struct SymBufReader<R>
 where
     R: Read,
@@ -17,6 +175,7 @@ where
     last_seek_backward: bool,
 }
 
+#[allow(dead_code)]
 impl<R> SymBufReader<R>
 where
     R: Read,
@@ -104,6 +263,7 @@ where
     }
 }
 
+#[allow(dead_code)]
 fn default_read_exact<R: Read + ?Sized>(this: &mut R, mut buf: &mut [u8]) -> Result<()> {
     while !buf.is_empty() {
         match this.read(buf) {
@@ -169,6 +329,7 @@ where
     }
 }
 
+#[allow(dead_code)]
 impl<R: Read + Seek> SymBufReader<R> {
     /// Returns the total length of the underlying stream without changing the
     /// logical read position or discarding the internal buffer. Result is cached after the first call.
@@ -317,5 +478,34 @@ fn sym_buf_reader_test() -> io::Result<()> {
     reader.read_exact(&mut buffer).ok();
     assert_eq!(buffer, [44, 45]);
 
+    Ok(())
+}
+
+#[test]
+fn slice_cursor_and_mapped_file_test() -> io::Result<()> {
+    use std::io::Write;
+    let payload: Vec<u8> = (0..128u8).collect();
+    let mut cursor = SliceCursor::new(&payload);
+    assert_eq!(cursor.file_size()?, 128);
+    assert_eq!(cursor.read_slice(4)?, &[0, 1, 2, 3]);
+    cursor.seek_relative(6)?;
+    assert_eq!(cursor.read_slice(3)?, &[10, 11, 12]);
+    cursor.seek_relative(-3)?;
+    assert_eq!(cursor.read_slice(3)?, &[10, 11, 12]);
+    assert!(cursor.seek_relative(-100).is_err());
+    assert!(cursor.read_slice(200).is_err());
+    assert!(cursor.read_slice(usize::MAX).is_err());
+
+    // Empty file maps safely via fallback
+    let empty_tmp = tempfile::NamedTempFile::new()?;
+    let empty_mapped = MappedFile::open(empty_tmp.path().to_str().unwrap())?;
+    assert!(empty_mapped.is_empty());
+
+    // Non-empty file maps via mmap and matches bytes
+    let mut tmp = tempfile::NamedTempFile::new()?;
+    tmp.write_all(&payload)?;
+    tmp.flush()?;
+    let mapped = MappedFile::open(tmp.path().to_str().unwrap())?;
+    assert_eq!(&*mapped, &payload[..]);
     Ok(())
 }

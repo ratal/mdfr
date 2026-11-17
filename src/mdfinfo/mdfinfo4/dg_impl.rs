@@ -6,30 +6,29 @@ use anyhow::{Context, Result};
 use rustc_hash::FxHashMap;
 use std::collections::BTreeMap;
 use std::fmt::{self, Display};
-use std::fs::File;
-use std::io::{Cursor, Read};
+use std::io::Cursor;
 
 use super::block_header_impl::{SharableBlocks, read_meta_data};
 use super::cg_impl::{CG_F_VLSC, CG_F_VLSD, Cg4, parse_cg4};
 use super::metadata::BlockType;
 use crate::mdfinfo::block_chain::BlockChain;
-use crate::mdfinfo::sym_buf_reader::SymBufReader;
+use crate::mdfinfo::sym_buf_reader::SliceCursor;
 
 pub use mdfr_core::blocks::dg::Dg4Block;
 
 /// Parses a single DGBLOCK and its MD comment from the file.
 fn parse_dg4_block(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     sharable: &mut SharableBlocks,
     target: i64,
     mut position: i64,
 ) -> Result<(Dg4Block, i64)> {
     rdr.seek_relative(target - position)
         .context("Could not reach position of Dg4 block")?;
-    let mut buf = [0u8; 64];
-    rdr.read_exact(&mut buf)
+    let slice = rdr
+        .read_slice(64)
         .context("Could not read Dg4Blcok buffer")?;
-    let mut block = Cursor::new(buf);
+    let mut block = Cursor::new(slice);
     let dg: Dg4Block = binrw::BinReaderExt::read_le(&mut block)
         .context("Could not parse Dg4Block buffer into Dg4Block struct")?;
     position = target + 64;
@@ -68,7 +67,7 @@ impl Display for Dg4 {
 /// starting from `target` (`hd_dg_first`). Returns BTreeMap keyed by file position,
 /// plus total CG and CN counts.
 pub fn parse_dg4(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     target: i64,
     mut position: i64,
     sharable: &mut SharableBlocks,

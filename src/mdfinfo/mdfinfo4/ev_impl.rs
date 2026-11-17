@@ -4,12 +4,11 @@
 //! Each event has a type, sync domain, cause, and can reference parent/range events.
 use anyhow::{Context, Result};
 use std::collections::HashMap;
-use std::fs::File;
 
 use super::block_header_impl::{SharableBlocks, parse_block_short, read_meta_data};
 use super::metadata::BlockType;
 use crate::mdfinfo::block_chain::BlockChain;
-use crate::mdfinfo::sym_buf_reader::SymBufReader;
+use crate::mdfinfo::sym_buf_reader::SliceCursor;
 
 pub use mdfr_core::blocks::ev_block::*;
 
@@ -27,7 +26,7 @@ impl Ev4BlockExt for Ev4Block {
 
 /// Ev4 (Event) block struct parser
 pub(super) fn parse_ev4_block(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     target: i64,
     mut position: i64,
 ) -> Result<(Ev4Block, i64)> {
@@ -41,7 +40,7 @@ pub(super) fn parse_ev4_block(
 
 /// parses Event blocks along with its linked comments, returns a hashmap of Ev4 block with position as key
 pub fn parse_ev4(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     sharable: &mut SharableBlocks,
     target: i64,
     mut position: i64,

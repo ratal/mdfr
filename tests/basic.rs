@@ -292,3 +292,60 @@ fn bus_logging() -> Result<()> {
     mdf.load_all_channels_data_in_memory()?;
     Ok(())
 }
+
+#[test]
+fn from_bytes_matches_file_read() -> Result<()> {
+    let path = "test_files/test_basic.mf4";
+    let bytes = fs::read(path)?;
+
+    let mut mdf_file = Mdf::new(path)?;
+    mdf_file.load_all_channels_data_in_memory()?;
+
+    let mut mdf_bytes = Mdf::from_bytes(&bytes)?;
+    mdf_bytes.load_all_channels_data_from_bytes(&bytes)?;
+
+    assert_eq!(mdf_file.get_version(), mdf_bytes.get_version());
+    let names = mdf_file.get_channel_names_set();
+    assert_eq!(names, mdf_bytes.get_channel_names_set());
+    for name in &names {
+        assert_eq!(
+            mdf_file.get_channel_data(name),
+            mdf_bytes.get_channel_data(name),
+            "channel {name} mismatch between Mdf::new and Mdf::from_bytes"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn mdf3_from_bytes_matches_file_read() -> Result<()> {
+    let path = "test_files/test_mdf3.mdf";
+    if !Path::new(path).exists() {
+        return Ok(());
+    }
+    let bytes = fs::read(path)?;
+
+    let mut mdf_file = Mdf::new(path)?;
+    mdf_file.load_all_channels_data_in_memory()?;
+
+    let mut mdf_bytes = Mdf::from_bytes(&bytes)?;
+    mdf_bytes.load_all_channels_data_from_bytes(&bytes)?;
+
+    assert_eq!(mdf_file.get_version(), mdf_bytes.get_version());
+    let names = mdf_file.get_channel_names_set();
+    assert_eq!(names, mdf_bytes.get_channel_names_set());
+    for name in &names {
+        assert_eq!(
+            mdf_file.get_channel_data(name),
+            mdf_bytes.get_channel_data(name),
+            "MDF3 channel {name} mismatch between Mdf::new and Mdf::from_bytes"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn from_bytes_empty_or_truncated_returns_error() {
+    assert!(Mdf::from_bytes(&[]).is_err());
+    assert!(Mdf::from_bytes(&[0u8; 32]).is_err());
+}

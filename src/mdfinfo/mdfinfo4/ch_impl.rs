@@ -4,18 +4,17 @@
 //! input/output variables). The hierarchy is separate from the DG→CG→CN data structure.
 use anyhow::{Context, Result, bail};
 use std::collections::HashMap;
-use std::fs::File;
 
 use super::block_header_impl::{SharableBlocks, parse_block_short, read_meta_data};
 use super::metadata::BlockType;
 use crate::mdfinfo::block_chain::BlockChain;
-use crate::mdfinfo::sym_buf_reader::SymBufReader;
+use crate::mdfinfo::sym_buf_reader::SliceCursor;
 
 pub use mdfr_core::blocks::ch_block::Ch4Block;
 
 /// parser Ch4Block
 fn parser_ch4_block(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     target: i64,
     mut position: i64,
 ) -> Result<(Ch4Block, i64)> {
@@ -41,7 +40,7 @@ fn parser_ch4_block(
 
 /// parses all CH blocks starting from target
 pub fn parse_ch4(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     sharable: &mut SharableBlocks,
     target: i64,
     position: i64,
@@ -56,7 +55,7 @@ pub fn parse_ch4(
 
 /// parses one hierarchy level and, depth first, the levels below it
 fn parse_ch4_level(
-    rdr: &mut SymBufReader<&File>,
+    rdr: &mut SliceCursor<'_>,
     sharable: &mut SharableBlocks,
     target: i64,
     mut position: i64,
